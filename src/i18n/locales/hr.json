@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Ovaj pozadinski sustav može ponuditi {algorithm}, ali za ovaj objekt nema nijedan pohranjen. Ništa nije preuzeto da bi se izračunao.",
             "checksumMatrixLink": "Koji pozadinski sustav podržava koji hash",
             "checksumCaveats": {
-                "s3-etag": "ETag je MD5 objekta samo za jednodijelne objekte koji nisu šifrirani pomoću SSE-KMS ni SSE-C; za ostale se izostavlja umjesto da se pogađa. ETag uz SSE-C ipak može izgledati kao pravi otisak, pa ga na takvom bucketu smatrajte samo informativnim.",
+                "s3-etag": "ETag je MD5 objekta samo za objekte prenesene u jednom dijelu koji nisu šifrirani pomoću SSE-KMS ili SSE-C. ETag višedijelnog (multipart) ili SSE-KMS šifriranog objekta nikada nema 32 heksadecimalna znaka, pa se izostavlja umjesto da se nagađa. ETag objekta sa SSE-C, međutim, može imati točno 32 heksadecimalna znaka i tada se ne može razlikovati od stvarnog sažetka, pa za takav objekt prikazani ETag smatrajte samo okvirnom, neprovjerenom vrijednošću.",
                 "b2-unverified": "Velike datoteke nemaju upotrebljiv SHA-1, kao ni prijenosi koje je B2 zabilježio kao neprovjerene.",
                 "sftp-sha256sum": "Računa ga udaljeni domaćin naredbom sha256sum preko SSH kanala: bajtovi se čitaju na poslužitelju i nikad vam se ne šalju. Izostavlja se ako domaćin nema sha256sum.",
                 "ftp-negotiated": "Ovisi o onome što poslužitelj objavljuje u FEAT: HASH, ili stariji XMD5, XSHA1 i XCRC.",

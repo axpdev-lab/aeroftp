@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Kaya ng backend na ito na magbigay ng {algorithm}, ngunit wala itong nakaimbak para sa object na ito. Walang na-download para makalkula ito.",
             "checksumMatrixLink": "Aling backend ang sumusuporta sa aling hash",
             "checksumCaveats": {
-                "s3-etag": "Ang ETag ay MD5 ng object lamang para sa mga single-part object na hindi naka-encrypt gamit ang SSE-KMS o SSE-C; sa iba, inaalis ito sa halip na hulaan. Maaari pa ring magmukhang digest ang isang ETag na SSE-C, kaya sa ganoong bucket, ituring itong pahiwatig lamang.",
+                "s3-etag": "Ang ETag ay MD5 ng object para lamang sa mga object na na-upload nang iisang bahagi at hindi naka-encrypt gamit ang SSE-KMS o SSE-C. Ang ETag ng isang multipart na object o ng object na naka-encrypt gamit ang SSE-KMS ay hindi kailanman 32 hexadecimal na karakter, kaya hindi na ito ipinapakita sa halip na hulaan. Ang ETag naman ng object na may SSE-C ay maaaring eksaktong 32 hexadecimal na karakter at sa ganoong kaso ay hindi na ito matatangi sa isang tunay na digest; kaya para sa ganitong object, ituring na pahiwatig lamang ang ipinapakitang ETag at hindi isang beripikadong halaga.",
                 "b2-unverified": "Walang magagamit na SHA-1 ang malalaking file, at wala rin ang mga upload na itinala ng B2 bilang hindi beripikado.",
                 "sftp-sha256sum": "Kinakalkula ng malayong host gamit ang sha256sum sa isang SSH channel: binabasa ang mga byte sa server at hindi kailanman ipinapadala sa iyo. Inaalis kung walang sha256sum ang host.",
                 "ftp-negotiated": "Depende sa ipinapahayag ng server sa FEAT: HASH, o ang mas lumang XMD5, XSHA1 at XCRC.",

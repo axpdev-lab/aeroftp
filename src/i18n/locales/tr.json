@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Bu arka uç {algorithm} sunabilir, ancak bu nesne için saklanmış hiçbiri yok. Hesaplamak için hiçbir şey indirilmedi.",
             "checksumMatrixLink": "Hangi arka uç hangi karmayı destekler",
             "checksumCaveats": {
-                "s3-etag": "ETag yalnızca SSE-KMS veya SSE-C ile şifrelenmemiş tek parçalı nesnelerde nesnenin MD5'idir; diğerlerinde tahmin edilmek yerine atlanır. SSE-C ile şifrelenmiş bir nesnenin ETag'i yine de bir karmaya benzeyebilir, bu yüzden böyle bir bucket'ta bu değeri bağlayıcı değil, yalnızca bilgilendirici sayın.",
+                "s3-etag": "ETag değeri, yalnızca tek parça hâlinde yüklenmiş ve SSE-KMS ya da SSE-C ile şifrelenmemiş nesnelerde nesnenin MD5 özetiyle aynıdır. Çok parçalı (multipart) veya SSE-KMS ile şifrelenmiş bir nesnenin ETag değeri hiçbir zaman 32 onaltılık karakter uzunluğunda olmaz; bu yüzden tahmin edilmek yerine hiç gösterilmez. Buna karşılık SSE-C ile şifrelenmiş bir nesnenin ETag değeri tam olarak 32 onaltılık karakter olabilir ve o durumda gerçek bir özetten ayırt edilemez; bu nedenle böyle bir nesnede gösterilen ETag değerini doğrulanmış değil, yalnızca bilgilendirici sayın.",
                 "b2-unverified": "Büyük dosyaların kullanılabilir bir SHA-1'i yoktur; B2'nin doğrulanmamış olarak kaydettiği yüklemelerin de yoktur.",
                 "sftp-sha256sum": "Uzak makine tarafından bir SSH kanalı üzerinden sha256sum ile hesaplanır: baytlar sunucuda okunur, size hiç gönderilmez. Makinede sha256sum yoksa atlanır.",
                 "ftp-negotiated": "Sunucunun FEAT yanıtında bildirdiğine bağlıdır: HASH ya da daha eski XMD5, XSHA1 ve XCRC.",

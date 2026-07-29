@@ -3751,7 +3751,7 @@
             "checksumAbsentForObject": "Questo backend può fornire {algorithm}, ma non ne ha memorizzato nessuno per questo oggetto. Non è stato scaricato nulla per calcolarlo.",
             "checksumMatrixLink": "Quale backend supporta quale hash",
             "checksumCaveats": {
-                "s3-etag": "L'ETag è l'MD5 dell'oggetto solo per gli oggetti caricati in un'unica parte e non cifrati con SSE-KMS o SSE-C; per gli altri viene omesso anziché indovinato. L'ETag di un oggetto SSE-C può comunque sembrare un hash, quindi su un bucket di questo tipo consideralo solo indicativo.",
+                "s3-etag": "L'ETag corrisponde all'MD5 dell'oggetto solo per gli oggetti caricati in un'unica parte e non cifrati con SSE-KMS o SSE-C. L'ETag di un oggetto multiparte o cifrato con SSE-KMS non è mai lungo 32 caratteri esadecimali, quindi viene omesso anziché tirato a indovinare. L'ETag di un oggetto SSE-C, invece, può essere lungo esattamente 32 caratteri esadecimali e risulta quindi indistinguibile da un digest reale: per questi oggetti considera l'ETag mostrato solo come valore indicativo e non verificato.",
                 "b2-unverified": "I file di grandi dimensioni non hanno uno SHA-1 utilizzabile, e nemmeno gli upload che B2 ha registrato come non verificati.",
                 "sftp-sha256sum": "Calcolato dall'host remoto con sha256sum su un canale SSH: i byte vengono letti sul server, mai inviati a te. Omesso se l'host non ha sha256sum.",
                 "ftp-negotiated": "Dipende da ciò che il server dichiara in FEAT: HASH, oppure i più vecchi XMD5, XSHA1 e XCRC.",

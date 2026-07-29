@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Šī aizmugursistēma var sniegt {algorithm}, taču šim objektam nav saglabāta neviena. Tās aprēķināšanai nekas netika lejupielādēts.",
             "checksumMatrixLink": "Kura aizmugursistēma atbalsta kuru jaucējsummu",
             "checksumCaveats": {
-                "s3-etag": "ETag ir objekta MD5 tikai vienas daļas objektiem, kas nav šifrēti ar SSE-KMS vai SSE-C; pārējiem tas tiek izlaists, nevis uzminēts. SSE-C ETag joprojām var izskatīties pēc jaucējsummas, tāpēc šādā krātuvē uzskatiet to tikai par informatīvu vērtību.",
+                "s3-etag": "ETag ir objekta MD5 tikai tiem objektiem, kas augšupielādēti vienā daļā un nav šifrēti ar SSE-KMS vai SSE-C. Vairākdaļu (multipart) vai ar SSE-KMS šifrēta objekta ETag nekad nav 32 heksadecimālas zīmes garš, tāpēc tas tiek izlaists, nevis minēts. Turpretī SSE-C objekta ETag var būt tieši 32 heksadecimālas zīmes garš, un tad to nevar atšķirt no īstas kontrolsummas, tāpēc šādam objektam rādīto ETag uzskatiet tikai par informatīvu un nepārbaudītu vērtību.",
                 "b2-unverified": "Lieliem failiem nav izmantojamas SHA-1 jaucējsummas, un tāpat arī augšupielādēm, ko B2 reģistrējis kā nepārbaudītas.",
                 "sftp-sha256sum": "To aprēķina attālinātais resursdators ar sha256sum pa SSH kanālu: baiti tiek lasīti serverī un nekad netiek sūtīti jums. Tiek izlaists, ja resursdatoram nav sha256sum.",
                 "ftp-negotiated": "Atkarīgs no tā, ko serveris paziņo FEAT atbildē: HASH vai vecākie XMD5, XSHA1 un XCRC.",

@@ -55,7 +55,7 @@ pub fn algorithm_label(key: &str) -> &str {
 /// The GUI shows its own translated wording for the same token.
 pub fn caveat_text(token: &str) -> &str {
     match token {
-        S3_ETAG => "The ETag is the object MD5 only for single-part objects that are not SSE-KMS or SSE-C encrypted. For a multipart or SSE-KMS/SSE-C object the ETag is not the MD5, and an SSE-C ETag can still be 32 hex characters, so it cannot be told apart from a real digest: treat a reported ETag as advisory on such a bucket.",
+        S3_ETAG => "The ETag is the object MD5 only for single-part objects that are not SSE-KMS or SSE-C encrypted. A multipart ETag carries a `-N` suffix and an SSE-KMS ETag is opaque, so neither is 32 hex characters and both are omitted rather than guessed. An SSE-C ETag can be 32 hex characters, which is indistinguishable from a real digest, so a reported ETag is advisory for such an object.",
         B2_UNVERIFIED => "Large files and uploads B2 recorded as `unverified:` carry no usable `contentSha1`; those are omitted.",
         SFTP_SHA256SUM => "Computed by the remote host with `sha256sum` over an SSH exec channel: the bytes are read on the server, never sent to us. Omitted if the host has no `sha256sum`.",
         FTP_NEGOTIATED => "Depends on what the server advertises in FEAT: `HASH` (algorithm chosen by the server), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest.",

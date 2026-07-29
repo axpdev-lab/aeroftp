@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Dieses Backend kann {algorithm} liefern, hat für dieses Objekt aber keinen gespeichert. Es wurde nichts heruntergeladen, um ihn zu berechnen.",
             "checksumMatrixLink": "Welches Backend unterstützt welchen Hash",
             "checksumCaveats": {
-                "s3-etag": "Das ETag ist nur bei einteiligen Objekten, die weder mit SSE-KMS noch mit SSE-C verschlüsselt sind, die MD5 des Objekts; bei den übrigen wird es weggelassen statt geraten. Ein SSE-C-ETag kann trotzdem wie eine Prüfsumme aussehen. Betrachten Sie es in einem solchen Bucket daher nur als Hinweis.",
+                "s3-etag": "Das ETag entspricht nur bei Objekten dem MD5 des Objekts, die in einem einzigen Teil hochgeladen und nicht mit SSE-KMS oder SSE-C verschlüsselt wurden. Das ETag eines mehrteiligen (multipart) oder mit SSE-KMS verschlüsselten Objekts ist nie 32 Hexadezimalzeichen lang und wird daher weggelassen, statt es zu raten. Das ETag eines SSE-C-Objekts kann dagegen genau 32 Hexadezimalzeichen lang und damit nicht von einer echten Prüfsumme zu unterscheiden sein; behandeln Sie ein angezeigtes ETag bei solchen Objekten deshalb nur als unverbindlichen Richtwert.",
                 "b2-unverified": "Große Dateien haben keine brauchbare SHA-1, und Uploads, die B2 als unverified vermerkt hat, ebenfalls nicht.",
                 "sftp-sha256sum": "Vom entfernten Host mit sha256sum über einen SSH-Kanal berechnet: Die Bytes werden auf dem Server gelesen und nie an Sie gesendet. Entfällt, wenn der Host kein sha256sum hat.",
                 "ftp-negotiated": "Hängt davon ab, was der Server in FEAT ankündigt: HASH oder die älteren XMD5, XSHA1 und XCRC.",

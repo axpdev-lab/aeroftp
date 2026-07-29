@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Ten backend potrafi podać {algorithm}, ale nie ma żadnego zapisanego dla tego obiektu. Nic nie zostało pobrane, aby go wyliczyć.",
             "checksumMatrixLink": "Który backend obsługuje który skrót",
             "checksumCaveats": {
-                "s3-etag": "ETag jest sumą MD5 obiektu tylko dla obiektów jednoczęściowych, które nie są zaszyfrowane przez SSE-KMS ani SSE-C; dla pozostałych jest pomijany, a nie zgadywany. ETag obiektu SSE-C nadal może wyglądać jak skrót, więc w takim zasobniku traktuj go jedynie orientacyjnie.",
+                "s3-etag": "ETag jest sumą MD5 obiektu tylko w przypadku obiektów przesłanych w jednej części i niezaszyfrowanych za pomocą SSE-KMS ani SSE-C. ETag obiektu wieloczęściowego (multipart) lub zaszyfrowanego przy użyciu SSE-KMS nigdy nie ma 32 znaków szesnastkowych, dlatego jest pomijany, zamiast być zgadywanym. Natomiast ETag obiektu z SSE-C może mieć dokładnie 32 znaki szesnastkowe i wtedy jest nie do odróżnienia od prawdziwego skrótu, więc w przypadku takiego obiektu wyświetlany ETag należy traktować wyłącznie orientacyjnie, jako wartość niezweryfikowaną.",
                 "b2-unverified": "Duże pliki nie mają użytecznego SHA-1, podobnie jak wysyłki, które B2 zapisało jako niezweryfikowane.",
                 "sftp-sha256sum": "Wyliczany przez zdalny host poleceniem sha256sum przez kanał SSH: bajty są czytane na serwerze i nigdy nie są wysyłane do Ciebie. Pomijany, jeśli host nie ma sha256sum.",
                 "ftp-negotiated": "Zależy od tego, co serwer ogłasza w FEAT: HASH albo starsze XMD5, XSHA1 i XCRC.",

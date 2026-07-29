@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Backend ini boleh menyediakan {algorithm}, tetapi tiada satu pun disimpan untuk objek ini. Tiada apa-apa dimuat turun untuk mengiranya.",
             "checksumMatrixLink": "Backend mana menyokong hash mana",
             "checksumCaveats": {
-                "s3-etag": "ETag ialah MD5 objek hanya bagi objek satu bahagian yang tidak disulitkan dengan SSE-KMS atau SSE-C; bagi yang lain ia ditinggalkan dan bukannya diteka. ETag objek SSE-C masih boleh kelihatan seperti hash, jadi pada bucket sedemikian anggaplah nilai itu sebagai panduan sahaja.",
+                "s3-etag": "ETag ialah MD5 objek hanya bagi objek yang dimuat naik dalam satu bahagian dan tidak disulitkan dengan SSE-KMS atau SSE-C. ETag objek berbilang bahagian (multipart) atau objek yang disulitkan dengan SSE-KMS tidak pernah terdiri daripada 32 aksara heksadesimal, jadi ia ditinggalkan dan bukannya diteka. Sebaliknya, ETag objek SSE-C boleh terdiri daripada tepat 32 aksara heksadesimal dan ketika itu ia tidak dapat dibezakan daripada cencangan sebenar; jadi bagi objek sedemikian anggap ETag yang dipaparkan sebagai panduan sahaja, bukan nilai yang disahkan.",
                 "b2-unverified": "Fail besar tiada SHA-1 yang boleh digunakan, dan begitu juga muat naik yang direkodkan B2 sebagai belum disahkan.",
                 "sftp-sha256sum": "Dikira oleh hos jauh dengan sha256sum melalui saluran SSH: bait dibaca di pelayan dan tidak pernah dihantar kepada anda. Ditinggalkan jika hos tiada sha256sum.",
                 "ftp-negotiated": "Bergantung pada apa yang diiklankan pelayan dalam FEAT: HASH, atau XMD5, XSHA1 dan XCRC yang lebih lama.",

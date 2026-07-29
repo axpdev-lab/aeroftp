@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Backend hii inaweza kutoa {algorithm}, lakini haina yoyote iliyohifadhiwa kwa kitu hiki. Hakuna kilichopakuliwa ili kuihesabu.",
             "checksumMatrixLink": "Backend ipi inasaidia hash ipi",
             "checksumCaveats": {
-                "s3-etag": "ETag ni MD5 ya kitu tu kwa vitu vya sehemu moja ambavyo havijasimbwa kwa SSE-KMS au SSE-C; kwa vingine huachwa badala ya kubahatishwa. ETag ya SSE-C bado inaweza kuonekana kama hash halisi, hivyo kwenye ndoo ya aina hiyo ichukuliwe kama dokezo tu.",
+                "s3-etag": "ETag ni MD5 ya kitu kwa vitu vilivyopakiwa kwa sehemu moja tu na ambavyo havijasimbwa kwa SSE-KMS wala SSE-C. ETag ya kitu kilichopakiwa kwa sehemu nyingi (multipart) au kilichosimbwa kwa SSE-KMS haiwi kamwe herufi 32 za heksadesimali, kwa hivyo huachwa badala ya kubahatishwa. Kwa upande mwingine, ETag ya kitu chenye SSE-C inaweza kuwa na herufi 32 kamili za heksadesimali na hapo haiwezi kutofautishwa na muhtasari halisi; kwa hivyo kwa kitu cha aina hiyo chukulia ETag inayoonyeshwa kuwa ya kumbukumbu tu, si thamani iliyothibitishwa.",
                 "b2-unverified": "Faili kubwa hazina SHA-1 inayoweza kutumika, wala upakiaji ambao B2 iliurekodi kuwa haujathibitishwa hauna.",
                 "sftp-sha256sum": "Huhesabiwa na mwenyeji wa mbali kwa sha256sum kupitia njia ya SSH: baiti husomwa kwenye seva na hazitumwi kwako kamwe. Huachwa iwapo mwenyeji hana sha256sum.",
                 "ftp-negotiated": "Hutegemea kile seva inachotangaza katika FEAT: HASH, au XMD5, XSHA1 na XCRC za zamani zaidi.",

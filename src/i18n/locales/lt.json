@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Ši posistemė gali pateikti {algorithm}, bet šiam objektui nėra išsaugotos nė vienos. Jai apskaičiuoti niekas nebuvo atsisiųsta.",
             "checksumMatrixLink": "Kuri posistemė kurią maišą palaiko",
             "checksumCaveats": {
-                "s3-etag": "ETag yra objekto MD5 tik vienos dalies objektams, kurie nėra užšifruoti SSE-KMS ar SSE-C; kitiems jis praleidžiamas, o ne spėjamas. SSE-C ETag vis tiek gali atrodyti kaip maiša, todėl tokiame kibire laikykite jį tik orientacine reikšme.",
+                "s3-etag": "ETag reikšmė yra objekto MD5 tik tuo atveju, kai objektas įkeltas viena dalimi ir nėra užšifruotas SSE-KMS ar SSE-C. Kelių dalių (multipart) arba SSE-KMS užšifruoto objekto ETag niekada nėra 32 šešioliktainių simbolių ilgio, todėl jis praleidžiamas, o ne spėjamas. SSE-C objekto ETag gali būti lygiai 32 šešioliktainių simbolių ir tuomet jo neįmanoma atskirti nuo tikros maišos reikšmės, todėl tokio objekto rodomą ETag laikykite tik orientacine, nepatikrinta reikšme.",
                 "b2-unverified": "Dideli failai neturi tinkamos SHA-1 maišos; jos neturi ir įkėlimai, kuriuos B2 užfiksavo kaip nepatvirtintus.",
                 "sftp-sha256sum": "Apskaičiuoja nuotolinis kompiuteris komanda sha256sum per SSH kanalą: baitai skaitomi serveryje ir niekada jums nesiunčiami. Praleidžiama, jei kompiuteryje nėra sha256sum.",
                 "ftp-negotiated": "Priklauso nuo to, ką serveris skelbia FEAT atsakyme: HASH arba senesni XMD5, XSHA1 ir XCRC.",

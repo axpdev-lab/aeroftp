@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Tento backend umí poskytnout {algorithm}, ale pro tento objekt žádný uložený nemá. Nic se kvůli jeho výpočtu nestahovalo.",
             "checksumMatrixLink": "Který backend podporuje který hash",
             "checksumCaveats": {
-                "s3-etag": "ETag je MD5 objektu jen u jednodílných objektů, které nejsou šifrovány SSE-KMS ani SSE-C; u ostatních se raději vynechá, než aby se odhadoval. ETag u SSE-C přitom může vypadat jako otisk, proto jej v takovém bucketu berte jen jako orientační.",
+                "s3-etag": "ETag je MD5 objektu pouze u objektů nahraných v jedné části, které nejsou šifrované pomocí SSE-KMS ani SSE-C. ETag vícedílného (multipart) nebo SSE-KMS šifrovaného objektu nikdy nemá 32 hexadecimálních znaků, proto se raději vynechá, než aby se odhadoval. Naopak ETag objektu se šifrováním SSE-C může mít přesně 32 hexadecimálních znaků a pak jej nelze odlišit od skutečného otisku, takže u takového objektu považujte zobrazený ETag pouze za orientační a neověřený.",
                 "b2-unverified": "Velké soubory nemají použitelnou SHA-1 a nemají ji ani nahrané soubory, které B2 zaznamenala jako neověřené.",
                 "sftp-sha256sum": "Vypočítá vzdálený hostitel pomocí sha256sum přes SSH kanál: bajty se čtou na serveru a nikdy se vám neposílají. Vynechá se, pokud hostitel sha256sum nemá.",
                 "ftp-negotiated": "Závisí na tom, co server ohlašuje ve FEAT: HASH, nebo starší XMD5, XSHA1 a XCRC.",

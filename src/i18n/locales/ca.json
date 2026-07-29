@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Aquest backend pot oferir {algorithm}, però no en té cap desat per a aquest objecte. No s'ha baixat res per calcular-lo.",
             "checksumMatrixLink": "Quin backend admet quin hash",
             "checksumCaveats": {
-                "s3-etag": "L'ETag és l'MD5 de l'objecte només per a objectes d'una sola part que no estiguin xifrats amb SSE-KMS ni SSE-C; per a la resta s'omet en comptes d'endevinar-lo. L'ETag d'un objecte xifrat amb SSE-C encara pot semblar un hash, així que en un bucket d'aquest tipus considereu-lo només orientatiu.",
+                "s3-etag": "L'ETag és l'MD5 de l'objecte només en els objectes pujats en una sola part i que no estan xifrats amb SSE-KMS ni SSE-C. L'ETag d'un objecte multipart o xifrat amb SSE-KMS mai no té 32 caràcters hexadecimals, de manera que s'omet en comptes de deduir-lo. En canvi, l'ETag d'un objecte SSE-C sí que pot tenir exactament 32 caràcters hexadecimals i llavors és indistingible d'un resum real; per a aquests objectes, considera l'ETag mostrat només com a orientatiu i no verificat.",
                 "b2-unverified": "Els fitxers grans no tenen cap SHA-1 utilitzable, i tampoc en tenen les pujades que B2 ha registrat com a no verificades.",
                 "sftp-sha256sum": "El calcula el host remot amb sha256sum a través d'un canal SSH: els bytes es llegeixen al servidor i no se us envien mai. S'omet si el host no té sha256sum.",
                 "ftp-negotiated": "Depèn del que el servidor anuncia a FEAT: HASH, o els més antics XMD5, XSHA1 i XCRC.",

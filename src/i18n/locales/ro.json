@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "Acest backend poate furniza {algorithm}, dar nu are niciunul stocat pentru acest obiect. Nu s-a descărcat nimic pentru a-l calcula.",
             "checksumMatrixLink": "Ce backend acceptă ce hash",
             "checksumCaveats": {
-                "s3-etag": "ETag este MD5-ul obiectului doar pentru obiectele dintr-o singură parte care nu sunt criptate cu SSE-KMS sau SSE-C; pentru celelalte este omis, nu ghicit. Un ETag SSE-C poate totuși să arate ca un hash, așa că pe un astfel de bucket tratează-l doar ca orientativ.",
+                "s3-etag": "ETag este suma MD5 a obiectului doar pentru obiectele încărcate într-o singură parte și care nu sunt criptate cu SSE-KMS sau SSE-C. ETag-ul unui obiect încărcat în mai multe părți (multipart) sau criptat cu SSE-KMS nu are niciodată 32 de caractere hexazecimale, așa că este omis în loc să fie ghicit. În schimb, ETag-ul unui obiect cu SSE-C poate avea exact 32 de caractere hexazecimale și devine astfel imposibil de deosebit de un rezumat real, așa că pentru un astfel de obiect ETag-ul afișat trebuie considerat doar orientativ și neverificat.",
                 "b2-unverified": "Fișierele mari nu au un SHA-1 utilizabil și nici încărcările pe care B2 le-a înregistrat ca neverificate.",
                 "sftp-sha256sum": "Calculat de gazda la distanță cu sha256sum printr-un canal SSH: octeții sunt citiți pe server și nu îți sunt trimiși niciodată. Omis dacă gazda nu are sha256sum.",
                 "ftp-negotiated": "Depinde de ceea ce anunță serverul în FEAT: HASH sau mai vechile XMD5, XSHA1 și XCRC.",

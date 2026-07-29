@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "See taustsüsteem oskab pakkuda {algorithm}, kuid selle objekti jaoks pole ühtegi salvestatud. Selle arvutamiseks ei laaditud midagi alla.",
             "checksumMatrixLink": "Milline taustsüsteem millist räsi toetab",
             "checksumCaveats": {
-                "s3-etag": "ETag on objekti MD5 ainult üheosaliste objektide puhul, mis pole krüpteeritud SSE-KMS-i ega SSE-C-ga; ülejäänute puhul jäetakse see pigem välja kui arvatakse. SSE-C ETag võib siiski räsi moodi välja näha, seega käsitlege seda sellises bucketis ainult soovitusliku väärtusena.",
+                "s3-etag": "ETag on objekti MD5 ainult nende objektide puhul, mis on üles laaditud ühe osana ja mida ei ole krüpteeritud SSE-KMS ega SSE-C abil. Mitmeosalise (multipart) või SSE-KMS-iga krüpteeritud objekti ETag ei ole kunagi 32 kuueteistkümnendmärki pikk, seetõttu jäetakse see pigem kuvamata, kui et seda oletataks. SSE-C objekti ETag võib aga olla täpselt 32 kuueteistkümnendmärki ja siis ei ole seda võimalik tegelikust räsist eristada; sellise objekti puhul tuleb kuvatavat ETag'i pidada üksnes soovituslikuks ja kontrollimata väärtuseks.",
                 "b2-unverified": "Suurtel failidel pole kasutatavat SHA-1 räsi, samuti pole seda üleslaadimistel, mis B2 märkis kinnitamata olekusse.",
                 "sftp-sha256sum": "Arvutab kaugmasin käsuga sha256sum üle SSH-kanali: baite loetakse serveris ja neid ei saadeta kunagi teile. Jäetakse välja, kui masinal pole sha256sum'i.",
                 "ftp-negotiated": "Sõltub sellest, mida server FEAT-vastuses teatab: HASH või vanemad XMD5, XSHA1 ja XCRC.",

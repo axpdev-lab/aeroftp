@@ -3359,7 +3359,7 @@
             "checksumAbsentForObject": "该后端可以提供 {algorithm}，但没有为此对象存储该值。并未为了计算它而下载任何内容。",
             "checksumMatrixLink": "哪个后端支持哪种哈希",
             "checksumCaveats": {
-                "s3-etag": "只有未使用 SSE-KMS 或 SSE-C 加密的单段对象，ETag 才等于对象的 MD5；其余情况宁可省略也不猜测。SSE-C 的 ETag 看上去也可能像是摘要，因此在这类存储桶上只应将其视为参考值。",
+                "s3-etag": "只有以单个分片上传且未使用 SSE-KMS 或 SSE-C 加密的对象，其 ETag 才等于对象的 MD5。分段上传（multipart）或使用 SSE-KMS 加密的对象，其 ETag 绝不会是 32 位十六进制字符，因此程序会直接省略而不是凭猜测显示。而使用 SSE-C 加密的对象，其 ETag 可能正好是 32 位十六进制字符，此时无法与真正的摘要区分开；所以对于这类对象，请将显示的 ETag 仅视为参考值，而非已校验的结果。",
                 "b2-unverified": "大文件没有可用的 SHA-1，B2 记录为 unverified 的上传同样没有。",
                 "sftp-sha256sum": "由远程主机通过 SSH 通道用 sha256sum 计算：字节在服务器上读取，绝不会发送给您。若主机没有 sha256sum 则省略。",
                 "ftp-negotiated": "取决于服务器在 FEAT 中声明的内容：HASH，或较早的 XMD5、XSHA1 和 XCRC。",
