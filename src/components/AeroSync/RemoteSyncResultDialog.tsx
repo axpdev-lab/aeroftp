@@ -26,7 +26,7 @@ import {
     Zap,
 } from 'lucide-react';
 import { Download } from 'lucide-react';
-import { save } from '@tauri-apps/plugin-dialog';
+import { pickSave } from '../../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { useTranslation } from '../../i18n';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
@@ -86,7 +86,7 @@ export const RemoteSyncResultDialog: React.FC<RemoteSyncResultDialogProps> = ({
     const handleExportJson = async (): Promise<void> => {
         try {
             const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            const filePath = await save({
+            const filePath = await pickSave({
                 defaultPath: `aerosync-report-${ts}.json`,
                 filters: [{ name: 'JSON', extensions: ['json'] }],
             });

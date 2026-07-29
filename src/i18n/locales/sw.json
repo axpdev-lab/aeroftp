@@ -5578,6 +5578,13 @@
             "importAccept": "Ingiza",
             "importedBody": "Usanidi wako umeingizwa. Anzisha upya AeroFTP ili kupakia seva zako na kasha lako.",
             "restartNow": "Anzisha upya sasa"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Kichagua faili hakipatikani",
+                "portalMissing": "Hakuna lango la eneo-kazi lililowekwa, kwa hivyo mfumo huu hauwezi kufungua kichagua faili. Weka xdg-desktop-portal na backend ya eneo-kazi lako (kwa mfano xdg-desktop-portal-gtk), kisha ujaribu tena.",
+                "unknown": "Kichagua faili hakikuweza kufunguliwa. Tazama kumbukumbu ya programu kwa maelezo."
+            }
         }
     }
 }

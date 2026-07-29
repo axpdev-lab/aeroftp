@@ -6,7 +6,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Server, Plus, Trash2, Edit2, Copy, Check, Cloud, AlertCircle, GripVertical, Activity, Play, Loader2, Eye, EyeOff, Scissors } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
-import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../types';
 import { useTranslation } from '../i18n';
 import { SearchBox } from './SearchBox';

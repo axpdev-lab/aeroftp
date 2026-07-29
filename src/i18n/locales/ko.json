@@ -5578,6 +5578,13 @@
             "importAccept": "가져오기",
             "importedBody": "구성을 가져왔습니다. 서버와 보관소를 불러오려면 AeroFTP를 다시 시작하세요.",
             "restartNow": "지금 다시 시작"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "파일 선택 창을 사용할 수 없습니다",
+                "portalMissing": "데스크톱 포털이 설치되어 있지 않아 이 시스템에서는 파일 선택 창을 열 수 없습니다. xdg-desktop-portal과 사용 중인 데스크톱용 백엔드(예: xdg-desktop-portal-gtk)를 설치한 뒤 다시 시도하세요.",
+                "unknown": "파일 선택 창을 열 수 없습니다. 자세한 내용은 애플리케이션 로그를 확인하세요."
+            }
         }
     }
 }

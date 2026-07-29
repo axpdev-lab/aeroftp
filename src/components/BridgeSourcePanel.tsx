@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../utils/pickPath';
 import {
     Upload, Download, AlertCircle, CheckCircle2, Lock, RefreshCw,
     FolderInput, Shield, Info,
@@ -173,7 +173,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
 
     const browse = async () => {
         const exts = meta?.importExtensions?.length ? meta.importExtensions : ['*'];
-        const filePath = await open({
+        const filePath = await pickFile({
             title: t('settings.bridgeSelectConfig').replace('{app}', app),
             filters: [
                 { name: meta?.importFilterName || app, extensions: exts },
@@ -222,7 +222,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         const chosen = exportable.filter(s => exportSelectedIds.has(s.id));
         if (chosen.length === 0) return;
         const ext = meta?.exportExt || 'txt';
-        const filePath = await save({
+        const filePath = await pickSave({
             title: t('settings.bridgeExportTitle').replace('{app}', app),
             filters: [{ name: meta?.exportLabel || app, extensions: [ext] }],
             defaultPath: `${DEFAULT_EXPORT_NAME[source.id] || source.id}.${ext}`,

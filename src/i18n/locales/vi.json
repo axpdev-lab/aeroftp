@@ -5578,6 +5578,13 @@
             "importAccept": "Nhập",
             "importedBody": "Cấu hình của bạn đã được nhập. Khởi động lại AeroFTP để tải các máy chủ và két an toàn của bạn.",
             "restartNow": "Khởi động lại ngay"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Không có hộp thoại chọn tệp",
+                "portalMissing": "Chưa cài đặt cổng desktop nào, nên hệ thống này không thể mở hộp thoại chọn tệp. Hãy cài xdg-desktop-portal và một backend cho desktop của bạn (ví dụ xdg-desktop-portal-gtk), rồi thử lại.",
+                "unknown": "Không thể mở hộp thoại chọn tệp. Xem bản ghi ứng dụng để biết chi tiết."
+            }
         }
     }
 }

@@ -17,7 +17,7 @@ import { CloudPathPair, CloudPairsConfig, CloudSyncDirection } from '../types';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { loadSavedServerProfiles } from '../utils/serverProfileStore';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../utils/pickPath';
 
 const MAX_CLOUD_PAIRS = 32;
 
@@ -211,7 +211,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     };
 
     const selectLocalFolder = async (pairId: string) => {
-        const selected = await open({ directory: true, multiple: false, title: 'Select local folder for pair' });
+        const selected = await pickFile({ directory: true, multiple: false, title: 'Select local folder for pair' });
         if (selected) {
             updatePairField(pairId, 'local_path', selected as string);
         }

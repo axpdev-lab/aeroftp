@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useState, useRef, useCallback } from 'react';
-import { save } from '@tauri-apps/plugin-dialog';
+import { pickSave } from '../../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { AIProviderType } from '../../types/ai';
 import {
@@ -306,7 +306,7 @@ export function useAIChatConversations() {
                 lines.push('---');
                 lines.push('*Exported from AeroFTP AeroAgent*');
 
-                const filePath = await save({
+                const filePath = await pickSave({
                     defaultPath: `aerochat-${timestamp}.md`,
                     filters: [{ name: 'Markdown', extensions: ['md'] }],
                 });
@@ -335,7 +335,7 @@ export function useAIChatConversations() {
                     } : null,
                 };
 
-                const filePath = await save({
+                const filePath = await pickSave({
                     defaultPath: `aerochat-${timestamp}.json`,
                     filters: [{ name: 'JSON', extensions: ['json'] }],
                 });

@@ -122,10 +122,29 @@ fn reachable_on(conn: &gtk::gio::DBusConnection) -> Option<bool> {
 
 /// Exposed to the frontend so a picker call site can explain itself instead of
 /// resolving to a `null` that means two different things.
+///
+/// The log line is not decoration: it is the only way an outside observer can
+/// tell that the frontend really consulted this before opening a picker. The
+/// #464 gate greps for it, because the remedy is a message rendered inside the
+/// WebView and no window count or D-Bus trace can see that from outside.
 #[tauri::command]
 pub fn chooser_unavailable() -> Option<String> {
-    chooser_unavailable_reason()
+    let reason = chooser_unavailable_reason();
+    match &reason {
+        Some(r) => eprintln!("{CHOOSER_UNAVAILABLE_LOG} {r}"),
+        None => eprintln!("{CHOOSER_CHECKED_LOG}"),
+    }
+    reason
 }
+
+/// Printed when a picker cannot be presented. Matched literally by
+/// `tests/portal-chooser/portal-chooser-test.sh`; changing it breaks that gate.
+pub const CHOOSER_UNAVAILABLE_LOG: &str = "chooser unavailable, telling the user:";
+
+/// Printed when the check ran and found nothing wrong. Its presence is what
+/// proves the frontend asked at all, which is what separates "the picker is fine"
+/// from "nobody ever checked".
+pub const CHOOSER_CHECKED_LOG: &str = "chooser checked: presentable";
 
 #[cfg(test)]
 mod tests {

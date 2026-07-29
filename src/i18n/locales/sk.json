@@ -5578,6 +5578,13 @@
             "importAccept": "Importovať",
             "importedBody": "Vaša konfigurácia bola importovaná. Reštartujte AeroFTP, aby sa načítali vaše servery a trezor.",
             "restartNow": "Reštartovať teraz"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Dialóg na výber súborov nie je dostupný",
+                "portalMissing": "Nie je nainštalovaný žiadny portál pracovnej plochy, takže tento systém nemôže otvoriť dialóg na výber súborov. Nainštalujte xdg-desktop-portal a backend pre vaše prostredie (napríklad xdg-desktop-portal-gtk) a skúste to znova.",
+                "unknown": "Dialóg na výber súborov sa nepodarilo otvoriť. Podrobnosti nájdete v protokole aplikácie."
+            }
         }
     }
 }

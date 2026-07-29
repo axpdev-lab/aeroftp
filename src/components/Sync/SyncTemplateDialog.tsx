@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../../utils/pickPath';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import {
     X, FileDown, FileUp, Download, Upload, Check, AlertTriangle, Terminal
@@ -90,7 +90,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     }, [isOpen, onClose]);
 
     const exportTemplate = async () => {
-        const filePath = await save({
+        const filePath = await pickSave({
             defaultPath: 'sync-config.aerosync',
             filters: [{ name: 'AeroSync Template', extensions: ['aerosync'] }],
         });
@@ -119,7 +119,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
             .replace(/[^A-Za-z0-9._-]/g, '-')
             .replace(/-+/g, '-')
             .replace(/^-+|-+$/g, '') || 'aerosync-config';
-        const filePath = await save({
+        const filePath = await pickSave({
             defaultPath: `${defaultName}.aeroftp-script`,
             filters: [{ name: 'AeroSync script', extensions: ['aeroftp-script'] }],
         });
@@ -162,7 +162,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
         const ext = format === 'pwsh' ? 'ps1' : 'sh';
         const defaultName = `sync-config.${ext}`;
         const filterName = format === 'pwsh' ? 'PowerShell script' : 'Shell script';
-        const filePath = await save({
+        const filePath = await pickSave({
             defaultPath: defaultName,
             filters: [{ name: filterName, extensions: [ext] }],
         });
@@ -211,7 +211,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
         setImporting(true);
         setResult(null);
         try {
-            const filePath = await open({
+            const filePath = await pickFile({
                 filters: [
                     {
                         name: 'AeroFTP sync',

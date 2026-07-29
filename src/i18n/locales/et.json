@@ -5578,6 +5578,13 @@
             "importAccept": "Impordi",
             "importedBody": "Teie konfiguratsioon imporditi. Taaskäivitage AeroFTP, et laadida oma serverid ja hoidla.",
             "restartNow": "Taaskäivita kohe"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Failivalija pole saadaval",
+                "portalMissing": "Töölauaportaali pole paigaldatud, seega ei saa see süsteem failivalijat avada. Paigaldage xdg-desktop-portal ja teie töölauale sobiv taustaprogramm (näiteks xdg-desktop-portal-gtk) ning proovige uuesti.",
+                "unknown": "Failivalijat ei õnnestunud avada. Üksikasjad leiate rakenduse logist."
+            }
         }
     }
 }

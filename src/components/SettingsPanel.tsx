@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../utils/pickPath';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Monitor, Image, Shapes, Info, Boxes, Share2, Users, Bell, ShieldOff } from 'lucide-react';
@@ -1059,7 +1059,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <button
                                                     onClick={async () => {
                                                         try {
-                                                            const selected = await open({
+                                                            const selected = await pickFile({
                                                                 directory: true,
                                                                 multiple: false,
                                                                 title: t('settings.selectDefaultFolder'),
@@ -3262,7 +3262,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             });
                                                             return;
                                                         }
-                                                        const filePath = await save({
+                                                        const filePath = await pickSave({
                                                             title: t('settings.exportKeystore'),
                                                             filters: [
                                                                 {
@@ -3352,7 +3352,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <button
                                                         onClick={async () => {
                                                             setKeystoreMessage(null);
-                                                            const filePath = await open({
+                                                            const filePath = await pickFile({
                                                                 title: t('settings.importKeystore'),
                                                                 filters: [
                                                                     {

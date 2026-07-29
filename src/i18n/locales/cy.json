@@ -5597,6 +5597,13 @@
             "importAccept": "Mewnforio",
             "importedBody": "Mewnforiwyd eich ffurfweddiad. Ailgychwynnwch AeroFTP i lwytho eich gweinyddwyr a'ch cell ddiogel.",
             "restartNow": "Ailgychwyn nawr"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Dewisydd ffeiliau ddim ar gael",
+                "portalMissing": "Nid oes porth bwrdd gwaith wedi'i osod, felly ni all y system hon agor dewisydd ffeiliau. Gosodwch xdg-desktop-portal a chefnwr ar gyfer eich bwrdd gwaith (er enghraifft xdg-desktop-portal-gtk), ac yna ceisiwch eto.",
+                "unknown": "Nid oedd modd agor y dewisydd ffeiliau. Gwelwch gofnod y rhaglen am fanylion."
+            }
         }
     }
 }

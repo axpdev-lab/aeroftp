@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Lock, Unlock, Loader2, X, Download, FileText } from 'lucide-react';
 import { useTranslation } from '../i18n';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../utils/pickPath';
 import { PasswordInput } from './common/PasswordInput';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
@@ -170,10 +170,10 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
         if (!vaultInfo) return;
         setError(null);
 
-        const inputPath = await open({ multiple: false });
+        const inputPath = await pickFile({ multiple: false });
         if (!inputPath || Array.isArray(inputPath)) return;
 
-        const outputPath = await save({ defaultPath: 'decrypted_file' });
+        const outputPath = await pickSave({ defaultPath: 'decrypted_file' });
         if (!outputPath) return;
 
         setLoading(true);

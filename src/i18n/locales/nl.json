@@ -5578,6 +5578,13 @@
             "importAccept": "Importeren",
             "importedBody": "Uw configuratie is geïmporteerd. Start AeroFTP opnieuw op om uw servers en kluis te laden.",
             "restartNow": "Nu opnieuw opstarten"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Bestandskiezer niet beschikbaar",
+                "portalMissing": "Er is geen desktopportaal geïnstalleerd, waardoor dit systeem geen bestandskiezer kan openen. Installeer xdg-desktop-portal en een backend voor uw desktop (bijvoorbeeld xdg-desktop-portal-gtk) en probeer het opnieuw.",
+                "unknown": "De bestandskiezer kon niet worden geopend. Bekijk het logboek van de toepassing voor details."
+            }
         }
     }
 }

@@ -5597,6 +5597,13 @@
             "importAccept": "Flytja inn",
             "importedBody": "Stillingarnar þínar voru fluttar inn. Endurræstu AeroFTP til að hlaða inn þjónunum þínum og hirslunni.",
             "restartNow": "Endurræsa núna"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Skráaval er ekki í boði",
+                "portalMissing": "Engin skjáborðsgátt er uppsett, því getur þetta kerfi ekki opnað skráaval. Settu upp xdg-desktop-portal og bakenda fyrir skjáborðið þitt (til dæmis xdg-desktop-portal-gtk) og prófaðu aftur.",
+                "unknown": "Ekki var unnt að opna skráaval. Sjá annál forritsins fyrir nánari upplýsingar."
+            }
         }
     }
 }

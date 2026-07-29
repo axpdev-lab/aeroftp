@@ -8,7 +8,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
 import { ExternalLink, LogIn, CheckCircle, AlertCircle, Loader2, Settings, FolderOpen, Save, LogOut, RefreshCw, Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { Checkbox } from './ui/Checkbox';
 import { useOAuth2, OAuthProvider, OAUTH_APPS } from '../hooks/useOAuth2';

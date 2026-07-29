@@ -9,7 +9,7 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../utils/pickPath';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { FileKey, Loader2, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
@@ -126,7 +126,7 @@ export const AeroCryptRecoveryKitModal: React.FC<Props> = ({ profileId, profileN
         setActionMsg(null);
         setActionErr(null);
         try {
-            const path = await save({
+            const path = await pickSave({
                 defaultPath: kitDefaultFileName(),
                 filters: [{ name: 'Text', extensions: ['txt'] }],
             });
@@ -192,7 +192,7 @@ export const AeroCryptRecoveryKitModal: React.FC<Props> = ({ profileId, profileN
         setActionMsg(null);
         setActionErr(null);
         try {
-            const picked = await open({
+            const picked = await pickFile({
                 multiple: false,
                 filters: [
                     {

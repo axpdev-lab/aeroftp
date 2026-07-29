@@ -29,7 +29,7 @@ import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../../utils/pickPath';
 import { safePickerStartDir } from '../../utils/safePickerDir';
 import {
   Copy, Check, Loader2, AlertTriangle, FolderOpen, Download, Upload,
@@ -249,7 +249,7 @@ export function AeroShareHandshakeBody({
     try {
       // Sanitize the starting dir so a stale/non-existent path cannot crash the
       // native folder chooser (Fix G).
-      const selected = await open({ directory: true, multiple: false, defaultPath: await safePickerStartDir(current) });
+      const selected = await pickFile({ directory: true, multiple: false, defaultPath: await safePickerStartDir(current) });
       if (typeof selected === 'string') setter(selected);
     } catch { /* user cancelled */ }
   }, []);

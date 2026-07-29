@@ -166,6 +166,65 @@ function getNestedValue(obj: Record<string, unknown>, path: string): string | un
 }
 
 /**
+ * Look a key up in one language, falling back to English, and interpolate.
+ *
+ * Shared by the provider's `t` and by `translate` below so the in-React and
+ * out-of-React paths cannot drift: two copies of "try the language, then fall
+ * back to English, then return the key" would eventually disagree about a
+ * missing key, and only one of them would be exercised by the UI.
+ */
+function lookup(
+    translations: TranslationKeys,
+    fallbackTranslations: TranslationKeys,
+    language: Language,
+    key: string,
+    params?: Record<string, string | number>,
+): string {
+    // Try current language first
+    let value = getNestedValue(translations as unknown as Record<string, unknown>, key);
+
+    // Fallback to English if key not found
+    if (value === undefined && language !== DEFAULT_LANGUAGE) {
+        value = getNestedValue(fallbackTranslations as unknown as Record<string, unknown>, key);
+    }
+
+    // Return key if translation not found (helps identify missing translations)
+    if (value === undefined) {
+        console.warn(`[i18n] Missing translation: ${key}`);
+        return key;
+    }
+
+    // Apply parameter interpolation
+    return interpolate(value, params);
+}
+
+/**
+ * Translate from outside React.
+ *
+ * The provider's `t` is only reachable through a hook, so a plain helper module
+ * (something called from a click handler, not rendered) has no way to produce a
+ * translated string. This resolves the language the same way the provider does
+ * at startup — from `localStorage` — which stays correct at runtime because
+ * `setLanguage` persists before it re-renders, so the stored value and the
+ * mounted provider never disagree.
+ *
+ * Prefer `useTranslation()` inside components: this exists for the code that
+ * cannot call a hook, not as an alternative to the context.
+ */
+export function translate(key: string, params?: Record<string, string | number>): string {
+    const language = loadPersistedLanguage() || DEFAULT_LANGUAGE;
+    const translations =
+        TRANSLATIONS[language]?.translations || TRANSLATIONS[DEFAULT_LANGUAGE].translations;
+    return lookup(
+        translations,
+        TRANSLATIONS[DEFAULT_LANGUAGE].translations,
+        language,
+        key,
+        params,
+    );
+}
+
+/**
  * Replace template parameters in translation string
  * Example: interpolate('Hello {name}!', { name: 'World' }) -> 'Hello World!'
  */
@@ -249,24 +308,8 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children, initialLan
      * Supports interpolation: t('toast.connectionSuccess', { server: 'ftp.example.com' })
      */
     const t: TranslationFunction = useCallback(
-        (key: string, params?: Record<string, string | number>) => {
-            // Try current language first
-            let value = getNestedValue(translations as unknown as Record<string, unknown>, key);
-
-            // Fallback to English if key not found
-            if (value === undefined && language !== DEFAULT_LANGUAGE) {
-                value = getNestedValue(fallbackTranslations as unknown as Record<string, unknown>, key);
-            }
-
-            // Return key if translation not found (helps identify missing translations)
-            if (value === undefined) {
-                console.warn(`[i18n] Missing translation: ${key}`);
-                return key;
-            }
-
-            // Apply parameter interpolation
-            return interpolate(value, params);
-        },
+        (key: string, params?: Record<string, string | number>) =>
+            lookup(translations, fallbackTranslations, language, key, params),
         [translations, fallbackTranslations, language]
     );
 

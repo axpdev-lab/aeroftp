@@ -5578,6 +5578,13 @@
             "importAccept": "Importar",
             "importedBody": "Se importó tu configuración. Reinicia AeroFTP para cargar tus servidores y la bóveda.",
             "restartNow": "Reiniciar ahora"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Selector de archivos no disponible",
+                "portalMissing": "No hay ningún portal de escritorio instalado, por lo que este sistema no puede abrir un selector de archivos. Instale xdg-desktop-portal y un backend para su escritorio (por ejemplo xdg-desktop-portal-gtk) e inténtelo de nuevo.",
+                "unknown": "No se pudo abrir el selector de archivos. Consulte el registro de la aplicación para más detalles."
+            }
         }
     }
 }

@@ -5578,6 +5578,13 @@
             "importAccept": "Impor",
             "importedBody": "Konfigurasi Anda telah diimpor. Mulai ulang AeroFTP untuk memuat server dan brankas Anda.",
             "restartNow": "Mulai ulang sekarang"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Pemilih berkas tidak tersedia",
+                "portalMissing": "Tidak ada portal desktop yang terpasang, sehingga sistem ini tidak dapat membuka pemilih berkas. Pasang xdg-desktop-portal dan backend untuk desktop Anda (misalnya xdg-desktop-portal-gtk), lalu coba lagi.",
+                "unknown": "Pemilih berkas tidak dapat dibuka. Lihat log aplikasi untuk detailnya."
+            }
         }
     }
 }

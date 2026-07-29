@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useState, useCallback } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../../utils/pickPath';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { VisionImage, MAX_IMAGE_SIZE, MAX_IMAGES, SUPPORTED_IMAGE_TYPES, MAX_DIMENSION } from './aiChatTypes';
@@ -58,7 +58,7 @@ export function useAIChatImages() {
     const handleImagePick = useCallback(async () => {
         if (attachedImages.length >= MAX_IMAGES) return;
         try {
-            const selected = await open({
+            const selected = await pickFile({
                 multiple: true,
                 filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] }],
             });

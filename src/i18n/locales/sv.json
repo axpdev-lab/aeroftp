@@ -5578,6 +5578,13 @@
             "importAccept": "Importera",
             "importedBody": "Din konfiguration importerades. Starta om AeroFTP för att läsa in dina servrar och ditt valv.",
             "restartNow": "Starta om nu"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Filväljaren är inte tillgänglig",
+                "portalMissing": "Ingen skrivbordsportal är installerad, så det här systemet kan inte öppna en filväljare. Installera xdg-desktop-portal och en backend för ditt skrivbord (till exempel xdg-desktop-portal-gtk) och försök igen.",
+                "unknown": "Filväljaren kunde inte öppnas. Se programmets logg för detaljer."
+            }
         }
     }
 }

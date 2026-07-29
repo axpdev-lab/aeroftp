@@ -9,7 +9,7 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../../utils/pickPath';
 import { ChevronDown, ChevronRight, CircleStop, FolderOpen, Info, Play, AlertTriangle, Ban, CheckCircle2, Zap } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { TransferProgressBar } from '../TransferProgressBar';
@@ -217,7 +217,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
 
     const pickFolder = async (kind: 'source' | 'destination') => {
         try {
-            const sel = await open({ directory: true, multiple: false });
+            const sel = await pickFile({ directory: true, multiple: false });
             if (typeof sel === 'string') {
                 if (kind === 'source') setSource(sel);
                 else setDestination(sel);

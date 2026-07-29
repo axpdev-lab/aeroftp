@@ -5578,6 +5578,13 @@
             "importAccept": "İçe aktar",
             "importedBody": "Yapılandırmanız içe aktarıldı. Sunucularınızı ve kasanızı yüklemek için AeroFTP'yi yeniden başlatın.",
             "restartNow": "Şimdi yeniden başlat"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Dosya seçici kullanılamıyor",
+                "portalMissing": "Masaüstü portalı kurulu olmadığı için bu sistem dosya seçici açamıyor. xdg-desktop-portal paketini ve masaüstünüz için bir arka uç (örneğin xdg-desktop-portal-gtk) kurup yeniden deneyin.",
+                "unknown": "Dosya seçici açılamadı. Ayrıntılar için uygulama günlüğüne bakın."
+            }
         }
     }
 }

@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../utils/pickPath';
 import { Shield, Lock, Unlock, Folder, File, Download, Upload, ArrowLeft, X, Eye, EyeOff, Loader2, Key } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
@@ -90,7 +90,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
     }, [vaultInfo, vaultPath]);
 
     const handleSelectVault = async () => {
-        const selected = await open({ directory: true });
+        const selected = await pickFile({ directory: true });
         if (selected) {
             setVaultPath(selected as string);
         }
@@ -156,7 +156,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
 
     const handleDecrypt = async (entry: CryptomatorEntry) => {
         if (!vaultInfo) return;
-        const savePath = await save({ defaultPath: entry.name });
+        const savePath = await pickSave({ defaultPath: entry.name });
         if (!savePath) return;
 
         setLoading(true);
@@ -186,9 +186,9 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         const base = vaultInfo.name.replace(/\.[^.]+$/, '') || 'vault';
         let destPath: string | null;
         if (target === 'folder') {
-            destPath = await open({ directory: true }) as string | null;
+            destPath = await pickFile({ directory: true }) as string | null;
         } else {
-            destPath = await save({
+            destPath = await pickSave({
                 defaultPath: target === 'zip' ? `${base}.zip` : `${base}.aerozip`,
                 filters: target === 'zip'
                     ? [{ name: 'Zip', extensions: ['zip'] }]
@@ -218,7 +218,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
 
     const handleEncrypt = async () => {
         if (!vaultInfo) return;
-        const selected = await open({ multiple: false });
+        const selected = await pickFile({ multiple: false });
         if (!selected) return;
 
         setLoading(true);

@@ -16,7 +16,7 @@
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { Lock, Unlock, Loader2, X, FileKey } from 'lucide-react';
 import { useTranslation } from '../i18n';
@@ -421,7 +421,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                 .replace(/-+/g, '-')
                 .replace(/^-|-$/g, '')
                 .slice(0, 80) || 'profile';
-            const path = await save({
+            const path = await pickSave({
                 defaultPath: `aerocrypt-recovery-kit-${slug}.txt`,
                 filters: [{ name: 'Text', extensions: ['txt'] }],
             });
@@ -482,7 +482,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
 
     const chooseKeyfile = async () => {
         try {
-            const picked = await open({ multiple: false });
+            const picked = await pickFile({ multiple: false });
             if (typeof picked === 'string' && picked) setKeyfilePath(picked);
         } catch (_) {
             // Dialog cancelled or unavailable: keep the current selection.

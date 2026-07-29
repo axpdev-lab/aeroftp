@@ -5578,6 +5578,13 @@
             "importAccept": "Tuo",
             "importedBody": "Määrityksesi tuotiin. Käynnistä AeroFTP uudelleen ladataksesi palvelimesi ja holvisi.",
             "restartNow": "Käynnistä uudelleen nyt"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Tiedostovalitsin ei ole käytettävissä",
+                "portalMissing": "Työpöytäportaalia ei ole asennettu, joten tämä järjestelmä ei voi avata tiedostovalitsinta. Asenna xdg-desktop-portal ja työpöydällesi sopiva taustaosa (esimerkiksi xdg-desktop-portal-gtk) ja yritä uudelleen.",
+                "unknown": "Tiedostovalitsinta ei voitu avata. Katso lisätietoja sovelluksen lokista."
+            }
         }
     }
 }

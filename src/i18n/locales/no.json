@@ -5597,6 +5597,13 @@
             "importAccept": "Importer",
             "importedBody": "Oppsettet ditt ble importert. Start AeroFTP på nytt for å laste inn serverne og hvelvet ditt.",
             "restartNow": "Start på nytt nå"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Filvelgeren er ikke tilgjengelig",
+                "portalMissing": "Ingen skrivebordsportal er installert, så dette systemet kan ikke åpne en filvelger. Installer xdg-desktop-portal og en backend for skrivebordet ditt (for eksempel xdg-desktop-portal-gtk), og prøv igjen.",
+                "unknown": "Filvelgeren kunne ikke åpnes. Se programloggen for detaljer."
+            }
         }
     }
 }

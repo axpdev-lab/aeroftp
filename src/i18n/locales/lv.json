@@ -5578,6 +5578,13 @@
             "importAccept": "Importēt",
             "importedBody": "Jūsu konfigurācija tika importēta. Restartējiet AeroFTP, lai ielādētu savus serverus un seifu.",
             "restartNow": "Restartēt tagad"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Failu atlasītājs nav pieejams",
+                "portalMissing": "Nav instalēts neviens darbvirsmas portāls, tāpēc šī sistēma nevar atvērt failu atlasītāju. Instalējiet xdg-desktop-portal un savai darbvirsmai piemērotu aizmuguri (piemēram, xdg-desktop-portal-gtk) un mēģiniet vēlreiz.",
+                "unknown": "Neizdevās atvērt failu atlasītāju. Sīkāku informāciju skatiet lietotnes žurnālā."
+            }
         }
     }
 }
