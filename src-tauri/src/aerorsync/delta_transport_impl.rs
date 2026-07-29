@@ -767,7 +767,20 @@ async fn create_symlink_atomic(
                 e
             ))
         })?;
-        set_symlink_times_best_effort(&temp_path, entry.mtime, entry.mtime_nsec.unwrap_or(0));
+        // Best-effort exactly as before: rsync treats a link whose
+        // times cannot be set as a warning, never a transfer failure,
+        // so a non-applied outcome is recorded and the transfer
+        // continues. The outcome is consumed here only to keep it
+        // observable instead of silent.
+        let times_outcome =
+            set_symlink_times_best_effort(&temp_path, entry.mtime, entry.mtime_nsec.unwrap_or(0));
+        if !times_outcome.applied() {
+            tracing::debug!(
+                "create_symlink_atomic: link mtime not applied to {}: {:?}",
+                local_path.display(),
+                times_outcome
+            );
+        }
         if let Err(e) = fs::rename(&temp_path, local_path).await {
             let _ = fs::remove_file(&temp_path).await;
             return Err(RsyncError::HardRejection(format!(
@@ -791,16 +804,68 @@ async fn create_symlink_atomic(
     }
 }
 
+/// What [`set_symlink_times_best_effort`] actually did, so that "I
+/// applied the time" is distinguishable from "I gave up and carried
+/// on".
+///
+/// The production caller stays best-effort and ignores the difference
+/// (see the call site in [`create_symlink_atomic`]); returning the
+/// outcome changes nothing at runtime, it only makes a previously
+/// silent path OBSERVABLE. That is what lets a test pin the behaviour
+/// without either asserting blind (flaky on a filesystem that cannot
+/// date a link) or hiding the check behind a platform `cfg`/skip, which
+/// would remove the verification rather than perform it. Same reasoning
+/// as `RSNP_TEST_REAL_REQUIRED=1` and the xattr probe elsewhere in this
+/// module.
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SymlinkTimesOutcome {
+    /// `utimensat` returned 0: the link itself now carries the mtime.
+    Applied,
+    /// The kernel or the filesystem cannot date a link at all (`ENOSYS`
+    /// on a kernel without `utimensat`, `EOPNOTSUPP` on a filesystem
+    /// that ignores `AT_SYMLINK_NOFOLLOW`). Kept apart from a genuine
+    /// failure: nothing was wrong with what we asked for.
+    Unsupported(i32),
+    /// `utimensat` failed for any other reason; carries the errno.
+    Failed(i32),
+    /// The path held an interior NUL, so no syscall was ever attempted.
+    InvalidPath,
+}
+
+#[cfg(unix)]
+impl SymlinkTimesOutcome {
+    /// True only when the link itself now carries the requested mtime.
+    fn applied(self) -> bool {
+        matches!(self, Self::Applied)
+    }
+
+    /// The errno explaining a non-applied outcome, when the syscall
+    /// actually ran.
+    fn errno(self) -> Option<i32> {
+        match self {
+            Self::Applied | Self::InvalidPath => None,
+            Self::Unsupported(errno) | Self::Failed(errno) => Some(errno),
+        }
+    }
+}
+
 /// Best-effort `lutimes` equivalent: set the mtime of the link ITSELF
 /// (never the target) via `utimensat(AT_FDCWD, path, times,
-/// AT_SYMLINK_NOFOLLOW)`. Failure is logged at debug level and ignored,
-/// mirroring rsync's warning-only handling when symlink times cannot be
-/// set.
+/// AT_SYMLINK_NOFOLLOW)`. Failure is logged at debug level and never
+/// propagated, mirroring rsync's warning-only handling when symlink
+/// times cannot be set; the outcome is RETURNED rather than swallowed
+/// so callers and tests can tell the two apart (see
+/// [`SymlinkTimesOutcome`]).
 #[cfg(unix)]
-fn set_symlink_times_best_effort(path: &Path, mtime_secs: i64, mtime_nsec: i32) {
+fn set_symlink_times_best_effort(
+    path: &Path,
+    mtime_secs: i64,
+    mtime_nsec: i32,
+) -> SymlinkTimesOutcome {
     use std::os::unix::ffi::OsStrExt;
     let Ok(c_path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
-        return;
+        return SymlinkTimesOutcome::InvalidPath;
     };
     let times = [
         // atime: leave untouched.
@@ -823,13 +888,24 @@ fn set_symlink_times_best_effort(path: &Path, mtime_secs: i64, mtime_nsec: i32) 
             libc::AT_SYMLINK_NOFOLLOW,
         )
     };
-    if rc != 0 {
+    if rc == 0 {
+        return SymlinkTimesOutcome::Applied;
+    }
+    let errno = std::io::Error::last_os_error()
+        .raw_os_error()
+        .unwrap_or_default();
+    let outcome = match errno {
+        libc::ENOSYS | libc::EOPNOTSUPP => SymlinkTimesOutcome::Unsupported(errno),
+        _ => SymlinkTimesOutcome::Failed(errno),
+    };
+    if let Some(errno) = outcome.errno() {
         tracing::debug!(
             "set_symlink_times_best_effort: utimensat({}) failed: {}",
             path.display(),
-            std::io::Error::last_os_error()
+            std::io::Error::from_raw_os_error(errno)
         );
     }
+    outcome
 }
 
 /// CLAUDE-AV-B3-12: `AsyncWrite` shim that xxh3-128s every byte on its
@@ -3254,6 +3330,164 @@ mod tests {
             PathBuf::from(os)
         };
         assert!(!temp.exists(), "temp must be renamed away, never leaked");
+    }
+
+    /// Pin for the symlink's OWN mtime: `create_symlink_atomic` must
+    /// date the LINK, and must never write through it to the target.
+    ///
+    /// Two traps shape this test.
+    ///
+    /// 1. `std::fs::metadata()` FOLLOWS a link, so reading the result
+    ///    through it would report the TARGET's mtime and the assertion
+    ///    would pass even if the link had never been dated at all.
+    ///    Everything here reads with `symlink_metadata()` (lstat
+    ///    semantics), and the target is deliberately stamped with a
+    ///    DIFFERENT mtime, so an accidental follow surfaces as a
+    ///    mismatch instead of a silent pass.
+    /// 2. Dating a link is a filesystem capability, so a bare on-disk
+    ///    assertion would be flaky where the capability is missing. We
+    ///    do not answer that with a `cfg` or a skip (both remove the
+    ///    verification rather than perform it): we probe the capability
+    ///    through the outcome the helper now returns, and assert in
+    ///    BOTH branches. Applied -> the link carries the exact seconds
+    ///    and nanoseconds. Not applied -> we DETECTED it, with an
+    ///    errno, rather than declaring success in silence.
+    ///
+    /// 3. `utimensat` SUCCEEDS while silently truncating to the
+    ///    filesystem's resolution (`s_time_gran`), returning 0 rather
+    ///    than an error. So an `Applied` outcome does not promise the
+    ///    nanoseconds survived, and asserting the requested value would
+    ///    fail on a coarse but perfectly correct filesystem. Every
+    ///    timestamp assertion here therefore compares against what this
+    ///    filesystem actually STORED (the probe for the link, a
+    ///    post-stamp read for the target), never against the value we
+    ///    asked for.
+    ///
+    /// The probe runs on a throwaway link so the real link stays pinned
+    /// by the production call inside `create_symlink_atomic`: comment
+    /// that call out and this test goes red.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn create_symlink_atomic_dates_the_link_not_the_target() {
+        const LINK_MTIME: i64 = 1_700_000_000;
+        const LINK_MTIME_NSEC: i32 = 123_456_000;
+        // Deliberately different from the link's: if anything wrote
+        // through the link, or if a read followed it, the two values
+        // collide and the assertions below catch it.
+        const TARGET_MTIME: i64 = 1_600_000_000;
+        const TARGET_MTIME_NSEC: u32 = 987_654_000;
+
+        let dir = fresh_tempdir();
+
+        // Real target, relative and inside the download directory so
+        // `symlink_target_is_safe` accepts it (safe-links).
+        let target = dir.path().join("tgt.bin");
+        std::fs::write(&target, b"target payload").unwrap();
+        filetime::set_file_mtime(
+            &target,
+            filetime::FileTime::from_unix_time(TARGET_MTIME, TARGET_MTIME_NSEC),
+        )
+        .expect("stamp the target with its own distinct mtime");
+        // Read back what the filesystem actually STORED, do not assume it
+        // kept the nanoseconds: `utimensat` succeeds while silently
+        // truncating to the filesystem's resolution (`s_time_gran`), so a
+        // coarse but perfectly correct filesystem would fail an assertion
+        // written against the requested value. The stored value is the
+        // honest baseline for "untouched".
+        let target_baseline = filetime::FileTime::from_last_modification_time(
+            &std::fs::symlink_metadata(&target).unwrap(),
+        );
+
+        // Capability probe, on a link nobody else touches. It answers two
+        // questions at once: whether this filesystem can date a link at
+        // all, and what it stores when asked for LINK_MTIME.
+        let probe = dir.path().join("probe.lnk");
+        std::os::unix::fs::symlink("tgt.bin", &probe).unwrap();
+        let probe_outcome = set_symlink_times_best_effort(&probe, LINK_MTIME, LINK_MTIME_NSEC);
+        let probe_time = filetime::FileTime::from_last_modification_time(
+            &std::fs::symlink_metadata(&probe).unwrap(),
+        );
+
+        let dest = dir.path().join("dated.lnk");
+        let entry = crate::aerorsync::real_wire::FileListEntry {
+            flags: 1 << 13,
+            path: "dated.lnk".to_string(),
+            size: 14,
+            mtime: LINK_MTIME,
+            mtime_nsec: Some(LINK_MTIME_NSEC),
+            mode: 0o120_777,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: vec![],
+            symlink_target: Some("tgt.bin".to_string()),
+            xattrs: None,
+        };
+        create_symlink_atomic(&entry, &dest, "/remote/dated.lnk")
+            .await
+            .expect("atomic symlink create");
+
+        // lstat: this describes the LINK. `metadata()` here would
+        // follow it and measure the wrong inode.
+        let link_meta = std::fs::symlink_metadata(&dest).unwrap();
+        assert!(
+            link_meta.file_type().is_symlink(),
+            "dest must be a symlink, otherwise everything below measures the wrong inode"
+        );
+
+        if probe_outcome.applied() {
+            // First, close the tautology: an `Applied` outcome must mean
+            // the requested time really landed, not that the call
+            // returned 0 while leaving the link at creation time. Two
+            // seconds of slack covers the coarsest mtime granularity in
+            // practice (FAT stores mtime in 2-second units); the gap this
+            // catches is ~85 million seconds wide, so the slack costs
+            // nothing.
+            assert!(
+                (probe_time.unix_seconds() - LINK_MTIME).abs() <= 2,
+                "an Applied outcome must have really written the requested time to the \
+                 link: probe reads {} against the requested {}, which is creation time, \
+                 not our value",
+                probe_time.unix_seconds(),
+                LINK_MTIME
+            );
+            // Then the real assertion. The probe is the filesystem's own
+            // answer to "what do you store for LINK_MTIME", so comparing
+            // against it asserts the exact stored value, seconds AND
+            // nanoseconds, without assuming a resolution the filesystem
+            // never promised. It stays a pin: with the production call
+            // gone the link carries creation time, which is nowhere near
+            // the probe.
+            let link_time = filetime::FileTime::from_last_modification_time(&link_meta);
+            assert_eq!(
+                link_time, probe_time,
+                "the LINK's own mtime must be exactly what this filesystem stores for the \
+                 entry's timestamp; reading the target's {} instead would mean we measured \
+                 the wrong inode",
+                TARGET_MTIME
+            );
+        } else {
+            assert!(
+                probe_outcome.errno().is_some(),
+                "a non-applied outcome must carry the errno that explains it, never a \
+                 silent success: this path is a temp file we built ourselves, so \
+                 InvalidPath would be our own bug (got {:?})",
+                probe_outcome
+            );
+        }
+
+        // Holds on every filesystem, capability or not: dating the link
+        // must never write through it. This is the assertion that
+        // separates "dated the link" from "followed the link and dated
+        // the target", which is the real defect introducible here.
+        let target_meta = std::fs::symlink_metadata(&target).unwrap();
+        let target_time = filetime::FileTime::from_last_modification_time(&target_meta);
+        assert_eq!(
+            target_time, target_baseline,
+            "the target's mtime must survive bit-for-bit: writing through the link is \
+             exactly what AT_SYMLINK_NOFOLLOW is there to prevent"
+        );
     }
 
     #[cfg(not(unix))]
