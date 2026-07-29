@@ -10999,7 +10999,7 @@ impl ProfileColId {
     fn header(self) -> &'static str {
         match self {
             ProfileColId::Index => "#",
-            ProfileColId::Name => "Name",
+            ProfileColId::Name => PROFILE_HEADER,
             ProfileColId::Badges => "Badges",
             ProfileColId::Subtitle => "Host",
             ProfileColId::Used => "Used",
@@ -11028,7 +11028,7 @@ impl ProfileColId {
     fn from_cli_alias(s: &str) -> Option<Self> {
         match s.trim().to_ascii_lowercase().as_str() {
             "index" | "#" | "idx" => Some(ProfileColId::Index),
-            "name" => Some(ProfileColId::Name),
+            "profile" | "name" => Some(ProfileColId::Name),
             "type" | "badges" | "proto" | "protocol" => Some(ProfileColId::Badges),
             "host" | "subtitle" => Some(ProfileColId::Subtitle),
             "used" => Some(ProfileColId::Used),
@@ -20768,6 +20768,10 @@ fn tokenize_quoted(s: &str) -> Vec<String> {
 /// destructive action, splicing the deleted profiles back as red
 /// tombstones (`-` index) so the user can see what just disappeared and
 /// pick the next target. Columns shown: index, name, badges, host.
+/// Header of the profile-name column, shared by the plain profile tables and by
+/// `ProfileColId::Name` so the CLI, the TUI and the GUI all say the same word.
+const PROFILE_HEADER: &str = "Profile";
+
 fn print_profiles_summary_with_tombstones(
     live: &[serde_json::Value],
     tombstones: &[(usize, serde_json::Value)],
@@ -20828,7 +20832,10 @@ fn print_profiles_summary_with_tombstones(
         })
         .max()
         .unwrap_or(4)
-        .clamp(4, 28);
+        .clamp(4, 28)
+        // Never narrower than the header itself, or the columns after it lose
+        // their alignment on a list of short profile names (#277).
+        .max(PROFILE_HEADER.chars().count());
     let badge_w = rows
         .iter()
         .map(|r| badge_display_label(r.profile).chars().count())
@@ -20847,7 +20854,7 @@ fn print_profiles_summary_with_tombstones(
     eprintln!(
         "  {:>idx$}  {:<nw$}  {:<bw$}  {:<hw$}",
         "#",
-        "Name",
+        PROFILE_HEADER,
         "Badges",
         "Host",
         idx = idx_w,
@@ -21053,7 +21060,10 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
         })
         .max()
         .unwrap_or(4)
-        .clamp(4, 28);
+        .clamp(4, 28)
+        // Never narrower than the header itself, or the columns after it lose
+        // their alignment on a list of short profile names (#277).
+        .max(PROFILE_HEADER.chars().count());
     let badge_w = rows
         .iter()
         .map(|r| badge_display_label(&live[r.profile_ci]).chars().count())
@@ -21088,7 +21098,7 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
         "    {}{:>nw$}  {:<name$}  {:<bw$}  {:<hw$}",
         " ".repeat(old_w),
         "#",
-        "Name",
+        PROFILE_HEADER,
         "Badges",
         "Host",
         nw = new_w,

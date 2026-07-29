@@ -563,7 +563,7 @@ fn render_introhub_table(
     let user = app.selected_user();
     let header_cells = [
         "#",
-        "Name",
+        "Profile",
         "Type",
         "Host / Account",
         "Used",
