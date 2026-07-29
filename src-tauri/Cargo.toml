@@ -364,10 +364,18 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 # Signature, Signer and Verifier, unchanged between rc.0 and final, which is
 # why relaxing the requirement is enough and no code was adapted.
 #
-# EXIT CONDITION: delete this section as soon as n0-mainline publishes a
-# release whose ed25519-dalek requirement admits 3.0.0 final. Upstream still
-# had the exact pin on its default branch as of 2026-07-28, with v0.5.0 as the
-# latest tag. Pinned by `rev` on purpose: a branch would let the patched source
-# move under us without the lockfile saying so.
+# EXIT CONDITION: delete this section as soon as the graph resolves without it,
+# which upstream makes possible by publishing an n0-mainline release whose
+# ed25519-dalek requirement admits 3.0.0 final. Upstream still had the exact pin
+# on its default branch as of 2026-07-28, with v0.5.0 as the latest tag. Pinned
+# by `rev` on purpose: a branch would let the patched source move under us
+# without the lockfile saying so.
+#
+# That condition is WATCHED, not merely written here:
+# `.github/workflows/n0-mainline-patch-watch.yml` runs
+# `.github/scripts/check-n0-mainline-patch.sh` every Monday, which strips this
+# section in a scratch manifest and re-resolves. It stays silent while the patch
+# is still needed and files a chore issue the week it is not. Run it by hand any
+# time -- exit 1 means still needed, exit 0 means this section can go.
 [patch.crates-io]
 n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35e827f642635a1028606f0bbd4e9c530ae0" }

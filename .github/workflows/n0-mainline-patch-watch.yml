@@ -1,0 +1,120 @@
+name: n0-mainline patch watch
+
+# `src-tauri/Cargo.toml` carries a `[patch.crates-io]` pin on a one-line fork of
+# n0-mainline. It exists because russh 0.62.4 - which closes three GHSA
+# advisories - requires `ed25519-dalek ^3` against the `=3.0.0-rc.0` exact pin
+# n0-mainline 0.5.0 holds, and cargo cannot satisfy both (PR #489).
+#
+# The section carries an exit condition in a comment: delete it once the graph
+# resolves without it. A comment is not a mechanism. Without this job the patch
+# outlives everyone's memory of why it is there, and a `[patch.crates-io]`
+# nobody revisits is how a project ends up shipping a fork it no longer needs
+# and no longer audits.
+#
+# So this asks the question weekly and stays SILENT until the answer changes.
+# No issue is opened while the patch is still needed, which is the normal state
+# and expected to last months: a watcher that reports "still blocked" every
+# Monday trains its reader to ignore it.
+#
+# It replaces the session-driven `check-russh-unblock.sh`, which asked whether
+# russh 0.62.4 resolves - a question #489 answered, after which it exited 0
+# unconditionally while telling the reader to perform steps already done.
+
+on:
+  schedule:
+    # Mondays 05:23 UTC. Deliberately after Checks (06:00 is the RustSec scan)
+    # would be tidier, but this needs no coordination with it and an off-hour
+    # slot keeps it out of the way of the snap refresh at 04:17.
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: n0-mainline-patch-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Is the n0-mainline patch still needed?
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write   # only used on the exit-0 path, to file the chore
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      # No rust-cache here on purpose: the whole point is a fresh resolution
+      # against the live crates.io index, and a restored cache is exactly the
+      # thing that could answer with yesterday's index.
+
+      - name: Check whether the patch section is still required
+        id: check
+        shell: bash
+        run: |
+          set +e
+          output="$(.github/scripts/check-n0-mainline-patch.sh 2>&1)"
+          status=$?
+          set -e
+          echo "$output"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          {
+            echo 'report<<CHECK_EOF'
+            echo "$output"
+            echo 'CHECK_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          case "$status" in
+            0) echo "::notice::The n0-mainline patch is no longer needed." ;;
+            1) echo "::notice::Still needed, same ed25519-dalek conflict. Nothing to do." ;;
+            *) echo "::error::The check failed for a reason that is not the known conflict." ;;
+          esac
+
+      # Exit 2 means the check itself is broken or the failure changed shape.
+      # That is a real signal and must not be swallowed: a watcher that cannot
+      # tell "still blocked" from "I no longer work" is worse than none.
+      - name: Fail on an unrecognised outcome
+        if: steps.check.outputs.status != '0' && steps.check.outputs.status != '1'
+        run: |
+          echo "check-n0-mainline-patch.sh exited ${{ steps.check.outputs.status }}" >&2
+          exit 1
+
+      - name: File the chore, once
+        if: steps.check.outputs.status == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ steps.check.outputs.report }}
+          TITLE: 'chore(deps): drop the [patch.crates-io] pin on n0-mainline'
+        shell: bash
+        run: |
+          # Idempotent: the schedule fires every week and the condition stays
+          # true once it flips, so without this guard it would open one issue a
+          # week until someone acts.
+          existing="$(gh issue list --state open --search "$TITLE in:title" \
+            --json number,title --jq "map(select(.title == env.TITLE)) | .[0].number // empty")"
+
+          if [ -n "$existing" ]; then
+            echo "already tracked in #$existing, not filing again"
+            exit 0
+          fi
+
+          {
+            echo "The exit condition written next to \`[patch.crates-io]\` in \`src-tauri/Cargo.toml\` has been met: the dependency graph now resolves with the patch section removed."
+            echo
+            echo "Opened automatically by \`.github/workflows/n0-mainline-patch-watch.yml\`. The patch was added in #489 to make russh 0.62.4 - which closes GHSA-g9hv-x236-4qp3, GHSA-5xvq-cp9x-6p6r and GHSA-cqjc-rmpq-xprq - resolvable against n0-mainline's \`=3.0.0-rc.0\` pin on ed25519-dalek."
+            echo
+            echo "**Read the resolved versions below before acting.** A *downgrade* of n0-mainline also makes the conflict disappear, and that is not the outcome this was waiting for."
+            echo
+            echo '```'
+            echo "$REPORT"
+            echo '```'
+          } > body.md
+
+          gh issue create --title "$TITLE" --body-file body.md --label dependencies
