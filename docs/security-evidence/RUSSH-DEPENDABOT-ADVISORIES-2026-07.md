@@ -95,16 +95,48 @@ reports **clean** here: these three GHSA entries have no RustSec counterpart, so
 gate is blind to them and only the GitHub Dependabot graph surfaces them. Treat the Dependabot
 alert page as a distinct pre-release check, not as something the gate already covers.
 
-## Follow-up
+## Resolution (2026-07-28)
 
-Tracked for the release after v4.1.6:
+**All three are closed on `main`.** Everything above this section is the record of the v4.1.6
+audit and is left as written; this section says what happened afterwards.
 
-1. Watch `n0-mainline` for a release that drops the `=3.0.0-rc.0` pin (upstream fix, preferred).
-2. If it does not land, open a branch that patches `n0-mainline` to `^3.0.0-rc.0`, confirms
-   `ed25519-dalek 3.0.0` final is API-compatible for it, re-runs the peer/AeroShare live lane,
-   and regenerates `cargo-sources.json`.
-3. Re-check with `.github/scripts/check-russh-unblock.sh` first each time - if the pin clears
-   upstream it becomes a one-line bump. The script raises the requirement in a scratch copy
-   before resolving (a bare `cargo update --precise` cannot reach the conflict, see above),
-   restores `Cargo.toml`/`Cargo.lock` unconditionally, and exits 0 only when the bump is
-   genuinely available: 1 means the same ed25519-dalek conflict, 2 means read the output.
+Option 2 of the follow-up below is what landed, in PR #489: `russh` is at **0.62.4**, and the
+`=3.0.0-rc.0` pin is relaxed by a `[patch.crates-io]` on `axpdev-lab/n0-mainline`, pinned by
+`rev` and consisting of the v0.5.0 release commit plus the single line that widens the
+requirement. `3.0.0-rc.0` is gone from the lockfile entirely.
+
+Two things this does **not** settle, and neither is visible from a green build:
+
+1. `cargo audit` is still blind here, for the reason given above. Nothing about this fix
+   changes that, and it stays true for any future advisory in the same shape.
+2. The patch section is a fork we now carry, with an exit condition that has to be acted on.
+
+## Follow-up: the patch section, and how it is watched
+
+The one open item is deleting `[patch.crates-io]` once it is no longer needed.
+
+That is checked by `.github/scripts/check-n0-mainline-patch.sh`, run every Monday by
+`.github/workflows/n0-mainline-patch-watch.yml` and runnable by hand at any time. It strips the
+patch section in a scratch copy of the manifest, re-resolves the graph from scratch, and
+restores `Cargo.toml`/`Cargo.lock` unconditionally on the way out. Exit 1 is the expected state
+(same `ed25519-dalek` conflict, nothing to do), exit 0 means the section can go, exit 2 means
+the failure changed shape and the output needs reading. The workflow stays silent on 1, fails
+on 2, and files a single chore issue on 0 rather than one per week.
+
+Testing resolution directly, rather than asking GitHub what n0-mainline has published, is
+deliberate: it answers correctly however the block clears, and it cannot drift out of date the
+way a hardcoded expectation about upstream would. Note the exit-0 report prints the resolved
+`n0-mainline` version, because a *downgrade* also resolves the conflict and is not the outcome
+being waited for.
+
+When it does clear: delete the section and its comment block, `cargo update -p n0-mainline`,
+run the pre-push gate and the peer/AeroShare live lane (this moves the crypto crate under the
+iroh P2P stack as well as under russh), regenerate `cargo-sources.json`, and delete the script,
+the workflow and this section together.
+
+This replaced `.github/scripts/check-russh-unblock.sh`, which asked whether `russh 0.62.4`
+resolves. PR #489 answered that question permanently, so from the moment it merged the old
+script exited 0 on every run and printed instructions that had already been carried out -
+verified on 2026-07-28 before removing it. It was a correct check that its own success turned
+into a false green, which is worth recording as a shape rather than as an incident: a check
+whose subject has been fixed does not become harmless, it becomes a liar.
