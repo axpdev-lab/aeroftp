@@ -19,11 +19,13 @@
 #   1. cancel  -> Response(1) on the caller-predicted Request path
 #   2. accept  -> Response(0) carrying the uris array, so cancel cannot pass by
 #                 doing nothing
-#   3. error   -> the method call itself fails, which is what makes GTK fall
-#                 back to its in-process chooser
+#   3. error   -> the method call itself fails, which is what a portal that is
+#                 present but refusing looks like to the caller
 #   4. unused  -> the portal exits 3 when nothing ever asked it, which is the
 #                 verdict that turns "the app never used the portal" from a
 #                 silent pass into a failure
+#   5. close   -> Close() on the handle the caller was HANDED reaches an
+#                 implementation, which the other four cases all pass without
 #
 # Requires: dbus-run-session. Deliberately NOT Xvfb: this half must stay runnable
 # on any machine and in any CI job, including ones with no display packages.
@@ -93,7 +95,12 @@ run_case() {
     echo "PORTAL_RC=$portal_rc"
     echo "--- recorded calls ---"
     cat "$log" 2>/dev/null || true
-  ' >"$work/case.out" 2>&1
+  ' >"$work/case.out" 2>&1 || true
+  # `|| true` because the inner shell exits 1 on PORTAL_DIED_EARLY /
+  # PORTAL_NEVER_READY, and `set -e` would then abort the whole self-test right
+  # here: before $W is assigned, before any ok/bad accounting, and before the
+  # remaining cases run. It still fails -- the assertions below have nothing to
+  # match -- but it fails while saying which case broke and why.
   echo "$work"
 }
 
@@ -122,7 +129,7 @@ has "$W" 'results=\["uris"\]' \
   && ok "the response carries uris, so the success path is not vacuous" \
   || { bad "Response(0) had no uris"; sed -n '1,15p' "$W/case.out"; }
 
-echo "== 3. error: the call itself fails, which is what makes GTK fall back =="
+echo "== 3. error: the call itself fails, the way a refusing portal looks =="
 W=$(run_case error "--token tok_error --timeout 10")
 has "$W" "PROBE_RC=5" \
   && ok "the client saw a D-Bus error rather than a hang" \
@@ -136,6 +143,17 @@ W=$(run_case cancel "")
 has "$W" "PORTAL_RC=3" \
   && ok "portal exits 3 when it was never called" \
   || { bad "portal did not exit 3 on an unused run - the whole test could pass vacuously"; sed -n '1,15p' "$W/case.out"; }
+
+echo "== 5. Close() on the handle the caller was given =="
+# GTK calls Request.Close() on the RETURNED path when its dialog goes away. The
+# stand-in used to export Request on the portal's own path, where that call
+# cannot land: every other assertion here still passed, and the only symptom was
+# a bus error in the app's log that reads like a portal failure. Pinned by
+# pointing the export back at the portal path, which fails this and nothing else.
+W=$(run_case cancel "--token tok_close --timeout 10 --close")
+has "$W" "probe: CLOSE ok" \
+  && ok "Close() reached the Request exported on the returned handle" \
+  || { bad "Close() on the returned handle was not dispatched"; sed -n '1,20p' "$W/case.out"; }
 
 echo
 echo "passed: $PASS   failed: $FAIL"

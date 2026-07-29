@@ -147,7 +147,7 @@ jobs:
           # sandbox is acceptable for a throwaway session that loads only our own
           # loopback origin, and is scoped to this step alone.
           WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
-          WEBKIT_DISABLE_DMABUF_RENDERER: '1' 
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
         run: tests/portal-chooser/portal-chooser-test.sh src-tauri/target/release/aeroftp
 
       - name: Upload the evidence

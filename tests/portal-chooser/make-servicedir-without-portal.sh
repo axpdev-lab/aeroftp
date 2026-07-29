@@ -13,7 +13,12 @@ DEST="${1:?usage: make-servicedir-without-portal.sh <dir>}"
 mkdir -p "$DEST"
 count=0
 skipped=0
-for dir in /usr/share/dbus-1/services /usr/local/share/dbus-1/services "$HOME/.local/share/dbus-1/services"; do
+# The user directory is resolved defensively: under `set -u` a bare "$HOME" kills
+# the script before a single service is linked, and CI steps do occasionally run
+# without HOME set. Deliberately NOT XDG_DATA_HOME: the caller points that at a
+# private empty root for the run, and mirroring that would scan nothing.
+USER_SVC="${HOME:-/nonexistent}/.local/share/dbus-1/services"
+for dir in /usr/share/dbus-1/services /usr/local/share/dbus-1/services "$USER_SVC"; do
   [ -d "$dir" ] || continue
   for f in "$dir"/*.service; do
     [ -e "$f" ] || continue

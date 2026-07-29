@@ -47,7 +47,13 @@ run_case() {
   echo "$?"
 }
 
-calls() { grep -c . "$WORK/$1/portal-calls.jsonl" 2>/dev/null || echo 0; }
+# `grep -c` prints 0 AND exits 1 when a file has no matching lines, so the
+# obvious `grep -c . f 2>/dev/null || echo 0` emits "0\n0" for a file that exists
+# and is empty. That two-line value made `[ -ge ]` report "integer expression
+# expected" on exactly the failure path this file exists to describe clearly, and
+# made the two window counts below compare unequal while both meant zero.
+count_lines() { if [ -f "$1" ]; then grep -c . "$1" || true; else echo 0; fi; }
+calls() { count_lines "$WORK/$1/portal-calls.jsonl"; }
 
 # "It did not crash" must never pass because there was nothing to read. A missing
 # log is a failure, not a clean bill of health -- the first version of this file
@@ -112,8 +118,8 @@ grep -q "portal service(s) omitted" "$WORK/noportal.log" &&
 # says that on a host with no portal GTK falls back to the native chooser. It does
 # not: no chooser window appears and nothing is presented to the user. If this
 # assertion ever fails, the behaviour changed -- read it before "fixing" the test.
-wins=$(grep -c . "$WORK/noportal/windows-after.txt" 2>/dev/null || echo 0)
-wins_ref=$(grep -c . "$WORK/cancel/windows-after.txt" 2>/dev/null || echo 0)
+wins=$(count_lines "$WORK/noportal/windows-after.txt")
+wins_ref=$(count_lines "$WORK/cancel/windows-after.txt")
 [ "$wins" = "$wins_ref" ] &&
   ok "no extra window appears without a portal (measured: no native fallback)" ||
   bad "window count changed ($wins vs $wins_ref): the fallback behaviour is not what was pinned"

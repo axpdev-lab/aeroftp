@@ -39,7 +39,7 @@ to a JSONL file, and answers with a scripted outcome:
 |---|---|---|
 | `cancel` | `Response(1)` | a dismissed dialog must read as "no selection", not as an error |
 | `accept` | `Response(0)` + `uris` | the success path, so `cancel` cannot pass by doing nothing |
-| `error` | the D-Bus call fails | a portal that is present but refusing; GTK falls back in-process |
+| `error` | the D-Bus call fails | a portal that is present but refusing; the call is still recorded and the app survives it |
 
 Its exit code is the verdict: **0** when at least one call was recorded, **3**
 when the portal was never asked. That 3 is the point of the whole harness — it
@@ -99,15 +99,33 @@ assert on would make it look more like a portal without making the test prove mo
 
 ## Running the self-test
 
-```
+```sh
 tests/portal-chooser/selftest-portal.sh
 ```
 
 Needs only `dbus-run-session`; no display packages, so it runs anywhere. It
 builds the crate on first use.
 
-The four cases are **verified as pins, not by watching them pass**: with the
-Request path made to ignore the token, 4 of the 9 assertions fail, including
+The five cases are **verified as pins, not by watching them pass**: with the
+Request path made to ignore the token, 4 of the 10 assertions fail, including
 both "a subscribing client received the Response" checks. A stub that answers on
 the wrong path is exactly the failure that would otherwise masquerade as an
 application hang.
+
+Case 5 was pinned the same way and is worth its own note: exporting `Request` on
+the portal's own path instead of on the handle returned to the caller fails that
+assertion and **nothing else** — all nine others stay green. `Close()` then
+reaches no implementation, and the only symptom is a bus error in the app's log
+that reads like the portal misbehaving.
+
+## Running the gate on a desktop machine
+
+`recon-session.sh` **refuses to start when a live Wayland compositor socket is
+reachable**, because clearing `WAYLAND_DISPLAY` does not close it: anything that
+re-exports it opens a window on the real session, where a name-based trigger can
+press a control in somebody's editor. CI is headless and never trips this.
+
+On a Wayland desktop, run it headless or set `RECON_ALLOW_WAYLAND_HOST=1` to
+accept the risk deliberately. Note the app also binds `127.0.0.1:14321`, so a
+second instance collides with one already running and comes up blank — a symptom
+that is easy to misread as a rendering failure.

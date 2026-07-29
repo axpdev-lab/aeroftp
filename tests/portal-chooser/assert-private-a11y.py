@@ -20,9 +20,17 @@ So the rule is fail-closed: if anything on this bus was not started by us, stop.
 A test that can reach the machine it runs on is not isolated, whatever its
 DISPLAY says.
 
+And the rule has a second half, learned the same way: the check must confirm
+something POSITIVE. An empty bus satisfies "nothing foreign is present" while
+proving nothing at all -- it is what you get when the atk-bridge never loaded, or
+when the app is not on the bus yet. The caller greps for the success line as its
+evidence that the bus is private, so passing on an empty bus turns absence of
+evidence into evidence, which is the exact failure this file argues against.
+
 Exit codes:
-    0 - the bus carries only expected applications
+    0 - the bus carries at least one of our applications, and nothing else
     6 - a foreign application is visible: the bus is NOT private
+    7 - the bus carries nothing of ours, so nothing was verified
     2 - the accessibility stack is unusable
 """
 
@@ -91,6 +99,20 @@ def main():
                 file=sys.stderr,
             )
         return 6
+
+    # Nothing foreign AND nothing at all is not a pass. Past this point every
+    # name matched ALLOWED_SUBSTRINGS -- anything else would have been caught
+    # above as foreign -- so a non-empty list is exactly "one or more of ours".
+    if not names:
+        print(
+            "REFUSING: this accessibility bus is EMPTY, so nothing was verified.\n"
+            f"  Expected at least one application matching {ALLOWED_SUBSTRINGS!r}.\n"
+            "  An empty bus is not a private bus. The usual cause is that the\n"
+            "  atk-bridge was not loaded before the app started, or that the app\n"
+            "  never reached the point of exposing an accessible tree.",
+            file=sys.stderr,
+        )
+        return 7
 
     print("ok: the accessibility bus carries only our own application(s)")
     return 0

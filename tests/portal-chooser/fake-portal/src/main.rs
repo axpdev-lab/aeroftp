@@ -18,9 +18,12 @@
 //!   cancel  - answer as if the user dismissed the dialog (Response code 1).
 //!             The app must treat this as "no selection", not as an error.
 //!   error   - fail the D-Bus call itself, which is what a portal that is
-//!             present but refusing looks like. GTK is then expected to fall
-//!             back to the in-process chooser, which is the documented
-//!             behaviour the negative test pins.
+//!             present but refusing looks like. What the test pins here is that
+//!             the call is still recorded and the app survives it. Whether GTK
+//!             then falls back to an in-process chooser is NOT asserted: the
+//!             source comment in lib.rs claims it does, and the no-portal case
+//!             measured that it does not, so the claim is not repeated as fact
+//!             anywhere it has not been measured.
 //!   accept  - answer with a real path (Response code 0), so the success path
 //!             is covered too and "cancel" cannot pass by doing nothing.
 //!
@@ -38,34 +41,11 @@ use zbus::message::Header;
 use zbus::zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Value};
 use zbus::{connection, fdo, interface, Connection};
 
+use aeroftp_fake_portal::{request_path, sanitize_path_element};
+
 const PORTAL_NAME: &str = "org.freedesktop.portal.Desktop";
 const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 const REQUEST_IFACE: &str = "org.freedesktop.portal.Request";
-
-/// A D-Bus object path element accepts only `[A-Za-z0-9_]`. The portal spec says
-/// `handle_token` must already be a valid element, and GTK obeys that, but a
-/// token with a hyphen in it makes the portal build a path the bus rejects and
-/// the caller then sees `InvalidObjectPath` from somewhere deep in zvariant,
-/// with nothing pointing at the token. Found exactly that way while testing this
-/// harness. Both sides sanitize identically so a sloppy token degrades into a
-/// working request instead of an unreadable error.
-fn sanitize_path_element(token: &str) -> String {
-    let mapped: String = token
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if mapped.is_empty() {
-        "aeroftp".to_string()
-    } else {
-        mapped
-    }
-}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Mode {
@@ -130,14 +110,31 @@ impl Recorder {
         // Append immediately: if the app crashes or the harness times out, the
         // evidence that the portal WAS reached must survive. Buffering it until
         // shutdown would lose exactly the runs worth diagnosing.
+        //
+        // Say so loudly when that write fails. A broken --log path otherwise
+        // leaves an empty evidence file, and an empty evidence file is read by
+        // the harness as "the portal was never asked" -- the exact false
+        // accusation this whole crate exists to prevent.
         use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new()
+        match std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.log)
         {
-            let _ = writeln!(f, "{line}");
-            let _ = f.flush();
+            Ok(mut f) => {
+                if let Err(e) = writeln!(f, "{line}").and_then(|()| f.flush()) {
+                    eprintln!(
+                        "fake-portal: FAILED to write the call record to {}: {e}\n\
+                         The evidence file is incomplete; do not read it as 'never asked'.",
+                        self.log.display()
+                    );
+                }
+            }
+            Err(e) => eprintln!(
+                "fake-portal: FAILED to open the log {} for append: {e}\n\
+                 The evidence file is incomplete; do not read it as 'never asked'.",
+                self.log.display()
+            ),
         }
         eprintln!("fake-portal: recorded {line}");
     }
@@ -154,32 +151,14 @@ struct FileChooser {
     /// Path handed back on `accept`. A directory that exists, so the app's own
     /// validation of the returned path cannot reject it for being fictional.
     accept_path: String,
-    /// The caller's unique bus name, taken from the message header on every
-    /// call, because the Request path is caller-specific.
-    last_sender: Mutex<String>,
 }
 
 impl FileChooser {
-    /// Build the Request object path the way xdg-desktop-portal does, because
-    /// the caller predicts it and subscribes BEFORE the method returns.
-    ///
-    /// Getting this wrong is the classic way a fake portal appears to work and
-    /// silently never delivers: the reply goes to a path nobody is listening
-    /// on, the caller waits forever, and the failure looks like a hang in the
-    /// application rather than a bug in the stub. The rule is
-    /// `/org/freedesktop/portal/desktop/request/<SENDER>/<TOKEN>` where SENDER
-    /// is the caller's unique name with the leading ':' dropped and every '.'
-    /// replaced by '_'.
-    fn request_path(sender: &str, token: &str) -> String {
-        let escaped = sender.trim_start_matches(':').replace('.', "_");
-        format!("/org/freedesktop/portal/desktop/request/{escaped}/{token}")
-    }
-
     fn token_of(options: &HashMap<String, OwnedValue>) -> Option<String> {
         options
             .get("handle_token")
             .and_then(|v| String::try_from(v.clone()).ok())
-            .map(|t| sanitize_path_element(&t))
+            .map(|t| sanitize_path_element(&t, "aeroftp"))
     }
 
     fn is_directory(options: &HashMap<String, OwnedValue>) -> bool {
@@ -196,6 +175,7 @@ impl FileChooser {
         parent_window: String,
         title: String,
         options: HashMap<String, OwnedValue>,
+        sender: String,
     ) -> fdo::Result<OwnedObjectPath> {
         let directory = Self::is_directory(&options);
         let token = Self::token_of(&options);
@@ -209,9 +189,9 @@ impl FileChooser {
                 handle_token: token,
                 answered: "dbus-error",
             });
-            // A portal that is present but refuses. GTK falls back to the
-            // in-process chooser from here, which is what the negative test
-            // asserts.
+            // A portal that is present but refuses. The negative test asserts
+            // that the call was still recorded and that the app survives it,
+            // not what GTK does next -- that has not been measured.
             return Err(fdo::Error::Failed(
                 "fake portal refusing on purpose (--mode error)".into(),
             ));
@@ -219,10 +199,25 @@ impl FileChooser {
 
         let serial = self.serial.fetch_add(1, Ordering::SeqCst);
         let token = token.unwrap_or_else(|| format!("aeroftp{serial}"));
-        let sender = self.last_sender.lock().expect("sender poisoned").clone();
-        let path_str = Self::request_path(&sender, &token);
+        let path_str = request_path(&sender, &token);
         let path = ObjectPath::try_from(path_str.clone())
             .map_err(|e| fdo::Error::Failed(format!("bad request path {path_str}: {e}")))?;
+
+        // Export the Request on the handle we are about to hand back, not on the
+        // portal's own path. GTK calls Close() on the returned handle when its
+        // dialog goes away, and zbus dispatches on an exact path match: a
+        // Request registered at /org/freedesktop/portal/desktop is never reached
+        // from /org/freedesktop/portal/desktop/request/<sender>/<token>, so the
+        // app would log a bus error that reads like a portal failure.
+        //
+        // It is deliberately NOT unexported after the Response. The real portal
+        // does drop it, but keeping it costs one object per call in a process
+        // that lives for one test, and it means a Close() racing the Response
+        // still finds an implementation instead of producing that same
+        // misleading error.
+        conn.object_server().at(&path, Request).await.map_err(|e| {
+            fdo::Error::Failed(format!("cannot export the request {path_str}: {e}"))
+        })?;
 
         let (response, answered): (u32, &'static str) = match self.mode {
             Mode::Cancel => (1, "cancelled"),
@@ -274,10 +269,17 @@ impl FileChooser {
 }
 
 impl FileChooser {
-    fn set_sender(&self, hdr: &Header<'_>) {
-        if let Some(s) = hdr.sender() {
-            *self.last_sender.lock().expect("sender poisoned") = s.to_string();
-        }
+    /// The caller's unique bus name, which decides the Request path.
+    ///
+    /// It is read from the header and passed down the call it belongs to. It
+    /// used to be stashed in a shared field first and read back a few lines
+    /// later, which is a race: zbus runs a task per incoming method call, so a
+    /// second chooser call arriving in between made the first one predict its
+    /// Request path from the WRONG sender -- and emit its Response where its own
+    /// caller was not listening. That is the one failure this stand-in must
+    /// never produce, because it looks exactly like the app hanging.
+    fn sender_of(hdr: &Header<'_>) -> String {
+        hdr.sender().map(|s| s.to_string()).unwrap_or_default()
     }
 }
 
@@ -291,8 +293,8 @@ impl FileChooser {
         #[zbus(header)] hdr: Header<'_>,
         #[zbus(connection)] conn: &Connection,
     ) -> fdo::Result<OwnedObjectPath> {
-        self.set_sender(&hdr);
-        self.answer(conn, "OpenFile", parent_window, title, options)
+        let sender = Self::sender_of(&hdr);
+        self.answer(conn, "OpenFile", parent_window, title, options, sender)
             .await
     }
 
@@ -304,8 +306,8 @@ impl FileChooser {
         #[zbus(header)] hdr: Header<'_>,
         #[zbus(connection)] conn: &Connection,
     ) -> fdo::Result<OwnedObjectPath> {
-        self.set_sender(&hdr);
-        self.answer(conn, "SaveFile", parent_window, title, options)
+        let sender = Self::sender_of(&hdr);
+        self.answer(conn, "SaveFile", parent_window, title, options, sender)
             .await
     }
 
@@ -321,6 +323,10 @@ impl FileChooser {
 /// GTK closes the request when its own dialog goes away, and a missing
 /// interface turns that into a bus error in the app's log that reads like a
 /// portal failure.
+///
+/// It is exported per call, on the handle returned to that caller. See the
+/// registration in `answer()` for why the portal's own path is the wrong place
+/// for it.
 struct Request;
 
 #[interface(name = "org.freedesktop.portal.Request")]
@@ -388,13 +394,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         recorder: Arc::clone(&recorder),
         serial: AtomicU32::new(0),
         accept_path,
-        last_sender: Mutex::new(String::new()),
     };
 
+    // Only the FileChooser lives at the portal's own path. Each Request is
+    // exported later, on the per-call handle the caller is given.
     let conn = connection::Builder::session()?
         .name(PORTAL_NAME)?
         .serve_at(PORTAL_PATH, chooser)?
-        .serve_at(PORTAL_PATH, Request)?
         .build()
         .await?;
 

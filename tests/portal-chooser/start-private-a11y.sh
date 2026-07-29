@@ -56,6 +56,12 @@ fi
 
 "$A11Y_LAUNCHER" --launch-immediately >"${OUT:-/tmp}/a11y-launcher.log" 2>&1 &
 A11Y_PID=$!
+# Recorded so the caller's EXIT trap can reap it even when the interruption never
+# reaches the shell that owns this variable. Note the launcher forks its own
+# dbus-daemon for the a11y bus: SIGTERM to the launcher normally takes that down
+# with it, but a launcher killed before it installs its child handler can leave
+# the daemon behind. It is per-display, so it dies with the Xvfb it serves.
+[ -n "${OUT:-}" ] && echo "$A11Y_PID" >"$OUT/a11y.pid"
 
 A11Y_ADDR=""
 for _ in $(seq 1 60); do

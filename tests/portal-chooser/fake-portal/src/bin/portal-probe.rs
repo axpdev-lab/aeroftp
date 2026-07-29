@@ -13,13 +13,17 @@
 //!   2. subscribe to Response on the PREDICTED request path BEFORE calling,
 //!      because the reply can arrive before the method return,
 //!   3. call OpenFile,
-//!   4. wait, with a timeout, and report what came back.
+//!   4. wait, with a timeout, and report what came back,
+//!   5. optionally call Close() on the handle it was given, which is what GTK
+//!      does when its dialog goes away (`--close`).
 //!
 //! Exit codes:
 //!   0 - a Response arrived (its code is printed)
 //!   4 - the call succeeded but no Response ever arrived (the hang the fake
 //!       portal must never cause)
 //!   5 - the method call itself failed (what --mode error looks like from here)
+//!   7 - Close() on the returned handle was not dispatched (the stand-in
+//!       exported the Request somewhere the caller cannot reach)
 //!   2 - usage/bus error
 
 use std::collections::HashMap;
@@ -27,6 +31,8 @@ use std::time::Duration;
 
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 use zbus::{proxy, Connection};
+
+use aeroftp_fake_portal::{request_path, sanitize_path_element};
 
 #[proxy(
     interface = "org.freedesktop.portal.FileChooser",
@@ -49,24 +55,11 @@ trait FileChooser {
 trait Request {
     #[zbus(signal)]
     fn response(&self, response: u32, results: HashMap<String, OwnedValue>) -> zbus::Result<()>;
-}
 
-fn sanitize_path_element(token: &str) -> String {
-    let mapped: String = token
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if mapped.is_empty() {
-        "probe".to_string()
-    } else {
-        mapped
-    }
+    /// What GTK calls on the handle when its own dialog goes away. It is a
+    /// method on the RETURNED path, not on the portal's path, which is the
+    /// distinction the stand-in got wrong once.
+    fn close(&self) -> zbus::Result<()>;
 }
 
 #[tokio::main]
@@ -74,12 +67,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut directory = false;
     let mut token = "probe0".to_string();
     let mut timeout_secs = 10u64;
+    let mut close_handle = false;
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--directory" => {
                 directory = true;
+                i += 1;
+            }
+            "--close" => {
+                close_handle = true;
                 i += 1;
             }
             "--token" => {
@@ -101,18 +99,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Same sanitisation as the portal: a token is an object path ELEMENT, so
-    // anything outside [A-Za-z0-9_] has to be mapped before it is used to
-    // predict a path, or the prediction fails before the call is even made.
-    let token = sanitize_path_element(&token);
+    // Same sanitisation as the portal, from the same function: a token is an
+    // object path ELEMENT, so anything outside [A-Za-z0-9_] has to be mapped
+    // before it is used to predict a path, or the prediction fails before the
+    // call is even made. Sharing the code is what keeps the prediction and the
+    // export from drifting apart silently.
+    let token = sanitize_path_element(&token, "probe");
 
     let conn = Connection::session().await?;
     let unique = conn
         .unique_name()
         .ok_or("no unique name on the session bus")?
         .to_string();
-    let escaped = unique.trim_start_matches(':').replace('.', "_");
-    let predicted = format!("/org/freedesktop/portal/desktop/request/{escaped}/{token}");
+    let predicted = request_path(&unique, &token);
     println!("probe: predicted request path {predicted}");
 
     // Subscribe FIRST. This ordering is the whole point: a portal is allowed to
@@ -151,6 +150,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let args = signal.args()?;
             let keys: Vec<&str> = args.results.keys().map(|k| k.as_str()).collect();
             println!("probe: RESPONSE code={} results={:?}", args.response, keys);
+
+            // Close() has to reach an implementation on the path we were HANDED
+            // BACK. A stand-in that exports Request on the portal's own path
+            // answers everything else correctly and fails only here, so without
+            // this the omission is invisible: the app just logs a bus error
+            // that reads like the portal misbehaving.
+            if close_handle {
+                let on_handle = RequestProxy::builder(&conn)
+                    .path(handle.as_str().to_string())?
+                    .build()
+                    .await?;
+                match on_handle.close().await {
+                    Ok(()) => println!("probe: CLOSE ok on {}", handle.as_str()),
+                    Err(e) => {
+                        println!("probe: CLOSE FAILED on {}: {e}", handle.as_str());
+                        std::process::exit(7);
+                    }
+                }
+            }
             Ok(())
         }
         Ok(None) => {
