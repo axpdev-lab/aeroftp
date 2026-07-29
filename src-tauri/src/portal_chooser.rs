@@ -127,14 +127,33 @@ fn reachable_on(conn: &gtk::gio::DBusConnection) -> Option<bool> {
 /// tell that the frontend really consulted this before opening a picker. The
 /// #464 gate greps for it, because the remedy is a message rendered inside the
 /// WebView and no window count or D-Bus trace can see that from outside.
+///
+/// `async`, and blocking on the blocking pool, for one reason each. Tauri runs a
+/// **synchronous** command on the main thread, which on Linux is the GTK thread,
+/// so a sync version of this would freeze the whole window for as long as the bus
+/// takes to answer: `BUS_TIMEOUT_MS` twice, plus whatever `bus_get_sync` spends,
+/// in front of the very click this module exists to make honest. That is the
+/// promise `BUS_TIMEOUT_MS` documents above and a sync command cannot keep, so
+/// declaring it `async` takes it off the main thread and `spawn_blocking` keeps
+/// the blocking round trip off the async workers as well.
 #[tauri::command]
-pub fn chooser_unavailable() -> Option<String> {
-    let reason = chooser_unavailable_reason();
-    match &reason {
-        Some(r) => eprintln!("{CHOOSER_UNAVAILABLE_LOG} {r}"),
-        None => eprintln!("{CHOOSER_CHECKED_LOG}"),
-    }
-    reason
+pub async fn chooser_unavailable() -> Option<String> {
+    tokio::task::spawn_blocking(|| {
+        let reason = chooser_unavailable_reason();
+        match &reason {
+            Some(r) => eprintln!("{CHOOSER_UNAVAILABLE_LOG} {r}"),
+            None => eprintln!("{CHOOSER_CHECKED_LOG}"),
+        }
+        reason
+    })
+    .await
+    .unwrap_or_else(|err| {
+        // The check could not even be run. Same rule as a bus that cannot be
+        // questioned: say nothing rather than accuse a healthy host, because a
+        // false "your chooser is broken" is worse than the silence being fixed.
+        eprintln!("[picker] the chooser check could not run: {err}");
+        None
+    })
 }
 
 /// Printed when a picker cannot be presented. Matched literally by
@@ -150,13 +169,33 @@ pub const CHOOSER_CHECKED_LOG: &str = "chooser checked: presentable";
 mod tests {
     use super::*;
 
+    /// Held by every test that writes or depends on `GTK_USE_PORTAL`.
+    ///
+    /// The test harness runs tests on several threads, so "restored immediately
+    /// after" is not on its own enough: a concurrent test reading the variable can
+    /// land inside the window where it is set. `portal_chooser.rs` is the only
+    /// place in the crate that reads it during a test run (`lib.rs` writes it once
+    /// at startup, which no test reaches), so serialising the tests in this module
+    /// is what makes the claim true rather than merely likely.
+    #[cfg(target_os = "linux")]
+    static PORTAL_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Take the guard, surviving a poisoned lock: a panic in one test must fail
+    /// that test, not turn every later one into a different failure.
+    #[cfg(target_os = "linux")]
+    fn lock_portal_env() -> std::sync::MutexGuard<'static, ()> {
+        PORTAL_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// The user override wins on every platform, and short-circuits before any
     /// bus traffic. Pinned because getting this wrong would nag exactly the
     /// users who chose the other chooser on purpose.
     #[test]
     #[cfg(target_os = "linux")]
     fn an_explicit_opt_out_reports_no_problem() {
-        // SAFETY: single-threaded test, restored immediately after.
+        let _guard = lock_portal_env();
+        // SAFETY: the guard above keeps every other reader of this variable in the
+        // crate out for the duration, and the value is restored before it drops.
         let previous = std::env::var_os("GTK_USE_PORTAL");
         unsafe { std::env::set_var("GTK_USE_PORTAL", "0") };
         let reason = chooser_unavailable_reason();
@@ -173,6 +212,36 @@ mod tests {
     #[cfg(not(target_os = "linux"))]
     fn other_platforms_always_have_a_chooser() {
         assert_eq!(chooser_unavailable_reason(), None);
+    }
+
+    /// The command must never run on the main thread: Tauri puts a *synchronous*
+    /// command there, and on Linux that is the GTK thread, so a sync version of a
+    /// check that waits on the session bus freezes the window in front of a click.
+    ///
+    /// The pin is the `.await`, and it acts at **compile time**: make
+    /// `chooser_unavailable` synchronous again and this test stops building, which
+    /// no one can quietly delete the way an assertion can be deleted. The verdict
+    /// itself belongs to the four tests around this one, so what is asserted here
+    /// is the other half: the wrapper only logs, it does not change the answer.
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn the_command_stays_off_the_main_thread() {
+        // Both calls must see the same `GTK_USE_PORTAL`, or the opt-out test can
+        // flip it between them and the two verdicts would disagree for a reason
+        // that has nothing to do with what is being pinned here.
+        let _guard = lock_portal_env();
+        assert_eq!(
+            chooser_unavailable().await,
+            chooser_unavailable_reason(),
+            "the command must report the verdict it was given, not invent one"
+        );
+    }
+
+    /// The same pin on the platforms where there is no environment to serialise.
+    #[tokio::test]
+    #[cfg(not(target_os = "linux"))]
+    async fn the_command_stays_off_the_main_thread() {
+        assert_eq!(chooser_unavailable().await, chooser_unavailable_reason());
     }
 
     /// A throwaway session bus, built to order, so the three cases below are
