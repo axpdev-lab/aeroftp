@@ -128,7 +128,7 @@ cleanup() {
     sleep 1
     kill -KILL -- "-$pid" 2>/dev/null
   fi
-  for f in portal.pid a11y.pid; do
+  for f in portal.pid a11y.pid monitor.pid; do
     pid="$(cat "$OUT/$f" 2>/dev/null || true)"
     [ -n "$pid" ] && kill -TERM "$pid" 2>/dev/null
   done
@@ -255,6 +255,27 @@ bash -uo pipefail -c '
       --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
       --method org.freedesktop.DBus.ListNames 2>/dev/null; } >"$OUT/bus-names.txt"
 
+  # Record EVERY message on this bus, before the app starts.
+  #
+  # This exists because a run was spent inferring which portal interface the app
+  # needed. Owning org.freedesktop.portal.Desktop makes the stand-in answer for
+  # the whole desktop stack, and an interface it does not implement fails in the
+  # application, far from the file chooser and sometimes with no log line at all.
+  # The stand-in can only record what it implements, so what is MISSING is
+  # exactly what it cannot report. The bus can.
+  #
+  # Safe to eavesdrop here and nowhere else: this bus is private to the run, and
+  # the policy in private-bus.conf allows it. Never point this at a real session.
+  if command -v dbus-monitor >/dev/null 2>&1; then
+    dbus-monitor --address "$DBUS_SESSION_BUS_ADDRESS" \
+        >"$OUT/dbus-monitor.txt" 2>"$OUT/dbus-monitor.err" &
+    MONITOR_PID=$!
+    echo "$MONITOR_PID" >"$OUT/monitor.pid"
+    echo "bus monitor recording to dbus-monitor.txt (pid $MONITOR_PID)"
+  else
+    echo "WARNING: dbus-monitor not installed, the bus traffic will not be recorded" >&2
+  fi
+
   # A private accessibility bus, started and verified rather than assumed.
   # dbus-run-session isolates the session bus only; see start-private-a11y.sh for
   # why that is not enough and what went wrong without it.
@@ -316,6 +337,20 @@ bash -uo pipefail -c '
       fi
     } >"$OUT/frontend-probe.txt" 2>&1
     cat "$OUT/frontend-probe.txt" >&2
+    # Name what the app asked the portal for and what came back. An interface the
+    # stand-in does not implement is invisible in its own call log, so this is
+    # the only place a missing one shows up.
+    if [ -s "$OUT/dbus-monitor.txt" ]; then
+      {
+        echo "--- portal interfaces the app asked for ---"
+        grep -oE "interface=org\.freedesktop\.portal\.[A-Za-z]+; member=[A-Za-z]+" \
+            "$OUT/dbus-monitor.txt" 2>/dev/null | sort | uniq -c | sort -rn
+        echo "--- error replies on this bus ---"
+        grep -oE "error_name=[A-Za-z0-9._]+" "$OUT/dbus-monitor.txt" 2>/dev/null |
+            sort | uniq -c | sort -rn
+      } >"$OUT/portal-traffic.txt" 2>&1
+      cat "$OUT/portal-traffic.txt" >&2
+    fi
     echo "::error::the app never reported app_ready, so the UI was never driven." >&2
     echo "  This is an environment failure, not a chooser failure." >&2
     echo "  Read frontend-probe.txt: a 200 there means the bundle is fine and WebKit" >&2
@@ -428,6 +463,8 @@ bash -uo pipefail -c '
   # cleanup only knew about the app and Xvfb, and they kept running.
   kill -TERM "${A11Y_PID:-0}" 2>/dev/null
   wait "${A11Y_PID:-0}" 2>/dev/null
+  kill -TERM "${MONITOR_PID:-0}" 2>/dev/null
+  wait "${MONITOR_PID:-0}" 2>/dev/null
 '
 rc=$?
 

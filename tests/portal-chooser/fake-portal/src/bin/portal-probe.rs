@@ -26,6 +26,7 @@
 //!       exported the Request somewhere the caller cannot reach)
 //!   8 - `--netmon`: the portal owns the name but does not answer
 //!       org.freedesktop.portal.NetworkMonitor
+//!   9 - `--netmon`: same, for org.freedesktop.portal.ProxyResolver
 //!   2 - usage/bus error
 
 use std::collections::HashMap;
@@ -48,6 +49,17 @@ trait NetworkMonitor {
     fn get_available(&self) -> zbus::Result<bool>;
     fn get_metered(&self) -> zbus::Result<bool>;
     fn get_connectivity(&self) -> zbus::Result<u32>;
+}
+
+/// The other interface GIO takes over once the portal name is owned. WebKit
+/// resolves a proxy before fetching a URL, loopback included.
+#[proxy(
+    interface = "org.freedesktop.portal.ProxyResolver",
+    default_service = "org.freedesktop.portal.Desktop",
+    default_path = "/org/freedesktop/portal/desktop"
+)]
+trait ProxyResolver {
+    fn lookup(&self, uri: &str) -> zbus::Result<Vec<String>>;
 }
 
 #[proxy(
@@ -142,11 +154,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ) {
             (Ok(a), Ok(m), Ok(c)) => {
                 println!("probe: NETMON available={a} metered={m} connectivity={c}");
-                return Ok(());
             }
             (a, m, c) => {
                 println!("probe: NETMON FAILED available={a:?} metered={m:?} connectivity={c:?}");
                 std::process::exit(8);
+            }
+        }
+
+        let pr = ProxyResolverProxy::new(&conn).await?;
+        match pr.lookup("http://127.0.0.1:14321/index.html").await {
+            Ok(proxies) => {
+                println!("probe: PROXY lookup={proxies:?}");
+                return Ok(());
+            }
+            Err(e) => {
+                println!("probe: PROXY FAILED {e:?}");
+                std::process::exit(9);
             }
         }
     }

@@ -90,7 +90,8 @@ future fix has to change the assertion deliberately.
 
 ### Owning the portal name is a promise, and a partial stand-in can break the app
 
-The stand-in implements `NetworkMonitor` even though no assertion here reads it.
+The stand-in implements `NetworkMonitor` and `ProxyResolver` even though no
+chooser assertion reads either.
 That is not decoration, and the reasoning is worth keeping because the first
 version of this section got it wrong.
 
@@ -118,7 +119,10 @@ a portal that breaks the application under test, and the damage lands nowhere
 near the file chooser. It read as "WebKit cannot render headless in CI" and cost
 a round of environment flags aimed at the wrong thing.
 
-The lesson generalises past this interface: **implement what owning the name
+`ProxyResolver` is served for the same reason: WebKit resolves a proxy before
+fetching a URL, loopback included, and GIO routes that through the portal too.
+
+The lesson generalises past these interfaces: **implement what owning the name
 promises, not only what the test asserts.** `Settings` is still unimplemented and
 the app logs `Failed to read portal settings: Unknown interface` for it; that one
 has been observed to be harmless, but "harmless" is now a measurement rather than
@@ -134,14 +138,14 @@ Needs only `dbus-run-session`; no display packages, so it runs anywhere. It
 builds the crate on first use.
 
 The six cases are **verified as pins, not by watching them pass**: with the
-Request path made to ignore the token, 4 of the 11 assertions fail, including
+Request path made to ignore the token, 4 of the 12 assertions fail, including
 both "a subscribing client received the Response" checks. A stub that answers on
 the wrong path is exactly the failure that would otherwise masquerade as an
 application hang.
 
 Case 5 was pinned the same way and is worth its own note: exporting `Request` on
 the portal's own path instead of on the handle returned to the caller fails that
-assertion and **nothing else** — all ten others stay green. `Close()` then
+assertion and **nothing else** — all eleven others stay green. `Close()` then
 reaches no implementation, and the only symptom is a bus error in the app's log
 that reads like the portal misbehaving.
 

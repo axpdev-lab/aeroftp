@@ -169,6 +169,9 @@ W=$(run_case cancel "--netmon")
 has "$W" "probe: NETMON available=true" \
   && ok "NetworkMonitor answers, so GIO gets a working network monitor" \
   || { bad "NetworkMonitor is unanswered: the app under test would not load its frontend"; sed -n '1,20p' "$W/case.out"; }
+has "$W" "probe: PROXY lookup=" \
+  && ok "ProxyResolver answers, so a URL fetch is not gated on a resolver that cannot reply" \
+  || { bad "ProxyResolver is unanswered: WebKit resolves a proxy before every load"; sed -n '1,20p' "$W/case.out"; }
 
 echo
 echo "passed: $PASS   failed: $FAIL"

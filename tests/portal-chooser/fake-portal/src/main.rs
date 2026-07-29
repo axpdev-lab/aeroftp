@@ -402,6 +402,30 @@ impl NetworkMonitor {
     }
 }
 
+/// `org.freedesktop.portal.ProxyResolver`, for the same reason as the monitor
+/// above and with the same evidence behind it.
+///
+/// GIO swaps `g_proxy_resolver_get_default()` for the portal-backed resolver
+/// under `GTK_USE_PORTAL=1`, and WebKit resolves a proxy before it fetches a
+/// URL -- including a loopback one. A resolver that cannot answer is another way
+/// to stop a page loading without anything in the application saying so.
+///
+/// `direct://` is the answer for "no proxy, go straight there", which is the
+/// truth on an isolated test bus.
+struct ProxyResolver;
+
+#[interface(name = "org.freedesktop.portal.ProxyResolver")]
+impl ProxyResolver {
+    fn lookup(&self, _uri: String) -> Vec<String> {
+        vec!["direct://".to_string()]
+    }
+
+    #[zbus(property, name = "version")]
+    fn version(&self) -> u32 {
+        1
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut mode = Mode::Cancel;
@@ -474,6 +498,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name(PORTAL_NAME)?
         .serve_at(PORTAL_PATH, chooser)?
         .serve_at(PORTAL_PATH, NetworkMonitor)?
+        .serve_at(PORTAL_PATH, ProxyResolver)?
         .build()
         .await?;
 
