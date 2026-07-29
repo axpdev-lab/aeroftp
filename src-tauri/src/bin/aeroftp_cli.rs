@@ -26564,11 +26564,66 @@ async fn cli_apply_crypt_overlay(
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ConnectMetadata {
+    host: String,
+    port: u16,
+    username: String,
+}
+
+impl ConnectMetadata {
+    fn from_config(config: &ProviderConfig) -> Self {
+        Self {
+            host: config.host.clone(),
+            port: config.effective_port(),
+            username: config.username.clone().unwrap_or_default(),
+        }
+    }
+
+    fn from_profile(profile: &serde_json::Value) -> Self {
+        let provider_type = profile
+            .get("protocol")
+            .and_then(|value| value.as_str())
+            .and_then(ProviderType::from_lowercase);
+        let port = profile
+            .get("port")
+            .and_then(|value| value.as_u64())
+            .and_then(|value| u16::try_from(value).ok())
+            .filter(|value| *value != 0)
+            .or_else(|| provider_type.as_ref().map(ProviderType::default_port))
+            .unwrap_or(0);
+
+        Self {
+            host: profile
+                .get("host")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            port,
+            username: profile
+                .get("username")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+        }
+    }
+}
+
 async fn create_and_connect(
     url: &str,
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
+    create_and_connect_detailed(url, cli, format)
+        .await
+        .map(|(provider, path, _metadata)| (provider, path))
+}
+
+async fn create_and_connect_detailed(
+    url: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<(Box<dyn StorageProvider>, String, ConnectMetadata), i32> {
     create_and_connect_with(url, cli, cli.profile.as_deref(), format, true, None).await
 }
 
@@ -26582,7 +26637,9 @@ async fn create_and_connect_raw(
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
-    create_and_connect_with(url, cli, cli.profile.as_deref(), format, false, None).await
+    create_and_connect_with(url, cli, cli.profile.as_deref(), format, false, None)
+        .await
+        .map(|(provider, path, _metadata)| (provider, path))
 }
 
 /// Like `create_and_connect` but with an explicit profile-name override instead
@@ -26603,7 +26660,7 @@ async fn create_and_connect_with(
     format: OutputFormat,
     apply_overlay: bool,
     synth_profile: Option<&serde_json::Value>,
-) -> Result<(Box<dyn StorageProvider>, String), i32> {
+) -> Result<(Box<dyn StorageProvider>, String, ConnectMetadata), i32> {
     // Check if the selected profile points to an OAuth provider - handle separately
     // Uses the same strict matching as profile_to_provider_config (exact → ID → disambiguated substring)
     if let Some(profile_name) = profile_override {
@@ -26651,6 +26708,7 @@ async fn create_and_connect_with(
                         }
                     };
                     if let Some(profile) = matched {
+                        let metadata = ConnectMetadata::from_profile(&profile);
                         let protocol = profile
                             .get("protocol")
                             .and_then(|v| v.as_str())
@@ -26667,7 +26725,7 @@ async fn create_and_connect_with(
                             } else {
                                 provider
                             };
-                            return Ok((provider, path));
+                            return Ok((provider, path, metadata));
                         }
                         let name = profile
                             .get("name")
@@ -26694,6 +26752,7 @@ async fn create_and_connect_with(
                         )
                         .await
                         {
+                            let (mut p, path) = result?;
                             // KE-B3 / KE-B2: OAuth path returns an already-connected
                             // provider. Apply OneDrive and Drive runtime knobs
                             // after the connect so the setters take effect on
@@ -26701,24 +26760,19 @@ async fn create_and_connect_with(
                             // calls. (S3 / Azure knobs do not apply here because
                             // those backends are never routed through the OAuth
                             // helper.)
-                            if let Ok((mut p, path)) = result {
-                                apply_onedrive_runtime_knobs(&mut p, cli);
-                                apply_google_drive_runtime_knobs(&mut p, cli);
-                                // Crypt-overlay chokepoint: an OAuth backend can
-                                // carry a crypt binding too (overlay is
-                                // protocol-agnostic). Wrap before returning
-                                // unless the caller wants the raw provider (the
-                                // standalone `crypt` commands, F4).
-                                let p = if apply_overlay {
-                                    cli_apply_crypt_overlay(p, cli, profile_override, format)
-                                        .await?
-                                } else {
-                                    p
-                                };
-                                return Ok((p, path));
+                            apply_onedrive_runtime_knobs(&mut p, cli);
+                            apply_google_drive_runtime_knobs(&mut p, cli);
+                            // Crypt-overlay chokepoint: an OAuth backend can
+                            // carry a crypt binding too (overlay is
+                            // protocol-agnostic). Wrap before returning
+                            // unless the caller wants the raw provider (the
+                            // standalone `crypt` commands, F4).
+                            let p = if apply_overlay {
+                                cli_apply_crypt_overlay(p, cli, profile_override, format).await?
                             } else {
-                                return result;
-                            }
+                                p
+                            };
+                            return Ok((p, path, metadata));
                         }
                     }
                 }
@@ -26742,6 +26796,7 @@ async fn create_and_connect_with(
         }
         None => resolve_url_or_profile_with(url, cli, profile_override, format)?,
     };
+    let metadata = ConnectMetadata::from_config(&config);
 
     dump_connection_info(cli, &config);
 
@@ -26896,7 +26951,7 @@ async fn create_and_connect_with(
         provider
     };
 
-    Ok((provider, path))
+    Ok((provider, path, metadata))
 }
 
 // ── Command Handlers ───────────────────────────────────────────────
@@ -29663,7 +29718,8 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
         None
     };
 
-    let (mut provider, _path) = match create_and_connect(url, cli, format).await {
+    let (mut provider, _path, metadata) = match create_and_connect_detailed(url, cli, format).await
+    {
         Ok(v) => v,
         Err(code) => {
             if let Some(sp) = spinner {
@@ -29676,9 +29732,6 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let elapsed = start.elapsed();
     let server_info = provider.server_info().await.ok();
     let pt = provider.provider_type();
-    let host = provider.display_name();
-    let port = display_port_for_provider(&pt, server_info.as_deref());
-    let user = String::new();
 
     if let Some(sp) = spinner {
         sp.finish_and_clear();
@@ -29686,9 +29739,9 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
 
     match format {
         OutputFormat::Text => {
-            eprintln!("Connected to {} ({})", host, pt);
-            eprintln!("  User:     {}", user);
-            eprintln!("  Port:     {}", port);
+            eprintln!("Connected to {} ({})", metadata.host, pt);
+            eprintln!("  User:     {}", metadata.username);
+            eprintln!("  Port:     {}", metadata.port);
             eprintln!("  Protocol: {}", pt);
             if let Some(ref info) = server_info {
                 if !info.is_empty() {
@@ -29714,9 +29767,9 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
             print_json(&CliConnectResult {
                 status: "ok",
                 protocol: pt.to_string(),
-                host,
-                port,
-                username: user,
+                host: metadata.host,
+                port: metadata.port,
+                username: metadata.username,
                 server_info,
                 elapsed_ms: elapsed.as_millis() as u64,
             });
@@ -41092,7 +41145,7 @@ async fn cmd_benchmark(
     // In compare mode the profile to connect comes from `compare_label`, not
     // the global --profile (which stays unset across the whole compare run).
     let profile_for_connect = compare_label.or(cli.profile.as_deref());
-    let (mut provider, initial_path) =
+    let (mut provider, initial_path, _metadata) =
         match create_and_connect_with("_", cli, profile_for_connect, format, true, synth_profile)
             .await
         {
@@ -54492,24 +54545,6 @@ async fn cmd_touch(
                 }
             }
         }
-    }
-}
-
-fn display_port_for_provider(provider_type: &ProviderType, server_info: Option<&str>) -> u16 {
-    if let Some(info) = server_info {
-        if let Some((_, port_str)) = info.rsplit_once(':') {
-            if !port_str.is_empty() && port_str.chars().all(|c| c.is_ascii_digit()) {
-                if let Ok(port) = port_str.parse::<u16>() {
-                    return port;
-                }
-            }
-        }
-    }
-
-    match provider_type {
-        ProviderType::Ftp | ProviderType::Ftps => 21,
-        ProviderType::Sftp => 22,
-        _ => 443,
     }
 }
 
@@ -68039,16 +68074,83 @@ mod tests {
     }
 
     #[test]
-    fn test_display_port_for_provider_parses_server_info() {
-        let port =
-            display_port_for_provider(&ProviderType::Ftp, Some("FTP Server: ftp.axpdev.it:21"));
-        assert_eq!(port, 21);
+    fn connect_metadata_uses_structured_sftp_config() {
+        let config = ProviderConfig {
+            name: "NAS".to_string(),
+            provider_type: ProviderType::Sftp,
+            host: "axpnas.ddns.net".to_string(),
+            port: Some(2222),
+            username: Some("sshd".to_string()),
+            password: None,
+            initial_path: Some("/mnt/HD/HD_a2".to_string()),
+            extra: HashMap::new(),
+        };
+
+        assert_eq!(
+            ConnectMetadata::from_config(&config),
+            ConnectMetadata {
+                host: "axpnas.ddns.net".to_string(),
+                port: 2222,
+                username: "sshd".to_string(),
+            }
+        );
     }
 
     #[test]
-    fn test_display_port_for_provider_falls_back_by_protocol() {
-        assert_eq!(display_port_for_provider(&ProviderType::Sftp, None), 22);
-        assert_eq!(display_port_for_provider(&ProviderType::Mega, None), 443);
+    fn connect_metadata_ignores_human_server_info_shape_and_preserves_ipv6() {
+        let config = ProviderConfig {
+            name: "IPv6 SFTP".to_string(),
+            provider_type: ProviderType::Sftp,
+            host: "2001:db8::42".to_string(),
+            port: Some(22022),
+            username: Some("alice".to_string()),
+            password: None,
+            initial_path: None,
+            extra: HashMap::new(),
+        };
+        let metadata = ConnectMetadata::from_config(&config);
+        let realistic_server_info =
+            "SFTP Server: [2001:db8::42]:22022 (user: alice, home: /srv/home:archive)";
+
+        assert_eq!(metadata.host, "2001:db8::42");
+        assert_eq!(metadata.port, 22022);
+        assert_eq!(metadata.username, "alice");
+        assert!(realistic_server_info.contains("home:"));
+    }
+
+    #[test]
+    fn connect_metadata_uses_protocol_default_only_when_port_is_absent() {
+        let config = ProviderConfig {
+            name: "Default SFTP".to_string(),
+            provider_type: ProviderType::Sftp,
+            host: "sftp.example.com".to_string(),
+            port: None,
+            username: None,
+            password: None,
+            initial_path: None,
+            extra: HashMap::new(),
+        };
+
+        let metadata = ConnectMetadata::from_config(&config);
+        assert_eq!(metadata.port, 22);
+        assert_eq!(metadata.username, "");
+    }
+
+    #[test]
+    fn connect_metadata_preserves_nonstandard_port_from_sftp_url() {
+        let cli = test_cli();
+        let (config, path) =
+            url_to_provider_config("sftp://alice@sftp.example.com:22022/archive", &cli).unwrap();
+
+        assert_eq!(path, "/archive");
+        assert_eq!(
+            ConnectMetadata::from_config(&config),
+            ConnectMetadata {
+                host: "sftp.example.com".to_string(),
+                port: 22022,
+                username: "alice".to_string(),
+            }
+        );
     }
 
     #[test]
