@@ -30,43 +30,12 @@ import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint } from '../providers';
 import { CopyLinkButton } from './common/CopyLinkButton';
-import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
+import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
 
-// Official brand logos as inline SVGs
-const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
-    <svg width={size} height={size} viewBox="0 0 87.3 78" className={className}>
-        <path fill="#0066da" d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5l5.4 9.35z" />
-        <path fill="#00ac47" d="M43.65 25L29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 52.35c-.8 1.4-1.2 2.95-1.2 4.5h27.5L43.65 25z" />
-        <path fill="#ea4335" d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.85L73.55 76.8z" />
-        <path fill="#00832d" d="M43.65 25L57.4 1.2c-1.35-.8-2.9-1.2-4.5-1.2H34.35c-1.6 0-3.15.45-4.45 1.2L43.65 25z" />
-        <path fill="#2684fc" d="M59.85 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2L59.85 53z" />
-        <path fill="#ffba00" d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25l16.2 28h27.45c0-1.55-.4-3.1-1.2-4.5l-12.7-22z" />
-    </svg>
-);
-
-const GooglePhotosLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
-    <svg width={size} height={size} viewBox="0 0 48 48" className={className}>
-        <path fill="#ffc107" d="M24,22.5C24,16.701,19.299,12,13.5,12S3,16.701,3,22.5c0,0,0,0.339,0,0.5c0,0.552,0.448,1,1,1 s20,0,20,0s0-0.448,0-1C24,22.839,24,22.5,24,22.5z" />
-        <path fill="#4caf50" d="M22.5,24C16.701,24,12,28.701,12,34.5S16.701,45,22.5,45c0,0,0.339,0,0.5,0c0.552,0,1-0.448,1-1 s0-20,0-20s-0.448,0-1,0C22.839,24,22.5,24,22.5,24z" />
-        <path fill="#1976d2" d="M24,25.5C24,31.299,28.701,36,34.5,36S45,31.299,45,25.5c0,0,0-0.339,0-0.5c0-0.552-0.448-1-1-1 s-20,0-20,0s0,0.448,0,1C24,25.161,24,25.5,24,25.5z" />
-        <path fill="#ff3d00" d="M25.5,24C31.299,24,36,19.299,36,13.5S31.299,3,25.5,3c0,0-0.339,0-0.5,0c-0.552,0-1,0.448-1,1 s0,20,0,20s0.448,0,1,0C25.161,24,25.5,24,25.5,24z" />
-    </svg>
-);
-
-const DropboxLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
-    <svg width={size} height={size} viewBox="0 0 43 40" className={className}>
-        <path fill="#0061ff" d="M12.5 0L0 8.1l8.5 6.9 12.5-8.2L12.5 0zM0 22l12.5 8.1 8.5-6.8-12.5-8.2L0 22zm21 1.3l8.5 6.8L42 22l-8.5-6.9-12.5 8.2zm21-15.2L29.5 0 21 6.8l12.5 8.2L42 8.1zM21.1 24.4l-8.6 6.9-3.9-2.6v2.9l12.5 7.5 12.5-7.5v-2.9l-3.9 2.6-8.6-6.9z" />
-    </svg>
-);
-
-const OneDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
-        <path fill="#0364b8" d="M14.5 15h6.78l.72-.53V14c0-2.48-1.77-4.6-4.17-5.05A5.5 5.5 0 0 0 7.5 10.5v.5H7c-2.21 0-4 1.79-4 4s1.79 4 4 4h7.5z" />
-        <path fill="#0078d4" d="M9.5 10.5A5.5 5.5 0 0 1 17.83 8.95 5.5 5.5 0 0 0 14.5 15H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h.5v.5c0 1.66.74 3.15 1.9 4.15.4-.08.8-.15 1.1-.15z" />
-        <path fill="#1490df" d="M21.28 14.47l-.78.53H14.5 7c-2.21 0-4-1.79-4-4a3.99 3.99 0 0 1 2.4-3.67A4 4 0 0 1 9 6c.88 0 1.7.29 2.36.78A5.49 5.49 0 0 1 17.83 9a5 5 0 0 1 3.45 5.47z" />
-        <path fill="#28a8ea" d="M21.28 14.47A5 5 0 0 0 17.83 9a5.49 5.49 0 0 0-6.47-1.22A4 4 0 0 0 5.4 10.33c-.35.11-.68.28-.98.5a4.49 4.49 0 0 0 2.08 4.67H14.5h6.78z" />
-    </svg>
-);
+// Google Drive, Google Photos, Dropbox and OneDrive used to be redrawn here as
+// local copies. The 2026 mark refresh (#347, Ehud) updated the canonical ones in
+// `ProviderLogos` and could not see these, so this list kept showing the retired
+// Drive and OneDrive marks. They now come from the one place they are defined.
 
 const SourceForgeLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
     <svg width={size} height={size} viewBox="0 0 117 103" className={className}>

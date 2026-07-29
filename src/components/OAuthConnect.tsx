@@ -17,6 +17,7 @@ import { openUrl } from '../utils/openUrl';
 import { logger } from '../utils/logger';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { useClipboardCopy } from '../hooks/useClipboardCopy';
+import { GoogleDriveLogo, OneDriveLogo } from './ProviderLogos';
 
 interface OAuthConnectProps {
   provider: 'googledrive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk';
@@ -82,6 +83,24 @@ const providerColors: Record<string, string> = {
   yandexdisk: 'bg-yellow-500 hover:bg-yellow-600',
 };
 
+// Google's brand guidelines do not allow the Drive mark to be restated in a
+// single flat colour, and the 2026 mark is three gradients, so it cannot sit as
+// a white silhouette on a red button the way the retired flat mark did. Google
+// publishes a neutral button surface for exactly this case: #FFFFFF with #1F1F1F
+// text and a #747775 border in light, #131314 with #E3E3E3 text and a #8E918F
+// border in dark. The mark then rides on it in full colour.
+const GOOGLE_NEUTRAL_BUTTON =
+  'bg-white text-[#1F1F1F] border border-[#747775] hover:bg-[#f2f2f2] ' +
+  'dark:bg-[#131314] dark:text-[#E3E3E3] dark:border-[#8E918F] dark:hover:bg-[#1e1f20]';
+
+/**
+ * Surface classes for an OAuth call-to-action button: the brand-coloured fill
+ * with a white mark for providers whose guidelines allow a one-colour mark,
+ * Google's own neutral surface for Google Drive.
+ */
+const providerButtonSurface = (provider: string): string =>
+  provider === 'googledrive' ? GOOGLE_NEUTRAL_BUTTON : `text-white ${providerColors[provider]}`;
+
 // Zoho region options for multi-region support
 const ZOHO_REGIONS = [
   { value: 'us', label: 'US (zoho.com)' },
@@ -106,47 +125,29 @@ const REDIRECT_URIS: Record<string, { uri: string; note?: string }> = {
   yandexdisk: { uri: 'http://localhost:19847/callback' },
 };
 
-// Provider icons as SVG components (white fill for buttons)
+// Provider icons as SVG components (white fill for buttons).
+//
+// Google Drive and OneDrive are NOT redrawn here: they delegate to the canonical
+// marks in `ProviderLogos`, which is the only place either is defined. This file
+// used to carry its own copy of both, and the 2026 refresh (#347, Ehud) updated
+// the canonical ones and left these behind, so the Quick Connect buttons kept
+// showing the retired marks months after the rest of the app had moved on.
 const ProviderIcon: React.FC<{ provider: string; className?: string; white?: boolean }> = ({ provider, className = "w-5 h-5", white = false }) => {
   const size = 20;
   switch (provider) {
     case 'googledrive':
-      return white ? (
-        <svg className={className} width={size} height={size} viewBox="0 0 87.3 78" fill="currentColor">
-          <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5l5.4 9.35z" />
-          <path d="M43.65 25L29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 52.35c-.8 1.4-1.2 2.95-1.2 4.5h27.5L43.65 25z" />
-          <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.85L73.55 76.8z" />
-          <path d="M43.65 25L57.4 1.2c-1.35-.8-2.9-1.2-4.5-1.2H34.35c-1.6 0-3.15.45-4.45 1.2L43.65 25z" />
-          <path d="M59.85 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2L59.85 53z" />
-          <path d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25l16.2 28h27.45c0-1.55-.4-3.1-1.2-4.5l-12.7-22z" />
-        </svg>
-      ) : (
-        <svg className={className} width={size} height={size} viewBox="0 0 87.3 78">
-          <path fill="#0066da" d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5l5.4 9.35z" />
-          <path fill="#00ac47" d="M43.65 25L29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3L1.2 52.35c-.8 1.4-1.2 2.95-1.2 4.5h27.5L43.65 25z" />
-          <path fill="#ea4335" d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.85L73.55 76.8z" />
-          <path fill="#00832d" d="M43.65 25L57.4 1.2c-1.35-.8-2.9-1.2-4.5-1.2H34.35c-1.6 0-3.15.45-4.45 1.2L43.65 25z" />
-          <path fill="#2684fc" d="M59.85 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2L59.85 53z" />
-          <path fill="#ffba00" d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25l16.2 28h27.45c0-1.55-.4-3.1-1.2-4.5l-12.7-22z" />
-        </svg>
-      );
+      // Always the full-colour mark. The 2026 Drive logo is a three-gradient
+      // form and Google's brand guidelines forbid restating it in one flat
+      // colour, so the button behind it is neutral rather than the mark being
+      // bent to fit a coloured button (see `providerColors`).
+      return <span className={className}><GoogleDriveLogo size={size} /></span>;
+    case 'onedrive':
+      // One flat shape, so a white restatement keeps the form intact.
+      return <span className={className}><OneDriveLogo size={size} color={white ? 'currentColor' : undefined} /></span>;
     case 'dropbox':
       return (
         <svg className={className} width={size} height={size} viewBox="0 0 43 40" fill={white ? "currentColor" : "#0061ff"}>
           <path d="M12.5 0L0 8.1l8.5 6.9 12.5-8.2L12.5 0zM0 22l12.5 8.1 8.5-6.8-12.5-8.2L0 22zm21 1.3l8.5 6.8L42 22l-8.5-6.9-12.5 8.2zm21-15.2L29.5 0 21 6.8l12.5 8.2L42 8.1zM21.1 24.4l-8.6 6.9-3.9-2.6v2.9l12.5 7.5 12.5-7.5v-2.9l-3.9 2.6-8.6-6.9z" />
-        </svg>
-      );
-    case 'onedrive':
-      return white ? (
-        <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-          <path d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
-        </svg>
-      ) : (
-        <svg className={className} width={size} height={size} viewBox="0 0 24 24">
-          <path fill="#0364b8" d="M14.5 15h6.78l.72-.53V14c0-2.48-1.77-4.6-4.17-5.05A5.5 5.5 0 0 0 7.5 10.5v.5H7c-2.21 0-4 1.79-4 4s1.79 4 4 4h7.5z" />
-          <path fill="#0078d4" d="M9.5 10.5A5.5 5.5 0 0 1 17.83 8.95 5.5 5.5 0 0 0 14.5 15H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h.5v.5c0 1.66.74 3.15 1.9 4.15.4-.08.8-.15 1.1-.15z" />
-          <path fill="#1490df" d="M21.28 14.47l-.78.53H14.5 7c-2.21 0-4-1.79-4-4a3.99 3.99 0 0 1 2.4-3.67A4 4 0 0 1 9 6c.88 0 1.7.29 2.36.78A5.49 5.49 0 0 1 17.83 9a5 5 0 0 1 3.45 5.47z" />
-          <path fill="#28a8ea" d="M21.28 14.47A5 5 0 0 0 17.83 9a5.49 5.49 0 0 0-6.47-1.22A4 4 0 0 0 5.4 10.33c-.35.11-.68.28-.98.5a4.49 4.49 0 0 0 2.08 4.67H14.5h6.78z" />
         </svg>
       );
     case 'box':
@@ -435,9 +436,9 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           onClick={handleQuickConnect}
           disabled
           className={`
-            w-full py-3 px-4 rounded-lg text-white font-medium
+            w-full py-3 px-4 rounded-lg font-medium
             flex items-center justify-center gap-2 transition-colors
-            ${providerColors[provider]}
+            ${providerButtonSurface(provider)}
             disabled:opacity-50 disabled:cursor-not-allowed
           `}
         >
@@ -716,7 +717,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           <button
             onClick={handleSignIn}
             disabled={!clientId || !clientSecret || isAuthenticating}
-            className={`w-full py-3 px-4 text-sm text-white font-medium rounded-lg flex items-center justify-center gap-2 ${providerColors[provider]} disabled:opacity-50`}
+            className={`w-full py-3 px-4 text-sm font-medium rounded-lg flex items-center justify-center gap-2 ${providerButtonSurface(provider)} disabled:opacity-50`}
           >
             {isAuthenticating ? (
               <>
