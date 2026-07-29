@@ -3353,14 +3353,14 @@
             "applyPrivacy": "Anvend",
             "applyPrivacyAll": "Anvend på {count} elementer",
             "checksumNotOnBackend": "{backend} kan ikke danne dette hash på serversiden",
-            "checksumServerSide": "Kontrolsummerne kommer fra serveren; filen hentes aldrig ned for at beregne dem, så der tilbydes kun det, denne backend allerede gemmer.",
-            "checksumNegotiated": "Denne liste er, hvad netop denne server annoncerede, så en given fil kan alligevel ikke have nogen.",
-            "checksumCiphertext": "Denne fil ligger i Overlays Path, så serveren gemmer den krypteret. Disse kontrolsummer dækker de krypterede bytes og vil ikke matche et hash af din lokale kopi: det er præcis, hvad kryptering betyder, ikke en fejl. Brug \"aeroftp-cli crypt verify\" til at holde det dekrypterede indhold op mod dine lokale filer.",
+            "checksumServerSide": "Hashene kommer fra serveren; filen hentes aldrig ned for at beregne et hash, så der tilbydes kun det, denne backend allerede gemmer.",
+            "checksumNegotiated": "Denne liste er, hvad netop denne server annoncerede, så en given fil kan stadig være helt uden hash.",
+            "checksumCiphertext": "Denne fil ligger i Overlays Path, så serveren gemmer den krypteret. Disse hashes dækker de krypterede bytes og vil ikke matche et hash af din lokale kopi: det er præcis, hvad kryptering betyder, ikke en fejl. Brug \"aeroftp-cli crypt verify\" til at holde det dekrypterede indhold op mod dine lokale filer.",
             "checksumAbsentForObject": "Denne backend kan levere {algorithm}, men har ingen gemt for dette objekt. Der blev ikke hentet noget ned for at beregne det.",
             "checksumMatrixLink": "Hvilken backend understøtter hvilket hash",
             "checksumCaveats": {
                 "s3-etag": "ETag er objektets MD5 kun for objekter i én del, der ikke er SSE-KMS-krypterede; for de øvrige udelades det frem for at blive gættet.",
-                "b2-unverified": "Store filer og uploads, som B2 har registreret som unverified, bærer ikke en brugbar SHA-1.",
+                "b2-unverified": "Store filer har ingen brugbar SHA-1, og det samme gælder uploads, som B2 har registreret som unverified.",
                 "sftp-sha256sum": "Beregnes af fjernværten med sha256sum over en SSH-kanal: byte læses på serveren og sendes aldrig til dig. Udelades, hvis værten ikke har sha256sum.",
                 "ftp-negotiated": "Afhænger af, hvad serveren annoncerer i FEAT: HASH eller de ældre XMD5, XSHA1 og XCRC.",
                 "webdav-oc-checksums": "Kun ownCloud og Nextcloud offentliggør kontrolsummer, og kun for filer uploadet af en klient, der sendte en.",
@@ -3369,7 +3369,7 @@
                 "dropbox-content-hash": "Ikke en almindelig filkontrolsum: en SHA-256 over SHA-256 af hver 4 MiB-blok. Den kan kun sammenlignes med et andet Dropbox content hash.",
                 "koofr-proprietary": "Koofrs eget hash. Det kan kun sammenlignes med et andet Koofr-hash.",
                 "github-blob-sha": "git-blobbens SHA-1, beregnet over et git-hoved plus indholdet, så den matcher ikke en almindelig SHA-1 af den samme fil.",
-                "immich-asset-checksum": "Den kontrolsum for elementet, som Immich registrerer ved upload.",
+                "immich-asset-checksum": "Den kontrolsum, som Immich registrerer for elementet ved upload.",
                 "crypt-overlay-ciphertext": "Kontrolsummen dækker de krypterede bytes, der ligger på serveren."
             }
         },
@@ -5308,7 +5308,7 @@
             "defaultSaltNeedsStronger": "Indtast en stærk genereret adgangskode for at aktivere standardsaltet.",
             "defaultSaltTier128": "128-bit (anbefales, kræver en adgangskode på 20+ tegn)",
             "defaultSaltTier256": "256-bit (strengere, kræver en adgangskode på 39+ tegn)",
-            "defaultSaltTierMeaning": "De to niveauer fastsætter, hvor stærk din adgangskode skal være, ikke saltets størrelse: der er ét salt på 32 byte, det samme for hvert boks med standardsalt.",
+            "defaultSaltTierMeaning": "De to niveauer fastsætter, hvor stærk din adgangskode skal være, ikke saltets størrelse: der er ét salt på 32 byte, det samme for hver boks med standardsalt.",
             "defaultSaltValueLabel": "Offentligt standardsalt (AeroCrypt v3), SHA-256 af"
         },
         "modalGuard": {

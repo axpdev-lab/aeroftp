@@ -241,6 +241,26 @@ async function validate(): Promise<void> {
             });
         }
 
+        // 6b. Labels the UI composes a value onto must not end in terminal
+        // punctuation. `DefaultSaltDisclosure` renders the label, then the
+        // pre-image string, then a colon of its own, so a label that already
+        // ends in one produces a double colon and reads as though the hash were
+        // of the salt rather than of the string that follows. Ten locales
+        // shipped in that state before anyone noticed (#347 review round), so
+        // the rule is asserted rather than remembered. Terminal punctuation for
+        // every script we ship, not just ASCII.
+        const COMPOSED_LABEL_KEYS = ['aerocryptProfile.defaultSaltValueLabel'];
+        const TERMINAL_PUNCTUATION = /[:;：；៖՝。．]\s*$/u;
+        for (const key of COMPOSED_LABEL_KEYS) {
+            const val = getNestedValue(data.translations, key);
+            if (typeof val === 'string' && TERMINAL_PUNCTUATION.test(val)) {
+                issues.push({
+                    severity: 'error',
+                    message: `${key} ends in terminal punctuation (${JSON.stringify(val.slice(-6))}); the UI appends the value after it, so this renders a doubled separator`
+                });
+            }
+        }
+
         // 7. Type consistency (string vs object mismatch)
         const typeMismatches: string[] = [];
         for (const key of translationKeys) {

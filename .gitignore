@@ -96,6 +96,7 @@ run-clean.sh
 # parent directory is excluded outright.
 /scripts/*
 # Exception: CI-required scripts
+!/scripts/apply-i18n-batch.py
 !/scripts/i18n-validate.ts
 !/scripts/i18n-sync.ts
 !/scripts/i18n-stats.ts

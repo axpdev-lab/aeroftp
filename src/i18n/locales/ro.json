@@ -3353,24 +3353,24 @@
             "applyPrivacy": "Aplică",
             "applyPrivacyAll": "Aplică la {count} elemente",
             "checksumNotOnBackend": "{backend} nu poate genera acest hash pe server",
-            "checksumServerSide": "Amprentele vin de la server; fișierul nu este niciodată descărcat pentru a le calcula, așa că se oferă doar ce stochează deja acest backend.",
-            "checksumNegotiated": "Această listă este ce a anunțat exact acest server, deci un anumit fișier poate totuși să nu aibă niciuna.",
-            "checksumCiphertext": "Acest fișier se află în Overlays Path, deci serverul îl stochează criptat. Aceste amprente acoperă octeții criptați și nu se vor potrivi cu hashul copiei tale locale: exact asta înseamnă criptarea, nu este o eroare. Folosește \"aeroftp-cli crypt verify\" pentru a compara conținutul decriptat cu fișierele tale locale.",
+            "checksumServerSide": "Hash-urile provin de la server; fișierul nu este niciodată descărcat pentru a calcula unul, așa că se oferă doar ceea ce stochează deja acest backend.",
+            "checksumNegotiated": "Această listă reflectă ceea ce a anunțat acest server anume, deci este posibil ca un anumit fișier să nu aibă totuși niciun hash.",
+            "checksumCiphertext": "Acest fișier se află în Overlays Path, deci serverul îl stochează criptat. Aceste hash-uri acoperă octeții criptați și nu se vor potrivi cu hash-ul copiei tale locale: exact asta înseamnă criptarea, nu este o eroare. Folosește \"aeroftp-cli crypt verify\" pentru a compara conținutul decriptat cu fișierele tale locale.",
             "checksumAbsentForObject": "Acest backend poate furniza {algorithm}, dar nu are niciunul stocat pentru acest obiect. Nu s-a descărcat nimic pentru a-l calcula.",
             "checksumMatrixLink": "Ce backend acceptă ce hash",
             "checksumCaveats": {
                 "s3-etag": "ETag este MD5-ul obiectului doar pentru obiectele dintr-o singură parte care nu sunt criptate cu SSE-KMS; pentru celelalte este omis, nu ghicit.",
-                "b2-unverified": "Fișierele mari și încărcările pe care B2 le-a înregistrat ca neverificate nu poartă un SHA-1 utilizabil.",
+                "b2-unverified": "Fișierele mari nu au un SHA-1 utilizabil și nici încărcările pe care B2 le-a înregistrat ca neverificate.",
                 "sftp-sha256sum": "Calculat de gazda la distanță cu sha256sum printr-un canal SSH: octeții sunt citiți pe server și nu îți sunt trimiși niciodată. Omis dacă gazda nu are sha256sum.",
-                "ftp-negotiated": "Depinde de ce anunță serverul în FEAT: HASH sau mai vechile XMD5, XSHA1 și XCRC.",
+                "ftp-negotiated": "Depinde de ceea ce anunță serverul în FEAT: HASH sau mai vechile XMD5, XSHA1 și XCRC.",
                 "webdav-oc-checksums": "Doar ownCloud și Nextcloud publică sume de control, și numai pentru fișierele încărcate de un client care a trimis una.",
-                "drive-workspace-docs": "Documentele native Google Workspace nu au flux de octeți și deci nici amprentă.",
-                "onedrive-hashes": "Care este prezentă depinde de cont: OneDrive personal publică QuickXorHash, conturile de business și SharePoint de obicei SHA-1 și SHA-256.",
-                "dropbox-content-hash": "Nu este o amprentă simplă a fișierului: este un SHA-256 peste SHA-256-ul fiecărui bloc de 4 MiB. Se compară doar cu un alt content hash Dropbox.",
+                "drive-workspace-docs": "Documentele native Google Workspace nu au flux de octeți și deci nici hash.",
+                "onedrive-hashes": "Depinde de cont care dintre ele este prezent: OneDrive personal publică QuickXorHash, conturile de business și SharePoint de obicei SHA-1 și SHA-256.",
+                "dropbox-content-hash": "Nu este un hash simplu al fișierului: este un SHA-256 calculat asupra SHA-256-ului fiecărui bloc de 4 MiB. Se compară doar cu un alt content hash Dropbox.",
                 "koofr-proprietary": "Hashul propriu al Koofr. Se compară doar cu un alt hash Koofr.",
-                "github-blob-sha": "SHA-1-ul blobului git, calculat peste un antet git plus conținut, deci nu se potrivește cu un SHA-1 simplu al aceluiași fișier.",
+                "github-blob-sha": "SHA-1-ul blobului git, calculat asupra unui antet git împreună cu conținutul, deci nu se potrivește cu un SHA-1 simplu al aceluiași fișier.",
                 "immich-asset-checksum": "Suma de control a elementului pe care Immich o înregistrează la încărcare.",
-                "crypt-overlay-ciphertext": "Amprenta acoperă octeții criptați stocați pe server."
+                "crypt-overlay-ciphertext": "Hash-ul acoperă octeții criptați stocați pe server."
             }
         },
         "duplicates": {
@@ -5308,8 +5308,8 @@
             "defaultSaltNeedsStronger": "Introduceți o parolă generată puternică pentru a activa saltul implicit.",
             "defaultSaltTier128": "128-bit (recomandat, necesită o parolă de 20+ caractere)",
             "defaultSaltTier256": "256-bit (mai strict, necesită o parolă de 39+ caractere)",
-            "defaultSaltTierMeaning": "Cele două niveluri stabilesc cât de puternică trebuie să fie parola, nu dimensiunea sării: există o singură sare, de 32 de octeți, aceeași pentru fiecare seif cu sare implicită.",
-            "defaultSaltValueLabel": "Sare implicită publică (AeroCrypt v3), SHA-256 al"
+            "defaultSaltTierMeaning": "Cele două niveluri stabilesc cât de puternică trebuie să fie parola, nu dimensiunea saltului: există un singur salt, de 32 de octeți, același pentru fiecare seif cu salt implicit.",
+            "defaultSaltValueLabel": "Salt implicit public (AeroCrypt v3), SHA-256 al șirului"
         },
         "modalGuard": {
             "busyTitle": "Operațiune în curs",
