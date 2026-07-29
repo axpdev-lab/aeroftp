@@ -21993,14 +21993,15 @@ struct CatalogPick<'a> {
 /// Substring-match the embedded provider catalog (#311 row 1 picker UX, owner pick:
 /// typed `n [query]`). Matches the query against company name, method label,
 /// protocol, provider id, note and country, returning one row per matching
-/// (company, method), sorted company-then-label. Empty query returns nothing (the
-/// caller asks the user to narrow), so the 50+ company catalog never floods the
-/// line-mode prompt.
+/// (company, method), sorted company-then-label.
+///
+/// An empty query returns the WHOLE catalog (#311 follow-up). It used to return
+/// nothing so a bare `n` could not flood a line-mode prompt with 50+ companies,
+/// but that also meant there was no way to see what was on offer without already
+/// knowing a name to type. The rendered table is the thing that made browsing
+/// viable, so the guard moved there: the caller prints a page at a time.
 fn catalog_pick_matches<'a>(catalog: &'a [CliCatalogCompany], query: &str) -> Vec<CatalogPick<'a>> {
     let q = query.trim().to_ascii_lowercase();
-    if q.is_empty() {
-        return Vec::new();
-    }
     let mut rows: Vec<CatalogPick<'a>> = Vec::new();
     for c in catalog {
         for m in &c.protocols {
@@ -22030,6 +22031,179 @@ fn catalog_pick_matches<'a>(catalog: &'a [CliCatalogCompany], query: &str) -> Ve
     rows
 }
 
+/// Wire id a catalog row is selected by when the user types a name rather than a
+/// number: the provider id when there is one, else the bare protocol.
+fn catalog_pick_id(pick: &CatalogPick<'_>) -> String {
+    pick.method
+        .provider_id
+        .clone()
+        .unwrap_or_else(|| pick.method.protocol.clone())
+}
+
+/// Render the provider picks as a table (#311).
+///
+/// The picker used to print a flat numbered list with the method label cut to
+/// eight characters, which is where "B2 native" and "Box native" stop being
+/// distinguishable. This prints real columns with a header, sized to the content
+/// and then to the terminal, and dims every other row the way `rclone config`
+/// does so a long list stays readable. Colour goes through `use_color`, so
+/// NO_COLOR and non-TTY output stay plain. Everything goes to stderr, keeping
+/// stdout free for piped output.
+fn render_catalog_picks(picks: &[CatalogPick<'_>], offset: usize) {
+    let color_on = use_color();
+    // A pty with no size (a pipe, CI, `script` against /dev/null) reports 0
+    // columns, which would collapse the id column to its floor and print an
+    // empty rule. Assume a classic terminal in that case.
+    let width = terminal_width().max(80);
+
+    let idx_w = (offset + picks.len()).to_string().len().max(2);
+    let company_w = picks
+        .iter()
+        .map(|p| p.company.chars().count())
+        .max()
+        .unwrap_or(8)
+        .clamp(8, 28)
+        .max("Provider".len());
+    let label_w = picks
+        .iter()
+        .map(|p| p.method.label.chars().count())
+        .max()
+        .unwrap_or(6)
+        .clamp(6, 22)
+        .max("Method".len());
+    // The id column takes whatever the terminal has left, within reason.
+    let fixed = 2 + idx_w + 2 + company_w + 2 + label_w + 2 + 6;
+    let id_w = picks
+        .iter()
+        .map(|p| catalog_pick_id(p).chars().count())
+        .max()
+        .unwrap_or(8)
+        .clamp(8, width.saturating_sub(fixed).clamp(8, 30))
+        .max("Id".len());
+
+    let header = format!(
+        "  {:>idx$}  {:<cw$}  {:<lw$}  {:<iw$}  {}",
+        "#",
+        "Provider",
+        "Method",
+        "Id",
+        "Cost",
+        idx = idx_w,
+        cw = company_w,
+        lw = label_w,
+        iw = id_w,
+    );
+    eprintln!("{}", paint_bold(&header, color_on));
+    eprintln!(
+        "{}",
+        paint_dim(
+            &"\u{2500}".repeat(header.chars().count().min(width)),
+            color_on
+        )
+    );
+
+    for (i, p) in picks.iter().enumerate() {
+        let row = format!(
+            "  {:>idx$}  {:<cw$}  {:<lw$}  {:<iw$}  {}",
+            offset + i + 1,
+            truncate_display(p.company, company_w),
+            truncate_display(&p.method.label, label_w),
+            truncate_display(&catalog_pick_id(p), id_w),
+            if p.method.paid { "paid" } else { "free" },
+            idx = idx_w,
+            cw = company_w,
+            lw = label_w,
+            iw = id_w,
+        );
+        // Alternating rows, rclone-config style: every other line dimmed.
+        if i % 2 == 1 {
+            eprintln!("{}", paint_dim(&row, color_on));
+        } else {
+            eprintln!("{}", row);
+        }
+    }
+}
+
+/// Outcome of reading one selector at the provider-pick prompt.
+enum CatalogSelection {
+    Picked(usize),
+    /// Nothing matched, or the name was ambiguous: the reason is already on
+    /// screen and the caller re-prompts instead of throwing the user out.
+    Retry,
+    Abort,
+}
+
+/// Resolve a typed selector to a row (#311): a 1-based index, or a name.
+///
+/// Names are matched case-insensitively, in decreasing order of confidence:
+/// exact company, exact provider id or protocol, then a unique substring of the
+/// company. An ambiguous name lists its candidates rather than guessing. Typing
+/// a name used to be a parse error that aborted the whole creation flow, which
+/// meant one wrong keystroke sent the user back to the start.
+fn resolve_catalog_selector(picks: &[CatalogPick<'_>], selector: &str) -> CatalogSelection {
+    let sel = selector.trim();
+    if sel.is_empty() || sel == "0" {
+        return CatalogSelection::Abort;
+    }
+    if let Ok(n) = sel.parse::<usize>() {
+        if n >= 1 && n <= picks.len() {
+            return CatalogSelection::Picked(n - 1);
+        }
+        eprintln!("Pick out of range (1..={}).", picks.len());
+        return CatalogSelection::Retry;
+    }
+
+    let lower = sel.to_ascii_lowercase();
+    let exact_company: Vec<usize> = picks
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.company.to_ascii_lowercase() == lower)
+        .map(|(i, _)| i)
+        .collect();
+    let by_id: Vec<usize> = picks
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| catalog_pick_id(p).to_ascii_lowercase() == lower)
+        .map(|(i, _)| i)
+        .collect();
+    let partial: Vec<usize> = picks
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.company.to_ascii_lowercase().contains(&lower))
+        .map(|(i, _)| i)
+        .collect();
+
+    for candidates in [&exact_company, &by_id, &partial] {
+        match candidates.len() {
+            0 => continue,
+            1 => return CatalogSelection::Picked(candidates[0]),
+            _ => {
+                eprintln!("'{}' matches {} rows:", sel, candidates.len());
+                for &i in candidates.iter().take(10) {
+                    eprintln!(
+                        "  {:>2}) {} - {} [{}]",
+                        i + 1,
+                        picks[i].company,
+                        picks[i].method.label,
+                        catalog_pick_id(&picks[i]),
+                    );
+                }
+                if candidates.len() > 10 {
+                    eprintln!("  ... and {} more", candidates.len() - 10);
+                }
+                eprintln!("Pick its number, or type a longer name.");
+                return CatalogSelection::Retry;
+            }
+        }
+    }
+
+    eprintln!(
+        "No row matches '{}'. Pick a number, or type a provider name.",
+        sel
+    );
+    CatalogSelection::Retry
+}
+
 /// The catalog-driven New(N) verb for `profiles -i` (#311 row 1, Phase B), the
 /// rclone `n) New remote` model: pick a provider from `aero catalog` by substring,
 /// name it, fill the protocol-aware fields, and persist on the shared engine.
@@ -22047,18 +22221,16 @@ fn interactive_new_profile(
         load_cli_catalog().map_err(|e| format!("Failed to parse provider catalog: {}", e))?;
 
     // Resolve the query: inline `n <query>` wins, else prompt. An empty answer
-    // aborts so a stray `n` never traps the user in a prompt.
+    // now browses the whole catalog instead of aborting (#311): the table makes
+    // that readable, and there was no other way to see what is on offer.
     let mut query = query.trim().to_string();
     if query.is_empty() {
-        match section_prompt_line("New profile - search provider (name/protocol, empty to abort): ")
-        {
+        match section_prompt_line(
+            "New profile - search provider (name/protocol, Enter to list all): ",
+        ) {
             Ok(Some(l)) => query = l.trim().to_string(),
             Ok(None) => return Ok(None),
             Err(e) => return Err(format!("Read error: {}", e)),
-        }
-        if query.is_empty() {
-            eprintln!("Empty search: new profile aborted.");
-            return Ok(None);
         }
     }
 
@@ -22071,43 +22243,35 @@ fn interactive_new_profile(
         return Ok(None);
     }
 
-    // Single unambiguous match skips the numbered pick; otherwise list and prompt.
+    // Single unambiguous match skips the pick; otherwise show the table and
+    // prompt until the user picks a row or asks to leave. A selector that does
+    // not resolve re-prompts (it used to abort the whole creation flow).
     let chosen = if matches.len() == 1 {
         &matches[0]
     } else {
-        eprintln!("\nMatches for '{}':", query);
-        for (i, p) in matches.iter().enumerate() {
-            eprintln!(
-                "  {:>2}) {:<24} {:<8} [{}]{}",
-                i + 1,
-                truncate_display(p.company, 24),
-                truncate_display(&p.method.label, 8),
-                p.method
-                    .provider_id
-                    .as_deref()
-                    .unwrap_or(&p.method.protocol),
-                if p.method.paid { "  (paid)" } else { "" },
-            );
+        if query.is_empty() {
+            eprintln!("\nAll providers ({}):", matches.len());
+        } else {
+            eprintln!("\nMatches for '{}' ({}):", query, matches.len());
         }
-        let sel = match section_prompt_line("pick # (0 to abort): ") {
-            Ok(Some(l)) => l.trim().to_string(),
-            Ok(None) => return Ok(None),
-            Err(e) => return Err(format!("Read error: {}", e)),
-        };
-        if sel.is_empty() || sel == "0" {
-            eprintln!("New profile aborted.");
-            return Ok(None);
-        }
-        match sel.parse::<usize>() {
-            Ok(n) if n >= 1 && n <= matches.len() => &matches[n - 1],
-            _ => {
-                eprintln!(
-                    "Pick out of range (1..={}). New profile aborted.",
-                    matches.len()
-                );
-                return Ok(None);
+        render_catalog_picks(&matches, 0);
+        let mut index = None;
+        while index.is_none() {
+            let sel = match section_prompt_line("pick # or name (0 to abort): ") {
+                Ok(Some(l)) => l.trim().to_string(),
+                Ok(None) => return Ok(None),
+                Err(e) => return Err(format!("Read error: {}", e)),
+            };
+            match resolve_catalog_selector(&matches, &sel) {
+                CatalogSelection::Picked(i) => index = Some(i),
+                CatalogSelection::Retry => continue,
+                CatalogSelection::Abort => {
+                    eprintln!("New profile aborted.");
+                    return Ok(None);
+                }
             }
         }
+        &matches[index.expect("loop exits only with an index")]
     };
 
     let protocol = chosen.method.protocol.clone();
@@ -66472,9 +66636,12 @@ mod tests {
     fn catalog_pick_matches_substring_across_company_and_protocol() {
         let catalog = load_cli_catalog().expect("embedded catalog parses");
 
-        // Empty query never floods the prompt with the whole catalog.
-        assert!(catalog_pick_matches(&catalog, "").is_empty());
-        assert!(catalog_pick_matches(&catalog, "   ").is_empty());
+        // #311: an empty query now browses the whole catalog. It used to return
+        // nothing, which left no way to see the offer without knowing a name.
+        let all = catalog_pick_matches(&catalog, "");
+        let total: usize = catalog.iter().map(|c| c.protocols.len()).sum();
+        assert_eq!(all.len(), total, "empty query must list every method");
+        assert_eq!(catalog_pick_matches(&catalog, "   ").len(), total);
 
         // Company-name substring (case-insensitive) finds MEGA's methods.
         let mega = catalog_pick_matches(&catalog, "mega");
@@ -66513,6 +66680,99 @@ mod tests {
 
         // A nonsense query yields nothing (caller asks the user to narrow).
         assert!(catalog_pick_matches(&catalog, "zzqqxx-not-a-provider").is_empty());
+    }
+
+    // #311: typing a name at the pick prompt used to be a parse error that threw
+    // the user out of profile creation. It now resolves, and an unresolvable
+    // answer re-prompts instead of aborting.
+    #[test]
+    fn catalog_selector_takes_an_index_or_a_name() {
+        let catalog = load_cli_catalog().expect("embedded catalog parses");
+        let picks = catalog_pick_matches(&catalog, "");
+        assert!(picks.len() > 2, "catalog should not be trivially small");
+
+        let count_company = |name: &str| {
+            picks
+                .iter()
+                .filter(|p| p.company.eq_ignore_ascii_case(name))
+                .count()
+        };
+
+        // 1-based index, on any row.
+        assert!(matches!(
+            resolve_catalog_selector(&picks, "1"),
+            CatalogSelection::Picked(0)
+        ));
+        assert!(matches!(
+            resolve_catalog_selector(&picks, &picks.len().to_string()),
+            CatalogSelection::Picked(i) if i == picks.len() - 1
+        ));
+
+        // A company that exposes exactly one method resolves by name, in any case.
+        let solo = picks
+            .iter()
+            .position(|p| count_company(p.company) == 1)
+            .expect("some company exposes a single method");
+        assert!(matches!(
+            resolve_catalog_selector(&picks, &picks[solo].company.to_uppercase()),
+            CatalogSelection::Picked(i) if i == solo
+        ));
+
+        // A company with several methods is ambiguous by name: it lists the
+        // candidates and asks again rather than guessing one.
+        if let Some(multi) = picks.iter().find(|p| count_company(p.company) > 1) {
+            assert!(matches!(
+                resolve_catalog_selector(&picks, multi.company),
+                CatalogSelection::Retry
+            ));
+        }
+
+        // A provider id that is unique, and is not itself a company name,
+        // resolves to exactly its row.
+        let by_unique_id = picks.iter().enumerate().find(|(_, p)| {
+            let id = catalog_pick_id(p);
+            picks.iter().filter(|q| catalog_pick_id(q) == id).count() == 1
+                && count_company(&id) == 0
+        });
+        if let Some((i, p)) = by_unique_id {
+            assert!(matches!(
+                resolve_catalog_selector(&picks, &catalog_pick_id(p).to_uppercase()),
+                CatalogSelection::Picked(j) if j == i
+            ));
+        }
+
+        // Out of range and unknown names retry; they no longer abort.
+        assert!(matches!(
+            resolve_catalog_selector(&picks, "99999"),
+            CatalogSelection::Retry
+        ));
+        assert!(matches!(
+            resolve_catalog_selector(&picks, "zzqqxx-not-a-provider"),
+            CatalogSelection::Retry
+        ));
+
+        // Only an empty answer or 0 leaves.
+        assert!(matches!(
+            resolve_catalog_selector(&picks, ""),
+            CatalogSelection::Abort
+        ));
+        assert!(matches!(
+            resolve_catalog_selector(&picks, "0"),
+            CatalogSelection::Abort
+        ));
+    }
+
+    // The table is what made browsing the whole catalog viable, so pin its shape:
+    // a header, a rule, one row per pick, numbered from the page offset.
+    #[test]
+    fn catalog_table_numbers_rows_from_the_page_offset() {
+        let catalog = load_cli_catalog().expect("embedded catalog parses");
+        let picks = catalog_pick_matches(&catalog, "s3");
+        assert!(picks.len() > 1);
+        // Rendering writes to stderr; this asserts it stays panic-free on both a
+        // first page and an offset page (the width maths is index-width driven).
+        render_catalog_picks(&picks, 0);
+        render_catalog_picks(&picks[..1], 98);
     }
 
     #[test]
