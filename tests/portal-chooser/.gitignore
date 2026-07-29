@@ -1,0 +1,10 @@
+# Run artefacts. recon-session.sh defaults its output to $PWD/recon-out, so
+# running it from this directory drops screenshots, accessible trees, app logs
+# and a private config path straight into the working tree. The gate writes to
+# PORTAL_TEST_OUT instead, but the default is the one people hit by hand.
+recon-out/
+portal-test-out/
+
+# Left behind by running the python helpers directly.
+__pycache__/
+*.pyc
