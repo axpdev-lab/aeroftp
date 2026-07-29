@@ -1190,6 +1190,10 @@ impl StorageProvider for CryptOverlayProvider {
         // The ciphertext blob is self-contained (the content nonce is embedded,
         // not derived from the name), so copying it verbatim to a new encrypted
         // name stays decryptable. Map both ends; the content is untouched.
+        // That self-containment is exactly why the boundary still needs guarding:
+        // copied across it, the blob stays perfectly valid ciphertext under a
+        // cleartext name that nothing can decrypt (#390).
+        self.refuse_crossing_the_anchor("Copy", from, to)?;
         let enc_from = self.map(from, false, AccessKind::Write)?;
         let enc_to = self.map(to, false, AccessKind::Write)?;
         self.inner.server_copy(&enc_from, &enc_to).await
@@ -4860,6 +4864,26 @@ mod tests {
             .server_side_copy("/Vault/secret.txt", "/Plain/secret.txt")
             .await
             .expect_err("encrypted -> plain copy must be refused");
+        assert!(
+            err.to_string().contains("cross the Overlays Path boundary"),
+            "unexpected error: {err}"
+        );
+
+        // server_copy is a SEPARATE method (the legacy path copy_fallback.rs
+        // reaches, and the default server_side_copy delegates to). Guarding only
+        // its sibling left the same corruption reachable through it.
+        let err = provider
+            .server_copy("/Vault/secret.txt", "/Plain/secret.txt")
+            .await
+            .expect_err("encrypted -> plain server_copy must be refused");
+        assert!(
+            err.to_string().contains("cross the Overlays Path boundary"),
+            "unexpected error: {err}"
+        );
+        let err = provider
+            .server_copy("/Plain/note.txt", "/Vault/note.txt")
+            .await
+            .expect_err("plain -> encrypted server_copy must be refused");
         assert!(
             err.to_string().contains("cross the Overlays Path boundary"),
             "unexpected error: {err}"

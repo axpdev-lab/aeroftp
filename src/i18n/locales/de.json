@@ -1951,7 +1951,7 @@
             "transferQueue": "Übertragungswarteschlange",
             "activityLog": "Aktivitätsprotokoll",
             "aerocloudTitle": "AeroCloud-Status",
-            "updateAvailable": "Update Verfügbar",
+            "updateAvailable": "Update verfügbar",
             "showProgress": "Übertragungsfortschritt anzeigen"
         },
         "migration": {

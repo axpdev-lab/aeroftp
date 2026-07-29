@@ -5305,8 +5305,8 @@
             "defaultSaltToggle": "Predvolená soľ (len heslo otvára; po vytvorení nie je potrebná súprava ani úložisko kľúčov)",
             "defaultSaltToggleHint": "Verejná konštantná soľ (rclone-style). Vyžaduje vygenerované heslo s vysokou entropiou. Rovnaké heslo na viacerých trezoroch robí šifrované názvy prepojiteľnými bez kľúča.",
             "defaultSaltNeedsStronger": "Zadajte silné vygenerované heslo na zapnutie predvoleného saltu.",
-            "defaultSaltOneSaltNote": "Existuje jediný salt: 32 bajtov, verejný, rovnaký pre každý trezor s predvoleným saltom.",
-            "defaultSaltValueLabel": "Verejný predvolený salt (AeroCrypt v3), SHA-256 z"
+            "defaultSaltOneSaltNote": "Existuje jediná soľ: 32 bajtov, verejná, rovnaká pre každý trezor s predvolenou soľou.",
+            "defaultSaltValueLabel": "Verejná predvolená soľ (AeroCrypt v3), SHA-256 z"
         },
         "modalGuard": {
             "busyTitle": "Prebieha operácia",

@@ -4597,10 +4597,10 @@
             "densityCompact": "Glaustos eilutės",
             "densityComfortable": "Patogios eilutės",
             "table": {
-                "columnSettings": "Columns",
-                "manualOrderActive": "Manual order active",
-                "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
-                "clickToSortBy": "Sort by {column}",
+                "columnSettings": "Stulpeliai",
+                "manualOrderActive": "Rankinis rikiavimas aktyvus",
+                "clickToReturnManual": "Rikiuojama pagal {column} - spustelėkite #, kad įjungtumėte rankinį rikiavimą",
+                "clickToSortBy": "Rikiuoti pagal {column}",
                 "footerSummary": "{count} profiliai · {unique} unikalūs debesų diskai · {usage}",
                 "columns": {
                     "index": "#",

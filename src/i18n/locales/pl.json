@@ -1951,7 +1951,7 @@
             "transferQueue": "Kolejka Transferów",
             "activityLog": "Dziennik Aktywności",
             "aerocloudTitle": "Status AeroCloud",
-            "updateAvailable": "Dostępna Aktualizacja",
+            "updateAvailable": "Dostępna aktualizacja",
             "showProgress": "Pokaż postęp transferu"
         },
         "migration": {

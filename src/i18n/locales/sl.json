@@ -1951,7 +1951,7 @@
             "transferQueue": "Čakalna vrsta prenosov",
             "activityLog": "Dnevnik dejavnosti",
             "aerocloudTitle": "Status AeroCloud",
-            "updateAvailable": "Na voljo posodobitev",
+            "updateAvailable": "Posodobitev na voljo",
             "showProgress": "Prikaži napredek prenosa"
         },
         "migration": {

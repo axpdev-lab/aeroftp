@@ -105,8 +105,14 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     // mode when left unticked, so both are gone (Ehud #369, #276).
     const requiredLen = 20;
     const meetsEntropy = strengthLevel === 4 && pwLen >= requiredLen;
-    const effectiveUseDefaultSalt = aeroCryptDefaultSalt && meetsEntropy;
+    // The toggle IS the intent, with no second gate that can quietly overrule it.
+    // ANDing entropy in here would rebuild the very bug this removes: the toggle
+    // is only DISABLED when the password weakens, never unchecked, so ticking it
+    // on a strong password and then weakening it would leave it visibly on while
+    // the vault got a per-vault salt. Mismatch blocks the create instead (#276).
+    const effectiveUseDefaultSalt = aeroCryptDefaultSalt;
     const canToggleDefaultSalt = meetsEntropy;
+    const defaultSaltEntropyMismatch = aeroCryptDefaultSalt && !meetsEntropy;
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -249,6 +255,10 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     const handleCreate = async () => {
         // Tier 1: keyfile-only vaults (empty password) are legal by design.
         if ((!password && !keyfilePath) || password !== confirmPassword) return;
+        // #276: never create the vault with default-salt intent the backend would
+        // reject for entropy. Refusing is the point: the alternative is a vault
+        // that silently got a per-vault salt while the toggle read as on.
+        if (defaultSaltEntropyMismatch) return;
         setLoading(true);
         setError(null);
         try {
@@ -670,6 +680,11 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                         />
                                         <span>{t('aerocryptNative.defaultSaltLabel')}</span>
                                     </label>
+                                    {defaultSaltEntropyMismatch && (
+                                        <span className="ml-5 text-xs text-red-600 dark:text-red-400 leading-relaxed">
+                                            {t('aerocryptProfile.defaultSaltNeedsStronger')} ({pwLen}/{requiredLen})
+                                        </span>
+                                    )}
                                     {aeroCryptDefaultSalt && (
                                         <>
                                             {/* Ehud #369: the salt is a single 32-byte public
@@ -713,7 +728,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                             ) : (
                                 <button
                                     onClick={handleCreate}
-                                    disabled={(!password && !keyfilePath) || password !== confirmPassword || loading}
+                                    disabled={(!password && !keyfilePath) || password !== confirmPassword || loading || defaultSaltEntropyMismatch}
                                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}

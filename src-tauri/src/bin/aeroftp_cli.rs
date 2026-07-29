@@ -20764,14 +20764,14 @@ fn tokenize_quoted(s: &str) -> Vec<String> {
     out
 }
 
-/// Render a one-shot summary of the renumbered profile table after a
-/// destructive action, splicing the deleted profiles back as red
-/// tombstones (`-` index) so the user can see what just disappeared and
-/// pick the next target. Columns shown: index, name, badges, host.
 /// Header of the profile-name column, shared by the plain profile tables and by
 /// `ProfileColId::Name` so the CLI, the TUI and the GUI all say the same word.
 const PROFILE_HEADER: &str = "Profile";
 
+/// Render a one-shot summary of the renumbered profile table after a
+/// destructive action, splicing the deleted profiles back as red
+/// tombstones (`-` index) so the user can see what just disappeared and
+/// pick the next target. Columns shown: index, name, badges, host.
 fn print_profiles_summary_with_tombstones(
     live: &[serde_json::Value],
     tombstones: &[(usize, serde_json::Value)],
