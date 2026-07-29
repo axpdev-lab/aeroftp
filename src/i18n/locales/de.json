@@ -5305,7 +5305,7 @@
             "defaultSaltToggle": "Standard-Salt (nur Passwort öffnet; nach Erstellung kein Kit oder Keystore nötig)",
             "defaultSaltToggleHint": "Öffentliches konstantes Salt (rclone-style). Erfordert ein generiertes Passwort mit hoher Entropie. Dasselbe Passwort auf mehreren Tresoren macht verschlüsselte Namen ohne Schlüssel verknüpfbar.",
             "defaultSaltAttestation": "Ich habe dieses Passwort mit einem Passwort-Manager generiert und verstehe den Linkbarkeits-Kompromiss.",
-            "defaultSaltNeedsStronger": "Geben Sie ein starkes generiertes Passwort ein, um den Standard-Salt zu aktivieren.",
+            "defaultSaltNeedsStronger": "Geben Sie ein starkes generiertes Passwort ein, um das Standard-Salt zu aktivieren.",
             "defaultSaltTier128": "128-bit (empfohlen, erfordert ein Passwort mit 20+ Zeichen)",
             "defaultSaltTier256": "256-bit (strenger, erfordert ein Passwort mit 39+ Zeichen)",
             "defaultSaltTierMeaning": "Die beiden Stufen legen fest, wie stark dein Passwort sein muss, nicht die Größe des Salt: Es gibt genau ein Salt, 32 Byte, dasselbe für jeden Tresor mit Standard-Salt.",

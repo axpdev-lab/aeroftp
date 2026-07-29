@@ -5305,7 +5305,7 @@
             "defaultSaltToggle": "Oletussuola (vain salasana avaa; luomisen jälkeen ei tarvita pakettia tai avainvarastoa)",
             "defaultSaltToggleHint": "Julkinen vakiosuola (rclone-tyyli). Vaatii luodun korkean entropian salasanan. Sama salasana useissa holveissa tekee salatuista nimistä linkitettäviä ilman avainta.",
             "defaultSaltAttestation": "Loin tämän salasanan salasananhallinnalla ja ymmärrän linkitettävyyden kompromissin.",
-            "defaultSaltNeedsStronger": "Syötä vahva luotu salasana ottaaksesi oletussaltin käyttöön.",
+            "defaultSaltNeedsStronger": "Syötä vahva luotu salasana ottaaksesi oletussuolan käyttöön.",
             "defaultSaltTier128": "128-bit (suositeltu, vaatii 20+ merkin salasanan)",
             "defaultSaltTier256": "256-bit (tiukempi, vaatii 39+ merkin salasanan)",
             "defaultSaltTierMeaning": "Kaksi tasoa määrittävät, kuinka vahva salasanasi on oltava, ei suolan kokoa: suolia on yksi, 32 tavua, sama jokaisessa oletussuolaa käyttävässä holvissa.",

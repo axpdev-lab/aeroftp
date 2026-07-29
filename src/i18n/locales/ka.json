@@ -3301,7 +3301,7 @@
         "properties": {
             "general": "ზოგადი",
             "permissions": "წვდომები",
-            "checksum": "ჩეკსუმა",
+            "checksum": "საკონტროლო ჯამი",
             "created": "შექმნილია",
             "accessed": "ბოლო წვდომა",
             "owner": "მფლობელი",
