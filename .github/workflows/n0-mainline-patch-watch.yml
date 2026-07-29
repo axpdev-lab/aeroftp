@@ -97,11 +97,24 @@ jobs:
           # Idempotent: the schedule fires every week and the condition stays
           # true once it flips, so without this guard it would open one issue a
           # week until someone acts.
-          existing="$(gh issue list --state open --search "$TITLE in:title" \
-            --json number,title --jq "map(select(.title == env.TITLE)) | .[0].number // empty")"
+          #
+          # --state all, not open: a chore closed while the patch section is
+          # still in the tree would otherwise be invisible here, and the next
+          # Monday would file a duplicate. Closed-but-still-true is reopened
+          # instead, which is the honest state - the work was not done.
+          existing="$(gh issue list --state all --search "$TITLE in:title" \
+            --json number,title,state \
+            --jq "map(select(.title == env.TITLE)) | .[0] | if . == null then empty else \"\(.number) \(.state)\" end")"
 
           if [ -n "$existing" ]; then
-            echo "already tracked in #$existing, not filing again"
+            number="${existing%% *}"
+            state="${existing##* }"
+            if [ "$state" = "CLOSED" ]; then
+              echo "#$number was closed but the patch section is still here; reopening"
+              gh issue reopen "$number" --comment "Reopened automatically: the weekly check still resolves without \`[patch.crates-io]\`, so this chore is not done."
+            else
+              echo "already tracked in #$number, not filing again"
+            fi
             exit 0
           fi
 

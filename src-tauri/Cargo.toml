@@ -371,6 +371,11 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 # by `rev` on purpose: a branch would let the patched source move under us
 # without the lockfile saying so.
 #
+# Read the resolved version before acting on a green: an OLDER n0-mainline also
+# makes the conflict disappear, because the exact pin is what an older release
+# does not carry yet. The checker prints the version it settled on for exactly
+# this reason. A downgrade is not the exit condition, it is a different problem.
+#
 # That condition is WATCHED, not merely written here:
 # `.github/workflows/n0-mainline-patch-watch.yml` runs
 # `.github/scripts/check-n0-mainline-patch.sh` every Monday, which strips this
