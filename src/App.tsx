@@ -10766,6 +10766,7 @@ const App: React.FC = () => {
           initialSource: currentLocalPath || '',
           initialDestination: currentRemotePath || '',
           activeProfileId: activeUnifiedRemoteProfile?.id,
+          activeProfileName: activeUnifiedRemoteProfile?.name,
           isProvider: isProviderConn,
           excludePatterns: [],
           protocol: activeUnifiedRemoteProfile?.protocol,

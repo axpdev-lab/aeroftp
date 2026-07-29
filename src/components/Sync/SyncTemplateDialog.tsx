@@ -30,7 +30,13 @@ interface SyncTemplateDialogProps {
     onClose: () => void;
     localPath: string;
     remotePath: string;
-    profileId: string;
+    /**
+     * Name of the connected saved server. It is what the exported script
+     * connects with (`CONNECT --profile <name>`), and it is deliberately not
+     * the sync preset: the two are separate objects and conflating them was
+     * what broke every export path (#514).
+     */
+    serverProfileName: string;
     excludePatterns: string[];
 }
 
@@ -49,7 +55,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     onClose,
     localPath,
     remotePath,
-    profileId,
+    serverProfileName,
     excludePatterns,
 }) => {
     const t = useTranslation();
@@ -67,6 +73,11 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     const [templateDesc, setTemplateDesc] = useState('');
     const [exportFormat, setExportFormat] = useState<ExportFormat>('aeroftp-script');
     const [alsoGenerateWrapper, setAlsoGenerateWrapper] = useState(true);
+    // The sync preset the export describes (direction, comparison keys,
+    // retry policy). Every export command resolves this id against the
+    // sync-preset store, which is why it must not be a saved-server id.
+    const [syncProfiles, setSyncProfiles] = useState<SyncProfile[]>([]);
+    const [presetId, setPresetId] = useState('');
 
     const defaultScriptFormat = useMemo(detectDefaultScriptFormat, []);
 
@@ -80,6 +91,28 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
             setExportFormat('aeroftp-script');
             setAlsoGenerateWrapper(true);
         }
+    }, [isOpen]);
+
+    // Builtins first (Mirror, Two-way, Backup, Pull, Remote Backup), then any
+    // custom preset saved from an imported script. Reloaded on each open so a
+    // preset applied from the Import tab shows up without a remount.
+    useEffect(() => {
+        if (!isOpen) return;
+        let cancelled = false;
+        void (async () => {
+            try {
+                const profiles = await invoke<SyncProfile[]>('load_sync_profiles_cmd');
+                if (cancelled) return;
+                setSyncProfiles(profiles);
+                setPresetId(prev =>
+                    profiles.some(p => p.id === prev) ? prev : profiles[0]?.id || '',
+                );
+            } catch {
+                // Leave the picker empty: Export stays disabled rather than
+                // reaching a backend lookup that cannot succeed.
+            }
+        })();
+        return () => { cancelled = true; };
     }, [isOpen]);
 
     useEffect(() => {
@@ -98,7 +131,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
         const jsonContent = await invoke<string>('export_sync_template_cmd', {
             name: templateName || 'Sync Template',
             description: templateDesc,
-            profileId,
+            profileId: presetId,
             localPath,
             remotePath,
             excludePatterns,
@@ -128,11 +161,14 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
             'aerosync_export_script_cmd',
             {
                 args: {
-                    profile_id: profileId,
-                    profile_display_name: templateName || null,
+                    profile_id: presetId,
+                    // The script's own label is the template name when the
+                    // user typed one; what it CONNECTs with is always the
+                    // saved server, resolved by name against the vault.
+                    profile_display_name: templateName || serverProfileName || null,
                     local_path: localPath,
                     remote_path: remotePath,
-                    connect_profile: templateName || null,
+                    connect_profile: serverProfileName || null,
                     exclude_patterns_override:
                         excludePatterns.length > 0 ? excludePatterns : null,
                     dry_run: false,
@@ -169,8 +205,8 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
         if (!filePath) return false;
         const scriptContent = await invoke<string>('export_sync_script_cmd', {
             args: {
-                profile_id: profileId,
-                profile_display_name: templateName || 'AeroFTP Server',
+                profile_id: presetId,
+                profile_display_name: serverProfileName || templateName || 'AeroFTP Server',
                 template_name: templateName,
                 template_description: templateDesc,
                 local_path: localPath,
@@ -461,6 +497,20 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                             />
                             <div className="space-y-1">
                                 <div className="text-[11px] uppercase tracking-wide text-gray-500">
+                                    {t('syncPresets.title')}
+                                </div>
+                                <select
+                                    className="w-full text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 dark:bg-gray-800"
+                                    value={presetId}
+                                    onChange={e => setPresetId(e.target.value)}
+                                >
+                                    {syncProfiles.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <div className="text-[11px] uppercase tracking-wide text-gray-500">
                                     {t('syncPanel.templateFormat') || 'Format'}
                                 </div>
                                 <div className="space-y-1">
@@ -496,7 +546,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                                 <button
                                     className="px-6 py-2 rounded-lg bg-purple-500 text-white text-xs font-medium hover:bg-purple-600 disabled:opacity-50"
                                     onClick={handleExport}
-                                    disabled={exporting}
+                                    disabled={exporting || !presetId}
                                 >
                                     {exporting ? '...' : exportButtonLabel}
                                 </button>

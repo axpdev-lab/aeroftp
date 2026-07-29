@@ -444,14 +444,23 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
             <div data-tauri-drag-region className="flex-1 h-full" />
 
             {/* Right: 3-cluster layout (page-nav / utility / window controls).
-                gap-3 between clusters replaces ad-hoc vertical separators. */}
-            <div className="flex items-center gap-3">
+                The 12px inter-cluster spacers are explicit drag regions rather
+                than a `gap-3` on this container: a gap is dead space the window
+                manager cannot see, so the bar was undraggable on its whole
+                right half (#511). Same reason the reserved slot below carries
+                a drag filler. */}
+            <div className="flex items-center">
                 {/* Cluster 1: Page Navigation.
                     min-w-[96px] reserves the slot so the utility cluster never
                     shifts when the button label/visibility changes (Connect vs
                     Disconnect have different widths, and on the connection
-                    screen neither button renders). */}
+                    screen neither button renders). The filler makes that
+                    reserved width draggable: on My Servers and Add Service
+                    neither button renders, so all 96px sat empty and inert
+                    right next to AeroVault, which is exactly where #511 was
+                    reported. */}
                 <div className="flex items-center justify-end min-w-[96px] gap-1">
+                    <div data-tauri-drag-region className="flex-1 h-full" />
                     {!showConnectionScreen && (
                         <button
                             onClick={onShowConnectionScreen}
@@ -482,6 +491,8 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                         </button>
                     ) : null}
                 </div>
+
+                <div data-tauri-drag-region className="w-3 h-full shrink-0" />
 
                 {/* Cluster 2: Utility (Notifications, Security Tools, AeroVault, Users, Lock, Settings) */}
                 <div className="flex items-center gap-0.5">
@@ -539,6 +550,8 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     Hidden on macOS, where the native Overlay traffic lights
                     (top-left) provide minimize/maximize/close instead (#290). */}
                 {!isMac && (
+                <>
+                <div data-tauri-drag-region className="w-3 h-full shrink-0" />
                 <div className="flex items-center gap-0.5">
                     <button
                         onClick={handleMinimize}
@@ -566,6 +579,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                         <X size={15} className="text-[var(--color-text-secondary)] group-hover:text-white" />
                     </button>
                 </div>
+                </>
                 )}
             </div>
         </div>
