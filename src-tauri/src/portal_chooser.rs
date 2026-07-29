@@ -218,30 +218,39 @@ mod tests {
     /// command there, and on Linux that is the GTK thread, so a sync version of a
     /// check that waits on the session bus freezes the window in front of a click.
     ///
-    /// The pin is the `.await`, and it acts at **compile time**: make
-    /// `chooser_unavailable` synchronous again and this test stops building, which
-    /// no one can quietly delete the way an assertion can be deleted. The verdict
+    /// The pin is `block_on`, and it acts at **compile time**: it only accepts a
+    /// future, so making `chooser_unavailable` synchronous again stops this test
+    /// building instead of failing an assertion someone can delete. The verdict
     /// itself belongs to the four tests around this one, so what is asserted here
     /// is the other half: the wrapper only logs, it does not change the answer.
-    #[tokio::test]
+    ///
+    /// Deliberately a blocking `#[test]` driving its own runtime rather than a
+    /// `#[tokio::test]` that awaits. Both readings must see the same
+    /// `GTK_USE_PORTAL`, so the guard has to span them, and holding a
+    /// `std::sync::MutexGuard` across an `.await` is `clippy::await_holding_lock`
+    /// for a real reason: the future can be parked on one worker and resumed on
+    /// another while the guard sits there. `block_on` keeps the whole exchange on
+    /// this thread, so the lock is held only while this thread runs.
+    #[test]
     #[cfg(target_os = "linux")]
-    async fn the_command_stays_off_the_main_thread() {
-        // Both calls must see the same `GTK_USE_PORTAL`, or the opt-out test can
-        // flip it between them and the two verdicts would disagree for a reason
-        // that has nothing to do with what is being pinned here.
+    fn the_command_stays_off_the_main_thread() {
         let _guard = lock_portal_env();
+        let rt = tokio::runtime::Runtime::new().expect("test runtime");
+        let from_command = rt.block_on(chooser_unavailable());
         assert_eq!(
-            chooser_unavailable().await,
+            from_command,
             chooser_unavailable_reason(),
             "the command must report the verdict it was given, not invent one"
         );
     }
 
     /// The same pin on the platforms where there is no environment to serialise.
-    #[tokio::test]
+    #[test]
     #[cfg(not(target_os = "linux"))]
-    async fn the_command_stays_off_the_main_thread() {
-        assert_eq!(chooser_unavailable().await, chooser_unavailable_reason());
+    fn the_command_stays_off_the_main_thread() {
+        let rt = tokio::runtime::Runtime::new().expect("test runtime");
+        let from_command = rt.block_on(chooser_unavailable());
+        assert_eq!(from_command, chooser_unavailable_reason());
     }
 
     /// Distinguishes one `private_bus` config file from another.
