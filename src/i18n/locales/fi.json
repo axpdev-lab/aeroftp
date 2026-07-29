@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Kaksitoista yhteyttä optimoidulla ennakkoluvulla",
             "modeSafeDescription": "Yksi yhteys: yksi tiedosto kerrallaan, yksi virta tiedostoa kohti",
             "modeBalancedDescription": "Enintään 3 yhteyttä: rinnakkaisia tiedostoja tai aluekanavia yhden suuren tiedoston sisällä",
-            "modeMaxDescription": "Enintään 5 yhteyttä: rinnakkaisia tiedostoja tai aluekanavia yhden suuren tiedoston sisällä"
+            "modeMaxDescription": "Enintään 5 yhteyttä: rinnakkaisia tiedostoja tai aluekanavia yhden suuren tiedoston sisällä",
+            "moreActions": "Lisää toimintoja"
         },
         "settings": {
             "title": "Asetukset",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Siirtojono",
             "activityLog": "Toimintaloki",
             "aerocloudTitle": "AeroCloud-tila",
-            "updateAvailable": "Päivitys saatavilla"
+            "updateAvailable": "Päivitys saatavilla",
+            "showProgress": "Näytä siirron edistyminen"
         },
         "migration": {
             "title": "Tunnistetietojen turvallinen siirto",

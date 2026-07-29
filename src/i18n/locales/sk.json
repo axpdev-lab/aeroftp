@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dvanásť pripojení s optimalizovaným predbežným načítaním",
             "modeSafeDescription": "Jedno pripojenie: jeden súbor naraz, jeden tok na súbor",
             "modeBalancedDescription": "Až 3 pripojenia: paralelné súbory alebo rozsahové kanály v jednom veľkom súbore",
-            "modeMaxDescription": "Až 5 pripojení: paralelné súbory alebo rozsahové kanály v jednom veľkom súbore"
+            "modeMaxDescription": "Až 5 pripojení: paralelné súbory alebo rozsahové kanály v jednom veľkom súbore",
+            "moreActions": "Ďalšie akcie"
         },
         "settings": {
             "title": "Nastavenia",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Fronta prenosov",
             "activityLog": "Denník aktivít",
             "aerocloudTitle": "Stav AeroCloud",
-            "updateAvailable": "Dostupná aktualizácia"
+            "updateAvailable": "Dostupná aktualizácia",
+            "showProgress": "Zobraziť priebeh prenosu"
         },
         "migration": {
             "title": "Bezpečná migrácia prihlasovacích údajov",

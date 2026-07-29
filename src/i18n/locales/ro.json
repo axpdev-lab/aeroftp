@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Douăsprezece conexiuni cu citire anticipată optimizată",
             "modeSafeDescription": "O conexiune: un fișier odată, un singur flux per fișier",
             "modeBalancedDescription": "Până la 3 conexiuni: fișiere în paralel sau canale de intervale într-un fișier mare",
-            "modeMaxDescription": "Până la 5 conexiuni: fișiere în paralel sau canale de intervale într-un fișier mare"
+            "modeMaxDescription": "Până la 5 conexiuni: fișiere în paralel sau canale de intervale într-un fișier mare",
+            "moreActions": "Mai multe acțiuni"
         },
         "settings": {
             "title": "Setări",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Coadă de Transfer",
             "activityLog": "Jurnal de Activitate",
             "aerocloudTitle": "Stare AeroCloud",
-            "updateAvailable": "Actualizare Disponibilă"
+            "updateAvailable": "Actualizare Disponibilă",
+            "showProgress": "Afișează progresul transferului"
         },
         "migration": {
             "title": "Migrare sigură a acreditărilor",

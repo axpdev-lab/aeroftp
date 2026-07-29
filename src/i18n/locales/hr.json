@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dvanaest veza s optimiziranim čitanjem unaprijed",
             "modeSafeDescription": "Jedna veza: jedna datoteka odjednom, jedan tok po datoteci",
             "modeBalancedDescription": "Do 3 veze: paralelne datoteke ili kanali raspona unutar jedne velike datoteke",
-            "modeMaxDescription": "Do 5 veza: paralelne datoteke ili kanali raspona unutar jedne velike datoteke"
+            "modeMaxDescription": "Do 5 veza: paralelne datoteke ili kanali raspona unutar jedne velike datoteke",
+            "moreActions": "Više radnji"
         },
         "settings": {
             "title": "Postavke",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Red za prijenos",
             "activityLog": "Dnevnik aktivnosti",
             "aerocloudTitle": "Status AeroCloud",
-            "updateAvailable": "Dostupno ažuriranje"
+            "updateAvailable": "Dostupno ažuriranje",
+            "showProgress": "Prikaži napredak prijenosa"
         },
         "migration": {
             "title": "Sigurna migracija vjerodajnica",

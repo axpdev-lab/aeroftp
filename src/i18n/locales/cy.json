@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Deuddeg cysylltiad gyda rhagddarllen wedi'i optimeiddio",
             "modeSafeDescription": "Un cysylltiad: un ffeil ar y tro, un ffrwd i bob ffeil",
             "modeBalancedDescription": "Hyd at 3 cysylltiad: ffeiliaid yn gyfochrog, neu sianeli ystod o fewn un ffeil fawr",
-            "modeMaxDescription": "Hyd at 5 cysylltiad: ffeiliaid yn gyfochrog, neu sianeli ystod o fewn un ffeil fawr"
+            "modeMaxDescription": "Hyd at 5 cysylltiad: ffeiliaid yn gyfochrog, neu sianeli ystod o fewn un ffeil fawr",
+            "moreActions": "Rhagor o weithredoedd"
         },
         "settings": {
             "title": "Gosodiadau",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Transfer Queue",
             "activityLog": "Activity Log",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "Update Available",
+            "showProgress": "Dangos cynnydd y trosglwyddiad"
         },
         "migration": {
             "title": "Mudo Manylion Mewngofnodi'n Ddiogel",

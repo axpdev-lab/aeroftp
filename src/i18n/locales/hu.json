@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Tizenkét kapcsolat optimalizált előreolvasással",
             "modeSafeDescription": "Egy kapcsolat: egyszerre egy fájl, egy adatfolyam fájlonként",
             "modeBalancedDescription": "Legfeljebb 3 kapcsolat: párhuzamos fájlok vagy tartománycsatornák egy nagy fájlon belül",
-            "modeMaxDescription": "Legfeljebb 5 kapcsolat: párhuzamos fájlok vagy tartománycsatornák egy nagy fájlon belül"
+            "modeMaxDescription": "Legfeljebb 5 kapcsolat: párhuzamos fájlok vagy tartománycsatornák egy nagy fájlon belül",
+            "moreActions": "További műveletek"
         },
         "settings": {
             "title": "Beállítások",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Átviteli sor",
             "activityLog": "Tevékenységnapló",
             "aerocloudTitle": "AeroCloud Állapot",
-            "updateAvailable": "Frissítés Elérhető"
+            "updateAvailable": "Frissítés Elérhető",
+            "showProgress": "Átvitel folyamatának megjelenítése"
         },
         "migration": {
             "title": "Hitelesítő adatok biztonságos áttelepítése",

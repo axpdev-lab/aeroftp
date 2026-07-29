@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Kaksteist ühendust optimeeritud ettelugemisega",
             "modeSafeDescription": "Üks ühendus: üks fail korraga, üks voog faili kohta",
             "modeBalancedDescription": "Kuni 3 ühendust: paralleelsed failid või vahemikukanalid ühe suure faili sees",
-            "modeMaxDescription": "Kuni 5 ühendust: paralleelsed failid või vahemikukanalid ühe suure faili sees"
+            "modeMaxDescription": "Kuni 5 ühendust: paralleelsed failid või vahemikukanalid ühe suure faili sees",
+            "moreActions": "Rohkem toiminguid"
         },
         "settings": {
             "title": "Seaded",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Ülekande järjekord",
             "activityLog": "Tegevuse logi",
             "aerocloudTitle": "AeroCloud olek",
-            "updateAvailable": "Värskendus saadaval"
+            "updateAvailable": "Värskendus saadaval",
+            "showProgress": "Näita ülekande edenemist"
         },
         "migration": {
             "title": "Mandaatide turvaline migratsioon",

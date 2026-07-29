@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dua belas koneksi dengan baca awal yang dioptimalkan",
             "modeSafeDescription": "Satu koneksi: satu file sekaligus, satu aliran per file",
             "modeBalancedDescription": "Hingga 3 koneksi: file paralel, atau saluran rentang dalam satu file besar",
-            "modeMaxDescription": "Hingga 5 koneksi: file paralel, atau saluran rentang dalam satu file besar"
+            "modeMaxDescription": "Hingga 5 koneksi: file paralel, atau saluran rentang dalam satu file besar",
+            "moreActions": "Tindakan lainnya"
         },
         "settings": {
             "title": "Pengaturan",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Antrian Transfer",
             "activityLog": "Log Aktivitas",
             "aerocloudTitle": "Status AeroCloud",
-            "updateAvailable": "Pembaruan Tersedia"
+            "updateAvailable": "Pembaruan Tersedia",
+            "showProgress": "Tampilkan kemajuan transfer"
         },
         "migration": {
             "title": "Migrasi kredensial yang aman",

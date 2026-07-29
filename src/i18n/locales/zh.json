@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "使用优化预读的十二个连接",
             "modeSafeDescription": "单连接：一次一个文件，每个文件单流",
             "modeBalancedDescription": "最多 3 个连接：并行传输多个文件，或在一个大文件内使用范围通道",
-            "modeMaxDescription": "最多 5 个连接：并行传输多个文件，或在一个大文件内使用范围通道"
+            "modeMaxDescription": "最多 5 个连接：并行传输多个文件，或在一个大文件内使用范围通道",
+            "moreActions": "更多操作"
         },
         "settings": {
             "title": "设置",
@@ -1950,7 +1951,8 @@
             "transferQueue": "传输队列",
             "activityLog": "活动日志",
             "aerocloudTitle": "AeroCloud 状态",
-            "updateAvailable": "有可用更新"
+            "updateAvailable": "有可用更新",
+            "showProgress": "显示传输进度"
         },
         "migration": {
             "title": "数据迁移",

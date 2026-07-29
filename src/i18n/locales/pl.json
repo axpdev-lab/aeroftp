@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dwanaście połączeń ze zoptymalizowanym odczytem z wyprzedzeniem",
             "modeSafeDescription": "Jedno połączenie: jeden plik naraz, jeden strumień na plik",
             "modeBalancedDescription": "Do 3 połączeń: równoległe pliki lub kanały zakresowe w jednym dużym pliku",
-            "modeMaxDescription": "Do 5 połączeń: równoległe pliki lub kanały zakresowe w jednym dużym pliku"
+            "modeMaxDescription": "Do 5 połączeń: równoległe pliki lub kanały zakresowe w jednym dużym pliku",
+            "moreActions": "Więcej akcji"
         },
         "settings": {
             "title": "Ustawienia",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Kolejka Transferów",
             "activityLog": "Dziennik Aktywności",
             "aerocloudTitle": "Status AeroCloud",
-            "updateAvailable": "Dostępna Aktualizacja"
+            "updateAvailable": "Dostępna Aktualizacja",
+            "showProgress": "Pokaż postęp transferu"
         },
         "migration": {
             "title": "Bezpieczna migracja danych uwierzytelniających",

@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Miunganisho kumi na miwili yenye usomaji wa mapema ulioboreshwa",
             "modeSafeDescription": "Muunganisho mmoja: faili moja kwa wakati mmoja, mkondo mmoja kwa kila faili",
             "modeBalancedDescription": "Hadi miunganisho 3: faili sambamba, au njia za masafa ndani ya faili moja kubwa",
-            "modeMaxDescription": "Hadi miunganisho 5: faili sambamba, au njia za masafa ndani ya faili moja kubwa"
+            "modeMaxDescription": "Hadi miunganisho 5: faili sambamba, au njia za masafa ndani ya faili moja kubwa",
+            "moreActions": "Vitendo zaidi"
         },
         "settings": {
             "title": "Mipangilio",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Foleni ya Uhamisho",
             "activityLog": "Kumbukumbu ya Shughuli",
             "aerocloudTitle": "Hali ya AeroCloud",
-            "updateAvailable": "Sasisho Linapatikana"
+            "updateAvailable": "Sasisho Linapatikana",
+            "showProgress": "Onyesha maendeleo ya uhamishaji"
         },
         "migration": {
             "title": "Uhamishaji salama wa vitambulisho",

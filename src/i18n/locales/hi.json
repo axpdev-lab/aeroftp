@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "अनुकूलित अग्रिम पठन वाले बारह कनेक्शन",
             "modeSafeDescription": "एक कनेक्शन: एक बार में एक फ़ाइल, प्रति फ़ाइल एक स्ट्रीम",
             "modeBalancedDescription": "अधिकतम 3 कनेक्शन: समानांतर फ़ाइलें, या एक बड़ी फ़ाइल के भीतर रेंज चैनल",
-            "modeMaxDescription": "अधिकतम 5 कनेक्शन: समानांतर फ़ाइलें, या एक बड़ी फ़ाइल के भीतर रेंज चैनल"
+            "modeMaxDescription": "अधिकतम 5 कनेक्शन: समानांतर फ़ाइलें, या एक बड़ी फ़ाइल के भीतर रेंज चैनल",
+            "moreActions": "और क्रियाएँ"
         },
         "settings": {
             "title": "सेटिंग्स",
@@ -1950,7 +1951,8 @@
             "transferQueue": "स्थानांतरण कतार",
             "activityLog": "गतिविधि लॉग",
             "aerocloudTitle": "AeroCloud स्थिति",
-            "updateAvailable": "अपडेट उपलब्ध"
+            "updateAvailable": "अपडेट उपलब्ध",
+            "showProgress": "स्थानांतरण प्रगति दिखाएँ"
         },
         "migration": {
             "title": "सुरक्षित प्रमाणपत्र स्थानांतरण",

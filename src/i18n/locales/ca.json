@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dotze connexions amb lectura anticipada optimitzada",
             "modeSafeDescription": "Una connexió: un fitxer cada vegada, un sol flux per fitxer",
             "modeBalancedDescription": "Fins a 3 connexions: fitxers en paral·lel o canals de rangs dins d'un fitxer gran",
-            "modeMaxDescription": "Fins a 5 connexions: fitxers en paral·lel o canals de rangs dins d'un fitxer gran"
+            "modeMaxDescription": "Fins a 5 connexions: fitxers en paral·lel o canals de rangs dins d'un fitxer gran",
+            "moreActions": "Més accions"
         },
         "settings": {
             "title": "Configuracio",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Cua de Transferència",
             "activityLog": "Registre d'Activitat",
             "aerocloudTitle": "Estat d'AeroCloud",
-            "updateAvailable": "Actualització Disponible"
+            "updateAvailable": "Actualització Disponible",
+            "showProgress": "Mostra el progrés de la transferència"
         },
         "migration": {
             "title": "Migració segura de credencials",

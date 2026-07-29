@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Hamabi konexio aurreirakurketa optimizatuarekin",
             "modeSafeDescription": "Konexio bat: fitxategi bat aldi bakoitzean, korronte bakarra fitxategiko",
             "modeBalancedDescription": "Gehienez 3 konexio: fitxategi paraleloak edo tarte-kanalak fitxategi handi baten barruan",
-            "modeMaxDescription": "Gehienez 5 konexio: fitxategi paraleloak edo tarte-kanalak fitxategi handi baten barruan"
+            "modeMaxDescription": "Gehienez 5 konexio: fitxategi paraleloak edo tarte-kanalak fitxategi handi baten barruan",
+            "moreActions": "Ekintza gehiago"
         },
         "settings": {
             "title": "Ezarpenak",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Transfer Queue",
             "activityLog": "Activity Log",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "Update Available",
+            "showProgress": "Erakutsi transferentziaren aurrerapena"
         },
         "migration": {
             "title": "Kredentzialen migrazio segurua",

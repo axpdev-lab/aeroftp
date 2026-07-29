@@ -3621,7 +3621,8 @@
             "log": "Log",
             "queue": "Queue",
             "transferQueue": "Transfer Queue",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "Update Available",
+            "showProgress": "Show transfer progress"
         },
         "aerofile": {
             "dualPanel": "Dual Panel",
@@ -4098,7 +4099,8 @@
             "resumeNoProfile": "This transfer has no saved server profile. Connect manually, then resume.",
             "resumeProfileMissing": "The saved server for this transfer was not found (it may have been deleted).",
             "connectingToResume": "Connecting to {name} to resume transfers…",
-            "resumeConnectFailed": "Could not connect to {name}. Transfers were not started."
+            "resumeConnectFailed": "Could not connect to {name}. Transfers were not started.",
+            "moreActions": "More actions"
         },
         "scanning": {
             "deleting": "Deleting",

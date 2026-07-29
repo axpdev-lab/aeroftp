@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dua belas sambungan dengan baca awal yang dioptimumkan",
             "modeSafeDescription": "Satu sambungan: satu fail pada satu masa, satu strim setiap fail",
             "modeBalancedDescription": "Sehingga 3 sambungan: fail selari, atau saluran julat dalam satu fail besar",
-            "modeMaxDescription": "Sehingga 5 sambungan: fail selari, atau saluran julat dalam satu fail besar"
+            "modeMaxDescription": "Sehingga 5 sambungan: fail selari, atau saluran julat dalam satu fail besar",
+            "moreActions": "Lagi tindakan"
         },
         "settings": {
             "title": "Tetapan",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Barisan Pemindahan",
             "activityLog": "Log Aktiviti",
             "aerocloudTitle": "Status AeroCloud",
-            "updateAvailable": "Kemas Kini Tersedia"
+            "updateAvailable": "Kemas Kini Tersedia",
+            "showProgress": "Tunjukkan kemajuan pemindahan"
         },
         "migration": {
             "title": "Pemindahan kelayakan yang selamat",

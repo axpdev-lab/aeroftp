@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "最適化された先読みを使用する12接続",
             "modeSafeDescription": "接続数1: 一度に1ファイル、ファイルごとにシングルストリーム",
             "modeBalancedDescription": "最大3接続: 複数ファイルの並列転送、または1つの大きなファイル内でのレンジチャネル",
-            "modeMaxDescription": "最大5接続: 複数ファイルの並列転送、または1つの大きなファイル内でのレンジチャネル"
+            "modeMaxDescription": "最大5接続: 複数ファイルの並列転送、または1つの大きなファイル内でのレンジチャネル",
+            "moreActions": "その他の操作"
         },
         "settings": {
             "title": "設定",
@@ -1950,7 +1951,8 @@
             "transferQueue": "転送キュー",
             "activityLog": "アクティビティログ",
             "aerocloudTitle": "AeroCloud ステータス",
-            "updateAvailable": "アップデート利用可能"
+            "updateAvailable": "アップデート利用可能",
+            "showProgress": "転送の進行状況を表示"
         },
         "search": {
             "remote_placeholder": "リモートファイルを検索...",

@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "অপ্টিমাইজ করা অগ্রিম পাঠসহ বারোটি সংযোগ",
             "modeSafeDescription": "একটি সংযোগ: একবারে একটি ফাইল, প্রতি ফাইলে একটি স্ট্রিম",
             "modeBalancedDescription": "সর্বোচ্চ 3টি সংযোগ: সমান্তরাল ফাইল, অথবা একটি বড় ফাইলের মধ্যে রেঞ্জ চ্যানেল",
-            "modeMaxDescription": "সর্বোচ্চ 5টি সংযোগ: সমান্তরাল ফাইল, অথবা একটি বড় ফাইলের মধ্যে রেঞ্জ চ্যানেল"
+            "modeMaxDescription": "সর্বোচ্চ 5টি সংযোগ: সমান্তরাল ফাইল, অথবা একটি বড় ফাইলের মধ্যে রেঞ্জ চ্যানেল",
+            "moreActions": "আরও ক্রিয়া"
         },
         "settings": {
             "title": "সেটিংস",
@@ -1950,7 +1951,8 @@
             "transferQueue": "ট্রান্সফার কিউ",
             "activityLog": "অ্যাক্টিভিটি লগ",
             "aerocloudTitle": "AeroCloud স্ট্যাটাস",
-            "updateAvailable": "আপডেট উপলব্ধ"
+            "updateAvailable": "আপডেট উপলব্ধ",
+            "showProgress": "স্থানান্তরের অগ্রগতি দেখান"
         },
         "migration": {
             "title": "নিরাপদ শংসাপত্র স্থানান্তর",

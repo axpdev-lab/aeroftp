@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Twaalf verbindingen met geoptimaliseerd vooruit lezen",
             "modeSafeDescription": "Eén verbinding: één bestand tegelijk, één stream per bestand",
             "modeBalancedDescription": "Maximaal 3 verbindingen: parallelle bestanden of bereikkanalen binnen één groot bestand",
-            "modeMaxDescription": "Maximaal 5 verbindingen: parallelle bestanden of bereikkanalen binnen één groot bestand"
+            "modeMaxDescription": "Maximaal 5 verbindingen: parallelle bestanden of bereikkanalen binnen één groot bestand",
+            "moreActions": "Meer acties"
         },
         "settings": {
             "title": "Instellingen",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Overdrachtwachtrij",
             "activityLog": "Activiteitenlogboek",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Beschikbaar"
+            "updateAvailable": "Update Beschikbaar",
+            "showProgress": "Overdrachtsvoortgang tonen"
         },
         "migration": {
             "title": "Veilige migratie van inloggegevens",

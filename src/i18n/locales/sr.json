@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Дванаест веза са оптимизованим читањем унапред",
             "modeSafeDescription": "Једна веза: једна датотека истовремено, један ток по датоци",
             "modeBalancedDescription": "До 3 везе: паралелне датотеке или канали опсега у једној великој датоци",
-            "modeMaxDescription": "До 5 веза: паралелне датотеке или канали опсега у једној великој датоци"
+            "modeMaxDescription": "До 5 веза: паралелне датотеке или канали опсега у једној великој датоци",
+            "moreActions": "Још радњи"
         },
         "settings": {
             "title": "Подешавања",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Ред преноса",
             "activityLog": "Дневник активности",
             "aerocloudTitle": "Статус AeroCloud",
-            "updateAvailable": "Доступно ажурирање"
+            "updateAvailable": "Доступно ажурирање",
+            "showProgress": "Прикажи напредак преноса"
         },
         "migration": {
             "title": "Bezbedna migracija akreditiva",

@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "ការតភ្ជាប់ដប់ពីរជាមួយការអានទុកជាមុនដែលបានបង្កើនប្រសិទ្ធភាព",
             "modeSafeDescription": "ការតភ្ជាប់មួយ៖ ឯកសារមួយក្នុងមួយពេល ស្ទ្រីមតែមួយក្នុងមួយឯកសារ",
             "modeBalancedDescription": "រហូតដល់ 3 ការតភ្ជាប់៖ ឯកសារស្របគ្នា ឬឆានែលជួរក្នុងឯកសារធំមួយ",
-            "modeMaxDescription": "រហូតដល់ 5 ការតភ្ជាប់៖ ឯកសារស្របគ្នា ឬឆានែលជួរក្នុងឯកសារធំមួយ"
+            "modeMaxDescription": "រហូតដល់ 5 ការតភ្ជាប់៖ ឯកសារស្របគ្នា ឬឆានែលជួរក្នុងឯកសារធំមួយ",
+            "moreActions": "សកម្មភាពផ្សេងទៀត"
         },
         "settings": {
             "title": "ការកំណត់",
@@ -1950,7 +1951,8 @@
             "transferQueue": "ជួរផ្ទេរ",
             "activityLog": "កំណត់ហេតុសកម្មភាព",
             "aerocloudTitle": "AeroCloud",
-            "updateAvailable": "បច្ចុប្បន្នភាព"
+            "updateAvailable": "បច្ចុប្បន្នភាព",
+            "showProgress": "បង្ហាញវឌ្ឍនភាពនៃការផ្ទេរ"
         },
         "migration": {
             "title": "ការផ្ទេរអត្តសញ្ញាណដោយសុវត្ថិភាព",

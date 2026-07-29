@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dvylika ryšių su optimizuotu išankstiniu nuskaitymu",
             "modeSafeDescription": "Vienas ryšys: vienas failas vienu metu, vienas srautas vienam failui",
             "modeBalancedDescription": "Iki 3 ryšių: lygiagretūs failai arba diapazono kanalai viename dideliame faile",
-            "modeMaxDescription": "Iki 5 ryšių: lygiagretūs failai arba diapazono kanalai viename dideliame faile"
+            "modeMaxDescription": "Iki 5 ryšių: lygiagretūs failai arba diapazono kanalai viename dideliame faile",
+            "moreActions": "Daugiau veiksmų"
         },
         "settings": {
             "title": "Nustatymai",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Perkėlimo eilė",
             "activityLog": "Veiklos žurnalas",
             "aerocloudTitle": "AeroCloud būsena",
-            "updateAvailable": "Yra naujinimas"
+            "updateAvailable": "Yra naujinimas",
+            "showProgress": "Rodyti perdavimo eigą"
         },
         "migration": {
             "title": "Saugus prisijungimo duomenų perkėlimas",

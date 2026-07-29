@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dvanajst povezav z optimiziranim vnaprejšnjim branjem",
             "modeSafeDescription": "Ena povezava: ena datoteka hkrati, en tok na datoteko",
             "modeBalancedDescription": "Do 3 povezave: vzporedne datoteke ali kanali obsegov znotraj ene velike datoteke",
-            "modeMaxDescription": "Do 5 povezav: vzporedne datoteke ali kanali obsegov znotraj ene velike datoteke"
+            "modeMaxDescription": "Do 5 povezav: vzporedne datoteke ali kanali obsegov znotraj ene velike datoteke",
+            "moreActions": "Več dejanj"
         },
         "settings": {
             "title": "Nastavitve",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Čakalna vrsta prenosov",
             "activityLog": "Dnevnik dejavnosti",
             "aerocloudTitle": "Status AeroCloud",
-            "updateAvailable": "Na voljo posodobitev"
+            "updateAvailable": "Na voljo posodobitev",
+            "showProgress": "Prikaži napredek prenosa"
         },
         "migration": {
             "title": "Varna selitev poverilnic",

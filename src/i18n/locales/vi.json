@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Mười hai kết nối với khả năng đọc trước được tối ưu hóa",
             "modeSafeDescription": "Một kết nối: mỗi lần một tệp, một luồng cho mỗi tệp",
             "modeBalancedDescription": "Tối đa 3 kết nối: các tệp song song, hoặc các kênh phạm vi trong một tệp lớn",
-            "modeMaxDescription": "Tối đa 5 kết nối: các tệp song song, hoặc các kênh phạm vi trong một tệp lớn"
+            "modeMaxDescription": "Tối đa 5 kết nối: các tệp song song, hoặc các kênh phạm vi trong một tệp lớn",
+            "moreActions": "Thao tác khác"
         },
         "settings": {
             "title": "Cài đặt",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Hàng đợi Truyền",
             "activityLog": "Nhật ký Hoạt động",
             "aerocloudTitle": "Trạng thái AeroCloud",
-            "updateAvailable": "Có bản cập nhật"
+            "updateAvailable": "Có bản cập nhật",
+            "showProgress": "Hiển thị tiến trình truyền"
         },
         "migration": {
             "title": "Di chuyển thông tin xác thực an toàn",

@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Doce conexións con lectura anticipada optimizada",
             "modeSafeDescription": "Unha conexión: un ficheiro cada vez, un só fluxo por ficheiro",
             "modeBalancedDescription": "Ata 3 conexións: ficheiros en paralelo ou canles de rangos dentro dun ficheiro grande",
-            "modeMaxDescription": "Ata 5 conexións: ficheiros en paralelo ou canles de rangos dentro dun ficheiro grande"
+            "modeMaxDescription": "Ata 5 conexións: ficheiros en paralelo ou canles de rangos dentro dun ficheiro grande",
+            "moreActions": "Máis accións"
         },
         "settings": {
             "title": "Axustes",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Transfer Queue",
             "activityLog": "Activity Log",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "Update Available",
+            "showProgress": "Amosar o progreso da transferencia"
         },
         "migration": {
             "title": "Migración segura de credenciais",

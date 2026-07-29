@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "최적화된 미리 읽기를 사용하는 연결 12개",
             "modeSafeDescription": "연결 1개: 한 번에 파일 하나, 파일당 단일 스트림",
             "modeBalancedDescription": "최대 3개 연결: 파일 병렬 전송 또는 하나의 큰 파일 내 범위 채널",
-            "modeMaxDescription": "최대 5개 연결: 파일 병렬 전송 또는 하나의 큰 파일 내 범위 채널"
+            "modeMaxDescription": "최대 5개 연결: 파일 병렬 전송 또는 하나의 큰 파일 내 범위 채널",
+            "moreActions": "추가 작업"
         },
         "settings": {
             "title": "설정",
@@ -1950,7 +1951,8 @@
             "transferQueue": "전송 대기열",
             "activityLog": "활동 로그",
             "aerocloudTitle": "AeroCloud 상태",
-            "updateAvailable": "업데이트 사용 가능"
+            "updateAvailable": "업데이트 사용 가능",
+            "showProgress": "전송 진행 상황 표시"
         },
         "migration": {
             "title": "데이터 마이그레이션",

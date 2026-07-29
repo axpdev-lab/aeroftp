@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "თორმეტი კავშირი ოპტიმიზებული წინასწარი წაკითხვით",
             "modeSafeDescription": "ერთი კავშირი: ერთდროულად ერთი ფაილი, თითო ნაკადი თითო ფაილზე",
             "modeBalancedDescription": "3 კავშირამდე: პარალელური ფაილები ან დიაპაზონის არხები ერთი დიდი ფაილის შიგნით",
-            "modeMaxDescription": "5 კავშირამდე: პარალელური ფაილები ან დიაპაზონის არხები ერთი დიდი ფაილის შიგნით"
+            "modeMaxDescription": "5 კავშირამდე: პარალელური ფაილები ან დიაპაზონის არხები ერთი დიდი ფაილის შიგნით",
+            "moreActions": "სხვა მოქმედებები"
         },
         "settings": {
             "title": "პარამეტრები",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Transfer Queue",
             "activityLog": "Activity Log",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "Update Available",
+            "showProgress": "გადაცემის მიმდინარეობის ჩვენება"
         },
         "migration": {
             "title": "სერთიფიკატების უსაფრთხო მიგრაცია",

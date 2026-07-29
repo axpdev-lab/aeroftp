@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Tolv anslutningar med optimerad förhandsläsning",
             "modeSafeDescription": "En anslutning: en fil i taget, en ström per fil",
             "modeBalancedDescription": "Upp till 3 anslutningar: parallella filer eller intervallkanaler i en stor fil",
-            "modeMaxDescription": "Upp till 5 anslutningar: parallella filer eller intervallkanaler i en stor fil"
+            "modeMaxDescription": "Upp till 5 anslutningar: parallella filer eller intervallkanaler i en stor fil",
+            "moreActions": "Fler åtgärder"
         },
         "settings": {
             "title": "Inställningar",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Överföringskö",
             "activityLog": "Aktivitetslogg",
             "aerocloudTitle": "AeroCloud-status",
-            "updateAvailable": "Uppdatering tillgänglig"
+            "updateAvailable": "Uppdatering tillgänglig",
+            "showProgress": "Visa överföringsförlopp"
         },
         "migration": {
             "title": "Säker migrering av inloggningsuppgifter",

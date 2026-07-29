@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Tólf tengingar með fínstilltri forlesningu",
             "modeSafeDescription": "Ein tenging: ein skrá í einu, einn straumur á skrá",
             "modeBalancedDescription": "Allt að 3 tengingar: samhliða skrár eða bilsrásir innan einnar stórrar skráar",
-            "modeMaxDescription": "Allt að 5 tengingar: samhliða skrár eða bilsrásir innan einnar stórrar skráar"
+            "modeMaxDescription": "Allt að 5 tengingar: samhliða skrár eða bilsrásir innan einnar stórrar skráar",
+            "moreActions": "Fleiri aðgerðir"
         },
         "settings": {
             "title": "Stillingar",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Transfer Queue",
             "activityLog": "Activity Log",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "Update Available",
+            "showProgress": "Sýna framvindu flutnings"
         },
         "migration": {
             "title": "Öruggur flutningur auðkenna",

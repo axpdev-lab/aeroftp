@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Divpadsmit savienojumi ar optimizētu priekšlasīšanu",
             "modeSafeDescription": "Viens savienojums: viens fails vienlaikus, viena plūsma katram failam",
             "modeBalancedDescription": "Līdz 3 savienojumiem: paralēlie faili vai diapazona kanāli vienā lielā failā",
-            "modeMaxDescription": "Līdz 5 savienojumiem: paralēlie faili vai diapazona kanāli vienā lielā failā"
+            "modeMaxDescription": "Līdz 5 savienojumiem: paralēlie faili vai diapazona kanāli vienā lielā failā",
+            "moreActions": "Vairāk darbību"
         },
         "settings": {
             "title": "Iestatījumi",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Pārsūtīšanas rinda",
             "activityLog": "Darbību žurnāls",
             "aerocloudTitle": "AeroCloud statuss",
-            "updateAvailable": "Pieejams atjauninājums"
+            "updateAvailable": "Pieejams atjauninājums",
+            "showProgress": "Rādīt pārsūtīšanas gaitu"
         },
         "migration": {
             "title": "Droša akreditācijas datu migrācija",

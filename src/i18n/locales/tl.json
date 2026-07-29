@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Labindalawang koneksyon na may na-optimize na paunang pagbasa",
             "modeSafeDescription": "Isang koneksyon: isang file nang sabay, isang stream bawat file",
             "modeBalancedDescription": "Hanggang 3 koneksyon: magkatuloy na mga file, o mga channel ng range sa loob ng isang malaking file",
-            "modeMaxDescription": "Hanggang 5 koneksyon: magkatuloy na mga file, o mga channel ng range sa loob ng isang malaking file"
+            "modeMaxDescription": "Hanggang 5 koneksyon: magkatuloy na mga file, o mga channel ng range sa loob ng isang malaking file",
+            "moreActions": "Higit pang aksyon"
         },
         "settings": {
             "title": "Mga Setting",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Transfer Queue",
             "activityLog": "Activity Log",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "Update Available",
+            "showProgress": "Ipakita ang progreso ng paglilipat"
         },
         "migration": {
             "title": "Ligtas na paglilipat ng mga kredensyal",

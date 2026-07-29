@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Optimize edilmiş önden okumalı on iki bağlantı",
             "modeSafeDescription": "Tek bağlantı: aynı anda tek dosya, dosya başına tek akış",
             "modeBalancedDescription": "En fazla 3 bağlantı: paralel dosyalar veya tek bir büyük dosya içinde aralık kanalları",
-            "modeMaxDescription": "En fazla 5 bağlantı: paralel dosyalar veya tek bir büyük dosya içinde aralık kanalları"
+            "modeMaxDescription": "En fazla 5 bağlantı: paralel dosyalar veya tek bir büyük dosya içinde aralık kanalları",
+            "moreActions": "Diğer eylemler"
         },
         "settings": {
             "title": "Ayarlar",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Aktarım Kuyruğu",
             "activityLog": "Etkinlik Günlüğü",
             "aerocloudTitle": "AeroCloud Durumu",
-            "updateAvailable": "Güncelleme Mevcut"
+            "updateAvailable": "Güncelleme Mevcut",
+            "showProgress": "Aktarım ilerlemesini göster"
         },
         "migration": {
             "title": "Güvenli kimlik bilgileri taşıma",
