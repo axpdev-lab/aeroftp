@@ -24,7 +24,7 @@ use tauri::{AppHandle, Emitter, State};
 use tempfile::NamedTempFile;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 const ONE_MB: u64 = 1024 * 1024;
@@ -36,6 +36,9 @@ const EXPERT_CONFIRM_THRESHOLD: u64 = 100 * ONE_MB;
 /// Hard ceiling for any speed test, expert mode included.
 const MAX_TEST_SIZE: u64 = ONE_GB;
 const EVENT_NAME: &str = "speedtest-progress";
+/// Scratch subdirectory the benchmark payload is written into, so a test never
+/// drops a multi-hundred-MB file straight into the user's data directory.
+const SCRATCH_DIR_NAME: &str = ".aeroftp-speedtest";
 const COMPARE_DEFAULT_PARALLEL: u8 = 2;
 const COMPARE_MAX_PARALLEL: u8 = 4;
 /// Hard cap on compare-mode test count. Prevents accidental N-server
@@ -381,8 +384,19 @@ async fn run_speedtest_inner(
     )
     .await?;
 
+    // House rule: a benchmark never writes into the server's live data
+    // directory. Everything goes into a dedicated scratch subdirectory that the
+    // test creates and removes, so a 1 GB payload can never land in (and be
+    // served from) a web root or the account root.
+    let scratch_dir = join_remote_path(&request.remote_dir, SCRATCH_DIR_NAME);
     let temp_file_name = format!(".aeroftp-speedtest-{}.bin", Uuid::new_v4());
-    let remote_path = join_remote_path(&request.remote_dir, &temp_file_name);
+    let remote_path = join_remote_path(&scratch_dir, &temp_file_name);
+
+    // Pre-existing scratch dir is fine (a previous run, or a provider that
+    // creates parents implicitly); only a hard failure is worth reporting.
+    if let Err(e) = provider.mkdir(&scratch_dir).await {
+        debug!("speedtest: scratch dir {} not created: {}", scratch_dir, e);
+    }
 
     info!(
         "speedtest: {} {} bytes -> {} (test_id={})",
@@ -474,7 +488,7 @@ async fn run_speedtest_inner(
     }
 
     if token.is_cancelled() {
-        let _ = cleanup_remote(
+        let (cleaned, cleanup_error) = cleanup_remote(
             &app,
             provider.as_mut(),
             &remote_path,
@@ -484,7 +498,19 @@ async fn run_speedtest_inner(
         )
         .await;
         let _ = provider.disconnect().await;
-        return Err("Test cancelled".to_string());
+        if cleaned {
+            return Err("Test cancelled".to_string());
+        }
+        // The upload had already completed, so a full-size payload is still on
+        // the server: say so, and say where, instead of a bare "cancelled".
+        return Err(format!(
+            "Test cancelled. The test file could not be removed and is still on the server at {}{}",
+            remote_path,
+            cleanup_error
+                .as_ref()
+                .map(|e| format!(": {}", e))
+                .unwrap_or_default()
+        ));
     }
 
     // ---------------------- DOWNLOAD (streaming) ----------------------
@@ -706,7 +732,17 @@ async fn cleanup_remote(
     }
     emit_progress(app, test_id, server_name, "cleaning_up", 0, 0, None);
     match provider.delete(remote_path).await {
-        Ok(()) => (true, None),
+        Ok(()) => {
+            // Take the scratch directory with it when it is now empty, so a
+            // completed test leaves nothing at all behind. Best effort: a
+            // concurrent test in the same directory keeps it alive.
+            if let Some(dir) = remote_path.rsplit_once('/').map(|(d, _)| d) {
+                if dir.ends_with(SCRATCH_DIR_NAME) {
+                    let _ = provider.rmdir(dir).await;
+                }
+            }
+            (true, None)
+        }
         Err(err) => {
             let msg = err.to_string();
             warn!("speedtest: cleanup failed for {}: {}", remote_path, msg);
@@ -836,6 +872,26 @@ fn emit_progress(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// CLAUDE-AV-B9-03: the benchmark payload used to be written straight into
+    /// the profile's own directory, so a 1 GB test could land in a live web
+    /// root. It must always sit under the scratch subdirectory.
+    #[test]
+    fn payload_path_is_confined_to_the_scratch_dir() {
+        for dir in ["/", "", "/var/www/html", "/var/www/html/"] {
+            let scratch = join_remote_path(dir, SCRATCH_DIR_NAME);
+            let path = join_remote_path(&scratch, ".aeroftp-speedtest-x.bin");
+            assert!(
+                path.starts_with(&scratch),
+                "payload {path} escaped scratch {scratch}"
+            );
+            assert!(
+                path.contains(SCRATCH_DIR_NAME),
+                "payload {path} is not under a scratch dir"
+            );
+            assert_ne!(path, "/.aeroftp-speedtest-x.bin", "payload landed in root");
+        }
+    }
 
     #[test]
     fn join_remote_path_handles_root() {

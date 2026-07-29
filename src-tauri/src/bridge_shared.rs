@@ -245,6 +245,13 @@ pub fn ensure_import_file_size_ok(path: &Path) -> Result<(), String> {
 
 // ============ INI parser (aws, s3cmd, ...) ============
 
+/// Maximum number of sections an imported INI may yield.
+///
+/// Same cap and same reason as the per-format importers: within the 10 MB file
+/// limit a config can still declare hundreds of thousands of profiles, and each
+/// one that carries a credential costs a full vault read-modify-write.
+const MAX_IMPORT_SECTIONS: usize = 10_000;
+
 /// Section-keyed INI parser. Mirrors the exact shape of
 /// `rclone_import::parse_rclone_conf`: `[section]` headers, `key = value`
 /// pairs, `#`/`;` comments, keys lowercased. An `[profile foo]` header
@@ -266,6 +273,10 @@ pub(crate) fn parse_ini_sections(content: &str) -> HashMap<String, HashMap<Strin
                 .trim()
                 .to_string();
             if !name.is_empty() {
+                if !out.contains_key(&name) && out.len() >= MAX_IMPORT_SECTIONS {
+                    log::warn!("ini import: stopped at the {MAX_IMPORT_SECTIONS}-section cap");
+                    break;
+                }
                 out.entry(name.clone()).or_default();
                 cur = Some(name);
             }
@@ -282,6 +293,16 @@ pub(crate) fn parse_ini_sections(content: &str) -> HashMap<String, HashMap<Strin
 
 // ============ XML scanner (cyberduck .duck, dreamweaver .ste) ============
 
+/// Longest entity body we accept, `&` and `;` excluded.
+///
+/// The longest thing that can decode is a numeric character reference
+/// (`#x10FFFF` / `#1114111`, 8 characters); named entities top out at 4
+/// (`apos`). Bounding the lookahead keeps `html_unescape` linear: searching the
+/// whole remainder for `;` on every `&` made a field of N ampersands with no
+/// semicolon cost O(N^2), and a 10 MB `.duck`/`.ste` value could hold ten
+/// million of them.
+const MAX_ENTITY_BODY: usize = 8;
+
 /// Decode the small set of XML/HTML entities these config files use.
 pub(crate) fn html_unescape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -292,7 +313,10 @@ pub(crate) fn html_unescape(s: &str) -> String {
             continue;
         }
         let rest = &s[i..];
-        let Some(semi) = rest.find(';') else {
+        // `;` is ASCII, so a byte search cannot land inside a multi-byte
+        // character and every index it yields is a valid char boundary.
+        let window = rest.len().min(MAX_ENTITY_BODY + 2);
+        let Some(semi) = rest.as_bytes()[..window].iter().position(|b| *b == b';') else {
             out.push(c);
             continue;
         };
@@ -683,9 +707,38 @@ mod tests {
         assert_eq!(s.get("bar").unwrap().get("k").unwrap(), "v");
     }
 
+    /// CLAUDE-AV-B9-04: the entity lookahead used to scan the whole remaining
+    /// string for `;` on every `&`, so a field of N ampersands with no
+    /// semicolon cost O(N^2). A 1 MB run has to finish immediately, and the
+    /// ampersands must be preserved verbatim.
+    #[test]
+    fn html_unescape_is_linear_on_a_field_of_bare_ampersands() {
+        let hostile = "&".repeat(1_000_000);
+        let started = std::time::Instant::now();
+        let out = html_unescape(&hostile);
+        assert_eq!(out.len(), hostile.len());
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "html_unescape went quadratic: {:?}",
+            started.elapsed()
+        );
+    }
+
+    /// An over-long `&...;` run is not an entity and must be left alone rather
+    /// than scanned to the end of the input.
+    #[test]
+    fn html_unescape_leaves_an_overlong_entity_untouched() {
+        let s = format!("&{};", "a".repeat(64));
+        assert_eq!(html_unescape(&s), s);
+    }
+
     #[test]
     fn xml_helpers() {
         assert_eq!(html_unescape("a&amp;b&lt;c&#65;"), "a&b<cA");
+        // Longest forms that must still decode with the bounded lookahead.
+        assert_eq!(html_unescape("&#x10FFFF;"), "\u{10FFFF}");
+        assert_eq!(html_unescape("&#1114111;"), "\u{10FFFF}");
+        assert_eq!(html_unescape("&apos;"), "'");
         let duck = "<key>Hostname</key><string>ftp.example.com</string><key>Port</key><integer>21</integer><key>Secure</key><true/>";
         assert_eq!(
             plist_field(duck, "Hostname").as_deref(),

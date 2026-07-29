@@ -163,6 +163,17 @@ pub async fn stage_hash_drop(name: String, data_base64: String) -> Result<String
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|e| format!("Failed to create drop stage dir: {e}"))?;
+    // The staged copy is the file's plaintext: keep the directory owner-only.
+    // create_dir_all leaves 0777&!umask (0755 on a default umask), which would
+    // let every local account read a dropped key or vault file.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = tokio::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).await;
+    }
+    // Sweep stale drops from earlier sessions: a staged file is consumed by the
+    // very next hash_file call, so anything older than an hour is a leftover.
+    sweep_stale_hash_drops(&dir).await;
 
     let safe: String = std::path::Path::new(&name)
         .file_name()
@@ -187,6 +198,19 @@ pub async fn stage_hash_drop(name: String, data_base64: String) -> Result<String
     tokio::fs::write(&path, &data)
         .await
         .map_err(|e| format!("Failed to stage dropped file: {e}"))?;
+    // Same reason as the directory: 0666&!umask (0644) would publish the
+    // plaintext of whatever the user dropped to every local account.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) =
+            tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).await
+        {
+            // Cannot restrict it: do not leave a world-readable copy behind.
+            let _ = tokio::fs::remove_file(&path).await;
+            return Err(format!("Failed to secure staged file: {e}"));
+        }
+    }
 
     log::info!(
         "[HASHDROP] staged {} bytes as {}",
@@ -194,6 +218,57 @@ pub async fn stage_hash_drop(name: String, data_base64: String) -> Result<String
         path.display()
     );
     Ok(path.to_string_lossy().into_owned())
+}
+
+/// Remove staged drops left by earlier runs.
+///
+/// A staged file exists only to be handed straight back to `hash_file`, so it
+/// has no reason to outlive the operation. Nothing used to delete them and they
+/// accumulated in the shared temp directory as plaintext copies of whatever the
+/// user had hashed.
+async fn sweep_stale_hash_drops(dir: &std::path::Path) {
+    const STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(3600);
+
+    let mut entries = match tokio::fs::read_dir(dir).await {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    let now = std::time::SystemTime::now();
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let stale = match entry.metadata().await {
+            Ok(m) if m.is_file() => m
+                .modified()
+                .ok()
+                .and_then(|t| now.duration_since(t).ok())
+                .map(|age| age >= STALE_AFTER)
+                .unwrap_or(false),
+            _ => false,
+        };
+        if stale {
+            let _ = tokio::fs::remove_file(entry.path()).await;
+        }
+    }
+}
+
+/// Delete a file staged by `stage_hash_drop`.
+///
+/// The frontend calls this once the hash has been computed (or when the drop is
+/// abandoned) so the plaintext copy does not linger in the temp directory.
+/// Restricted to our own staging directory so it can never be turned into an
+/// arbitrary-delete primitive.
+#[tauri::command]
+pub async fn discard_hash_drop(path: String) -> Result<(), String> {
+    let dir = std::env::temp_dir().join("aeroftp-hash-drops");
+    let target = std::path::PathBuf::from(&path);
+    if target.parent() != Some(dir.as_path()) {
+        return Err("Not a staged drop path".to_string());
+    }
+    match tokio::fs::remove_file(&target).await {
+        Ok(()) => Ok(()),
+        // Already gone (swept, or never created): nothing to do.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("Failed to discard staged file: {e}")),
+    }
 }
 
 /// Constant-time hash comparison to prevent timing attacks.

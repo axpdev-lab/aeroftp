@@ -107,6 +107,17 @@ pub fn import_aws_credentials(cred_path: &Path) -> Result<AwsImportResult, Strin
     import_aws_credentials_with_config(cred_path, config_path.as_deref())
 }
 
+/// True when `path` is a regular file within the shared import size cap.
+///
+/// The secondary config file is opened by us, not by the caller, so it bypasses
+/// the checks `import_bridge_config` / the CLI run on the primary path.
+fn is_readable_regular_file(path: &Path) -> bool {
+    match std::fs::metadata(path) {
+        Ok(m) => m.is_file() && crate::bridge_shared::ensure_import_file_size_ok(path).is_ok(),
+        Err(_) => false,
+    }
+}
+
 /// Import with an explicit (optional) config path. Kept separate for
 /// testability: `import_aws_credentials` resolves the sibling/env config,
 /// while tests inject a known config path or `None`.
@@ -119,14 +130,20 @@ pub fn import_aws_credentials_with_config(
     let mut sections = crate::bridge_shared::parse_ini_sections(&cred);
 
     if let Some(cp) = config_path {
-        if let Ok(cfg) = std::fs::read_to_string(cp) {
-            // `[profile x]` collapses to `x` inside parse_ini_sections, so
-            // config keys land in the matching credentials section. Config
-            // augments credentials: it never replaces an existing key.
-            for (name, kv) in crate::bridge_shared::parse_ini_sections(&cfg) {
-                let dest = sections.entry(name).or_default();
-                for (k, v) in kv {
-                    dest.entry(k).or_insert(v);
+        // The sibling config (or whatever AWS_CONFIG_FILE points at) never went
+        // through the caller's regular-file + 10 MB checks, so apply them here:
+        // reading a character device such as /dev/zero would grow the buffer
+        // until the process is OOM-killed.
+        if is_readable_regular_file(cp) {
+            if let Ok(cfg) = std::fs::read_to_string(cp) {
+                // `[profile x]` collapses to `x` inside parse_ini_sections, so
+                // config keys land in the matching credentials section. Config
+                // augments credentials: it never replaces an existing key.
+                for (name, kv) in crate::bridge_shared::parse_ini_sections(&cfg) {
+                    let dest = sections.entry(name).or_default();
+                    for (k, v) in kv {
+                        dest.entry(k).or_insert(v);
+                    }
                 }
             }
         }

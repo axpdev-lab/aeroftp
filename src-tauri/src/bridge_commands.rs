@@ -346,13 +346,29 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
 
     // Upgrade recovered secrets into the vault (server_<id> key, same as
     // the connect path and the legacy importers).
+    //
+    // Hard cap on the number of vault writes one import may trigger: each
+    // `store_active_credential_dual` is a read-modify-rewrite of the whole
+    // vault, so an import of N credentials costs O(N^2) bytes written. The
+    // per-format parsers cap themselves too; this is the backstop that holds
+    // for every source, including ones added later.
+    const MAX_IMPORTED_CREDENTIALS: usize = 10_000;
+
     let mut cred_errors: Vec<String> = Vec::new();
+    let mut stored = 0usize;
     match CredentialStore::from_cache() {
         Some(store) => {
             for s in &servers {
+                if stored >= MAX_IMPORTED_CREDENTIALS {
+                    cred_errors.push(format!(
+                        "stopped after {MAX_IMPORTED_CREDENTIALS} credentials (import too large)"
+                    ));
+                    break;
+                }
                 let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 let cred = s.get("credential").and_then(|v| v.as_str()).unwrap_or("");
                 if !id.is_empty() && !cred.is_empty() {
+                    stored += 1;
                     // MUV-3: dual-write into vault + active user's partition.
                     if let Err(e) = crate::user_partitions::store_active_credential_dual(
                         &store,
