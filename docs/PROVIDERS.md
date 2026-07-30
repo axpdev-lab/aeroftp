@@ -18,10 +18,10 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Provider | HQ | Free tier | Connection methods |
 | --- | --- | --- | --- |
 | 4shared | VG | 15 GB | OAuth, WebDAV |
-| Alibaba OSS | CN | 5 GB (overseas only, card req.) | S3* |
-| Amazon Web Services (AWS) | US | 5 GB (always-free, card req.) | S3* |
+| Alibaba OSS | CN | new-user trial, overseas | S3* |
+| Amazon Web Services (AWS) | US | 12-month trial | S3* |
 | Backblaze B2 | US | 10 GB | API, S3 |
-| Blomp | US | 20 GB (referral bonus) | Swift |
+| Blomp | US | 40 GB (+40 GB per referral) | Swift |
 | Box | US | 10 GB | OAuth |
 | Cloudflare R2 | US | 10 GB (egress-free, card req.) | S3* |
 | Cloudinary | US | credit-based | API |
@@ -48,7 +48,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | kDrive | CH | 15 GB | API |
 | Koofr | SI | 10 GB | API, WebDAV |
 | MEGA | NZ | 20 GB (E2E) | API, MEGAcmd, S4 (S3)* |
-| Microsoft Azure Blob | US | 5 GB (always-free, card req.) | Blob* |
+| Microsoft Azure Blob | US | 12-month trial | Blob* |
 | Microsoft OneDrive | US | 5 GB | OAuth |
 | MinIO | - | self-hosted | S3 |
 | Nextcloud | - | self-hosted | WebDAV |

@@ -97,11 +97,19 @@ export interface CatalogCompany {
     freeStorageGb: number | null;
     /** Short qualifier when freeStorageGb is null or needs nuance. */
     freeNote?: string;
-    /** The company HAS a genuine (typically permanent) free allowance, but
-     *  signup REQUIRES a credit card / payment method on file (e.g. Amazon S3,
-     *  Azure Blob, Yandex Object Storage). This is the "third state" between a
-     *  no-card free tier and a paid-only product: such companies are kept OUT
-     *  of the paid bucket but marked distinctly. See `companyTier`. */
+    /** The company HAS a genuine PERMANENT free allowance, but signup REQUIRES
+     *  a credit card / payment method on file (e.g. Google Cloud Storage's
+     *  always-free 5 GB-month, Oracle Cloud's 20 GB for the life of the
+     *  account, Yandex Object Storage's 1 GB/month). This is the "third state"
+     *  between a no-card free tier and a paid-only product: such companies are
+     *  kept OUT of the paid bucket but marked distinctly. See `companyTier`.
+     *
+     *  Permanent is the load-bearing word. AWS S3, Azure Blob and Alibaba OSS
+     *  were all listed here for a long time on the strength of a 5 GB figure
+     *  that is actually a new-account offer: 12 months for AWS and Azure, 1-3
+     *  months for Alibaba depending on the package. All three expire and drop
+     *  to zero. A time-limited allowance is a trial, and belongs in the paid
+     *  bucket with `freeStorageGb: null`, however large the number looks. */
     freeRequiresCard?: boolean;
     /** Reachability probe URL (global API endpoint). Omitted for
      *  per-account / self-hosted services, which then show no health dot. */
@@ -157,8 +165,8 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'ImageKit', logoId: 'imagekit', countryCode: 'IN', freeStorageGb: 20,
       freeNote: 'media CDN', healthCheckUrl: 'https://api.imagekit.io',
       protocols: [{ label: 'API', protocol: 'imagekit', providerId: 'imagekit', category: 'media-services' }] },
-    { company: 'Blomp', logoId: 'blomp', countryCode: 'US', freeStorageGb: 20,
-      freeNote: 'referral bonus',
+    { company: 'Blomp', logoId: 'blomp', countryCode: 'US', freeStorageGb: 40,
+      freeNote: '+40 GB per referral',
       protocols: [{ label: 'Swift', protocol: 'swift', providerId: 'blomp', category: 'cloud-storage' }] },
     { company: 'Storj', logoId: 'storj', countryCode: 'US', freeStorageGb: null,
       freeNote: '30-day trial',
@@ -273,8 +281,8 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Cloudinary', logoId: 'cloudinary', countryCode: 'US', freeStorageGb: null,
       freeNote: 'credit-based', healthCheckUrl: 'https://api.cloudinary.com',
       protocols: [{ label: 'API', protocol: 'cloudinary', providerId: 'cloudinary', category: 'media-services' }] },
-    { company: 'Amazon Web Services (AWS)', parentCompany: 'Amazon', logoId: 'amazon-s3', countryCode: 'US', freeStorageGb: 5,
-      freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://s3.amazonaws.com',
+    { company: 'Amazon Web Services (AWS)', parentCompany: 'Amazon', logoId: 'amazon-s3', countryCode: 'US', freeStorageGb: null,
+      freeNote: '12-month trial', healthCheckUrl: 'https://s3.amazonaws.com',
       searchAliases: ['aws', 'amazon web services', 's3', 'amazon'],
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'amazon-s3', category: 'object-storage', paid: true }] },
     { company: 'Wasabi', logoId: 'wasabi', countryCode: 'US', freeStorageGb: null,
@@ -283,14 +291,14 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'DigitalOcean Spaces', parentCompany: 'DigitalOcean', logoId: 'digitalocean-spaces', countryCode: 'US', freeStorageGb: null,
       freeNote: 'paid plan',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'digitalocean-spaces', category: 'object-storage', paid: true }] },
-    { company: 'Alibaba OSS', parentCompany: 'Alibaba', logoId: 'alibaba-oss', countryCode: 'CN', freeStorageGb: 5,
-      freeNote: 'overseas only, card req.', freeRequiresCard: true,
+    { company: 'Alibaba OSS', parentCompany: 'Alibaba', logoId: 'alibaba-oss', countryCode: 'CN', freeStorageGb: null,
+      freeNote: 'new-user trial, overseas',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'alibaba-oss', category: 'object-storage', paid: true }] },
     { company: 'Tencent COS', parentCompany: 'Tencent', logoId: 'tencent-cos', countryCode: 'CN', freeStorageGb: null,
       freeNote: '6-month trial',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'tencent-cos', category: 'object-storage', paid: true }] },
-    { company: 'Microsoft Azure Blob', parentCompany: 'Microsoft', logoId: 'azure', countryCode: 'US', freeStorageGb: 5,
-      freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
+    { company: 'Microsoft Azure Blob', parentCompany: 'Microsoft', logoId: 'azure', countryCode: 'US', freeStorageGb: null,
+      freeNote: '12-month trial', healthCheckUrl: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
       protocols: [{ label: 'Blob', protocol: 'azure', category: 'object-storage', paid: true }] },
     { company: 'Hetzner Storage Box', parentCompany: 'Hetzner', logoId: 'hetzner-storage-box', countryCode: 'DE', freeStorageGb: null,
       freeNote: 'paid plan',
@@ -535,8 +543,10 @@ export function companyTierInCategory(
     const inCat = c.protocols.filter(p => p.category === category);
     if (inCat.length === 0) return companyTier(c);
     // A card-gated free tier keeps the company in the 'free-card' bucket even
-    // per-category: its free allowance IS this category's product (e.g. AWS S3
-    // free tier is that same paid-flagged S3 method). Mirrors companyTier's
+    // per-category: its free allowance IS this category's product (e.g. Google
+    // Cloud Storage's always-free 5 GB is that same paid-flagged S3 method;
+    // AWS used to be the example here, until its S3 allowance turned out to be
+    // the 12-month tier rather than an always-free one). Mirrors companyTier's
     // precedence and keeps free-card OUT of paid. Only companies with NO free
     // tier at all fall through to the per-category paid/free split below.
     if (c.freeRequiresCard) return 'free-card';

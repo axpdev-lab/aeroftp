@@ -228,7 +228,11 @@ describe('commercial tier model: free / free-card / paid', () => {
 
     it('free-card companies have a free allowance but require a card, and stay OUT of the paid bucket', () => {
         // Alibaba OSS has a permanent 5 GB/mo fixed quota (overseas regions) but a card on file.
-        for (const name of ['Amazon Web Services (AWS)', 'Microsoft Azure Blob', 'Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
+        // AWS, Azure Blob and Alibaba OSS are deliberately NOT here: all three
+        // offered a 5 GB figure that is a new-account trial (12 months for AWS and
+        // Azure, 1-3 months for Alibaba), not an always-free allowance, so they
+        // belong in the paid-only list below. Only permanent allowances qualify.
+        for (const name of ['Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2']) {
             const c = PROVIDER_CATALOG.find(x => x.company === name)!;
             expect(c.freeRequiresCard, `${name} freeRequiresCard`).toBe(true);
             expect(c.freeStorageGb, `${name} has a free GB figure`).not.toBeNull();
@@ -241,7 +245,10 @@ describe('commercial tier model: free / free-card / paid', () => {
         // MEGA S4 is no longer here: it merged into the MEGA row (EF-14/15), and MEGA
         // has a free API tier, so the company classifies as 'free' (its S4 method
         // stays individually paid).
-        for (const name of ['Wasabi', 'DigitalOcean Spaces', 'Hetzner Storage Box', 'Tencent COS', 'Storj', 'IDrive e2']) {
+        // AWS: S3's 5 GB sits in the '12 Months Free' bucket, not the '30+ always free'
+        // one, so the allowance expires with the account's first year. New accounts
+        // now get up-to-$200 credits instead. Either way there is no ongoing free tier.
+        for (const name of ['Wasabi', 'DigitalOcean Spaces', 'Hetzner Storage Box', 'Tencent COS', 'Storj', 'IDrive e2', 'Amazon Web Services (AWS)', 'Microsoft Azure Blob', 'Alibaba OSS']) {
             expect(tierOf(name), `${name} tier`).toBe('paid');
         }
     });
@@ -270,15 +277,24 @@ describe('commercial tier model: free / free-card / paid', () => {
         expect(companyTierInCategory(wasabi!, 'object-storage'), 'Wasabi under S3 tab').toBe('paid');
         // A card-gated free tier stays free-card per-category, NOT paid: its free
         // allowance IS the S3 product (paid-flagged method), so it must land under
-        // Free + card, never leak into Paid nor vanish from Free + card.
+        // Free + card, never leak into Paid nor vanish from Free + card. Google
+        // Cloud Storage carries this case now: its 5 GB-month always-free quota is
+        // real, unlike AWS's S3 allowance, which is the 12-month new-account tier.
+        const gcs = PROVIDER_CATALOG.find(x => x.company === 'Google Cloud Storage');
+        expect(gcs, 'Google Cloud Storage present').toBeDefined();
+        expect(companyTierInCategory(gcs!, 'object-storage'), 'GCS under S3 tab').toBe('free-card');
+        // AWS is the counter-example: no ongoing free tier, so it is plain paid.
         const aws = PROVIDER_CATALOG.find(x => x.company === 'Amazon Web Services (AWS)');
         expect(aws, 'AWS present').toBeDefined();
-        expect(companyTierInCategory(aws!, 'object-storage'), 'AWS under S3 tab').toBe('free-card');
+        expect(companyTierInCategory(aws!, 'object-storage'), 'AWS under S3 tab').toBe('paid');
     });
 
     it('freeRequiresCard companies are never reported as paid-only by the CLI projection', () => {
         const cli = buildCliCatalog();
-        for (const name of ['Amazon Web Services (AWS)', 'Microsoft Azure Blob', 'Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
+        // AWS, Azure Blob and Alibaba OSS dropped out of this list: every one of
+        // those allowances is a new-account trial, not always-free, so none has a
+        // card-gated free tier left to protect. What remains is verified permanent.
+        for (const name of ['Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2']) {
             const row = cli.find(c => c.company === name)!;
             expect(row.freeRequiresCard, `${name} CLI freeRequiresCard`).toBe(true);
         }
