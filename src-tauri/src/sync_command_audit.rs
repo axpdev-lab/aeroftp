@@ -23,23 +23,28 @@
 //! the shorter spelling, and the count of main-thread commands climbs back.
 //!
 //! This test is the answer to that. It reads the sources, collects every
-//! synchronous command, and compares the set against two explicit lists:
-//! `MAIN_THREAD_ALLOWED`, the ones that are justified, and
-//! `MAIN_THREAD_NOT_YET_MOVED`, the ones that are not and are being drained.
-//! A new synchronous command matches neither and is red. Same shape as
-//! `pickPathIsTheOnlyPicker.test.ts` on the frontend side, which stops a new
-//! call site from reintroducing the silent picker.
+//! synchronous command, and asserts the set is **exactly** `MAIN_THREAD_ALLOWED`
+//! below. A new synchronous command is not in it and is red until somebody
+//! either moves the work off the main thread or writes down why it belongs
+//! there. Same shape as `pickPathIsTheOnlyPicker.test.ts` on the frontend side,
+//! which stops a new call site from reintroducing the silent picker.
 //!
-//! It is deliberately a set equality and not a "no more than N" check, in both
-//! directions: making an allowlisted command `async` fails too, and so does
-//! converting a pending one without deleting its line. Neither list can rot
-//! into a record of what used to be true, and neither can grow.
+//! Set equality in both directions, so the list cannot rot: an entry whose
+//! command has become `async`, been renamed or been deleted also fails, which
+//! keeps the list a description of the present rather than a history.
 //!
 //! The counting is worth a line of its own, because the number that started
 //! this work was wrong. It was taken with a regex anchored at `pub fn`
 //! immediately after the attribute, which silently skipped every command
 //! declared inside a nested `mod` -- that is, most of `lib.rs`. It reported 38
-//! synchronous commands. There are 82, out of 853.
+//! synchronous commands. There were 82, out of 853. There are now 23, and every
+//! one of them is here with its reason.
+//!
+//! Getting from 82 to 23 took two passes. The first shipped the commands that
+//! do filesystem, keystore and clipboard work outside `lib.rs` and froze the
+//! remainder in a second list that could only shrink; the second drained that
+//! list and deleted it. The ratchet is gone because it is empty, which is the
+//! only good reason to delete one.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -61,7 +66,8 @@ const MAIN_THREAD_ALLOWED: &[(&str, &str)] = &[
     ),
     (
         "compare_hashes",
-        "constant-time compare of two hex strings, no I/O.",
+        "constant-time compare of two hex strings the caller already sent over \
+         IPC; no I/O and linear in a string the UI itself produced.",
     ),
     (
         "generate_password",
@@ -76,7 +82,8 @@ const MAIN_THREAD_ALLOWED: &[(&str, &str)] = &[
     ),
     (
         "calculate_entropy",
-        "arithmetic over a character-group set the command builds itself.",
+        "arithmetic over a character-group set the command builds itself, so \
+         its size is bounded by this file rather than by the caller.",
     ),
     (
         "native_rsync_feature_compiled",
@@ -90,100 +97,82 @@ const MAIN_THREAD_ALLOWED: &[(&str, &str)] = &[
         "local_sync_cancel",
         "one atomic store; the cancellation is observed by the worker itself.",
     ),
-];
-
-/// Commands that are still synchronous and should not be.
-///
-/// This list is a **ratchet, frozen at the commit that introduced it**, and the
-/// test below asserts the synchronous set is exactly `MAIN_THREAD_ALLOWED` plus
-/// this one. That has three consequences, and they are the point:
-///
-///   * a **new** synchronous command is red immediately, so the count cannot
-///     climb again by addition, which is how it got here;
-///   * converting one of these without deleting its line is **also** red, so
-///     the list has to shrink as the work lands and cannot drift into fiction;
-///   * the list can never grow. Adding to it is not a way to get green.
-///
-/// Everything here does real blocking work on the main thread -- most of it is
-/// the sync index / journal / profile / snapshot / cloud-config family, which
-/// is JSON read and write against the config directory -- except for a handful
-/// that touch GTK and will end up in `MAIN_THREAD_ALLOWED` instead once each
-/// has been read and the reason written down. Neither outcome is "leave it".
-const MAIN_THREAD_NOT_YET_MOVED: &[&str] = &[
-    "speech_model_status",              // lib.rs:245
-    "preview_provider_totp",            // lib.rs:467
-    "portable_info",                    // lib.rs:2444
-    "copy_to_clipboard",                // lib.rs:2463
-    "log_update_detection",             // lib.rs:2607
-    "restart_app",                      // lib.rs:3017
-    "is_running_as_snap",               // lib.rs:5370
-    "get_dependencies",                 // lib.rs:5406
-    "get_system_info",                  // lib.rs:6059
-    "safe_picker_start_dir",            // lib.rs:6458
-    "set_close_to_tray",                // lib.rs:10906
-    "is_autostart_launch",              // lib.rs:10916
-    "toggle_menu_bar",                  // lib.rs:11159
-    "rebuild_menu",                     // lib.rs:11170
-    "get_compare_options_default",      // lib.rs:12532
-    "load_sync_index_cmd",              // lib.rs:12537
-    "save_sync_index_cmd",              // lib.rs:12547
-    "load_sync_journal_cmd",            // lib.rs:12556
-    "save_sync_journal_cmd",            // lib.rs:12566
-    "delete_sync_journal_cmd",          // lib.rs:12573
-    "list_sync_journals_cmd",           // lib.rs:12580
-    "cleanup_old_journals_cmd",         // lib.rs:12585
-    "clear_all_journals_cmd",           // lib.rs:12590
-    "save_transfer_queue_journal_cmd",  // lib.rs:12597
-    "load_transfer_queue_journal_cmd",  // lib.rs:12604
-    "clear_transfer_queue_journal_cmd", // lib.rs:12610
-    "load_sync_profiles_cmd",           // lib.rs:12615
-    "save_sync_profile_cmd",            // lib.rs:12620
-    "delete_sync_profile_cmd",          // lib.rs:12625
-    "get_sync_schedule_cmd",            // lib.rs:12651
-    "save_sync_schedule_cmd",           // lib.rs:12656
-    "get_watcher_status_cmd",           // lib.rs:12661
-    "get_multi_path_config",            // lib.rs:13062
-    "save_multi_path_config_cmd",       // lib.rs:13067
-    "add_path_pair",                    // lib.rs:13072
-    "remove_path_pair",                 // lib.rs:13080
-    "export_sync_template_cmd",         // lib.rs:13092
-    "import_sync_template_cmd",         // lib.rs:13124
-    "export_sync_script_cmd",           // lib.rs:13149
-    "import_sync_script_cmd",           // lib.rs:13170
-    "aerosync_export_script_cmd",       // lib.rs:13209
-    "aerosync_import_script_cmd",       // lib.rs:13312
-    "create_sync_snapshot_cmd",         // lib.rs:13350
-    "list_sync_snapshots_cmd",          // lib.rs:13359
-    "delete_sync_snapshot_cmd",         // lib.rs:13372
-    "load_sync_snapshot_cmd",           // lib.rs:13385
-    "get_default_retry_policy",         // lib.rs:14380
-    "verify_local_transfer",            // lib.rs:14385
-    "classify_transfer_error",          // lib.rs:14407
-    "get_cloud_config",                 // lib.rs:14805
-    "save_cloud_config_cmd",            // lib.rs:14810
-    "get_cloud_pairs_config",           // lib.rs:14818
-    "save_cloud_pairs_config_cmd",      // lib.rs:14823
-    "add_cloud_pair",                   // lib.rs:14828
-    "remove_cloud_pair",                // lib.rs:14841
-    "update_cloud_pair",                // lib.rs:14853
-    "update_excluded_folders",          // lib.rs:14868
-    "list_file_versions",               // lib.rs:14875
-    "list_all_file_versions",           // lib.rs:14882
-    "restore_file_version",             // lib.rs:14889
-    "cleanup_versions",                 // lib.rs:14919
-    "versions_disk_usage",              // lib.rs:14926
-    "archive_before_sync_delete",       // lib.rs:14935
-    "get_cloud_status",                 // lib.rs:15080
-    "enable_aerocloud",                 // lib.rs:15098
-    "generate_share_link",              // lib.rs:15198
-    "generate_share_link_remote",       // lib.rs:15236
-    "generate_server_share_link",       // lib.rs:15272
-    "get_default_cloud_folder",         // lib.rs:15317
-    "update_conflict_strategy",         // lib.rs:15323
-    "is_background_sync_running",       // lib.rs:16012
-    "flatpak_config_import_status",     // lib.rs:16171
-    "flatpak_config_import_apply",      // lib.rs:16186
-    "mount_autostart_blocked",          // lib.rs:17516
+    (
+        "restart_app",
+        "must be on the main thread: it tears down the single-instance plugin \
+         and calls AppHandle::restart, which drives the event loop.",
+    ),
+    (
+        "toggle_menu_bar",
+        "must be on the main thread: set_menu / remove_menu are GTK window \
+         operations on Linux.",
+    ),
+    (
+        "rebuild_menu",
+        "must be on the main thread, and already knows it: MenuItem creation \
+         and Drop touch GTK, so the body marshals the build through a channel \
+         onto the main thread. tauri-runtime-wry's send_user_message runs that \
+         closure inline when the caller already is the main thread, so making \
+         the command async would add an event-loop round trip and move no work.",
+    ),
+    (
+        "speech_model_status",
+        "the macOS variant, which returns a constant struct because local STT \
+         is not built there; the platforms that have a real implementation \
+         already answer asynchronously.",
+    ),
+    (
+        "log_update_detection",
+        "writes one line to the log and returns; the tracing subscriber is \
+         non-blocking.",
+    ),
+    (
+        "is_running_as_snap",
+        "reads the SNAP environment variable of this process; no syscall, and \
+         the value cannot change while we run.",
+    ),
+    (
+        "is_autostart_launch",
+        "scans this process's own argv for --autostart.",
+    ),
+    (
+        "set_close_to_tray",
+        "one atomic store into a static the window-close handler reads; there \
+         is nothing to wait for.",
+    ),
+    (
+        "is_background_sync_running",
+        "one atomic load from a static the background worker maintains; the \
+         frontend polls it and must not pay a thread hop for a bool.",
+    ),
+    (
+        "get_compare_options_default",
+        "returns CompareOptions::default(), a struct of literals.",
+    ),
+    (
+        "get_default_retry_policy",
+        "returns RetryPolicy::default(), a struct of literals.",
+    ),
+    (
+        "get_dependencies",
+        "builds a Vec from version strings that build.rs baked in at compile \
+         time; nothing is read at runtime.",
+    ),
+    (
+        "generate_server_share_link",
+        "string work only: prefix checks, trims, and percent-encoding of path \
+         segments.",
+    ),
+    (
+        "preview_provider_totp",
+        "one HMAC over the current time step, on a secret already held in \
+         memory; bounded and microseconds long.",
+    ),
+    (
+        "classify_transfer_error",
+        "lowercases an error string we produced ourselves and substring-matches \
+         it against a fixed table.",
+    ),
 ];
 
 /// One `#[tauri::command]` found in the sources.
@@ -339,18 +328,7 @@ fn no_command_blocks_the_main_thread_unless_it_is_on_the_list() {
         MAIN_THREAD_ALLOWED.len(),
         "MAIN_THREAD_ALLOWED contains a duplicate name"
     );
-    let not_yet: BTreeSet<&str> = MAIN_THREAD_NOT_YET_MOVED.iter().copied().collect();
-    assert_eq!(
-        not_yet.len(),
-        MAIN_THREAD_NOT_YET_MOVED.len(),
-        "MAIN_THREAD_NOT_YET_MOVED contains a duplicate name"
-    );
-    let overlap: Vec<&&str> = justified.intersection(&not_yet).collect();
-    assert!(
-        overlap.is_empty(),
-        "{overlap:?} is both justified and pending, which cannot both be true"
-    );
-    let allowed: BTreeSet<&str> = justified.union(&not_yet).copied().collect();
+    let allowed = &justified;
 
     let sync_commands: Vec<&FoundCommand> = found.iter().filter(|c| !c.is_async).collect();
     let sync_names: BTreeSet<&str> = sync_commands.iter().map(|c| c.name.as_str()).collect();
@@ -376,9 +354,8 @@ fn no_command_blocks_the_main_thread_unless_it_is_on_the_list() {
              `clippy::await_holding_lock`.\n\n\
              If a command genuinely has to stay on the main thread, or its work is bounded \
              by its own validation and touches nothing outside the process, add it to \
-             MAIN_THREAD_ALLOWED in this file together with the reason.\n\n\
-             MAIN_THREAD_NOT_YET_MOVED is not the place for it: that list is frozen and \
-             only shrinks."
+             MAIN_THREAD_ALLOWED in this file together with the reason. A bare name with \
+             no reason fails the next test down."
         );
     }
 
@@ -392,18 +369,6 @@ fn no_command_blocks_the_main_thread_unless_it_is_on_the_list() {
         "MAIN_THREAD_ALLOWED still lists {stale_justified:?}, but no synchronous command by \
          that name exists any more. Either it was made async -- in which case drop the entry, \
          the list is not a history -- or it was renamed or removed and the entry went stale."
-    );
-
-    let drained: Vec<&str> = not_yet
-        .iter()
-        .filter(|name| !sync_names.contains(*name))
-        .copied()
-        .collect();
-    assert!(
-        drained.is_empty(),
-        "{drained:?} are no longer synchronous, which is the point -- now delete them from \
-         MAIN_THREAD_NOT_YET_MOVED. The list has to shrink as the work lands, otherwise it \
-         stops describing anything."
     );
 }
 

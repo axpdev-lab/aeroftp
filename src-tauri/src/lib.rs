@@ -2431,7 +2431,7 @@ fn detect_install_format() -> String {
 /// over from an earlier non-portable install (or from a pre-v3.7.8
 /// portable that shared that folder): the banner offers a one-click
 /// "Open folder" / "Dismiss" so the user can clean it up manually.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Default)]
 struct PortableInfo {
     is_portable: bool,
     data_root: Option<String>,
@@ -2441,7 +2441,17 @@ struct PortableInfo {
 }
 
 #[tauri::command]
-fn portable_info(app: tauri::AppHandle) -> PortableInfo {
+async fn portable_info(app: tauri::AppHandle) -> PortableInfo {
+    tokio::task::spawn_blocking(move || portable_info_blocking(app))
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("portable_info task failed: {err}");
+            PortableInfo::default()
+        })
+}
+
+/// The body of `portable_info`, kept synchronous and run on the blocking pool.
+fn portable_info_blocking(app: tauri::AppHandle) -> PortableInfo {
     let is_portable = portable::is_portable();
     let data_root = if is_portable {
         portable::app_data_dir(&app)
@@ -2460,7 +2470,14 @@ fn portable_info(app: tauri::AppHandle) -> PortableInfo {
 }
 
 #[tauri::command]
-fn copy_to_clipboard(text: String) -> Result<(), String> {
+async fn copy_to_clipboard(text: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || copy_to_clipboard_blocking(text))
+        .await
+        .unwrap_or_else(|err| Err(format!("copy_to_clipboard task failed: {err}")))
+}
+
+/// The body of `copy_to_clipboard`, kept synchronous and run on the blocking pool.
+fn copy_to_clipboard_blocking(text: String) -> Result<(), String> {
     let mut clipboard =
         arboard::Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
     #[cfg(target_os = "linux")]
@@ -5387,7 +5404,7 @@ struct CrateVersionResult {
     error: Option<String>,
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, Default)]
 struct SystemInfo {
     app_version: String,
     os: String,
@@ -6056,7 +6073,17 @@ async fn check_crate_versions(crate_names: Vec<String>) -> Vec<CrateVersionResul
 }
 
 #[tauri::command]
-fn get_system_info() -> SystemInfo {
+async fn get_system_info() -> SystemInfo {
+    tokio::task::spawn_blocking(get_system_info_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("get_system_info task failed: {err}");
+            SystemInfo::default()
+        })
+}
+
+/// The body of `get_system_info`, kept synchronous and run on the blocking pool.
+fn get_system_info_blocking() -> SystemInfo {
     let config_dir = portable::aeroftp_data_root()
         .map(|d| d.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown".into());
@@ -6455,7 +6482,17 @@ async fn open_local_file(path: String) -> Result<(), String> {
 /// foreign absolute path whose whole chain is absent), so the caller omits
 /// `defaultPath` and the picker opens at the OS default location.
 #[tauri::command]
-fn safe_picker_start_dir(path: Option<String>) -> Option<String> {
+async fn safe_picker_start_dir(path: Option<String>) -> Option<String> {
+    tokio::task::spawn_blocking(move || safe_picker_start_dir_blocking(path))
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("safe_picker_start_dir task failed: {err}");
+            None
+        })
+}
+
+/// The body of `safe_picker_start_dir`, kept synchronous and run on the blocking pool.
+fn safe_picker_start_dir_blocking(path: Option<String>) -> Option<String> {
     let raw = path?;
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -6475,19 +6512,23 @@ fn safe_picker_start_dir(path: Option<String>) -> Option<String> {
 
 #[cfg(test)]
 mod safe_picker_start_dir_tests {
-    use super::safe_picker_start_dir;
+    // The command is async; these cases drive the same body directly.
+    use super::safe_picker_start_dir_blocking;
 
     #[test]
     fn none_and_empty_yield_none() {
-        assert_eq!(safe_picker_start_dir(None), None);
-        assert_eq!(safe_picker_start_dir(Some(String::new())), None);
-        assert_eq!(safe_picker_start_dir(Some("   ".to_string())), None);
+        assert_eq!(safe_picker_start_dir_blocking(None), None);
+        assert_eq!(safe_picker_start_dir_blocking(Some(String::new())), None);
+        assert_eq!(
+            safe_picker_start_dir_blocking(Some("   ".to_string())),
+            None
+        );
     }
 
     #[test]
     fn existing_directory_is_returned_unchanged() {
         let dir = std::env::temp_dir();
-        let got = safe_picker_start_dir(Some(dir.to_string_lossy().into_owned()));
+        let got = safe_picker_start_dir_blocking(Some(dir.to_string_lossy().into_owned()));
         assert_eq!(got, Some(dir.to_string_lossy().into_owned()));
     }
 
@@ -6500,7 +6541,7 @@ mod safe_picker_start_dir_tests {
         let stale = base
             .join("aeroftp-does-not-exist-xyz")
             .join("nested-missing");
-        let got = safe_picker_start_dir(Some(stale.to_string_lossy().into_owned()));
+        let got = safe_picker_start_dir_blocking(Some(stale.to_string_lossy().into_owned()));
         assert_eq!(got, Some(base.to_string_lossy().into_owned()));
     }
 
@@ -6511,7 +6552,9 @@ mod safe_picker_start_dir_tests {
         // caller omits defaultPath and the picker opens at the OS default.
         #[cfg(unix)]
         {
-            let got = safe_picker_start_dir(Some(r"C:\Users\other\Downloads\AeroFTP".to_string()));
+            let got = safe_picker_start_dir_blocking(Some(
+                r"C:\Users\other\Downloads\AeroFTP".to_string(),
+            ));
             assert_eq!(got, None);
         }
     }
@@ -6528,7 +6571,7 @@ mod safe_picker_start_dir_tests {
             r"C:\Windows\Imported\Path",
             "relative/does/not/exist",
         ] {
-            if let Some(dir) = safe_picker_start_dir(Some(candidate.to_string())) {
+            if let Some(dir) = safe_picker_start_dir_blocking(Some(candidate.to_string())) {
                 assert!(
                     std::path::Path::new(&dir).is_dir(),
                     "returned start dir {dir:?} for input {candidate:?} must exist",
@@ -12556,7 +12599,17 @@ fn get_compare_options_default() -> CompareOptions {
 }
 
 #[tauri::command]
-fn load_sync_index_cmd(
+async fn load_sync_index_cmd(
+    local_path: String,
+    remote_path: String,
+) -> Result<Option<SyncIndex>, String> {
+    tokio::task::spawn_blocking(move || load_sync_index_cmd_blocking(local_path, remote_path))
+        .await
+        .unwrap_or_else(|err| Err(format!("load_sync_index_cmd task failed: {err}")))
+}
+
+/// The body of `load_sync_index_cmd`, kept synchronous and run on the blocking pool.
+fn load_sync_index_cmd_blocking(
     local_path: String,
     remote_path: String,
 ) -> Result<Option<SyncIndex>, String> {
@@ -12566,7 +12619,14 @@ fn load_sync_index_cmd(
 }
 
 #[tauri::command]
-fn save_sync_index_cmd(index: SyncIndex) -> Result<(), String> {
+async fn save_sync_index_cmd(index: SyncIndex) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || save_sync_index_cmd_blocking(index))
+        .await
+        .unwrap_or_else(|err| Err(format!("save_sync_index_cmd task failed: {err}")))
+}
+
+/// The body of `save_sync_index_cmd`, kept synchronous and run on the blocking pool.
+fn save_sync_index_cmd_blocking(index: SyncIndex) -> Result<(), String> {
     validate_path(&index.local_path)?;
     validate_path(&index.remote_path)?;
     save_sync_index(&index)
@@ -12575,7 +12635,17 @@ fn save_sync_index_cmd(index: SyncIndex) -> Result<(), String> {
 // ============ Sync Journal Commands (Phase 2: Reliability) ============
 
 #[tauri::command]
-fn load_sync_journal_cmd(
+async fn load_sync_journal_cmd(
+    local_path: String,
+    remote_path: String,
+) -> Result<Option<SyncJournal>, String> {
+    tokio::task::spawn_blocking(move || load_sync_journal_cmd_blocking(local_path, remote_path))
+        .await
+        .unwrap_or_else(|err| Err(format!("load_sync_journal_cmd task failed: {err}")))
+}
+
+/// The body of `load_sync_journal_cmd`, kept synchronous and run on the blocking pool.
+fn load_sync_journal_cmd_blocking(
     local_path: String,
     remote_path: String,
 ) -> Result<Option<SyncJournal>, String> {
@@ -12585,66 +12655,158 @@ fn load_sync_journal_cmd(
 }
 
 #[tauri::command]
-fn save_sync_journal_cmd(journal: SyncJournal) -> Result<(), String> {
+async fn save_sync_journal_cmd(journal: SyncJournal) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || save_sync_journal_cmd_blocking(journal))
+        .await
+        .unwrap_or_else(|err| Err(format!("save_sync_journal_cmd task failed: {err}")))
+}
+
+/// The body of `save_sync_journal_cmd`, kept synchronous and run on the blocking pool.
+fn save_sync_journal_cmd_blocking(journal: SyncJournal) -> Result<(), String> {
     validate_path(&journal.local_path)?;
     validate_path(&journal.remote_path)?;
     save_sync_journal(&journal)
 }
 
 #[tauri::command]
-fn delete_sync_journal_cmd(local_path: String, remote_path: String) -> Result<(), String> {
+async fn delete_sync_journal_cmd(local_path: String, remote_path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || delete_sync_journal_cmd_blocking(local_path, remote_path))
+        .await
+        .unwrap_or_else(|err| Err(format!("delete_sync_journal_cmd task failed: {err}")))
+}
+
+/// The body of `delete_sync_journal_cmd`, kept synchronous and run on the blocking pool.
+fn delete_sync_journal_cmd_blocking(local_path: String, remote_path: String) -> Result<(), String> {
     validate_path(&local_path)?;
     validate_path(&remote_path)?;
     delete_sync_journal(&local_path, &remote_path)
 }
 
 #[tauri::command]
-fn list_sync_journals_cmd() -> Result<Vec<sync::JournalSummary>, String> {
+async fn list_sync_journals_cmd() -> Result<Vec<sync::JournalSummary>, String> {
+    tokio::task::spawn_blocking(list_sync_journals_cmd_blocking)
+        .await
+        .unwrap_or_else(|err| Err(format!("list_sync_journals_cmd task failed: {err}")))
+}
+
+/// The body of `list_sync_journals_cmd`, kept synchronous and run on the blocking pool.
+fn list_sync_journals_cmd_blocking() -> Result<Vec<sync::JournalSummary>, String> {
     sync::list_sync_journals()
 }
 
 #[tauri::command]
-fn cleanup_old_journals_cmd(max_age_days: u32) -> Result<u32, String> {
+async fn cleanup_old_journals_cmd(max_age_days: u32) -> Result<u32, String> {
+    tokio::task::spawn_blocking(move || cleanup_old_journals_cmd_blocking(max_age_days))
+        .await
+        .unwrap_or_else(|err| Err(format!("cleanup_old_journals_cmd task failed: {err}")))
+}
+
+/// The body of `cleanup_old_journals_cmd`, kept synchronous and run on the blocking pool.
+fn cleanup_old_journals_cmd_blocking(max_age_days: u32) -> Result<u32, String> {
     sync::cleanup_old_journals(max_age_days)
 }
 
 #[tauri::command]
-fn clear_all_journals_cmd() -> Result<u32, String> {
+async fn clear_all_journals_cmd() -> Result<u32, String> {
+    tokio::task::spawn_blocking(clear_all_journals_cmd_blocking)
+        .await
+        .unwrap_or_else(|err| Err(format!("clear_all_journals_cmd task failed: {err}")))
+}
+
+/// The body of `clear_all_journals_cmd`, kept synchronous and run on the blocking pool.
+fn clear_all_journals_cmd_blocking() -> Result<u32, String> {
     sync::clear_all_journals()
 }
 
 // ============ Transfer Queue Journal (TQ-7a: persistence + restart detection) ============
 
 #[tauri::command]
-fn save_transfer_queue_journal_cmd(
+async fn save_transfer_queue_journal_cmd(
+    entries: Vec<transfer_queue_journal::TransferQueueJournalEntry>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || save_transfer_queue_journal_cmd_blocking(entries))
+        .await
+        .unwrap_or_else(|err| {
+            Err(format!(
+                "save_transfer_queue_journal_cmd task failed: {err}"
+            ))
+        })
+}
+
+/// The body of `save_transfer_queue_journal_cmd`, kept synchronous and run on the blocking pool.
+fn save_transfer_queue_journal_cmd_blocking(
     entries: Vec<transfer_queue_journal::TransferQueueJournalEntry>,
 ) -> Result<(), String> {
     transfer_queue_journal::save_transfer_queue_journal(entries)
 }
 
 #[tauri::command]
-fn load_transfer_queue_journal_cmd(
+async fn load_transfer_queue_journal_cmd(
+) -> Result<Option<transfer_queue_journal::TransferQueueJournal>, String> {
+    tokio::task::spawn_blocking(load_transfer_queue_journal_cmd_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            Err(format!(
+                "load_transfer_queue_journal_cmd task failed: {err}"
+            ))
+        })
+}
+
+/// The body of `load_transfer_queue_journal_cmd`, kept synchronous and run on the blocking pool.
+fn load_transfer_queue_journal_cmd_blocking(
 ) -> Result<Option<transfer_queue_journal::TransferQueueJournal>, String> {
     transfer_queue_journal::load_transfer_queue_journal()
 }
 
 #[tauri::command]
-fn clear_transfer_queue_journal_cmd() -> Result<(), String> {
+async fn clear_transfer_queue_journal_cmd() -> Result<(), String> {
+    tokio::task::spawn_blocking(clear_transfer_queue_journal_cmd_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            Err(format!(
+                "clear_transfer_queue_journal_cmd task failed: {err}"
+            ))
+        })
+}
+
+/// The body of `clear_transfer_queue_journal_cmd`, kept synchronous and run on the blocking pool.
+fn clear_transfer_queue_journal_cmd_blocking() -> Result<(), String> {
     transfer_queue_journal::clear_transfer_queue_journal()
 }
 
 #[tauri::command]
-fn load_sync_profiles_cmd() -> Result<Vec<sync::SyncProfile>, String> {
+async fn load_sync_profiles_cmd() -> Result<Vec<sync::SyncProfile>, String> {
+    tokio::task::spawn_blocking(load_sync_profiles_cmd_blocking)
+        .await
+        .unwrap_or_else(|err| Err(format!("load_sync_profiles_cmd task failed: {err}")))
+}
+
+/// The body of `load_sync_profiles_cmd`, kept synchronous and run on the blocking pool.
+fn load_sync_profiles_cmd_blocking() -> Result<Vec<sync::SyncProfile>, String> {
     sync::load_sync_profiles()
 }
 
 #[tauri::command]
-fn save_sync_profile_cmd(profile: sync::SyncProfile) -> Result<(), String> {
+async fn save_sync_profile_cmd(profile: sync::SyncProfile) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || save_sync_profile_cmd_blocking(profile))
+        .await
+        .unwrap_or_else(|err| Err(format!("save_sync_profile_cmd task failed: {err}")))
+}
+
+/// The body of `save_sync_profile_cmd`, kept synchronous and run on the blocking pool.
+fn save_sync_profile_cmd_blocking(profile: sync::SyncProfile) -> Result<(), String> {
     sync::save_sync_profile(&profile)
 }
 
 #[tauri::command]
-fn delete_sync_profile_cmd(id: String) -> Result<(), String> {
+async fn delete_sync_profile_cmd(id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || delete_sync_profile_cmd_blocking(id))
+        .await
+        .unwrap_or_else(|err| Err(format!("delete_sync_profile_cmd task failed: {err}")))
+}
+
+/// The body of `delete_sync_profile_cmd`, kept synchronous and run on the blocking pool.
+fn delete_sync_profile_cmd_blocking(id: String) -> Result<(), String> {
     sync::delete_sync_profile(&id)
 }
 
@@ -12670,17 +12832,40 @@ async fn get_parallel_scan_files(
 }
 
 #[tauri::command]
-fn get_sync_schedule_cmd() -> Result<sync_scheduler::SyncSchedule, String> {
+async fn get_sync_schedule_cmd() -> Result<sync_scheduler::SyncSchedule, String> {
+    tokio::task::spawn_blocking(get_sync_schedule_cmd_blocking)
+        .await
+        .unwrap_or_else(|err| Err(format!("get_sync_schedule_cmd task failed: {err}")))
+}
+
+/// The body of `get_sync_schedule_cmd`, kept synchronous and run on the blocking pool.
+fn get_sync_schedule_cmd_blocking() -> Result<sync_scheduler::SyncSchedule, String> {
     Ok(sync_scheduler::load_sync_schedule())
 }
 
 #[tauri::command]
-fn save_sync_schedule_cmd(schedule: sync_scheduler::SyncSchedule) -> Result<(), String> {
+async fn save_sync_schedule_cmd(schedule: sync_scheduler::SyncSchedule) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || save_sync_schedule_cmd_blocking(schedule))
+        .await
+        .unwrap_or_else(|err| Err(format!("save_sync_schedule_cmd task failed: {err}")))
+}
+
+/// The body of `save_sync_schedule_cmd`, kept synchronous and run on the blocking pool.
+fn save_sync_schedule_cmd_blocking(schedule: sync_scheduler::SyncSchedule) -> Result<(), String> {
     sync_scheduler::save_sync_schedule(&schedule)
 }
 
 #[tauri::command]
-fn get_watcher_status_cmd(watch_path: Option<String>) -> Result<serde_json::Value, String> {
+async fn get_watcher_status_cmd(watch_path: Option<String>) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || get_watcher_status_cmd_blocking(watch_path))
+        .await
+        .unwrap_or_else(|err| Err(format!("get_watcher_status_cmd task failed: {err}")))
+}
+
+/// The body of `get_watcher_status_cmd`, kept synchronous and run on the blocking pool.
+fn get_watcher_status_cmd_blocking(
+    watch_path: Option<String>,
+) -> Result<serde_json::Value, String> {
     // Validate the watch path if provided
     if let Some(ref p) = watch_path {
         filesystem::validate_path(p)?;
@@ -13081,17 +13266,41 @@ async fn sftp_probe_delta_eligibility(
 // =============================
 
 #[tauri::command]
-fn get_multi_path_config() -> sync::MultiPathConfig {
+async fn get_multi_path_config() -> sync::MultiPathConfig {
+    tokio::task::spawn_blocking(get_multi_path_config_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("get_multi_path_config task failed: {err}");
+            sync::MultiPathConfig::default()
+        })
+}
+
+/// The body of `get_multi_path_config`, kept synchronous and run on the blocking pool.
+fn get_multi_path_config_blocking() -> sync::MultiPathConfig {
     sync::load_multi_path_config()
 }
 
 #[tauri::command]
-fn save_multi_path_config_cmd(config: sync::MultiPathConfig) -> Result<(), String> {
+async fn save_multi_path_config_cmd(config: sync::MultiPathConfig) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || save_multi_path_config_cmd_blocking(config))
+        .await
+        .unwrap_or_else(|err| Err(format!("save_multi_path_config_cmd task failed: {err}")))
+}
+
+/// The body of `save_multi_path_config_cmd`, kept synchronous and run on the blocking pool.
+fn save_multi_path_config_cmd_blocking(config: sync::MultiPathConfig) -> Result<(), String> {
     sync::save_multi_path_config(&config)
 }
 
 #[tauri::command]
-fn add_path_pair(pair: sync::PathPair) -> Result<sync::MultiPathConfig, String> {
+async fn add_path_pair(pair: sync::PathPair) -> Result<sync::MultiPathConfig, String> {
+    tokio::task::spawn_blocking(move || add_path_pair_blocking(pair))
+        .await
+        .unwrap_or_else(|err| Err(format!("add_path_pair task failed: {err}")))
+}
+
+/// The body of `add_path_pair`, kept synchronous and run on the blocking pool.
+fn add_path_pair_blocking(pair: sync::PathPair) -> Result<sync::MultiPathConfig, String> {
     let mut config = sync::load_multi_path_config();
     config.pairs.push(pair);
     sync::save_multi_path_config(&config)?;
@@ -13099,7 +13308,14 @@ fn add_path_pair(pair: sync::PathPair) -> Result<sync::MultiPathConfig, String> 
 }
 
 #[tauri::command]
-fn remove_path_pair(pair_id: String) -> Result<sync::MultiPathConfig, String> {
+async fn remove_path_pair(pair_id: String) -> Result<sync::MultiPathConfig, String> {
+    tokio::task::spawn_blocking(move || remove_path_pair_blocking(pair_id))
+        .await
+        .unwrap_or_else(|err| Err(format!("remove_path_pair task failed: {err}")))
+}
+
+/// The body of `remove_path_pair`, kept synchronous and run on the blocking pool.
+fn remove_path_pair_blocking(pair_id: String) -> Result<sync::MultiPathConfig, String> {
     let mut config = sync::load_multi_path_config();
     config.pairs.retain(|p| p.id != pair_id);
     sync::save_multi_path_config(&config)?;
@@ -13111,7 +13327,30 @@ fn remove_path_pair(pair_id: String) -> Result<sync::MultiPathConfig, String> {
 // =============================
 
 #[tauri::command]
-fn export_sync_template_cmd(
+async fn export_sync_template_cmd(
+    name: String,
+    description: String,
+    profile_id: String,
+    local_path: String,
+    remote_path: String,
+    exclude_patterns: Vec<String>,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        export_sync_template_cmd_blocking(
+            name,
+            description,
+            profile_id,
+            local_path,
+            remote_path,
+            exclude_patterns,
+        )
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("export_sync_template_cmd task failed: {err}")))
+}
+
+/// The body of `export_sync_template_cmd`, kept synchronous and run on the blocking pool.
+fn export_sync_template_cmd_blocking(
     name: String,
     description: String,
     profile_id: String,
@@ -13143,7 +13382,14 @@ fn export_sync_template_cmd(
 }
 
 #[tauri::command]
-fn import_sync_template_cmd(json_content: String) -> Result<sync::SyncTemplate, String> {
+async fn import_sync_template_cmd(json_content: String) -> Result<sync::SyncTemplate, String> {
+    tokio::task::spawn_blocking(move || import_sync_template_cmd_blocking(json_content))
+        .await
+        .unwrap_or_else(|err| Err(format!("import_sync_template_cmd task failed: {err}")))
+}
+
+/// The body of `import_sync_template_cmd`, kept synchronous and run on the blocking pool.
+fn import_sync_template_cmd_blocking(json_content: String) -> Result<sync::SyncTemplate, String> {
     let template: sync::SyncTemplate = serde_json::from_str(&json_content)
         .map_err(|e| format!("Invalid template format: {}", e))?;
     if template.schema_version != 1 {
@@ -13168,7 +13414,14 @@ struct SyncScriptExportArgs {
 }
 
 #[tauri::command]
-fn export_sync_script_cmd(args: SyncScriptExportArgs) -> Result<String, String> {
+async fn export_sync_script_cmd(args: SyncScriptExportArgs) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || export_sync_script_cmd_blocking(args))
+        .await
+        .unwrap_or_else(|err| Err(format!("export_sync_script_cmd task failed: {err}")))
+}
+
+/// The body of `export_sync_script_cmd`, kept synchronous and run on the blocking pool.
+fn export_sync_script_cmd_blocking(args: SyncScriptExportArgs) -> Result<String, String> {
     let format = sync::SyncScriptFormat::parse(&args.format)
         .ok_or_else(|| format!("Unsupported script format: {}", args.format))?;
     let profiles = sync::load_sync_profiles()?;
@@ -13189,7 +13442,14 @@ fn export_sync_script_cmd(args: SyncScriptExportArgs) -> Result<String, String> 
 }
 
 #[tauri::command]
-fn import_sync_script_cmd(script_content: String) -> Result<sync::SyncScriptMeta, String> {
+async fn import_sync_script_cmd(script_content: String) -> Result<sync::SyncScriptMeta, String> {
+    tokio::task::spawn_blocking(move || import_sync_script_cmd_blocking(script_content))
+        .await
+        .unwrap_or_else(|err| Err(format!("import_sync_script_cmd task failed: {err}")))
+}
+
+/// The body of `import_sync_script_cmd`, kept synchronous and run on the blocking pool.
+fn import_sync_script_cmd_blocking(script_content: String) -> Result<sync::SyncScriptMeta, String> {
     sync::import_sync_script(&script_content)
 }
 
@@ -13228,7 +13488,16 @@ struct AerosyncExportScriptResult {
 }
 
 #[tauri::command]
-fn aerosync_export_script_cmd(
+async fn aerosync_export_script_cmd(
+    args: AerosyncExportScriptArgs,
+) -> Result<AerosyncExportScriptResult, String> {
+    tokio::task::spawn_blocking(move || aerosync_export_script_cmd_blocking(args))
+        .await
+        .unwrap_or_else(|err| Err(format!("aerosync_export_script_cmd task failed: {err}")))
+}
+
+/// The body of `aerosync_export_script_cmd`, kept synchronous and run on the blocking pool.
+fn aerosync_export_script_cmd_blocking(
     args: AerosyncExportScriptArgs,
 ) -> Result<AerosyncExportScriptResult, String> {
     let profiles = sync::load_sync_profiles()?;
@@ -13331,7 +13600,16 @@ struct AerosyncImportScriptResult {
 }
 
 #[tauri::command]
-fn aerosync_import_script_cmd(
+async fn aerosync_import_script_cmd(
+    args: AerosyncImportScriptArgs,
+) -> Result<AerosyncImportScriptResult, String> {
+    tokio::task::spawn_blocking(move || aerosync_import_script_cmd_blocking(args))
+        .await
+        .unwrap_or_else(|err| Err(format!("aerosync_import_script_cmd task failed: {err}")))
+}
+
+/// The body of `aerosync_import_script_cmd`, kept synchronous and run on the blocking pool.
+fn aerosync_import_script_cmd_blocking(
     args: AerosyncImportScriptArgs,
 ) -> Result<AerosyncImportScriptResult, String> {
     let input_path = std::path::PathBuf::from(&args.input_path);
@@ -13369,7 +13647,20 @@ fn aerosync_import_script_cmd(
 // =============================
 
 #[tauri::command]
-fn create_sync_snapshot_cmd(local_path: String, remote_path: String) -> Result<String, String> {
+async fn create_sync_snapshot_cmd(
+    local_path: String,
+    remote_path: String,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || create_sync_snapshot_cmd_blocking(local_path, remote_path))
+        .await
+        .unwrap_or_else(|err| Err(format!("create_sync_snapshot_cmd task failed: {err}")))
+}
+
+/// The body of `create_sync_snapshot_cmd`, kept synchronous and run on the blocking pool.
+fn create_sync_snapshot_cmd_blocking(
+    local_path: String,
+    remote_path: String,
+) -> Result<String, String> {
     let index = sync::load_sync_index(&local_path, &remote_path)?
         .ok_or_else(|| "No sync index found: run sync first".to_string())?;
     let snapshot = sync::create_sync_snapshot(&local_path, &remote_path, &index);
@@ -13378,7 +13669,17 @@ fn create_sync_snapshot_cmd(local_path: String, remote_path: String) -> Result<S
 }
 
 #[tauri::command]
-fn list_sync_snapshots_cmd(
+async fn list_sync_snapshots_cmd(
+    local_path: Option<String>,
+    remote_path: Option<String>,
+) -> Result<Vec<sync::SyncSnapshot>, String> {
+    tokio::task::spawn_blocking(move || list_sync_snapshots_cmd_blocking(local_path, remote_path))
+        .await
+        .unwrap_or_else(|err| Err(format!("list_sync_snapshots_cmd task failed: {err}")))
+}
+
+/// The body of `list_sync_snapshots_cmd`, kept synchronous and run on the blocking pool.
+fn list_sync_snapshots_cmd_blocking(
     local_path: Option<String>,
     remote_path: Option<String>,
 ) -> Result<Vec<sync::SyncSnapshot>, String> {
@@ -13391,7 +13692,20 @@ fn list_sync_snapshots_cmd(
 }
 
 #[tauri::command]
-fn delete_sync_snapshot_cmd(
+async fn delete_sync_snapshot_cmd(
+    snapshot_id: String,
+    local_path: Option<String>,
+    remote_path: Option<String>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        delete_sync_snapshot_cmd_blocking(snapshot_id, local_path, remote_path)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("delete_sync_snapshot_cmd task failed: {err}")))
+}
+
+/// The body of `delete_sync_snapshot_cmd`, kept synchronous and run on the blocking pool.
+fn delete_sync_snapshot_cmd_blocking(
     snapshot_id: String,
     local_path: Option<String>,
     remote_path: Option<String>,
@@ -13404,7 +13718,20 @@ fn delete_sync_snapshot_cmd(
 }
 
 #[tauri::command]
-fn load_sync_snapshot_cmd(
+async fn load_sync_snapshot_cmd(
+    snapshot_id: String,
+    local_path: Option<String>,
+    remote_path: Option<String>,
+) -> Result<sync::SyncSnapshot, String> {
+    tokio::task::spawn_blocking(move || {
+        load_sync_snapshot_cmd_blocking(snapshot_id, local_path, remote_path)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("load_sync_snapshot_cmd task failed: {err}")))
+}
+
+/// The body of `load_sync_snapshot_cmd`, kept synchronous and run on the blocking pool.
+fn load_sync_snapshot_cmd_blocking(
     snapshot_id: String,
     local_path: Option<String>,
     remote_path: Option<String>,
@@ -14404,7 +14731,46 @@ fn get_default_retry_policy() -> RetryPolicy {
 }
 
 #[tauri::command]
-fn verify_local_transfer(
+async fn verify_local_transfer(
+    local_path: String,
+    expected_size: u64,
+    expected_mtime: Option<String>,
+    expected_hash: Option<String>,
+    policy: VerifyPolicy,
+) -> VerifyResult {
+    // Kept for the failure path, which the closure would otherwise move out of
+    // reach.
+    let reported_path = local_path.clone();
+    let reported_policy = policy.clone();
+    tokio::task::spawn_blocking(move || {
+        verify_local_transfer_blocking(
+            local_path,
+            expected_size,
+            expected_mtime,
+            expected_hash,
+            policy,
+        )
+    })
+    .await
+    .unwrap_or_else(|err| {
+        tracing::warn!("verify_local_transfer task failed: {err}");
+        // Fail closed: the verification never ran, so it did not pass.
+        VerifyResult {
+            path: reported_path,
+            passed: false,
+            policy: reported_policy,
+            expected_size,
+            actual_size: None,
+            size_match: false,
+            mtime_match: None,
+            hash_match: None,
+            message: Some(format!("verification task failed: {err}")),
+        }
+    })
+}
+
+/// The body of `verify_local_transfer`, kept synchronous and run on the blocking pool.
+fn verify_local_transfer_blocking(
     local_path: String,
     expected_size: u64,
     expected_mtime: Option<String>,
@@ -14824,12 +15190,29 @@ async fn ai_execute_tool(
 // ============ AeroCloud Commands ============
 
 #[tauri::command]
-fn get_cloud_config() -> CloudConfig {
+async fn get_cloud_config() -> CloudConfig {
+    tokio::task::spawn_blocking(get_cloud_config_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("get_cloud_config task failed: {err}");
+            CloudConfig::default()
+        })
+}
+
+/// The body of `get_cloud_config`, kept synchronous and run on the blocking pool.
+fn get_cloud_config_blocking() -> CloudConfig {
     cloud_config::load_cloud_config()
 }
 
 #[tauri::command]
-fn save_cloud_config_cmd(config: CloudConfig) -> Result<(), String> {
+async fn save_cloud_config_cmd(config: CloudConfig) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || save_cloud_config_cmd_blocking(config))
+        .await
+        .unwrap_or_else(|err| Err(format!("save_cloud_config_cmd task failed: {err}")))
+}
+
+/// The body of `save_cloud_config_cmd`, kept synchronous and run on the blocking pool.
+fn save_cloud_config_cmd_blocking(config: CloudConfig) -> Result<(), String> {
     cloud_config::save_cloud_config(&config)
 }
 
@@ -14837,17 +15220,45 @@ fn save_cloud_config_cmd(config: CloudConfig) -> Result<(), String> {
 // Mirrors the style of multi-path commands but targets CloudPathPair / CloudPairsConfig.
 // Seeding from legacy happens on first add via GUI (or CLI already supports).
 #[tauri::command]
-fn get_cloud_pairs_config() -> cloud_pairs::CloudPairsConfig {
+async fn get_cloud_pairs_config() -> cloud_pairs::CloudPairsConfig {
+    tokio::task::spawn_blocking(get_cloud_pairs_config_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("get_cloud_pairs_config task failed: {err}");
+            cloud_pairs::CloudPairsConfig::default()
+        })
+}
+
+/// The body of `get_cloud_pairs_config`, kept synchronous and run on the blocking pool.
+fn get_cloud_pairs_config_blocking() -> cloud_pairs::CloudPairsConfig {
     cloud_pairs::load_cloud_pairs_config()
 }
 
 #[tauri::command]
-fn save_cloud_pairs_config_cmd(config: cloud_pairs::CloudPairsConfig) -> Result<(), String> {
+async fn save_cloud_pairs_config_cmd(config: cloud_pairs::CloudPairsConfig) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || save_cloud_pairs_config_cmd_blocking(config))
+        .await
+        .unwrap_or_else(|err| Err(format!("save_cloud_pairs_config_cmd task failed: {err}")))
+}
+
+/// The body of `save_cloud_pairs_config_cmd`, kept synchronous and run on the blocking pool.
+fn save_cloud_pairs_config_cmd_blocking(
+    config: cloud_pairs::CloudPairsConfig,
+) -> Result<(), String> {
     cloud_pairs::save_cloud_pairs_config(&config)
 }
 
 #[tauri::command]
-fn add_cloud_pair(
+async fn add_cloud_pair(
+    pair: cloud_pairs::CloudPathPair,
+) -> Result<cloud_pairs::CloudPairsConfig, String> {
+    tokio::task::spawn_blocking(move || add_cloud_pair_blocking(pair))
+        .await
+        .unwrap_or_else(|err| Err(format!("add_cloud_pair task failed: {err}")))
+}
+
+/// The body of `add_cloud_pair`, kept synchronous and run on the blocking pool.
+fn add_cloud_pair_blocking(
     pair: cloud_pairs::CloudPathPair,
 ) -> Result<cloud_pairs::CloudPairsConfig, String> {
     let mut config = cloud_pairs::load_cloud_pairs_config();
@@ -14860,7 +15271,14 @@ fn add_cloud_pair(
 }
 
 #[tauri::command]
-fn remove_cloud_pair(pair_id: String) -> Result<cloud_pairs::CloudPairsConfig, String> {
+async fn remove_cloud_pair(pair_id: String) -> Result<cloud_pairs::CloudPairsConfig, String> {
+    tokio::task::spawn_blocking(move || remove_cloud_pair_blocking(pair_id))
+        .await
+        .unwrap_or_else(|err| Err(format!("remove_cloud_pair task failed: {err}")))
+}
+
+/// The body of `remove_cloud_pair`, kept synchronous and run on the blocking pool.
+fn remove_cloud_pair_blocking(pair_id: String) -> Result<cloud_pairs::CloudPairsConfig, String> {
     let mut config = cloud_pairs::load_cloud_pairs_config();
     let before = config.pairs.len();
     config.pairs.retain(|p| p.id != pair_id);
@@ -14872,7 +15290,16 @@ fn remove_cloud_pair(pair_id: String) -> Result<cloud_pairs::CloudPairsConfig, S
 }
 
 #[tauri::command]
-fn update_cloud_pair(
+async fn update_cloud_pair(
+    pair: cloud_pairs::CloudPathPair,
+) -> Result<cloud_pairs::CloudPairsConfig, String> {
+    tokio::task::spawn_blocking(move || update_cloud_pair_blocking(pair))
+        .await
+        .unwrap_or_else(|err| Err(format!("update_cloud_pair task failed: {err}")))
+}
+
+/// The body of `update_cloud_pair`, kept synchronous and run on the blocking pool.
+fn update_cloud_pair_blocking(
     pair: cloud_pairs::CloudPathPair,
 ) -> Result<cloud_pairs::CloudPairsConfig, String> {
     let mut config = cloud_pairs::load_cloud_pairs_config();
@@ -14887,28 +15314,68 @@ fn update_cloud_pair(
 
 /// Update excluded folders for selective sync
 #[tauri::command]
-fn update_excluded_folders(excluded_folders: Vec<String>) -> Result<(), String> {
+async fn update_excluded_folders(excluded_folders: Vec<String>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || update_excluded_folders_blocking(excluded_folders))
+        .await
+        .unwrap_or_else(|err| Err(format!("update_excluded_folders task failed: {err}")))
+}
+
+/// The body of `update_excluded_folders`, kept synchronous and run on the blocking pool.
+fn update_excluded_folders_blocking(excluded_folders: Vec<String>) -> Result<(), String> {
     let mut config = cloud_config::load_cloud_config();
     config.excluded_folders = excluded_folders;
     cloud_config::save_cloud_config(&config)
 }
 
 #[tauri::command]
-fn list_file_versions(relative_path: String) -> Result<Vec<sync_versioning::VersionEntry>, String> {
+async fn list_file_versions(
+    relative_path: String,
+) -> Result<Vec<sync_versioning::VersionEntry>, String> {
+    tokio::task::spawn_blocking(move || list_file_versions_blocking(relative_path))
+        .await
+        .unwrap_or_else(|err| Err(format!("list_file_versions task failed: {err}")))
+}
+
+/// The body of `list_file_versions`, kept synchronous and run on the blocking pool.
+fn list_file_versions_blocking(
+    relative_path: String,
+) -> Result<Vec<sync_versioning::VersionEntry>, String> {
     let config = cloud_config::load_cloud_config();
     let v = sync_versioning::SyncVersioning::new(&config.local_folder, config.versioning_strategy);
     v.list_versions(&relative_path)
 }
 
 #[tauri::command]
-fn list_all_file_versions() -> Result<Vec<sync_versioning::VersionEntry>, String> {
+async fn list_all_file_versions() -> Result<Vec<sync_versioning::VersionEntry>, String> {
+    tokio::task::spawn_blocking(list_all_file_versions_blocking)
+        .await
+        .unwrap_or_else(|err| Err(format!("list_all_file_versions task failed: {err}")))
+}
+
+/// The body of `list_all_file_versions`, kept synchronous and run on the blocking pool.
+fn list_all_file_versions_blocking() -> Result<Vec<sync_versioning::VersionEntry>, String> {
     let config = cloud_config::load_cloud_config();
     let v = sync_versioning::SyncVersioning::new(&config.local_folder, config.versioning_strategy);
     v.list_all_versions()
 }
 
 #[tauri::command]
-fn restore_file_version(archive_path: String, original_relative: String) -> Result<(), String> {
+async fn restore_file_version(
+    archive_path: String,
+    original_relative: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        restore_file_version_blocking(archive_path, original_relative)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("restore_file_version task failed: {err}")))
+}
+
+/// The body of `restore_file_version`, kept synchronous and run on the blocking pool.
+fn restore_file_version_blocking(
+    archive_path: String,
+    original_relative: String,
+) -> Result<(), String> {
     let config = cloud_config::load_cloud_config();
     // Security: validate archive_path is within .aeroversions/ (prevent path traversal)
     let versions_dir = config.local_folder.join(".aeroversions");
@@ -14938,14 +15405,31 @@ fn restore_file_version(archive_path: String, original_relative: String) -> Resu
 }
 
 #[tauri::command]
-fn cleanup_versions() -> Result<sync_versioning::CleanupStats, String> {
+async fn cleanup_versions() -> Result<sync_versioning::CleanupStats, String> {
+    tokio::task::spawn_blocking(cleanup_versions_blocking)
+        .await
+        .unwrap_or_else(|err| Err(format!("cleanup_versions task failed: {err}")))
+}
+
+/// The body of `cleanup_versions`, kept synchronous and run on the blocking pool.
+fn cleanup_versions_blocking() -> Result<sync_versioning::CleanupStats, String> {
     let config = cloud_config::load_cloud_config();
     let v = sync_versioning::SyncVersioning::new(&config.local_folder, config.versioning_strategy);
     v.cleanup()
 }
 
 #[tauri::command]
-fn versions_disk_usage() -> u64 {
+async fn versions_disk_usage() -> u64 {
+    tokio::task::spawn_blocking(versions_disk_usage_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("versions_disk_usage task failed: {err}");
+            0
+        })
+}
+
+/// The body of `versions_disk_usage`, kept synchronous and run on the blocking pool.
+fn versions_disk_usage_blocking() -> u64 {
     let config = cloud_config::load_cloud_config();
     let v = sync_versioning::SyncVersioning::new(&config.local_folder, config.versioning_strategy);
     v.disk_usage()
@@ -14954,7 +15438,20 @@ fn versions_disk_usage() -> u64 {
 /// Archive a local file before deleting it during sync (backup-before-delete safety net).
 /// Uses TrashCan strategy with 30-day retention, archiving to <sync_root>/.aeroversions/.
 #[tauri::command]
-fn archive_before_sync_delete(
+async fn archive_before_sync_delete(
+    sync_root: String,
+    file_path: String,
+    versioning_strategy: Option<String>,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        archive_before_sync_delete_blocking(sync_root, file_path, versioning_strategy)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("archive_before_sync_delete task failed: {err}")))
+}
+
+/// The body of `archive_before_sync_delete`, kept synchronous and run on the blocking pool.
+fn archive_before_sync_delete_blocking(
     sync_root: String,
     file_path: String,
     versioning_strategy: Option<String>,
@@ -15099,7 +15596,17 @@ async fn setup_aerocloud(
 }
 
 #[tauri::command]
-fn get_cloud_status() -> CloudSyncStatus {
+async fn get_cloud_status() -> CloudSyncStatus {
+    tokio::task::spawn_blocking(get_cloud_status_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("get_cloud_status task failed: {err}");
+            CloudSyncStatus::NotConfigured
+        })
+}
+
+/// The body of `get_cloud_status`, kept synchronous and run on the blocking pool.
+fn get_cloud_status_blocking() -> CloudSyncStatus {
     let config = cloud_config::load_cloud_config();
 
     if !config.enabled {
@@ -15117,7 +15624,14 @@ fn get_cloud_status() -> CloudSyncStatus {
 }
 
 #[tauri::command]
-fn enable_aerocloud(enabled: bool) -> Result<CloudConfig, String> {
+async fn enable_aerocloud(enabled: bool) -> Result<CloudConfig, String> {
+    tokio::task::spawn_blocking(move || enable_aerocloud_blocking(enabled))
+        .await
+        .unwrap_or_else(|err| Err(format!("enable_aerocloud task failed: {err}")))
+}
+
+/// The body of `enable_aerocloud`, kept synchronous and run on the blocking pool.
+fn enable_aerocloud_blocking(enabled: bool) -> Result<CloudConfig, String> {
     let mut config = cloud_config::load_cloud_config();
 
     if enabled {
@@ -15217,7 +15731,14 @@ async fn disable_aerocloud(app: AppHandle) -> Result<(), String> {
 /// Generate a shareable link for a file in AeroCloud
 /// Returns the public URL if public_url_base is configured
 #[tauri::command]
-fn generate_share_link(local_path: String) -> Result<String, String> {
+async fn generate_share_link(local_path: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || generate_share_link_blocking(local_path))
+        .await
+        .unwrap_or_else(|err| Err(format!("generate_share_link task failed: {err}")))
+}
+
+/// The body of `generate_share_link`, kept synchronous and run on the blocking pool.
+fn generate_share_link_blocking(local_path: String) -> Result<String, String> {
     let config = cloud_config::load_cloud_config();
 
     if !config.enabled {
@@ -15255,7 +15776,14 @@ fn generate_share_link(local_path: String) -> Result<String, String> {
 
 /// Generate share link from remote path (when browsing remote files)
 #[tauri::command]
-fn generate_share_link_remote(remote_path: String) -> Result<String, String> {
+async fn generate_share_link_remote(remote_path: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || generate_share_link_remote_blocking(remote_path))
+        .await
+        .unwrap_or_else(|err| Err(format!("generate_share_link_remote task failed: {err}")))
+}
+
+/// The body of `generate_share_link_remote`, kept synchronous and run on the blocking pool.
+fn generate_share_link_remote_blocking(remote_path: String) -> Result<String, String> {
     let config = cloud_config::load_cloud_config();
 
     if !config.enabled {
@@ -15336,13 +15864,33 @@ fn generate_server_share_link(
 }
 
 #[tauri::command]
-fn get_default_cloud_folder() -> String {
+async fn get_default_cloud_folder() -> String {
+    tokio::task::spawn_blocking(get_default_cloud_folder_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("get_default_cloud_folder task failed: {err}");
+            CloudConfig::default()
+                .local_folder
+                .to_string_lossy()
+                .to_string()
+        })
+}
+
+/// The body of `get_default_cloud_folder`, kept synchronous and run on the blocking pool.
+fn get_default_cloud_folder_blocking() -> String {
     let default_config = CloudConfig::default();
     default_config.local_folder.to_string_lossy().to_string()
 }
 
 #[tauri::command]
-fn update_conflict_strategy(strategy: ConflictStrategy) -> Result<(), String> {
+async fn update_conflict_strategy(strategy: ConflictStrategy) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || update_conflict_strategy_blocking(strategy))
+        .await
+        .unwrap_or_else(|err| Err(format!("update_conflict_strategy task failed: {err}")))
+}
+
+/// The body of `update_conflict_strategy`, kept synchronous and run on the blocking pool.
+fn update_conflict_strategy_blocking(strategy: ConflictStrategy) -> Result<(), String> {
     let mut config = cloud_config::load_cloud_config();
     config.conflict_strategy = strategy;
     cloud_config::save_cloud_config(&config)
@@ -16190,7 +16738,17 @@ async fn bootstrap_master_credential_store(
 /// `available` is true only inside a Flatpak sandbox, when a native
 /// `~/.config/aeroftp` exists, and when the user has not already decided.
 #[tauri::command]
-fn flatpak_config_import_status() -> serde_json::Value {
+async fn flatpak_config_import_status() -> serde_json::Value {
+    tokio::task::spawn_blocking(flatpak_config_import_status_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("flatpak_config_import_status task failed: {err}");
+            serde_json::json!({"available": false})
+        })
+}
+
+/// The body of `flatpak_config_import_status`, kept synchronous and run on the blocking pool.
+fn flatpak_config_import_status_blocking() -> serde_json::Value {
     let status = portable::flatpak_host_import_status();
     serde_json::json!({
         "available": status.available,
@@ -16205,7 +16763,14 @@ fn flatpak_config_import_status() -> serde_json::Value {
 /// is shown once. The vault is copied encrypted and still needs the master
 /// password to unlock.
 #[tauri::command]
-fn flatpak_config_import_apply(accept: bool) -> Result<serde_json::Value, String> {
+async fn flatpak_config_import_apply(accept: bool) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || flatpak_config_import_apply_blocking(accept))
+        .await
+        .unwrap_or_else(|err| Err(format!("flatpak_config_import_apply task failed: {err}")))
+}
+
+/// The body of `flatpak_config_import_apply`, kept synchronous and run on the blocking pool.
+fn flatpak_config_import_apply_blocking(accept: bool) -> Result<serde_json::Value, String> {
     let report = portable::flatpak_host_import_apply(accept)?;
     Ok(serde_json::json!({
         "imported": report.imported,
@@ -17535,7 +18100,17 @@ async fn mount_uninstall_autostart(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn mount_autostart_blocked() -> Option<String> {
+async fn mount_autostart_blocked() -> Option<String> {
+    tokio::task::spawn_blocking(mount_autostart_blocked_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("mount_autostart_blocked task failed: {err}");
+            None
+        })
+}
+
+/// The body of `mount_autostart_blocked`, kept synchronous and run on the blocking pool.
+fn mount_autostart_blocked_blocking() -> Option<String> {
     mount_manager::autostart_blocked_reason()
 }
 
