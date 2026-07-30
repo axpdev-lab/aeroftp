@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Potrošen prostor",
+            "sortSimilarity": "Sličnost",
+            "showHashes": "Prikaži hasheve",
+            "fuzzyCutoff": "Fuzzy prag",
+            "fuzzyCutoffHint": "prazno = zadane vrijednosti po vrsti (slike 10, tekst 3, ostalo 100)",
             "title": "Pronađi duplikate",
             "scanning": "Skeniranje duplikata...",
             "summary": "{groups} grupa, {files} duplih datoteka, {size} uzalud potrošeno",

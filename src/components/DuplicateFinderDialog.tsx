@@ -408,25 +408,30 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
             and still be called duplicates. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 text-xs">
           <label className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-            Sort:
+            {t('browser.sortBy')}
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as 'waste' | 'similarity')}
               className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200"
             >
-              <option value="waste">Wasted space</option>
-              <option value="similarity">Similarity</option>
+              <option value="waste">{t('duplicates.sortWasted')}</option>
+              <option value="similarity">{t('duplicates.sortSimilarity')}</option>
             </select>
           </label>
 
-          <label className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 cursor-pointer">
-            <Checkbox checked={showHashes} onChange={() => setShowHashes((v) => !v)} />
-            Show hashes
-          </label>
+          {/* The label rides on the Checkbox itself: a bare <label> around it
+              has no form control to point at, so clicking the text did nothing
+              while the cursor promised otherwise. */}
+          <Checkbox
+            checked={showHashes}
+            onChange={setShowHashes}
+            label={t('duplicates.showHashes')}
+            labelClassName="text-gray-500 dark:text-gray-400"
+          />
 
           {mode === 'non-identical' && (
             <label className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-              Fuzzy cutoff:
+              {t('duplicates.fuzzyCutoff')}
               <input
                 type="number"
                 min={0}
@@ -445,7 +450,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                 className="w-16 px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
               />
               <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                blank = per-type defaults (images 10, text 3, other 100)
+                {t('duplicates.fuzzyCutoffHint')}
               </span>
             </label>
           )}

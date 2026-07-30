@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Потрошен простор",
+            "sortSimilarity": "Сличност",
+            "showHashes": "Прикажи хешеве",
+            "fuzzyCutoff": "Фази праг",
+            "fuzzyCutoffHint": "празно = подразумеване вредности по типу (слике 10, текст 3, остало 100)",
             "title": "Pronađi duplikate",
             "scanning": "Skeniranje duplikata...",
             "summary": "{groups} grupa, {files} duplikata fajlova, {size} izgubljeno",

@@ -3765,6 +3765,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Spazio sprecato",
+            "sortSimilarity": "Somiglianza",
+            "showHashes": "Mostra gli hash",
+            "fuzzyCutoff": "Soglia fuzzy",
+            "fuzzyCutoffHint": "vuoto = valori predefiniti per tipo (immagini 10, testo 3, altro 100)",
             "title": "Trova Duplicati",
             "scanning": "Scansione duplicati...",
             "summary": "{groups} gruppi, {files} file duplicati, {size} sprecati",

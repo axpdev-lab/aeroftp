@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Elpazarolt hely",
+            "sortSimilarity": "Hasonlóság",
+            "showHashes": "Hashek megjelenítése",
+            "fuzzyCutoff": "Fuzzy küszöb",
+            "fuzzyCutoffHint": "üres = típusonkénti alapértékek (képek 10, szöveg 3, egyéb 100)",
             "title": "Duplikátumok keresése",
             "scanning": "Duplikátumok keresése...",
             "summary": "{groups} csoport, {files} duplikált fájl, {size} pazarolva",

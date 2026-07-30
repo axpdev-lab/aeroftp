@@ -193,7 +193,10 @@ export const TrashTable: React.FC<TrashTableProps> = ({
                                     <span className="block truncate text-gray-900 dark:text-gray-100">{row.name}</span>
                                 </td>
                                 <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-400 tabular-nums">
-                                    {row.isDir ? '-' : formatSize(row.size || 0)}
+                                    {/* Null is not zero: a folder, an S3 delete marker and a
+                                        FileLu row have no size to show, and sortTrashRows
+                                        already treats them that way. */}
+                                    {row.isDir || row.size == null ? '-' : formatSize(row.size)}
                                 </td>
                                 <td className="px-2 py-1.5 whitespace-nowrap text-gray-500 dark:text-gray-500 tabular-nums">
                                     {row.deletedAtLabel ?? (row.deletedAt ? formatDate(row.deletedAt) : '-')}

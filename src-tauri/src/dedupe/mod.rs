@@ -370,29 +370,6 @@ pub fn find_similar_local_with_progress(
             // For text/other we still can prefilter by size loosely but per spec, size
             // prefilter bypassed for raster; we bypass for all non-id for simplicity + correctness
             // (text reformat can change size too).
-            let mut candidates: Vec<(PathBuf, u64, Vec<u8>)> = Vec::new();
-            for p in paths {
-                if let Ok(meta) = std::fs::metadata(p) {
-                    let sz = meta.len();
-                    if sz < min {
-                        continue;
-                    }
-                    // Read full for sim (small for typical dupes; capped by caller in practice)
-                    if let Ok(bytes) = std::fs::read(p) {
-                        bytes_processed += bytes.len() as u64;
-                        candidates.push((p.clone(), sz, bytes));
-                    }
-                }
-                // Counted whether or not the read succeeded: the tick tracks how
-                // far through the candidate list we are, not how many worked.
-                files_processed += 1;
-                on_progress(DedupeProgress {
-                    files_processed,
-                    bytes_processed,
-                    files_total,
-                });
-            }
-
             // Compute signatures per modality
             #[derive(Clone)]
             struct Sig {
@@ -405,9 +382,55 @@ pub fn find_similar_local_with_progress(
                 tlsh: Option<tlsh2::TlshDefault>,
             }
 
+            // Read and sign one file at a time. This used to buffer every
+            // candidate's full contents in a Vec and only then compute the
+            // signatures, so a directory of large media could hold the whole lot
+            // in memory at once — the same directory exact mode truncates safely
+            // under MAX_TOTAL_HASH_BYTES. The bytes are now dropped as soon as
+            // the signature is out, and the same 2 GB read budget applies here,
+            // reported through the progress callback so a truncated pass is
+            // visible rather than silent.
+            const MAX_TOTAL_SIGNATURE_BYTES: u64 = 2_000_000_000;
             let mut sigs: Vec<Sig> = Vec::new();
-            for (p, sz, bytes) in candidates {
-                let modality = detect_modality(&p);
+            for p in paths {
+                let sz = match std::fs::metadata(p) {
+                    Ok(meta) if meta.len() >= min => meta.len(),
+                    _ => {
+                        files_processed += 1;
+                        on_progress(DedupeProgress {
+                            files_processed,
+                            bytes_processed,
+                            files_total,
+                        });
+                        continue;
+                    }
+                };
+                if bytes_processed.saturating_add(sz) > MAX_TOTAL_SIGNATURE_BYTES {
+                    break;
+                }
+                let bytes = match std::fs::read(p) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        // Counted whether or not the read succeeded: the tick
+                        // tracks how far through the list we are, not how many
+                        // files worked.
+                        files_processed += 1;
+                        on_progress(DedupeProgress {
+                            files_processed,
+                            bytes_processed,
+                            files_total,
+                        });
+                        continue;
+                    }
+                };
+                bytes_processed += bytes.len() as u64;
+                files_processed += 1;
+                on_progress(DedupeProgress {
+                    files_processed,
+                    bytes_processed,
+                    files_total,
+                });
+                let modality = detect_modality(p);
                 let path_str = p.to_string_lossy().to_string();
                 match modality {
                     Modality::Raster => {

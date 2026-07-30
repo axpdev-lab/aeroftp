@@ -118,19 +118,57 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
   // file code plus per-row restore/delete buttons: both ride along as extra
   // columns so this view gains the shared sorting and selection like the rest.
   const trashRows: TrashRow[] = useMemo(
-    () => items.map(item => {
-      const code = item.file_code ?? '';
-      return {
-        id: code,
-        name: item.name ?? code,
+    // An entry with no file code cannot be selected, restored or deleted — the
+    // code IS the handle — and giving them all the id '' would collapse them
+    // into one row with a duplicate React key. Dropped, like the two existing
+    // `.filter(Boolean)` call sites in this file already do.
+    () => items
+      .filter((item): item is DeletedFileEntry & { file_code: string } => !!item.file_code)
+      .map(item => ({
+        id: item.file_code,
+        name: item.name ?? item.file_code,
         isDir: false,
         size: null,
         deletedAt: item.deleted,
         deletedAtLabel: item.deleted ?? formatDeletedAgo(item.deleted_ago_sec),
-      };
-    }),
+      })),
     [items],
   );
+
+  // Per-row restore/delete, in the same shape as restoreSelected/deleteSelected
+  // above: an activity-log entry that settles, and a failure the user can see.
+  // The inline handlers these replace had no rejection handler at all, so a
+  // failed restore became an unhandled rejection and a silently stale list.
+  const restoreOne = useCallback(async (code: string) => {
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'FileLu', count: 1 });
+    setActionLoading('restore');
+    try {
+      await invoke('filelu_restore_file', { fileCode: code });
+      humanLog.updateEntry(logId, { status: 'success', message: `[FileLu] Restored 1 item from trash` });
+      await loadTrash();
+      onRefreshFiles?.();
+    } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[FileLu] Failed to restore from trash` });
+      setError(String(err));
+    } finally {
+      setActionLoading(null);
+    }
+  }, [humanLog, loadTrash, onRefreshFiles]);
+
+  const deleteOne = useCallback(async (code: string) => {
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'FileLu', count: 1 });
+    setActionLoading('delete');
+    try {
+      await invoke('filelu_permanent_delete', { fileCode: code });
+      humanLog.updateEntry(logId, { status: 'success', message: `[FileLu] Permanently deleted 1 item from trash` });
+      await loadTrash();
+    } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[FileLu] Failed to permanently delete from trash` });
+      setError(String(err));
+    } finally {
+      setActionLoading(null);
+    }
+  }, [humanLog, loadTrash]);
 
   const fileLuColumns = useMemo(
     () => [
@@ -147,16 +185,18 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
         render: (row: TrashRow) => (
           <span className="flex gap-1.5">
             <button
-              onClick={e => { e.stopPropagation(); invoke('filelu_restore_file', { fileCode: row.id }).then(loadTrash).then(() => onRefreshFiles?.()); }}
-              className="p-1 rounded text-emerald-500 hover:bg-emerald-500/10 transition-colors"
+              onClick={e => { e.stopPropagation(); void restoreOne(row.id); }}
+              disabled={actionLoading !== null}
+              className="p-1 rounded text-emerald-500 hover:bg-emerald-500/10 transition-colors disabled:opacity-40"
               title={t('filelu.restore')}
             >
               <RotateCcw size={13} />
             </button>
             {PERMANENT_DELETE_ENABLED && (
               <button
-                onClick={e => { e.stopPropagation(); invoke('filelu_permanent_delete', { fileCode: row.id }).then(loadTrash).catch(err => setError(String(err))); }}
-                className="p-1 rounded text-red-500 hover:bg-red-500/10 transition-colors"
+                onClick={e => { e.stopPropagation(); void deleteOne(row.id); }}
+                disabled={actionLoading !== null}
+                className="p-1 rounded text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-40"
                 title={t('filelu.permanentDeleteOne')}
               >
                 <Trash2 size={13} />
@@ -166,7 +206,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
         ),
       },
     ],
-    [loadTrash, onRefreshFiles, t],
+    [restoreOne, deleteOne, actionLoading, t],
   );
 
   return (

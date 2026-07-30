@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Espai malgastat",
+            "sortSimilarity": "Semblança",
+            "showHashes": "Mostra els hash",
+            "fuzzyCutoff": "Llindar difús",
+            "fuzzyCutoffHint": "buit = valors per defecte segons el tipus (imatges 10, text 3, altres 100)",
             "title": "Trobar duplicats",
             "scanning": "Cercant duplicats...",
             "summary": "{groups} grups, {files} fitxers duplicats, {size} desaprofitat",

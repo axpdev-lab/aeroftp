@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Iššvaistyta vieta",
+            "sortSimilarity": "Panašumas",
+            "showHashes": "Rodyti maišas",
+            "fuzzyCutoff": "Neapibrėžta riba",
+            "fuzzyCutoffHint": "tuščia = numatytosios reikšmės pagal tipą (vaizdai 10, tekstas 3, kita 100)",
             "title": "Rasti dublikatus",
             "scanning": "Ieškoma dublikatų...",
             "summary": "{groups} grupių, {files} dublikatų failų, {size} švaistoma",

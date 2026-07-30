@@ -61,11 +61,19 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     });
 
     // The settings the Plan and Sync tabs hold, kept alive across a tab switch
-    // (which unmounts the tab) and cleared on each fresh open of the dialog.
+    // (which unmounts the tab) and cleared for the next open.
+    //
+    // The clearing happens when the dialog CLOSES rather than when it opens: the
+    // store has to be empty before a tab mounts and reads it, and an effect runs
+    // after that mount. Resetting during render would be early enough, but a ref
+    // written mid-render is not safe against React discarding or replaying the
+    // work. Closing is the same moment from the store's point of view, and it is
+    // a side effect in a place where side effects belong. A first-ever open sees
+    // a fresh store anyway.
     const tabState = React.useRef(createTabStateStore()).current;
-    const wasOpen = React.useRef(false);
-    if (isOpen && !wasOpen.current) tabState.reset();
-    wasOpen.current = isOpen;
+    React.useEffect(() => {
+        if (!isOpen) tabState.reset();
+    }, [isOpen, tabState]);
 
     React.useEffect(() => {
         if (isOpen) setActiveTab(initialTab);

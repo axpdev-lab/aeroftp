@@ -1802,6 +1802,7 @@ pub async fn find_duplicate_files(
         // (src-tauri/src/dedupe/) — Phase 1 source of truth. Only the walk moved
         // out, so this call cannot drift from the exact-mode file list.
         let paths: Vec<PathBuf> = walked.into_iter().map(|(p, _)| p).collect();
+        let paths_total = paths.len() as u64;
         let engine_groups = crate::dedupe::find_similar_local_with_progress(
             &paths,
             crate::dedupe::SimilarityMode::NonIdentical,
@@ -1809,6 +1810,9 @@ pub async fn find_duplicate_files(
             min_size,
             &mut |p| emit_analysis(p.files_processed, p.files_total, false),
         );
+        // The throttle can swallow the last tick, leaving the bar short of the
+        // total for the rest of the dialog's life. Force one at the end.
+        emit_analysis(paths_total, paths_total, true);
         let result: Vec<DuplicateGroup> = engine_groups
             .into_iter()
             .map(|g| DuplicateGroup {
@@ -1880,6 +1884,8 @@ pub async fn find_duplicate_files(
             }
         }
     }
+
+    emit_analysis(hashed, hash_total, true);
 
     // Phase 3: collect groups with 2+ files, sort by wasted space
     let mut result: Vec<DuplicateGroup> = hash_groups

@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Raisatud ruum",
+            "sortSimilarity": "Sarnasus",
+            "showHashes": "Näita räsisid",
+            "fuzzyCutoff": "Hägus lävi",
+            "fuzzyCutoffHint": "tühi = tüübipõhised vaikeväärtused (pildid 10, tekst 3, muu 100)",
             "title": "Leia duplikaadid",
             "scanning": "Duplikaatide otsimine...",
             "summary": "{groups} rühma, {files} duplikaatfaili, {size} raisatud",

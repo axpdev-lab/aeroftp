@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Sóað pláss",
+            "sortSimilarity": "Líkindi",
+            "showHashes": "Sýna tætigildi",
+            "fuzzyCutoff": "Óskýr þröskuldur",
+            "fuzzyCutoffHint": "autt = sjálfgefin gildi eftir gerð (myndir 10, texti 3, annað 100)",
             "title": "Finna Tvírit",
             "scanning": "Skanna eftir tvíritum...",
             "summary": "{groups} hópar, {files} tvíritaskrár, {size} sóað",

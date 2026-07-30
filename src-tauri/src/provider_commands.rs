@@ -6721,21 +6721,22 @@ pub async fn provider_compare_directories(
             remote_files.insert(relative_path, file_info);
         }
 
+        // No `dirs_found` here on purpose: the clone-pool scan returns a flat
+        // list of files (every entry above is `is_dir: false`), so counting them
+        // would report a confident zero rather than "not known on this path".
+        // The frontend reducer keeps the last value it saw for an absent field.
         let _ = app.emit(
             "sync_scan_progress",
             serde_json::json!({
                 "phase": "remote",
                 "files_found": local_files.len() + remote_files.len(),
-                "dirs_found": remote_files.values().filter(|f| f.is_dir).count(),
-                "bytes_found": remote_files
-                    .values()
-                    .filter(|f| !f.is_dir)
-                    .map(|f| f.size)
-                    .sum::<u64>(),
+                "bytes_found": remote_files.values().map(|f| f.size).sum::<u64>(),
             }),
         );
     } else {
         let mut dirs_to_process = vec![remote_path.clone()];
+        let mut remote_dirs_found: usize = 0;
+        let mut remote_bytes_found: u64 = 0;
         while let Some(current_dir) = dirs_to_process.pop() {
             // Abort the remote scan if the user cancelled from the UI.
             // Without this, the walk keeps listing directories until the tree is
@@ -6823,7 +6824,21 @@ pub async fn provider_compare_directories(
                     checksum: None,
                 };
 
-                remote_files.insert(relative_path, file_info);
+                // A walk can revisit a path, so adjust by what the insert
+                // replaced instead of counting the new entry unconditionally.
+                let replaced = remote_files.insert(relative_path, file_info);
+                if let Some(old) = replaced.as_ref() {
+                    if old.is_dir {
+                        remote_dirs_found -= 1;
+                    } else {
+                        remote_bytes_found -= old.size;
+                    }
+                }
+                if entry.is_dir {
+                    remote_dirs_found += 1;
+                } else {
+                    remote_bytes_found += entry.size;
+                }
 
                 if entry.is_dir {
                     let sub_path = if current_dir.ends_with('/') {
@@ -6835,19 +6850,17 @@ pub async fn provider_compare_directories(
                 }
             }
 
-            // Recomputed per directory rather than carried in a counter: the
-            // walk can revisit a path, and the map is the deduplicated truth.
+            // Counters rather than a re-walk of the map: this fires once per
+            // listed directory, so recomputing would cost O(directories x
+            // entries) on exactly the large trees the progress exists for. The
+            // aggregates are kept correct on re-insert at the insert site.
             let _ = app.emit(
                 "sync_scan_progress",
                 serde_json::json!({
                     "phase": "remote",
                     "files_found": local_files.len() + remote_files.len(),
-                    "dirs_found": remote_files.values().filter(|f| f.is_dir).count(),
-                    "bytes_found": remote_files
-                        .values()
-                        .filter(|f| !f.is_dir)
-                        .map(|f| f.size)
-                        .sum::<u64>(),
+                    "dirs_found": remote_dirs_found,
+                    "bytes_found": remote_bytes_found,
                 }),
             );
         }

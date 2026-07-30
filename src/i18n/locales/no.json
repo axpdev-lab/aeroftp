@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Bortkastet plass",
+            "sortSimilarity": "Likhet",
+            "showHashes": "Vis hashverdier",
+            "fuzzyCutoff": "Fuzzy-grense",
+            "fuzzyCutoffHint": "tom = standardverdier per type (bilder 10, tekst 3, annet 100)",
             "title": "Finn duplikater",
             "scanning": "Skanner etter duplikater...",
             "summary": "{groups} grupper, {files} dupliserte filer, {size} bortkastet",

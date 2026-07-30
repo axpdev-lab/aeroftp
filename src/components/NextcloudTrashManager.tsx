@@ -154,7 +154,11 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
       name: item.name,
       isDir: item.is_dir,
       size: item.size,
-      deletedAtMs: item.deleted_at * 1000, deletedAtLabel: formatDeletedDate(item.deleted_at),
+      // formatDeletedDate reads 0 as unknown and prints an em dash, so the sort
+      // key has to agree: as a number, 0 would be 1970 and would sort ahead of
+      // every real date instead of landing in the unknown group.
+      deletedAtMs: item.deleted_at ? item.deleted_at * 1000 : null,
+      deletedAtLabel: formatDeletedDate(item.deleted_at),
     })),
     [items],
   );

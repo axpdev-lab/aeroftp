@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Promarněné místo",
+            "sortSimilarity": "Podobnost",
+            "showHashes": "Zobrazit hashe",
+            "fuzzyCutoff": "Fuzzy práh",
+            "fuzzyCutoffHint": "prázdné = výchozí hodnoty podle typu (obrázky 10, text 3, ostatní 100)",
             "title": "Najit duplikaty",
             "scanning": "Hledani duplikatu...",
             "summary": "{groups} skupin, {files} duplicitnich souboru, {size} zbytech",

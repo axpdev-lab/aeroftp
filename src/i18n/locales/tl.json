@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Nasayang na espasyo",
+            "sortSimilarity": "Pagkakatulad",
+            "showHashes": "Ipakita ang mga hash",
+            "fuzzyCutoff": "Fuzzy na threshold",
+            "fuzzyCutoffHint": "walang laman = mga default kada uri (mga larawan 10, teksto 3, iba pa 100)",
             "title": "Hanapin ang mga Duplikado",
             "scanning": "Naghahanap ng mga duplikado...",
             "summary": "{groups} grupo, {files} duplikadong file, {size} nasayang",

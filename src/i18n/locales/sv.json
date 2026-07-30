@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Bortkastat utrymme",
+            "sortSimilarity": "Likhet",
+            "showHashes": "Visa hashvärden",
+            "fuzzyCutoff": "Fuzzy-tröskel",
+            "fuzzyCutoffHint": "tomt = standardvärden per typ (bilder 10, text 3, övrigt 100)",
             "title": "Hitta dubbletter",
             "scanning": "Söker efter dubbletter...",
             "summary": "{groups} grupper, {files} dubblettfiler, {size} slösade",

@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Spațiu irosit",
+            "sortSimilarity": "Similaritate",
+            "showHashes": "Arată hash-urile",
+            "fuzzyCutoff": "Prag fuzzy",
+            "fuzzyCutoffHint": "gol = valori implicite pe tip (imagini 10, text 3, altele 100)",
             "title": "Găsește duplicate",
             "scanning": "Se scanează pentru duplicate...",
             "summary": "{groups} grupuri, {files} fișiere duplicate, {size} risipite",
