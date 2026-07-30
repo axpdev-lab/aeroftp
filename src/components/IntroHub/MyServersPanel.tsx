@@ -57,10 +57,12 @@ import {
     copyProfileVaultSecrets,
     deleteProfileVaultSecrets,
 } from '../../utils/profileVaultSecrets';
+import { reorderVisibleInFull } from '../../utils/reorderByIndex';
 
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
 const HEALTH_SCAN_CHUNK_SIZE = 12;
 const HEALTH_SCAN_CHUNK_DELAY_MS = 180;
+/** Visible-list sentinel indices for the top/bottom drop zones (#453). */
 const DRAG_SENTINEL_TOP = -1;
 const DRAG_SENTINEL_BOTTOM = -2;
 
@@ -753,9 +755,12 @@ export function MyServersPanel({
     const [gridCols, attachGridRef] = useResponsiveColumns({ min: 3, max: 9, ideal: 210, gap: 12 });
 
     // Drag & reorder: works in any view (full list, search, or filter chip).
-    // dragIdx/overIdx hold real indices into the full `servers` array: when
-    // a filter is active we resolve the visible card to its real index by id,
-    // so the reorder produces a coherent move in the underlying list.
+    // dragIdx/overIdx are indices into the **visible** list (`filteredServers`),
+    // not the full vault array. A protocol chip used to leave realIdx gaps in
+    // the full list; table drop then reordered vault slots the user was not
+    // looking at, which felt like "drag does not lift" when the visible order
+    // barely moved (#453 residual). Visible indices + write-back keep what you
+    // see in sync with what is stored.
     //
     // In grid view drag is always allowed (no sort UI to conflict with). In
     // list/table view a stale sort persisted in localStorage would otherwise
@@ -801,31 +806,26 @@ export function MyServersPanel({
         setOverIdx(idx);
     }, [maybeAutoScrollWhileDrag]);
 
-    // The drop handler reads insertStartIdx/insertEndIdx, but those are
-    // declared further down (computed from filteredServers). We mirror them
-    // through a ref so the callback stays stable and TypeScript no longer
-    // complains about temporal dead zone access.
-    const insertEdgesRef = useRef({ insertStartIdx: 0, insertEndIdx: 0 });
+    // Visible list for the drop handler (filteredServers is declared later).
+    // Ref keeps the callback stable and avoids a temporal dead zone on the memo.
+    const visibleListRef = useRef<ServerProfile[]>([]);
 
     const handleDrop = useCallback((idx: number, e: React.DragEvent) => {
         e.preventDefault();
         if (dragIdx === null) { setDragIdx(null); setOverIdx(null); return; }
-        const { insertStartIdx: insStart, insertEndIdx: insEnd } = insertEdgesRef.current;
-        const rawInsertIdx = idx === DRAG_SENTINEL_TOP
-            ? insStart
+        const visible = visibleListRef.current;
+        if (visible.length === 0) { setDragIdx(null); setOverIdx(null); return; }
+
+        // Drop ON a row inherits that row's visible index. Top/bottom sentinels
+        // pin the ends of the visible list (append uses length as "after last").
+        const rawTarget = idx === DRAG_SENTINEL_TOP
+            ? 0
             : idx === DRAG_SENTINEL_BOTTOM
-                ? insEnd
+                ? visible.length
                 : idx;
-        // Drop ON a card inherits that card's index (matches `aero profiles --tui` #).
-        // Insert at the original drop index after remove — no "to-1 when moving
-        // right" adjustment. That classic list-insert formula landed profiles
-        // one slot short when dragging right/down (#453).
-        const target = Math.max(0, Math.min(rawInsertIdx, servers.length));
-        if (dragIdx === target) { setDragIdx(null); setOverIdx(null); return; }
-        const updated = [...servers];
-        const [moved] = updated.splice(dragIdx, 1);
-        const insertAt = Math.max(0, Math.min(target, updated.length));
-        updated.splice(insertAt, 0, moved);
+        if (dragIdx === rawTarget) { setDragIdx(null); setOverIdx(null); return; }
+
+        const updated = reorderVisibleInFull(servers, visible, dragIdx, rawTarget);
         if (updated.every((s, i) => s.id === servers[i]?.id)) {
             setDragIdx(null);
             setOverIdx(null);
@@ -864,14 +864,6 @@ export function MyServersPanel({
     // allocations and LowerCase work needlessly. Issue #221.
     const serverSearchTexts = useMemo(
         () => new Map(servers.map(s => [s.id, getServerSearchText(s)])),
-        [servers],
-    );
-
-    // O(1) lookup for "where does this server sit in the full `servers`
-    // array". Replaces O(N) `findIndex` calls inside per-card render,
-    // which compounded to O(N^2) on every parent re-render. Issue #221.
-    const serverIndexMap = useMemo(
-        () => new Map(servers.map((s, i) => [s.id, i])),
         [servers],
     );
 
@@ -925,20 +917,10 @@ export function MyServersPanel({
         return counts;
     }, [groups, servers]);
 
-    const { insertStartIdx, insertEndIdx } = useMemo(() => {
-        if (filteredServers.length === 0) {
-            return { insertStartIdx: 0, insertEndIdx: servers.length };
-        }
-        const firstVisible = serverIndexMap.get(filteredServers[0].id) ?? 0;
-        const lastVisible = serverIndexMap.get(filteredServers[filteredServers.length - 1].id)
-            ?? Math.max(servers.length - 1, 0);
-        return { insertStartIdx: firstVisible, insertEndIdx: lastVisible + 1 };
-    }, [filteredServers, servers, serverIndexMap]);
-
-    // Keep the drop-handler ref in sync with the memoized edges.
+    // Keep the drop handler's visible list current (filter / search / group).
     useEffect(() => {
-        insertEdgesRef.current = { insertStartIdx, insertEndIdx };
-    }, [insertStartIdx, insertEndIdx]);
+        visibleListRef.current = filteredServers;
+    }, [filteredServers]);
 
     // MTP device attach: fingerprint match against live list_mtp_devices.
     // Poll only when at least one saved mtp profile exists.
@@ -1776,11 +1758,10 @@ export function MyServersPanel({
                                 onDrop={(e) => handleDrop(DRAG_SENTINEL_TOP, e)}
                             />
                         )}
-                        {filteredServers.map((server) => {
-                            // Resolve the real index in the full `servers` array so drag-reorder
-                            // works correctly even with a filter or search applied. O(1) via the
-                            // pre-computed maps (issue #221) instead of per-card linear scans.
-                            const realIdx = serverIndexMap.get(server.id) ?? -1;
+                        {filteredServers.map((server, visIdx) => {
+                            // Visible index into filteredServers: drag/drop reorders
+                            // what the user sees, then writes back into the vault
+                            // (#453 residual with a protocol chip active).
                             const selectionRole = crossProfileRoleMap.get(server.id) ?? null;
                             // Always read the cached status: in detailed layout it
                             // drives the 16px radial; in compact it powers the small
@@ -1806,9 +1787,9 @@ export function MyServersPanel({
                                     onRenameCancel={handleRenameCancel}
                                     onRenameStart={handleRenameStart}
                                     isDraggable={canDrag}
-                                    isDragging={dragIdx === realIdx}
-                                    isDragTarget={overIdx === realIdx && dragIdx !== null && dragIdx !== realIdx}
-                                    dragIndex={realIdx}
+                                    isDragging={dragIdx === visIdx}
+                                    isDragTarget={overIdx === visIdx && dragIdx !== null && dragIdx !== visIdx}
+                                    dragIndex={visIdx}
                                     onDragStart={canDrag ? handleDragStart : undefined}
                                     onDragEnter={canDrag ? handleDragEnter : undefined}
                                     onDragOver={canDrag ? handleDragOver : undefined}
