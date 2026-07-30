@@ -448,8 +448,15 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                 than a `gap-3` on this container: a gap is dead space the window
                 manager cannot see, so the bar was undraggable on its whole
                 right half (#511). Same reason the reserved slot below carries
-                a drag filler. */}
-            <div className="flex items-center">
+                a drag filler.
+                `h-full` on this container and `self-stretch` (never `h-full`) on
+                the fillers is what gives them a hit area at all: `height: 100%`
+                resolves against a parent whose own height is `auto`, so it
+                collapsed the fillers to 0px tall. They reserved their width,
+                the bar looked right, and the window manager still saw nothing
+                to grab. Only the titlebar itself has a definite height (`h-9`),
+                so the chain of `h-full` has to reach it unbroken. */}
+            <div className="flex items-center h-full">
                 {/* Cluster 1: Page Navigation.
                     min-w-[96px] reserves the slot so the utility cluster never
                     shifts when the button label/visibility changes (Connect vs
@@ -459,8 +466,8 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     neither button renders, so all 96px sat empty and inert
                     right next to AeroVault, which is exactly where #511 was
                     reported. */}
-                <div className="flex items-center justify-end min-w-[96px] gap-1">
-                    <div data-tauri-drag-region className="flex-1 h-full" />
+                <div className="flex items-center justify-end min-w-[96px] gap-1 h-full">
+                    <div data-tauri-drag-region className="flex-1 self-stretch" />
                     {!showConnectionScreen && (
                         <button
                             onClick={onShowConnectionScreen}
@@ -492,7 +499,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     ) : null}
                 </div>
 
-                <div data-tauri-drag-region className="w-3 h-full shrink-0" />
+                <div data-tauri-drag-region className="w-3 self-stretch shrink-0" />
 
                 {/* Cluster 2: Utility (Notifications, Security Tools, AeroVault, Users, Lock, Settings) */}
                 <div className="flex items-center gap-0.5">
@@ -551,7 +558,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     (top-left) provide minimize/maximize/close instead (#290). */}
                 {!isMac && (
                 <>
-                <div data-tauri-drag-region className="w-3 h-full shrink-0" />
+                <div data-tauri-drag-region className="w-3 self-stretch shrink-0" />
                 <div className="flex items-center gap-0.5">
                     <button
                         onClick={handleMinimize}
