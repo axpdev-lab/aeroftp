@@ -1719,7 +1719,7 @@
             "kdriveDesc": "Švicarsko oblačno spremište",
             "kdriveTooltip": "kDrive od Infomaniaka - Oblačno spremište smješteno u Švicarskoj s 15GB besplatno",
             "drimeDesc": "Sigurna pohrana u oblaku",
-            "drimeTooltip": "Drime Cloud - 20GB besplatne sigurne pohrane u oblaku s REST API",
+            "drimeTooltip": "Drime - 20GB besplatne sigurne pohrane u oblaku s REST API",
             "jottacloudDesc": "Norveški oblak (5GB besplatno)",
             "jottacloudTooltip": "Jottacloud - GDPR-sukladna norveška pohrana u oblaku s 5GB besplatno",
             "minioDesc": "Samohostirana S3-kompatibilna pohrana objekata",

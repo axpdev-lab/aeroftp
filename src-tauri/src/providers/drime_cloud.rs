@@ -903,7 +903,7 @@ impl DrimeCloudProvider {
                     continue;
                 }
                 return Err(ProviderError::ServerError(
-                    "Rate limited by Drime Cloud API (429). Please try again later.".to_string(),
+                    "Rate limited by Drime API (429). Please try again later.".to_string(),
                 ));
             }
 
@@ -927,11 +927,11 @@ impl StorageProvider for DrimeCloudProvider {
     }
 
     fn display_name(&self) -> String {
-        "Drime Cloud".to_string()
+        "Drime".to_string()
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        drime_log("Connecting to Drime Cloud");
+        drime_log("Connecting to Drime");
 
         // Validate token via /cli/loggedUser (purpose-built for auth check + returns user info)
         let url = Self::api_url("/cli/loggedUser");
@@ -976,7 +976,7 @@ impl StorageProvider for DrimeCloudProvider {
 
         if !status.is_success() {
             return Err(ProviderError::ConnectionFailed(format!(
-                "Drime Cloud connection failed ({}): {}",
+                "Drime connection failed ({}): {}",
                 status,
                 sanitize_api_error(&body)
             )));
@@ -1664,7 +1664,7 @@ impl StorageProvider for DrimeCloudProvider {
     }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
-        Ok("Drime Cloud: 20GB Secure Cloud Storage".to_string())
+        Ok("Drime: 20GB Secure Cloud Storage".to_string())
     }
 
     fn supports_server_copy(&self) -> bool {

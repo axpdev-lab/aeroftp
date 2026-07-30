@@ -1719,7 +1719,7 @@
             "kdriveDesc": "Šveitsi pilvsalvestus",
             "kdriveTooltip": "kDrive Infomaniakilt - Šveitsis majutatud pilvsalvestus 15GB tasuta",
             "drimeDesc": "Turvaline pilvesalvestus",
-            "drimeTooltip": "Drime Cloud - 20GB tasuta turvaline pilvesalvestus REST API-ga",
+            "drimeTooltip": "Drime - 20GB tasuta turvaline pilvesalvestus REST API-ga",
             "jottacloudDesc": "Norra pilv (5GB tasuta)",
             "jottacloudTooltip": "Jottacloud - GDPR-ühildne Norra pilvesalvestus 5GB tasuta",
             "minioDesc": "Isehostitav S3-ühilduv objektihoidla",

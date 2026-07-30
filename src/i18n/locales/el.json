@@ -1719,7 +1719,7 @@
             "kdriveDesc": "Ελβετική αποθήκευση cloud",
             "kdriveTooltip": "kDrive από την Infomaniak - Αποθήκευση cloud φιλοξενούμενη στην Ελβετία με 15GB δωρεάν",
             "drimeDesc": "Ασφαλής αποθήκευση στο νέφος",
-            "drimeTooltip": "Drime Cloud - 20GB δωρεάν ασφαλής αποθήκευση στο νέφος με REST API",
+            "drimeTooltip": "Drime - 20GB δωρεάν ασφαλής αποθήκευση στο νέφος με REST API",
             "jottacloudDesc": "Νορβηγικό cloud (5GB δωρεάν)",
             "jottacloudTooltip": "Jottacloud - Νορβηγική υπηρεσία cloud συμβατή με GDPR με 5GB δωρεάν",
             "minioDesc": "Αυτο-φιλοξενούμενος S3-συμβατός χώρος αποθήκευσης",

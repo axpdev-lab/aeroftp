@@ -1719,7 +1719,7 @@
             "kdriveDesc": "Zwitserse cloudopslag",
             "kdriveTooltip": "kDrive by Infomaniak - In Zwitserland gehoste cloudopslag met 15GB gratis",
             "drimeDesc": "Veilige Cloudopslag",
-            "drimeTooltip": "Drime Cloud - 20GB gratis veilige cloudopslag met REST API",
+            "drimeTooltip": "Drime - 20GB gratis veilige cloudopslag met REST API",
             "jottacloudDesc": "Noorse cloud (5GB gratis)",
             "jottacloudTooltip": "Jottacloud - AVG-conforme Noorse cloudopslag met 5GB gratis",
             "minioDesc": "Zelf gehoste S3-compatibele objectopslag",

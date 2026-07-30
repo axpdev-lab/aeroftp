@@ -235,7 +235,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 - **Hosting**: Swiss-hosted (Infomaniak, Switzerland). 15GB free.
 - **ID-based**: Root folder ID = 1. Cursor-based pagination.
 
-### Drime Cloud
+### Drime
 - **Auth**: API Token (Bearer). Generated at app.drime.cloud → Account Settings → Developers.
 - **API**: \`https://app.drime.cloud/api/v1\`. Page-based pagination. String UUID IDs.
 - **Features**: list, upload, download, mkdir, delete, rename, move, server-side copy, storage quota.
@@ -438,7 +438,7 @@ function buildCompactProtocolExpertise(activeProvider?: string): string {
         filen: '### Filen\n- **Auth**: email + password. Zero-knowledge AES-256.',
         internxt: '### Internxt Drive\n- **Auth**: email + password. E2E AES-256-CTR. BIP39 mnemonic. Optional 2FA.',
         kdrive: '### Infomaniak kDrive\n- **Auth**: API Token (Bearer). Swiss-hosted. 15GB free. 60 req/min rate limit.',
-        drime: '### Drime Cloud\n- **Auth**: API Token (Bearer). 20GB free. REST API with page-based pagination.',
+        drime: '### Drime\n- **Auth**: API Token (Bearer). 20GB free. REST API with page-based pagination.',
         zohoworkdrive: '### Zoho WorkDrive\n- **Auth**: OAuth 2.0. Multi-region (US/EU/IN/AU/JP/UK/CA/SA). Team-based file management.',
         filelu: '### FileLu\n- **Auth**: API Key (query param). ID-based FS (fld_id/file_code). 2-step upload. Also: FTP, FTPS, WebDAV, S3. 1GB free.',
         koofr: '### Koofr\n- **Auth**: Email + App Password (Basic Auth). Mount-centric REST API v2.1. Path-based operations. 10GB free. Also accessible via WebDAV.',

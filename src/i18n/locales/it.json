@@ -544,7 +544,7 @@
             "jottacloudDesc": "Cloud Norvegese (5GB gratis)",
             "jottacloudTooltip": "Jottacloud - Archiviazione cloud norvegese conforme al GDPR con 5GB gratuiti",
             "drimeDesc": "Archiviazione Cloud Sicura",
-            "drimeTooltip": "Drime Cloud - 20GB di archiviazione cloud sicura gratuita con REST API",
+            "drimeTooltip": "Drime - 20GB di archiviazione cloud sicura gratuita con REST API",
             "fileluDesc": "Cloud Storage Multi-Protocollo",
             "fileluTooltip": "FileLu - 1GB gratuiti con FTP, FTPS, WebDAV, S3 e API nativa",
             "fileluFtpDesc": "FileLu tramite FTP",

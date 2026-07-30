@@ -94,7 +94,7 @@ src-tauri/src/providers/
 ├── jottacloud.rs           # Jottacloud REST API
 ├── filelu.rs               # FileLu API
 ├── koofr.rs                # Koofr REST API
-├── drime_cloud.rs          # Drime Cloud API
+├── drime_cloud.rs          # Drime API
 ├── opendrive.rs            # OpenDrive REST API
 ├── yandex_disk.rs          # Yandex Disk REST API
 ├── b2.rs                   # Backblaze B2 native API
@@ -131,7 +131,7 @@ src-tauri/src/providers/
 | Jottacloud | `jottacloud.rs` | ~1,650 | Login Token | REST (XML) |
 | FileLu | `filelu.rs` | ~1,500 | API Key | REST |
 | Koofr | `koofr.rs` | ~1,750 | App Password (HTTP Basic) or OAuth2 Bearer | REST |
-| Drime Cloud | `drime_cloud.rs` | ~1,600 | Bearer Token | REST |
+| Drime | `drime_cloud.rs` | ~1,600 | Bearer Token | REST |
 | OpenDrive | `opendrive.rs` | ~2,600 | Session login (user/pass) | REST |
 | Yandex Disk | `yandex_disk.rs` | ~2,100 | OAuth2 token (`Authorization: OAuth`) | REST |
 | Backblaze B2 | `b2.rs` | - | B2 native (account auth) | REST |
@@ -652,7 +652,7 @@ let response = self.client.get(&url)
     .header(AUTHORIZATION, format!("OAuth {}", self.oauth_token.expose_secret()))
     .send().await?;
 
-// Bearer Token (kDrive, Jottacloud, Drime Cloud)
+// Bearer Token (kDrive, Jottacloud, Drime)
 let response = self.client.get(&url)
     .header(AUTHORIZATION, format!("Bearer {}", self.token.expose_secret()))
     .send().await?;
@@ -664,7 +664,7 @@ let response = self.client.get(&url)
 | Yandex Disk | `Authorization: OAuth {token}` | `SecretString` (stored as `access_token`) |
 | kDrive | `Authorization: Bearer {token}` | `SecretString` (stored as `access_token`) |
 | Jottacloud | `Authorization: Bearer {token}` | `SecretString` |
-| Drime Cloud | `Authorization: Bearer {token}` | `SecretString` |
+| Drime | `Authorization: Bearer {token}` | `SecretString` |
 
 > Concrete field names vary per provider; all sensitive values are wrapped in `secrecy::SecretString`. Check the provider's `Config`/state struct for the exact field name.
 
@@ -796,7 +796,7 @@ async fn upload(&mut self, local_path: &str, remote_path: &str,
 }
 ```
 
-**Used by**: pCloud, kDrive, FileLu, Drime Cloud, Koofr
+**Used by**: pCloud, kDrive, FileLu, Drime, Koofr
 
 ### 4.2 Chunked Upload Session
 
@@ -1401,7 +1401,7 @@ async fn get_speed_limit(&mut self) -> Result<(u64, u64), ProviderError>;
 | Jottacloud | X | X | X | X | X | X | | X | | X | | |
 | FileLu | X | X | X | X | X | X | | X | X | | | |
 | Koofr | X | X | X | X | X | X | | X | X | X | X | |
-| Drime Cloud | X | X | X | X | X | X | | | X | X | | |
+| Drime | X | X | X | X | X | X | | | X | X | | |
 | OpenDrive | X | X | X | X | X | X | | | | | | |
 | Yandex Disk | X | X | X | X | X | X | | X | X | X | | X |
 

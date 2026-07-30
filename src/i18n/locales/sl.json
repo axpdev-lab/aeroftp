@@ -1719,7 +1719,7 @@
             "kdriveDesc": "Švicarska shramba v oblaku",
             "kdriveTooltip": "kDrive od Infomaniak - švicarska shramba v oblaku s 15GB brezplačno",
             "drimeDesc": "Varno shranjevanje v oblaku",
-            "drimeTooltip": "Drime Cloud - 20GB varnega shranjevanja v oblaku z REST API",
+            "drimeTooltip": "Drime - 20GB varnega shranjevanja v oblaku z REST API",
             "jottacloudDesc": "Norveški oblak (5GB brezplačno)",
             "jottacloudTooltip": "Jottacloud - norveška oblačna shramba v skladu z GDPR s 5GB brezplačno",
             "minioDesc": "Samogostovano S3-združljivo shranjevanje predmetov",

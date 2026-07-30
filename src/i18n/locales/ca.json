@@ -1719,7 +1719,7 @@
             "kdriveDesc": "Emmagatzematge al núvol suís",
             "kdriveTooltip": "kDrive d'Infomaniak - Emmagatzematge al núvol allotjat a Suïssa amb 15GB gratuïts",
             "drimeDesc": "Emmagatzematge al núvol segur",
-            "drimeTooltip": "Drime Cloud - 20GB d'emmagatzematge al núvol segur i gratuït amb REST API",
+            "drimeTooltip": "Drime - 20GB d'emmagatzematge al núvol segur i gratuït amb REST API",
             "jottacloudDesc": "Núvol noruec (5GB gratuït)",
             "jottacloudTooltip": "Jottacloud - Emmagatzematge al núvol noruec compatible amb GDPR amb 5GB gratuïts",
             "minioDesc": "Emmagatzematge d'objectes S3 autoallotjat",

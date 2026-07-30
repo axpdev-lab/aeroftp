@@ -239,7 +239,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     advanced: [] },
 
   // ── Other ──
-  { name: 'Drime Cloud', logoId: 'drime', section: 'Other',
+  { name: 'Drime', logoId: 'drime', section: 'Other',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
     advanced: [] },
 ];

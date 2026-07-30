@@ -1719,7 +1719,7 @@
             "kdriveDesc": "Storfa Cwmwl y Swistir",
             "kdriveTooltip": "kDrive gan Infomaniak - Storfa cwmwl wedi'i lletya yn y Swistir gyda 15GB am ddim",
             "drimeDesc": "Stôr Cwmwl Diogel",
-            "drimeTooltip": "Drime Cloud - 20GB o stôr cwmwl diogel am ddim gyda REST API",
+            "drimeTooltip": "Drime - 20GB o stôr cwmwl diogel am ddim gyda REST API",
             "jottacloudDesc": "Cwmwl Norwyaidd (5GB am ddim)",
             "jottacloudTooltip": "Jottacloud - Storfa cwmwl Norwyaidd sy'n cydymffurfio â GDPR gyda 5GB am ddim",
             "minioDesc": "Storfa gwrthrychau S3 hunan-letyol",

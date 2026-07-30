@@ -1719,7 +1719,7 @@
             "kdriveDesc": "Hifadhi ya wingu ya Uswisi",
             "kdriveTooltip": "kDrive na Infomaniak - hifadhi ya wingu ya Uswisi yenye 15GB bure",
             "drimeDesc": "Hifadhi salama ya wingu",
-            "drimeTooltip": "Drime Cloud - hifadhi salama ya wingu ya 20GB na REST API",
+            "drimeTooltip": "Drime - hifadhi salama ya wingu ya 20GB na REST API",
             "jottacloudDesc": "Wingu la Norway (5GB bure)",
             "jottacloudTooltip": "Jottacloud - hifadhi ya wingu ya Norway inayozingatia GDPR na 5GB bure",
             "minioDesc": "Hifadhi ya vitu S3 inayoendeshwa na mwenyewe",

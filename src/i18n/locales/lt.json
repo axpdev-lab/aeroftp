@@ -1719,7 +1719,7 @@
             "kdriveDesc": "Šveicarijos debesų saugykla",
             "kdriveTooltip": "kDrive by Infomaniak - Šveicarijoje talpinama debesų saugykla su 15GB nemokamai",
             "drimeDesc": "Saugi Debesų Saugykla",
-            "drimeTooltip": "Drime Cloud - 20GB nemokama saugi debesų saugykla su REST API",
+            "drimeTooltip": "Drime - 20GB nemokama saugi debesų saugykla su REST API",
             "jottacloudDesc": "Norvegijos debesis (5GB nemokamai)",
             "jottacloudTooltip": "Jottacloud - GDPR atitinkanti norvegiška debesų saugykla su 5GB nemokamai",
             "minioDesc": "Savarankiškai talpinama S3 suderinama objektų saugykla",

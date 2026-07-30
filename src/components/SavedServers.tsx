@@ -831,7 +831,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                         }
                                         if (server.protocol === 'filen' || server.protocol === 'internxt') return t('savedServers.e2eAes256', { username: mu(server.username || '') });
                                         if (server.protocol === 'kdrive') return `kDrive ${server.options?.bucket || ''}`;
-                                        if (server.protocol === 'drime') return 'Drime Cloud';
+                                        if (server.protocol === 'drime') return 'Drime';
                                         if (server.protocol === 'mega') return `${t('savedServers.e2eAes128', { username: mu(server.username || '') })} - ${megaBadge?.longLabel || 'MEGAcmd'}`;
                                         if (server.protocol === 's3') {
                                             const bucket = server.options?.bucket || '';

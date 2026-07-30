@@ -1719,7 +1719,7 @@
             "kdriveDesc": "スイスのクラウドストレージ",
             "kdriveTooltip": "kDrive by Infomaniak - スイスでホストされたクラウドストレージ（15GB無料）",
             "drimeDesc": "セキュアクラウドストレージ",
-            "drimeTooltip": "Drime Cloud - REST API 対応の 20GB 無料セキュアクラウドストレージ",
+            "drimeTooltip": "Drime - REST API 対応の 20GB 無料セキュアクラウドストレージ",
             "jottacloudDesc": "ノルウェークラウド (5GB無料)",
             "jottacloudTooltip": "Jottacloud - GDPR準拠のノルウェークラウドストレージ、5GB無料",
             "minioDesc": "セルフホスト型S3互換オブジェクトストレージ",
