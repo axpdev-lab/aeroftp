@@ -12058,12 +12058,7 @@ pub async fn get_local_files_recursive_checked(
             {
                 let _ = handle.emit(
                     "sync_scan_progress",
-                    serde_json::json!({
-                        "phase": "local",
-                        "files_found": count,
-                        "dirs_found": dirs_found,
-                        "bytes_found": bytes_found,
-                    }),
+                    local_scan_progress_payload(count, dirs_found, bytes_found),
                 );
                 last_progress_emit = now;
                 last_progress_count = count;
@@ -12179,7 +12174,34 @@ pub async fn get_local_files_recursive_checked(
         }
     }
 
+    // Unconditional final tick: a small single-directory tree never trips the
+    // 500-file / 200ms throttle (the check runs before listing at files=0), so
+    // without this flush the UI can retain dirs_found/bytes_found = 0 while the
+    // remote-start tick only carries files (review on merged #519).
+    if let Some(handle) = app {
+        let _ = handle.emit(
+            "sync_scan_progress",
+            local_scan_progress_payload(files.len(), dirs_found, bytes_found),
+        );
+    }
+
     Ok((files, completeness))
+}
+
+/// Payload shape for the local arm of `sync_scan_progress`. Shared by the
+/// throttled mid-walk ticks and the final flush so a pin test can assert the
+/// fields without a live AppHandle.
+pub fn local_scan_progress_payload(
+    files_found: usize,
+    dirs_found: usize,
+    bytes_found: u64,
+) -> serde_json::Value {
+    serde_json::json!({
+        "phase": "local",
+        "files_found": files_found,
+        "dirs_found": dirs_found,
+        "bytes_found": bytes_found,
+    })
 }
 
 /// Parallel local scan: directory traversal is sequential (fast), but SHA-256
@@ -21559,6 +21581,39 @@ mod scan_completeness_gate_tests {
         let err = ensure_scan_complete("left", "/mnt/backup", &truncated).unwrap_err();
         assert!(err.contains(SCAN_INCOMPLETE_MARKER));
         assert!(err.contains("stopped before the end"));
+    }
+
+    #[tokio::test]
+    async fn small_tree_final_local_progress_payload_reports_dirs_and_bytes() {
+        // Pin for the post-walk flush (review on merged #519): a single-dir tree
+        // never trips the 500-file/200ms throttle, so the final tick is the only
+        // one that can carry dirs_found/bytes_found > 0. Without a live
+        // AppHandle we pin the payload shape + the counters a full walk of that
+        // tree would hand it.
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), b"hello").expect("write a");
+        std::fs::create_dir(dir.path().join("sub")).expect("mkdir");
+        std::fs::write(dir.path().join("sub/b.txt"), b"world!").expect("write b");
+
+        let (files, _scan) = scan(dir.path().to_str().unwrap()).await;
+        let files_found = files.len();
+        let dirs_found = files.values().filter(|f| f.is_dir).count();
+        let bytes_found: u64 = files.values().filter(|f| !f.is_dir).map(|f| f.size).sum();
+
+        assert!(files_found >= 2, "expected files in the tree");
+        assert!(dirs_found >= 1, "expected at least the sub/ dir");
+        assert!(bytes_found > 0, "expected non-zero file bytes");
+
+        let payload = local_scan_progress_payload(files_found, dirs_found, bytes_found);
+        assert_eq!(payload["phase"], "local");
+        assert_eq!(payload["files_found"], files_found);
+        assert_eq!(payload["dirs_found"], dirs_found);
+        assert_eq!(payload["bytes_found"], bytes_found);
+        assert!(
+            payload["dirs_found"].as_u64().unwrap_or(0) > 0
+                && payload["bytes_found"].as_u64().unwrap_or(0) > 0,
+            "final local tick must report dirs and bytes, got {payload}"
+        );
     }
 }
 
