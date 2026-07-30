@@ -347,6 +347,7 @@ async fn run_speedtest_inner(
 ) -> Result<SpeedTestResult, String> {
     validate_size(request.size_bytes, request.expert_confirmed)?;
     validate_supported_protocol(&request.connection.protocol)?;
+    validate_remote_dir_for_speedtest(&request.remote_dir)?;
 
     let server_name = request.server_name.clone();
     emit_progress(
@@ -384,10 +385,10 @@ async fn run_speedtest_inner(
     )
     .await?;
 
-    // House rule: a benchmark never writes into the server's live data
-    // directory. Everything goes into a dedicated scratch subdirectory that the
-    // test creates and removes, so a 1 GB payload can never land in (and be
-    // served from) a web root or the account root.
+    // House rule: a benchmark never lands in a public document root (rejected
+    // by validate_remote_dir_for_speedtest) and never writes the payload as a
+    // sibling of live data. Everything goes into a dedicated scratch
+    // subdirectory that the test creates and removes.
     let scratch_dir = join_remote_path(&request.remote_dir, SCRATCH_DIR_NAME);
     let temp_file_name = format!(".aeroftp-speedtest-{}.bin", Uuid::new_v4());
     let remote_path = join_remote_path(&scratch_dir, &temp_file_name);
@@ -794,6 +795,42 @@ fn validate_supported_protocol(protocol: &str) -> Result<(), String> {
     }
 }
 
+/// True when `remote_dir` is a path commonly served as a public web document
+/// root. A multi-hundred-MB payload under such a tree can be fetched by anyone
+/// who knows the URL, even when nested in `.aeroftp-speedtest/`.
+fn is_public_web_document_root(remote_dir: &str) -> bool {
+    let trimmed = remote_dir.trim().trim_end_matches('/');
+    let p = if trimmed.is_empty() { "/" } else { trimmed };
+    let lower = p.to_ascii_lowercase();
+    matches!(
+        lower.as_str(),
+        "/var/www"
+            | "/var/www/html"
+            | "/var/www/htdocs"
+            | "/usr/share/nginx/html"
+            | "/usr/share/nginx"
+            | "/srv/www"
+            | "/srv/http"
+            | "/opt/homebrew/var/www"
+    ) || lower.ends_with("/public_html")
+        || lower.ends_with("/htdocs")
+        || lower.ends_with("/wwwroot")
+        // Trailing "/www" but not shorter false friends like "/www-data".
+        || lower.ends_with("/www")
+}
+
+/// Refuse known public document roots before any network work. Account root
+/// (`/` or empty) is allowed: that is the default for SFTP/S3 homes, and the
+/// payload still lives only under `.aeroftp-speedtest/`.
+fn validate_remote_dir_for_speedtest(remote_dir: &str) -> Result<(), String> {
+    if is_public_web_document_root(remote_dir) {
+        return Err(format!(
+            "Refusing to run the speed test under '{remote_dir}': that path looks like a public web document root. Point the test at a non-public directory (for example a home folder or a dedicated scratch path)."
+        ));
+    }
+    Ok(())
+}
+
 fn join_remote_path(dir: &str, file: &str) -> String {
     let trimmed = dir.trim();
     if trimmed.is_empty() || trimmed == "/" {
@@ -888,11 +925,15 @@ mod tests {
     use super::*;
 
     /// CLAUDE-AV-B9-03: the benchmark payload used to be written straight into
-    /// the profile's own directory, so a 1 GB test could land in a live web
-    /// root. It must always sit under the scratch subdirectory.
+    /// the profile's own directory. On allowed remote dirs it must always sit
+    /// under the scratch subdirectory (never as a bare file next to live data).
     #[test]
     fn payload_path_is_confined_to_the_scratch_dir() {
-        for dir in ["/", "", "/var/www/html", "/var/www/html/"] {
+        for dir in ["/", "", "/tmp", "/home/user", "/account"] {
+            assert!(
+                validate_remote_dir_for_speedtest(dir).is_ok(),
+                "allowed dir rejected: {dir}"
+            );
             let scratch = join_remote_path(dir, SCRATCH_DIR_NAME);
             let path = join_remote_path(&scratch, ".aeroftp-speedtest-x.bin");
             assert!(
@@ -904,6 +945,39 @@ mod tests {
                 "payload {path} is not under a scratch dir"
             );
             assert_ne!(path, "/.aeroftp-speedtest-x.bin", "payload landed in root");
+            // Payload is under scratch, not a direct child of the live dir.
+            let live = join_remote_path(dir, ".aeroftp-speedtest-x.bin");
+            assert_ne!(path, live, "payload was not nested under the scratch dir");
+        }
+    }
+
+    /// Pin: known public document roots must be refused before any network work.
+    /// Re-allowing `/var/www/html` would put a multi-hundred-MB file where a web
+    /// server can still serve it from `.aeroftp-speedtest/`.
+    #[test]
+    fn public_web_document_roots_are_rejected() {
+        for dir in [
+            "/var/www/html",
+            "/var/www/html/",
+            "/var/www",
+            "/usr/share/nginx/html",
+            "/srv/www",
+            "/srv/http",
+            "/home/alice/public_html",
+            "/Users/bob/Sites/htdocs",
+            "/inetpub/wwwroot",
+            "/opt/site/www",
+        ] {
+            assert!(
+                validate_remote_dir_for_speedtest(dir).is_err(),
+                "expected rejection for public web root {dir}"
+            );
+        }
+        for dir in ["/", "", "/tmp", "/home/user", "/data/bench", "/account"] {
+            assert!(
+                validate_remote_dir_for_speedtest(dir).is_ok(),
+                "expected allow for non-document-root {dir}"
+            );
         }
     }
 
