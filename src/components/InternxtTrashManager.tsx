@@ -2,11 +2,12 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, AlertTriangle, X, RefreshCw, Loader2, Folder, File } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { TrashTable, type TrashRow } from './Trash/TrashTable';
 import { formatSize, formatDate } from '../utils/formatters';
 
 interface InternxtTrashItem {
@@ -56,6 +57,19 @@ export function InternxtTrashManager({ onClose }: InternxtTrashManagerProps) {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
+
+  // Read-only: Internxt exposes no restore or permanent-delete call, so the
+  // shared table renders without the checkbox column, sorting and all.
+  const trashRows: TrashRow[] = useMemo(
+    () => items.map(item => ({
+      id: item.path,
+      name: item.name,
+      isDir: item.is_dir,
+      size: item.size,
+      deletedAt: item.modified,
+    })),
+    [items],
+  );
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -112,40 +126,7 @@ export function InternxtTrashManager({ onClose }: InternxtTrashManagerProps) {
               {t('contextMenu.trashEmpty')}
             </div>
           ) : (
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                <tr className="text-left text-gray-500 dark:text-gray-500">
-                  <th className="px-2 py-1.5">{t('common.name')}</th>
-                  <th className="px-2 py-1.5 w-20 text-right">{t('common.size')}</th>
-                  <th className="px-2 py-1.5 w-32">{t('contextMenu.trashDeletedDate')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map(item => (
-                  <tr
-                    key={item.path}
-                    className="hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700/30"
-                  >
-                    <td className="px-2 py-1.5">
-                      <div className="flex items-center gap-1.5">
-                        {item.is_dir ? (
-                          <Folder size={13} className="text-yellow-500 shrink-0" />
-                        ) : (
-                          <File size={13} className="text-gray-500 dark:text-gray-500 shrink-0" />
-                        )}
-                        <span className="truncate text-gray-900 dark:text-gray-100">{item.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-400 tabular-nums">
-                      {item.is_dir ? '-' : formatSize(item.size)}
-                    </td>
-                    <td className="px-2 py-1.5 text-gray-500 dark:text-gray-500">
-                      {item.modified ? formatDate(item.modified) : '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <TrashTable rows={trashRows} />
           )}
         </div>
       </div>

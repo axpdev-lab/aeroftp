@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Hukattu tila",
+            "sortSimilarity": "Samankaltaisuus",
+            "showHashes": "Näytä tiivisteet",
+            "fuzzyCutoff": "Sumea raja",
+            "fuzzyCutoffHint": "tyhjä = tyyppikohtaiset oletukset (kuvat 10, teksti 3, muut 100)",
             "title": "Etsi kaksoiskappaleet",
             "scanning": "Etsitään kaksoiskappaleita...",
             "summary": "{groups} ryhmää, {files} kaksoiskappeletta, {size} hukkaan",

@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Dung lượng lãng phí",
+            "sortSimilarity": "Độ tương đồng",
+            "showHashes": "Hiện các hash",
+            "fuzzyCutoff": "Ngưỡng mờ",
+            "fuzzyCutoffHint": "để trống = giá trị mặc định theo loại (ảnh 10, văn bản 3, khác 100)",
             "title": "Tìm tệp trùng lặp",
             "scanning": "Đang quét tìm tệp trùng lặp...",
             "summary": "{groups} nhóm, {files} tệp trùng lặp, {size} lãng phí",

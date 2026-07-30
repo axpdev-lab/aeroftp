@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Χαμένος χώρος",
+            "sortSimilarity": "Ομοιότητα",
+            "showHashes": "Εμφάνιση των hash",
+            "fuzzyCutoff": "Ασαφές κατώφλι",
+            "fuzzyCutoffHint": "κενό = προεπιλογές ανά τύπο (εικόνες 10, κείμενο 3, άλλα 100)",
             "title": "Εύρεση Διπλοτύπων",
             "scanning": "Σάρωση για διπλότυπα...",
             "summary": "{groups} ομάδες, {files} διπλότυπα αρχεία, {size} σπαταλημένα",

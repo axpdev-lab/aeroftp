@@ -1962,6 +1962,11 @@
             "totalItems": "Total: {size} across {count} items"
         },
         "duplicates": {
+            "sortWasted": "Wasted space",
+            "sortSimilarity": "Similarity",
+            "showHashes": "Show hashes",
+            "fuzzyCutoff": "Fuzzy cutoff",
+            "fuzzyCutoffHint": "blank = defaults per type (images 10, text 3, other 100)",
             "copies": "copies",
             "delete": "DELETE",
             "deleteConfirm": "Are you sure you want to delete {count} duplicate files?",

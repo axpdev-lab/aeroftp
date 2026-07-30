@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Spildt plads",
+            "sortSimilarity": "Lighed",
+            "showHashes": "Vis hashværdier",
+            "fuzzyCutoff": "Fuzzy-grænse",
+            "fuzzyCutoffHint": "tom = standardværdier pr. type (billeder 10, tekst 3, andet 100)",
             "title": "Find dubletter",
             "scanning": "Scanner for dubletter...",
             "summary": "{groups} grupper, {files} duplikatfiler, {size} spildt",

@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Premrhané miesto",
+            "sortSimilarity": "Podobnosť",
+            "showHashes": "Zobraziť hashe",
+            "fuzzyCutoff": "Fuzzy prah",
+            "fuzzyCutoffHint": "prázdne = predvolené hodnoty podľa typu (obrázky 10, text 3, ostatné 100)",
             "title": "Najst duplikaty",
             "scanning": "Hladanie duplikatov...",
             "summary": "{groups} skupin, {files} duplicitnych suborov, {size} zbytocnych",

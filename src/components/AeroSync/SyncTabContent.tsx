@@ -12,6 +12,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { pickFile } from '../../utils/pickPath';
 import { ChevronDown, ChevronRight, CircleStop, FolderOpen, Info, Play, AlertTriangle, Ban, CheckCircle2, Zap } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { useStickyState, useSkipSeedOnRestore } from './tabStateStore';
 import { TransferProgressBar } from '../TransferProgressBar';
 import type { AeroSyncPairKind } from './types';
 
@@ -149,9 +150,9 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
     onRunningChange,
 }) => {
     const t = useTranslation();
-    const [source, setSource] = useState(initialSource);
-    const [destination, setDestination] = useState(initialDestination);
-    const [exclude, setExclude] = useState('');
+    const [source, setSource] = useStickyState('sync.source', initialSource);
+    const [destination, setDestination] = useStickyState('sync.destination', initialDestination);
+    const [exclude, setExclude] = useStickyState('sync.exclude', '');
     // CO-4: profile-keyed override; falls back to the global slot when
     // no profile is in scope (AeroFile / dual-local sessions). The
     // initial read uses the active profile id so dialog re-opens for a
@@ -159,13 +160,13 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
     const [deltaOverride, setDeltaOverride] = useState<DeltaOverride>(() => readDeltaOverride(activeProfileId));
     const [uploadLimit, setUploadLimit] = useState<number>(() => readBandwidthLimit(UPLOAD_LIMIT_KEY));
     const [downloadLimit, setDownloadLimit] = useState<number>(() => readBandwidthLimit(DOWNLOAD_LIMIT_KEY));
-    const [dryRun, setDryRun] = useState(false);
+    const [dryRun, setDryRun] = useStickyState('sync.dryRun', false);
     const [running, setRunning] = useState(false);
     const [cancelling, setCancelling] = useState(false);
     const [progress, setProgress] = useState<LocalSyncProgress | null>(null);
     const [report, setReport] = useState<LocalSyncReport | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useStickyState('sync.showAdvanced', false);
 
     // SLICE 4 delta-sync gate consolidation:
     //  - pairKind=local-local      -> always eligible (AeroRsync local engine)
@@ -183,7 +184,14 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
             ? true
             : deltaEligible;
 
+    // The panel paths seed the fields, but not over an edit that survived a tab
+    // switch: after a remount the store has already restored what the user typed.
+    const skipPathSeed = useSkipSeedOnRestore('sync.source', 'sync.destination');
     useEffect(() => {
+        if (skipPathSeed.current) {
+            skipPathSeed.current = false;
+            return;
+        }
         if (initialSource) setSource(initialSource);
         if (initialDestination) setDestination(initialDestination);
     }, [initialSource, initialDestination]);

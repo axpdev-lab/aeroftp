@@ -34,6 +34,7 @@ import { formatBytes } from '../../utils/formatters';
 import { retryPolicyForSpeed } from '../../utils/remoteSyncRunner';
 import { isCyberTheme, SPEED_PRESETS } from '../Sync/syncConstants';
 import { useTranslation } from '../../i18n';
+import { useStickyState, useSkipSeedOnRestore } from './tabStateStore';
 import type { CompressionMode } from '../../types';
 import type {
     AeroSyncCanarySelection,
@@ -140,10 +141,10 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     onExecute,
 }) => {
     const t = useTranslation();
-    const [preset, setPreset] = React.useState<SyncPreset>('backup');
-    const [direction, setDirection] = React.useState<PresetDirection>('left-to-right');
-    const [conflictPolicy, setConflictPolicy] = React.useState<ConflictPolicy>('skip');
-    const [versionedBackup, setVersionedBackup] = React.useState<VersionedBackupConfig>({
+    const [preset, setPreset] = useStickyState<SyncPreset>('plan.preset', 'backup');
+    const [direction, setDirection] = useStickyState<PresetDirection>('plan.direction', 'left-to-right');
+    const [conflictPolicy, setConflictPolicy] = useStickyState<ConflictPolicy>('plan.conflictPolicy', 'skip');
+    const [versionedBackup, setVersionedBackup] = useStickyState<VersionedBackupConfig>('plan.versionedBackup', {
         enabled: false,
         backupDir: '.aeroftp-versions',
     });
@@ -152,15 +153,15 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // `onExecute(plan, runtime)` callback so App.tsx can forward them
     // to the unified runner (LocalSyncRequest.speed_mode /
     // verify_policy) and the Rust backend can honour the verify pass.
-    const [speedMode, setSpeedMode] = React.useState<AeroSyncSpeedMode>('normal');
-    const [verifyPolicy, setVerifyPolicy] = React.useState<AeroSyncVerifyPolicy>('size_only');
+    const [speedMode, setSpeedMode] = useStickyState<AeroSyncSpeedMode>('plan.speedMode', 'normal');
+    const [verifyPolicy, setVerifyPolicy] = useStickyState<AeroSyncVerifyPolicy>('plan.verifyPolicy', 'size_only');
     // GAP-7: Canary trial — only meaningful for a connected remote.
-    const [canaryMode, setCanaryMode] = React.useState(false);
-    const [canaryPercent, setCanaryPercent] = React.useState(10);
-    const [canarySelection, setCanarySelection] = React.useState<AeroSyncCanarySelection>('random');
+    const [canaryMode, setCanaryMode] = useStickyState('plan.canaryMode', false);
+    const [canaryPercent, setCanaryPercent] = useStickyState('plan.canaryPercent', 10);
+    const [canarySelection, setCanarySelection] = useStickyState<AeroSyncCanarySelection>('plan.canarySelection', 'random');
     // GAP-8: transfer budget in MB (0 = unlimited); retry policy is derived
     // from the speed mode, versioned-backup reuses the existing toggle.
-    const [transferBudgetMb, setTransferBudgetMb] = React.useState(0);
+    const [transferBudgetMb, setTransferBudgetMb] = useStickyState('plan.transferBudgetMb', 0);
     // GAP-9a: Maniac is the Cyber-theme-gated 5th speed mode. Selecting it
     // arms a warning card; Execute stays blocked until the user confirms.
     const [maniacConfirmed, setManiacConfirmed] = React.useState(false);
@@ -168,18 +169,20 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // SyncPanel. The speed mode seeds them; the explicit selectors below
     // override. Threaded into RemoteSyncConfig; concurrent execution is
     // owned by APPENDIX-DAG-ENGINE Fase 2.
-    const [parallelStreams, setParallelStreams] = React.useState(
+    const [parallelStreams, setParallelStreams] = useStickyState(
+        'plan.parallelStreams',
         SPEED_PRESETS.normal.parallelStreams,
     );
-    const [compressionMode, setCompressionMode] = React.useState<CompressionMode>(
+    const [compressionMode, setCompressionMode] = useStickyState<CompressionMode>(
+        'plan.compressionMode',
         SPEED_PRESETS.normal.compressionMode,
     );
     // P3: Error Correction (AeroSync EC slice). Reuses the exact preset+slider+input
     // trio + clamp from VaultCreate.tsx:183-227 (vault.recoveryLevel* i18n).
     // Default: only 'backup' preset (Backup-class) gets enabled=true + pct=15 (Medium);
     // Mirror/Two-way/Pull/update default to OFF. Always rendered (per handoff minima).
-    const [ecEnabled, setEcEnabled] = React.useState(true);
-    const [ecPct, setEcPct] = React.useState(15);
+    const [ecEnabled, setEcEnabled] = useStickyState('plan.ecEnabled', true);
+    const [ecPct, setEcPct] = useStickyState('plan.ecPct', 15);
     const isConnectedRemote = pairKind === 'local-remote' || pairKind === 'remote-local';
     const showManiac = isCyberTheme();
     const speedModes: AeroSyncSpeedMode[] = showManiac
@@ -208,7 +211,14 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // GAP-9b: selecting a speed mode seeds the parallel-streams + compression
     // controls from its preset, mirroring the legacy SyncPanel
     // handleSpeedModeChange. The explicit selectors can still override after.
+    // Skipped on the first run after a tab switch: the store has just restored
+    // the streams/compression the user picked, and re-seeding would undo them.
+    const skipStreamSeed = useSkipSeedOnRestore('plan.parallelStreams', 'plan.compressionMode', 'plan.speedMode');
     React.useEffect(() => {
+        if (skipStreamSeed.current) {
+            skipStreamSeed.current = false;
+            return;
+        }
         const preset = SPEED_PRESETS[speedMode];
         setParallelStreams(preset.parallelStreams);
         setCompressionMode(preset.compressionMode);
@@ -218,7 +228,13 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // Other presets (mirror, update, bisync) → OFF. Effect resets on preset
     // change so the recommended default for the chosen "profile" wins; manual
     // toggle on a non-backup preset is a per-run override until next preset pick.
+    // Same guard: a per-run EC override must survive Plan -> Sync -> Plan.
+    const skipEcSeed = useSkipSeedOnRestore('plan.ecEnabled', 'plan.ecPct', 'plan.preset');
     React.useEffect(() => {
+        if (skipEcSeed.current) {
+            skipEcSeed.current = false;
+            return;
+        }
         if (preset === 'backup') {
             setEcEnabled(true);
             setEcPct(15);

@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Verschwendeter Speicher",
+            "sortSimilarity": "Ähnlichkeit",
+            "showHashes": "Hashes anzeigen",
+            "fuzzyCutoff": "Fuzzy-Schwelle",
+            "fuzzyCutoffHint": "leer = Standardwerte je Typ (Bilder 10, Text 3, sonstige 100)",
             "title": "Duplikate finden",
             "scanning": "Suche nach Duplikaten...",
             "summary": "{groups} Gruppen, {files} doppelte Dateien, {size} verschwendet",

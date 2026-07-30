@@ -120,6 +120,12 @@ pub struct DuplicateGroup {
     pub distance: Option<u32>,
     /// "raster" | "text" | "other"
     pub modality: Option<String>,
+    /// The fuzzy signature of each entry of `files`, same order and length:
+    /// pHash / SimHash as 16 hex digits, TLSH as its own hex string. None in
+    /// exact mode, where every member shares the single `hash` above.
+    /// Surfaced so the UI can show why two files were called duplicates
+    /// (discussion #347).
+    pub file_hashes: Option<Vec<String>>,
 }
 
 /// Compute BLAKE3 of a local file (for Exact mode consistency with GUI).
@@ -263,19 +269,48 @@ pub fn jaccard_from_minhash(a: &[u64], b: &[u64]) -> f64 {
     matches as f64 / a.len() as f64
 }
 
+/// One tick of a similarity scan, so a caller can show what the engine is
+/// chewing through instead of an indeterminate spinner (discussion #347).
+///
+/// `files_total` is the candidate count the pass started with, which is what
+/// makes the tick a fraction rather than a running number.
+#[derive(Debug, Clone, Copy)]
+pub struct DedupeProgress {
+    pub files_processed: u64,
+    pub bytes_processed: u64,
+    pub files_total: u64,
+}
+
 /// Find duplicate groups on a list of local file paths.
 /// - Exact: group by size then BLAKE3 (size prefilter kept).
 /// - NonIdentical: compute per-modality signatures; bypass size prefilter for Raster.
 ///   Cluster by Hamming distance <= threshold (param overrides default).
 ///
-///   Returns groups with >=2 files, sorted by wasted space desc (or distance asc for visibility).
+/// Returns groups with >=2 files, sorted by wasted space desc (or distance asc for visibility).
 pub fn find_similar_local(
     paths: &[PathBuf],
     mode: SimilarityMode,
     distance: Option<u32>,
     min_size: Option<u64>,
 ) -> Vec<DuplicateGroup> {
+    find_similar_local_with_progress(paths, mode, distance, min_size, &mut |_| {})
+}
+
+/// `find_similar_local` with a progress callback, called once per file whose
+/// content the engine actually reads — the hashing pass in exact mode and the
+/// signature pass in non-identical mode. The callback runs on this thread, so
+/// keep it cheap (the GUI caller throttles before it emits).
+pub fn find_similar_local_with_progress(
+    paths: &[PathBuf],
+    mode: SimilarityMode,
+    distance: Option<u32>,
+    min_size: Option<u64>,
+    on_progress: &mut dyn FnMut(DedupeProgress),
+) -> Vec<DuplicateGroup> {
     let min = min_size.unwrap_or(1);
+    let files_total = paths.len() as u64;
+    let mut files_processed: u64 = 0;
+    let mut bytes_processed: u64 = 0;
 
     match mode {
         SimilarityMode::Exact => {
@@ -302,6 +337,13 @@ pub fn find_similar_local(
                             .1
                             .push(f.to_string_lossy().to_string());
                     }
+                    files_processed += 1;
+                    bytes_processed += sz;
+                    on_progress(DedupeProgress {
+                        files_processed,
+                        bytes_processed,
+                        files_total,
+                    });
                 }
             }
             let mut result: Vec<DuplicateGroup> = hash_groups
@@ -313,6 +355,7 @@ pub fn find_similar_local(
                     files: fs,
                     distance: None,
                     modality: None,
+                    file_hashes: None,
                 })
                 .collect();
             result.sort_by(|a, b| {
@@ -327,20 +370,6 @@ pub fn find_similar_local(
             // For text/other we still can prefilter by size loosely but per spec, size
             // prefilter bypassed for raster; we bypass for all non-id for simplicity + correctness
             // (text reformat can change size too).
-            let mut candidates: Vec<(PathBuf, u64, Vec<u8>)> = Vec::new();
-            for p in paths {
-                if let Ok(meta) = std::fs::metadata(p) {
-                    let sz = meta.len();
-                    if sz < min {
-                        continue;
-                    }
-                    // Read full for sim (small for typical dupes; capped by caller in practice)
-                    if let Ok(bytes) = std::fs::read(p) {
-                        candidates.push((p.clone(), sz, bytes));
-                    }
-                }
-            }
-
             // Compute signatures per modality
             #[derive(Clone)]
             struct Sig {
@@ -353,9 +382,55 @@ pub fn find_similar_local(
                 tlsh: Option<tlsh2::TlshDefault>,
             }
 
+            // Read and sign one file at a time. This used to buffer every
+            // candidate's full contents in a Vec and only then compute the
+            // signatures, so a directory of large media could hold the whole lot
+            // in memory at once — the same directory exact mode truncates safely
+            // under MAX_TOTAL_HASH_BYTES. The bytes are now dropped as soon as
+            // the signature is out, and the same 2 GB read budget applies here,
+            // reported through the progress callback so a truncated pass is
+            // visible rather than silent.
+            const MAX_TOTAL_SIGNATURE_BYTES: u64 = 2_000_000_000;
             let mut sigs: Vec<Sig> = Vec::new();
-            for (p, sz, bytes) in candidates {
-                let modality = detect_modality(&p);
+            for p in paths {
+                let sz = match std::fs::metadata(p) {
+                    Ok(meta) if meta.len() >= min => meta.len(),
+                    _ => {
+                        files_processed += 1;
+                        on_progress(DedupeProgress {
+                            files_processed,
+                            bytes_processed,
+                            files_total,
+                        });
+                        continue;
+                    }
+                };
+                if bytes_processed.saturating_add(sz) > MAX_TOTAL_SIGNATURE_BYTES {
+                    break;
+                }
+                let bytes = match std::fs::read(p) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        // Counted whether or not the read succeeded: the tick
+                        // tracks how far through the list we are, not how many
+                        // files worked.
+                        files_processed += 1;
+                        on_progress(DedupeProgress {
+                            files_processed,
+                            bytes_processed,
+                            files_total,
+                        });
+                        continue;
+                    }
+                };
+                bytes_processed += bytes.len() as u64;
+                files_processed += 1;
+                on_progress(DedupeProgress {
+                    files_processed,
+                    bytes_processed,
+                    files_total,
+                });
+                let modality = detect_modality(p);
                 let path_str = p.to_string_lossy().to_string();
                 match modality {
                     Modality::Raster => {
@@ -500,9 +575,24 @@ pub fn find_similar_local(
             let mut result: Vec<DuplicateGroup> = Vec::new();
 
             for g in raster_groups_raw {
-                // representative distance = max pairwise inside (approx first to others)
-                let rep_dist = g.iter().skip(1).map(|(_, _, d)| *d).max().unwrap_or(0) as u32;
+                // Representative distance = the furthest member from the first,
+                // in HAMMING terms. This used to take `.max()` of the pHash
+                // values themselves, so the number the UI showed as "dist" was a
+                // 64-bit hash, not a distance, and sorting groups by similarity
+                // would have sorted them by an arbitrary number.
+                let rep_dist = g
+                    .first()
+                    .map(|(_, _, h0)| {
+                        g.iter()
+                            .skip(1)
+                            .map(|(_, _, h)| hamming_distance(*h0, *h))
+                            .max()
+                            .unwrap_or(0)
+                    })
+                    .unwrap_or(0);
                 let files: Vec<String> = g.iter().map(|(p, _, _)| p.clone()).collect();
+                let file_hashes: Vec<String> =
+                    g.iter().map(|(_, _, h)| format!("{:016x}", h)).collect();
                 let sz = g.first().map(|(_, s, _)| *s).unwrap_or(0);
                 result.push(DuplicateGroup {
                     hash: None,
@@ -510,12 +600,26 @@ pub fn find_similar_local(
                     files,
                     distance: Some(rep_dist),
                     modality: Some(Modality::Raster.as_str().to_string()),
+                    file_hashes: Some(file_hashes),
                 });
             }
 
             for g in text_groups_raw {
-                let rep_dist = g.iter().skip(1).map(|(_, _, d)| *d).max().unwrap_or(0) as u32;
+                // Same correction as the raster arm above: hamming, not the
+                // SimHash value.
+                let rep_dist = g
+                    .first()
+                    .map(|(_, _, h0)| {
+                        g.iter()
+                            .skip(1)
+                            .map(|(_, _, h)| hamming_distance(*h0, *h))
+                            .max()
+                            .unwrap_or(0)
+                    })
+                    .unwrap_or(0);
                 let files: Vec<String> = g.iter().map(|(p, _, _)| p.clone()).collect();
+                let file_hashes: Vec<String> =
+                    g.iter().map(|(_, _, h)| format!("{:016x}", h)).collect();
                 let sz = g.first().map(|(_, s, _)| *s).unwrap_or(0);
                 result.push(DuplicateGroup {
                     hash: None,
@@ -523,6 +627,7 @@ pub fn find_similar_local(
                     files,
                     distance: Some(rep_dist),
                     modality: Some(Modality::Text.as_str().to_string()),
+                    file_hashes: Some(file_hashes),
                 });
             }
 
@@ -539,6 +644,14 @@ pub fn find_similar_local(
                     0
                 };
                 let files: Vec<String> = g.iter().map(|(p, _, _)| p.clone()).collect();
+                let file_hashes: Vec<String> = g
+                    .iter()
+                    .map(|(_, _, t)| {
+                        String::from_utf8_lossy(&t.hash())
+                            .trim_matches('\0')
+                            .to_string()
+                    })
+                    .collect();
                 let sz = g.first().map(|(_, s, _)| *s).unwrap_or(0);
                 result.push(DuplicateGroup {
                     hash: None,
@@ -546,6 +659,7 @@ pub fn find_similar_local(
                     files,
                     distance: Some(rep_dist),
                     modality: Some(Modality::Other.as_str().to_string()),
+                    file_hashes: Some(file_hashes),
                 });
             }
 
@@ -676,6 +790,78 @@ mod tests {
         assert!(groups
             .iter()
             .any(|g| g.files.len() >= 2 && g.modality.as_deref() == Some("raster")));
+    }
+
+    #[test]
+    fn reported_distance_is_a_distance_not_a_hash() {
+        // Regression pin (discussion #347): the representative distance for the
+        // raster and text arms was `.max()` of the SIGNATURE VALUES, not of the
+        // hamming distances between them, so a group clustered at a distance of
+        // 2 could report a number in the billions. Ehud asked to sort groups by
+        // similarity, which that number makes meaningless.
+        let td = TempDir::new().unwrap();
+        let svg1 = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect x="0" y="0" width="10" height="10"/></svg>"#;
+        let svg2 = r#"<svg   xmlns = 'http://www.w3.org/2000/svg'
+            width='10'   height = "10"  >
+          <rect   x = "0"   y = '0' width = "10" height="10" />
+        </svg>"#;
+        let p1 = write_file(td.path(), "icon1.svg", svg1.as_bytes());
+        let p2 = write_file(td.path(), "icon2.svg", svg2.as_bytes());
+
+        let groups = find_similar_local(&[p1, p2], SimilarityMode::NonIdentical, Some(3), None);
+        let text_group = groups
+            .iter()
+            .find(|g| g.modality.as_deref() == Some("text") && g.files.len() >= 2)
+            .expect("the two reformatted SVGs cluster");
+
+        // A 64-bit hamming distance cannot exceed 64, and cannot exceed the
+        // threshold the group was clustered under.
+        let dist = text_group.distance.expect("fuzzy groups carry a distance");
+        assert!(dist <= 3, "distance {} is not a hamming distance", dist);
+
+        // And the signature of each member is reported, in file order.
+        let hashes = text_group
+            .file_hashes
+            .as_ref()
+            .expect("fuzzy groups carry per-file signatures");
+        assert_eq!(hashes.len(), text_group.files.len());
+        assert!(hashes
+            .iter()
+            .all(|h| h.len() == 16 && h.chars().all(|c| c.is_ascii_hexdigit())));
+    }
+
+    #[test]
+    fn fuzzy_threshold_is_honoured() {
+        // The cutoff is now the caller's to choose (discussion #347): the same
+        // pair must cluster at a loose threshold and separate at zero.
+        let td = TempDir::new().unwrap();
+        let a = write_file(
+            td.path(),
+            "a.svg",
+            br#"<svg><rect x="0" y="0" width="10" height="10"/></svg>"#,
+        );
+        let b = write_file(
+            td.path(),
+            "b.svg",
+            br#"<svg>  <rect x = "0" y = "0" width = "10" height = "11" />  </svg>"#,
+        );
+
+        let loose = find_similar_local(
+            &[a.clone(), b.clone()],
+            SimilarityMode::NonIdentical,
+            Some(32),
+            None,
+        );
+        assert!(
+            loose.iter().any(|g| g.files.len() >= 2),
+            "a loose cutoff must cluster them"
+        );
+
+        let strict = find_similar_local(&[a, b], SimilarityMode::NonIdentical, Some(0), None);
+        assert!(
+            strict.iter().all(|g| g.files.len() < 2),
+            "a zero cutoff must only cluster identical signatures",
+        );
     }
 
     #[test]

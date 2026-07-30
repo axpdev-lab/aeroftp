@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Alferrik galdutako lekua",
+            "sortSimilarity": "Antzekotasuna",
+            "showHashes": "Erakutsi hash-ak",
+            "fuzzyCutoff": "Muga lausoa",
+            "fuzzyCutoffHint": "hutsik = motaren araberako balio lehenetsiak (irudiak 10, testua 3, besteak 100)",
             "title": "Bilatu bikoiztuak",
             "scanning": "Bikoiztuak eskaneatzen...",
             "summary": "{groups} talde, {files} fitxategi bikoiztu, {size} galduta",

@@ -110,6 +110,9 @@ export interface DuplicateGroup {
   files: string[];
   similarity?: string; // e.g. "raster" | "text" (perceptual / simhash)
   distance?: number;   // Hamming distance of the cluster
+  /** Per-file fuzzy signature, parallel to `files`. Absent in exact mode,
+   *  where `hash` is the one BLAKE3 every member of the group shares. */
+  file_hashes?: string[];
 }
 
 /** Node in a disk usage tree for treemap visualization */

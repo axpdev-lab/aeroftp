@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Lle wedi'i wastraffu",
+            "sortSimilarity": "Tebygrwydd",
+            "showHashes": "Dangos yr hashiau",
+            "fuzzyCutoff": "Trothwy niwlog",
+            "fuzzyCutoffHint": "gwag = rhagosodiadau fesul math (delweddau 10, testun 3, eraill 100)",
             "title": "Dod o Hyd i Ddyblygu",
             "scanning": "Yn sganio am ddyblygu...",
             "summary": "{groups} grŵp, {files} ffeil ddyblyg, {size} yn cael ei wastraffu",

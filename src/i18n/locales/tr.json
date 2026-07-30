@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Boşa giden alan",
+            "sortSimilarity": "Benzerlik",
+            "showHashes": "Karmaları göster",
+            "fuzzyCutoff": "Bulanık eşik",
+            "fuzzyCutoffHint": "boş = türe göre varsayılanlar (görseller 10, metin 3, diğer 100)",
             "title": "Yinelenenleri Bul",
             "scanning": "Yinelenenler taranıyor...",
             "summary": "{groups} grup, {files} yinelenen dosya, {size} boşa harcanan",

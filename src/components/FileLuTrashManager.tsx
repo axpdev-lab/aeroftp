@@ -2,11 +2,12 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, X, RefreshCw, Loader2, File, CheckSquare, Square, Clock } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { TrashTable, type TrashRow } from './Trash/TrashTable';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 // FileLu confirmed permanent delete endpoint: api/file/permanent_delete?key=X&file_code=Y
@@ -113,6 +114,101 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
   const allCodes = items.map(i => i.file_code).filter(Boolean) as string[];
   const allSelected = allCodes.length > 0 && selected.size === allCodes.length;
 
+  // FileLu reports no size and no folders in its trash, and its rows carry a
+  // file code plus per-row restore/delete buttons: both ride along as extra
+  // columns so this view gains the shared sorting and selection like the rest.
+  const trashRows: TrashRow[] = useMemo(
+    // An entry with no file code cannot be selected, restored or deleted — the
+    // code IS the handle — and giving them all the id '' would collapse them
+    // into one row with a duplicate React key. Dropped, like the two existing
+    // `.filter(Boolean)` call sites in this file already do.
+    () => items
+      .filter((item): item is DeletedFileEntry & { file_code: string } => !!item.file_code)
+      .map(item => ({
+        id: item.file_code,
+        name: item.name ?? item.file_code,
+        isDir: false,
+        size: null,
+        deletedAt: item.deleted,
+        deletedAtLabel: item.deleted ?? formatDeletedAgo(item.deleted_ago_sec),
+      })),
+    [items],
+  );
+
+  // Per-row restore/delete, in the same shape as restoreSelected/deleteSelected
+  // above: an activity-log entry that settles, and a failure the user can see.
+  // The inline handlers these replace had no rejection handler at all, so a
+  // failed restore became an unhandled rejection and a silently stale list.
+  const restoreOne = useCallback(async (code: string) => {
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'FileLu', count: 1 });
+    setActionLoading('restore');
+    try {
+      await invoke('filelu_restore_file', { fileCode: code });
+      humanLog.updateEntry(logId, { status: 'success', message: `[FileLu] Restored 1 item from trash` });
+      await loadTrash();
+      onRefreshFiles?.();
+    } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[FileLu] Failed to restore from trash` });
+      setError(String(err));
+    } finally {
+      setActionLoading(null);
+    }
+  }, [humanLog, loadTrash, onRefreshFiles]);
+
+  const deleteOne = useCallback(async (code: string) => {
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'FileLu', count: 1 });
+    setActionLoading('delete');
+    try {
+      await invoke('filelu_permanent_delete', { fileCode: code });
+      humanLog.updateEntry(logId, { status: 'success', message: `[FileLu] Permanently deleted 1 item from trash` });
+      await loadTrash();
+    } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[FileLu] Failed to permanently delete from trash` });
+      setError(String(err));
+    } finally {
+      setActionLoading(null);
+    }
+  }, [humanLog, loadTrash]);
+
+  const fileLuColumns = useMemo(
+    () => [
+      {
+        key: 'code',
+        header: '',
+        className: 'font-mono text-[10px] opacity-60 whitespace-nowrap',
+        render: (row: TrashRow) => row.id,
+      },
+      {
+        key: 'actions',
+        header: '',
+        className: 'w-16',
+        render: (row: TrashRow) => (
+          <span className="flex gap-1.5">
+            <button
+              onClick={e => { e.stopPropagation(); void restoreOne(row.id); }}
+              disabled={actionLoading !== null}
+              className="p-1 rounded text-emerald-500 hover:bg-emerald-500/10 transition-colors disabled:opacity-40"
+              title={t('filelu.restore')}
+            >
+              <RotateCcw size={13} />
+            </button>
+            {PERMANENT_DELETE_ENABLED && (
+              <button
+                onClick={e => { e.stopPropagation(); void deleteOne(row.id); }}
+                disabled={actionLoading !== null}
+                className="p-1 rounded text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                title={t('filelu.permanentDeleteOne')}
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </span>
+        ),
+      },
+    ],
+    [restoreOne, deleteOne, actionLoading, t],
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
       <div
@@ -198,52 +294,12 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
               <span className="text-sm">{t('filelu.trashEmpty')}</span>
             </div>
           ) : (
-            <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-              {items.map(item => {
-                const code = item.file_code ?? '';
-                const isSelected = selected.has(code);
-                return (
-                  <li
-                    key={code}
-                    className={`flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50 dark:bg-gray-800 transition-colors ${isSelected ? 'bg-gray-50 dark:bg-gray-800' : ''}`}
-                    onClick={() => toggleSelect(code)}
-                  >
-                    <div className="flex-shrink-0 text-gray-500 dark:text-gray-400">
-                      {isSelected ? <CheckSquare size={15} className="text-blue-500" /> : <Square size={15} />}
-                    </div>
-                    <File size={15} className="flex-shrink-0 text-gray-500 dark:text-gray-400" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900 dark:text-gray-100 truncate">{item.name ?? code}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <Clock size={11} className="text-gray-500 dark:text-gray-400" />
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {item.deleted ?? formatDeletedAgo(item.deleted_ago_sec)}
-                        </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400 opacity-60 font-mono">{code}</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-1.5 flex-shrink-0">
-                      <button
-                        onClick={e => { e.stopPropagation(); invoke('filelu_restore_file', { fileCode: code }).then(loadTrash).then(() => onRefreshFiles?.()); }}
-                        className="p-1 rounded text-emerald-500 hover:bg-emerald-500/10 transition-colors"
-                        title={t('filelu.restore')}
-                      >
-                        <RotateCcw size={13} />
-                      </button>
-                      {PERMANENT_DELETE_ENABLED && (
-                        <button
-                          onClick={e => { e.stopPropagation(); invoke('filelu_permanent_delete', { fileCode: code }).then(loadTrash).catch(err => setError(String(err))); }}
-                          className="p-1 rounded text-red-500 hover:bg-red-500/10 transition-colors"
-                          title={t('filelu.permanentDeleteOne')}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <TrashTable
+              rows={trashRows}
+              selected={selected}
+              setSelected={setSelected}
+              extraColumns={fileLuColumns}
+            />
           )}
         </div>
 

@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Espace gaspillé",
+            "sortSimilarity": "Similarité",
+            "showHashes": "Afficher les hachages",
+            "fuzzyCutoff": "Seuil flou",
+            "fuzzyCutoffHint": "vide = valeurs par défaut selon le type (images 10, texte 3, autres 100)",
             "title": "Rechercher les doublons",
             "scanning": "Recherche de doublons en cours...",
             "summary": "{groups} groupes, {files} fichiers en double, {size} gaspilles",

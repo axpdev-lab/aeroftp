@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "बर्बाद जगह",
+            "sortSimilarity": "समानता",
+            "showHashes": "हैश दिखाएँ",
+            "fuzzyCutoff": "फ़ज़ी सीमा",
+            "fuzzyCutoffHint": "खाली = प्रकार के अनुसार डिफ़ॉल्ट (छवियाँ 10, पाठ 3, अन्य 100)",
             "title": "डुप्लिकेट खोजें",
             "scanning": "डुप्लिकेट के लिए स्कैनिंग...",
             "summary": "{groups} समूह, {files} डुप्लिकेट फ़ाइलें, {size} बर्बाद",

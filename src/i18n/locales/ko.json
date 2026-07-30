@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "낭비된 공간",
+            "sortSimilarity": "유사도",
+            "showHashes": "해시 표시",
+            "fuzzyCutoff": "퍼지 임계값",
+            "fuzzyCutoffHint": "비워 두면 유형별 기본값 (이미지 10, 텍스트 3, 기타 100)",
             "title": "중복 파일 찾기",
             "scanning": "중복 파일 스캔 중...",
             "summary": "{groups}개 그룹, {files}개 중복 파일, {size} 낭비",

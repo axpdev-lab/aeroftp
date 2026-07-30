@@ -12030,6 +12030,10 @@ pub async fn get_local_files_recursive_checked(
     // Throttle progress emission: every 500 files OR every 200ms, whichever comes first
     let mut last_progress_emit = std::time::Instant::now();
     let mut last_progress_count: usize = 0;
+    // Counted alongside the files so the Compare dialog can show the size of
+    // what it is walking, not just how many names it has seen (discussion #347).
+    let mut dirs_found: usize = 0;
+    let mut bytes_found: u64 = 0;
 
     while let Some(current_dir) = dirs_to_process.pop() {
         // Check cancellation
@@ -12057,6 +12061,8 @@ pub async fn get_local_files_recursive_checked(
                     serde_json::json!({
                         "phase": "local",
                         "files_found": count,
+                        "dirs_found": dirs_found,
+                        "bytes_found": bytes_found,
                     }),
                 );
                 last_progress_emit = now;
@@ -12160,6 +12166,11 @@ pub async fn get_local_files_recursive_checked(
             }
 
             files.insert(relative_path, file_info);
+            if is_dir {
+                dirs_found += 1;
+            } else {
+                bytes_found += size;
+            }
 
             // Add subdirectories to process
             if is_dir {
@@ -12388,6 +12399,10 @@ async fn get_remote_files_recursive_with_progress(
     let mut dirs_to_process: Vec<(String, u32)> = vec![(base_path.to_string(), 0)];
     let mut visited = std::collections::HashSet::new();
     visited.insert(base_path.to_string());
+    // Reported next to the file count so the Compare dialog can show the shape
+    // of the remote tree while it is being listed (discussion #347).
+    let mut remote_dirs_found: usize = 0;
+    let mut remote_bytes_found: u64 = 0;
     const MAX_DEPTH: u32 = 64;
 
     while let Some((current_dir, depth)) = dirs_to_process.pop() {
@@ -12476,6 +12491,11 @@ async fn get_remote_files_recursive_with_progress(
             };
 
             files.insert(relative_path, file_info);
+            if entry.is_dir {
+                remote_dirs_found += 1;
+            } else {
+                remote_bytes_found += entry.size.unwrap_or(0);
+            }
 
             if entry.is_dir {
                 let child_path = format!("{}/{}", current_dir, entry.name);
@@ -12493,6 +12513,8 @@ async fn get_remote_files_recursive_with_progress(
             serde_json::json!({
                 "phase": "remote",
                 "files_found": local_count + files.len(),
+                "dirs_found": remote_dirs_found,
+                "bytes_found": remote_bytes_found,
             }),
         );
     }

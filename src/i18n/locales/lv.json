@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Izšķiestā vieta",
+            "sortSimilarity": "Līdzība",
+            "showHashes": "Rādīt jaucējkodus",
+            "fuzzyCutoff": "Izplūdušais slieksnis",
+            "fuzzyCutoffHint": "tukšs = noklusējumi pēc veida (attēli 10, teksts 3, citi 100)",
             "title": "Atrast dublikātus",
             "scanning": "Meklē dublikātus...",
             "summary": "{groups} grupas, {files} dublikātu faili, {size} iznīkots",

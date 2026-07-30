@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Espaço desperdiçado",
+            "sortSimilarity": "Semelhança",
+            "showHashes": "Mostrar os hashes",
+            "fuzzyCutoff": "Limite difuso",
+            "fuzzyCutoffHint": "vazio = padrões por tipo (imagens 10, texto 3, outros 100)",
             "title": "Encontrar Duplicados",
             "scanning": "Procurando duplicados...",
             "summary": "{groups} grupos, {files} arquivos duplicados, {size} desperdiçados",

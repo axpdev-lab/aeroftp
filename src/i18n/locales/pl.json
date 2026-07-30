@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Zmarnowane miejsce",
+            "sortSimilarity": "Podobieństwo",
+            "showHashes": "Pokaż skróty",
+            "fuzzyCutoff": "Próg rozmyty",
+            "fuzzyCutoffHint": "puste = wartości domyślne dla typu (obrazy 10, tekst 3, inne 100)",
             "title": "Znajdź duplikaty",
             "scanning": "Skanowanie w poszukiwaniu duplikatów...",
             "summary": "{groups} grup, {files} zduplikowanych plików, {size} zmarnowane",

@@ -13,12 +13,37 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Search, X, Trash2, CheckCircle, AlertCircle, Loader2, Copy, FileX } from 'lucide-react';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { Search, X, Trash2, CheckCircle, AlertCircle, Loader2, Copy, FileX, Check, ExternalLink, FolderOpen } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { DuplicateGroup } from '../types/aerofile';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useClipboardCopy } from '../hooks/useClipboardCopy';
+
+/** Payload of the backend's `duplicate-scan-progress` event (filesystem.rs). */
+interface DuplicateScanProgress {
+  phase: 'walk' | 'analyze';
+  files_scanned: number;
+  dirs_scanned: number;
+  bytes_scanned: number;
+  max_depth: number;
+  files_processed: number;
+  files_total: number;
+  current_path: string;
+}
+
+/** m:ss, or h:mm:ss once a scan has been running that long. */
+const formatElapsed = (ms: number): string => {
+  const total = Math.floor(ms / 1000);
+  const s = total % 60;
+  const m = Math.floor(total / 60) % 60;
+  const h = Math.floor(total / 3600);
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+};
 
 interface DuplicateFinderDialogProps {
   isOpen: boolean;
@@ -41,6 +66,28 @@ const getDirectory = (path: string): string => {
   return lastIdx >= 0 ? path.substring(0, lastIdx) : '';
 };
 
+/**
+ * Copy affordance for one row value. One hook instance per button, so the tick
+ * lands on the button that was pressed and not on every copy in the list.
+ *
+ * Ehud asked for these because reading a duplicate's folder off the screen with
+ * an OCR app was the only way to go compare the two files outside AeroFTP.
+ */
+const RowCopyButton: React.FC<{ value: string; label: string }> = ({ value, label }) => {
+  const { copied, copy } = useClipboardCopy();
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); void copy(value); }}
+      title={label}
+      aria-label={label}
+      className="shrink-0 p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+    >
+      {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+    </button>
+  );
+};
+
 export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   isOpen,
   scanPath,
@@ -58,6 +105,23 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   // Mode: 'exact' (default, byte-identical) or 'non-identical' (consumes shared engine)
   const [mode, setMode] = useState<'exact' | 'non-identical'>('exact');
+  // What the backend is chewing through, and for how long. A scan over a photo
+  // library is long enough that a bare spinner cannot be told apart from a hang.
+  const [progress, setProgress] = useState<DuplicateScanProgress | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  // Show the hash behind each row. Off by default: it is diagnostic, and it is
+  // the reason a group exists rather than something to act on.
+  const [showHashes, setShowHashes] = useState(false);
+  // 'waste' is the historical order (biggest reclaimable space first).
+  // 'similarity' answers "which of these are really the same file?": exact
+  // groups first, then fuzzy groups from the closest signature to the loosest.
+  const [sortBy, setSortBy] = useState<'waste' | 'similarity'>('waste');
+  // The fuzzy cutoff, applied only in non-identical mode. null = engine defaults
+  // (raster <=10, text <=3, other <=100), which is what every scan used before.
+  const [threshold, setThreshold] = useState<number | null>(null);
+  // Committed separately from the input so typing does not restart the scan on
+  // every keystroke; the scan re-runs when this changes.
+  const [appliedThreshold, setAppliedThreshold] = useState<number | null>(null);
 
   // Scan for duplicates when the dialog opens
   const scan = useCallback(async () => {
@@ -65,11 +129,15 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     setError(null);
     setGroups([]);
     setSelectedPaths(new Set());
+    setProgress(null);
+    setElapsedMs(0);
 
     try {
       const result = await invoke<DuplicateGroup[]>('find_duplicate_files', {
         path: scanPath,
         mode: mode,
+        // Only meaningful for the fuzzy engine; null keeps its per-modality defaults.
+        distance: mode === 'non-identical' ? appliedThreshold : null,
       });
       setGroups(result);
 
@@ -92,7 +160,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     } finally {
       setIsScanning(false);
     }
-  }, [scanPath, mode]);
+  }, [scanPath, mode, appliedThreshold]);
 
   useEffect(() => {
     if (isOpen) {
@@ -105,9 +173,38 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       setIsScanning(false);
       setIsDeleting(false);
     }
-    // Note: `scan` depends on `mode`, so toggling the mode re-runs this effect
-    // and re-scans automatically. No separate mode effect is needed.
+    // Note: `scan` depends on `mode` and on the applied fuzzy threshold, so
+    // changing either re-runs this effect and re-scans. No separate effect.
   }, [isOpen, scan]);
+
+  // Backend progress. Subscribed for the dialog's whole open lifetime rather
+  // than per scan, so a tick that arrives between two scans cannot be missed.
+  useEffect(() => {
+    if (!isOpen) return;
+    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    listen<DuplicateScanProgress>('duplicate-scan-progress', (e) => {
+      setProgress(e.payload);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, [isOpen]);
+
+  // The clock. Ticking here rather than off the backend events keeps it moving
+  // during a long single file, which is exactly when the user starts to wonder
+  // whether the scan is stuck.
+  useEffect(() => {
+    if (!isScanning) return;
+    const startedAt = Date.now();
+    setElapsedMs(0);
+    const id = setInterval(() => setElapsedMs(Date.now() - startedAt), 250);
+    return () => clearInterval(id);
+  }, [isScanning]);
 
   // Hide scrollbars when dialog is open (WebKitGTK fix)
   useEffect(() => {
@@ -225,6 +322,22 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     return { totalGroups, totalDuplicates, wastedBytes };
   }, [groups, mode, selectedPaths]);
 
+  // The order the groups are shown in. The backend returns them by reclaimable
+  // space; 'similarity' re-sorts by how alike the group's members actually are,
+  // which is the question when deciding what is a real duplicate: byte-identical
+  // groups (no fuzzy distance at all) first, then the closest signatures, then
+  // the ones the threshold only just let in.
+  const orderedGroups = useMemo(() => {
+    if (sortBy !== 'similarity') return groups;
+    return [...groups].sort((a, b) => {
+      const da = a.distance ?? -1;
+      const db = b.distance ?? -1;
+      if (da !== db) return da - db;
+      // Same closeness: fall back to the reclaimable-space order.
+      return b.size * (b.files.length - 1) - a.size * (a.files.length - 1);
+    });
+  }, [groups, sortBy]);
+
   const selectedCount = selectedPaths.size;
 
   if (!isOpen) return null;
@@ -290,13 +403,103 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
           </span>
         </div>
 
-        {/* Scanning state */}
+        {/* View controls: what order the groups come in, whether the hashes are
+            visible, and — in fuzzy mode — how far apart two signatures may be
+            and still be called duplicates. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 text-xs">
+          <label className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+            {t('browser.sortBy')}
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as 'waste' | 'similarity')}
+              className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+            >
+              <option value="waste">{t('duplicates.sortWasted')}</option>
+              <option value="similarity">{t('duplicates.sortSimilarity')}</option>
+            </select>
+          </label>
+
+          {/* The label rides on the Checkbox itself: a bare <label> around it
+              has no form control to point at, so clicking the text did nothing
+              while the cursor promised otherwise. */}
+          <Checkbox
+            checked={showHashes}
+            onChange={setShowHashes}
+            label={t('duplicates.showHashes')}
+            labelClassName="text-gray-500 dark:text-gray-400"
+          />
+
+          {mode === 'non-identical' && (
+            <label className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+              {t('duplicates.fuzzyCutoff')}
+              <input
+                type="number"
+                min={0}
+                max={200}
+                value={threshold ?? ''}
+                placeholder="auto"
+                disabled={isScanning}
+                onChange={(e) => {
+                  const raw = e.target.value.trim();
+                  setThreshold(raw === '' ? null : Math.max(0, Math.min(200, Number(raw))));
+                }}
+                // Committed on blur or Enter, never per keystroke: each commit
+                // re-runs the whole scan.
+                onBlur={() => setAppliedThreshold(threshold)}
+                onKeyDown={(e) => { if (e.key === 'Enter') setAppliedThreshold(threshold); }}
+                className="w-16 px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+              />
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                {t('duplicates.fuzzyCutoffHint')}
+              </span>
+            </label>
+          )}
+        </div>
+
+        {/* Scanning state: the counters the summary would have shown anyway,
+            shown while they are still the only thing the user can act on. */}
         {isScanning && (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <div className="flex flex-col items-center justify-center py-12 gap-3 px-8">
             <Loader2 size={32} className="animate-spin text-blue-500" />
             <span className="text-sm text-gray-600 dark:text-gray-400">
               {t('duplicates.scanning')}
             </span>
+
+            {/* Determinate bar for the analysis pass, whose total is known;
+                the walk has no denominator yet, so it stays indeterminate. */}
+            {progress?.phase === 'analyze' && progress.files_total > 0 && (
+              <div className="w-full max-w-sm h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 transition-[width] duration-200"
+                  style={{ width: `${Math.min(100, Math.round((progress.files_processed / progress.files_total) * 100))}%` }}
+                />
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+              <span className="tabular-nums">⏱ {formatElapsed(elapsedMs)}</span>
+              <span className="tabular-nums">
+                📄 {(progress?.files_scanned ?? 0).toLocaleString()}
+              </span>
+              <span className="tabular-nums">
+                📁 {(progress?.dirs_scanned ?? 0).toLocaleString()}
+              </span>
+              <span className="tabular-nums">{formatBytes(progress?.bytes_scanned ?? 0)}</span>
+              {(progress?.max_depth ?? 0) > 0 && (
+                <span className="tabular-nums">↳ {progress?.max_depth}</span>
+              )}
+              {progress?.phase === 'analyze' && progress.files_total > 0 && (
+                <span className="tabular-nums">
+                  {progress.files_processed.toLocaleString()} / {progress.files_total.toLocaleString()}
+                </span>
+              )}
+            </div>
+
+            {progress?.phase === 'walk' && progress.current_path && (
+              <span className="max-w-full truncate text-[10px] text-gray-400 dark:text-gray-500" title={progress.current_path}>
+                {progress.current_path}
+              </span>
+            )}
           </div>
         )}
 
@@ -347,7 +550,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
 
             {/* Groups list (scrollable) */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
-              {groups.map((group, groupIdx) => (
+              {orderedGroups.map((group, groupIdx) => (
                 <div
                   key={group.hash}
                   className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
@@ -378,6 +581,10 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                       const isChecked = selectedPaths.has(filePath);
                       const fileName = getFileName(filePath);
                       const dirPath = getDirectory(filePath);
+                      // Exact mode: one BLAKE3 for the whole group. Fuzzy mode:
+                      // this file's own signature, which is what explains why it
+                      // was clustered with the others.
+                      const rowHash = group.file_hashes?.[fileIdx] ?? (group.similarity ? null : group.hash);
 
                       return (
                         <div
@@ -399,15 +606,62 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                             />
                           </div>
 
-                          {/* File info */}
+                          {/* File info, each line with its own copy button */}
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                              {fileName}
+                            <div className="flex items-center gap-1 min-w-0">
+                              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate" title={fileName}>
+                                {fileName}
+                              </span>
+                              <RowCopyButton value={fileName} label={t('contextMenu.copyName') || 'Copy Name'} />
                             </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 truncate" title={dirPath}>
-                              {dirPath}
+                            <div className="flex items-center gap-1 min-w-0">
+                              <span className="text-xs text-gray-500 dark:text-gray-400 truncate" title={dirPath}>
+                                {dirPath}
+                              </span>
+                              <RowCopyButton value={dirPath} label={t('contextMenu.copyPath') || 'Copy Path'} />
                             </div>
+                            {showHashes && rowHash && (
+                              <div className="flex items-center gap-1 min-w-0">
+                                <span
+                                  className="font-mono text-[10px] text-gray-400 dark:text-gray-500 truncate"
+                                  title={rowHash}
+                                >
+                                  {group.similarity ? `${group.similarity}: ` : ''}{rowHash}
+                                </span>
+                                <RowCopyButton value={rowHash} label={t('common.copy') || 'Copy'} />
+                              </div>
+                            )}
                           </div>
+
+                          {/* Open the file, or its folder, in the desktop's own
+                              apps: comparing two candidates is what the user is
+                              here to do, and it cannot be done in this dialog. */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              invoke('open_local_file', { path: filePath }).catch(() => { /* best-effort */ });
+                            }}
+                            title={t('contextMenu.open') || 'Open'}
+                            aria-label={t('contextMenu.open') || 'Open'}
+                            className="shrink-0 mt-0.5 p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            <ExternalLink size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // the file, not its folder: the command reveals and
+                              // selects it, which is the useful thing here.
+                              invoke('open_in_file_manager', { path: filePath }).catch(() => { /* best-effort */ });
+                            }}
+                            title={t('aeroShare.inbox.revealFile') || 'Show in folder'}
+                            aria-label={t('aeroShare.inbox.revealFile') || 'Show in folder'}
+                            className="shrink-0 mt-0.5 p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            <FolderOpen size={12} />
+                          </button>
 
                           {/* Keep / delete badge */}
                           <span

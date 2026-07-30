@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Verspilde ruimte",
+            "sortSimilarity": "Gelijkenis",
+            "showHashes": "Hashes tonen",
+            "fuzzyCutoff": "Fuzzy-drempel",
+            "fuzzyCutoffHint": "leeg = standaardwaarden per type (afbeeldingen 10, tekst 3, overig 100)",
             "title": "Duplicaten zoeken",
             "scanning": "Zoeken naar duplicaten...",
             "summary": "{groups} groepen, {files} dubbele bestanden, {size} verspild",

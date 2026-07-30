@@ -2,11 +2,12 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { TrashTable, type TrashRow } from './Trash/TrashTable';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import type { RemoteFile } from '../types';
 import { formatSize, formatDate } from '../utils/formatters';
@@ -60,15 +61,6 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
 
   const itemId = (item: RemoteFile) => item.metadata?.opendrive_item_id || item.path;
 
-  const toggleSelect = (item: RemoteFile) => {
-    const id = itemId(item);
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const toggleSelectAll = () => {
     if (selected.size === items.length) {
@@ -145,6 +137,19 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
       setActionLoading(null);
     }
   };
+
+  // Normalized for the shared trash table (sorting, Type column,
+  // Ctrl/Shift and rubber-band selection live there).
+  const trashRows: TrashRow[] = useMemo(
+    () => items.map(item => ({
+      id: itemId(item),
+      name: item.name,
+      isDir: item.is_dir,
+      size: item.size,
+      deletedAt: item.modified,
+    })),
+    [items],
+  );
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -238,54 +243,13 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
               {t('contextMenu.trashEmpty')}
             </div>
           ) : (
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                <tr className="text-left text-gray-500 dark:text-gray-500">
-                  <th className="w-8 px-2 py-1.5"></th>
-                  <th className="px-2 py-1.5">{t('common.name')}</th>
-                  <th className="px-2 py-1.5 w-20 text-right">{t('common.size')}</th>
-                  <th className="px-2 py-1.5 w-40">{t('contextMenu.trashDeletedDate')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map(item => {
-                  const id = itemId(item);
-                  return (
-                    <tr
-                      key={id}
-                      className={`cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700/30 ${
-                        selected.has(id) ? 'bg-cyan-500/10' : ''
-                      }`}
-                      onClick={() => toggleSelect(item)}
-                    >
-                      <td className="px-2 py-1.5 text-center">
-                        {selected.has(id) ? (
-                          <CheckSquare size={13} className="text-cyan-500" />
-                        ) : (
-                          <Square size={13} className="text-gray-500 dark:text-gray-500" />
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <div className="flex items-center gap-1.5">
-                          {item.is_dir ? (
-                            <Folder size={13} className="text-yellow-500 shrink-0" />
-                          ) : (
-                            <File size={13} className="text-gray-500 dark:text-gray-500 shrink-0" />
-                          )}
-                          <span className="truncate text-gray-900 dark:text-gray-100">{item.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-400 tabular-nums">
-                        {item.is_dir ? '-' : formatSize(item.size || 0)}
-                      </td>
-                      <td className="px-2 py-1.5 text-gray-500 dark:text-gray-500">
-                        {item.modified ? formatDate(item.modified) : '-'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <TrashTable
+              rows={trashRows}
+              selected={selected}
+              setSelected={setSelected}
+              rowTintClass="bg-cyan-500/10"
+              accentClass="text-cyan-500"
+            />
           )}
         </div>
       </div>

@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Ruang terbuang",
+            "sortSimilarity": "Kemiripan",
+            "showHashes": "Tampilkan hash",
+            "fuzzyCutoff": "Ambang fuzzy",
+            "fuzzyCutoffHint": "kosong = nilai bawaan per jenis (gambar 10, teks 3, lainnya 100)",
             "title": "Cari Duplikat",
             "scanning": "Memindai duplikat...",
             "summary": "{groups} grup, {files} file duplikat, {size} terbuang",

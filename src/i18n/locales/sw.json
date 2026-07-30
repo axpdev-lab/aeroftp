@@ -3376,6 +3376,11 @@
             }
         },
         "duplicates": {
+            "sortWasted": "Nafasi iliyopotea",
+            "sortSimilarity": "Ufanano",
+            "showHashes": "Onyesha hashi",
+            "fuzzyCutoff": "Kizingiti hafifu",
+            "fuzzyCutoffHint": "wazi = chaguo-msingi kwa kila aina (picha 10, maandishi 3, nyingine 100)",
             "title": "Tafuta Nakala",
             "scanning": "Inakagua nakala...",
             "summary": "makundi {groups}, faili nakala {files}, {size} zinapotea",

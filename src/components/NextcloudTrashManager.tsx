@@ -2,11 +2,12 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { TrashTable, type TrashRow } from './Trash/TrashTable';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { formatSize } from '../utils/formatters';
 
@@ -54,14 +55,6 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
     loadTrash();
   }, [loadTrash]);
 
-  const toggleSelect = (item: NextcloudTrashItem) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(item.id)) next.delete(item.id);
-      else next.add(item.id);
-      return next;
-    });
-  };
 
   const toggleSelectAll = () => {
     if (selected.size === items.length) {
@@ -152,6 +145,42 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
   }, [onClose]);
 
   const label = providerName || 'Nextcloud';
+
+  // Normalized for the shared trash table (sorting, Type column,
+  // Ctrl/Shift and rubber-band selection live there).
+  const trashRows: TrashRow[] = useMemo(
+    () => items.map(item => ({
+      id: item.id,
+      name: item.name,
+      isDir: item.is_dir,
+      size: item.size,
+      // formatDeletedDate reads 0 as unknown and prints an em dash, so the sort
+      // key has to agree: as a number, 0 would be 1970 and would sort ahead of
+      // every real date instead of landing in the unknown group.
+      deletedAtMs: item.deleted_at ? item.deleted_at * 1000 : null,
+      deletedAtLabel: formatDeletedDate(item.deleted_at),
+    })),
+    [items],
+  );
+
+  // Nextcloud is the one provider that reports where the item used to live, and
+  // that column survives the move to the shared table as an extra column.
+  const originalPathById = useMemo(
+    () => new Map(items.map(item => [item.id, item.original_path])),
+    [items],
+  );
+  const originalPathColumn = useMemo(
+    () => [{
+      key: 'originalPath',
+      header: t('contextMenu.trashOriginalPath'),
+      className: 'truncate max-w-[160px]',
+      render: (row: TrashRow) => {
+        const path = originalPathById.get(row.id) || '/';
+        return <span title={path}>{path}</span>;
+      },
+    }],
+    [originalPathById, t],
+  );
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -250,55 +279,14 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
               {t('contextMenu.trashEmpty')}
             </div>
           ) : (
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                <tr className="text-left text-gray-500 dark:text-gray-500">
-                  <th className="w-8 px-2 py-1.5"></th>
-                  <th className="px-2 py-1.5">{t('common.name')}</th>
-                  <th className="px-2 py-1.5">{t('contextMenu.trashOriginalPath') || 'Original path'}</th>
-                  <th className="px-2 py-1.5 w-20 text-right">{t('common.size')}</th>
-                  <th className="px-2 py-1.5 w-36">{t('contextMenu.trashDeletedDate')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map(item => (
-                  <tr
-                    key={item.id}
-                    className={`cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700/30 ${
-                      selected.has(item.id) ? 'bg-blue-500/10' : ''
-                    }`}
-                    onClick={() => toggleSelect(item)}
-                  >
-                    <td className="px-2 py-1.5 text-center">
-                      {selected.has(item.id) ? (
-                        <CheckSquare size={13} className="text-blue-500" />
-                      ) : (
-                        <Square size={13} className="text-gray-500 dark:text-gray-500" />
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <div className="flex items-center gap-1.5">
-                        {item.is_dir ? (
-                          <Folder size={13} className="text-yellow-500 shrink-0" />
-                        ) : (
-                          <File size={13} className="text-gray-500 dark:text-gray-500 shrink-0" />
-                        )}
-                        <span className="truncate text-gray-900 dark:text-gray-100">{item.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-2 py-1.5 text-gray-500 dark:text-gray-500 truncate max-w-[160px]" title={item.original_path}>
-                      {item.original_path || '/'}
-                    </td>
-                    <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-400 tabular-nums">
-                      {item.is_dir ? '\u2014' : formatSize(item.size)}
-                    </td>
-                    <td className="px-2 py-1.5 text-gray-500 dark:text-gray-500">
-                      {formatDeletedDate(item.deleted_at)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <TrashTable
+              rows={trashRows}
+              selected={selected}
+              setSelected={setSelected}
+              rowTintClass="bg-blue-500/10"
+              accentClass="text-blue-500"
+              extraColumns={originalPathColumn}
+            />
           )}
         </div>
       </div>
