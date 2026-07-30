@@ -13301,10 +13301,10 @@ async fn add_path_pair(pair: sync::PathPair) -> Result<sync::MultiPathConfig, St
 
 /// The body of `add_path_pair`, kept synchronous and run on the blocking pool.
 fn add_path_pair_blocking(pair: sync::PathPair) -> Result<sync::MultiPathConfig, String> {
-    let mut config = sync::load_multi_path_config();
-    config.pairs.push(pair);
-    sync::save_multi_path_config(&config)?;
-    Ok(config)
+    sync::with_multi_path_config_mut(|config| {
+        config.pairs.push(pair);
+        Ok(config.clone())
+    })
 }
 
 #[tauri::command]
@@ -13316,10 +13316,10 @@ async fn remove_path_pair(pair_id: String) -> Result<sync::MultiPathConfig, Stri
 
 /// The body of `remove_path_pair`, kept synchronous and run on the blocking pool.
 fn remove_path_pair_blocking(pair_id: String) -> Result<sync::MultiPathConfig, String> {
-    let mut config = sync::load_multi_path_config();
-    config.pairs.retain(|p| p.id != pair_id);
-    sync::save_multi_path_config(&config)?;
-    Ok(config)
+    sync::with_multi_path_config_mut(|config| {
+        config.pairs.retain(|p| p.id != pair_id);
+        Ok(config.clone())
+    })
 }
 
 // =============================
@@ -15261,13 +15261,13 @@ async fn add_cloud_pair(
 fn add_cloud_pair_blocking(
     pair: cloud_pairs::CloudPathPair,
 ) -> Result<cloud_pairs::CloudPairsConfig, String> {
-    let mut config = cloud_pairs::load_cloud_pairs_config();
-    if cloud_pairs::pair_exists(&pair.local_path, &pair.remote_path, &config.pairs) {
-        return Err("A pair with the same local and remote path already exists".to_string());
-    }
-    config.pairs.push(pair);
-    cloud_pairs::save_cloud_pairs_config(&config)?;
-    Ok(config)
+    cloud_pairs::with_cloud_pairs_mut(|config| {
+        if cloud_pairs::pair_exists(&pair.local_path, &pair.remote_path, &config.pairs) {
+            return Err("A pair with the same local and remote path already exists".to_string());
+        }
+        config.pairs.push(pair);
+        Ok(config.clone())
+    })
 }
 
 #[tauri::command]
@@ -15279,14 +15279,14 @@ async fn remove_cloud_pair(pair_id: String) -> Result<cloud_pairs::CloudPairsCon
 
 /// The body of `remove_cloud_pair`, kept synchronous and run on the blocking pool.
 fn remove_cloud_pair_blocking(pair_id: String) -> Result<cloud_pairs::CloudPairsConfig, String> {
-    let mut config = cloud_pairs::load_cloud_pairs_config();
-    let before = config.pairs.len();
-    config.pairs.retain(|p| p.id != pair_id);
-    if config.pairs.len() == before {
-        return Err("Pair not found".to_string());
-    }
-    cloud_pairs::save_cloud_pairs_config(&config)?;
-    Ok(config)
+    cloud_pairs::with_cloud_pairs_mut(|config| {
+        let before = config.pairs.len();
+        config.pairs.retain(|p| p.id != pair_id);
+        if config.pairs.len() == before {
+            return Err("Pair not found".to_string());
+        }
+        Ok(config.clone())
+    })
 }
 
 #[tauri::command]
@@ -15302,14 +15302,14 @@ async fn update_cloud_pair(
 fn update_cloud_pair_blocking(
     pair: cloud_pairs::CloudPathPair,
 ) -> Result<cloud_pairs::CloudPairsConfig, String> {
-    let mut config = cloud_pairs::load_cloud_pairs_config();
-    if let Some(existing) = config.pairs.iter_mut().find(|p| p.id == pair.id) {
-        *existing = pair;
-    } else {
-        return Err("Pair not found".to_string());
-    }
-    cloud_pairs::save_cloud_pairs_config(&config)?;
-    Ok(config)
+    cloud_pairs::with_cloud_pairs_mut(|config| {
+        if let Some(existing) = config.pairs.iter_mut().find(|p| p.id == pair.id) {
+            *existing = pair;
+        } else {
+            return Err("Pair not found".to_string());
+        }
+        Ok(config.clone())
+    })
 }
 
 /// Update excluded folders for selective sync
@@ -15322,9 +15322,10 @@ async fn update_excluded_folders(excluded_folders: Vec<String>) -> Result<(), St
 
 /// The body of `update_excluded_folders`, kept synchronous and run on the blocking pool.
 fn update_excluded_folders_blocking(excluded_folders: Vec<String>) -> Result<(), String> {
-    let mut config = cloud_config::load_cloud_config();
-    config.excluded_folders = excluded_folders;
-    cloud_config::save_cloud_config(&config)
+    cloud_config::with_cloud_config_mut(|config| {
+        config.excluded_folders = excluded_folders;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -15632,19 +15633,19 @@ async fn enable_aerocloud(enabled: bool) -> Result<CloudConfig, String> {
 
 /// The body of `enable_aerocloud`, kept synchronous and run on the blocking pool.
 fn enable_aerocloud_blocking(enabled: bool) -> Result<CloudConfig, String> {
-    let mut config = cloud_config::load_cloud_config();
+    let config = cloud_config::with_cloud_config_mut(|config| {
+        if enabled {
+            // Validate before enabling
+            cloud_config::validate_config(config)?;
+            cloud_config::ensure_cloud_folder(config)?;
+        }
 
-    if enabled {
-        // Validate before enabling
-        cloud_config::validate_config(&config)?;
-        cloud_config::ensure_cloud_folder(&config)?;
-    }
-
-    config.enabled = enabled;
-    // Always clear the paused flag on explicit enable/disable so the two
-    // state machines (enable vs pause) never conflict on re-enable.
-    config.paused = false;
-    cloud_config::save_cloud_config(&config)?;
+        config.enabled = enabled;
+        // Always clear the paused flag on explicit enable/disable so the two
+        // state machines (enable vs pause) never conflict on re-enable.
+        config.paused = false;
+        Ok(config.clone())
+    })?;
 
     info!("AeroCloud {}", if enabled { "enabled" } else { "disabled" });
 
@@ -15656,19 +15657,20 @@ fn enable_aerocloud_blocking(enabled: bool) -> Result<CloudConfig, String> {
 /// The auto-start effect in the frontend respects this flag on next launch.
 #[tauri::command]
 async fn pause_aerocloud(app: AppHandle) -> Result<CloudConfig, String> {
-    let mut config = cloud_config::load_cloud_config();
-    if !config.enabled {
-        return Err("AeroCloud is not configured".to_string());
-    }
-
     // Stop the worker if running. stop_background_sync emits "idle"; we override
     // with "paused" below so the frontend can distinguish the two states.
+    // Worker stop is outside the config lock so we never hold it across .await.
     if BACKGROUND_SYNC_RUNNING.load(Ordering::SeqCst) {
         let _ = stop_background_sync(app.clone()).await;
     }
 
-    config.paused = true;
-    cloud_config::save_cloud_config(&config)?;
+    let config = cloud_config::with_cloud_config_mut(|config| {
+        if !config.enabled {
+            return Err("AeroCloud is not configured".to_string());
+        }
+        config.paused = true;
+        Ok(config.clone())
+    })?;
 
     let _ = app.emit(
         "cloud-sync-status",
@@ -15689,13 +15691,13 @@ async fn resume_aerocloud(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<CloudConfig, String> {
-    let mut config = cloud_config::load_cloud_config();
-    if !config.enabled {
-        return Err("AeroCloud is not configured".to_string());
-    }
-
-    config.paused = false;
-    cloud_config::save_cloud_config(&config)?;
+    let config = cloud_config::with_cloud_config_mut(|config| {
+        if !config.enabled {
+            return Err("AeroCloud is not configured".to_string());
+        }
+        config.paused = false;
+        Ok(config.clone())
+    })?;
 
     // Best-effort start. If a worker is already running start_background_sync
     // returns Ok early. If the config is invalid we surface the error so the
@@ -15891,9 +15893,10 @@ async fn update_conflict_strategy(strategy: ConflictStrategy) -> Result<(), Stri
 
 /// The body of `update_conflict_strategy`, kept synchronous and run on the blocking pool.
 fn update_conflict_strategy_blocking(strategy: ConflictStrategy) -> Result<(), String> {
-    let mut config = cloud_config::load_cloud_config();
-    config.conflict_strategy = strategy;
-    cloud_config::save_cloud_config(&config)
+    cloud_config::with_cloud_config_mut(|config| {
+        config.conflict_strategy = strategy;
+        Ok(())
+    })
 }
 
 #[tauri::command]

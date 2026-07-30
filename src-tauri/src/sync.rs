@@ -28,6 +28,11 @@ use std::sync::Mutex;
 static JOURNAL_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> =
     std::sync::LazyLock::new(|| Mutex::new(()));
 
+/// Serializes concurrent multi-path config read-modify-write (same shape as
+/// `cloud_config::CONFIG_WRITE_LOCK`).
+static MULTI_PATH_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
+
 /// Tolerance for timestamp comparison (seconds)
 /// Accounts for filesystem and timezone differences
 const TIMESTAMP_TOLERANCE_SECS: i64 = 30;
@@ -3788,6 +3793,10 @@ pub struct MultiPathConfig {
 
 /// Load multi-path config from disk
 pub fn load_multi_path_config() -> MultiPathConfig {
+    load_multi_path_config_unlocked()
+}
+
+fn load_multi_path_config_unlocked() -> MultiPathConfig {
     let Some(dir) = crate::portable::aeroftp_data_root() else {
         return MultiPathConfig::default();
     };
@@ -3802,8 +3811,29 @@ pub fn load_multi_path_config() -> MultiPathConfig {
     }
 }
 
+/// Load → mutate → save under one write lock (see `cloud_config::with_cloud_config_mut`).
+pub fn with_multi_path_config_mut<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut MultiPathConfig) -> Result<T, String>,
+{
+    let _lock = MULTI_PATH_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut config = load_multi_path_config_unlocked();
+    let out = f(&mut config)?;
+    save_multi_path_config_unlocked(&config)?;
+    Ok(out)
+}
+
 /// Save multi-path config to disk (atomic temp+rename)
 pub fn save_multi_path_config(config: &MultiPathConfig) -> Result<(), String> {
+    let _lock = MULTI_PATH_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    save_multi_path_config_unlocked(config)
+}
+
+fn save_multi_path_config_unlocked(config: &MultiPathConfig) -> Result<(), String> {
     let dir = crate::portable::aeroftp_data_root()
         .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

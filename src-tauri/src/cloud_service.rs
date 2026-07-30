@@ -572,11 +572,17 @@ impl CloudService {
 
         result.duration_secs = start_time.elapsed().as_secs();
 
-        // Update config with last sync time
+        // Update config with last sync time (RMW under the shared file lock so a
+        // concurrent GUI mutator cannot have its excluded_folders/etc clobbered
+        // by a full-config rewrite of our in-memory snapshot).
         {
+            let now = Utc::now();
             let mut cfg = self.config.write().await;
-            cfg.last_sync = Some(Utc::now());
-            let _ = crate::cloud_config::save_cloud_config(&cfg);
+            cfg.last_sync = Some(now);
+            let _ = crate::cloud_config::with_cloud_config_mut(|disk| {
+                disk.last_sync = Some(now);
+                Ok(())
+            });
         }
 
         // Persist the post-sync baseline (index) for delete propagation on next cycles.
@@ -910,11 +916,17 @@ impl CloudService {
 
         result.duration_secs = start_time.elapsed().as_secs();
 
-        // Update config with last sync time
+        // Update config with last sync time (RMW under the shared file lock so a
+        // concurrent GUI mutator cannot have its excluded_folders/etc clobbered
+        // by a full-config rewrite of our in-memory snapshot).
         {
+            let now = Utc::now();
             let mut cfg = self.config.write().await;
-            cfg.last_sync = Some(Utc::now());
-            let _ = crate::cloud_config::save_cloud_config(&cfg);
+            cfg.last_sync = Some(now);
+            let _ = crate::cloud_config::with_cloud_config_mut(|disk| {
+                disk.last_sync = Some(now);
+                Ok(())
+            });
         }
 
         // Persist the post-sync baseline (index) for delete propagation on next cycles.

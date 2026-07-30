@@ -238,6 +238,10 @@ fn get_config_path() -> PathBuf {
 
 /// Load cloud configuration from disk
 pub fn load_cloud_config() -> CloudConfig {
+    load_cloud_config_unlocked()
+}
+
+fn load_cloud_config_unlocked() -> CloudConfig {
     let config_path = get_config_path();
 
     if config_path.exists() {
@@ -257,12 +261,35 @@ pub fn load_cloud_config() -> CloudConfig {
     CloudConfig::default()
 }
 
+/// Load → mutate → save under one write lock.
+///
+/// Use this for every read-modify-write of `cloud_config.json`. Taking the lock
+/// only around `save_cloud_config` still allows two concurrent mutators on the
+/// blocking pool to both load the same snapshot and last-write-win (lost
+/// update). The main-thread command path used to serialise this for free;
+/// `spawn_blocking` does not.
+pub fn with_cloud_config_mut<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut CloudConfig) -> Result<T, String>,
+{
+    let _lock = CONFIG_WRITE_LOCK
+        .lock()
+        .map_err(|_| "Config write lock poisoned".to_string())?;
+    let mut config = load_cloud_config_unlocked();
+    let out = f(&mut config)?;
+    save_cloud_config_unlocked(&config)?;
+    Ok(out)
+}
+
 /// Save cloud configuration to disk (serialized via write lock, atomic temp+rename)
 pub fn save_cloud_config(config: &CloudConfig) -> Result<(), String> {
     let _lock = CONFIG_WRITE_LOCK
         .lock()
         .map_err(|_| "Config write lock poisoned".to_string())?;
+    save_cloud_config_unlocked(config)
+}
 
+fn save_cloud_config_unlocked(config: &CloudConfig) -> Result<(), String> {
     let config_path = get_config_path();
 
     // Ensure parent directory exists
