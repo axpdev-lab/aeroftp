@@ -1680,11 +1680,11 @@ enum Commands {
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Base path to search from
-        #[arg(default_value = "/")]
+        #[arg(default_value = FIND_DEFAULT_PATH)]
         path: String,
         /// Search pattern (glob-style). Positional; `--name` is an
         /// equivalent flag form for agents that expect named args.
-        #[arg(default_value = "*")]
+        #[arg(default_value = FIND_DEFAULT_PATTERN)]
         pattern: String,
         /// Glob pattern alias for the positional argument. When both
         /// the positional pattern and `--name` are set, `--name` wins.
@@ -7242,6 +7242,11 @@ fn remote_entry_to_cli(e: &RemoteEntry) -> CliFileEntry {
 const MAX_SCAN_DEPTH: usize = 100;
 /// Maximum entries to collect during BFS scan to prevent OOM.
 const MAX_SCAN_ENTRIES: usize = 500_000;
+/// Default base path for `find` when the positional is omitted. Shared with
+/// the clap default so `resolve_find_target` cannot drift from it.
+const FIND_DEFAULT_PATH: &str = "/";
+/// Default glob for `find` when no pattern is given.
+const FIND_DEFAULT_PATTERN: &str = "*";
 /// Default safety cap for `sync --delete` when no explicit `--max-delete` is
 /// given (DEL-02): an interactive run will abort rather than delete more than
 /// this many files unattended. Override with `--max-delete N` (or a percentage).
@@ -38365,6 +38370,33 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
     }
 }
 
+/// Resolve the `(url, path, pattern)` triple `find` should run with.
+///
+/// With `--profile` the positionals shift left: the first one holds the path
+/// and the second one holds the pattern. The profile branch therefore has to
+/// read the pattern out of `path`, and must still honour `--name` and the
+/// documented `*` default. Reading it straight out of `path` instead would
+/// search for `path`'s own default (`/`), which matches no file name and
+/// silently returns zero results.
+fn resolve_find_target<'a>(
+    has_profile: bool,
+    url: &'a str,
+    path: &'a str,
+    pattern: &'a str,
+    name: Option<&'a str>,
+) -> (&'a str, &'a str, &'a str) {
+    if has_profile && !url.contains("://") && url != "_" {
+        let shifted = name.unwrap_or(if path == FIND_DEFAULT_PATH {
+            FIND_DEFAULT_PATTERN
+        } else {
+            path
+        });
+        ("_", url, shifted)
+    } else {
+        (url, path, name.unwrap_or(pattern))
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_find(
     url: &str,
@@ -62458,12 +62490,13 @@ async fn main() {
             // present. Picked as the natural agent-facing form
             // (V2 verification flagged the positional-only as a
             // first-attempt friction).
-            let pattern_str = name.as_deref().unwrap_or(pattern.as_str());
-            let (u, p, pat) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), path.as_str())
-            } else {
-                (url.as_str(), path.as_str(), pattern_str)
-            };
+            let (u, p, pat) = resolve_find_target(
+                cli.profile.is_some(),
+                url.as_str(),
+                path.as_str(),
+                pattern.as_str(),
+                name.as_deref(),
+            );
             cmd_find(u, p, pat, *files_only, *dirs_only, *limit, &cli, format).await
         }
         Commands::Df { url, scan, full } => cmd_df(url, *scan, *full, &cli, format).await,
@@ -71853,5 +71886,90 @@ mod tests {
             provider.remote_files.get("/target.txt").map(Vec::as_slice),
             Some(b"old text".as_slice())
         );
+    }
+
+    #[test]
+    fn find_with_a_profile_keeps_the_pattern_instead_of_the_path_default() {
+        // Silent wrong answer: with `--profile` the positionals shift left, so
+        // the pattern lives in `path`. The profile branch used to pass `path`
+        // straight through, which meant `--name` was dropped and an omitted
+        // pattern searched for `path`'s default `/`. A glob is matched against
+        // the entry name, so `/` matched nothing and `find` reported zero hits
+        // on a directory full of files instead of erroring.
+        let base = "/Nas_Prog/inbox/";
+
+        // Pattern omitted: falls back to the documented `*`, never to `/`.
+        assert_eq!(
+            resolve_find_target(true, base, FIND_DEFAULT_PATH, FIND_DEFAULT_PATTERN, None),
+            ("_", base, "*")
+        );
+        // `--name` is honoured in the profile branch.
+        assert_eq!(
+            resolve_find_target(
+                true,
+                base,
+                FIND_DEFAULT_PATH,
+                FIND_DEFAULT_PATTERN,
+                Some("*.md")
+            ),
+            ("_", base, "*.md")
+        );
+        // Shifted positional pattern is used as-is.
+        assert_eq!(
+            resolve_find_target(true, base, "*.log", FIND_DEFAULT_PATTERN, None),
+            ("_", base, "*.log")
+        );
+        // `--name` still wins over the shifted positional.
+        assert_eq!(
+            resolve_find_target(true, base, "*.log", FIND_DEFAULT_PATTERN, Some("*.md")),
+            ("_", base, "*.md")
+        );
+
+        // No profile: no shift, and `--name` still wins over the positional.
+        assert_eq!(
+            resolve_find_target(false, "sftp://host", base, "*.log", None),
+            ("sftp://host", base, "*.log")
+        );
+        assert_eq!(
+            resolve_find_target(false, "sftp://host", base, "*.log", Some("*.md")),
+            ("sftp://host", base, "*.md")
+        );
+        // A profile paired with an explicit URL or the `_` placeholder is not
+        // a shifted invocation either.
+        assert_eq!(
+            resolve_find_target(true, "sftp://host", base, "*.log", None),
+            ("sftp://host", base, "*.log")
+        );
+        assert_eq!(
+            resolve_find_target(true, "_", base, "*.log", Some("*.md")),
+            ("_", base, "*.md")
+        );
+    }
+
+    #[test]
+    fn find_positional_defaults_match_the_shift_fallback() {
+        // Guards the assumption the fallback above rests on: an omitted `find`
+        // pattern really does arrive as `path == "/"`, not as an empty string.
+        use clap::Parser;
+        // The command tree is large enough to blow a test thread's default
+        // 2 MiB stack while clap builds it, so give the parse its own.
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || {
+                let cli = Cli::try_parse_from(["aeroftp-cli", "--profile", "42", "find", "/base"])
+                    .expect("find should parse");
+                let Commands::Find {
+                    url, path, pattern, ..
+                } = &cli.command
+                else {
+                    panic!("expected the find subcommand");
+                };
+                assert_eq!(url, "/base");
+                assert_eq!(path, FIND_DEFAULT_PATH);
+                assert_eq!(pattern, FIND_DEFAULT_PATTERN);
+            })
+            .expect("spawn parse thread")
+            .join()
+            .expect("parsing should not panic");
     }
 }
