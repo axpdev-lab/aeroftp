@@ -1720,7 +1720,7 @@
             "kdriveDesc": "Švýcarské cloudové úložiště",
             "kdriveTooltip": "kDrive od Infomaniak - Cloudové úložiště hostované ve Švýcarsku s 15GB zdarma",
             "drimeDesc": "Bezpečné cloudové úložiště",
-            "drimeTooltip": "Drime Cloud - 20GB bezplatné zabezpečené cloudové úložiště s REST API",
+            "drimeTooltip": "Drime - 20GB bezplatné zabezpečené cloudové úložiště s REST API",
             "jottacloudDesc": "Norský cloud (5GB zdarma)",
             "jottacloudTooltip": "Jottacloud - Norské cloudové úložiště kompatibilní s GDPR s 5GB zdarma",
             "minioDesc": "Samohostovaný S3-kompatibilní úložný systém",

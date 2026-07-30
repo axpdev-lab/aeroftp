@@ -149,7 +149,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
           // row. Shown as "S4 (S3)" — MEGA's product name + the wire protocol.
           { label: 'S3', labelOverride: 'S4 (S3)', protocol: 's3', providerId: 'mega-s4', category: 'object-storage', paid: true, note: 'MEGA S4 object storage (Pro plan)' },
       ] },
-    { company: 'Drime Cloud', parentCompany: 'Drime', logoId: 'drime', countryCode: 'FR', freeStorageGb: 20,
+    { company: 'Drime', logoId: 'drime', countryCode: 'FR', freeStorageGb: 20,
       healthCheckUrl: 'https://app.drime.cloud',
       protocols: [{ label: 'API', protocol: 'drime', category: 'cloud-storage' }] },
     { company: 'InfiniCloud', logoId: 'infinicloud', countryCode: 'JP', freeStorageGb: 20,

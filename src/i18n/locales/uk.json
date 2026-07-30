@@ -1720,7 +1720,7 @@
             "kdriveDesc": "Швейцарське хмарне сховище",
             "kdriveTooltip": "kDrive від Infomaniak - швейцарське хмарне сховище з 15ГБ безкоштовно",
             "drimeDesc": "Безпечне хмарне сховище",
-            "drimeTooltip": "Drime Cloud - 20GB безпечного хмарного сховища з REST API",
+            "drimeTooltip": "Drime - 20GB безпечного хмарного сховища з REST API",
             "jottacloudDesc": "Норвезька хмара (5GB безкоштовно)",
             "jottacloudTooltip": "Jottacloud - норвезьке хмарне сховище, сумісне з GDPR, з 5GB безкоштовно",
             "minioDesc": "Самостійно розміщене S3-сумісне сховище об'єктів",

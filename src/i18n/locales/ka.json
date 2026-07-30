@@ -1720,7 +1720,7 @@
             "kdriveDesc": "შვეიცარიული ღრუბლოვანი საცავი",
             "kdriveTooltip": "kDrive by Infomaniak - შვეიცარიაში განთავსებული ღრუბლოვანი საცავი 15GB უფასოდ",
             "drimeDesc": "უსაფრთხო ღრუბლოვანი საცავი",
-            "drimeTooltip": "Drime Cloud - 20GB უფასო უსაფრთხო ღრუბლოვანი საცავი REST API-ით",
+            "drimeTooltip": "Drime - 20GB უფასო უსაფრთხო ღრუბლოვანი საცავი REST API-ით",
             "jottacloudDesc": "ნორვეგიული ღრუბელი (5GB უფასო)",
             "jottacloudTooltip": "Jottacloud - GDPR-თავსებადი ნორვეგიული ღრუბლოვანი საცავი 5GB უფასო",
             "minioDesc": "თვითჰოსტირებული S3-თავსებადი ობიექტების საცავი",

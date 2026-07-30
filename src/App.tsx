@@ -13762,7 +13762,7 @@ const App: React.FC = () => {
               case 'filelu': return 'FileLu';
               case 'webdav': return 'Nextcloud';
               case 'kdrive': return 'kDrive';
-              case 'drime': return 'Drime Cloud';
+              case 'drime': return 'Drime';
               case 'azure': return 'Azure Blob';
               case 's3': return 'S3';
               default: return currentProtocol?.toUpperCase() || 'Provider';

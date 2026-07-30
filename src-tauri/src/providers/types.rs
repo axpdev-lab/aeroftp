@@ -119,7 +119,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Internxt => write!(f, "Internxt Drive"),
             ProviderType::KDrive => write!(f, "kDrive"),
             ProviderType::Jottacloud => write!(f, "Jottacloud"),
-            ProviderType::DrimeCloud => write!(f, "Drime Cloud"),
+            ProviderType::DrimeCloud => write!(f, "Drime"),
             ProviderType::FileLu => write!(f, "FileLu"),
             ProviderType::Koofr => write!(f, "Koofr"),
             ProviderType::OpenDrive => write!(f, "OpenDrive"),
@@ -1529,7 +1529,7 @@ pub struct DrimeCloudConfig {
 impl DrimeCloudConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         let token = config.password.clone().ok_or_else(|| {
-            ProviderError::InvalidConfig("API token required for Drime Cloud".to_string())
+            ProviderError::InvalidConfig("API token required for Drime".to_string())
         })?;
         Ok(Self {
             api_token: token.into(),

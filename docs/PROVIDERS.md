@@ -27,7 +27,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Cloudinary | US | credit-based | API |
 | CloudMe | SE | 3 GB | WebDAV |
 | DigitalOcean Spaces | US | paid plan | S3* |
-| Drime Cloud | FR | 20 GB | API |
+| Drime | FR | 20 GB | API |
 | DriveHQ | US | 5 GB | WebDAV |
 | Dropbox | US | 2 GB | OAuth |
 | Felicloud | EU | 10 GB (Nextcloud host) | WebDAV |

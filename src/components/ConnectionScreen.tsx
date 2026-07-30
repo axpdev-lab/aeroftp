@@ -6909,7 +6909,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         {/* Provider independence disclaimer: outside formOnlyMaxW container */}
         {(() => {
             const disclaimerProvider = selectedProvider ?? (protocol ? getProviderById(protocol) : null);
-            const nameMap: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk', filen: 'Filen', internxt: 'Internxt', kdrive: 'kDrive', jottacloud: 'Jottacloud', drime: 'Drime Cloud', koofr: 'Koofr', opendrive: 'OpenDrive', github: 'GitHub', gitlab: 'GitLab', pixelunion: 'PixelUnion' };
+            const nameMap: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk', filen: 'Filen', internxt: 'Internxt', kdrive: 'kDrive', jottacloud: 'Jottacloud', drime: 'Drime', koofr: 'Koofr', opendrive: 'OpenDrive', github: 'GitHub', gitlab: 'GitLab', pixelunion: 'PixelUnion' };
             const providerName = disclaimerProvider?.name
                 || nameMap[connectionParams.providerId || ''] || nameMap[protocol || ''];
             if (!providerName || (disclaimerProvider?.isGeneric && !connectionParams.providerId)) return null;

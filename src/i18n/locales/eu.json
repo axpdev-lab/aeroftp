@@ -1720,7 +1720,7 @@
             "kdriveDesc": "Suitzako hodeiko biltegiratzea",
             "kdriveTooltip": "Infomaniaken kDrive - Suitzan ostatutako hodeiko biltegiratzea 15GB doan",
             "drimeDesc": "Hodei-biltegi segurua",
-            "drimeTooltip": "Drime Cloud - 20GB doako hodei-biltegi segurua REST API-rekin",
+            "drimeTooltip": "Drime - 20GB doako hodei-biltegi segurua REST API-rekin",
             "jottacloudDesc": "Norvegiar hodeia (5GB doan)",
             "jottacloudTooltip": "Jottacloud - GDPRrekin bateragarria den Norvegiar hodeiko biltegia 5GB doan",
             "minioDesc": "Norberak ostatutako S3-bateragarri objektu biltegia",

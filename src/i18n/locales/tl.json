@@ -1720,7 +1720,7 @@
             "kdriveDesc": "Cloud storage mula sa Switzerland",
             "kdriveTooltip": "kDrive ng Infomaniak - cloud storage mula sa Switzerland na may libreng 15GB",
             "drimeDesc": "Ligtas na Cloud Storage",
-            "drimeTooltip": "Drime Cloud - 20GB libreng ligtas na cloud storage na may REST API",
+            "drimeTooltip": "Drime - 20GB libreng ligtas na cloud storage na may REST API",
             "jottacloudDesc": "Norwegian Cloud (5GB libre)",
             "jottacloudTooltip": "Jottacloud - GDPR-compliant na Norwegian cloud storage na may 5GB libre",
             "minioDesc": "Self-hosted na S3-compatible na object storage",

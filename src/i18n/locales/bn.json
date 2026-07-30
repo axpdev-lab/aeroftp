@@ -1720,7 +1720,7 @@
             "kdriveDesc": "সুইস ক্লাউড স্টোরেজ",
             "kdriveTooltip": "Infomaniak এর kDrive - 15GB বিনামূল্যে সুইস-হোস্টেড ক্লাউড স্টোরেজ",
             "drimeDesc": "নিরাপদ ক্লাউড স্টোরেজ",
-            "drimeTooltip": "Drime Cloud - REST API সহ 20GB বিনামূল্যে নিরাপদ ক্লাউড স্টোরেজ",
+            "drimeTooltip": "Drime - REST API সহ 20GB বিনামূল্যে নিরাপদ ক্লাউড স্টোরেজ",
             "jottacloudDesc": "নরওয়েজিয়ান ক্লাউড (5GB বিনামূল্যে)",
             "jottacloudTooltip": "Jottacloud - 5GB বিনামূল্যে সহ GDPR-সম্মত নরওয়েজিয়ান ক্লাউড স্টোরেজ",
             "minioDesc": "সেলফ-হোস্টেড S3-সামঞ্জস্যপূর্ণ অবজেক্ট স্টোরেজ",

@@ -276,7 +276,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
     },
     {
         type: 'drime',
-        name: 'Drime Cloud',
+        name: 'Drime',
         icon: <DrimeCloudLogo size={18} />,
         description: t('protocol.drimeDesc'),
         defaultPort: 443,
@@ -442,7 +442,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'box', name: 'Box', icon: <BoxLogo size={18} />, description: 'Box (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Box OAuth2' },
     { type: 'zohoworkdrive', name: 'Zoho WorkDrive', icon: <ZohoWorkDriveLogo size={18} />, description: 'Zoho WorkDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Zoho WorkDrive OAuth2' },
     { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud (10 GB free)', defaultPort: 443, badge: 'E2E 256-bit', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption (Argon2id v3 / PBKDF2 v2)' },
-    { type: 'drime', name: 'Drime Cloud', icon: <DrimeCloudLogo size={18} />, description: 'Drime Cloud (20 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime Cloud: Bearer Token auth' },
+    { type: 'drime', name: 'Drime', icon: <DrimeCloudLogo size={18} />, description: 'Drime (20 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime: Bearer Token auth' },
     { type: 'filelu', name: 'FileLu', icon: <FileLuLogo size={18} />, description: 'Multi-Protocol Cloud (1 GB free)', defaultPort: 443, badge: 'API', color: 'text-sky-500', isCloudStorage: true, tooltip: 'FileLu: API Key auth, 1 GB free' },
     { type: 'fourshared', name: '4shared', icon: <FourSharedLogo size={18} />, description: '4shared (15 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: '4shared OAuth 1.0' },
     { type: 'kdrive', name: 'kDrive', icon: <KDriveLogo size={18} />, description: 'Infomaniak kDrive (15 GB free)', defaultPort: 443, badge: 'API', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Infomaniak kDrive API Token' },

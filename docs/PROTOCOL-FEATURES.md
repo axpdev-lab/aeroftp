@@ -226,7 +226,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | Zoho WorkDrive | - |  |
 | kDrive | - |  |
 | Jottacloud | - |  |
-| Drime Cloud | - |  |
+| Drime | - |  |
 | FileLu | - |  |
 | 4shared | - |  |
 | OpenDrive | - |  |
@@ -265,7 +265,7 @@ The sync engine never uses these digests: `supports_checksum()` stays false for 
 | **Zoho WorkDrive** | Native | Yes | Yes | view/edit | Full advanced options on all plans |
 | **kDrive** | Native | Paid | Paid | view/edit | Password and expiry require paid Infomaniak plan |
 | **Jottacloud** | Native | - | - | - | Basic share only (API limitation) |
-| **Drime Cloud** | Native | Yes | Yes | view/edit | Full advanced options |
+| **Drime** | Native | Yes | Yes | view/edit | Full advanced options |
 | **Koofr** | Native | - | - | - | Basic share link |
 | **FileLu** | Native | - | - | - | Makes file public, returns share URL |
 | **Yandex Disk** | Native | - | - | - | Publish/unpublish via REST API |

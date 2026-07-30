@@ -1720,7 +1720,7 @@
             "kdriveDesc": "Sveitsiläinen pilvitallennustila",
             "kdriveTooltip": "kDrive Infomaniakilta - Sveitsissä isännöity pilvitallennustila 15GB ilmaiseksi",
             "drimeDesc": "Turvallinen pilvitallennus",
-            "drimeTooltip": "Drime Cloud - 20GB ilmainen turvallinen pilvitallennus REST API:lla",
+            "drimeTooltip": "Drime - 20GB ilmainen turvallinen pilvitallennus REST API:lla",
             "jottacloudDesc": "Norjalainen pilvi (5GB ilmaiseksi)",
             "jottacloudTooltip": "Jottacloud - GDPR-yhteensopiva norjalainen pilvitallennus 5GB ilmaiseksi",
             "minioDesc": "Itse ylläpidetty S3-yhteensopiva objektitallennus",

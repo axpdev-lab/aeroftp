@@ -1720,7 +1720,7 @@
             "kdriveDesc": "Sveitsisk skylagring",
             "kdriveTooltip": "kDrive by Infomaniak - Sveitsisk skylagring med 15GB gratis",
             "drimeDesc": "Sikker skylagring",
-            "drimeTooltip": "Drime Cloud - 20GB gratis sikker skylagring med REST API",
+            "drimeTooltip": "Drime - 20GB gratis sikker skylagring med REST API",
             "jottacloudDesc": "Norsk sky (5GB gratis)",
             "jottacloudTooltip": "Jottacloud - GDPR-kompatibel norsk skylagring med 5GB gratis",
             "minioDesc": "Selvhostet S3-kompatibel objektlagring",
