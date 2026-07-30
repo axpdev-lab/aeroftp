@@ -572,11 +572,19 @@ impl CloudService {
 
         result.duration_secs = start_time.elapsed().as_secs();
 
-        // Update config with last sync time
+        // Update last_sync in memory, drop the async guard, then RMW the on-disk
+        // config under the shared file lock. Holding self.config across the
+        // blocking filesystem write would pin the async worker for the whole I/O.
+        let now = Utc::now();
         {
             let mut cfg = self.config.write().await;
-            cfg.last_sync = Some(Utc::now());
-            let _ = crate::cloud_config::save_cloud_config(&cfg);
+            cfg.last_sync = Some(now);
+        }
+        if let Err(e) = crate::cloud_config::with_cloud_config_mut(|disk| {
+            disk.last_sync = Some(now);
+            Ok(())
+        }) {
+            tracing::warn!("Failed to persist cloud last_sync: {e}");
         }
 
         // Persist the post-sync baseline (index) for delete propagation on next cycles.
@@ -910,11 +918,19 @@ impl CloudService {
 
         result.duration_secs = start_time.elapsed().as_secs();
 
-        // Update config with last sync time
+        // Update last_sync in memory, drop the async guard, then RMW the on-disk
+        // config under the shared file lock. Holding self.config across the
+        // blocking filesystem write would pin the async worker for the whole I/O.
+        let now = Utc::now();
         {
             let mut cfg = self.config.write().await;
-            cfg.last_sync = Some(Utc::now());
-            let _ = crate::cloud_config::save_cloud_config(&cfg);
+            cfg.last_sync = Some(now);
+        }
+        if let Err(e) = crate::cloud_config::with_cloud_config_mut(|disk| {
+            disk.last_sync = Some(now);
+            Ok(())
+        }) {
+            tracing::warn!("Failed to persist cloud last_sync: {e}");
         }
 
         // Persist the post-sync baseline (index) for delete propagation on next cycles.

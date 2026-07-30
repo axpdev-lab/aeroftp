@@ -165,6 +165,10 @@ fn get_pairs_path() -> PathBuf {
 
 /// Load pairs config (absent file => empty pairs, back-compat path).
 pub fn load_cloud_pairs_config() -> CloudPairsConfig {
+    load_cloud_pairs_config_unlocked()
+}
+
+fn load_cloud_pairs_config_unlocked() -> CloudPairsConfig {
     let path = get_pairs_path();
     if path.exists() {
         match fs::read_to_string(&path) {
@@ -182,12 +186,29 @@ pub fn load_cloud_pairs_config() -> CloudPairsConfig {
     CloudPairsConfig::default()
 }
 
+/// Load → mutate → save under one write lock (see `cloud_config::with_cloud_config_mut`).
+pub fn with_cloud_pairs_mut<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut CloudPairsConfig) -> Result<T, String>,
+{
+    let _lock = PAIRS_WRITE_LOCK
+        .lock()
+        .map_err(|_| "Pairs write lock poisoned".to_string())?;
+    let mut config = load_cloud_pairs_config_unlocked();
+    let out = f(&mut config)?;
+    save_cloud_pairs_config_unlocked(&config)?;
+    Ok(out)
+}
+
 /// Save pairs config (atomic + lock protected).
 pub fn save_cloud_pairs_config(config: &CloudPairsConfig) -> Result<(), String> {
     let _lock = PAIRS_WRITE_LOCK
         .lock()
         .map_err(|_| "Pairs write lock poisoned".to_string())?;
+    save_cloud_pairs_config_unlocked(config)
+}
 
+fn save_cloud_pairs_config_unlocked(config: &CloudPairsConfig) -> Result<(), String> {
     let path = get_pairs_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create pairs dir: {}", e))?;
