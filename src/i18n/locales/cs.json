@@ -3400,7 +3400,8 @@
             "copies": "kopii",
             "delete": "SMAZAT",
             "skip": "PRESKOCIT",
-            "deleteConfirm": "Opravdu chcete smazat {count} duplicitnich souboru?"
+            "deleteConfirm": "Opravdu chcete smazat {count} duplicitnich souboru?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Vyuziti disku",

@@ -3400,7 +3400,8 @@
             "copies": "kopya",
             "delete": "SİL",
             "skip": "ATLA",
-            "deleteConfirm": "{count} yinelenen dosyayı silmek istediğinizden emin misiniz?"
+            "deleteConfirm": "{count} yinelenen dosyayı silmek istediğinizden emin misiniz?",
+            "fuzzyCutoffPlaceholder": "oto"
         },
         "diskUsage": {
             "title": "Disk Kullanımı",

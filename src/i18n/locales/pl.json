@@ -3400,7 +3400,8 @@
             "copies": "kopii",
             "delete": "USUŃ",
             "skip": "POMIŃ",
-            "deleteConfirm": "Czy na pewno chcesz usunąć {count} zduplikowanych plików?"
+            "deleteConfirm": "Czy na pewno chcesz usunąć {count} zduplikowanych plików?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Użycie dysku",

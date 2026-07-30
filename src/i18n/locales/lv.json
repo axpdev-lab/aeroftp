@@ -3400,7 +3400,8 @@
             "copies": "kopijas",
             "delete": "DZĒST",
             "skip": "IZLAIST",
-            "deleteConfirm": "Vai tiešām vēlaties dzēst {count} dublikātu failus?"
+            "deleteConfirm": "Vai tiešām vēlaties dzēst {count} dublikātu failus?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Diska izmantošana",

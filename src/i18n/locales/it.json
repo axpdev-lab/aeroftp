@@ -3789,7 +3789,8 @@
             "copies": "copie",
             "delete": "ELIMINA",
             "skip": "SALTA",
-            "deleteConfirm": "Sei sicuro di voler eliminare {count} file duplicati?"
+            "deleteConfirm": "Sei sicuro di voler eliminare {count} file duplicati?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Uso Disco",

@@ -3400,7 +3400,8 @@
             "copies": "个副本",
             "delete": "删除",
             "skip": "跳过",
-            "deleteConfirm": "确定要删除 {count} 个重复文件吗？"
+            "deleteConfirm": "确定要删除 {count} 个重复文件吗？",
+            "fuzzyCutoffPlaceholder": "自动"
         },
         "diskUsage": {
             "title": "磁盘使用情况",

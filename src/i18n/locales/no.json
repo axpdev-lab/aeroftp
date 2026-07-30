@@ -3400,7 +3400,8 @@
             "copies": "kopier",
             "delete": "SLETT",
             "skip": "HOPP OVER",
-            "deleteConfirm": "Er du sikker på at du vil slette {count} dupliserte filer?"
+            "deleteConfirm": "Er du sikker på at du vil slette {count} dupliserte filer?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Diskbruk",

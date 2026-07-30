@@ -3400,7 +3400,8 @@
             "copies": "ច្បាប់ចម្លង",
             "delete": "លុប",
             "skip": "រំលង",
-            "deleteConfirm": "តើអ្នកប្រាកដថាអ្នកចង់លុប {count} ឯកសារស្ទួនទេ?"
+            "deleteConfirm": "តើអ្នកប្រាកដថាអ្នកចង់លុប {count} ឯកសារស្ទួនទេ?",
+            "fuzzyCutoffPlaceholder": "ស្វ័យ"
         },
         "diskUsage": {
             "title": "ការប្រើប្រាស់ថាស",

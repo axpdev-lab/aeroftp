@@ -3400,7 +3400,8 @@
             "copies": "salinan",
             "delete": "HAPUS",
             "skip": "LEWATI",
-            "deleteConfirm": "Apakah Anda yakin ingin menghapus {count} file duplikat?"
+            "deleteConfirm": "Apakah Anda yakin ingin menghapus {count} file duplikat?",
+            "fuzzyCutoffPlaceholder": "otomatis"
         },
         "diskUsage": {
             "title": "Penggunaan Disk",

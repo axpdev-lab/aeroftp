@@ -3400,7 +3400,8 @@
             "copies": "nakala",
             "delete": "FUTA",
             "skip": "RUKA",
-            "deleteConfirm": "Una uhakika unataka kufuta faili nakala {count}?"
+            "deleteConfirm": "Una uhakika unataka kufuta faili nakala {count}?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Matumizi ya Diski",

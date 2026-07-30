@@ -3400,7 +3400,8 @@
             "deleting": "डुप्लिकेट हटाए जा रहे हैं...",
             "deleted": "{count} डुप्लिकेट फ़ाइलें हटाई गईं",
             "scanFailed": "स्कैन विफल",
-            "retry": "पुनः प्रयास करें"
+            "retry": "पुनः प्रयास करें",
+            "fuzzyCutoffPlaceholder": "स्वतः"
         },
         "diskUsage": {
             "title": "डिस्क उपयोग",

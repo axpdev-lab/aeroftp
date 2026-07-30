@@ -3376,7 +3376,7 @@
             }
         },
         "duplicates": {
-            "sortWasted": "Потрошен простор",
+            "sortWasted": "Изгубљен простор",
             "sortSimilarity": "Сличност",
             "showHashes": "Прикажи хешеве",
             "fuzzyCutoff": "Фази праг",
@@ -3400,7 +3400,8 @@
             "copies": "kopija",
             "delete": "OBRIŠI",
             "skip": "PRESKOČI",
-            "deleteConfirm": "Da li ste sigurni da želite da obrišete {count} duplikata fajlova?"
+            "deleteConfirm": "Da li ste sigurni da želite da obrišete {count} duplikata fajlova?",
+            "fuzzyCutoffPlaceholder": "ауто"
         },
         "diskUsage": {
             "title": "Korišćenje diska",

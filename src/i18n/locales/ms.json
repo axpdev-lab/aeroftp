@@ -3400,7 +3400,8 @@
             "copies": "salinan",
             "delete": "PADAM",
             "skip": "LANGKAU",
-            "deleteConfirm": "Adakah anda pasti mahu memadam {count} fail pendua?"
+            "deleteConfirm": "Adakah anda pasti mahu memadam {count} fail pendua?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Penggunaan Cakera",

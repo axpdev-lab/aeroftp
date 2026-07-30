@@ -3376,7 +3376,7 @@
             }
         },
         "duplicates": {
-            "sortWasted": "Lle wedi'i wastraffu",
+            "sortWasted": "Gofod wedi'i wastraffu",
             "sortSimilarity": "Tebygrwydd",
             "showHashes": "Dangos yr hashiau",
             "fuzzyCutoff": "Trothwy niwlog",
@@ -3400,7 +3400,8 @@
             "copies": "copïau",
             "delete": "DILEU",
             "skip": "HEPGOR",
-            "deleteConfirm": "Ydych chi'n siŵr eich bod am ddileu {count} ffeil ddyblyg?"
+            "deleteConfirm": "Ydych chi'n siŵr eich bod am ddileu {count} ffeil ddyblyg?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Defnydd Disg",

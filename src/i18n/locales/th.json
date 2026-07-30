@@ -3400,7 +3400,8 @@
             "copies": "สำเนา",
             "delete": "ลบ",
             "skip": "ข้าม",
-            "deleteConfirm": "คุณแน่ใจหรือไม่ว่าต้องการลบไฟล์ซ้ำ {count} ไฟล์?"
+            "deleteConfirm": "คุณแน่ใจหรือไม่ว่าต้องการลบไฟล์ซ้ำ {count} ไฟล์?",
+            "fuzzyCutoffPlaceholder": "อัตโนมัติ"
         },
         "diskUsage": {
             "title": "การใช้พื้นที่ดิสก์",

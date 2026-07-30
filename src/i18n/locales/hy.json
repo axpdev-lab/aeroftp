@@ -3393,7 +3393,8 @@
             "deleting": "Կրկնօրինակների ջնջում...",
             "deleted": "Ջնջված է {count} կրկնօրինակ",
             "scanFailed": "Սկանավորումը ձախողվեց",
-            "retry": "Կրկնել"
+            "retry": "Կրկնել",
+            "fuzzyCutoffPlaceholder": "ավտո"
         },
         "diskUsage": {
             "title": "Սկավառակի օգտագործում",

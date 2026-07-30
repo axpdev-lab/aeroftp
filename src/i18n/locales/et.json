@@ -3400,7 +3400,8 @@
             "copies": "koopiat",
             "delete": "KUSTUTA",
             "skip": "JÄTA VAHELE",
-            "deleteConfirm": "Kas olete kindel, et soovite kustutada {count} duplikaatfaili?"
+            "deleteConfirm": "Kas olete kindel, et soovite kustutada {count} duplikaatfaili?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Kettakasutus",

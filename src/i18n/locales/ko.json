@@ -3400,7 +3400,8 @@
             "copies": "사본",
             "delete": "삭제",
             "skip": "건너뛰기",
-            "deleteConfirm": "{count}개 중복 파일을 삭제하시겠습니까?"
+            "deleteConfirm": "{count}개 중복 파일을 삭제하시겠습니까?",
+            "fuzzyCutoffPlaceholder": "자동"
         },
         "diskUsage": {
             "title": "디스크 사용량",

@@ -3400,7 +3400,8 @@
             "copies": "còpies",
             "delete": "ELIMINAR",
             "skip": "OMETRE",
-            "deleteConfirm": "Esteu segur que voleu eliminar {count} fitxers duplicats?"
+            "deleteConfirm": "Esteu segur que voleu eliminar {count} fitxers duplicats?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Ús del disc",

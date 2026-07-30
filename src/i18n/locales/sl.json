@@ -3400,7 +3400,8 @@
             "copies": "kopij",
             "delete": "IZBRIŠI",
             "skip": "PRESKOČI",
-            "deleteConfirm": "Ali ste prepričani, da želite izbrisati {count} podvojenih datotek?"
+            "deleteConfirm": "Ali ste prepričani, da želite izbrisati {count} podvojenih datotek?",
+            "fuzzyCutoffPlaceholder": "avto"
         },
         "diskUsage": {
             "title": "Zasedenost diska",

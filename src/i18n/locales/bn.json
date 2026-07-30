@@ -3400,7 +3400,8 @@
             "copies": "কপি",
             "delete": "মুছুন",
             "skip": "এড়িয়ে যান",
-            "deleteConfirm": "আপনি কি নিশ্চিত যে আপনি {count} টি ডুপ্লিকেট ফাইল মুছতে চান?"
+            "deleteConfirm": "আপনি কি নিশ্চিত যে আপনি {count} টি ডুপ্লিকেট ফাইল মুছতে চান?",
+            "fuzzyCutoffPlaceholder": "স্বয়ং"
         },
         "diskUsage": {
             "title": "ডিস্ক ব্যবহার",

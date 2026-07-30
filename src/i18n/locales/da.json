@@ -3400,7 +3400,8 @@
             "copies": "kopier",
             "delete": "SLET",
             "skip": "SPRING OVER",
-            "deleteConfirm": "Er du sikker på, at du vil slette {count} duplikatfiler?"
+            "deleteConfirm": "Er du sikker på, at du vil slette {count} duplikatfiler?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Diskforbrug",
