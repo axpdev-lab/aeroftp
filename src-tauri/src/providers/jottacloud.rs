@@ -609,11 +609,14 @@ impl JottacloudProvider {
 
         let mut names = Vec::new();
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // No trim_text: name fragments around XML entities must survive
+        // intact; the name accumulates and is trimmed once at element end.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
         let mut in_devices = false;
         let mut in_device = false;
         let mut in_name = false;
+        let mut current_name = String::new();
 
         loop {
             match reader.read_event_into(&mut buf) {
@@ -622,7 +625,10 @@ impl JottacloudProvider {
                     match tag.as_str() {
                         "devices" => in_devices = true,
                         "device" if in_devices => in_device = true,
-                        "name" if in_device => in_name = true,
+                        "name" if in_device => {
+                            in_name = true;
+                            current_name.clear();
+                        }
                         _ => {}
                     }
                 }
@@ -634,14 +640,22 @@ impl JottacloudProvider {
                             in_device = false;
                         }
                         "device" => in_device = false,
-                        "name" => in_name = false,
+                        "name" => {
+                            in_name = false;
+                            let trimmed = current_name.trim().to_string();
+                            if !trimmed.is_empty() {
+                                names.push(trimmed);
+                            }
+                        }
                         _ => {}
                     }
                 }
                 Ok(Event::Text(ref e)) if in_name => {
-                    let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
-                    if !text.is_empty() {
-                        names.push(text);
+                    current_name.push_str(&String::from_utf8_lossy(e.as_ref()));
+                }
+                Ok(Event::GeneralRef(ref e)) if in_name => {
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        current_name.push_str(&ch);
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -661,7 +675,9 @@ impl JottacloudProvider {
 
         let mut names = Vec::new();
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // No trim_text: name fragments around XML entities must survive
+        // intact; the name accumulates and is trimmed once at element end.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
         // JFS nests the name as a child element:
         //   <mountPoints><mountPoint><name>Archive</name>...
@@ -670,6 +686,7 @@ impl JottacloudProvider {
         // mountpoint (#397). Both shapes are accepted now.
         let mut in_mount_point = false;
         let mut in_name = false;
+        let mut current_name = String::new();
 
         loop {
             match reader.read_event_into(&mut buf) {
@@ -689,12 +706,15 @@ impl JottacloudProvider {
                         }
                     } else if tag == "name" && in_mount_point {
                         in_name = true;
+                        current_name.clear();
                     }
                 }
                 Ok(Event::Text(ref e)) if in_name => {
-                    let name = String::from_utf8_lossy(e.as_ref()).trim().to_string();
-                    if !name.is_empty() && !names.contains(&name) {
-                        names.push(name);
+                    current_name.push_str(&String::from_utf8_lossy(e.as_ref()));
+                }
+                Ok(Event::GeneralRef(ref e)) if in_name => {
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        current_name.push_str(&ch);
                     }
                 }
                 Ok(Event::End(ref e)) => {
@@ -703,6 +723,10 @@ impl JottacloudProvider {
                         in_mount_point = false;
                     } else if tag == "name" {
                         in_name = false;
+                        let trimmed = current_name.trim().to_string();
+                        if !trimmed.is_empty() && !names.contains(&trimmed) {
+                            names.push(trimmed);
+                        }
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -794,6 +818,8 @@ impl JottacloudProvider {
 
         let mut entries = Vec::new();
         let mut reader = Reader::from_str(xml);
+        // trim_text(true) is SAFE here: entry names arrive as attributes
+        // (xml_text::attr_value), never as Text events; only scalars do.
         reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
 
@@ -1932,6 +1958,8 @@ impl JottacloudProvider {
 
         let mut entries = Vec::new();
         let mut reader = Reader::from_str(xml);
+        // trim_text(true) is SAFE here: entry names arrive as attributes
+        // (xml_text::attr_value), never as Text events; only scalars do.
         reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
 
@@ -2256,6 +2284,31 @@ mod tests {
             </user>"#;
         let names = JottacloudProvider::parse_device_names(xml);
         assert_eq!(names, vec!["Jotta", "LAPTOP-01", "iPhone"]);
+    }
+
+    /// LIVE-1 regression: a device/mountpoint name whose XML text is split
+    /// around an entity must come back whole, not as trimmed fragments
+    /// ("a &amp; b" must not become two names "a" and "b").
+    #[test]
+    fn parse_names_preserve_entity_adjacent_whitespace() {
+        let xml = r#"<?xml version="1.0"?>
+            <user>
+              <devices>
+                <device><name>Mum &amp; Dad</name></device>
+              </devices>
+            </user>"#;
+        assert_eq!(
+            JottacloudProvider::parse_device_names(xml),
+            vec!["Mum & Dad"]
+        );
+
+        let xml_mp = r#"<device>
+            <mountPoints><mountPoint><name>Tom &amp; Jerry</name></mountPoint></mountPoints>
+        </device>"#;
+        assert_eq!(
+            JottacloudProvider::parse_mountpoint_names(xml_mp),
+            vec!["Tom & Jerry"]
+        );
     }
 
     #[test]

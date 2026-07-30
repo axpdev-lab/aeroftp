@@ -3771,19 +3771,15 @@ impl StorageProvider for S3Provider {
                             continue;
                         }
                         if in_next_tok {
-                            next_tok_val
-                                .get_or_insert_with(String::new)
-                                .push_str(&t);
+                            next_tok_val.get_or_insert_with(String::new).push_str(&t);
                         }
                         if in_contents {
                             match find_tag.as_str() {
                                 "Key" => find_key.get_or_insert_with(String::new).push_str(&t),
-                                "Size" => find_size
-                                    .get_or_insert_with(String::new)
-                                    .push_str(&t),
-                                "LastModified" => find_modified
-                                    .get_or_insert_with(String::new)
-                                    .push_str(&t),
+                                "Size" => find_size.get_or_insert_with(String::new).push_str(&t),
+                                "LastModified" => {
+                                    find_modified.get_or_insert_with(String::new).push_str(&t)
+                                }
                                 _ => {}
                             }
                         }
@@ -3795,15 +3791,13 @@ impl StorageProvider for S3Provider {
                             }
                             if in_contents {
                                 match find_tag.as_str() {
-                                    "Key" => find_key
-                                        .get_or_insert_with(String::new)
-                                        .push_str(&ch),
-                                    "Size" => find_size
-                                        .get_or_insert_with(String::new)
-                                        .push_str(&ch),
-                                    "LastModified" => find_modified
-                                        .get_or_insert_with(String::new)
-                                        .push_str(&ch),
+                                    "Key" => find_key.get_or_insert_with(String::new).push_str(&ch),
+                                    "Size" => {
+                                        find_size.get_or_insert_with(String::new).push_str(&ch)
+                                    }
+                                    "LastModified" => {
+                                        find_modified.get_or_insert_with(String::new).push_str(&ch)
+                                    }
                                     _ => {}
                                 }
                             }
@@ -4245,12 +4239,12 @@ impl StorageProvider for S3Provider {
                         if in_version {
                             match current_tag.as_str() {
                                 "Key" => v_key.get_or_insert_with(String::new).push_str(&text),
-                                "VersionId" => v_version_id
-                                    .get_or_insert_with(String::new)
-                                    .push_str(&text),
-                                "IsLatest" => v_is_latest
-                                    .get_or_insert_with(String::new)
-                                    .push_str(&text),
+                                "VersionId" => {
+                                    v_version_id.get_or_insert_with(String::new).push_str(&text)
+                                }
+                                "IsLatest" => {
+                                    v_is_latest.get_or_insert_with(String::new).push_str(&text)
+                                }
                                 "LastModified" => v_last_modified
                                     .get_or_insert_with(String::new)
                                     .push_str(&text),
@@ -4262,7 +4256,9 @@ impl StorageProvider for S3Provider {
                     Ok(Event::GeneralRef(ref e)) => {
                         if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
                             if in_next_key_marker {
-                                next_key_marker.get_or_insert_with(String::new).push_str(&ch);
+                                next_key_marker
+                                    .get_or_insert_with(String::new)
+                                    .push_str(&ch);
                             }
                             if in_next_version_id_marker {
                                 next_version_id_marker
@@ -4272,18 +4268,16 @@ impl StorageProvider for S3Provider {
                             if in_version {
                                 match current_tag.as_str() {
                                     "Key" => v_key.get_or_insert_with(String::new).push_str(&ch),
-                                    "VersionId" => v_version_id
-                                        .get_or_insert_with(String::new)
-                                        .push_str(&ch),
-                                    "IsLatest" => v_is_latest
-                                        .get_or_insert_with(String::new)
-                                        .push_str(&ch),
+                                    "VersionId" => {
+                                        v_version_id.get_or_insert_with(String::new).push_str(&ch)
+                                    }
+                                    "IsLatest" => {
+                                        v_is_latest.get_or_insert_with(String::new).push_str(&ch)
+                                    }
                                     "LastModified" => v_last_modified
                                         .get_or_insert_with(String::new)
                                         .push_str(&ch),
-                                    "Size" => v_size
-                                        .get_or_insert_with(String::new)
-                                        .push_str(&ch),
+                                    "Size" => v_size.get_or_insert_with(String::new).push_str(&ch),
                                     _ => {}
                                 }
                             }
@@ -5319,9 +5313,7 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
                 match current_tag.as_str() {
                     "Key" => e_key.get_or_insert_with(String::new).push_str(&text),
                     "Code" => e_code.get_or_insert_with(String::new).push_str(&text),
-                    "Message" => e_message
-                        .get_or_insert_with(String::new)
-                        .push_str(&text),
+                    "Message" => e_message.get_or_insert_with(String::new).push_str(&text),
                     _ => {}
                 }
             }
@@ -5334,9 +5326,7 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
                     match current_tag.as_str() {
                         "Key" => e_key.get_or_insert_with(String::new).push_str(&ch),
                         "Code" => e_code.get_or_insert_with(String::new).push_str(&ch),
-                        "Message" => e_message
-                            .get_or_insert_with(String::new)
-                            .push_str(&ch),
+                        "Message" => e_message.get_or_insert_with(String::new).push_str(&ch),
                         _ => {}
                     }
                 }
@@ -5506,12 +5496,8 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
                 if elem != Elem::None {
                     match current_tag.as_str() {
                         "Key" => e_key.get_or_insert_with(String::new).push_str(&text),
-                        "VersionId" => e_version_id
-                            .get_or_insert_with(String::new)
-                            .push_str(&text),
-                        "IsLatest" => e_is_latest
-                            .get_or_insert_with(String::new)
-                            .push_str(&text),
+                        "VersionId" => e_version_id.get_or_insert_with(String::new).push_str(&text),
+                        "IsLatest" => e_is_latest.get_or_insert_with(String::new).push_str(&text),
                         "LastModified" => e_last_modified
                             .get_or_insert_with(String::new)
                             .push_str(&text),
@@ -5523,7 +5509,9 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
             Ok(Event::GeneralRef(ref e)) => {
                 if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
                     if in_next_key_marker {
-                        next_key_marker.get_or_insert_with(String::new).push_str(&ch);
+                        next_key_marker
+                            .get_or_insert_with(String::new)
+                            .push_str(&ch);
                     }
                     if in_next_version_id_marker {
                         next_version_id_marker
@@ -5533,12 +5521,10 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
                     if elem != Elem::None {
                         match current_tag.as_str() {
                             "Key" => e_key.get_or_insert_with(String::new).push_str(&ch),
-                            "VersionId" => e_version_id
-                                .get_or_insert_with(String::new)
-                                .push_str(&ch),
-                            "IsLatest" => e_is_latest
-                                .get_or_insert_with(String::new)
-                                .push_str(&ch),
+                            "VersionId" => {
+                                e_version_id.get_or_insert_with(String::new).push_str(&ch)
+                            }
+                            "IsLatest" => e_is_latest.get_or_insert_with(String::new).push_str(&ch),
                             "LastModified" => e_last_modified
                                 .get_or_insert_with(String::new)
                                 .push_str(&ch),
@@ -5621,6 +5607,53 @@ mod tests {
         assert!(!is_s3_directory_content_type("application/octet-stream"));
         assert!(!is_s3_directory_content_type("text/plain"));
         assert!(!is_s3_directory_content_type(""));
+    }
+
+    /// LIVE-1 regression: with trim_text(true), quick-xml trimmed every Text
+    /// fragment, so `<Key>sp ace &amp; ünïcodé.txt</Key>` listed as
+    /// `sp ace&ünïcodé.txt` (entity-adjacent spaces deleted): the real object
+    /// became unreachable via the listed name, and a sync with delete planned
+    /// `delete_local` on the user's real file. Names must round-trip exactly.
+    #[test]
+    fn parse_object_versions_page_preserves_entity_adjacent_whitespace() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Version>
+    <Key>sp ace &amp; ünïcodé.txt</Key>
+    <VersionId>v1</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-07-30T12:00:00.000Z</LastModified>
+    <Size>65536</Size>
+  </Version>
+  <DeleteMarker>
+    <Key>a &amp; b.txt</Key>
+    <VersionId>d1</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-07-30T13:00:00.000Z</LastModified>
+  </DeleteMarker>
+</ListVersionsResult>"#;
+        let (entries, truncated, _, _) = parse_object_versions_page(xml).expect("parse");
+        assert!(!truncated);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].key, "sp ace & ünïcodé.txt");
+        assert_eq!(entries[0].size, 65536);
+        assert!(!entries[0].is_latest);
+        assert_eq!(entries[1].key, "a & b.txt");
+        assert!(entries[1].is_delete_marker);
+        assert!(entries[1].is_latest);
+        assert_eq!(entries[1].version_id, "d1");
+    }
+
+    /// LIVE-1 regression: batch-delete error keys must keep entity-adjacent
+    /// whitespace, and pretty-print indentation must not pollute scalars.
+    #[test]
+    fn parse_batch_delete_errors_preserves_entity_adjacent_whitespace() {
+        let xml = "<DeleteResult>\n  <Error>\n    <Key>a &amp; b.txt</Key>\n    <Code>AccessDenied</Code>\n    <Message>denied</Message>\n  </Error>\n</DeleteResult>";
+        let errors = parse_batch_delete_errors(xml);
+        assert_eq!(
+            errors,
+            vec![("a & b.txt".to_string(), "AccessDenied".to_string())]
+        );
     }
 
     /// The S3 client must not follow redirects. reqwest's default

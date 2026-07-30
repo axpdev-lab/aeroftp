@@ -68,7 +68,9 @@ fn azure_retry_config() -> HttpRetryConfig {
 /// Falls back to sanitize_api_error if XML parsing fails.
 fn parse_azure_xml_error(body: &str) -> String {
     let mut reader = Reader::from_str(body);
-    reader.config_mut().trim_text(true);
+    // No trim_text: fragments around XML entities must survive intact;
+    // code/message are trimmed once at output below.
+    reader.config_mut().trim_text(false);
     let mut code = String::new();
     let mut message = String::new();
     let mut current_tag = String::new();
@@ -79,6 +81,9 @@ fn parse_azure_xml_error(body: &str) -> String {
             }
             Ok(Event::Text(ref e)) => {
                 let text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                if text.trim().is_empty() {
+                    continue;
+                }
                 match current_tag.as_str() {
                     "Code" => code.push_str(&text),
                     "Message" if message.lines().count() <= 1 => {
@@ -102,6 +107,8 @@ fn parse_azure_xml_error(body: &str) -> String {
             _ => {}
         }
     }
+    let code = code.trim().to_string();
+    let message = message.trim().to_string();
     if !code.is_empty() {
         if message.is_empty() {
             code
@@ -448,7 +455,9 @@ impl AzureProvider {
         let mut next_marker: Option<String> = None;
 
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // No trim_text: blob-name fragments around XML entities must
+        // survive intact (entity-adjacent spaces are part of the name).
+        reader.config_mut().trim_text(false);
 
         // State machine for XML parsing
         #[derive(PartialEq)]
@@ -509,6 +518,10 @@ impl AzureProvider {
                 },
                 Ok(Event::Text(ref e)) => {
                     let text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                    if text.trim().is_empty() {
+                        buf.clear();
+                        continue;
+                    }
                     match state {
                         ParseState::BlobPrefixName => {
                             current_name.push_str(&text);
@@ -519,12 +532,12 @@ impl AzureProvider {
                         ParseState::BlobContentLength => {
                             current_size = text.trim().parse().unwrap_or(current_size);
                         }
-                        ParseState::BlobLastModified if !text.is_empty() => {
+                        ParseState::BlobLastModified => {
                             current_modified
                                 .get_or_insert_with(String::new)
                                 .push_str(&text);
                         }
-                        ParseState::NextMarker if !text.is_empty() => {
+                        ParseState::NextMarker => {
                             next_marker.get_or_insert_with(String::new).push_str(&text);
                         }
                         _ => {}
@@ -575,7 +588,9 @@ impl AzureProvider {
                             items.push(BlobItem {
                                 name: relative.to_string(),
                                 size: current_size,
-                                last_modified: current_modified.clone(),
+                                last_modified: current_modified
+                                    .as_ref()
+                                    .map(|m| m.trim().to_string()),
                                 is_prefix: false,
                             });
                         }
@@ -611,7 +626,7 @@ impl AzureProvider {
             buf.clear();
         }
 
-        (items, next_marker)
+        (items, next_marker.map(|m| m.trim().to_string()))
     }
 
     fn resolve_blob_path(&self, path: &str) -> String {
@@ -2239,7 +2254,9 @@ impl AzureProvider {
 
             let mut next_marker: Option<String> = None;
             let mut reader = quick_xml::Reader::from_str(&body);
-            reader.config_mut().trim_text(true);
+            // No trim_text: blob-name fragments around XML entities must
+            // survive intact (entity-adjacent spaces are part of the name).
+            reader.config_mut().trim_text(false);
             let mut buf = Vec::new();
             let mut in_blob = false;
             let mut blob_name = String::new();
@@ -2263,6 +2280,10 @@ impl AzureProvider {
                     }
                     Ok(quick_xml::events::Event::Text(ref e)) => {
                         let text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                        if text.trim().is_empty() {
+                            buf.clear();
+                            continue;
+                        }
                         if in_blob {
                             match tag_name.as_str() {
                                 "Name" => blob_name.push_str(&text),
@@ -2277,7 +2298,7 @@ impl AzureProvider {
                                 }
                                 _ => {}
                             }
-                        } else if tag_name == "NextMarker" && !text.is_empty() {
+                        } else if tag_name == "NextMarker" {
                             next_marker.get_or_insert_with(String::new).push_str(&text);
                         }
                     }
@@ -2311,7 +2332,7 @@ impl AzureProvider {
                                 path: blob_name.clone(),
                                 is_dir: false,
                                 size: blob_size,
-                                modified: blob_modified.clone(),
+                                modified: blob_modified.as_ref().map(|m| m.trim().to_string()),
                                 permissions: None,
                                 owner: None,
                                 group: None,
@@ -2331,7 +2352,7 @@ impl AzureProvider {
             }
 
             if next_marker.is_some() {
-                marker = next_marker;
+                marker = next_marker.map(|m| m.trim().to_string());
             } else {
                 break;
             }
