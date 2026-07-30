@@ -398,6 +398,8 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
             : idx + 1;
           const isLast = realIndex === segments.length - 1;
 
+          const isSeparatorOpen = chevronDropdown?.segmentIndex === realIndex - 1;
+
           return (
             <React.Fragment key={seg.fullPath}>
               {/* Chevron separator */}
@@ -406,15 +408,24 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                   onClick={(e) => handleChevronClick(e, realIndex - 1)}
                   className="flex items-center p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700/30 transition-colors group"
                   title={t('breadcrumb.browseSiblings') || 'Browse sibling directories'}
+                  // No aria-haspopup: the dropdown is a plain list of buttons,
+                  // not a role="menu" with arrow-key navigation, so declaring
+                  // one would promise keyboard behaviour that does not exist.
+                  // aria-expanded alone is accurate on a disclosure button.
+                  aria-expanded={isSeparatorOpen}
                 >
+                  {/* Points down while its menu is open, the way a
+                      File Explorer path bar does (wishlist #347). */}
                   <ChevronRight
                     size={14}
-                    className="w-3.5 h-3.5 text-gray-500 flex-shrink-0 group-hover:text-blue-400 transition-colors"
+                    className={`w-3.5 h-3.5 text-gray-500 flex-shrink-0 group-hover:text-blue-400 transition ${
+                      isSeparatorOpen ? 'rotate-90' : ''
+                    }`}
                   />
                 </button>
 
                 {/* Chevron dropdown */}
-                {chevronDropdown?.segmentIndex === realIndex - 1 && (
+                {isSeparatorOpen && (
                   <div
                     ref={chevronDropdownRef}
                     style={{ top: chevronDropdown.anchor.top, left: chevronDropdown.anchor.left }}
@@ -484,12 +495,13 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                 onClick={(e) => handleChevronClick(e, trailingIndex)}
                 className="flex items-center p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700/30 transition-colors group"
                 title={t('breadcrumb.browseChildren') || 'Browse subdirectories'}
-                aria-haspopup="menu"
                 aria-expanded={isOpen}
               >
                 <ChevronRight
                   size={14}
-                  className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 group-hover:text-blue-400 transition-colors"
+                  className={`w-3.5 h-3.5 text-gray-400 flex-shrink-0 group-hover:text-blue-400 transition ${
+                    isOpen ? 'rotate-90' : ''
+                  }`}
                 />
               </button>
 

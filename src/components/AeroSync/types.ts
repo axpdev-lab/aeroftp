@@ -94,6 +94,12 @@ export interface AeroSyncContext {
      * stay hidden.
      */
     activeProfileId?: string;
+    /**
+     * Display name of the same saved server. The Templates dialog writes it
+     * into the exported script's `CONNECT --profile`, which is resolved by
+     * name against the vault, so an id would not do (#514).
+     */
+    activeProfileName?: string;
     isProvider?: boolean;
     excludePatterns?: string[];
     /**

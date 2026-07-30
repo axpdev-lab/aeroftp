@@ -91,7 +91,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
         && !!context.activeProfileId;
     const localPath = context.initialSource || '';
     const remotePath = context.initialDestination || '';
-    const profileId = context.activeProfileId || '';
+    const serverProfileName = context.activeProfileName || '';
     const excludePatterns = context.excludePatterns || [];
     const isProvider = !!context.isProvider;
 
@@ -278,7 +278,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         onClose={() => setShowTemplates(false)}
                         localPath={localPath}
                         remotePath={remotePath}
-                        profileId={profileId}
+                        serverProfileName={serverProfileName}
                         excludePatterns={excludePatterns}
                     />
                     <MultiPathEditor
