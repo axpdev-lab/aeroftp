@@ -237,7 +237,11 @@ async fn finalize_steps(
     #[cfg(unix)]
     if let Some(mode) = mode {
         use std::os::unix::fs::PermissionsExt;
-        let perms = std::fs::Permissions::from_mode(mode & 0o7777);
+        // Same masking rule as `write_atomic_chunked_core`: `mode` is the
+        // peer's, so the setuid/setgid/sticky bits in 0o7000 are
+        // attacker-supplied and must not survive onto the file we land.
+        // See the longer note there (rclone GHSA-945v-v9p3-v5xw).
+        let perms = std::fs::Permissions::from_mode(mode & 0o0777);
         fs::set_permissions(temp, perms)
             .await
             .map_err(|e| WriteAtomicError::PostOpen {
@@ -423,6 +427,42 @@ mod tests {
         let ft = filetime::FileTime::from_last_modification_time(&meta);
         assert_eq!(ft.unix_seconds(), mtime.0, "mtime seconds must match");
         assert_eq!(ft.nanoseconds(), mtime.1, "mtime nanoseconds must match");
+    }
+
+    /// The streaming path takes the same peer-supplied `preserve_mode` that
+    /// `write_atomic_chunked_core` does (see the `.finalize(preserve_mode, ..)`
+    /// call in `delta_transport_impl`), so it needs the same guarantee: the
+    /// setuid/setgid/sticky bits never survive onto the landed file. The
+    /// sibling test above masks with 0o777 and so cannot see these bits;
+    /// this one looks at all of 0o7777 on purpose.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn streaming_atomic_writer_strips_peer_supplied_setuid_setgid_sticky() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = fresh_tempdir();
+
+        for (peer_mode, expected) in [
+            (0o4755_u32, 0o0755_u32), // setuid
+            (0o2755, 0o0755),         // setgid
+            (0o1755, 0o0755),         // sticky
+            (0o7777, 0o0777),         // all three at once
+            (0o0640, 0o0640),         // ordinary bits pass through untouched
+        ] {
+            let target = dir.path().join(format!("mode-{peer_mode:o}.bin"));
+            let mut w = StreamingAtomicWriter::new(&target).await.expect("new");
+            w.write_all(b"data").await.expect("write");
+            w.finalize(Some(peer_mode), None, None, false)
+                .await
+                .expect("finalize");
+
+            let meta = tokio::fs::metadata(&target).await.expect("metadata");
+            let actual = meta.permissions().mode() & 0o7777;
+            assert_eq!(
+                actual, expected,
+                "peer-supplied mode {peer_mode:o} must land as {expected:o}, got {actual:o}"
+            );
+        }
     }
 
     /// Test 5: `bytes_written` accumulates accurately across N writes,

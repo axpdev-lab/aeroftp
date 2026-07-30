@@ -12492,8 +12492,9 @@ mod tests {
         normalize_aerocrypt_remote_files_for_compare, normalize_rclone_remote_files_for_compare,
         normalize_remote_files_for_compare, rclone_decrypted_size, remote_matches_repo,
         resolve_compare_overlay_keys, run_cancellable_connect, run_cancellable_listing,
-        ConnectTokenGuard, ConnectionCancelRegistry, ListingCancelState, ProviderConnectionParams,
-        ProviderState, TransferOperationGuard, CONNECT_CANCELLED, LISTING_CANCELLED,
+        sanitize_remote_filename, verify_path_containment, ConnectTokenGuard,
+        ConnectionCancelRegistry, ListingCancelState, ProviderConnectionParams, ProviderState,
+        TransferOperationGuard, CONNECT_CANCELLED, LISTING_CANCELLED,
     };
     use crate::rclone_crypt::{
         derive_keys, derive_keys_with_tweak, encrypt_file_content, encrypt_name,
@@ -12504,6 +12505,79 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
+
+    // The two guards that stop a hostile server from steering a download out of
+    // the chosen folder. They were unpinned until now: the protection was real
+    // but nothing failed if a refactor dropped it. WinSCP shipped exactly this
+    // bug in 6.6.2 (tracker #2450) because their sanitisation sat behind a
+    // user-togglable setting; ours is unconditional, and these tests keep it so.
+    #[test]
+    fn sanitize_remote_filename_keeps_only_the_leaf() {
+        // A plain name is returned untouched.
+        assert_eq!(
+            sanitize_remote_filename("report.pdf").unwrap(),
+            "report.pdf"
+        );
+        // Directory components are dropped, leaf survives.
+        assert_eq!(sanitize_remote_filename("a/b/c.txt").unwrap(), "c.txt");
+        // Windows separators count too, even on Unix.
+        assert_eq!(sanitize_remote_filename(r"a\b\c.txt").unwrap(), "c.txt");
+        // Mixed separators.
+        assert_eq!(sanitize_remote_filename(r"a/b\c.txt").unwrap(), "c.txt");
+    }
+
+    #[test]
+    fn sanitize_remote_filename_defuses_traversal_and_rejects_drive_letters() {
+        // The guarantee is "the result can never escape the base", not "any
+        // input containing .. is refused". A traversal collapses to its leaf,
+        // which then lands inside the download folder like any other file.
+        assert_eq!(
+            sanitize_remote_filename("../../etc/passwd").unwrap(),
+            "passwd"
+        );
+        assert_eq!(
+            sanitize_remote_filename(r"..\..\windows\system32").unwrap(),
+            "system32"
+        );
+        // Absolute paths lose their root the same way.
+        assert_eq!(sanitize_remote_filename("/etc/passwd").unwrap(), "passwd");
+        // A name made only of traversal has no leaf left, so it is refused
+        // rather than turned into something arbitrary.
+        assert!(sanitize_remote_filename("..").is_err());
+        assert!(sanitize_remote_filename("../..").is_err());
+        // Names that reduce to nothing are refused rather than silently coerced.
+        assert!(sanitize_remote_filename("").is_err());
+        assert!(sanitize_remote_filename("/").is_err());
+        assert!(sanitize_remote_filename("./././").is_err());
+        // A Windows drive letter would re-anchor the join.
+        assert!(sanitize_remote_filename("C:").is_err());
+        assert!(sanitize_remote_filename(r"foo\C:").is_err());
+        // Null bytes never reach a path API.
+        assert!(sanitize_remote_filename("evil\0.txt").is_err());
+    }
+
+    #[test]
+    fn verify_path_containment_rejects_escapes_and_accepts_children() {
+        let base = tempfile::tempdir().unwrap();
+        let base_path = base.path();
+
+        // A direct child is fine, whether or not it exists yet.
+        assert!(verify_path_containment(base_path, &base_path.join("ok.bin")).is_ok());
+        std::fs::create_dir_all(base_path.join("nested")).unwrap();
+        assert!(verify_path_containment(base_path, &base_path.join("nested/ok.bin")).is_ok());
+
+        // A sibling directory outside the base must be refused.
+        let outside = tempfile::tempdir().unwrap();
+        let err = verify_path_containment(base_path, &outside.path().join("stolen.bin"))
+            .expect_err("a path outside the base must be refused");
+        assert!(
+            err.contains("Path traversal detected"),
+            "unexpected error text: {err}"
+        );
+
+        // And so must a traversal that resolves out of the base.
+        assert!(verify_path_containment(base_path, &base_path.join("../escaped.bin")).is_err());
+    }
 
     // Connection-scoped overlay-key cache (instant re-arm after a view-only lock):
     // store keeps a re-armable copy, re-arm is non-consuming, a generation change
