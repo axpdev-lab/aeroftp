@@ -97,11 +97,18 @@ export interface CatalogCompany {
     freeStorageGb: number | null;
     /** Short qualifier when freeStorageGb is null or needs nuance. */
     freeNote?: string;
-    /** The company HAS a genuine (typically permanent) free allowance, but
-     *  signup REQUIRES a credit card / payment method on file (e.g. Amazon S3,
-     *  Azure Blob, Yandex Object Storage). This is the "third state" between a
-     *  no-card free tier and a paid-only product: such companies are kept OUT
-     *  of the paid bucket but marked distinctly. See `companyTier`. */
+    /** The company HAS a genuine PERMANENT free allowance, but signup REQUIRES
+     *  a credit card / payment method on file (e.g. Google Cloud Storage's
+     *  always-free 5 GB-month, Oracle Cloud's 20 GB for the life of the
+     *  account, Yandex Object Storage's 1 GB/month). This is the "third state"
+     *  between a no-card free tier and a paid-only product: such companies are
+     *  kept OUT of the paid bucket but marked distinctly. See `companyTier`.
+     *
+     *  Permanent is the load-bearing word. AWS S3 and Azure Blob were listed
+     *  here for a long time on the strength of a 5 GB figure that is actually
+     *  the 12-month new-account tier, not an always-free one — it expires with
+     *  the account's first year. A time-limited allowance is a trial, and
+     *  belongs in the paid bucket with `freeStorageGb: null`. */
     freeRequiresCard?: boolean;
     /** Reachability probe URL (global API endpoint). Omitted for
      *  per-account / self-hosted services, which then show no health dot. */
@@ -289,8 +296,8 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Tencent COS', parentCompany: 'Tencent', logoId: 'tencent-cos', countryCode: 'CN', freeStorageGb: null,
       freeNote: '6-month trial',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'tencent-cos', category: 'object-storage', paid: true }] },
-    { company: 'Microsoft Azure Blob', parentCompany: 'Microsoft', logoId: 'azure', countryCode: 'US', freeStorageGb: 5,
-      freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
+    { company: 'Microsoft Azure Blob', parentCompany: 'Microsoft', logoId: 'azure', countryCode: 'US', freeStorageGb: null,
+      freeNote: '12-month trial', healthCheckUrl: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
       protocols: [{ label: 'Blob', protocol: 'azure', category: 'object-storage', paid: true }] },
     { company: 'Hetzner Storage Box', parentCompany: 'Hetzner', logoId: 'hetzner-storage-box', countryCode: 'DE', freeStorageGb: null,
       freeNote: 'paid plan',

@@ -228,9 +228,10 @@ describe('commercial tier model: free / free-card / paid', () => {
 
     it('free-card companies have a free allowance but require a card, and stay OUT of the paid bucket', () => {
         // Alibaba OSS has a permanent 5 GB/mo fixed quota (overseas regions) but a card on file.
-        // AWS is deliberately NOT here: its S3 5 GB is the 12-month new-account tier,
-        // not an always-free allowance, so it belongs in the paid-only list below.
-        for (const name of ['Microsoft Azure Blob', 'Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
+        // AWS and Azure Blob are deliberately NOT here: both offer 5 GB as the
+        // 12-month new-account tier, not an always-free allowance, so they belong
+        // in the paid-only list below. Only permanent allowances qualify.
+        for (const name of ['Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
             const c = PROVIDER_CATALOG.find(x => x.company === name)!;
             expect(c.freeRequiresCard, `${name} freeRequiresCard`).toBe(true);
             expect(c.freeStorageGb, `${name} has a free GB figure`).not.toBeNull();
@@ -246,7 +247,7 @@ describe('commercial tier model: free / free-card / paid', () => {
         // AWS: S3's 5 GB sits in the '12 Months Free' bucket, not the '30+ always free'
         // one, so the allowance expires with the account's first year. New accounts
         // now get up-to-$200 credits instead. Either way there is no ongoing free tier.
-        for (const name of ['Wasabi', 'DigitalOcean Spaces', 'Hetzner Storage Box', 'Tencent COS', 'Storj', 'IDrive e2', 'Amazon Web Services (AWS)']) {
+        for (const name of ['Wasabi', 'DigitalOcean Spaces', 'Hetzner Storage Box', 'Tencent COS', 'Storj', 'IDrive e2', 'Amazon Web Services (AWS)', 'Microsoft Azure Blob']) {
             expect(tierOf(name), `${name} tier`).toBe('paid');
         }
     });
@@ -289,9 +290,10 @@ describe('commercial tier model: free / free-card / paid', () => {
 
     it('freeRequiresCard companies are never reported as paid-only by the CLI projection', () => {
         const cli = buildCliCatalog();
-        // AWS dropped out of this list: its S3 allowance is the 12-month tier, not
-        // an always-free one, so it no longer has a card-gated free tier to protect.
-        for (const name of ['Microsoft Azure Blob', 'Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
+        // AWS and Azure Blob dropped out of this list: both allowances are the
+        // 12-month tier, not always-free, so neither has a card-gated free tier
+        // left to protect.
+        for (const name of ['Yandex Object Storage', 'Oracle Cloud', 'Google Cloud Storage', 'Cloudflare R2', 'Alibaba OSS']) {
             const row = cli.find(c => c.company === name)!;
             expect(row.freeRequiresCard, `${name} CLI freeRequiresCard`).toBe(true);
         }

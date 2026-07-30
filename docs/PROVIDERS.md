@@ -48,7 +48,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | kDrive | CH | 15 GB | API |
 | Koofr | SI | 10 GB | API, WebDAV |
 | MEGA | NZ | 20 GB (E2E) | API, MEGAcmd, S4 (S3)* |
-| Microsoft Azure Blob | US | 5 GB (always-free, card req.) | Blob* |
+| Microsoft Azure Blob | US | 12-month trial | Blob* |
 | Microsoft OneDrive | US | 5 GB | OAuth |
 | MinIO | - | self-hosted | S3 |
 | Nextcloud | - | self-hosted | WebDAV |
