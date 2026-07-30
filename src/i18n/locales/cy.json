@@ -70,7 +70,8 @@
             "duplicate": "Dyblygu",
             "current": "cyfredol",
             "goToActiveSession": "Mynd i'r sesiwn weithredol",
-            "password": "Cyfrinair"
+            "password": "Cyfrinair",
+            "default": "Rhagosodedig"
         },
         "connection": {
             "title": "Cysylltu a'r Gweinydd",

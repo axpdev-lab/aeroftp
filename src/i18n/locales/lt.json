@@ -70,7 +70,8 @@
             "duplicate": "Dubliuoti",
             "current": "dabartinis",
             "goToActiveSession": "Eiti į aktyvią sesiją",
-            "password": "Slaptažodis"
+            "password": "Slaptažodis",
+            "default": "Numatytasis"
         },
         "connection": {
             "title": "Prisijungti prie serverio",

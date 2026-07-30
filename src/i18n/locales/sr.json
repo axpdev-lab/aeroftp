@@ -70,7 +70,8 @@
             "duplicate": "Дуплирај",
             "current": "тренутно",
             "goToActiveSession": "Иди на активну сесију",
-            "password": "Лозинка"
+            "password": "Лозинка",
+            "default": "Подразумевано"
         },
         "connection": {
             "title": "Повежи се на сервер",

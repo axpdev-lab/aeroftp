@@ -70,7 +70,8 @@
             "duplicate": "Duplikat",
             "current": "saat ini",
             "goToActiveSession": "Buka sesi aktif",
-            "password": "Kata sandi"
+            "password": "Kata sandi",
+            "default": "Bawaan"
         },
         "connection": {
             "title": "Hubungkan ke Server",

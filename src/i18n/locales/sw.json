@@ -70,7 +70,8 @@
             "duplicate": "Nakili",
             "current": "ya sasa",
             "goToActiveSession": "Nenda kwenye kipindi kinachoendelea",
-            "password": "Nywila"
+            "password": "Nywila",
+            "default": "Chaguo-msingi"
         },
         "connection": {
             "title": "Unganisha na Seva",

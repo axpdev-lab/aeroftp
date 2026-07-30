@@ -70,7 +70,8 @@
             "duplicate": "Dupliser",
             "current": "gjeldende",
             "goToActiveSession": "Gå til aktiv økt",
-            "password": "Passord"
+            "password": "Passord",
+            "default": "Standard"
         },
         "connection": {
             "title": "Koble til server",

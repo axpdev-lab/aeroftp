@@ -70,7 +70,8 @@
             "duplicate": "Duplicera",
             "current": "aktuell",
             "goToActiveSession": "Gå till aktiv session",
-            "password": "Lösenord"
+            "password": "Lösenord",
+            "default": "Standard"
         },
         "connection": {
             "title": "Anslut till server",

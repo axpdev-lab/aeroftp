@@ -70,7 +70,8 @@
             "duplicate": "Podvoji",
             "current": "trenutno",
             "goToActiveSession": "Pojdi na aktivno sejo",
-            "password": "Geslo"
+            "password": "Geslo",
+            "default": "Privzeto"
         },
         "connection": {
             "title": "Poveži se s strežnikom",

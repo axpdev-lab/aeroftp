@@ -70,7 +70,8 @@
             "duplicate": "Dupliciraj",
             "current": "trenutno",
             "goToActiveSession": "Idi na aktivnu sesiju",
-            "password": "Lozinka"
+            "password": "Lozinka",
+            "default": "Zadano"
         },
         "connection": {
             "title": "Poveži se na poslužitelj",

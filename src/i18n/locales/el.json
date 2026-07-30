@@ -70,7 +70,8 @@
             "duplicate": "Αντίγραφο",
             "current": "τρέχον",
             "goToActiveSession": "Μετάβαση στην ενεργή συνεδρία",
-            "password": "Κωδικός"
+            "password": "Κωδικός",
+            "default": "Προεπιλογή"
         },
         "connection": {
             "title": "Σύνδεση σε διακομιστή",

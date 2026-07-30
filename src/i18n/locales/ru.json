@@ -70,7 +70,8 @@
             "duplicate": "Дублировать",
             "current": "текущий",
             "goToActiveSession": "Перейти к активной сессии",
-            "password": "Пароль"
+            "password": "Пароль",
+            "default": "По умолчанию"
         },
         "connection": {
             "title": "Подключение к серверу",

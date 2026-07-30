@@ -70,7 +70,8 @@
             "duplicate": "Doblehin",
             "current": "kasalukuyan",
             "goToActiveSession": "Pumunta sa aktibong session",
-            "password": "Password"
+            "password": "Password",
+            "default": "Default"
         },
         "connection": {
             "title": "Kumonekta sa Server",

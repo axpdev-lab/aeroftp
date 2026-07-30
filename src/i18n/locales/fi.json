@@ -70,7 +70,8 @@
             "duplicate": "Kopioi",
             "current": "nykyinen",
             "goToActiveSession": "Siirry aktiiviseen istuntoon",
-            "password": "Salasana"
+            "password": "Salasana",
+            "default": "Oletus"
         },
         "connection": {
             "title": "Yhdistä palvelimeen",

@@ -70,7 +70,8 @@
             "duplicate": "Dupliceren",
             "current": "huidig",
             "goToActiveSession": "Naar actieve sessie",
-            "password": "Wachtwoord"
+            "password": "Wachtwoord",
+            "default": "Standaard"
         },
         "connection": {
             "title": "Verbinden met Server",

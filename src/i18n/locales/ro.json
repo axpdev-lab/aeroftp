@@ -70,7 +70,8 @@
             "duplicate": "Duplică",
             "current": "curent",
             "goToActiveSession": "Mergi la sesiunea activă",
-            "password": "Parolă"
+            "password": "Parolă",
+            "default": "Implicit"
         },
         "connection": {
             "title": "Conectare la server",

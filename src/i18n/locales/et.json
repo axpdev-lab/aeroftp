@@ -70,7 +70,8 @@
             "duplicate": "Dubleeri",
             "current": "praegune",
             "goToActiveSession": "Ava aktiivne seanss",
-            "password": "Parool"
+            "password": "Parool",
+            "default": "Vaikimisi"
         },
         "connection": {
             "title": "Ühenda serveriga",

@@ -70,7 +70,8 @@
             "duplicate": "Afrita",
             "current": "núverandi",
             "goToActiveSession": "Fara í virka lotu",
-            "password": "Lykilorð"
+            "password": "Lykilorð",
+            "default": "Sjálfgefið"
         },
         "connection": {
             "title": "Tengjast þjóni",

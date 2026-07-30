@@ -70,7 +70,8 @@
             "duplicate": "ចម្លងទម្រង់",
             "current": "បច្ចុប្បន្ន",
             "goToActiveSession": "ទៅកាន់វគ្គសកម្ម",
-            "password": "ពាក្យសម្ងាត់"
+            "password": "ពាក្យសម្ងាត់",
+            "default": "លំនាំដើម"
         },
         "connection": {
             "title": "តភ្ជាប់ទៅម៉ាស៊ីនបម្រើ",

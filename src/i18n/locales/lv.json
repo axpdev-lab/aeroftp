@@ -70,7 +70,8 @@
             "duplicate": "Dublēt",
             "current": "pašreizējais",
             "goToActiveSession": "Pāriet uz aktīvo sesiju",
-            "password": "Parole"
+            "password": "Parole",
+            "default": "Noklusējums"
         },
         "connection": {
             "title": "Savienoties ar serveri",

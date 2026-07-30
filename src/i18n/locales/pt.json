@@ -70,7 +70,8 @@
             "duplicate": "Duplicar",
             "current": "atual",
             "goToActiveSession": "Ir para a sessão ativa",
-            "password": "Palavra-passe"
+            "password": "Palavra-passe",
+            "default": "Padrão"
         },
         "connection": {
             "title": "Conectar ao Servidor",

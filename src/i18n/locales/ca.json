@@ -70,7 +70,8 @@
             "duplicate": "Duplicar",
             "current": "actual",
             "goToActiveSession": "Vés a la sessió activa",
-            "password": "Contrasenya"
+            "password": "Contrasenya",
+            "default": "Predeterminat"
         },
         "connection": {
             "title": "Connectar al Servidor",
