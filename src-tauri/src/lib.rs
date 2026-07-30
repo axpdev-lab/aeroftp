@@ -13333,7 +13333,9 @@ async fn export_sync_template_cmd(
     profile_id: String,
     local_path: String,
     remote_path: String,
-    exclude_patterns: Vec<String>,
+    // `None` (or an empty list) means "the preset's own", see
+    // `sync::resolve_exclude_patterns`.
+    exclude_patterns: Option<Vec<String>>,
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         export_sync_template_cmd_blocking(
