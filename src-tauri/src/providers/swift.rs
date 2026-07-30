@@ -1160,6 +1160,52 @@ impl StorageProvider for SwiftProvider {
                     resp.status()
                 )));
             }
+
+            // Swift bulk-delete can return HTTP 200 with per-object failures in
+            // the JSON body (`Errors` array). Accept is already application/json;
+            // parse it so we do not report a full success when objects remain.
+            // Spec: https://docs.openstack.org/swift/latest/middleware.html#bulk-delete
+            let body_bytes = resp.bytes().await.map_err(|e| {
+                ProviderError::ServerError(format!("Bulk delete body read failed: {e}"))
+            })?;
+            if !body_bytes.is_empty() {
+                if let Ok(report) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+                    let errors = report
+                        .get("Errors")
+                        .or_else(|| report.get("errors"))
+                        .and_then(|e| e.as_array());
+                    if let Some(errors) = errors {
+                        if !errors.is_empty() {
+                            let sample = errors
+                                .iter()
+                                .take(3)
+                                .map(|e| e.to_string())
+                                .collect::<Vec<_>>()
+                                .join("; ");
+                            return Err(ProviderError::ServerError(format!(
+                                "Bulk delete reported {} object failure(s): {sample}",
+                                errors.len()
+                            )));
+                        }
+                    }
+                    // Some proxies put the overall status in the body even when
+                    // the HTTP status is 200.
+                    if let Some(rs) = report
+                        .get("Response Status")
+                        .or_else(|| report.get("response_status"))
+                        .and_then(|v| v.as_str())
+                    {
+                        let ok = rs.starts_with('2')
+                            || rs.to_ascii_lowercase().contains("200")
+                            || rs.eq_ignore_ascii_case("ok");
+                        if !ok {
+                            return Err(ProviderError::ServerError(format!(
+                                "Bulk delete response status: {rs}"
+                            )));
+                        }
+                    }
+                }
+            }
         }
 
         Ok(())

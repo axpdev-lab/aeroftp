@@ -870,7 +870,12 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                         {t('speedTest.compareDisclaimer', {
                             count: compareSelected.size || 0,
                             size: selectedSizeLabel,
+                            // Transfer volume and peak parallel local temp storage
+                            // are the same quantity today (upload+download × servers).
+                            // Keep distinct placeholders so locales can order them
+                            // independently without reusing `{total}` twice.
                             total: formatBytes(effectiveSize * 2 * Math.max(compareSelected.size, 1)),
+                            localStorage: formatBytes(effectiveSize * 2 * Math.max(compareSelected.size, 1)),
                         })}
                     </p>
                 </div>

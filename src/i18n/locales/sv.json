@@ -4286,7 +4286,7 @@
             "tabCompare": "Jämför",
             "compareSelectServers": "Valda servrar ({count})",
             "compareHint": "Välj 2 till 8 servrar för parallell testning. Samma datastorlek för alla.",
-            "compareDisclaimer": "Att köra detta på {count} servrar innebär ungefär {total} av total överföring ({size} per server, uppladdning + nedladdning). Leverantörens kostnader för förfrågningar och utgående trafik kan tillkomma och använder upp till {total} lokal tillfällig lagring parallellt.",
+            "compareDisclaimer": "Att köra detta på {count} servrar innebär ungefär {total} av total överföring ({size} per server, uppladdning + nedladdning). Leverantörens kostnader för förfrågningar och utgående trafik kan tillkomma och använder upp till {localStorage} lokal tillfällig lagring parallellt.",
             "compareRunning": "Kör hastighetstest på {count} servrar...",
             "compareFooter": "{count} server(s) valda",
             "selectAll": "Välj alla",

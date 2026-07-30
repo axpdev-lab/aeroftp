@@ -289,6 +289,10 @@ pub fn export_profiles(
             || s.aerocrypt_overlay_keyfile_path.is_some()
             || s.aerocrypt_overlay_config.is_some()
             || s.mode_credentials.is_some()
+            // BYO OAuth app credentials (#128-D): a file that carries only the
+            // client_secret (or client_id) is still not credential-free.
+            || s.oauth_client_id.is_some()
+            || s.oauth_client_secret.is_some()
             || s.filen_api_key.is_some()
             || s.onedrive_drive_id.is_some()
             || s.onedrive_drive_type.is_some()
@@ -885,6 +889,30 @@ mod tests {
         assert!(
             metadata.has_credentials,
             "a TOTP seed in options is a credential"
+        );
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn oauth_client_secret_alone_flips_has_credentials() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp_export_oauth_secret_{}_{}.aeroftp",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        let server = sample_server("server-a", "googledrive");
+        let mut secrets = HashMap::new();
+        secrets.insert(
+            "server-a".to_string(),
+            ProviderSecrets {
+                oauth_client_secret: Some("client-secret-only".to_string()),
+                ..Default::default()
+            },
+        );
+        let metadata = export_profiles(vec![server], secrets, "pw-12345678", &tmp).unwrap();
+        assert!(
+            metadata.has_credentials,
+            "a BYO OAuth client_secret alone is a credential"
         );
         let _ = std::fs::remove_file(&tmp);
     }

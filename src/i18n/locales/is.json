@@ -4305,7 +4305,7 @@
             "tabCompare": "Bera saman",
             "compareSelectServers": "Valdir miðlarar ({count})",
             "compareHint": "Veldu 2 til 8 miðlara til að mæla hlið við hlið. Sama gagnastærð fyrir alla.",
-            "compareDisclaimer": "Að keyra þetta á {count} miðlurum þýðir um {total} af heildarflutningi ({size} á miðlara, sending + niðurhal). Beiðna- og útflutningskostnaður veitenda getur átt við og notar allt að {total} af staðbundinni bráðabirgðageymslu samhliða.",
+            "compareDisclaimer": "Að keyra þetta á {count} miðlurum þýðir um {total} af heildarflutningi ({size} á miðlara, sending + niðurhal). Beiðna- og útflutningskostnaður veitenda getur átt við og notar allt að {localStorage} af staðbundinni bráðabirgðageymslu samhliða.",
             "compareRunning": "Keyri hraðapróf á {count} miðlurum...",
             "compareFooter": "{count} miðlari valinn",
             "selectAll": "Velja allt",

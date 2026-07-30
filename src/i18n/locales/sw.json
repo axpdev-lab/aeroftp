@@ -4286,7 +4286,7 @@
             "tabCompare": "Linganisha",
             "compareSelectServers": "Seva zilizochaguliwa ({count})",
             "compareHint": "Chagua seva 2 hadi 8 ili kupima sambamba. Ukubwa sawa wa data kwa zote.",
-            "compareDisclaimer": "Kuendesha hii kwenye seva {count} kunamaanisha takriban {total} ya uhamishaji wa jumla ({size} kwa kila seva, kupakia + kupakua). Gharama za mtoa huduma kwa maombi na trafiki ya nje zinaweza kutumika na hutumia hadi {total} ya hifadhi ya muda ya ndani kwa sambamba.",
+            "compareDisclaimer": "Kuendesha hii kwenye seva {count} kunamaanisha takriban {total} ya uhamishaji wa jumla ({size} kwa kila seva, kupakia + kupakua). Gharama za mtoa huduma kwa maombi na trafiki ya nje zinaweza kutumika na hutumia hadi {localStorage} ya hifadhi ya muda ya ndani kwa sambamba.",
             "compareRunning": "Inaendesha jaribio la kasi kwenye seva {count}...",
             "compareFooter": "Seva {count} zimechaguliwa",
             "selectAll": "Chagua zote",

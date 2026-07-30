@@ -4286,7 +4286,7 @@
             "tabCompare": "Salīdzināt",
             "compareSelectServers": "Atlasītie serveri ({count})",
             "compareHint": "Izvēlieties no 2 līdz 8 serveriem, lai veiktu mērījumus blakus. Vienāds datu apjoms visiem.",
-            "compareDisclaimer": "Šī palaišana uz {count} serveriem nozīmē aptuveni {total} kopējās pārsūtīšanas ({size} uz serveri, augšupielāde + lejupielāde). Var tikt piemērotas piegādātāja pieprasījumu un izejošā trafika maksas un paralēli izmanto līdz {total} vietējās pagaidu krātuves.",
+            "compareDisclaimer": "Šī palaišana uz {count} serveriem nozīmē aptuveni {total} kopējās pārsūtīšanas ({size} uz serveri, augšupielāde + lejupielāde). Var tikt piemērotas piegādātāja pieprasījumu un izejošā trafika maksas un paralēli izmanto līdz {localStorage} vietējās pagaidu krātuves.",
             "compareRunning": "Tiek veikts ātruma tests uz {count} serveriem...",
             "compareFooter": "Atlasīti serveri: {count}",
             "selectAll": "Atlasīt visu",

@@ -4305,7 +4305,7 @@
             "tabCompare": "Cymharu",
             "compareSelectServers": "Gweinyddion a ddewiswyd ({count})",
             "compareHint": "Dewiswch o 2 i 8 gweinydd i'w meincnodi ochr yn ochr. Yr un maint llwyth ar gyfer pob un.",
-            "compareDisclaimer": "Mae rhedeg hyn ar {count} gweinydd yn golygu tua {total} o drosglwyddo cyfan ({size} fesul gweinydd, lanlwytho + lawrlwytho). Gall costau cais ac egress y darparwr fod yn berthnasol ac yn defnyddio hyd at {total} o storfa dros dro leol yn gyfochrog.",
+            "compareDisclaimer": "Mae rhedeg hyn ar {count} gweinydd yn golygu tua {total} o drosglwyddo cyfan ({size} fesul gweinydd, lanlwytho + lawrlwytho). Gall costau cais ac egress y darparwr fod yn berthnasol ac yn defnyddio hyd at {localStorage} o storfa dros dro leol yn gyfochrog.",
             "compareRunning": "Yn rhedeg prawf cyflymder ar {count} gweinydd...",
             "compareFooter": "{count} gweinydd wedi'i ddewis",
             "selectAll": "Dewis pob un",

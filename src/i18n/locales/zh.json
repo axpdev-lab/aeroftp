@@ -4286,7 +4286,7 @@
             "tabCompare": "对比",
             "compareSelectServers": "已选服务器 ({count})",
             "compareHint": "选择 2 到 8 个服务器进行并行基准测试。所有服务器使用相同数据大小",
-            "compareDisclaimer": "在 {count} 个服务器上运行意味着总传输量约为 {total}（每个服务器 {size}，上传 + 下载）。可能产生提供商请求和出站流量费用，并并行占用最多 {total} 本地临时存储",
+            "compareDisclaimer": "在 {count} 个服务器上运行意味着总传输量约为 {total}（每个服务器 {size}，上传 + 下载）。可能产生提供商请求和出站流量费用，并并行占用最多 {localStorage} 本地临时存储",
             "compareRunning": "正在 {count} 个服务器上运行速度测试…",
             "compareFooter": "已选择 {count} 个服务器",
             "selectAll": "全选",

@@ -4286,7 +4286,7 @@
             "tabCompare": "Karşılaştır",
             "compareSelectServers": "Seçili sunucular ({count})",
             "compareHint": "Yan yana karşılaştırma için 2 ila 8 sunucu seçin. Tümü için aynı veri boyutu.",
-            "compareDisclaimer": "Bunu {count} sunucuda çalıştırmak yaklaşık {total} toplam aktarım anlamına gelir (sunucu başına {size}, yükleme + indirme). Sağlayıcı istek ve giden trafik ücretleri uygulanabilir ve paralel olarak en fazla {total} yerel geçici depolama kullanır.",
+            "compareDisclaimer": "Bunu {count} sunucuda çalıştırmak yaklaşık {total} toplam aktarım anlamına gelir (sunucu başına {size}, yükleme + indirme). Sağlayıcı istek ve giden trafik ücretleri uygulanabilir ve paralel olarak en fazla {localStorage} yerel geçici depolama kullanır.",
             "compareRunning": "{count} sunucuda hız testi çalıştırılıyor...",
             "compareFooter": "{count} sunucu seçili",
             "selectAll": "Tümünü seç",

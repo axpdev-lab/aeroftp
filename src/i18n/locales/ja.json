@@ -4286,7 +4286,7 @@
             "tabCompare": "比較",
             "compareSelectServers": "選択されたサーバー ({count})",
             "compareHint": "並べてベンチマークするサーバーを2台から8台選択してください。すべて同じペイロードサイズです。",
-            "compareDisclaimer": "{count}台のサーバーで実行すると、合計約{total}の転送になります（サーバーあたり{size}、アップロード + ダウンロード）。プロバイダーのリクエストおよび送信料が発生する場合があります。。並列で最大 {total} のローカル一時ストレージを使用します",
+            "compareDisclaimer": "{count}台のサーバーで実行すると、合計約{total}の転送になります（サーバーあたり{size}、アップロード + ダウンロード）。プロバイダーのリクエストおよび送信料が発生する場合があります。。並列で最大 {localStorage} のローカル一時ストレージを使用します",
             "compareRunning": "{count}台のサーバーで速度テストを実行中...",
             "compareFooter": "{count}台のサーバーが選択されています",
             "selectAll": "すべて選択",

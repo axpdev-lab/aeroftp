@@ -4305,7 +4305,7 @@
             "tabCompare": "Sammenlign",
             "compareSelectServers": "Valgte servere ({count})",
             "compareHint": "Velg 2 til 8 servere for sammenligning side om side. Samme datastørrelse for alle.",
-            "compareDisclaimer": "Å kjøre dette på {count} servere betyr omtrent {total} total overføring ({size} per server, opplasting + nedlasting). Leverandørens forespørsels- og utgående kostnader kan gjelde og bruker opptil {total} lokal midlertidig lagring parallelt.",
+            "compareDisclaimer": "Å kjøre dette på {count} servere betyr omtrent {total} total overføring ({size} per server, opplasting + nedlasting). Leverandørens forespørsels- og utgående kostnader kan gjelde og bruker opptil {localStorage} lokal midlertidig lagring parallelt.",
             "compareRunning": "Kjører hastighetstest på {count} servere...",
             "compareFooter": "{count} server(e) valgt",
             "selectAll": "Velg alle",

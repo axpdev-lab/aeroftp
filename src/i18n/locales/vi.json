@@ -4286,7 +4286,7 @@
             "tabCompare": "So sánh",
             "compareSelectServers": "Máy chủ đã chọn ({count})",
             "compareHint": "Chọn từ 2 đến 8 máy chủ để kiểm tra song song. Cùng kích thước dữ liệu cho tất cả.",
-            "compareDisclaimer": "Chạy điều này trên {count} máy chủ có nghĩa là khoảng {total} tổng chuyển dữ liệu ({size} mỗi máy chủ, tải lên + tải xuống). Chi phí yêu cầu và lưu lượng đi của nhà cung cấp có thể áp dụng và dùng song song tối đa {total} bộ nhớ tạm cục bộ.",
+            "compareDisclaimer": "Chạy điều này trên {count} máy chủ có nghĩa là khoảng {total} tổng chuyển dữ liệu ({size} mỗi máy chủ, tải lên + tải xuống). Chi phí yêu cầu và lưu lượng đi của nhà cung cấp có thể áp dụng và dùng song song tối đa {localStorage} bộ nhớ tạm cục bộ.",
             "compareRunning": "Đang chạy kiểm tra tốc độ trên {count} máy chủ...",
             "compareFooter": "Đã chọn {count} máy chủ",
             "selectAll": "Chọn tất cả",

@@ -4305,7 +4305,7 @@
             "tabCompare": "Ihambing",
             "compareSelectServers": "Mga napiling server ({count})",
             "compareHint": "Pumili ng 2 hanggang 8 na server para sa magkatabing benchmark. Pareho ang laki ng data para sa lahat.",
-            "compareDisclaimer": "Ang pagpapatakbo nito sa {count} na server ay nangangahulugan ng mga {total} ng kabuuang paglilipat ({size} bawat server, pag-upload + pag-download). Maaaring may bayad ang provider para sa mga kahilingan at papalabas na trapiko at gumagamit ng hanggang {total} na lokal na pansamantalang imbakan nang magkakahanay.",
+            "compareDisclaimer": "Ang pagpapatakbo nito sa {count} na server ay nangangahulugan ng mga {total} ng kabuuang paglilipat ({size} bawat server, pag-upload + pag-download). Maaaring may bayad ang provider para sa mga kahilingan at papalabas na trapiko at gumagamit ng hanggang {localStorage} na lokal na pansamantalang imbakan nang magkakahanay.",
             "compareRunning": "Pinapatakbo ang speed test sa {count} na server...",
             "compareFooter": "{count} (na) server ang napili",
             "selectAll": "Piliin lahat",

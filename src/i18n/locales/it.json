@@ -4610,7 +4610,7 @@
             "tabCompare": "Confronto",
             "compareSelectServers": "Server selezionati ({count})",
             "compareHint": "Scegli da 2 a 8 server per il confronto. Stessa dimensione di payload per tutti.",
-            "compareDisclaimer": "Eseguire su {count} server trasferisce circa {total} ({size} per server, upload + download) e occupa fino a {total} di storage temporaneo locale in parallelo. Possono applicarsi costi del provider.",
+            "compareDisclaimer": "Eseguire su {count} server trasferisce circa {total} ({size} per server, upload + download) e occupa fino a {localStorage} di storage temporaneo locale in parallelo. Possono applicarsi costi del provider.",
             "compareRunning": "Speed test in corso su {count} server...",
             "compareFooter": "{count} server selezionati",
             "selectAll": "Seleziona tutti",

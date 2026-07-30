@@ -4286,7 +4286,7 @@
             "tabCompare": "Palyginti",
             "compareSelectServers": "Pasirinkti serveriai ({count})",
             "compareHint": "Pasirinkite nuo 2 iki 8 serverių lygiagrečiam matavimui. Visiems vienodas duomenų dydis.",
-            "compareDisclaimer": "Vykdymas su {count} serveriais reiškia maždaug {total} bendrojo perdavimo ({size} vienam serveriui, įkėlimas + atsisiuntimas). Gali būti taikomi paslaugų teikėjo užklausų ir išeinančio srauto mokesčiai ir lygiagrečiai naudoja iki {total} vietinės laikinosios saugyklos.",
+            "compareDisclaimer": "Vykdymas su {count} serveriais reiškia maždaug {total} bendrojo perdavimo ({size} vienam serveriui, įkėlimas + atsisiuntimas). Gali būti taikomi paslaugų teikėjo užklausų ir išeinančio srauto mokesčiai ir lygiagrečiai naudoja iki {localStorage} vietinės laikinosios saugyklos.",
             "compareRunning": "Vykdomas greičio testas {count} serveriuose...",
             "compareFooter": "Pasirinkta serverių: {count}",
             "selectAll": "Pasirinkti visus",

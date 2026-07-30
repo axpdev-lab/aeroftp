@@ -4286,7 +4286,7 @@
             "tabCompare": "Võrdlus",
             "compareSelectServers": "Valitud serverid ({count})",
             "compareHint": "Vali 2 kuni 8 serverit kõrvuti võrdlemiseks. Sama payloadi suurus kõigile.",
-            "compareDisclaimer": "Käivitamine {count} serveris tähendab umbes {total} kogu ülekannet ({size} serveri kohta, üleslaadimine + allalaadimine). Võivad kehtida pakkuja päringu- ja egress-kulud ja kasutab paralleelselt kuni {total} kohalikku ajutist salvestusruumi.",
+            "compareDisclaimer": "Käivitamine {count} serveris tähendab umbes {total} kogu ülekannet ({size} serveri kohta, üleslaadimine + allalaadimine). Võivad kehtida pakkuja päringu- ja egress-kulud ja kasutab paralleelselt kuni {localStorage} kohalikku ajutist salvestusruumi.",
             "compareRunning": "Kiirustesti käivitamine {count} serveris...",
             "compareFooter": "{count} serverit valitud",
             "selectAll": "Vali kõik",
