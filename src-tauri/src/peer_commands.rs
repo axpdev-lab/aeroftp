@@ -593,12 +593,20 @@ fn apply_active_discovery_pref(app: &AppHandle) {
 /// can open it in the OS file manager (via `open_in_file_manager`) without
 /// guessing the path. Creates the directory if absent so "Open inbox folder"
 /// never fails on a fresh install that has not received anything yet.
+///
+/// `async`: the inbox root sits under the home directory, which may be an
+/// NFS/SMB mount, and `create_dir_all` stats every component on the way down.
+/// A sync command would do that on the main thread.
 #[tauri::command]
-pub fn aeroshare_inbox_root() -> Result<String, String> {
-    let root = default_inbox_root()?;
-    std::fs::create_dir_all(&root)
-        .map_err(|e| format!("could not create the AeroShare inbox folder: {e}"))?;
-    Ok(root.to_string_lossy().to_string())
+pub async fn aeroshare_inbox_root() -> Result<String, String> {
+    tokio::task::spawn_blocking(|| {
+        let root = default_inbox_root()?;
+        std::fs::create_dir_all(&root)
+            .map_err(|e| format!("could not create the AeroShare inbox folder: {e}"))?;
+        Ok(root.to_string_lossy().to_string())
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("AeroShare inbox root task failed: {err}")))
 }
 
 #[derive(Deserialize)]

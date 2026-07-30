@@ -14,7 +14,7 @@
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 
@@ -38,15 +38,24 @@ struct WatcherSlot {
 }
 
 /// Tauri-managed state. Holds at most one active watcher.
+///
+/// The mutex is behind an `Arc` so a command can clone a `'static` handle out
+/// of `State<'_, LocalPanelWatcherState>` and hand it to `spawn_blocking`;
+/// `State` borrows the app and cannot cross that boundary itself.
 pub struct LocalPanelWatcherState {
-    inner: Mutex<Option<WatcherSlot>>,
+    inner: Arc<Mutex<Option<WatcherSlot>>>,
 }
 
 impl LocalPanelWatcherState {
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(None),
+            inner: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// A `'static` handle to the slot, for use off the main thread.
+    fn handle(&self) -> Arc<Mutex<Option<WatcherSlot>>> {
+        Arc::clone(&self.inner)
     }
 }
 
@@ -58,11 +67,28 @@ impl Default for LocalPanelWatcherState {
 
 /// Start watching `path` non-recursively. If a previous watcher is active,
 /// it is dropped first. Idempotent: passing the same path again is a no-op.
+///
+/// `async`: `path` comes from the frontend, and `is_dir()` on it is a `stat(2)`
+/// that blocks for the mount's own timeout when that mount is a network share
+/// whose server has gone. Registering the inotify/FSEvents/RDCW watch is a
+/// syscall against the same path. A synchronous command would do both on the
+/// main thread, which on Linux is the GTK thread.
 #[tauri::command]
-pub fn local_panel_watch(
+pub async fn local_panel_watch(
     path: String,
     app: AppHandle,
     state: State<'_, LocalPanelWatcherState>,
+) -> Result<(), String> {
+    let slot = state.handle();
+    tokio::task::spawn_blocking(move || local_panel_watch_blocking(path, app, &slot))
+        .await
+        .unwrap_or_else(|err| Err(format!("Watcher start task failed: {err}")))
+}
+
+fn local_panel_watch_blocking(
+    path: String,
+    app: AppHandle,
+    state: &Mutex<Option<WatcherSlot>>,
 ) -> Result<(), String> {
     let new_path = PathBuf::from(&path);
     if !new_path.is_dir() {
@@ -70,7 +96,6 @@ pub fn local_panel_watch(
     }
 
     let mut slot = state
-        .inner
         .lock()
         .map_err(|_| "watcher state poisoned".to_string())?;
 
@@ -128,12 +153,23 @@ pub fn local_panel_watch(
 }
 
 /// Stop the active watcher (if any). Safe to call when nothing is watching.
+///
+/// `async` for two reasons: dropping the slot tears down the platform watch
+/// handle, and it takes the same lock `local_panel_watch` holds while it stats
+/// a frontend-supplied path. Leaving this one synchronous would keep the freeze
+/// reachable by navigating away from a hung mount.
 #[tauri::command]
-pub fn local_panel_watch_stop(state: State<'_, LocalPanelWatcherState>) -> Result<(), String> {
-    let mut slot = state
-        .inner
-        .lock()
-        .map_err(|_| "watcher state poisoned".to_string())?;
-    *slot = None;
-    Ok(())
+pub async fn local_panel_watch_stop(
+    state: State<'_, LocalPanelWatcherState>,
+) -> Result<(), String> {
+    let slot = state.handle();
+    tokio::task::spawn_blocking(move || {
+        let mut slot = slot
+            .lock()
+            .map_err(|_| "watcher state poisoned".to_string())?;
+        *slot = None;
+        Ok(())
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("Watcher stop task failed: {err}")))
 }

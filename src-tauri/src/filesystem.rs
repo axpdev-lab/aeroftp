@@ -84,7 +84,9 @@ pub struct UnmountedPartition {
 }
 
 /// A subdirectory entry for tree/breadcrumb navigation.
-#[derive(Serialize, Clone)]
+// Debug + PartialEq so the pin in `main_thread_tests` can assert that the async
+// wrapper returns exactly what the blocking body computed.
+#[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct SubDirectory {
     pub name: String,
     pub path: String,
@@ -102,8 +104,25 @@ const WELL_KNOWN_HIDDEN: &[&str] = &[
 
 /// Returns standard user directories detected via the `dirs` crate.
 /// Only directories that exist on disk are included.
+///
+/// `async` on purpose: every mapping ends in a `path.exists()`, which is a
+/// `stat(2)`, and a home directory can live on an NFS/SMB/SSHFS mount whose
+/// server has gone away. A sync command runs on the main thread (the GTK
+/// thread on Linux), so one unreachable mount here freezes the whole window
+/// for as long as the mount's own timeout, with no spinner and nothing the
+/// user can tell apart from a crash. `spawn_blocking` keeps the syscalls on
+/// the blocking pool.
 #[tauri::command]
-pub fn get_user_directories() -> Vec<UserDirectory> {
+pub async fn get_user_directories() -> Vec<UserDirectory> {
+    tokio::task::spawn_blocking(get_user_directories_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            warn!("get_user_directories blocking task failed: {err}");
+            Vec::new()
+        })
+}
+
+fn get_user_directories_blocking() -> Vec<UserDirectory> {
     let mappings: Vec<(Option<PathBuf>, &str, &str)> = vec![
         (dirs::home_dir(), "home", "Home"),
         (dirs::desktop_dir(), "desktop", "Monitor"),
@@ -740,8 +759,32 @@ async fn list_mounted_volumes_windows() -> Result<Vec<VolumeInfo>, String> {
 /// Returns subdirectories of the given path, sorted alphabetically (case-insensitive).
 /// Used for breadcrumb dropdowns and tree expansion in the Places sidebar.
 /// Skips hidden directories unless they are well-known (e.g. `.config`, `.ssh`).
+///
+/// `async` is not decoration here, it is the fix for the worst instance of the
+/// main-thread problem in this crate. A synchronous `#[tauri::command]` runs on
+/// the main thread, which on Linux is the GTK thread, and this one:
+///
+///   * takes its path **straight from the frontend**, so the caller chooses
+///     which mount we walk into;
+///   * stats it twice (`exists`, `is_dir`), then `read_dir`s it, then stats
+///     every entry, then `read_dir`s each subdirectory again for the expand
+///     chevron. That is O(entries) syscalls, not one;
+///   * has no timeout of its own anywhere, so on a dead NFS/SMB/SSHFS mount it
+///     blocks in the kernel for however long that mount was configured to wait.
+///
+/// Sync, that is a frozen window with no spinner. On the blocking pool it is a
+/// tree node that stays on "Loading...", and the rest of the app keeps working.
 #[tauri::command]
-pub fn list_subdirectories(path: String) -> Result<Vec<SubDirectory>, String> {
+pub async fn list_subdirectories(path: String) -> Result<Vec<SubDirectory>, String> {
+    tokio::task::spawn_blocking(move || list_subdirectories_blocking(path))
+        .await
+        .unwrap_or_else(|err| {
+            warn!("list_subdirectories blocking task failed: {err}");
+            Err("Failed to read directory".to_string())
+        })
+}
+
+fn list_subdirectories_blocking(path: String) -> Result<Vec<SubDirectory>, String> {
     validate_path(&path)?;
 
     let dir_path = Path::new(&path);
@@ -2090,9 +2133,26 @@ fn djb2_hash(bytes: &[u8]) -> u64 {
 /// listing to detect changes without spawning subprocesses or doing disk space
 /// queries. The frontend polls this cheaply and only performs a full volume
 /// refresh when it returns true.
+///
+/// `async` because of the GVFS half. `/proc/mounts` is a kernel file and always
+/// answers, but `/run/user/N/gvfs` is a FUSE mount served by a userspace daemon:
+/// listing it goes out to `gvfsd`, and if a network share behind it has gone
+/// unreachable the `readdir` blocks until that share's own timeout. The frontend
+/// polls this every 30 seconds, so on a sync command that is a periodic freeze
+/// of the GTK thread, arriving on its own with no user action to blame it on.
 #[cfg(target_os = "linux")]
 #[tauri::command]
-pub fn volumes_changed() -> bool {
+pub async fn volumes_changed() -> bool {
+    tokio::task::spawn_blocking(volumes_changed_blocking)
+        .await
+        .unwrap_or_else(|err| {
+            warn!("volumes_changed blocking task failed: {err}");
+            true // same fallback as an unreadable /proc/mounts: assume changed
+        })
+}
+
+#[cfg(target_os = "linux")]
+fn volumes_changed_blocking() -> bool {
     let content = match std::fs::read_to_string("/proc/mounts") {
         Ok(c) => c,
         Err(_) => return true, // On error, assume changed
@@ -2139,9 +2199,14 @@ static LAST_DRIVE_MASK: std::sync::atomic::AtomicU32 = std::sync::atomic::Atomic
 /// Label renames without a mask change are rare and are still covered by the
 /// real-time `WM_DEVICECHANGE` watcher emit and the focus-refetch safety net.
 /// First call with a non-zero mask reports changed (same pattern as Linux hash at 0).
+///
+/// `GetLogicalDrives` is a cheap in-kernel bitmask and needs no blocking pool,
+/// but the command is `async` anyway so the three platform variants present the
+/// same surface: one of them (Linux) must be off the main thread, and a command
+/// whose asyncness depends on the target is a trap for the next reader.
 #[cfg(target_os = "windows")]
 #[tauri::command]
-pub fn volumes_changed() -> bool {
+pub async fn volumes_changed() -> bool {
     use std::sync::atomic::Ordering;
     use windows::Win32::Storage::FileSystem::GetLogicalDrives;
 
@@ -2151,9 +2216,10 @@ pub fn volumes_changed() -> bool {
 }
 
 /// Non-Linux, non-Windows platforms always report changed (poll full refresh).
+/// `async` to match the other two variants; see the Windows one for why.
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 #[tauri::command]
-pub fn volumes_changed() -> bool {
+pub async fn volumes_changed() -> bool {
     true
 }
 
@@ -2504,4 +2570,81 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 pub fn start_mount_watcher(_app_handle: tauri::AppHandle) {
     // No-op: rely on frontend polling fallback
+}
+
+#[cfg(test)]
+mod main_thread_tests {
+    use super::*;
+
+    /// `list_subdirectories` must never run on the main thread.
+    ///
+    /// A synchronous `#[tauri::command]` is dispatched on the main thread, which
+    /// on Linux is the GTK thread. This command takes its path from the
+    /// frontend and walks it with `read_dir` plus a `stat` per entry plus
+    /// another `read_dir` per subdirectory, none of it bounded by anything we
+    /// control: on a network mount whose server has gone, that is the whole
+    /// window frozen for the mount's own timeout.
+    ///
+    /// The pin is `block_on`, and it acts at **compile time**: `block_on` takes
+    /// a future, so turning the command back into a `pub fn` stops this test
+    /// building (E0277) instead of failing an assertion somebody can delete.
+    /// What it asserts on top of that is the other half: the wrapper returns
+    /// what the blocking body computed, it does not quietly change the answer.
+    #[test]
+    fn list_subdirectories_stays_off_the_main_thread() {
+        let base = tempfile::tempdir().expect("temp dir");
+        std::fs::create_dir(base.path().join("beta")).expect("mkdir beta");
+        std::fs::create_dir(base.path().join("alpha")).expect("mkdir alpha");
+        std::fs::write(base.path().join("not-a-dir.txt"), b"x").expect("write file");
+        let path = base.path().to_string_lossy().to_string();
+
+        let rt = tokio::runtime::Runtime::new().expect("test runtime");
+        let from_command = rt
+            .block_on(list_subdirectories(path.clone()))
+            .expect("command should list the temp dir");
+
+        let names: Vec<&str> = from_command.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["alpha", "beta"],
+            "only directories, sorted case-insensitively"
+        );
+        assert_eq!(
+            from_command,
+            list_subdirectories_blocking(path).expect("blocking body"),
+            "the async wrapper must report what the blocking body computed"
+        );
+    }
+
+    /// The error path has to survive the move onto the blocking pool too:
+    /// a missing path is still a plain error, not a task failure.
+    #[test]
+    fn list_subdirectories_still_rejects_a_path_that_is_not_there() {
+        let base = tempfile::tempdir().expect("temp dir");
+        let missing = base.path().join("nope").to_string_lossy().to_string();
+
+        let rt = tokio::runtime::Runtime::new().expect("test runtime");
+        let err = rt
+            .block_on(list_subdirectories(missing))
+            .expect_err("a path that does not exist must be an error");
+        assert_eq!(err, "Path does not exist");
+    }
+
+    /// Same pin for the volume poll: the frontend runs it every 30 seconds, so
+    /// a synchronous version would freeze the GTK thread on a schedule, with no
+    /// user action to attribute it to.
+    #[test]
+    fn volumes_changed_stays_off_the_main_thread() {
+        let rt = tokio::runtime::Runtime::new().expect("test runtime");
+        // First call primes the cached state, the second must agree with it.
+        let _ = rt.block_on(volumes_changed());
+        let second = rt.block_on(volumes_changed());
+        #[cfg(target_os = "linux")]
+        assert!(
+            !second,
+            "nothing mounted between the two calls, so the poll must report no change"
+        );
+        #[cfg(not(target_os = "linux"))]
+        let _ = second;
+    }
 }

@@ -190,6 +190,11 @@ pub mod ssh_config_import;
 mod ssh_shell;
 pub mod sync;
 mod sync_badge;
+/// Class-level pin against `#[tauri::command]`s that block the main thread.
+/// Tests only; see the module docs for why it reads the sources instead of
+/// reflecting over the crate.
+#[cfg(test)]
+mod sync_command_audit;
 pub mod sync_core;
 mod sync_ignore;
 mod sync_scheduler;

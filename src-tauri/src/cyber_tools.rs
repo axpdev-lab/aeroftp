@@ -30,8 +30,28 @@ const BLAKE3_DEFAULT_LEN: usize = 32;
 /// - `output_len`: optional BLAKE3 XOF length in bytes (1..=1024). Ignored for
 ///   non-BLAKE3 algorithms. `None` keeps the classic 32-byte BLAKE3 digest.
 /// - Empty input is valid (empty-string / empty-decoded bytes are hashed).
+///
+/// `async` because `text` is whatever the user pasted into the tool and nothing
+/// bounds it: decode and digest are both linear in that length, and a sync
+/// command would run them on the main thread. Nothing here touches the disk —
+/// the input arrives already in memory over the IPC boundary — so this is a
+/// CPU-duration fix, not an I/O one.
 #[tauri::command]
-pub fn hash_text(
+pub async fn hash_text(
+    text: String,
+    algorithm: String,
+    output_len: Option<usize>,
+    encoding: Option<String>,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || hash_text_blocking(text, algorithm, output_len, encoding))
+        .await
+        .unwrap_or_else(|err| Err(format!("Hash task failed: {err}")))
+}
+
+/// The hashing itself. Named rather than inlined into the closure so the tests
+/// can drive it directly instead of standing up a runtime for each case; the
+/// command's asyncness has its own pin in `hash_forge_tests`.
+fn hash_text_blocking(
     text: String,
     algorithm: String,
     output_len: Option<usize>,
@@ -908,43 +928,66 @@ const WORDLIST: &[&str] = &[
 mod hash_forge_tests {
     use super::*;
 
+    /// `hash_text` must never run on the main thread: `text` is whatever the
+    /// user pasted, nothing bounds its length, and both the decode and the
+    /// digest are linear in it.
+    ///
+    /// The pin is `block_on`, and it acts at **compile time**: it only accepts
+    /// a future, so turning the command back into a `pub fn` stops this test
+    /// building (E0277) rather than failing an assertion someone can delete.
+    /// The cases below drive `hash_text_blocking` directly, so this is also the
+    /// one place that checks the wrapper reports what the body computed.
+    #[test]
+    fn hash_text_stays_off_the_main_thread() {
+        let rt = tokio::runtime::Runtime::new().expect("test runtime");
+        let from_command = rt
+            .block_on(hash_text("hello".into(), "blake3".into(), None, None))
+            .expect("blake3 of a short string");
+        assert_eq!(
+            from_command,
+            hash_text_blocking("hello".into(), "blake3".into(), None, None).expect("blocking body"),
+            "the async wrapper must report what the blocking body computed"
+        );
+    }
+
     /// BLAKE3 of empty input (32-byte classic digest) — known test vector.
     const BLAKE3_EMPTY: &str = "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262";
 
     #[test]
     fn blake3_empty_input_matches_known_vector() {
-        let hex = hash_text("".into(), "blake3".into(), None, None).expect("empty blake3");
+        let hex = hash_text_blocking("".into(), "blake3".into(), None, None).expect("empty blake3");
         assert_eq!(hex, BLAKE3_EMPTY);
     }
 
     #[test]
     fn blake3_xof_32_equals_classic_digest() {
-        let classic = hash_text("hello".into(), "blake3".into(), None, None).unwrap();
-        let xof32 = hash_text("hello".into(), "blake3".into(), Some(32), None).unwrap();
+        let classic = hash_text_blocking("hello".into(), "blake3".into(), None, None).unwrap();
+        let xof32 = hash_text_blocking("hello".into(), "blake3".into(), Some(32), None).unwrap();
         assert_eq!(classic, xof32);
         assert_eq!(classic.len(), 64); // 32 bytes → 64 hex chars
     }
 
     #[test]
     fn blake3_xof_64_is_128_hex_chars_and_extends_classic() {
-        let classic = hash_text("hello".into(), "blake3".into(), None, None).unwrap();
-        let xof64 = hash_text("hello".into(), "blake3".into(), Some(64), None).unwrap();
+        let classic = hash_text_blocking("hello".into(), "blake3".into(), None, None).unwrap();
+        let xof64 = hash_text_blocking("hello".into(), "blake3".into(), Some(64), None).unwrap();
         assert_eq!(xof64.len(), 128);
         assert!(xof64.starts_with(&classic));
     }
 
     #[test]
     fn blake3_output_len_bounds() {
-        assert!(hash_text("x".into(), "blake3".into(), Some(0), None).is_err());
-        assert!(hash_text("x".into(), "blake3".into(), Some(1025), None).is_err());
-        assert!(hash_text("x".into(), "blake3".into(), Some(1), None).is_ok());
-        assert!(hash_text("x".into(), "blake3".into(), Some(1024), None).is_ok());
+        assert!(hash_text_blocking("x".into(), "blake3".into(), Some(0), None).is_err());
+        assert!(hash_text_blocking("x".into(), "blake3".into(), Some(1025), None).is_err());
+        assert!(hash_text_blocking("x".into(), "blake3".into(), Some(1), None).is_ok());
+        assert!(hash_text_blocking("x".into(), "blake3".into(), Some(1024), None).is_ok());
     }
 
     #[test]
     fn encoding_utf8_default_hashes_raw_bytes() {
-        let a = hash_text("hi".into(), "sha256".into(), None, None).unwrap();
-        let b = hash_text("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
+        let a = hash_text_blocking("hi".into(), "sha256".into(), None, None).unwrap();
+        let b =
+            hash_text_blocking("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
         assert_eq!(a, b);
         // SHA-256("hi") known value
         assert_eq!(
@@ -957,9 +1000,10 @@ mod hash_forge_tests {
     fn encoding_base64_happy_path() {
         // base64("hi") = "aGk="
         let from_b64 =
-            hash_text("aGk=".into(), "sha256".into(), None, Some("base64".into())).unwrap();
+            hash_text_blocking("aGk=".into(), "sha256".into(), None, Some("base64".into()))
+                .unwrap();
         let from_utf8 =
-            hash_text("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
+            hash_text_blocking("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
         assert_eq!(from_b64, from_utf8);
     }
 
@@ -967,9 +1011,9 @@ mod hash_forge_tests {
     fn encoding_hex_happy_path() {
         // hex("hi") = "6869"
         let from_hex =
-            hash_text("68 69".into(), "sha256".into(), None, Some("hex".into())).unwrap();
+            hash_text_blocking("68 69".into(), "sha256".into(), None, Some("hex".into())).unwrap();
         let from_utf8 =
-            hash_text("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
+            hash_text_blocking("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
         assert_eq!(from_hex, from_utf8);
     }
 
@@ -978,25 +1022,36 @@ mod hash_forge_tests {
         // "hi" = 0x68 0x69 → binary
         let bits = "01101000 01101001";
         let from_bin =
-            hash_text(bits.into(), "sha256".into(), None, Some("binary".into())).unwrap();
+            hash_text_blocking(bits.into(), "sha256".into(), None, Some("binary".into())).unwrap();
         let from_utf8 =
-            hash_text("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
+            hash_text_blocking("hi".into(), "sha256".into(), None, Some("utf-8".into())).unwrap();
         assert_eq!(from_bin, from_utf8);
     }
 
     #[test]
     fn encoding_invalid_inputs_error() {
-        assert!(hash_text("!!!".into(), "sha256".into(), None, Some("base64".into())).is_err());
-        assert!(hash_text("zz".into(), "sha256".into(), None, Some("hex".into())).is_err());
-        assert!(hash_text("012".into(), "sha256".into(), None, Some("binary".into())).is_err()); // not multiple of 8
-        assert!(hash_text("0123".into(), "sha256".into(), None, Some("binary".into())).is_err()); // not only 0/1
-        assert!(hash_text("x".into(), "sha256".into(), None, Some("rot13".into())).is_err());
+        assert!(
+            hash_text_blocking("!!!".into(), "sha256".into(), None, Some("base64".into())).is_err()
+        );
+        assert!(
+            hash_text_blocking("zz".into(), "sha256".into(), None, Some("hex".into())).is_err()
+        );
+        assert!(
+            hash_text_blocking("012".into(), "sha256".into(), None, Some("binary".into())).is_err()
+        ); // not multiple of 8
+        assert!(
+            hash_text_blocking("0123".into(), "sha256".into(), None, Some("binary".into()))
+                .is_err()
+        ); // not only 0/1
+        assert!(
+            hash_text_blocking("x".into(), "sha256".into(), None, Some("rot13".into())).is_err()
+        );
     }
 
     #[test]
     fn non_blake3_ignores_output_len() {
-        let a = hash_text("hi".into(), "md5".into(), None, None).unwrap();
-        let b = hash_text("hi".into(), "md5".into(), Some(64), None).unwrap();
+        let a = hash_text_blocking("hi".into(), "md5".into(), None, None).unwrap();
+        let b = hash_text_blocking("hi".into(), "md5".into(), Some(64), None).unwrap();
         assert_eq!(a, b);
         assert_eq!(a.len(), 32); // md5 is always 16 bytes
     }

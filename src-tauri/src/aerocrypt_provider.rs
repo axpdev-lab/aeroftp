@@ -656,11 +656,18 @@ pub async fn aerocrypt_provider_create_remote(
 /// The caller (GUI create flow) is expected to have already persisted the
 /// config (via headerless keystore store or remote marker) and now reads it
 /// back before calling, exactly as the CLI does.
+///
+/// `async`: `config_json` crosses the IPC boundary from the frontend and
+/// nothing here bounds its size, so the parse and the kit construction are both
+/// linear in whatever was handed in. Off the main thread it is a slow call; on
+/// the main thread it is a frozen window.
 #[tauri::command]
-pub fn aerocrypt_build_emergency_kit(
+pub async fn aerocrypt_build_emergency_kit(
     config_json: String,
 ) -> Result<emergency_kit::EmergencyKit, String> {
-    emergency_kit::build_from_config_json(&config_json)
+    tokio::task::spawn_blocking(move || emergency_kit::build_from_config_json(&config_json))
+        .await
+        .unwrap_or_else(|err| Err(format!("Emergency kit build task failed: {err}")))
 }
 
 // ── v4 keyslot manager (T6 GUI parity with CLI crypt migrate-v4 / *-slot) ─────

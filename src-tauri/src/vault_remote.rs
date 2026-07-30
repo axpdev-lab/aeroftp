@@ -159,8 +159,21 @@ fn validate_managed_temp_vault_path(path: &Path) -> Result<PathBuf, String> {
 
 /// Clean up a temporary vault file securely.
 /// Validates: temp directory confinement, filename pattern, no symlinks.
+///
+/// `async` because the secure-delete path is the opposite of cheap: it opens
+/// the file, overwrites every byte of it in 1 MB chunks, calls `sync_all()`
+/// (which waits on the physical device), and only then unlinks. The duration is
+/// linear in the size of the vault file and ends in an fsync, so on a sync
+/// command the whole window would sit frozen for it. `spawn_blocking` keeps the
+/// zero-fill on the blocking pool; the validation order is untouched.
 #[tauri::command]
-pub fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
+pub async fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || vault_v2_cleanup_temp_blocking(local_path))
+        .await
+        .unwrap_or_else(|err| Err(format!("Temp vault cleanup task failed: {err}")))
+}
+
+fn vault_v2_cleanup_temp_blocking(local_path: String) -> Result<(), String> {
     validate_no_null_bytes(&local_path)?;
 
     let path = PathBuf::from(&local_path);
