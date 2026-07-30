@@ -406,6 +406,10 @@ async fn run_speedtest_inner(
     {
         Ok(()) => {}
         Err(msg) if msg == "Test cancelled while creating scratch directory" => {
+            // connect() already succeeded at this point: drop the session
+            // before returning so a cancelled run never leaks a connected
+            // provider (every other post-connect error path disconnects).
+            let _ = provider.disconnect().await;
             return Err(msg);
         }
         Err(e) => {
@@ -796,27 +800,37 @@ fn validate_supported_protocol(protocol: &str) -> Result<(), String> {
 }
 
 /// True when `remote_dir` is a path commonly served as a public web document
-/// root. A multi-hundred-MB payload under such a tree can be fetched by anyone
-/// who knows the URL, even when nested in `.aeroftp-speedtest/`.
+/// root, or any descendant of one. A multi-hundred-MB payload under such a
+/// tree can be fetched by anyone who knows the URL, even when nested in
+/// `.aeroftp-speedtest/`.
 fn is_public_web_document_root(remote_dir: &str) -> bool {
     let trimmed = remote_dir.trim().trim_end_matches('/');
     let p = if trimmed.is_empty() { "/" } else { trimmed };
     let lower = p.to_ascii_lowercase();
-    matches!(
-        lower.as_str(),
-        "/var/www"
-            | "/var/www/html"
-            | "/var/www/htdocs"
-            | "/usr/share/nginx/html"
-            | "/usr/share/nginx"
-            | "/srv/www"
-            | "/srv/http"
-            | "/opt/homebrew/var/www"
-    ) || lower.ends_with("/public_html")
-        || lower.ends_with("/htdocs")
-        || lower.ends_with("/wwwroot")
-        // Trailing "/www" but not shorter false friends like "/www-data".
-        || lower.ends_with("/www")
+    const PUBLIC_ROOTS: &[&str] = &[
+        "/var/www",
+        "/var/www/html",
+        "/var/www/htdocs",
+        "/usr/share/nginx/html",
+        "/usr/share/nginx",
+        "/srv/www",
+        "/srv/http",
+        "/opt/homebrew/var/www",
+    ];
+    // Exact root or any descendant of it. The prefix check is on a full path
+    // component boundary (`root + "/"`), so "/var/www-data" is NOT rejected.
+    if PUBLIC_ROOTS
+        .iter()
+        .any(|root| lower == *root || lower.starts_with(&format!("{root}/")))
+    {
+        return true;
+    }
+    // Per-user document roots: any path component that is itself a known
+    // document-root name (public_html, htdocs, wwwroot, www) makes the whole
+    // subtree public, no matter where it is mounted.
+    lower
+        .split('/')
+        .any(|seg| matches!(seg, "public_html" | "htdocs" | "wwwroot" | "www"))
 }
 
 /// Refuse known public document roots before any network work. Account root
@@ -953,7 +967,8 @@ mod tests {
 
     /// Pin: known public document roots must be refused before any network work.
     /// Re-allowing `/var/www/html` would put a multi-hundred-MB file where a web
-    /// server can still serve it from `.aeroftp-speedtest/`.
+    /// server can still serve it from `.aeroftp-speedtest/`. Descendants of a
+    /// public root are equally servable, so they must be rejected too.
     #[test]
     fn public_web_document_roots_are_rejected() {
         for dir in [
@@ -967,13 +982,31 @@ mod tests {
             "/Users/bob/Sites/htdocs",
             "/inetpub/wwwroot",
             "/opt/site/www",
+            // Descendants of a public root: still web-servable, must reject.
+            "/var/www/html/uploads",
+            "/var/www/html/.aeroftp-speedtest",
+            "/home/alice/public_html/bench",
+            "/srv/http/site/assets",
+            "/opt/site/www/bench",
         ] {
             assert!(
                 validate_remote_dir_for_speedtest(dir).is_err(),
                 "expected rejection for public web root {dir}"
             );
         }
-        for dir in ["/", "", "/tmp", "/home/user", "/data/bench", "/account"] {
+        for dir in [
+            "/",
+            "",
+            "/tmp",
+            "/home/user",
+            "/data/bench",
+            "/account",
+            // False friends: contain a public-root-looking substring but are not
+            // document roots (component-boundary matching must not over-reject).
+            "/var/www-data",
+            "/srv/www-data/backups",
+            "/home/user/public_html_backup",
+        ] {
             assert!(
                 validate_remote_dir_for_speedtest(dir).is_ok(),
                 "expected allow for non-document-root {dir}"
@@ -1007,6 +1040,27 @@ mod tests {
         assert!(
             window.contains("run_cancelable"),
             "run_cancelable must wrap provider.mkdir(&scratch_dir)"
+        );
+    }
+
+    /// Pin: the scratch-mkdir cancel branch runs AFTER connect() succeeded, so
+    /// it must disconnect the provider before returning (every other
+    /// post-connect error path does). Removing the disconnect leaks a live
+    /// session on cancel.
+    #[test]
+    fn cancel_after_connect_disconnects_provider() {
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/speedtest.rs"));
+        let branch_at = src
+            .find("Err(msg) if msg == \"Test cancelled while creating scratch directory\" => {")
+            .expect("cancel branch for scratch mkdir present");
+        let return_at = src[branch_at..]
+            .find("return Err(msg);")
+            .map(|i| branch_at + i)
+            .expect("cancel branch returns the cancel message");
+        let branch_body = &src[branch_at..return_at];
+        assert!(
+            branch_body.contains("provider.disconnect()"),
+            "cancel after connect must disconnect the provider before returning"
         );
     }
 
