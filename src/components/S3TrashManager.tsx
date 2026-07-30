@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, File, Undo2, CornerUpLeft } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { TrashTable, type TrashRow } from './Trash/TrashTable';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { formatSize, formatDate } from '../utils/formatters';
 
@@ -151,6 +152,103 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
 
   const busy = actionKey !== null || emptyLoading;
 
+  // S3's trash is the bucket's version history: every row is an object version
+  // or a delete marker, never a folder, and each carries its own actions. It
+  // joins the shared table read-only (no bulk selection here) with Kind and
+  // Actions as extra columns, which is what buys it the sorting it lacked.
+  const byRowId = useMemo(
+    () => new Map(items.map(item => [`${item.key}#${item.version_id}`, item])),
+    [items],
+  );
+  const trashRows: TrashRow[] = useMemo(
+    () => items.map(item => ({
+      id: `${item.key}#${item.version_id}`,
+      name: item.display_key,
+      isDir: false,
+      size: item.is_delete_marker ? null : item.size,
+      deletedAt: item.last_modified,
+    })),
+    [items],
+  );
+  const s3Columns = useMemo(
+    () => [
+      {
+        key: 'kind',
+        header: t('contextMenu.s3TrashKind') || 'Kind',
+        className: 'w-24',
+        render: (row: TrashRow) => {
+          const item = byRowId.get(row.id);
+          if (!item) return null;
+          return (
+            <span className="flex items-center gap-1">
+              {item.is_delete_marker ? (
+                <span className="text-[10px] bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded whitespace-nowrap">
+                  {t('contextMenu.s3TrashDeleteMarker') || 'Deleted'}
+                </span>
+              ) : (
+                <span className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded whitespace-nowrap">
+                  {t('contextMenu.s3TrashVersion') || 'Version'}
+                </span>
+              )}
+              {item.is_latest && (
+                <span className="text-[10px] bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 px-1.5 py-0.5 rounded whitespace-nowrap">
+                  {t('contextMenu.s3TrashLatest') || 'Latest'}
+                </span>
+              )}
+            </span>
+          );
+        },
+      },
+      {
+        key: 'actions',
+        header: t('versions.actions') || 'Actions',
+        className: 'w-40 text-right',
+        render: (row: TrashRow) => {
+          const item = byRowId.get(row.id);
+          if (!item) return null;
+          const rowBusy = actionKey === item.version_id;
+          return (
+            <span className="flex items-center justify-end gap-1">
+              {item.is_delete_marker ? (
+                <button
+                  onClick={() => restore(item, 'undelete')}
+                  disabled={busy}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={t('contextMenu.s3TrashUndeleteHint') || 'Drop this delete marker so the object reappears'}
+                >
+                  {rowBusy ? <Loader2 size={11} className="animate-spin" /> : <Undo2 size={11} />}
+                  {t('contextMenu.s3TrashUndelete') || 'Undelete'}
+                </button>
+              ) : (
+                !item.is_latest && (
+                  <button
+                    onClick={() => restore(item, 'copy_forward')}
+                    disabled={busy}
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={t('contextMenu.s3TrashCopyForwardHint') || 'Copy this older version forward to become current'}
+                  >
+                    {rowBusy ? <Loader2 size={11} className="animate-spin" /> : <CornerUpLeft size={11} />}
+                    {t('contextMenu.s3TrashCopyForward') || 'Restore'}
+                  </button>
+                )
+              )}
+              <button
+                onClick={() => setPendingPurge(item)}
+                disabled={busy}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={t('contextMenu.s3TrashPurgeHint') || 'Permanently delete this version (irreversible)'}
+              >
+                {rowBusy ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                {t('contextMenu.s3TrashPurge') || 'Purge'}
+              </button>
+            </span>
+          );
+        },
+      },
+    ],
+    [byRowId, actionKey, busy, restore, t],
+  );
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
@@ -225,95 +323,11 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
               {t('contextMenu.s3TrashEmptyOrVersioningOff') || 'Trash empty (or bucket versioning is off)'}
             </div>
           ) : (
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                <tr className="text-left text-gray-500 dark:text-gray-500">
-                  <th className="px-2 py-1.5">{t('common.name')}</th>
-                  <th className="px-2 py-1.5 w-24">{t('contextMenu.s3TrashKind') || 'Kind'}</th>
-                  <th className="px-2 py-1.5 w-20 text-right">{t('common.size')}</th>
-                  <th className="px-2 py-1.5 w-40">{t('contextMenu.trashDeletedDate')}</th>
-                  <th className="px-2 py-1.5 w-40 text-right">{t('versions.actions') || 'Actions'}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map(item => {
-                  const rowBusy = actionKey === item.version_id;
-                  return (
-                    <tr
-                      key={`${item.key}#${item.version_id}`}
-                      className="hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700/30"
-                    >
-                      <td className="px-2 py-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <File size={13} className="text-gray-500 dark:text-gray-500 shrink-0" />
-                          <span className="truncate text-gray-900 dark:text-gray-100" title={item.display_key}>{item.display_key}</span>
-                        </div>
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <div className="flex items-center gap-1">
-                          {item.is_delete_marker ? (
-                            <span className="text-[10px] bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded whitespace-nowrap">
-                              {t('contextMenu.s3TrashDeleteMarker') || 'Deleted'}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded whitespace-nowrap">
-                              {t('contextMenu.s3TrashVersion') || 'Version'}
-                            </span>
-                          )}
-                          {item.is_latest && (
-                            <span className="text-[10px] bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 px-1.5 py-0.5 rounded whitespace-nowrap">
-                              {t('contextMenu.s3TrashLatest') || 'Latest'}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-400 tabular-nums">
-                        {item.is_delete_marker ? '-' : formatSize(item.size || 0)}
-                      </td>
-                      <td className="px-2 py-1.5 text-gray-500 dark:text-gray-500">
-                        {item.last_modified ? formatDate(item.last_modified) : '-'}
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <div className="flex items-center justify-end gap-1">
-                          {item.is_delete_marker ? (
-                            <button
-                              onClick={() => restore(item, 'undelete')}
-                              disabled={busy}
-                              className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                              title={t('contextMenu.s3TrashUndeleteHint') || 'Drop this delete marker so the object reappears'}
-                            >
-                              {rowBusy ? <Loader2 size={11} className="animate-spin" /> : <Undo2 size={11} />}
-                              {t('contextMenu.s3TrashUndelete') || 'Undelete'}
-                            </button>
-                          ) : (
-                            !item.is_latest && (
-                              <button
-                                onClick={() => restore(item, 'copy_forward')}
-                                disabled={busy}
-                                className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                                title={t('contextMenu.s3TrashCopyForwardHint') || 'Copy this older version forward to become current'}
-                              >
-                                {rowBusy ? <Loader2 size={11} className="animate-spin" /> : <CornerUpLeft size={11} />}
-                                {t('contextMenu.s3TrashCopyForward') || 'Restore'}
-                              </button>
-                            )
-                          )}
-                          <button
-                            onClick={() => setPendingPurge(item)}
-                            disabled={busy}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                            title={t('contextMenu.s3TrashPurgeHint') || 'Permanently delete this version (irreversible)'}
-                          >
-                            {rowBusy && actionKey === item.version_id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
-                            {t('contextMenu.s3TrashPurge') || 'Purge'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <TrashTable
+              rows={trashRows}
+              showTypeColumn={false}
+              extraColumns={s3Columns}
+            />
           )}
         </div>
       </div>
