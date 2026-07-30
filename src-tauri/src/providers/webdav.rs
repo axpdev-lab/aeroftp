@@ -504,7 +504,9 @@ impl WebDavProvider {
         use quick_xml::reader::Reader;
 
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // No trim_text: fragments around XML entities must survive intact;
+        // scalars are trimmed once at consumption below.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
 
         let mut in_response = false;
@@ -557,7 +559,7 @@ impl WebDavProvider {
                 Ok(Event::Text(ref t)) => {
                     if let Some(tag) = current_tag.as_deref() {
                         let text = String::from_utf8_lossy(t.as_ref()).to_string();
-                        if !text.is_empty() {
+                        if !text.trim().is_empty() {
                             match tag {
                                 "getcontentlength" => size_text.push_str(&text),
                                 "getlastmodified" => modified_text.push_str(&text),
@@ -1413,7 +1415,10 @@ impl WebDavProvider {
     ) -> Result<Vec<NextcloudTrashEntry>, ProviderError> {
         let mut entries = Vec::new();
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // No trim_text: fragments around XML entities must survive intact
+        // (entity-adjacent spaces are part of the name); scalars are
+        // trimmed once at consumption below.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
 
         let mut in_response = false;
@@ -1501,7 +1506,14 @@ impl WebDavProvider {
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
                         let raw = String::from_utf8_lossy(e.as_ref()).to_string();
-                        if !raw.is_empty() {
+                        // Whitespace-only fragments are indentation EXCEPT
+                        // inside name/path-bearing tags, where the space is
+                        // payload (e.g. `a&amp; &amp;b.txt`).
+                        let payload_tag = matches!(
+                            tag.as_str(),
+                            "href" | "trashbin-filename" | "trashbin-original-location"
+                        );
+                        if !raw.trim().is_empty() || payload_tag {
                             match tag.as_str() {
                                 "href" => href.push_str(&raw),
                                 "trashbin-filename" => trash_filename.push_str(&raw),
@@ -1703,7 +1715,10 @@ impl WebDavProvider {
 
         // Event-based quick-xml parser
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // No trim_text: fragments around XML entities must survive intact
+        // (entity-adjacent spaces are part of the name); values are
+        // trimmed once at consumption below.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
 
         let mut in_response = false;
@@ -1778,8 +1793,8 @@ impl WebDavProvider {
                                 continue;
                             }
 
-                            let decoded_href =
-                                urlencoding::decode(&href).unwrap_or_else(|_| href.clone().into());
+                            let decoded_href = urlencoding::decode(href.trim())
+                                .unwrap_or_else(|_| href.trim().into());
                             let clean_path = decoded_href.trim_end_matches('/');
                             let base_clean = base_path.trim_end_matches('/');
                             let url_clean = self.config.url.trim_end_matches('/');
@@ -1808,7 +1823,7 @@ impl WebDavProvider {
                                 continue;
                             }
 
-                            let href_ends_slash = href.ends_with('/');
+                            let href_ends_slash = href.trim_end().ends_with('/');
                             let is_dir =
                                 is_collection || is_collection_by_iscollection || href_ends_slash;
 
@@ -1828,9 +1843,9 @@ impl WebDavProvider {
                             // ...) the input has no percent-encoding and decode is a
                             // no-op; on the Filen bridge it un-mangles the name. Issue
                             // #128.
-                            let name = if !displayname.is_empty() {
-                                urlencoding::decode(&displayname)
-                                    .unwrap_or_else(|_| displayname.clone().into())
+                            let name = if !displayname.trim().is_empty() {
+                                urlencoding::decode(displayname.trim())
+                                    .unwrap_or_else(|_| displayname.trim().into())
                                     .into_owned()
                             } else {
                                 decoded_href
@@ -1851,15 +1866,15 @@ impl WebDavProvider {
                                 format!("{}/{}", base_clean, name)
                             };
 
-                            let mime_type = if getcontenttype.is_empty() {
+                            let mime_type = if getcontenttype.trim().is_empty() {
                                 None
                             } else {
-                                Some(getcontenttype.clone())
+                                Some(getcontenttype.trim().to_string())
                             };
 
                             let mut metadata = HashMap::new();
-                            if !getetag.is_empty() {
-                                metadata.insert("etag".to_string(), getetag.clone());
+                            if !getetag.trim().is_empty() {
+                                metadata.insert("etag".to_string(), getetag.trim().to_string());
                             }
 
                             entries.push(RemoteEntry {
@@ -1891,7 +1906,11 @@ impl WebDavProvider {
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
                         let raw = String::from_utf8_lossy(e.as_ref()).to_string();
-                        if !raw.is_empty() {
+                        // Whitespace-only fragments are indentation EXCEPT
+                        // inside href/displayname, where the space is part
+                        // of the name (e.g. `a&amp; &amp;b.txt`).
+                        let payload_tag = matches!(tag.as_str(), "href" | "displayname");
+                        if !raw.trim().is_empty() || payload_tag {
                             match tag.as_str() {
                                 "href" => href.push_str(&raw),
                                 "displayname" => displayname.push_str(&raw),
@@ -1958,7 +1977,9 @@ impl WebDavProvider {
     fn extract_xml_properties(&self, xml: &str) -> HashMap<String, String> {
         let mut props = HashMap::new();
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // No trim_text: fragments around XML entities must survive intact;
+        // values are trimmed once at element end (see the End arm).
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
         let mut current_tag: Option<String> = None;
         let mut in_resourcetype = false;
@@ -1993,12 +2014,19 @@ impl WebDavProvider {
                     }
                     if current_tag.as_deref() == Some(local.as_str()) {
                         current_tag = None;
+                        // Values accumulated raw so entity-adjacent spaces
+                        // survive; trim once here so scalar consumers (quota,
+                        // dates) can parse without caring about indentation.
+                        if let Some(v) = props.get_mut(local.as_str()) {
+                            let trimmed = v.trim().to_string();
+                            *v = trimmed;
+                        }
                     }
                 }
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
                         let raw = String::from_utf8_lossy(e.as_ref()).to_string();
-                        if !raw.is_empty() {
+                        if !raw.trim().is_empty() {
                             if tag == "iscollection" && raw.trim() == "1" {
                                 props.insert("_is_collection".to_string(), "true".to_string());
                             }
@@ -4377,6 +4405,104 @@ mod tests {
         assert_eq!(entries[0].size, 1024);
         assert_eq!(entries[1].name, "subdir");
         assert!(entries[1].is_dir);
+    }
+
+    /// LIVE-1 regression: with trim_text(true), a displayname like
+    /// `sp ace & ünïcodé.txt` lost the spaces adjacent to `&amp;`, so the
+    /// listing showed a name that does not exist on the server and every
+    /// operation on it 404'd. Names must round-trip exactly.
+    #[test]
+    fn parse_propfind_preserves_entity_adjacent_whitespace_in_names() {
+        let provider = WebDavProvider::new(test_config("https://example.com/dav"))
+            .expect("Failed to create WebDavProvider");
+
+        let xml = r#"<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:">
+            <d:response>
+                <d:href>/dav/sp%20ace%20%26%20%C3%BCn%C3%AFcod%C3%A9.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>sp ace &amp; ünïcodé.txt</d:displayname>
+                        <d:resourcetype/>
+                        <d:getcontentlength>65536</d:getcontentlength>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/a%20%26%20b.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:resourcetype/>
+                        <d:getcontentlength>19</d:getcontentlength>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+
+        let entries = provider.parse_propfind_response(xml, "/dav").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "sp ace & ünïcodé.txt");
+        assert_eq!(entries[0].size, 65536);
+        // No displayname: falls back to the (decoded) href leaf.
+        assert_eq!(entries[1].name, "a & b.txt");
+    }
+
+    /// CR-536 regression: a whitespace-ONLY Text fragment between two entity
+    /// refs (`a&amp; &amp;b.txt`) is part of the name, not indentation, and
+    /// must survive in displayname parsing.
+    #[test]
+    fn parse_propfind_preserves_whitespace_only_fragments_around_entities() {
+        let provider = WebDavProvider::new(test_config("https://example.com/dav"))
+            .expect("Failed to create WebDavProvider");
+
+        let xml = r#"<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:">
+            <d:response>
+                <d:href>/dav/a%26%20%26b.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>a&amp; &amp;b.txt</d:displayname>
+                        <d:resourcetype/>
+                        <d:getcontentlength>10</d:getcontentlength>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+
+        let entries = provider.parse_propfind_response(xml, "/dav").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "a& &b.txt");
+        assert_eq!(entries[0].size, 10);
+    }
+
+    /// CR-536 regression, Nextcloud trashbin parser: same whitespace-only
+    /// fragment preservation for trashbin-filename / original-location.
+    #[test]
+    fn parse_trashbin_preserves_whitespace_only_fragments_around_entities() {
+        let provider = WebDavProvider::new(test_config("https://example.com"))
+            .expect("Failed to create WebDavProvider");
+
+        let xml = r#"<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:" xmlns:nc="http://nextcloud.org/ns">
+            <d:response>
+                <d:href>/remote.php/dav/trashbin/user/trash/a%26%20%26b.txt.d1700000000</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <nc:trashbin-filename>a&amp; &amp;b.txt</nc:trashbin-filename>
+                        <nc:trashbin-original-location>docs/a&amp; &amp;b.txt</nc:trashbin-original-location>
+                        <nc:trashbin-deletion-time>1700000000</nc:trashbin-deletion-time>
+                        <d:getcontentlength>10</d:getcontentlength>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+
+        let entries = provider.parse_trashbin_response(xml).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "a& &b.txt");
+        assert_eq!(entries[0].original_path, "docs/a& &b.txt");
+        assert_eq!(entries[0].deleted_at, 1700000000);
     }
 
     /// Issue #128 (Filen WebDAV bridge): the local bridge ships
