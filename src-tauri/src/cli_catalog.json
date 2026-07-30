@@ -823,9 +823,9 @@
     "company": "Amazon Web Services (AWS)",
     "logoId": "amazon-s3",
     "country": "US",
-    "freeGb": 5,
-    "freeNote": "always-free, card req.",
-    "freeRequiresCard": true,
+    "freeGb": null,
+    "freeNote": "12-month trial",
+    "freeRequiresCard": false,
     "regions": [
       "US",
       "IE",

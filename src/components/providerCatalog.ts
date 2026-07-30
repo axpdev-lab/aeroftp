@@ -273,8 +273,8 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Cloudinary', logoId: 'cloudinary', countryCode: 'US', freeStorageGb: null,
       freeNote: 'credit-based', healthCheckUrl: 'https://api.cloudinary.com',
       protocols: [{ label: 'API', protocol: 'cloudinary', providerId: 'cloudinary', category: 'media-services' }] },
-    { company: 'Amazon Web Services (AWS)', parentCompany: 'Amazon', logoId: 'amazon-s3', countryCode: 'US', freeStorageGb: 5,
-      freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://s3.amazonaws.com',
+    { company: 'Amazon Web Services (AWS)', parentCompany: 'Amazon', logoId: 'amazon-s3', countryCode: 'US', freeStorageGb: null,
+      freeNote: '12-month trial', healthCheckUrl: 'https://s3.amazonaws.com',
       searchAliases: ['aws', 'amazon web services', 's3', 'amazon'],
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'amazon-s3', category: 'object-storage', paid: true }] },
     { company: 'Wasabi', logoId: 'wasabi', countryCode: 'US', freeStorageGb: null,
@@ -535,8 +535,10 @@ export function companyTierInCategory(
     const inCat = c.protocols.filter(p => p.category === category);
     if (inCat.length === 0) return companyTier(c);
     // A card-gated free tier keeps the company in the 'free-card' bucket even
-    // per-category: its free allowance IS this category's product (e.g. AWS S3
-    // free tier is that same paid-flagged S3 method). Mirrors companyTier's
+    // per-category: its free allowance IS this category's product (e.g. Google
+    // Cloud Storage's always-free 5 GB is that same paid-flagged S3 method;
+    // AWS used to be the example here, until its S3 allowance turned out to be
+    // the 12-month tier rather than an always-free one). Mirrors companyTier's
     // precedence and keeps free-card OUT of paid. Only companies with NO free
     // tier at all fall through to the per-category paid/free split below.
     if (c.freeRequiresCard) return 'free-card';

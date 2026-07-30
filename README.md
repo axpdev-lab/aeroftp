@@ -182,7 +182,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | --- | --- | --- | --- |
 | 4shared | VG | 15 GB | OAuth, WebDAV |
 | Alibaba OSS | CN | 5 GB (overseas only, card req.) | S3* |
-| Amazon Web Services (AWS) | US | 5 GB (always-free, card req.) | S3* |
+| Amazon Web Services (AWS) | US | 12-month trial | S3* |
 | Backblaze B2 | US | 10 GB | API, S3 |
 | Blomp | US | 40 GB (+40 GB per referral) | Swift |
 | Box | US | 10 GB | OAuth |
