@@ -13,7 +13,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use secrecy::{ExposeSecret, SecretString};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::State;
 use totp_rs::{Algorithm, Secret, TOTP};
@@ -59,14 +59,26 @@ struct TotpInner {
 }
 
 /// Thread-safe TOTP state managed by Tauri.
+///
+/// The inner mutex is behind an `Arc` so a command can clone a `'static` handle
+/// out of `State<'_, TotpState>` and hand it to `spawn_blocking`. `State` itself
+/// borrows the app and cannot cross that boundary; without the `Arc` every
+/// command here would have to stay synchronous, which means on the main thread.
 pub struct TotpState {
-    inner: Mutex<TotpInner>,
+    inner: Arc<Mutex<TotpInner>>,
+}
+
+impl TotpState {
+    /// A `'static` handle to the inner state, for use off the main thread.
+    fn handle(&self) -> Arc<Mutex<TotpInner>> {
+        Arc::clone(&self.inner)
+    }
 }
 
 impl Default for TotpState {
     fn default() -> Self {
         Self {
-            inner: Mutex::new(TotpInner {
+            inner: Arc::new(Mutex::new(TotpInner {
                 pending_secret: None,
                 setup_verified: false,
                 enabled: false,
@@ -74,15 +86,19 @@ impl Default for TotpState {
                 failed_attempts: 0,
                 lockout_until: None,
                 last_used_step: None,
-            }),
+            })),
         }
     }
 }
 
 /// Acquire the inner lock with poison recovery.
 fn lock_state(state: &TotpState) -> Result<std::sync::MutexGuard<'_, TotpInner>, String> {
-    state
-        .inner
+    lock_inner(&state.inner)
+}
+
+/// Same, for the `Arc` handle a command carries into `spawn_blocking`.
+fn lock_inner(inner: &Mutex<TotpInner>) -> Result<std::sync::MutexGuard<'_, TotpInner>, String> {
+    inner
         .lock()
         .map_err(|_| "TOTP internal state error".to_string())
 }
@@ -313,13 +329,36 @@ fn generate_secret_base32() -> String {
 
 /// Start 2FA setup: generate a new TOTP secret and return the otpauth URI.
 /// Returns: { secret: string, uri: string }
+// Every command below is `async` and does its work on the blocking pool. Two
+// reasons, and the first one alone is enough:
+//
+//   * `totp_enable` writes the secret to the credential store, which on Linux
+//     is the Secret Service over D-Bus: another process, which can be slow or
+//     unreachable. A synchronous `#[tauri::command]` runs on the main thread
+//     (the GTK thread on Linux), so that write would freeze the window.
+//   * they all take the same mutex. Even the ones that only read a bool would
+//     block on the main thread for as long as whoever holds it -- which is the
+//     keystore writer above. Moving only `totp_enable` would leave the freeze
+//     reachable through `totp_status`.
+//
+// The guard is taken *inside* the closure on purpose: a `std::sync::MutexGuard`
+// held across an `.await` is `clippy::await_holding_lock`, and the lint is
+// right -- the future can resume on a different worker still holding it.
+
 #[tauri::command]
-pub fn totp_setup_start(state: State<'_, TotpState>) -> Result<serde_json::Value, String> {
+pub async fn totp_setup_start(state: State<'_, TotpState>) -> Result<serde_json::Value, String> {
+    let inner = state.handle();
+    tokio::task::spawn_blocking(move || totp_setup_start_blocking(&inner))
+        .await
+        .unwrap_or_else(|err| Err(format!("TOTP setup task failed: {err}")))
+}
+
+fn totp_setup_start_blocking(state: &Mutex<TotpInner>) -> Result<serde_json::Value, String> {
     let secret_base32 = generate_secret_base32();
     let totp = build_totp(&secret_base32)?;
     let uri = append_image_param(&totp.get_url());
 
-    let mut inner = lock_state(&state)?;
+    let mut inner = lock_inner(state)?;
     // Return the secret to the frontend for QR code display, then wrap in SecretString
     let result = serde_json::json!({
         "secret": secret_base32,
@@ -334,8 +373,15 @@ pub fn totp_setup_start(state: State<'_, TotpState>) -> Result<serde_json::Value
 /// Verify a TOTP code during setup. If valid, marks the pending secret as verified.
 /// The caller must then call totp_enable to activate.
 #[tauri::command]
-pub fn totp_setup_verify(state: State<'_, TotpState>, code: String) -> Result<bool, String> {
-    let mut inner = lock_state(&state)?;
+pub async fn totp_setup_verify(state: State<'_, TotpState>, code: String) -> Result<bool, String> {
+    let inner = state.handle();
+    tokio::task::spawn_blocking(move || totp_setup_verify_blocking(&inner, code))
+        .await
+        .unwrap_or_else(|err| Err(format!("TOTP verification task failed: {err}")))
+}
+
+fn totp_setup_verify_blocking(state: &Mutex<TotpInner>, code: String) -> Result<bool, String> {
+    let mut inner = lock_inner(state)?;
     check_rate_limit(&inner)?;
 
     let secret = inner
@@ -358,8 +404,15 @@ pub fn totp_setup_verify(state: State<'_, TotpState>, code: String) -> Result<bo
 
 /// Verify a TOTP code during unlock (using the active secret).
 #[tauri::command]
-pub fn totp_verify(state: State<'_, TotpState>, code: String) -> Result<bool, String> {
-    let mut inner = lock_state(&state)?;
+pub async fn totp_verify(state: State<'_, TotpState>, code: String) -> Result<bool, String> {
+    let inner = state.handle();
+    tokio::task::spawn_blocking(move || totp_verify_blocking(&inner, code))
+        .await
+        .unwrap_or_else(|err| Err(format!("TOTP verification task failed: {err}")))
+}
+
+fn totp_verify_blocking(state: &Mutex<TotpInner>, code: String) -> Result<bool, String> {
+    let mut inner = lock_inner(state)?;
     check_rate_limit(&inner)?;
 
     let secret = inner
@@ -379,9 +432,14 @@ pub fn totp_verify(state: State<'_, TotpState>, code: String) -> Result<bool, St
 
 /// Check if TOTP is enabled.
 #[tauri::command]
-pub fn totp_status(state: State<'_, TotpState>) -> Result<bool, String> {
-    let inner = lock_state(&state)?;
-    Ok(inner.enabled)
+pub async fn totp_status(state: State<'_, TotpState>) -> Result<bool, String> {
+    let inner = state.handle();
+    tokio::task::spawn_blocking(move || {
+        let guard = lock_inner(&inner)?;
+        Ok(guard.enabled)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("TOTP status task failed: {err}")))
 }
 
 /// Enable TOTP after successful verification. Requires that totp_setup_verify
@@ -390,8 +448,15 @@ pub fn totp_status(state: State<'_, TotpState>) -> Result<bool, String> {
 /// If the vault store fails, TOTP is NOT enabled (fail-closed).
 /// Returns the secret as a plain String for backward compatibility.
 #[tauri::command]
-pub fn totp_enable(state: State<'_, TotpState>) -> Result<String, String> {
-    let mut inner = lock_state(&state)?;
+pub async fn totp_enable(state: State<'_, TotpState>) -> Result<String, String> {
+    let inner = state.handle();
+    tokio::task::spawn_blocking(move || totp_enable_blocking(&inner))
+        .await
+        .unwrap_or_else(|err| Err(format!("TOTP enable task failed: {err}")))
+}
+
+fn totp_enable_blocking(state: &Mutex<TotpInner>) -> Result<String, String> {
+    let mut inner = lock_inner(state)?;
 
     if !inner.setup_verified {
         return Err("Must verify TOTP code before enabling".into());
@@ -424,8 +489,15 @@ pub fn totp_enable(state: State<'_, TotpState>) -> Result<String, String> {
 
 /// Disable TOTP (requires valid code first).
 #[tauri::command]
-pub fn totp_disable(state: State<'_, TotpState>, code: String) -> Result<bool, String> {
-    let mut inner = lock_state(&state)?;
+pub async fn totp_disable(state: State<'_, TotpState>, code: String) -> Result<bool, String> {
+    let inner = state.handle();
+    tokio::task::spawn_blocking(move || totp_disable_blocking(&inner, code))
+        .await
+        .unwrap_or_else(|err| Err(format!("TOTP disable task failed: {err}")))
+}
+
+fn totp_disable_blocking(state: &Mutex<TotpInner>, code: String) -> Result<bool, String> {
+    let mut inner = lock_inner(state)?;
     check_rate_limit(&inner)?;
 
     let secret = inner.active_secret.as_ref().ok_or("TOTP not enabled")?;
@@ -447,32 +519,39 @@ pub fn totp_disable(state: State<'_, TotpState>, code: String) -> Result<bool, S
 
 /// Load TOTP state from a stored secret (called after vault unlock).
 #[tauri::command]
-pub fn totp_load_secret(state: State<'_, TotpState>, secret: String) -> Result<(), String> {
-    load_secret_internal(&state, &secret)
+pub async fn totp_load_secret(state: State<'_, TotpState>, secret: String) -> Result<(), String> {
+    let inner = state.handle();
+    tokio::task::spawn_blocking(move || load_secret_into(&inner, &secret, None))
+        .await
+        .unwrap_or_else(|err| Err(format!("TOTP load task failed: {err}")))
 }
 
 /// Internal: Load a TOTP secret into state without requiring Tauri State wrapper.
 /// Used by unlock_credential_store for 2FA enforcement.
-pub fn load_secret_internal(state: &TotpState, secret: &str) -> Result<(), String> {
-    load_secret_internal_from_store(state, secret, None)
-}
-
+///
+/// The store-less variant used to exist next to this one for `totp_load_secret`
+/// to call. That command now goes to `load_secret_into` directly, since it has
+/// to hand `spawn_blocking` an `Arc` handle rather than the `State` wrapper,
+/// which left the store-less wrapper with no callers at all: removed rather
+/// than kept alive with an `#[allow(dead_code)]`.
 pub(crate) fn load_secret_internal_with_store(
     state: &TotpState,
     secret: &str,
     store: &crate::credential_store::CredentialStore,
 ) -> Result<(), String> {
-    load_secret_internal_from_store(state, secret, Some(store))
+    load_secret_into(&state.inner, secret, Some(store))
 }
 
-fn load_secret_internal_from_store(
-    state: &TotpState,
+/// The load itself, against the inner mutex rather than the Tauri `State`
+/// wrapper, so `totp_load_secret` can run it on the blocking pool.
+fn load_secret_into(
+    state: &Mutex<TotpInner>,
     secret: &str,
     store: Option<&crate::credential_store::CredentialStore>,
 ) -> Result<(), String> {
     // Validate the secret is valid base32
     build_totp(secret)?;
-    let mut inner = lock_state(state)?;
+    let mut inner = lock_inner(state)?;
     inner.active_secret = Some(SecretString::from(secret.to_string()));
     inner.enabled = true;
     // TOTP-02: re-arm any lockout that was in force when the process last

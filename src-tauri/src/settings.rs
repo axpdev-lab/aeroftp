@@ -161,21 +161,38 @@ pub fn native_rsync_feature_compiled() -> bool {
     cfg!(feature = "aerorsync")
 }
 
+// The four accessors below all reach `$XDG_CONFIG_HOME/aeroftp/native_rsync.toml`
+// underneath: the getters stat and read it, the setters take a process-wide
+// write lock and then do write + rename. That is disk I/O plus a lock on a
+// config directory that can perfectly well be on a network home, so none of
+// them belongs on the main thread, however small the value they return is.
+
 #[cfg(feature = "aerorsync")]
 #[tauri::command]
-pub fn native_rsync_enabled_get() -> bool {
-    load_native_rsync_enabled()
+pub async fn native_rsync_enabled_get() -> bool {
+    tokio::task::spawn_blocking(load_native_rsync_enabled)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("native_rsync_enabled_get task failed: {err}");
+            // Same fallback the loader itself uses when the path is unavailable.
+            false
+        })
 }
 
 #[cfg(feature = "aerorsync")]
 #[tauri::command]
-pub fn native_rsync_enabled_set(enabled: bool) -> Result<(), String> {
-    set_native_rsync_enabled(enabled)
+pub async fn native_rsync_enabled_set(enabled: bool) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || set_native_rsync_enabled(enabled))
+        .await
+        .unwrap_or_else(|err| Err(format!("native rsync settings write failed: {err}")))
 }
 
+/// The persisted mode as the string the GUI and the CLI both speak.
+///
+/// Synchronous, and stays that way: the CLI calls it from plain `fn`s and has
+/// no main thread to protect. The Tauri command below is the wrapper that does.
 #[cfg(feature = "aerorsync")]
-#[tauri::command]
-pub fn native_rsync_mode_get() -> String {
+pub fn native_rsync_mode_str() -> String {
     match load_native_rsync_mode() {
         NativeRsyncMode::Auto => "auto",
         NativeRsyncMode::Classic => "classic",
@@ -186,7 +203,26 @@ pub fn native_rsync_mode_get() -> String {
 
 #[cfg(feature = "aerorsync")]
 #[tauri::command]
-pub fn native_rsync_mode_set(mode: String) -> Result<(), String> {
+pub async fn native_rsync_mode_get() -> String {
+    tokio::task::spawn_blocking(native_rsync_mode_str)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("native_rsync_mode_get task failed: {err}");
+            // Same fallback the loader itself uses when the path is unavailable.
+            "classic".to_string()
+        })
+}
+
+#[cfg(feature = "aerorsync")]
+#[tauri::command]
+pub async fn native_rsync_mode_set(mode: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || native_rsync_mode_set_blocking(mode))
+        .await
+        .unwrap_or_else(|err| Err(format!("native rsync settings write failed: {err}")))
+}
+
+#[cfg(feature = "aerorsync")]
+fn native_rsync_mode_set_blocking(mode: String) -> Result<(), String> {
     let mode = match mode.as_str() {
         "auto" => NativeRsyncMode::Auto,
         "classic" => NativeRsyncMode::Classic,
@@ -218,10 +254,15 @@ pub fn native_rsync_mode_set(mode: String) -> Result<(), String> {
 /// machine cannot honor. Returns `(available, optional_path)` so the
 /// UI can tell the user *where* the binary was found when they hover
 /// the chip.
+///
+/// `async`: `detect_classic_rsync_path` walks every entry of `PATH` and calls
+/// `is_file()` on each candidate. A single `PATH` entry pointing at an
+/// unreachable network mount is enough to park that walk in the kernel, and on
+/// a sync command the window parks with it.
 #[cfg(feature = "aerorsync")]
 #[tauri::command]
-pub fn native_rsync_classic_available() -> ClassicRsyncAvailability {
-    match detect_classic_rsync_path() {
+pub async fn native_rsync_classic_available() -> ClassicRsyncAvailability {
+    tokio::task::spawn_blocking(|| match detect_classic_rsync_path() {
         Some(path) => ClassicRsyncAvailability {
             available: true,
             path: Some(path.display().to_string()),
@@ -230,7 +271,15 @@ pub fn native_rsync_classic_available() -> ClassicRsyncAvailability {
             available: false,
             path: None,
         },
-    }
+    })
+    .await
+    .unwrap_or_else(|err| {
+        tracing::warn!("native_rsync_classic_available task failed: {err}");
+        ClassicRsyncAvailability {
+            available: false,
+            path: None,
+        }
+    })
 }
 
 #[cfg(feature = "aerorsync")]

@@ -1719,8 +1719,22 @@ pub async fn provider_apply_crypt_overlay(
 /// the "Recovery kit" action in the saved-server context menu, so a user can
 /// re-view and re-save the kit any time. Errors clearly when the profile has no
 /// headerless vault yet (never created, or it uses an on-remote header).
+///
+/// `async`: `CredentialStore::from_cache()` plus two `resolve_active_credential`
+/// reads go to the platform keystore, which on Linux is the Secret Service over
+/// D-Bus -- another process, and one that can be slow or wedged. A sync command
+/// would wait for it on the main thread, which is exactly the shape of the
+/// freeze fixed in #515 for the portal chooser.
 #[tauri::command]
-pub fn aerocrypt_profile_recovery_kit(
+pub async fn aerocrypt_profile_recovery_kit(
+    profile_id: String,
+) -> Result<crate::aerocrypt::emergency_kit::EmergencyKit, String> {
+    tokio::task::spawn_blocking(move || aerocrypt_profile_recovery_kit_blocking(profile_id))
+        .await
+        .unwrap_or_else(|err| Err(format!("Recovery kit task failed: {err}")))
+}
+
+fn aerocrypt_profile_recovery_kit_blocking(
     profile_id: String,
 ) -> Result<crate::aerocrypt::emergency_kit::EmergencyKit, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
@@ -1762,8 +1776,22 @@ pub fn aerocrypt_profile_recovery_kit(
 /// profile's keystore config. Offline, no password, no network. Surfaces the
 /// internal `build_from_config_json` / kit-text parser path so a user can check
 /// a printed kit occasionally without a full recovery drill (tracker #421 #6).
+///
+/// `async` for the same reason as `aerocrypt_profile_recovery_kit`: keystore
+/// reads over D-Bus, plus a verification pass over text supplied by the user.
 #[tauri::command]
-pub fn aerocrypt_verify_recovery_kit(
+pub async fn aerocrypt_verify_recovery_kit(
+    profile_id: String,
+    kit_or_marker_text: String,
+) -> Result<crate::aerocrypt::emergency_kit::KitVerifyReport, String> {
+    tokio::task::spawn_blocking(move || {
+        aerocrypt_verify_recovery_kit_blocking(profile_id, kit_or_marker_text)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("Recovery kit verification task failed: {err}")))
+}
+
+fn aerocrypt_verify_recovery_kit_blocking(
     profile_id: String,
     kit_or_marker_text: String,
 ) -> Result<crate::aerocrypt::emergency_kit::KitVerifyReport, String> {

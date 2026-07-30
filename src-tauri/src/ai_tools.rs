@@ -1439,23 +1439,41 @@ static DENIED_COMMAND_PATTERNS: std::sync::LazyLock<Vec<regex::Regex>> =
 
 /// Read image from system clipboard via arboard (native, works on WebKitGTK).
 /// Returns base64 PNG or null if no image in clipboard.
+///
+/// `async` for two measured reasons, either of which is enough:
+///
+///   * on X11 `get_image()` asks the *other* process that owns the selection
+///     and waits for it: arboard 3.6.1 gives that exchange a 4000 ms budget
+///     (`LONG_TIMEOUT_DUR` in its x11 backend). On a sync command that is up to
+///     four seconds of frozen GTK thread when the owning app is slow to answer;
+///   * the encoding is linear in the image: a 4K screenshot is ~33 MB of RGBA,
+///     which base64 turns into ~44 MB of `String` on top of the copy.
+///
+/// Safe off the main thread on all three platforms, checked rather than
+/// assumed: arboard's macOS `Clipboard` is declared `Send + Sync`, its Windows
+/// one opens and closes the clipboard inside each call so the `!Send` handle
+/// never escapes, and the X11 backend runs its own connection anyway.
 #[tauri::command]
-pub fn clipboard_read_image() -> Result<Option<String>, String> {
-    let mut clipboard =
-        arboard::Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
-    let img = match clipboard.get_image() {
-        Ok(img) => img,
-        Err(_) => return Ok(None), // No image in clipboard
-    };
+pub async fn clipboard_read_image() -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(|| {
+        let mut clipboard =
+            arboard::Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
+        let img = match clipboard.get_image() {
+            Ok(img) => img,
+            Err(_) => return Ok(None), // No image in clipboard
+        };
 
-    // Encode RGBA as BMP-like format, then convert via canvas on frontend.
-    // Simpler: encode as raw RGBA + dimensions as JSON, let frontend render via canvas.
-    use base64::Engine;
-    let rgba_base64 = base64::engine::general_purpose::STANDARD.encode(&img.bytes);
-    Ok(Some(format!(
-        "{}:{}:{}",
-        img.width, img.height, rgba_base64
-    )))
+        // Encode RGBA as BMP-like format, then convert via canvas on frontend.
+        // Simpler: encode as raw RGBA + dimensions as JSON, let frontend render via canvas.
+        use base64::Engine;
+        let rgba_base64 = base64::engine::general_purpose::STANDARD.encode(&img.bytes);
+        Ok(Some(format!(
+            "{}:{}:{}",
+            img.width, img.height, rgba_base64
+        )))
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("Clipboard read task failed: {err}")))
 }
 
 /// Execute a shell command and capture output.

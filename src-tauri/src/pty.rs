@@ -52,12 +52,37 @@ pub fn create_pty_state() -> PtyState {
     Arc::new(Mutex::new(PtyManager::default()))
 }
 
+// The four commands below are `async` and do their work on the blocking pool.
+// A synchronous `#[tauri::command]` runs on the main thread -- the GTK thread on
+// Linux -- and each of these can sit there for an unbounded time:
+//
+//   * `spawn_shell` opens a PTY and forks a shell process;
+//   * `pty_write` writes to the PTY master, which blocks once the child stops
+//     draining it and the buffer fills;
+//   * `pty_resize` and `pty_close` only take the manager lock, but it is the
+//     *same* lock `pty_write` holds across its write. Converting only the
+//     writer would leave the freeze reachable by resizing the terminal.
+//
+// The guard is taken inside the closure: a `std::sync::MutexGuard` held across
+// an `.await` is `clippy::await_holding_lock`, and the lint is right.
+
 /// Spawn a new shell in the PTY. Returns session info including session ID.
 /// Enforces a maximum of MAX_PTY_SESSIONS concurrent sessions.
 #[tauri::command]
-pub fn spawn_shell(
+pub async fn spawn_shell(
     app: AppHandle,
     pty_state: State<'_, PtyState>,
+    cwd: Option<String>,
+) -> Result<String, String> {
+    let pty_state = PtyState::clone(&pty_state);
+    tokio::task::spawn_blocking(move || spawn_shell_blocking(app, &pty_state, cwd))
+        .await
+        .unwrap_or_else(|err| Err(format!("Shell spawn task failed: {err}")))
+}
+
+fn spawn_shell_blocking(
+    app: AppHandle,
+    pty_state: &PtyState,
     cwd: Option<String>,
 ) -> Result<String, String> {
     // Check session limit before allocating resources
@@ -194,8 +219,19 @@ pub fn spawn_shell(
 
 /// Write data to a PTY session (send keystrokes to shell)
 #[tauri::command]
-pub fn pty_write(
+pub async fn pty_write(
     pty_state: State<'_, PtyState>,
+    data: String,
+    session_id: String,
+) -> Result<(), String> {
+    let pty_state = PtyState::clone(&pty_state);
+    tokio::task::spawn_blocking(move || pty_write_blocking(&pty_state, data, session_id))
+        .await
+        .unwrap_or_else(|err| Err(format!("PTY write task failed: {err}")))
+}
+
+fn pty_write_blocking(
+    pty_state: &PtyState,
     data: String,
     session_id: String,
 ) -> Result<(), String> {
@@ -220,8 +256,20 @@ pub fn pty_write(
 
 /// Resize a PTY session
 #[tauri::command]
-pub fn pty_resize(
+pub async fn pty_resize(
     pty_state: State<'_, PtyState>,
+    rows: u16,
+    cols: u16,
+    session_id: String,
+) -> Result<(), String> {
+    let pty_state = PtyState::clone(&pty_state);
+    tokio::task::spawn_blocking(move || pty_resize_blocking(&pty_state, rows, cols, session_id))
+        .await
+        .unwrap_or_else(|err| Err(format!("PTY resize task failed: {err}")))
+}
+
+fn pty_resize_blocking(
+    pty_state: &PtyState,
     rows: u16,
     cols: u16,
     session_id: String,
@@ -251,7 +299,14 @@ pub fn pty_resize(
 
 /// Close a PTY session
 #[tauri::command]
-pub fn pty_close(pty_state: State<'_, PtyState>, session_id: String) -> Result<(), String> {
+pub async fn pty_close(pty_state: State<'_, PtyState>, session_id: String) -> Result<(), String> {
+    let pty_state = PtyState::clone(&pty_state);
+    tokio::task::spawn_blocking(move || pty_close_blocking(&pty_state, session_id))
+        .await
+        .unwrap_or_else(|err| Err(format!("PTY close task failed: {err}")))
+}
+
+fn pty_close_blocking(pty_state: &PtyState, session_id: String) -> Result<(), String> {
     let mut manager = pty_state.lock().map_err(|_| "Lock error")?;
 
     // H31: session_id is required: no fallback to prevent multi-tab session confusion

@@ -36510,11 +36510,11 @@ fn cmd_aerorsync_mode_get(format: OutputFormat) -> i32 {
 
 #[cfg(feature = "aerorsync")]
 fn cmd_aerorsync_mode_get(format: OutputFormat) -> i32 {
-    let stored = ftp_client_gui_lib::settings::native_rsync_mode_get();
+    let stored = ftp_client_gui_lib::settings::native_rsync_mode_str();
     let classic = detect_classic_rsync();
     let classic_path = classic.as_ref().map(|p| p.display().to_string());
 
-    // `native_rsync_mode_get()` returns the persisted string ("auto"
+    // `native_rsync_mode_str()` returns the persisted string ("auto"
     // / "classic" / "native"). When the user opted for classic but no
     // classic binary is reachable, declare the effective mode as
     // native so each transfer call knows what to do, without
@@ -36641,7 +36641,7 @@ fn cmd_aerorsync_mode_set(mode: &str, format: OutputFormat) -> i32 {
         print_error(format, &format!("failed to persist mode: {e}"), 5);
         return 5;
     }
-    let stored = ftp_client_gui_lib::settings::native_rsync_mode_get();
+    let stored = ftp_client_gui_lib::settings::native_rsync_mode_str();
     match format {
         OutputFormat::Json => {
             let classic_path = detect_classic_rsync()
