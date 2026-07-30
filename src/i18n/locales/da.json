@@ -5578,6 +5578,13 @@
             "importAccept": "Importér",
             "importedBody": "Din konfiguration blev importeret. Genstart AeroFTP for at indlæse dine servere og din boks.",
             "restartNow": "Genstart nu"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Filvælger ikke tilgængelig",
+                "portalMissing": "Der er ingen skrivebordsportal installeret, så dette system kan ikke åbne en filvælger. Installér xdg-desktop-portal og en backend til dit skrivebord (for eksempel xdg-desktop-portal-gtk), og prøv igen.",
+                "unknown": "Filvælgeren kunne ikke åbnes. Se programmets log for detaljer."
+            }
         }
     }
 }

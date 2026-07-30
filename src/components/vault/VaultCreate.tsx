@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../../utils/pickPath';
 import { invoke } from '@tauri-apps/api/core';
 import { Eye, EyeOff, Loader2, ChevronDown, ChevronUp, SlidersHorizontal, FolderOpen, File as FileIcon, X, FolderPlus, FilePlus, Lock, Unlock, RotateCcw } from 'lucide-react';
 import { TransferProgressBar } from '../TransferProgressBar';
@@ -103,12 +103,12 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
     // dialog cannot pick files AND folders in a single dialog). Combined with the
     // create-screen drag&drop (Ehud #2) this gives a regular zipping experience.
     const stageFiles = async () => {
-        const sel = await open({ multiple: true });
+        const sel = await pickFile({ multiple: true });
         if (!sel) return;
         await state.handleStageDrop(Array.isArray(sel) ? (sel as string[]) : [sel as string]);
     };
     const stageFolders = async () => {
-        const sel = await open({ directory: true, multiple: true });
+        const sel = await pickFile({ directory: true, multiple: true });
         if (!sel) return;
         await state.handleStageDrop(Array.isArray(sel) ? (sel as string[]) : [sel as string]);
     };

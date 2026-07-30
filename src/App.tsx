@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from './utils/pickPath';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -9172,7 +9172,7 @@ const App: React.FC = () => {
       const current = panelId === 'local2' ? (currentLocalPath2 || currentLocalPath) : currentLocalPath;
       // Sanitize the starting dir: a stale/imported local path that no longer
       // exists here would crash the native GTK chooser (Fix G).
-      const selected = await open({
+      const selected = await pickFile({
         directory: true,
         multiple: false,
         defaultPath: await safePickerStartDir(current),
@@ -9401,7 +9401,7 @@ const App: React.FC = () => {
         if (isAeroVaultOverlay) {
           throw new Error('AeroVault overlay: folder download not yet supported in main browser');
         }
-        const downloadPath = destinationPath || await open({ directory: true, multiple: false, defaultPath: await downloadDir() });
+        const downloadPath = destinationPath || await pickFile({ directory: true, multiple: false, defaultPath: await downloadDir() });
         if (downloadPath) {
           const folderPath = `${downloadPath}/${fileName}`;
           // For folders, 'ask' defaults to 'overwrite' (FolderOverwriteDialog handles the ask mode at batch level)
@@ -9442,7 +9442,7 @@ const App: React.FC = () => {
           humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
         }
       } else {
-        const downloadPath = destinationPath || await open({ directory: true, multiple: false, defaultPath: await downloadDir() });
+        const downloadPath = destinationPath || await pickFile({ directory: true, multiple: false, defaultPath: await downloadDir() });
         if (downloadPath) {
           let targetName = fileName;
           const remoteFileInfo = remoteFiles.find(f => f.name === fileName && !f.is_dir);
@@ -12061,7 +12061,7 @@ const App: React.FC = () => {
     }
 
     // Priority 2: Open Dialog if no selection
-    const selected = await open({
+    const selected = await pickFile({
       multiple: true,
       directory: false,
       title: t('dialog.selectFilesToUpload'),

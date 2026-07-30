@@ -5578,6 +5578,13 @@
             "importAccept": "Uvezi",
             "importedBody": "Vaša je konfiguracija uvezena. Ponovno pokrenite AeroFTP da učitate svoje poslužitelje i trezor.",
             "restartNow": "Ponovno pokreni sada"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Odabir datoteka nije dostupan",
+                "portalMissing": "Nije instaliran nijedan portal radne površine, pa ovaj sustav ne može otvoriti odabir datoteka. Instalirajte xdg-desktop-portal i pozadinski servis za svoju radnu površinu (na primjer xdg-desktop-portal-gtk) i pokušajte ponovno.",
+                "unknown": "Odabir datoteka nije se mogao otvoriti. Detalje potražite u zapisniku aplikacije."
+            }
         }
     }
 }

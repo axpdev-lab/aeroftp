@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../utils/pickPath';
 import { ArrowUp, ArrowDown, Minus, ArrowUpDown, X, AlertTriangle, Folder, Loader2, Check } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
@@ -58,7 +58,7 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
     const [error, setError] = useState<string | null>(null);
 
     const handleSelectDir = useCallback(async () => {
-        const selected = await open({ directory: true, multiple: false });
+        const selected = await pickFile({ directory: true, multiple: false });
         if (selected && typeof selected === 'string') {
             setLocalDir(selected);
         }

@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../utils/pickPath';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
 import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
@@ -186,7 +186,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
         try {
             // Sanitize the starting dir so a stale local path cannot crash the
             // native folder chooser (Fix G).
-            const selected = await open({ directory: true, multiple: false, defaultPath: await safePickerStartDir(localPath), title: t('connection.fourshared.selectLocalFolder') });
+            const selected = await pickFile({ directory: true, multiple: false, defaultPath: await safePickerStartDir(localPath), title: t('connection.fourshared.selectLocalFolder') });
             if (selected && typeof selected === 'string') {
                 setLocalPath(selected);
                 onLocalPathChange?.(selected);
@@ -1257,7 +1257,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // warning: losing the keyfile makes its vaults unopenable.
     const handleChooseKeyfile = async () => {
         try {
-            const picked = await open({ multiple: false });
+            const picked = await pickFile({ multiple: false });
             if (typeof picked === 'string' && picked) {
                 setAeroCryptKeyfilePath(picked);
                 setKeyfileJustGenerated(false);
@@ -1269,7 +1269,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
     const handleGenerateKeyfile = async () => {
         try {
-            const target = await save({ defaultPath: 'aeroftp.keyfile' });
+            const target = await pickSave({ defaultPath: 'aeroftp.keyfile' });
             if (!target) return;
             await invoke('crypt_generate_keyfile', { path: target });
             setAeroCryptKeyfilePath(target);
@@ -2386,7 +2386,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             // Seed the chooser at the current local dir when it exists, or the
             // nearest existing ancestor: an imported/stale path must never reach
             // the native dialog (Fix G).
-            const selected = await open({ directory: true, multiple: false, defaultPath: await safePickerStartDir(quickConnectDirs.localDir), title: t('browser.local') });
+            const selected = await pickFile({ directory: true, multiple: false, defaultPath: await safePickerStartDir(quickConnectDirs.localDir), title: t('browser.local') });
             if (selected && typeof selected === 'string') {
                 onQuickConnectDirsChange({ ...quickConnectDirs, localDir: selected });
             }
@@ -2398,7 +2398,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Browse for SSH key file (SFTP)
     const handleBrowseSshKey = async () => {
         try {
-            const selected = await open({
+            const selected = await pickFile({
                 multiple: false,
                 title: t('connection.selectSshKey'),
                 filters: [
@@ -4983,7 +4983,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="button"
                                                         onClick={async () => {
                                                             try {
-                                                                const selected = await open({
+                                                                const selected = await pickFile({
                                                                     title: t('github.selectPemTitle'),
                                                                     filters: [{ name: t('github.pemKeyLabel'), extensions: ['pem'] }],
                                                                     multiple: false,

@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { Shield, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { ArchiveEntry, AeroVaultMeta } from '../../types';
@@ -776,7 +776,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         if (outputDir) {
             savePath = joinVaultPath(outputDir, defaultName);
         } else {
-            const picked = await save({
+            const picked = await pickSave({
                 defaultPath: defaultName,
                 filters: creatingZip
                     ? [{ name: 'AeroVault Zip', extensions: ['aerozip'] }]
@@ -1013,12 +1013,12 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     // Optional escape hatch: pick a different destination folder for the new
     // vault. Updates `outputDir`, which the path preview and handleCreate read.
     const handleChangeOutputDir = async () => {
-        const sel = await open({ directory: true, multiple: false });
+        const sel = await pickFile({ directory: true, multiple: false });
         if (typeof sel === 'string') setOutputDir(sel);
     };
 
     const handleOpen = async () => {
-        const selected = await open({ filters: [{ name: 'AeroVault / AeroVault Zip', extensions: ['aerovault', 'aerozip'] }] });
+        const selected = await pickFile({ filters: [{ name: 'AeroVault / AeroVault Zip', extensions: ['aerovault', 'aerozip'] }] });
         if (!selected) return;
         const path = selected as string;
         setVaultPath(path);
@@ -1181,7 +1181,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     };
 
     const handleAddFiles = async () => {
-        const selected = await open({ multiple: true });
+        const selected = await pickFile({ multiple: true });
         if (!selected || (Array.isArray(selected) && selected.length === 0)) return;
         const paths = Array.isArray(selected) ? selected as string[] : [selected as string];
 
@@ -1261,7 +1261,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     // folder could only be added by drag-and-drop). Adds the whole tree under the
     // current directory, preserving structure.
     const handleAddFolder = async () => {
-        const selected = await open({ directory: true });
+        const selected = await pickFile({ directory: true });
         if (!selected || typeof selected !== 'string') return;
 
         setLoading(true);
@@ -1496,7 +1496,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     };
 
     const handleExtract = async (entryName: string) => {
-        const savePath = await save({ defaultPath: entryName.split(/[\\/]/).pop() || entryName });
+        const savePath = await pickSave({ defaultPath: entryName.split(/[\\/]/).pop() || entryName });
         if (!savePath) return;
 
         setLoading(true);
@@ -1534,7 +1534,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
     // Ehud #2: one-click "extract all" to a chosen folder (v3 recursive backend).
     const handleExtractAll = async () => {
-        const destPath = await open({ directory: true });
+        const destPath = await pickFile({ directory: true });
         if (!destPath || typeof destPath !== 'string') return;
 
         setLoading(true);
@@ -1569,7 +1569,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const handleSaveAll = async (target: 'folder' | 'zip' | 'aerozip') => {
         if (target === 'folder') { await handleExtractAll(); return; }
         const base = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.(aerovault|aerozip)$/i, '');
-        const destPath = await save({
+        const destPath = await pickSave({
             defaultPath: target === 'zip' ? `${base}.zip` : `${base}.aerozip`,
             filters: target === 'zip'
                 ? [{ name: 'Zip', extensions: ['zip'] }]
@@ -1753,7 +1753,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         try {
             const content = await buildVaultReport(format);
             const vaultName = (vaultPath.split(/[\\/]/).pop() || 'vault').replace(/\.(aerovault|aerozip)$/i, '');
-            const filePath = await save({
+            const filePath = await pickSave({
                 defaultPath: `${vaultName}-report.${format}`,
                 filters: [{ name: `AeroVault report (.${format})`, extensions: [format] }],
             });

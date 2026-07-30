@@ -5597,6 +5597,13 @@
             "importAccept": "Importa",
             "importedBody": "S'ha importat la configuració. Reinicieu AeroFTP per carregar els servidors i la caixa forta.",
             "restartNow": "Reinicia ara"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Selector de fitxers no disponible",
+                "portalMissing": "No hi ha cap portal d'escriptori instal·lat, de manera que aquest sistema no pot obrir un selector de fitxers. Instal·leu xdg-desktop-portal i un rerefons per al vostre escriptori (per exemple xdg-desktop-portal-gtk) i torneu-ho a provar.",
+                "unknown": "No s'ha pogut obrir el selector de fitxers. Consulteu el registre de l'aplicació per a més detalls."
+            }
         }
     }
 }

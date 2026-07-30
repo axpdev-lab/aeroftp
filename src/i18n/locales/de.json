@@ -5578,6 +5578,13 @@
             "importAccept": "Importieren",
             "importedBody": "Ihre Konfiguration wurde importiert. Starten Sie AeroFTP neu, um Ihre Server und den Tresor zu laden.",
             "restartNow": "Jetzt neu starten"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Dateiauswahl nicht verfügbar",
+                "portalMissing": "Es ist kein Desktop-Portal installiert, daher kann dieses System keine Dateiauswahl öffnen. Installieren Sie xdg-desktop-portal und ein Backend für Ihre Desktop-Umgebung (zum Beispiel xdg-desktop-portal-gtk) und versuchen Sie es erneut.",
+                "unknown": "Die Dateiauswahl konnte nicht geöffnet werden. Details finden Sie im Anwendungsprotokoll."
+            }
         }
     }
 }

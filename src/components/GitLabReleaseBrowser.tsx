@@ -14,7 +14,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { save, open as openDialog } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../utils/pickPath';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
@@ -184,7 +184,7 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
 
   const handleUploadAsset = useCallback(async (tag: string) => {
     try {
-      const selected = await openDialog({ multiple: false, title: t('gitlab.uploadAsset') || 'Upload Asset' });
+      const selected = await pickFile({ multiple: false, title: t('gitlab.uploadAsset') || 'Upload Asset' });
       if (!selected) return;
       const filePath = typeof selected === 'string' ? selected : (selected as { path: string }).path;
       const fileName = filePath.split(/[/\\]/).pop() || filePath;
@@ -420,7 +420,7 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
                                     <div className="flex items-center justify-end gap-1">
                                       <button onClick={async () => {
                                         try {
-                                          const savePath = await save({ defaultPath: link.name, title: `Download ${link.name}` });
+                                          const savePath = await pickSave({ defaultPath: link.name, title: `Download ${link.name}` });
                                           if (savePath) {
                                             const logId = humanLog.logRaw('activity.release_asset_download_start', 'DOWNLOAD', { provider: 'GitLab', filename: link.name }, 'running');
                                             try {

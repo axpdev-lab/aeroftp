@@ -5597,6 +5597,13 @@
             "importAccept": "Inportatu",
             "importedBody": "Zure konfigurazioa inportatu da. Berrabiarazi AeroFTP zure zerbitzariak eta kutxa gotorra kargatzeko.",
             "restartNow": "Berrabiarazi orain"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Fitxategi-hautatzailea ez dago erabilgarri",
+                "portalMissing": "Ez dago mahaigaineko atari bat instalatuta, beraz sistema honek ezin du fitxategi-hautatzailea ireki. Instalatu xdg-desktop-portal eta zure mahaigainerako backend bat (adibidez xdg-desktop-portal-gtk), eta saiatu berriro.",
+                "unknown": "Ezin izan da fitxategi-hautatzailea ireki. Ikusi aplikazioaren egunkaria xehetasunetarako."
+            }
         }
     }
 }

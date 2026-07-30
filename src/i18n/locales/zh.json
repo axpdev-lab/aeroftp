@@ -5578,6 +5578,13 @@
             "importAccept": "导入",
             "importedBody": "您的配置已导入。请重新启动 AeroFTP 以加载您的服务器和保险库。",
             "restartNow": "立即重新启动"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "无法使用文件选择器",
+                "portalMissing": "系统未安装桌面门户（desktop portal），因此无法打开文件选择器。请安装 xdg-desktop-portal 以及适用于您桌面环境的后端（例如 xdg-desktop-portal-gtk），然后重试。",
+                "unknown": "无法打开文件选择器。详情请查看应用程序日志。"
+            }
         }
     }
 }

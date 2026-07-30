@@ -5578,6 +5578,13 @@
             "importAccept": "Importă",
             "importedBody": "Configurația dumneavoastră a fost importată. Reporniți AeroFTP pentru a încărca serverele și seiful.",
             "restartNow": "Repornește acum"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Selectorul de fișiere nu este disponibil",
+                "portalMissing": "Nu este instalat niciun portal de desktop, așa că acest sistem nu poate deschide un selector de fișiere. Instalați xdg-desktop-portal și un backend pentru desktopul dumneavoastră (de exemplu xdg-desktop-portal-gtk), apoi încercați din nou.",
+                "unknown": "Selectorul de fișiere nu a putut fi deschis. Consultați jurnalul aplicației pentru detalii."
+            }
         }
     }
 }

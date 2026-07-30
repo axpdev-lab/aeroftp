@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../utils/pickPath';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { Image as ImageIcon, Upload, Trash2, X, Search, PencilLine } from 'lucide-react';
 import { PROVIDER_LOGOS } from './ProviderLogos';
@@ -447,7 +447,7 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
         if (uploading) return;
         setUploading(true);
         try {
-            const selected = await open({
+            const selected = await pickFile({
                 multiple: false,
                 filters: [{ name: 'Images', extensions: ['svg', 'png', 'jpg', 'jpeg', 'ico', 'webp', 'gif'] }],
             });

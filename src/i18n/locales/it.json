@@ -5578,6 +5578,13 @@
             "importAccept": "Importa",
             "importedBody": "La tua configurazione è stata importata. Riavvia AeroFTP per caricare i tuoi server e la cassaforte.",
             "restartNow": "Riavvia ora"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Selettore file non disponibile",
+                "portalMissing": "Non è installato alcun portale desktop, quindi questo sistema non può aprire un selettore file. Installa xdg-desktop-portal e un backend per il tuo desktop (per esempio xdg-desktop-portal-gtk), poi riprova.",
+                "unknown": "Non è stato possibile aprire il selettore file. Consulta il registro dell'applicazione per i dettagli."
+            }
         }
     }
 }

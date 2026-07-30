@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { save } from '@tauri-apps/plugin-dialog';
+import { pickSave } from '../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { X, Wifi, Activity, Monitor, ScrollText, Layout, Copy, Trash2, Pause, Play, Download, FlaskConical, CheckCircle2, XCircle, AlertTriangle, Circle, Loader2, Package } from 'lucide-react';
 import { useTranslation } from '../i18n';
@@ -422,7 +422,7 @@ function exportFilename(kind: 'logs' | 'network', fmt: ExportFormat): string {
 }
 
 async function exportToFile(content: string, kind: 'logs' | 'network', fmt: ExportFormat) {
-    const path = await save({
+    const path = await pickSave({
         defaultPath: exportFilename(kind, fmt),
         filters: [{ name: fmt.toUpperCase(), extensions: [EXPORT_EXT[fmt]] }],
     });
@@ -772,7 +772,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
     const runExportBundle = useCallback(async () => {
         try {
             const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            const path = await save({
+            const path = await pickSave({
                 defaultPath: `aeroftp-diagnostic-${stamp}.zip`,
                 filters: [{ name: 'ZIP', extensions: ['zip'] }],
             });

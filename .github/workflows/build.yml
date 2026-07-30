@@ -119,7 +119,14 @@ jobs:
         if: matrix.target == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse3-dev
+          # `dbus` is here for the `Rust tests` step below, not for the build.
+          # `portal_chooser`'s three cases stand up a throwaway session bus with
+          # `dbus-daemon` to prove that a portal-less host reads as portal-less,
+          # and this is the only job that runs `cargo test` on Linux. Without the
+          # daemon those tests skipped, and a skip is invisible in the log because
+          # a passing test's stderr is captured: the pin would have reported
+          # success while proving nothing. See #510.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse3-dev dbus
           # No snapcraft here any more: this leg stopped building the snap when
           # PR #172 moved it to its own job, and snapcore/action-build brings
           # its own snapcraft. The leftover install (5 retries, 60 s apart on a

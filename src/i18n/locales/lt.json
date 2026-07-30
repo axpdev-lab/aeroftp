@@ -5578,6 +5578,13 @@
             "importAccept": "Importuoti",
             "importedBody": "Jūsų konfigūracija importuota. Iš naujo paleiskite „AeroFTP“, kad įkeltumėte savo serverius ir seifą.",
             "restartNow": "Paleisti iš naujo dabar"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Failų parinkiklis neprieinamas",
+                "portalMissing": "Nėra įdiegto darbalaukio portalo, todėl ši sistema negali atverti failų parinkiklio. Įdiekite xdg-desktop-portal ir jūsų darbalaukiui tinkamą vidinę dalį (pavyzdžiui, xdg-desktop-portal-gtk) ir pabandykite dar kartą.",
+                "unknown": "Nepavyko atverti failų parinkiklio. Išsamesnės informacijos ieškokite programos žurnale."
+            }
         }
     }
 }

@@ -3,7 +3,7 @@
 
 import { useState, useCallback, useEffect, useRef, type DragEvent as ReactDragEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../utils/pickPath';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import {
     X, Hash, Lock, KeyRound, Copy, Check, FileSearch, Type,
@@ -334,7 +334,7 @@ const HashForgeTab: React.FC = () => {
     }, [discardStaged]);
 
     const selectFile = useCallback(async () => {
-        const selected = await open({ multiple: false, directory: false });
+        const selected = await pickFile({ multiple: false, directory: false });
         if (selected) {
             applyDroppedPath(selected as string);
         }

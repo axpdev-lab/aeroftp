@@ -14,7 +14,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { X, Download, Terminal, Check, AlertTriangle } from 'lucide-react';
-import { save } from '@tauri-apps/plugin-dialog';
+import { pickSave } from '../../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import type { VaultReport } from './useVaultState';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
@@ -61,7 +61,7 @@ type SaveOutcome = { ok: true; path: string } | { ok: false; error: string } | n
  */
 async function saveReceipt(defaultName: string, ext: string, content: string): Promise<SaveOutcome> {
     try {
-        const filePath = await save({
+        const filePath = await pickSave({
             defaultPath: defaultName,
             filters: [{ name: `AeroVault receipt (.${ext})`, extensions: [ext] }],
         });

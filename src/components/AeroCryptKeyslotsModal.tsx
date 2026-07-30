@@ -8,7 +8,7 @@
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../utils/pickPath';
 import { KeyRound, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
@@ -82,7 +82,7 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
 
     const pickKeyfile = async (setter: (p: string) => void) => {
         try {
-            const picked = await open({
+            const picked = await pickFile({
                 multiple: false,
                 filters: [{ name: 'Keyfile', extensions: ['*'] }],
             });

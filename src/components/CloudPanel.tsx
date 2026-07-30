@@ -8,7 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { useTauriListener } from '../hooks/useTauriListener';
-import { open } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../utils/pickPath';
 import { TransferProgressBar } from './TransferProgressBar';
 import {
     Cloud, CloudOff, CloudUpload, CloudDownload, RefreshCw,
@@ -282,7 +282,7 @@ const SetupWizard: React.FC<{
     }, [selectedProtocol, savedServers]);
 
     const selectLocalFolder = async () => {
-        const selected = await open({ directory: true, multiple: false, title: 'Select AeroCloud Folder' });
+        const selected = await pickFile({ directory: true, multiple: false, title: 'Select AeroCloud Folder' });
         if (selected) setLocalFolder(selected as string);
     };
 

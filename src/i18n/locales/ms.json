@@ -5578,6 +5578,13 @@
             "importAccept": "Import",
             "importedBody": "Konfigurasi anda telah diimport. Mulakan semula AeroFTP untuk memuatkan pelayan dan bilik kebal anda.",
             "restartNow": "Mula semula sekarang"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Pemilih fail tidak tersedia",
+                "portalMissing": "Tiada portal desktop dipasang, jadi sistem ini tidak dapat membuka pemilih fail. Pasang xdg-desktop-portal dan backend untuk desktop anda (contohnya xdg-desktop-portal-gtk), kemudian cuba lagi.",
+                "unknown": "Pemilih fail tidak dapat dibuka. Lihat log aplikasi untuk perincian."
+            }
         }
     }
 }

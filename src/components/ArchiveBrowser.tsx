@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { tempDir } from '@tauri-apps/api/path';
-import { save } from '@tauri-apps/plugin-dialog';
+import { pickSave } from '../utils/pickPath';
 import { Archive, File, Folder, Lock, Download, Eye, X, ChevronRight, ChevronDown, EyeOff, Loader2 } from 'lucide-react';
 import { ArchiveEntry, ArchiveType } from '../types';
 import { useTranslation } from '../i18n';
@@ -217,7 +217,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     };
 
     const handleExtract = async (entryName: string) => {
-        const savePath = await save({
+        const savePath = await pickSave({
             defaultPath: entryName.split('/').pop() || entryName,
         });
         if (!savePath) return;

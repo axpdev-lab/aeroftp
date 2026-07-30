@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { save } from '@tauri-apps/plugin-dialog';
+import { pickSave } from '../utils/pickPath';
 import { X, Download, RotateCcw, History, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
@@ -52,7 +52,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   const handleDownload = async (version: FileVersion) => {
     const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : '';
     const defaultName = `${fileName.replace(ext, '')}_v${version.id.slice(0, 8)}${ext}`;
-    const savePath = await save({ defaultPath: defaultName });
+    const savePath = await pickSave({ defaultPath: defaultName });
     if (!savePath) return;
 
     setActionInProgress(version.id);

@@ -5578,6 +5578,13 @@
             "importAccept": "Importuj",
             "importedBody": "Twoja konfiguracja została zaimportowana. Uruchom ponownie AeroFTP, aby wczytać serwery i sejf.",
             "restartNow": "Uruchom ponownie teraz"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Okno wyboru plików jest niedostępne",
+                "portalMissing": "Nie zainstalowano portalu pulpitu, więc ten system nie może otworzyć okna wyboru plików. Zainstaluj xdg-desktop-portal oraz backend odpowiedni dla swojego pulpitu (na przykład xdg-desktop-portal-gtk) i spróbuj ponownie.",
+                "unknown": "Nie udało się otworzyć okna wyboru plików. Szczegóły znajdziesz w dzienniku aplikacji."
+            }
         }
     }
 }

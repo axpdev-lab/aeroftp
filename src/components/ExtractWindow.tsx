@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { open as openFolderDialog } from '@tauri-apps/plugin-dialog';
+import { pickFile } from '../utils/pickPath';
 import { Eye, EyeOff, FolderOpen, Loader2, Lock, CheckCircle2, XCircle, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import {
@@ -126,7 +126,7 @@ const ExtractWindow: React.FC = () => {
                 let dest: string;
                 if (mode === 'to') {
                     setPhase('choosing');
-                    const chosen = await openFolderDialog({
+                    const chosen = await pickFile({
                         directory: true,
                         multiple: false,
                         title: t('extractWindow.chooseFolder'),

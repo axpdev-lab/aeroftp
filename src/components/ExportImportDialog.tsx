@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { open, save } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../utils/pickPath';
 import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, FolderInput } from 'lucide-react';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
@@ -140,7 +140,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         if (noneSelected) return;
 
         // Open save dialog first
-        const filePath = await save({
+        const filePath = await pickSave({
             title: t('settings.exportServers'),
             filters: [{ name: 'AeroFTP Profile', extensions: ['aeroftp'] }],
             defaultPath: `aeroftp_backup_${new Date().toISOString().slice(0, 10)}.aeroftp`,
@@ -170,7 +170,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     // password is only requested once a file is loaded (KeePassXC pattern),
     // so the user sees what they are unlocking before typing a secret.
     const handleChooseImportFile = async () => {
-        const filePath = await open({
+        const filePath = await pickFile({
             title: t('settings.importServers'),
             filters: [
                 { name: 'AeroFTP Profile', extensions: ['aeroftp'] },

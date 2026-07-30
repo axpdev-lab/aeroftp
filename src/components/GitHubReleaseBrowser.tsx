@@ -13,7 +13,7 @@ import {
   FileDown, Download, Loader2, Tag, Calendar, FileBox, RefreshCw, FileText,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { save, open as openDialog } from '@tauri-apps/plugin-dialog';
+import { pickFile, pickSave } from '../utils/pickPath';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { GitHubReleaseIcon } from './icons/GitHubReleaseIcon';
@@ -224,7 +224,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
 
   const handleUploadAsset = useCallback(async (tag: string) => {
     try {
-      const selected = await openDialog({
+      const selected = await pickFile({
         multiple: false,
         title: t('github.uploadAsset') || 'Upload Asset',
       });
@@ -694,7 +694,7 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                                     e.stopPropagation();
                                     try {
                                       const defaultName = asset.name.replace(/[()]/g, '').replace(/\s+/g, '-');
-                                      const savePath = await save({
+                                      const savePath = await pickSave({
                                         defaultPath: defaultName,
                                         title: `Download ${asset.name}`,
                                       });

@@ -5578,6 +5578,13 @@
             "importAccept": "Importálás",
             "importedBody": "A konfigurációja importálva lett. Indítsa újra az AeroFTP-t a kiszolgálói és a széf betöltéséhez.",
             "restartNow": "Újraindítás most"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "A fájlválasztó nem érhető el",
+                "portalMissing": "Nincs telepítve asztali portál, ezért ez a rendszer nem tud fájlválasztót megnyitni. Telepítse az xdg-desktop-portal csomagot és az asztali környezetéhez tartozó háttérszolgáltatást (például xdg-desktop-portal-gtk), majd próbálja újra.",
+                "unknown": "A fájlválasztót nem sikerült megnyitni. A részleteket az alkalmazás naplójában találja."
+            }
         }
     }
 }

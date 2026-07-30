@@ -5578,6 +5578,13 @@
             "importAccept": "Import",
             "importedBody": "Your configuration was imported. Restart AeroFTP to load your servers and vault.",
             "restartNow": "Restart now"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "File chooser unavailable",
+                "portalMissing": "No desktop portal is installed, so this system cannot open a file chooser. Install xdg-desktop-portal and a backend for your desktop (for example xdg-desktop-portal-gtk), then try again.",
+                "unknown": "The file chooser could not be opened. See the application log for details."
+            }
         }
     }
 }

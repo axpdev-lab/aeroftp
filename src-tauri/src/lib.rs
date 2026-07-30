@@ -121,6 +121,7 @@ pub mod peer;
 pub mod peer_commands;
 pub mod peer_identity;
 pub mod portable;
+pub mod portal_chooser;
 pub mod profile_loader;
 mod rsync_output;
 pub mod storage_dedup;
@@ -17674,8 +17675,25 @@ pub fn run() {
         // SIGABRT) when the directory picker opens: the debug build aborts on
         // it, and an optimized release can corrupt the heap silently. The portal
         // runs the chooser out-of-process so it never touches our heap, and is
-        // the recommended path on Wayland; on a host with no portal GTK falls
-        // back to the native chooser. Respect a user override (GTK_USE_PORTAL=0).
+        // the recommended path on Wayland. Respect a user override
+        // (GTK_USE_PORTAL=0).
+        //
+        // This comment used to claim that on a host with no portal GTK falls
+        // back to the native chooser. It does NOT, and the #464 harness measured
+        // it: on a session bus that activates all 65 other services and omits
+        // only the 9 portal ones, GTK logs
+        //
+        //   Can't open portal file chooser: ...Error.ServiceUnknown
+        //
+        // and no chooser window appears at all. Worse, the failure is invisible
+        // to the caller: rfd exposes `pick_file() -> Option<PathBuf>` with no
+        // error channel, so tauri-plugin-dialog answers with a successful `null`
+        // that the frontend cannot tell apart from "the user pressed Cancel".
+        //
+        // So on a host without xdg-desktop-portal there is no safe chooser at
+        // all: falling back to the in-process one is exactly the heap corruption
+        // above. `chooser_unavailable_reason` exists to say so out loud instead
+        // of leaving the user with a button that does nothing.
         if std::env::var_os("GTK_USE_PORTAL").is_none() {
             std::env::set_var("GTK_USE_PORTAL", "1");
         }
@@ -18835,6 +18853,7 @@ pub fn run() {
             connect_ftp,
             disconnect_ftp,
             check_connection,
+            crate::portal_chooser::chooser_unavailable,
             ftp_noop,
             reconnect_ftp,
             list_files,

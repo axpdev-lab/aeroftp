@@ -3,7 +3,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { Copy, Check, Terminal, FileInput, AlertTriangle, FileDiff, ShieldAlert } from 'lucide-react';
-import { save } from '@tauri-apps/plugin-dialog';
+import { pickSave } from '../../utils/pickPath';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import { useTranslation } from '../../i18n';
 import { DiffPreview } from './DiffPreview';
@@ -82,7 +82,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
                     bash: 'sh', yaml: 'yml', markup: 'html',
                 };
                 const fileExt = extMap[ext] || ext;
-                const savePath = await save({
+                const savePath = await pickSave({
                     defaultPath: `code.${fileExt}`,
                     filters: [{ name: 'Code files', extensions: [fileExt] }],
                 });

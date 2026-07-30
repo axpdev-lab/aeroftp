@@ -5578,6 +5578,13 @@
             "importAccept": "Uvozi",
             "importedBody": "Vaša konfiguracija je bila uvožena. Znova zaženite AeroFTP, da naložite svoje strežnike in trezor.",
             "restartNow": "Znova zaženi zdaj"
+        },
+        "picker": {
+            "unavailable": {
+                "title": "Izbirnik datotek ni na voljo",
+                "portalMissing": "Namizni portal ni nameščen, zato ta sistem ne more odpreti izbirnika datotek. Namestite xdg-desktop-portal in zaledje za svoje namizje (na primer xdg-desktop-portal-gtk) ter poskusite znova.",
+                "unknown": "Izbirnika datotek ni bilo mogoče odpreti. Podrobnosti si oglejte v dnevniku programa."
+            }
         }
     }
 }

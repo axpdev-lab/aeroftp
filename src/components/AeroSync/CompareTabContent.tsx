@@ -14,7 +14,7 @@ import {
     Loader2,
     type LucideIcon,
 } from 'lucide-react';
-import { save } from '@tauri-apps/plugin-dialog';
+import { pickSave } from '../../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import type {
     CompareBucket,
@@ -261,7 +261,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     const handleExportJson = async (): Promise<void> => {
         if (!result || result.entries.length === 0) return;
         try {
-            const filePath = await save({
+            const filePath = await pickSave({
                 defaultPath: compareExportFilename('json'),
                 filters: [{ name: 'JSON', extensions: ['json'] }],
             });
@@ -279,7 +279,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     const handleExportCsv = async (): Promise<void> => {
         if (!result || result.entries.length === 0) return;
         try {
-            const filePath = await save({
+            const filePath = await pickSave({
                 defaultPath: compareExportFilename('csv'),
                 filters: [{ name: 'CSV', extensions: ['csv'] }],
             });
