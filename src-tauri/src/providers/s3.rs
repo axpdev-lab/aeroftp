@@ -1180,10 +1180,20 @@ impl S3Provider {
                     // and trimming each piece is fine, but blindly assigning
                     // the last fragment overwrites the preceding "a": which
                     // is exactly how `a&b.txt` was being shown as `b.txt`.
-                    // Whitespace-ONLY fragments (pretty-print indentation)
-                    // carry no payload and are skipped.
+                    // Whitespace-ONLY fragments are pretty-print indentation
+                    // ONLY when no payload-bearing element is open: between
+                    // two entity refs (`a&amp; &amp;b.txt`) or at an element
+                    // edge (` &amp;x`) the space is part of the value and
+                    // must be preserved.
                     let raw = String::from_utf8_lossy(e.as_ref()).to_string();
-                    if raw.trim().is_empty() {
+                    let payload_open = in_next_token
+                        || (matches!(context, Context::CommonPrefixes) && current_tag == "Prefix")
+                        || (matches!(context, Context::Contents)
+                            && matches!(
+                                current_tag.as_str(),
+                                "Key" | "Size" | "LastModified" | "ETag" | "StorageClass"
+                            ));
+                    if raw.trim().is_empty() && !payload_open {
                         buf.clear();
                         continue;
                     }
@@ -1366,6 +1376,10 @@ impl S3Provider {
         reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
         let mut inside_target = false;
+        // Nesting depth below the target element: text is collected only
+        // from the target's immediate content (depth 0), so a container tag
+        // like <Error> no longer concatenates its descendants' text ("XY").
+        let mut depth: u32 = 0;
         let mut acc = String::new();
 
         loop {
@@ -1373,15 +1387,18 @@ impl S3Provider {
                 Ok(Event::Start(ref e)) => {
                     let name = e.name();
                     let tag_name = String::from_utf8_lossy(name.as_ref());
-                    if tag_name == tag {
+                    if inside_target {
+                        depth += 1;
+                    } else if tag_name == tag {
                         inside_target = true;
+                        depth = 0;
                         acc.clear();
                     }
                 }
-                Ok(Event::Text(ref e)) if inside_target => {
+                Ok(Event::Text(ref e)) if inside_target && depth == 0 => {
                     acc.push_str(&String::from_utf8_lossy(e.as_ref()));
                 }
-                Ok(Event::GeneralRef(ref e)) if inside_target => {
+                Ok(Event::GeneralRef(ref e)) if inside_target && depth == 0 => {
                     if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
                         acc.push_str(&ch);
                     }
@@ -1389,12 +1406,16 @@ impl S3Provider {
                 Ok(Event::End(ref e)) => {
                     let name = e.name();
                     let tag_name = String::from_utf8_lossy(name.as_ref());
-                    if tag_name == tag {
-                        let trimmed = acc.trim().to_string();
-                        if !trimmed.is_empty() {
-                            return Some(trimmed);
+                    if inside_target {
+                        if depth > 0 {
+                            depth -= 1;
+                        } else if tag_name == tag {
+                            let trimmed = acc.trim().to_string();
+                            inside_target = false;
+                            if !trimmed.is_empty() {
+                                return Some(trimmed);
+                            }
                         }
-                        inside_target = false;
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -2329,7 +2350,10 @@ impl S3Provider {
                     }
                     Ok(Event::Text(ref e)) => {
                         let text = String::from_utf8_lossy(e.as_ref());
-                        if text.trim().is_empty() {
+                        // Skip indentation-only fragments, but preserve
+                        // whitespace while a Key/token element is open: there
+                        // it is payload (e.g. `a&amp; &amp;b.txt`).
+                        if text.trim().is_empty() && !inside_key && !inside_next_token {
                             buf.clear();
                             continue;
                         }
@@ -3764,9 +3788,14 @@ impl StorageProvider for S3Provider {
                     Ok(Event::Text(ref e)) => {
                         // Accumulate raw fragments (entity-adjacent whitespace
                         // inside a Key is significant); skip indentation-only
-                        // fragments; scalars are trimmed at consumption.
+                        // fragments only when no payload element (Key inside
+                        // Contents, or the continuation token) is open;
+                        // scalars are trimmed at consumption.
                         let t = String::from_utf8_lossy(e.as_ref());
-                        if t.trim().is_empty() {
+                        if t.trim().is_empty()
+                            && !in_next_tok
+                            && !(in_contents && find_tag == "Key")
+                        {
                             find_buf.clear();
                             continue;
                         }
@@ -4217,7 +4246,15 @@ impl StorageProvider for S3Provider {
                     }
                     Ok(Event::Text(ref e)) => {
                         let text = String::from_utf8_lossy(e.as_ref());
-                        if text.trim().is_empty() {
+                        // Skip indentation-only fragments, but preserve
+                        // whitespace while a Key inside <Version> or a
+                        // pagination marker element is open: there it is
+                        // payload (e.g. `a&amp; &amp;b.txt`).
+                        if text.trim().is_empty()
+                            && !in_next_key_marker
+                            && !in_next_version_id_marker
+                            && !(in_version && current_tag == "Key")
+                        {
                             buf.clear();
                             continue;
                         }
@@ -4911,7 +4948,10 @@ impl S3Provider {
                 },
                 Ok(Event::Text(ref e)) => {
                     let text = String::from_utf8_lossy(e.as_ref());
-                    if text.trim().is_empty() {
+                    // Skip indentation-only fragments, but preserve
+                    // whitespace while a <Key>/<Value> element is open:
+                    // there it is payload (e.g. `a&amp; &amp;b`).
+                    if text.trim().is_empty() && !in_key && !in_value {
                         buf.clear();
                         continue;
                     }
@@ -5306,7 +5346,9 @@ fn parse_batch_delete_errors(xml_str: &str) -> Vec<(String, String)> {
                     continue;
                 }
                 let text = String::from_utf8_lossy(e.as_ref());
-                if text.trim().is_empty() {
+                // Skip indentation-only fragments, except inside <Key> where
+                // whitespace is payload (e.g. `a&amp; &amp;b.txt`).
+                if text.trim().is_empty() && current_tag != "Key" {
                     buf.clear();
                     continue;
                 }
@@ -5474,7 +5516,14 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
             }
             Ok(Event::Text(ref e)) => {
                 let text = String::from_utf8_lossy(e.as_ref());
-                if text.trim().is_empty() {
+                // Skip indentation-only fragments, but preserve whitespace
+                // while a Key inside <Version>/<DeleteMarker> or a pagination
+                // marker element is open: there it is payload.
+                if text.trim().is_empty()
+                    && !in_next_key_marker
+                    && !in_next_version_id_marker
+                    && !(elem != Elem::None && current_tag == "Key")
+                {
                     buf.clear();
                     continue;
                 }
@@ -5653,6 +5702,125 @@ mod tests {
         assert_eq!(
             errors,
             vec![("a & b.txt".to_string(), "AccessDenied".to_string())]
+        );
+    }
+
+    fn trim_text_test_provider() -> S3Provider {
+        S3Provider::new(S3Config {
+            endpoint: Some("http://localhost:9000".to_string()),
+            region: "us-east-1".to_string(),
+            access_key_id: "key".to_string(),
+            secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
+            bucket: "test-bucket".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+        })
+        .expect("Failed to create S3Provider")
+    }
+
+    /// CR-536 regression: a whitespace-ONLY Text fragment is indentation
+    /// only when no payload element is open. Between two entity refs
+    /// (`a&amp; &amp;b.txt`) or at an element edge (` &amp;x.txt`) it is
+    /// part of the key and must survive. Pretty-print indentation between
+    /// elements must still be ignored.
+    #[test]
+    fn parse_list_response_preserves_whitespace_only_fragments_around_entities() {
+        let provider = trim_text_test_provider();
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>test-bucket</Name>
+  <Prefix></Prefix>
+  <Contents>
+    <Key>a&amp; &amp;b.txt</Key>
+    <LastModified>2026-07-30T12:00:00.000Z</LastModified>
+    <ETag>"abc"</ETag>
+    <Size>3</Size>
+    <StorageClass>STANDARD</StorageClass>
+  </Contents>
+  <Contents>
+    <Key> &amp;x.txt</Key>
+    <LastModified>2026-07-30T12:00:00.000Z</LastModified>
+    <ETag>"def"</ETag>
+    <Size>4</Size>
+    <StorageClass>STANDARD</StorageClass>
+  </Contents>
+</ListBucketResult>"#;
+        let (entries, next_token) = provider.parse_list_response(xml).expect("parse");
+        assert_eq!(next_token, None);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "a& &b.txt");
+        assert_eq!(entries[0].size, 3);
+        assert_eq!(entries[1].name, " &x.txt");
+    }
+
+    /// Same regression for the ListObjectVersions trash parser.
+    #[test]
+    fn parse_object_versions_page_preserves_whitespace_only_fragments() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Version>
+    <Key>a&amp; &amp;b.txt</Key>
+    <VersionId>v1</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-07-30T12:00:00.000Z</LastModified>
+    <Size>10</Size>
+  </Version>
+  <DeleteMarker>
+    <Key> &amp;x.txt</Key>
+    <VersionId>d1</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-07-30T13:00:00.000Z</LastModified>
+  </DeleteMarker>
+</ListVersionsResult>"#;
+        let (entries, truncated, _, _) = parse_object_versions_page(xml).expect("parse");
+        assert!(!truncated);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].key, "a& &b.txt");
+        assert_eq!(entries[1].key, " &x.txt");
+        assert!(entries[1].is_delete_marker);
+    }
+
+    /// Same regression for batch-delete error keys.
+    #[test]
+    fn parse_batch_delete_errors_preserves_whitespace_only_fragments() {
+        let xml = "<DeleteResult>\n  <Error>\n    <Key>a&amp; &amp;b.txt</Key>\n    <Code>AccessDenied</Code>\n  </Error>\n</DeleteResult>";
+        let errors = parse_batch_delete_errors(xml);
+        assert_eq!(
+            errors,
+            vec![("a& &b.txt".to_string(), "AccessDenied".to_string())]
+        );
+    }
+
+    /// CR-536 nitpick: extract_xml_tag must collect only the target
+    /// element's immediate content, not the concatenated text of nested
+    /// descendants. Leaf-tag callers (UploadId, ETag, Code, Message) keep
+    /// their trimmed, entity-decoded behavior.
+    #[test]
+    fn extract_xml_tag_reads_only_immediate_content() {
+        let provider = trim_text_test_provider();
+        // Leaf tag: trimmed, entities decoded.
+        assert_eq!(
+            provider.extract_xml_tag(
+                "<Error><Code>Access&amp;Denied</Code><Message>m</Message></Error>",
+                "Code"
+            ),
+            Some("Access&Denied".to_string())
+        );
+        // Container tag: descendant text must NOT be concatenated ("XY").
+        assert_eq!(
+            provider.extract_xml_tag("<Error><Code>X</Code><Message>Y</Message></Error>", "Error"),
+            None
         );
     }
 

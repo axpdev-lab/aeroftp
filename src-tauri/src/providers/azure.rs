@@ -518,7 +518,12 @@ impl AzureProvider {
                 },
                 Ok(Event::Text(ref e)) => {
                     let text = String::from_utf8_lossy(e.as_ref()).into_owned();
-                    if text.trim().is_empty() {
+                    // Skip indentation-only fragments, but preserve
+                    // whitespace while a blob/prefix <Name> is open: there
+                    // it is payload (e.g. `a&amp; &amp;b.txt`).
+                    if text.trim().is_empty()
+                        && !matches!(state, ParseState::BlobName | ParseState::BlobPrefixName)
+                    {
                         buf.clear();
                         continue;
                     }
@@ -2280,7 +2285,10 @@ impl AzureProvider {
                     }
                     Ok(quick_xml::events::Event::Text(ref e)) => {
                         let text = String::from_utf8_lossy(e.as_ref()).into_owned();
-                        if text.trim().is_empty() {
+                        // Skip indentation-only fragments, but preserve
+                        // whitespace inside <Name>: there it is payload
+                        // (e.g. `a&amp; &amp;b.txt`).
+                        if text.trim().is_empty() && !(in_blob && tag_name == "Name") {
                             buf.clear();
                             continue;
                         }
@@ -2849,5 +2857,39 @@ Time:2026-01-01</Message>
         let (items, marker) = p.parse_blob_list("not xml at all <<<");
         assert!(items.is_empty());
         assert_eq!(marker, None);
+    }
+
+    /// CR-536 regression: a whitespace-ONLY Text fragment is indentation
+    /// only when no <Name> element is open. Between two entity refs
+    /// (`a&amp; &amp;b.txt`) or at an element edge (` &amp;x.txt`) it is
+    /// part of the blob name and must survive; pretty-print indentation
+    /// between elements must still be ignored.
+    #[test]
+    fn parse_blob_list_preserves_whitespace_only_fragments_around_entities() {
+        let p = test_provider();
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults>
+  <Blobs>
+    <Blob>
+      <Name>a&amp; &amp;b.txt</Name>
+      <Properties>
+        <Content-Length>3</Content-Length>
+      </Properties>
+    </Blob>
+    <Blob>
+      <Name> &amp;x.txt</Name>
+      <Properties>
+        <Content-Length>4</Content-Length>
+      </Properties>
+    </Blob>
+  </Blobs>
+</EnumerationResults>"#;
+
+        let (items, marker) = p.parse_blob_list(xml);
+        assert_eq!(marker, None);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].name, "a& &b.txt");
+        assert_eq!(items[0].size, 3);
+        assert_eq!(items[1].name, " &x.txt");
     }
 }

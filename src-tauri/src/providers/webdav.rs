@@ -1506,7 +1506,14 @@ impl WebDavProvider {
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
                         let raw = String::from_utf8_lossy(e.as_ref()).to_string();
-                        if !raw.trim().is_empty() {
+                        // Whitespace-only fragments are indentation EXCEPT
+                        // inside name/path-bearing tags, where the space is
+                        // payload (e.g. `a&amp; &amp;b.txt`).
+                        let payload_tag = matches!(
+                            tag.as_str(),
+                            "href" | "trashbin-filename" | "trashbin-original-location"
+                        );
+                        if !raw.trim().is_empty() || payload_tag {
                             match tag.as_str() {
                                 "href" => href.push_str(&raw),
                                 "trashbin-filename" => trash_filename.push_str(&raw),
@@ -1899,7 +1906,11 @@ impl WebDavProvider {
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
                         let raw = String::from_utf8_lossy(e.as_ref()).to_string();
-                        if !raw.trim().is_empty() {
+                        // Whitespace-only fragments are indentation EXCEPT
+                        // inside href/displayname, where the space is part
+                        // of the name (e.g. `a&amp; &amp;b.txt`).
+                        let payload_tag = matches!(tag.as_str(), "href" | "displayname");
+                        if !raw.trim().is_empty() || payload_tag {
                             match tag.as_str() {
                                 "href" => href.push_str(&raw),
                                 "displayname" => displayname.push_str(&raw),
@@ -4434,6 +4445,64 @@ mod tests {
         assert_eq!(entries[0].size, 65536);
         // No displayname: falls back to the (decoded) href leaf.
         assert_eq!(entries[1].name, "a & b.txt");
+    }
+
+    /// CR-536 regression: a whitespace-ONLY Text fragment between two entity
+    /// refs (`a&amp; &amp;b.txt`) is part of the name, not indentation, and
+    /// must survive in displayname parsing.
+    #[test]
+    fn parse_propfind_preserves_whitespace_only_fragments_around_entities() {
+        let provider = WebDavProvider::new(test_config("https://example.com/dav"))
+            .expect("Failed to create WebDavProvider");
+
+        let xml = r#"<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:">
+            <d:response>
+                <d:href>/dav/a%26%20%26b.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>a&amp; &amp;b.txt</d:displayname>
+                        <d:resourcetype/>
+                        <d:getcontentlength>10</d:getcontentlength>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+
+        let entries = provider.parse_propfind_response(xml, "/dav").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "a& &b.txt");
+        assert_eq!(entries[0].size, 10);
+    }
+
+    /// CR-536 regression, Nextcloud trashbin parser: same whitespace-only
+    /// fragment preservation for trashbin-filename / original-location.
+    #[test]
+    fn parse_trashbin_preserves_whitespace_only_fragments_around_entities() {
+        let provider = WebDavProvider::new(test_config("https://example.com"))
+            .expect("Failed to create WebDavProvider");
+
+        let xml = r#"<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:" xmlns:nc="http://nextcloud.org/ns">
+            <d:response>
+                <d:href>/remote.php/dav/trashbin/user/trash/a%26%20%26b.txt.d1700000000</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <nc:trashbin-filename>a&amp; &amp;b.txt</nc:trashbin-filename>
+                        <nc:trashbin-original-location>docs/a&amp; &amp;b.txt</nc:trashbin-original-location>
+                        <nc:trashbin-deletion-time>1700000000</nc:trashbin-deletion-time>
+                        <d:getcontentlength>10</d:getcontentlength>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+
+        let entries = provider.parse_trashbin_response(xml).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "a& &b.txt");
+        assert_eq!(entries[0].original_path, "docs/a& &b.txt");
+        assert_eq!(entries[0].deleted_at, 1700000000);
     }
 
     /// Issue #128 (Filen WebDAV bridge): the local bridge ships
