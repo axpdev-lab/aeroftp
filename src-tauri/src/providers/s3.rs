@@ -321,6 +321,21 @@ impl S3Provider {
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(1800))
+            // Never follow redirects on a SigV4-signed request. Two reasons,
+            // and the second is the one that bites:
+            //
+            //   1. The signature covers the request's host and path, so a
+            //      redirected request arrives unverifiable anyway. Following
+            //      one cannot succeed; it only turns a clear error into a
+            //      confusing one.
+            //   2. reqwest's `remove_sensitive_headers` strips exactly
+            //      Authorization, Cookie, cookie2, Proxy-Authorization and
+            //      WWW-Authenticate on a cross-origin hop. `x-amz-security-token`
+            //      is not on that list, so with the default `Policy::limited(10)`
+            //      an STS session token would be replayed to whatever host the
+            //      redirect names -- including a plaintext http:// one.
+            //      Same class as rclone GHSA-cf44-9pgv-m4xc / GHSA-gx4c-2hqx-cw2r.
+            .redirect(reqwest::redirect::Policy::none())
             .http1_only();
         if accept_invalid_certs {
             debug!("[S3] accepting invalid TLS certificates (self-signed / loopback)");
@@ -5367,6 +5382,107 @@ mod tests {
         assert!(!is_s3_directory_content_type("application/octet-stream"));
         assert!(!is_s3_directory_content_type("text/plain"));
         assert!(!is_s3_directory_content_type(""));
+    }
+
+    /// The S3 client must not follow redirects. reqwest's default
+    /// `Policy::limited(10)` would, and its `remove_sensitive_headers` only
+    /// strips Authorization / Cookie / cookie2 / Proxy-Authorization /
+    /// WWW-Authenticate -- `x-amz-security-token` is not on that list, so an
+    /// STS session token would be replayed to the redirect target, plaintext
+    /// http:// included. Same class as rclone GHSA-cf44-9pgv-m4xc.
+    ///
+    /// Before `.redirect(Policy::none())` was added this test failed: the sink
+    /// was reached and it saw the session token.
+    #[tokio::test]
+    async fn s3_client_does_not_follow_redirects_and_never_replays_the_session_token() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let sink_hit = Arc::new(AtomicBool::new(false));
+        let sink_saw_token = Arc::new(AtomicBool::new(false));
+
+        let app = {
+            let sink_hit = Arc::clone(&sink_hit);
+            let sink_saw_token = Arc::clone(&sink_saw_token);
+            axum::Router::new()
+                .route(
+                    "/bounce",
+                    axum::routing::get(|| async {
+                        // Same host, downgraded scheme + different path: the
+                        // shape that leaked the token in rclone's advisory.
+                        (
+                            axum::http::StatusCode::FOUND,
+                            [(axum::http::header::LOCATION, "/sink")],
+                        )
+                    }),
+                )
+                .route(
+                    "/sink",
+                    axum::routing::get(move |headers: axum::http::HeaderMap| {
+                        let sink_hit = Arc::clone(&sink_hit);
+                        let sink_saw_token = Arc::clone(&sink_saw_token);
+                        async move {
+                            sink_hit.store(true, Ordering::SeqCst);
+                            if headers.contains_key("x-amz-security-token") {
+                                sink_saw_token.store(true, Ordering::SeqCst);
+                            }
+                            "landed"
+                        }
+                    }),
+                )
+        };
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let provider = S3Provider::new(S3Config {
+            endpoint: Some(format!("http://{addr}")),
+            region: "us-east-1".to_string(),
+            access_key_id: "AKIAEXAMPLE".to_string(),
+            secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            session_token: Some(secrecy::SecretString::from("STS-SESSION-TOKEN".to_string())),
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
+            bucket: "test-bucket".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+        })
+        .expect("Failed to create S3Provider");
+
+        let response = provider
+            .client
+            .get(format!("http://{addr}/bounce"))
+            .header("x-amz-security-token", "STS-SESSION-TOKEN")
+            .send()
+            .await
+            .expect("request must complete");
+
+        assert_eq!(
+            response.status().as_u16(),
+            302,
+            "the redirect must be handed back to us, not followed"
+        );
+        assert!(
+            !sink_hit.load(Ordering::SeqCst),
+            "the client followed the redirect; it must not"
+        );
+        assert!(
+            !sink_saw_token.load(Ordering::SeqCst),
+            "the STS session token was replayed to the redirect target"
+        );
     }
 
     #[test]

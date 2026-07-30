@@ -2361,7 +2361,14 @@ async fn write_atomic_chunked_core(
         #[cfg(unix)]
         if let Some(mode) = preserve_mode {
             use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(mode & 0o7777);
+            // Mask to the ordinary rwx bits. `preserve_mode` reaches us from
+            // the peer's file list, so the setuid/setgid/sticky bits in
+            // 0o7000 are attacker-supplied: a hostile sender could ask us to
+            // land a setuid binary. Harmless when we run as an ordinary user
+            // (the file is ours, so setuid grants nothing new), but a real
+            // escalation when aerorsync runs as root or a service account.
+            // rclone reached the same conclusion in GHSA-945v-v9p3-v5xw.
+            let perms = std::fs::Permissions::from_mode(mode & 0o0777);
             fs::set_permissions(&tmp_path, perms).await.map_err(|e| {
                 WriteAtomicError::PostOpen {
                     stage: "chmod",
@@ -4646,6 +4653,37 @@ PY"#
 
         let actual = fs::read(&target).await.unwrap();
         assert_eq!(actual, b"NEW_CONTENTS");
+    }
+
+    /// A hostile sender controls `preserve_mode` (it is read off the peer's
+    /// file list), so the setuid/setgid/sticky bits must never survive onto
+    /// the file we land. Before the mask was tightened from 0o7777 to 0o0777
+    /// this test failed with mode 0o4755 instead of 0o0755.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn write_atomic_strips_peer_supplied_setuid_setgid_sticky() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = fresh_tempdir();
+
+        for (peer_mode, expected) in [
+            (0o4755_u32, 0o0755_u32), // setuid
+            (0o2755, 0o0755),         // setgid
+            (0o1755, 0o0755),         // sticky
+            (0o7777, 0o0777),         // all three at once
+            (0o0644, 0o0644),         // ordinary bits pass through untouched
+        ] {
+            let target = dir.path().join(format!("mode-{peer_mode:o}.bin"));
+            write_atomic_chunked(&target, b"payload", 4096, None, Some(peer_mode), None)
+                .await
+                .expect("atomic write must succeed");
+
+            let actual = std::fs::metadata(&target).unwrap().permissions().mode() & 0o7777;
+            assert_eq!(
+                actual, expected,
+                "peer-supplied mode {peer_mode:o} must land as {expected:o}, got {actual:o}"
+            );
+        }
     }
 
     #[tokio::test]
