@@ -21,7 +21,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Alibaba OSS | CN | 5 GB (overseas only, card req.) | S3* |
 | Amazon Web Services (AWS) | US | 5 GB (always-free, card req.) | S3* |
 | Backblaze B2 | US | 10 GB | API, S3 |
-| Blomp | US | 20 GB (referral bonus) | Swift |
+| Blomp | US | 40 GB (+40 GB per referral) | Swift |
 | Box | US | 10 GB | OAuth |
 | Cloudflare R2 | US | 10 GB (egress-free, card req.) | S3* |
 | Cloudinary | US | credit-based | API |

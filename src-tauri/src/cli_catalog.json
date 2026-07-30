@@ -104,8 +104,8 @@
     "company": "Blomp",
     "logoId": "blomp",
     "country": "US",
-    "freeGb": 20,
-    "freeNote": "referral bonus",
+    "freeGb": 40,
+    "freeNote": "+40 GB per referral",
     "freeRequiresCard": false,
     "regions": [
       "US"
