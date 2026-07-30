@@ -134,7 +134,7 @@ Live evidence (release CLI @ `669814f32`, axpbuntu lab):
 
 With `--delete` on a real run, local data is destroyed while the download fails. Affected readers at HEAD: `s3.rs:1118` (ListObjectsV2 — every S3 provider) plus `s3.rs:1354, 2282, 3683, 4086, 4757, 5106, 5245`; `webdav.rs:507, 1425, 1715, 1970`; `azure.rs:451, 2242`; `jottacloud.rs:612, 664, 797, 1935`. Trigger: names containing `& ' < > "` with adjacent whitespace. The `s3.rs:1170-1177` comment already says "Do NOT trim" — the reader config contradicts it.
 
-Fix direction: `trim_text(false)` on name-bearing readers (explicit `.trim()` only on numeric/date fields), plus a regression test listing + syncing `a & b.txt`. **Status: OPEN — not covered by this PR.**
+Fix direction: `trim_text(false)` on name-bearing readers (explicit `.trim()` only on numeric/date fields), plus a regression test listing + syncing `a & b.txt`. **Status: FIXED in PR #536** (17 readers across s3/webdav/azure/jottacloud; 5 regression tests; live round-trip + `sync --delete` cascade re-run clean on MinIO and Nextcloud with a CLI built from the fix branch). Merge of #536 flips this to closed.
 
 ### 8.2 LIVE-2 [OK — regression closed] FTPS sync hang on mkdir-during-sync
 
