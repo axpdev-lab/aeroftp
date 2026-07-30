@@ -799,13 +799,34 @@ fn validate_supported_protocol(protocol: &str) -> Result<(), String> {
     }
 }
 
+/// Lexically resolve `.` and `..` components (no filesystem access). Providers
+/// resolve these server-side, so `/tmp/../var/www/html` must be classified as
+/// the public root it escapes to, not as the innocent-looking raw string.
+fn normalize_remote_path(path: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for seg in path.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                out.pop();
+            }
+            s => out.push(s),
+        }
+    }
+    format!("/{}", out.join("/"))
+}
+
 /// True when `remote_dir` is a path commonly served as a public web document
 /// root, or any descendant of one. A multi-hundred-MB payload under such a
 /// tree can be fetched by anyone who knows the URL, even when nested in
 /// `.aeroftp-speedtest/`.
 fn is_public_web_document_root(remote_dir: &str) -> bool {
-    let trimmed = remote_dir.trim().trim_end_matches('/');
-    let p = if trimmed.is_empty() { "/" } else { trimmed };
+    let trimmed = remote_dir.trim();
+    let p = if trimmed.is_empty() {
+        "/".to_string()
+    } else {
+        normalize_remote_path(trimmed)
+    };
     let lower = p.to_ascii_lowercase();
     const PUBLIC_ROOTS: &[&str] = &[
         "/var/www",
@@ -988,6 +1009,12 @@ mod tests {
             "/home/alice/public_html/bench",
             "/srv/http/site/assets",
             "/opt/site/www/bench",
+            // Dot and dot-dot components resolve server-side: the raw string
+            // looks innocent but lands in a public root after normalization.
+            "/tmp/../var/www/html",
+            "/user/./public_html/../../var/www/html",
+            "/var/www/./html/uploads",
+            "/home/alice/x/../public_html/bench",
         ] {
             assert!(
                 validate_remote_dir_for_speedtest(dir).is_err(),
@@ -1006,6 +1033,9 @@ mod tests {
             "/var/www-data",
             "/srv/www-data/backups",
             "/home/user/public_html_backup",
+            // Normalization that stays OUTSIDE public roots must stay allowed.
+            "/data/./bench",
+            "/data/x/../bench",
         ] {
             assert!(
                 validate_remote_dir_for_speedtest(dir).is_ok(),
