@@ -136,12 +136,6 @@ jobs:
           retry_wait_seconds: 15
           command: |
             set -euo pipefail
-            # TEMPORARY (verification commit, reverted in the next one): stall
-            # past the 5-minute per-attempt budget so we can see what a slow
-            # mirror now looks like in the checks. Expected: this step fails
-            # with its own name after two attempts, and the job reports
-            # `failure`, not an unattributed `cancelled` with the tests skipped.
-            sleep 600
             # An attempt killed mid-unpack leaves dpkg half-configured, and the
             # next apt-get would refuse to run until it is told to finish.
             sudo dpkg --configure -a || true
