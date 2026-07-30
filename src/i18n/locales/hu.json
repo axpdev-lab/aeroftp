@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Tizenkét kapcsolat optimalizált előreolvasással",
             "modeSafeDescription": "Egy kapcsolat: egyszerre egy fájl, egy adatfolyam fájlonként",
             "modeBalancedDescription": "Legfeljebb 3 kapcsolat: párhuzamos fájlok vagy tartománycsatornák egy nagy fájlon belül",
-            "modeMaxDescription": "Legfeljebb 5 kapcsolat: párhuzamos fájlok vagy tartománycsatornák egy nagy fájlon belül"
+            "modeMaxDescription": "Legfeljebb 5 kapcsolat: párhuzamos fájlok vagy tartománycsatornák egy nagy fájlon belül",
+            "moreActions": "További műveletek"
         },
         "settings": {
             "title": "Beállítások",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Átviteli sor",
             "activityLog": "Tevékenységnapló",
             "aerocloudTitle": "AeroCloud Állapot",
-            "updateAvailable": "Frissítés Elérhető"
+            "updateAvailable": "Frissítés elérhető",
+            "showProgress": "Átvitel folyamatának megjelenítése"
         },
         "migration": {
             "title": "Hitelesítő adatok biztonságos áttelepítése",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} profil · {unique} egyedi felhőmeghajtó · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Ikon",
+                    "name": "Profil",
+                    "badges": "Jelvények",
+                    "subtitle": "Gazdagép",
+                    "used": "Használt",
+                    "total": "Összesen",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Útvonalak",
+                    "time": "Utolsó használat",
+                    "health": "Állapot",
+                    "actions": "Műveletek",
+                    "favorite": "Kedvenc",
                     "saved": "Megtakarítva",
                     "savedPct": "Megtakarítva %",
                     "savedTitle": "Tömörítés: {plaintext} erről {compressed} méretre ({ratio}% megtakarítva)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Bezárás",
             "kitUnavailable": "A helyreállítási készlet még nem érhető el ehhez a széfhez.",
             "defaultSaltLabel": "Alapértelmezett só (választható, csak jelszavas hordozhatóság; nagy entrópiát és tanúsítást igényel)",
-            "defaultSaltStrength128": "128 bites ajánlott",
-            "defaultSaltStrength256": "256 bites",
-            "defaultSaltAttestation": "Jelszókezelőt használtam, és értem az összekapcsolhatósági kompromisszumot.",
             "legacyMarkerNotice": "Ez a vault még a régi .aeroftp-crypt.json markert használja. A jelszó vagy keyfile megadása után alakítsa át .aerocrypt.tsv-re.",
             "migrateLegacyMarker": "Marker átalakítása",
             "legacyMarkerMigrated": "A marker .aerocrypt.tsv-re alakítva.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "A titkosítás típusa és a hitelesítő adatok zárolva vannak: ez a réteg már titkosított adatokat tartalmaz.",
             "addToExistingWarn": "Fedvény engedélyezése meglévő profilon: a távoli helyen már meglévő nyílt szöveges fájlok titkosítatlanok maradnak, és visszafejthetetlen keverékként jelennek meg. Használjon üres távoli helyet.",
             "scopeHint": "A fent megadott távoli és helyi útvonalak határozzák meg a titkosított hatókört (hagyja üresen a Távolit a teljes gyökér titkosításához).",
-            "remotePathLockedNote": "A távoli útvonal zárolva van: ez a titkosított fedvény gyökere, és nem módosítható, ha a fedvény adatokat tartalmaz.",
+            "overlaysPathLockedNote": "A fedvények útvonala zárolva van: ez a titkosítás horgonya, és a fedvény összekapcsolása után nem módosítható.",
+            "remotePathMustReachOverlay": "A távoli útvonalnak a fedvények útvonalának ({path}) vagy annak valamelyik szülőmappájának kell lennie, különben a titkosított mappa kívül esik ezen a munkameneten.",
             "overlaysSection": "Burkolók / Overlay-ek",
             "overlaysActiveBadge": "Be",
             "hintNative": "Natív AeroCrypt formátum: csak az AeroFTP-ből olvasható ezzel a jelszóval.",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "A Távoli útvonalnak vagy annak almappájának kell lennie",
             "defaultSaltToggle": "Alapértelmezett só (csak a jelszó nyitja ki; létrehozás után nincs szükség készletre vagy kulcstárolóra)",
             "defaultSaltToggleHint": "Nyilvános állandó só (rclone-stílus). Magas entrópia jelszót igényel. Ugyanaz a jelszó több tárolón a titkosított neveket kulcs nélkül összekapcsolhatóvá teszi.",
-            "defaultSaltAttestation": "Ezt a jelszót jelszókezelővel generáltam, és megértem az összekapcsolhatósági kompromisszumot.",
             "defaultSaltNeedsStronger": "Az alapértelmezett salt bekapcsolásához adjon meg egy erős, generált jelszót.",
-            "defaultSaltTier128": "128-bit (ajánlott, 20+ karakteres jelszót igényel)",
-            "defaultSaltTier256": "256-bit (szigorúbb, 39+ karakteres jelszót igényel)",
-            "defaultSaltTierMeaning": "A két szint azt szabja meg, milyen erős legyen a jelszava, nem a só méretét: egyetlen só van, 32 bájt, és minden alapértelmezett sót használó széfnél ugyanaz.",
+            "defaultSaltOneSaltNote": "Egyetlen salt létezik: 32 bájt, nyilvános, és minden alapértelmezett saltot használó széf esetében azonos.",
             "defaultSaltValueLabel": "Nyilvános alapértelmezett só (AeroCrypt v3), az alábbi szöveg SHA-256 értéke"
         },
         "modalGuard": {

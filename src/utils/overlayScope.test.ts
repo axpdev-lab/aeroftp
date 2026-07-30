@@ -123,3 +123,29 @@ describe('resolveOverlayScope (#369 relative UX)', () => {
         }
     });
 });
+
+// #369: with a bound overlay the anchor is pinned and the Remote Path becomes
+// editable. The same predicate answers the mirrored question: does this Remote
+// Path still reach the pinned anchor? The form blocks the save when it does not.
+describe('editing the Remote Path under a pinned anchor', () => {
+    const reaches = (anchor: string, remotePath: string) => isValidOverlayScope(anchor, remotePath);
+
+    it('accepts the anchor itself and any of its parents', () => {
+        expect(reaches('/Private/vault', '/Private/vault')).toBe(true);
+        expect(reaches('/Private/vault', '/Private')).toBe(true);
+        expect(reaches('/Private/vault', '/')).toBe(true);
+        expect(reaches('/Private/vault', '')).toBe(true);
+    });
+
+    it('rejects a sibling or an unrelated path that leaves the anchor outside', () => {
+        expect(reaches('/Private/vault', '/Common documents')).toBe(false);
+        expect(reaches('/Private/vault', '/Private/other')).toBe(false);
+        expect(reaches('/Private/vault', '/Privateer')).toBe(false);
+    });
+
+    it('normalizes both sides before deciding', () => {
+        expect(reaches('/Private/vault', '/Private/')).toBe(true);
+        expect(reaches('/Private/vault', '//Private//')).toBe(true);
+        expect(reaches('/Private/vault', '/Private/sub/..')).toBe(true);
+    });
+});

@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Optimize edilmiş önden okumalı on iki bağlantı",
             "modeSafeDescription": "Tek bağlantı: aynı anda tek dosya, dosya başına tek akış",
             "modeBalancedDescription": "En fazla 3 bağlantı: paralel dosyalar veya tek bir büyük dosya içinde aralık kanalları",
-            "modeMaxDescription": "En fazla 5 bağlantı: paralel dosyalar veya tek bir büyük dosya içinde aralık kanalları"
+            "modeMaxDescription": "En fazla 5 bağlantı: paralel dosyalar veya tek bir büyük dosya içinde aralık kanalları",
+            "moreActions": "Diğer eylemler"
         },
         "settings": {
             "title": "Ayarlar",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Aktarım Kuyruğu",
             "activityLog": "Etkinlik Günlüğü",
             "aerocloudTitle": "AeroCloud Durumu",
-            "updateAvailable": "Güncelleme Mevcut"
+            "updateAvailable": "Güncelleme Mevcut",
+            "showProgress": "Aktarım ilerlemesini göster"
         },
         "migration": {
             "title": "Güvenli kimlik bilgileri taşıma",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} profil · {unique} benzersiz bulut sürücü · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Simge",
+                    "name": "Profil",
+                    "badges": "Rozetler",
+                    "subtitle": "Ana makine",
+                    "used": "Kullanılan",
+                    "total": "Toplam",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Yollar",
+                    "time": "Son kullanım",
+                    "health": "Durum",
+                    "actions": "İşlemler",
+                    "favorite": "Favori",
                     "saved": "Kazanılan",
                     "savedPct": "Kazanılan %",
                     "savedTitle": "Sıkıştırma: {plaintext} yerine {compressed} (%{ratio} kazanıldı)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Kapat",
             "kitUnavailable": "Kurtarma kiti bu kasa için henüz kullanılamıyor.",
             "defaultSaltLabel": "Varsayılan salt (isteğe bağlı, yalnızca parolayla taşınabilirlik; yüksek entropy ve attestation gerektirir)",
-            "defaultSaltStrength128": "128-bit önerilir",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Bir parola yöneticisi kullandım ve linkability ödününü anlıyorum.",
             "legacyMarkerNotice": "Bu vault hâlâ eski .aeroftp-crypt.json markerını kullanıyor. Parolayı veya keyfile'ı girdikten sonra .aerocrypt.tsv'ye dönüştürün.",
             "migrateLegacyMarker": "Markerı dönüştür",
             "legacyMarkerMigrated": "Marker .aerocrypt.tsv'ye dönüştürüldü.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Şifreleme türü ve kimlik bilgileri kilitli: bu katman zaten şifrelenmiş veri içeriyor.",
             "addToExistingWarn": "Mevcut bir profilde yerpaçma etkinleştirildiğinde: bu uzak konumda zaten bulunan düz metin dosyaları şifrelenmemiş kalır ve şifresi çözülemeyen bir karışım olarak görünür. Boş bir uzak konum kullanın.",
             "scopeHint": "Yukarıdaki Uzak ve Yerel yollar şifreli kapsamı tanımlar (tüm kökü şifrelemek için Uzak'ı boş bırakın).",
-            "remotePathLockedNote": "Uzak yol kilitli: şifreli yer paçmanın köküdür ve yer paçma veri içerdiğinde değiştirilemez.",
+            "overlaysPathLockedNote": "Katman yolu kilitli: şifrelemenin çıpasıdır ve katman bağlandıktan sonra değiştirilemez.",
+            "remotePathMustReachOverlay": "Uzak yol, katman yolu ({path}) veya onun üst klasörlerinden biri olmalıdır; aksi hâlde şifrelenmiş klasör bu oturumun dışında kalır.",
             "overlaysSection": "Sarmalayıcılar / Katmanlar",
             "overlaysActiveBadge": "Açık",
             "hintNative": "Yerel AeroCrypt biçimi: bu parolayla yalnızca AeroFTP'den okunabilir.",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "Uzak Yol veya onun bir alt klasörü olmalıdır",
             "defaultSaltToggle": "Varsayılan tuz (yalnızca parola açar; oluşturduktan sonra kit veya anahtar deposu gerekmez)",
             "defaultSaltToggleHint": "Herkese açık sabit tuz (rclone-style). Yüksek entropili üretilmiş parola gerektirir. Birden fazla kasada aynı parola kullanmak, anahtar olmadan şifrelenmiş adları bağlanabilir hale getirir.",
-            "defaultSaltAttestation": "Bu parolayı bir parola yöneticisiyle oluşturdum ve bağlanabilirlik değiş tokuşunu anlıyorum.",
             "defaultSaltNeedsStronger": "Varsayılan salt'ı açmak için güçlü, oluşturulmuş bir parola girin.",
-            "defaultSaltTier128": "128-bit (önerilir, 20+ karakterlik bir parola gerektirir)",
-            "defaultSaltTier256": "256-bit (daha katı, 39+ karakterlik bir parola gerektirir)",
-            "defaultSaltTierMeaning": "İki kademe, tuzun boyutunu değil parolanızın ne kadar güçlü olması gerektiğini belirler: tuz tektir, 32 bayttır ve varsayılan tuzlu her kasada aynıdır.",
+            "defaultSaltOneSaltNote": "Tek bir salt vardır: 32 bayt, herkese açık ve varsayılan salt kullanan tüm kasalarda aynıdır.",
             "defaultSaltValueLabel": "Herkese açık varsayılan tuz (AeroCrypt v3), şunun SHA-256'sı"
         },
         "modalGuard": {

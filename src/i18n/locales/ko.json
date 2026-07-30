@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "최적화된 미리 읽기를 사용하는 연결 12개",
             "modeSafeDescription": "연결 1개: 한 번에 파일 하나, 파일당 단일 스트림",
             "modeBalancedDescription": "최대 3개 연결: 파일 병렬 전송 또는 하나의 큰 파일 내 범위 채널",
-            "modeMaxDescription": "최대 5개 연결: 파일 병렬 전송 또는 하나의 큰 파일 내 범위 채널"
+            "modeMaxDescription": "최대 5개 연결: 파일 병렬 전송 또는 하나의 큰 파일 내 범위 채널",
+            "moreActions": "추가 작업"
         },
         "settings": {
             "title": "설정",
@@ -1950,7 +1951,8 @@
             "transferQueue": "전송 대기열",
             "activityLog": "활동 로그",
             "aerocloudTitle": "AeroCloud 상태",
-            "updateAvailable": "업데이트 사용 가능"
+            "updateAvailable": "업데이트 사용 가능",
+            "showProgress": "전송 진행 상황 표시"
         },
         "migration": {
             "title": "데이터 마이그레이션",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "프로필 {count}개 · 고유 클라우드 드라이브 {unique}개 · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "아이콘",
+                    "name": "프로필",
+                    "badges": "배지",
+                    "subtitle": "호스트",
+                    "used": "사용됨",
+                    "total": "전체",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "경로",
+                    "time": "마지막 사용",
+                    "health": "상태",
+                    "actions": "작업",
+                    "favorite": "즐겨찾기",
                     "saved": "절약됨",
                     "savedPct": "절약 %",
                     "savedTitle": "압축: {plaintext}에서 {compressed} ({ratio}% 절약)"
@@ -5195,9 +5197,6 @@
             "hideKit": "닫기",
             "kitUnavailable": "이 볼트에 대한 복구 키트는 아직 사용할 수 없습니다.",
             "defaultSaltLabel": "기본 salt(선택 사항, 비밀번호만으로 이동 가능; 높은 entropy와 attestation 필요)",
-            "defaultSaltStrength128": "128-bit 권장",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "비밀번호 관리자를 사용했으며 linkability tradeoff를 이해합니다.",
             "legacyMarkerNotice": "이 vault는 아직 기존 .aeroftp-crypt.json 마커를 사용합니다. 비밀번호 또는 keyfile을 입력한 후 .aerocrypt.tsv로 변환하세요.",
             "migrateLegacyMarker": "마커 변환",
             "legacyMarkerMigrated": "마커가 .aerocrypt.tsv로 변환되었습니다.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "암호화 유형과 자격 증명이 잠겨 있습니다. 이 오버레이에는 이미 암호화된 데이터가 있습니다.",
             "addToExistingWarn": "기존 프로필에 오버레이를 활성화하면, 이 원격에 이미 있는 일반 텍스트 파일은 암호화되지 않은 채로 남아 복호화할 수 없는 혼합 상태로 표시됩니다. 빈 원격을 사용하세요.",
             "scopeHint": "위의 원격 및 로컬 경로가 암호화 범위를 정의합니다 (원격을 비워 두면 전체 루트를 암호화합니다).",
-            "remotePathLockedNote": "원격 경로가 잠겨 있습니다. 이는 암호화된 오버레이의 루트이며 오버레이에 데이터가 있으면 변경할 수 없습니다.",
+            "overlaysPathLockedNote": "오버레이 경로가 잠겨 있습니다. 암호화의 기준점이므로 오버레이가 연결된 뒤에는 변경할 수 없습니다.",
+            "remotePathMustReachOverlay": "원격 경로는 오버레이 경로({path}) 또는 그 상위 폴더여야 합니다. 그렇지 않으면 암호화된 폴더가 이 세션 범위를 벗어납니다.",
             "overlaysSection": "래퍼 / 오버레이",
             "overlaysActiveBadge": "켜짐",
             "hintNative": "네이티브 AeroCrypt 형식: 이 비밀번호로 AeroFTP에서만 읽을 수 있습니다.",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "원격 경로이거나 그 하위 폴더여야 합니다",
             "defaultSaltToggle": "기본 솔트 (비밀번호만으로 열림; 생성 후 키트나 키스토어 필요 없음)",
             "defaultSaltToggleHint": "공개 상수 솔트 (rclone-style). 높은 엔트로피의 생성된 비밀번호가 필요합니다. 여러 볼트에서 동일한 비밀번호를 사용하면 키 없이 암호화된 이름을 연결할 수 있게 됩니다.",
-            "defaultSaltAttestation": "이 비밀번호를 비밀번호 관리자로 생성했으며 연결 가능성의 절충을 이해합니다.",
             "defaultSaltNeedsStronger": "기본 솔트를 켜려면 강력하게 생성된 비밀번호를 입력하세요.",
-            "defaultSaltTier128": "128-bit (권장, 20+자 비밀번호 필요)",
-            "defaultSaltTier256": "256-bit (더 엄격함, 39+자 비밀번호 필요)",
-            "defaultSaltTierMeaning": "두 등급은 솔트의 크기가 아니라 비밀번호가 얼마나 강해야 하는지를 정합니다. 솔트는 32바이트 하나뿐이며, 기본 솔트를 쓰는 모든 볼트에서 동일합니다.",
+            "defaultSaltOneSaltNote": "솔트는 하나뿐입니다. 32바이트이며 공개되어 있고, 기본 솔트를 사용하는 모든 보관소에서 동일합니다.",
             "defaultSaltValueLabel": "공개 기본 솔트 (AeroCrypt v3), 다음 문자열의 SHA-256"
         },
         "modalGuard": {

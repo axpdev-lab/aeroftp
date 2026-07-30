@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "使用优化预读的十二个连接",
             "modeSafeDescription": "单连接：一次一个文件，每个文件单流",
             "modeBalancedDescription": "最多 3 个连接：并行传输多个文件，或在一个大文件内使用范围通道",
-            "modeMaxDescription": "最多 5 个连接：并行传输多个文件，或在一个大文件内使用范围通道"
+            "modeMaxDescription": "最多 5 个连接：并行传输多个文件，或在一个大文件内使用范围通道",
+            "moreActions": "更多操作"
         },
         "settings": {
             "title": "设置",
@@ -1950,7 +1951,8 @@
             "transferQueue": "传输队列",
             "activityLog": "活动日志",
             "aerocloudTitle": "AeroCloud 状态",
-            "updateAvailable": "有可用更新"
+            "updateAvailable": "有可用更新",
+            "showProgress": "显示传输进度"
         },
         "migration": {
             "title": "数据迁移",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} 个配置 · {unique} 个独立云盘 · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "图标",
+                    "name": "配置文件",
+                    "badges": "徽章",
+                    "subtitle": "主机",
+                    "used": "已用",
+                    "total": "总计",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "路径",
+                    "time": "最近使用",
+                    "health": "状态",
+                    "actions": "操作",
+                    "favorite": "收藏",
                     "saved": "已节省",
                     "savedPct": "已节省 %",
                     "savedTitle": "压缩：{plaintext} 至 {compressed}（节省 {ratio}%）"
@@ -5195,9 +5197,6 @@
             "hideKit": "关闭",
             "kitUnavailable": "此保险库的恢复套件尚不可用。",
             "defaultSaltLabel": "默认 salt（选择启用，仅凭密码即可移植；需要高 entropy 和 attestation）",
-            "defaultSaltStrength128": "推荐 128-bit",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "我使用了密码管理器，并理解 linkability 的权衡。",
             "legacyMarkerNotice": "此 vault 仍在使用旧版 .aeroftp-crypt.json 标记。输入密码或 keyfile 后，将其转换为 .aerocrypt.tsv。",
             "migrateLegacyMarker": "转换标记",
             "legacyMarkerMigrated": "标记已转换为 .aerocrypt.tsv。",
@@ -5282,7 +5281,8 @@
             "lockedNote": "加密类型和凭据已锁定：此叠加层已包含加密数据。",
             "addToExistingWarn": "在现有配置上启用叠加层：此远程上已有的任何明文文件仍未加密，并会显示为无法解密的混合内容。请使用空的远程。",
             "scopeHint": "上方的远程和本地路径定义了加密范围（将远程留空以加密整个根目录）。",
-            "remotePathLockedNote": "远程路径已锁定：它是加密叠加层的根目录，叠加层有数据后便无法更改。",
+            "overlaysPathLockedNote": "叠加层路径已锁定：它是加密锚点，叠加层绑定后便无法更改。",
+            "remotePathMustReachOverlay": "远程路径必须是叠加层路径（{path}）或其上级文件夹，否则加密文件夹将不在本会话范围内。",
             "overlaysSection": "封装 / 叠加层",
             "overlaysActiveBadge": "开",
             "hintNative": "原生 AeroCrypt 格式：使用此密码仅可从 AeroFTP 读取。",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "必须是远程路径或其子文件夹",
             "defaultSaltToggle": "默认盐值（仅密码即可打开；创建后无需套件或密钥库）",
             "defaultSaltToggleHint": "公共常量盐值（rclone-style）。需要生成的高熵密码。在多个保险库上使用相同密码会使加密名称在无密钥情况下可关联。",
-            "defaultSaltAttestation": "我使用密码管理器生成了此密码，并理解可关联性的权衡。",
             "defaultSaltNeedsStronger": "输入生成的强密码以启用默认盐值。",
-            "defaultSaltTier128": "128-bit（推荐，需要 20+ 个字符的密码）",
-            "defaultSaltTier256": "256-bit（更严格，需要 39+ 个字符的密码）",
-            "defaultSaltTierMeaning": "这两档设定的是密码需要多强，而不是盐值的大小：盐值只有一个，32 字节，所有使用默认盐值的保险库都相同。",
+            "defaultSaltOneSaltNote": "只有一个盐值：32 字节，公开，所有使用默认盐值的保险库都相同。",
             "defaultSaltValueLabel": "公开默认盐值（AeroCrypt v3），即以下字符串的 SHA-256"
         },
         "modalGuard": {

@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Tolv forbindelser med optimalisert forhåndslesing",
             "modeSafeDescription": "Én tilkobling: én fil om gangen, én strøm per fil",
             "modeBalancedDescription": "Opptil 3 tilkoblinger: parallelle filer eller intervallkanaler i én stor fil",
-            "modeMaxDescription": "Opptil 5 tilkoblinger: parallelle filer eller intervallkanaler i én stor fil"
+            "modeMaxDescription": "Opptil 5 tilkoblinger: parallelle filer eller intervallkanaler i én stor fil",
+            "moreActions": "Flere handlinger"
         },
         "settings": {
             "title": "Innstillinger",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Overføringskø",
             "activityLog": "Aktivitetslogg",
             "aerocloudTitle": "AeroCloud-status",
-            "updateAvailable": "Oppdatering tilgjengelig"
+            "updateAvailable": "Oppdatering tilgjengelig",
+            "showProgress": "Vis overføringsfremdrift"
         },
         "migration": {
             "title": "Sikker migrering av påloggingsinformasjon",
@@ -4621,18 +4623,18 @@
                 "footerSummary": "{count} profiler · {unique} unike skystasjoner · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Ikon",
+                    "name": "Profil",
+                    "badges": "Merker",
+                    "subtitle": "Vert",
+                    "used": "Brukt",
+                    "total": "Totalt",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Stier",
+                    "time": "Sist brukt",
+                    "health": "Tilstand",
+                    "actions": "Handlinger",
+                    "favorite": "Favoritt",
                     "saved": "Spart",
                     "savedPct": "Spart %",
                     "savedTitle": "Komprimering: {plaintext} til {compressed} ({ratio}% spart)"
@@ -5214,9 +5216,6 @@
             "hideKit": "Lukk",
             "kitUnavailable": "Gjenopprettingssettet er ennå ikke tilgjengelig for dette hvelvet.",
             "defaultSaltLabel": "Standardsalt (valgfritt, portabilitet kun med passord; krever høy entropi og attestering)",
-            "defaultSaltStrength128": "128-bit anbefales",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Jeg brukte en passordbehandler og forstår avveiningen om koblingsmulighet.",
             "legacyMarkerNotice": "Denne vaulten bruker fortsatt den gamle .aeroftp-crypt.json-markøren. Konverter den til .aerocrypt.tsv etter at du har skrevet inn passordet eller keyfile.",
             "migrateLegacyMarker": "Konverter markør",
             "legacyMarkerMigrated": "Markør konvertert til .aerocrypt.tsv.",
@@ -5301,7 +5300,8 @@
             "lockedNote": "Krypteringstype og legitimasjon er låst: dette overlegget inneholder allerede krypterte data.",
             "addToExistingWarn": "Når du aktiverer et overlegg på en eksisterende profil: alle klartekstfiler som allerede finnes på denne eksterne plasseringen forblir ukryptert og vises som en blanding som ikke kan dekrypteres. Bruk en tom ekstern plassering.",
             "scopeHint": "De eksterne og lokale stiene ovenfor definerer det krypterte omfanget (la Ekstern stå tom for å kryptere hele roten).",
-            "remotePathLockedNote": "Ekstern sti er låst: den er roten til det krypterte overlegget og kan ikke endres når overlegget inneholder data.",
+            "overlaysPathLockedNote": "Overlegg-stien er låst: den er krypteringsankeret og kan ikke endres når overlegget først er bundet.",
+            "remotePathMustReachOverlay": "Den eksterne stien må være overlegg-stien ({path}) eller en av dens overordnede mapper, ellers havner den krypterte mappen utenfor denne økten.",
             "overlaysSection": "Innpakninger / Overlays",
             "overlaysActiveBadge": "På",
             "hintNative": "Native AeroCrypt-format: kan bare leses fra AeroFTP med dette passordet.",
@@ -5323,11 +5323,8 @@
             "overlaysRemotePathInvalid": "Må være Ekstern sti eller en undermappe av den",
             "defaultSaltToggle": "Standardsalt (kun passord åpner; ingen kit eller nøkkellager nødvendig etter opprettelse)",
             "defaultSaltToggleHint": "Offentlig konstant salt (rclone-style). Krever et generert høyt entropi-passord. Samme passord på flere hvelv gjør krypterte navn lenkbare uten nøkkelen.",
-            "defaultSaltAttestation": "Jeg genererte dette passordet med en passordbehandler og forstår linkbarhets-kompromisset.",
             "defaultSaltNeedsStronger": "Skriv inn et sterkt generert passord for å slå på standardsaltet.",
-            "defaultSaltTier128": "128-bit (anbefalt, krever et passord på 20+ tegn)",
-            "defaultSaltTier256": "256-bit (strengere, krever et passord på 39+ tegn)",
-            "defaultSaltTierMeaning": "De to nivåene bestemmer hvor sterkt passordet ditt må være, ikke størrelsen på saltet: det finnes ett salt på 32 byte, det samme for hvert hvelv med standardsalt.",
+            "defaultSaltOneSaltNote": "Det finnes bare ett salt: 32 byte, offentlig, likt for alle hvelv med standardsalt.",
             "defaultSaltValueLabel": "Offentlig standardsalt (AeroCrypt v3), SHA-256 av"
         },
         "modalGuard": {

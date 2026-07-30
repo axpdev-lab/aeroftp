@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { Download, Upload, Folder, X, Minus, Maximize2, Lock } from 'lucide-react';
 import { formatBytes, formatSpeed, formatETA } from '../../utils/formatters';
 import { useTheme, getEffectiveTheme } from '../../hooks/useTheme';
+import { useTranslation } from '../../i18n';
 import { TransferProgressBar } from '../TransferProgressBar';
 
 /**
@@ -191,6 +192,7 @@ interface ProgressCardProps {
 }
 
 export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, onMinimize, onOpenPanel }) => {
+    const t = useTranslation();
     const { theme, isDark } = useTheme();
     const effectiveTheme = getEffectiveTheme(theme, isDark);
     const styles = getToastStyles(effectiveTheme);
@@ -258,25 +260,32 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
                                 {isIndeterminate ? '...' : `${headerPct}%`}
                             </span>
                             {onOpenPanel && (
-                                <button onClick={onOpenPanel} className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`} title="Open transfer queue">
+                                <button onClick={onOpenPanel} className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`} title={t('transfer.queue')} aria-label={t('transfer.queue')}>
                                     <Maximize2 size={13} />
                                 </button>
                             )}
-                            <button onClick={onMinimize} className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`} title="Minimize">
-                                <Minus size={14} />
-                            </button>
                             {/* Locked during transfer (no full dismiss until 100%):
                                 only minimize is allowed, so an in-flight transfer
                                 can never be lost. The close button returns at 100%. */}
                             {isTransferring ? (
-                                <span className={`p-1 ${styles.subtitle}`} title="Locked until complete">
+                                <span className={`p-1 ${styles.subtitle}`} title={t('ui.locked')}>
                                     <Lock size={13} />
                                 </span>
                             ) : (
-                                <button onClick={onCancel} className={`p-1 rounded-full transition-colors ${styles.cancel}`} title="Dismiss">
+                                <button onClick={onCancel} className={`p-1 rounded-full transition-colors ${styles.cancel}`} title={t('ui.dismiss')}>
                                     <X size={14} />
                                 </button>
                             )}
+                            {/* Last in the row: the top-right corner is Minimize in
+                                both transfer windows, so the two read the same (#364). */}
+                            <button
+                                onClick={onMinimize}
+                                className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`}
+                                title={t('ui.minimize')}
+                                aria-label={t('ui.minimize')}
+                            >
+                                <Minus size={14} />
+                            </button>
                         </div>
                     </div>
 
@@ -330,6 +339,7 @@ interface MinimizedTransferIndicatorProps {
 }
 
 export const MinimizedTransferIndicator: React.FC<MinimizedTransferIndicatorProps> = ({ transfer, onOpen, onCancel }) => {
+    const t = useTranslation();
     const { theme, isDark } = useTheme();
     const effectiveTheme = getEffectiveTheme(theme, isDark);
     const summary = transfer.summary;
@@ -390,14 +400,14 @@ export const MinimizedTransferIndicator: React.FC<MinimizedTransferIndicatorProp
             {/* Locked until 100%: no dismiss while transferring (click the chip
                 to reopen the full card instead). */}
             {pct < 100 ? (
-                <span className={`shrink-0 p-0.5 ${styles.subtitle}`} title="Locked until complete">
+                <span className={`shrink-0 p-0.5 ${styles.subtitle}`} title={t('ui.locked')}>
                     <Lock size={11} />
                 </span>
             ) : (
                 <button
                     onClick={(e) => { e.stopPropagation(); onCancel(); }}
                     className={`shrink-0 p-0.5 rounded-full transition-colors ${styles.cancel}`}
-                    title="Dismiss"
+                    title={t('ui.dismiss')}
                 >
                     <X size={12} />
                 </button>

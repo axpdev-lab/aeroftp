@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Labindalawang koneksyon na may na-optimize na paunang pagbasa",
             "modeSafeDescription": "Isang koneksyon: isang file nang sabay, isang stream bawat file",
             "modeBalancedDescription": "Hanggang 3 koneksyon: magkatuloy na mga file, o mga channel ng range sa loob ng isang malaking file",
-            "modeMaxDescription": "Hanggang 5 koneksyon: magkatuloy na mga file, o mga channel ng range sa loob ng isang malaking file"
+            "modeMaxDescription": "Hanggang 5 koneksyon: magkatuloy na mga file, o mga channel ng range sa loob ng isang malaking file",
+            "moreActions": "Higit pang aksyon"
         },
         "settings": {
             "title": "Mga Setting",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Transfer Queue",
             "activityLog": "Activity Log",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "May Update",
+            "showProgress": "Ipakita ang progreso ng paglilipat"
         },
         "migration": {
             "title": "Ligtas na paglilipat ng mga kredensyal",
@@ -4622,17 +4624,17 @@
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
+                    "name": "Profile",
+                    "badges": "Mga badge",
                     "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "used": "Nagamit",
+                    "total": "Kabuuan",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Mga path",
+                    "time": "Huling gamit",
+                    "health": "Kalusugan",
+                    "actions": "Mga aksyon",
+                    "favorite": "Paborito",
                     "saved": "Naitipid",
                     "savedPct": "Naitipid %",
                     "savedTitle": "Compression: {plaintext} sa {compressed} ({ratio}% naitipid)"
@@ -5214,9 +5216,6 @@
             "hideKit": "Isara",
             "kitUnavailable": "Hindi pa available ang recovery kit para sa vault na ito.",
             "defaultSaltLabel": "Default na salt (opt-in, portability gamit lang ang password; nangangailangan ng mataas na entropy at attestation)",
-            "defaultSaltStrength128": "128-bit ang inirerekomenda",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Gumamit ako ng password manager at nauunawaan ko ang tradeoff sa linkability.",
             "legacyMarkerNotice": "Gumagamit pa rin ang vault na ito ng lumang marker na .aeroftp-crypt.json. I-convert ito sa .aerocrypt.tsv pagkatapos ilagay ang password o keyfile.",
             "migrateLegacyMarker": "I-convert ang marker",
             "legacyMarkerMigrated": "Na-convert ang marker sa .aerocrypt.tsv.",
@@ -5301,7 +5300,8 @@
             "lockedNote": "Naka-lock ang uri ng pag-encrypt at mga kredensyal: naglalaman na ng naka-encrypt na data ang overlay na ito.",
             "addToExistingWarn": "Kapag nag-enable ng overlay sa isang umiiral na profile: anumang plaintext na file na nasa remote na ito ay mananatiling hindi naka-encrypt at lalabas bilang halong hindi ma-decrypt. Gumamit ng walang lamang remote.",
             "scopeHint": "Tinutukoy ng mga Remote at Local na path sa itaas ang naka-encrypt na saklaw (iwanang walang laman ang Remote para i-encrypt ang buong root).",
-            "remotePathLockedNote": "Naka-lock ang Remote path: ito ang ugat ng naka-encrypt na overlay at hindi mababago kapag may laman nang data ang overlay.",
+            "overlaysPathLockedNote": "Naka-lock ang Landas ng Overlay: ito ang angkla ng pag-encrypt at hindi na mababago kapag naitali na ang overlay.",
+            "remotePathMustReachOverlay": "Ang remote path ay dapat na ang Landas ng Overlay ({path}) o isa sa mga magulang na folder nito, kung hindi ay mapupunta ang naka-encrypt na folder sa labas ng session na ito.",
             "overlaysSection": "Mga Wrapper / Overlay",
             "overlaysActiveBadge": "Naka-on",
             "hintNative": "Native na format ng AeroCrypt: mababasa lamang mula sa AeroFTP gamit ang password na ito.",
@@ -5323,11 +5323,8 @@
             "overlaysRemotePathInvalid": "Dapat itong ang Remote Path o isang subfolder nito",
             "defaultSaltToggle": "Default salt (password lang ang nagbubukas; walang kailangang kit o keystore pagkatapos gawin)",
             "defaultSaltToggleHint": "Pampublikong constant salt (rclone-style). Nangangailangan ng high-entropy na generated password. Ang parehong password sa maraming vault ay nagpapagawang naka-link ang mga encrypted name nang walang key.",
-            "defaultSaltAttestation": "Gumawa ako ng password na ito gamit ang password manager at nauunawaan ang trade-off ng kakayahang i-link.",
             "defaultSaltNeedsStronger": "Maglagay ng malakas na binuong password para i-on ang default na salt.",
-            "defaultSaltTier128": "128-bit (inirerekomenda, kailangan ng password na 20+ karakter)",
-            "defaultSaltTier256": "256-bit (mas mahigpit, kailangan ng password na 39+ karakter)",
-            "defaultSaltTierMeaning": "Itinatakda ng dalawang tier kung gaano dapat kalakas ang iyong password, hindi ang laki ng salt: iisa ang salt, 32 byte, pareho para sa bawat vault na may default na salt.",
+            "defaultSaltOneSaltNote": "Iisa lang ang salt: 32 byte, pampubliko, pareho para sa bawat vault na gumagamit ng default na salt.",
             "defaultSaltValueLabel": "Pampublikong default na salt (AeroCrypt v3), SHA-256 ng"
         },
         "modalGuard": {

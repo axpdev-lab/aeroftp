@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Kaksitoista yhteyttä optimoidulla ennakkoluvulla",
             "modeSafeDescription": "Yksi yhteys: yksi tiedosto kerrallaan, yksi virta tiedostoa kohti",
             "modeBalancedDescription": "Enintään 3 yhteyttä: rinnakkaisia tiedostoja tai aluekanavia yhden suuren tiedoston sisällä",
-            "modeMaxDescription": "Enintään 5 yhteyttä: rinnakkaisia tiedostoja tai aluekanavia yhden suuren tiedoston sisällä"
+            "modeMaxDescription": "Enintään 5 yhteyttä: rinnakkaisia tiedostoja tai aluekanavia yhden suuren tiedoston sisällä",
+            "moreActions": "Lisää toimintoja"
         },
         "settings": {
             "title": "Asetukset",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Siirtojono",
             "activityLog": "Toimintaloki",
             "aerocloudTitle": "AeroCloud-tila",
-            "updateAvailable": "Päivitys saatavilla"
+            "updateAvailable": "Päivitys saatavilla",
+            "showProgress": "Näytä siirron edistyminen"
         },
         "migration": {
             "title": "Tunnistetietojen turvallinen siirto",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} profiilia · {unique} ainutlaatuista pilvilevyä · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Kuvake",
+                    "name": "Profiili",
+                    "badges": "Merkit",
+                    "subtitle": "Isäntä",
+                    "used": "Käytetty",
+                    "total": "Yhteensä",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Polut",
+                    "time": "Viimeksi käytetty",
+                    "health": "Tila",
+                    "actions": "Toiminnot",
+                    "favorite": "Suosikki",
                     "saved": "Säästetty",
                     "savedPct": "Säästetty %",
                     "savedTitle": "Pakkaus: {plaintext} kokoon {compressed} ({ratio}% säästetty)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Sulje",
             "kitUnavailable": "Palautuspaketti ei ole vielä käytettävissä tälle holville.",
             "defaultSaltLabel": "Oletussuola (valinnainen, siirrettävyys vain salasanalla; vaatii suuren entropian ja vakuutuksen)",
-            "defaultSaltStrength128": "128-bittinen suositeltu",
-            "defaultSaltStrength256": "256-bittinen",
-            "defaultSaltAttestation": "Käytin salasananhallintaa ja ymmärrän linkitettävyyden kompromissin.",
             "legacyMarkerNotice": "Tämä vault käyttää yhä vanhaa .aeroftp-crypt.json-merkkiä. Muunna se .aerocrypt.tsv-muotoon salasanan tai keyfile-tiedoston syöttämisen jälkeen.",
             "migrateLegacyMarker": "Muunna merkki",
             "legacyMarkerMigrated": "Merkki muunnettu muotoon .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Salaustyyppi ja tunnistetiedot on lukittu: tämä peite sisältää jo salattua dataa.",
             "addToExistingWarn": "Kun otat peittokuvan käyttöön olemassa olevassa profiilissa: kaikki tässä etäkohteessa jo olevat pelkkätekstitiedostot pysyvät salaamattomina ja näkyvät salaamattomana sekoituksena. Käytä tyhjää etäkohdetta.",
             "scopeHint": "Yllä määritetyt etä- ja paikalliset polut määrittävät salatun alueen (jätä Etä tyhjäksi salataksesi koko juuren).",
-            "remotePathLockedNote": "Etäpolku on lukittu: se on salatun peitteen juuri eikä sitä voi muuttaa, kun peite sisältää tietoja.",
+            "overlaysPathLockedNote": "Peittojen polku on lukittu: se on salauksen ankkuri eikä sitä voi muuttaa, kun peitto on sidottu.",
+            "remotePathMustReachOverlay": "Etäpolun on oltava peittojen polku ({path}) tai jokin sen yläkansioista, muuten salattu kansio jää tämän istunnon ulkopuolelle.",
             "overlaysSection": "Kääreet / Overlayt",
             "overlaysActiveBadge": "Päällä",
             "hintNative": "Natiivi AeroCrypt-muoto: luettavissa vain AeroFTP:stä tällä salasanalla.",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "Sen on oltava Etäpolku tai sen alikansio",
             "defaultSaltToggle": "Oletussuola (vain salasana avaa; luomisen jälkeen ei tarvita pakettia tai avainvarastoa)",
             "defaultSaltToggleHint": "Julkinen vakiosuola (rclone-tyyli). Vaatii luodun korkean entropian salasanan. Sama salasana useissa holveissa tekee salatuista nimistä linkitettäviä ilman avainta.",
-            "defaultSaltAttestation": "Loin tämän salasanan salasananhallinnalla ja ymmärrän linkitettävyyden kompromissin.",
             "defaultSaltNeedsStronger": "Syötä vahva luotu salasana ottaaksesi oletussuolan käyttöön.",
-            "defaultSaltTier128": "128-bit (suositeltu, vaatii 20+ merkin salasanan)",
-            "defaultSaltTier256": "256-bit (tiukempi, vaatii 39+ merkin salasanan)",
-            "defaultSaltTierMeaning": "Nämä kaksi tasoa määrittävät, kuinka vahva salasanasi on oltava, eivät suolan kokoa: suoloja on vain yksi, 32 tavua, sama jokaisessa oletussuolaa käyttävässä holvissa.",
+            "defaultSaltOneSaltNote": "Saltteja on vain yksi: 32 tavua, julkinen, sama kaikissa oletussalttia käyttävissä holveissa.",
             "defaultSaltValueLabel": "Julkinen oletussuola (AeroCrypt v3), SHA-256 merkkijonosta"
         },
         "modalGuard": {

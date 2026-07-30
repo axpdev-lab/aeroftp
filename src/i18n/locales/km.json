@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "ការតភ្ជាប់ដប់ពីរជាមួយការអានទុកជាមុនដែលបានបង្កើនប្រសិទ្ធភាព",
             "modeSafeDescription": "ការតភ្ជាប់មួយ៖ ឯកសារមួយក្នុងមួយពេល ស្ទ្រីមតែមួយក្នុងមួយឯកសារ",
             "modeBalancedDescription": "រហូតដល់ 3 ការតភ្ជាប់៖ ឯកសារស្របគ្នា ឬឆានែលជួរក្នុងឯកសារធំមួយ",
-            "modeMaxDescription": "រហូតដល់ 5 ការតភ្ជាប់៖ ឯកសារស្របគ្នា ឬឆានែលជួរក្នុងឯកសារធំមួយ"
+            "modeMaxDescription": "រហូតដល់ 5 ការតភ្ជាប់៖ ឯកសារស្របគ្នា ឬឆានែលជួរក្នុងឯកសារធំមួយ",
+            "moreActions": "សកម្មភាពផ្សេងទៀត"
         },
         "settings": {
             "title": "ការកំណត់",
@@ -1950,7 +1951,8 @@
             "transferQueue": "ជួរផ្ទេរ",
             "activityLog": "កំណត់ហេតុសកម្មភាព",
             "aerocloudTitle": "AeroCloud",
-            "updateAvailable": "បច្ចុប្បន្នភាព"
+            "updateAvailable": "បច្ចុប្បន្នភាព",
+            "showProgress": "បង្ហាញវឌ្ឍនភាពនៃការផ្ទេរ"
         },
         "migration": {
             "title": "ការផ្ទេរអត្តសញ្ញាណដោយសុវត្ថិភាព",
@@ -4621,18 +4623,18 @@
                 "footerSummary": "{count} ប្រវត្តិរូប · {unique} ដ្រាយ Cloud តែមួយ · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "រូបតំណាង",
+                    "name": "ប្រវត្តិរូប",
+                    "badges": "ស្លាក",
+                    "subtitle": "ម៉ាស៊ីន",
+                    "used": "បានប្រើ",
+                    "total": "សរុប",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "ផ្លូវ",
+                    "time": "ប្រើចុងក្រោយ",
+                    "health": "សុខភាព",
+                    "actions": "សកម្មភាព",
+                    "favorite": "សំណព្វ",
                     "saved": "បានសន្សំ",
                     "savedPct": "បានសន្សំ %",
                     "savedTitle": "ការបង្ហាប់៖ {plaintext} ទៅ {compressed} ({ratio}% បានសន្សំ)"
@@ -5214,9 +5216,6 @@
             "hideKit": "បិទ",
             "kitUnavailable": "ឧបករណ៍សង្គ្រោះមិនទាន់មានសម្រាប់ vault នេះនៅឡើយទេ។",
             "defaultSaltLabel": "salt លំនាំដើម (ជម្រើស opt-in, អាចផ្ទេរបានដោយប្រើតែពាក្យសម្ងាត់; ត្រូវការ entropy ខ្ពស់ និង attestation)",
-            "defaultSaltStrength128": "ណែនាំ 128-bit",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "ខ្ញុំបានប្រើកម្មវិធីគ្រប់គ្រងពាក្យសម្ងាត់ ហើយយល់ពីការដោះដូរ linkability។",
             "legacyMarkerNotice": "vault នេះនៅតែប្រើ marker ចាស់ .aeroftp-crypt.json។ បម្លែងវាទៅ .aerocrypt.tsv បន្ទាប់ពីបញ្ចូលពាក្យសម្ងាត់ ឬ keyfile។",
             "migrateLegacyMarker": "បម្លែង marker",
             "legacyMarkerMigrated": "marker ត្រូវបានបម្លែងទៅ .aerocrypt.tsv។",
@@ -5301,7 +5300,8 @@
             "lockedNote": "ប្រភេទការអ៊ិនគ្រីប និងព័ត៌មានសម្គាល់ខ្លួនត្រូវបានចាក់សោ៖ ស្រទាប់នេះមានទិន្នន័យអ៊ិនគ្រីបរួចហើយ។",
             "addToExistingWarn": "ការបើកការត្រួតលើនៅលើ profile ដែលមានស្រាប់៖ ឯកសារអត្ថបទធម្មតាណាមួយដែលមានរួចហើយនៅលើ remote នេះនៅតែមិនបានអ៊ិនគ្រីប ហើយនឹងបង្ហាញជាល្បាយដែលមិនអាចឌិគ្រីបបាន។ សូមប្រើ remote ទទេ។",
             "scopeHint": "ផ្លូវពីចម្ងាយ និងមូលដ្ឋានខាងលើកំណត់វិសាលភាពអ៊ីនគ្រីប (ទុកផ្លូវពីចម្ងាយឱ្យទទេដើម្បីអ៊ីនគ្រីបឫសទាំងមូល)។",
-            "remotePathLockedNote": "ផ្លូវពីចម្ងាយត្រូវបានចាក់សោ៖ វាជាឫសនៃការត្រួតលើដែលបានអ៊ិនគ្រីប ហើយមិនអាចផ្លាស់ប្តូរបានទេនៅពេលដែលការត្រួតលើមានទិន្នន័យ។",
+            "overlaysPathLockedNote": "ផ្លូវ Overlay ត្រូវបានចាក់សោ៖ វាជាយុថ្កានៃការអ៊ិនគ្រីប ហើយមិនអាចផ្លាស់ប្ដូរបានទេ បន្ទាប់ពី overlay ត្រូវបានភ្ជាប់។",
+            "remotePathMustReachOverlay": "ផ្លូវពីចម្ងាយត្រូវតែជាផ្លូវ Overlay ({path}) ឬថតមេណាមួយរបស់វា បើមិនដូច្នេះទេ ថតដែលបានអ៊ិនគ្រីបនឹងនៅក្រៅវគ្គនេះ។",
             "overlaysSection": "កម្រាល / Overlay",
             "overlaysActiveBadge": "បើក",
             "hintNative": "ទម្រង់ AeroCrypt ដើម៖ អានបានតែពី AeroFTP ជាមួយពាក្យសម្ងាត់នេះ។",
@@ -5323,12 +5323,9 @@
             "overlaysRemotePathInvalid": "ត្រូវតែជាផ្លូវពីចម្ងាយ ឬថតរងរបស់វា",
             "defaultSaltToggle": "អំបិលលំនាំដើម (ពាក្យសម្ងាត់តែមួយបើក; មិនត្រូវការឧបករណ៍ឬឃ្លាំងសោបន្ទាប់ពីបង្កើត)",
             "defaultSaltToggleHint": "អំបិលថេរសាធារណៈ (រចនាប័ទ្ម rclone)។ តម្រូវឱ្យបង្កើតពាក្យសម្ងាត់ដែលមានអង់ត្រូពីខ្ពស់។ ពាក្យសម្ងាត់ដូចគ្នានៅលើតុដេកច្រើនធ្វើឱ្យឈ្មោះដែលបានអ៊ិនគ្រីបអាចភ្ជាប់បានដោយគ្មានកូនសោ។",
-            "defaultSaltAttestation": "ខ្ញុំបានបង្កើតពាក្យសម្ងាត់នេះដោយប្រើកម្មវិធីគ្រប់គ្រងពាក្យសម្ងាត់ ហើយយល់ពីការផ្លាស់ប្តូរភាពភ្ជាប់បាន។",
             "defaultSaltNeedsStronger": "បញ្ចូលពាក្យសម្ងាត់ដែលបានបង្កើតយ៉ាងរឹងមាំ ដើម្បីបើក salt លំនាំដើម។",
-            "defaultSaltTier128": "128-bit (បានណែនាំ ត្រូវការពាក្យសម្ងាត់ 20+ តួអក្សរ)",
-            "defaultSaltTier256": "256-bit (តឹងរឹងជាង ត្រូវការពាក្យសម្ងាត់ 39+ តួអក្សរ)",
-            "defaultSaltTierMeaning": "កម្រិតទាំងពីរកំណត់ថាពាក្យសម្ងាត់របស់អ្នកត្រូវរឹងមាំប៉ុនណា មិនមែនទំហំអំបិលទេ៖ អំបិលមានតែមួយ ទំហំ 32 បៃ ដូចគ្នាសម្រាប់រាល់ទូសុវត្ថិភាពដែលប្រើអំបិលលំនាំដើម។",
-            "defaultSaltValueLabel": "អំបិលលំនាំដើមសាធារណៈ (AeroCrypt v3), SHA-256 នៃ"
+            "defaultSaltOneSaltNote": "មាន salt តែមួយគត់៖ 32 បៃ សាធារណៈ និងដូចគ្នាសម្រាប់ឃ្លាំងសុវត្ថិភាពទាំងអស់ដែលប្រើ salt លំនាំដើម។",
+            "defaultSaltValueLabel": "Salt លំនាំដើមសាធារណៈ (AeroCrypt v3), SHA-256 នៃខ្សែអក្សរខាងក្រោម"
         },
         "modalGuard": {
             "busyTitle": "ប្រតិបត្តិការកំពុងដំណើរការ",

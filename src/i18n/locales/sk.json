@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dvanásť pripojení s optimalizovaným predbežným načítaním",
             "modeSafeDescription": "Jedno pripojenie: jeden súbor naraz, jeden tok na súbor",
             "modeBalancedDescription": "Až 3 pripojenia: paralelné súbory alebo rozsahové kanály v jednom veľkom súbore",
-            "modeMaxDescription": "Až 5 pripojení: paralelné súbory alebo rozsahové kanály v jednom veľkom súbore"
+            "modeMaxDescription": "Až 5 pripojení: paralelné súbory alebo rozsahové kanály v jednom veľkom súbore",
+            "moreActions": "Ďalšie akcie"
         },
         "settings": {
             "title": "Nastavenia",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Fronta prenosov",
             "activityLog": "Denník aktivít",
             "aerocloudTitle": "Stav AeroCloud",
-            "updateAvailable": "Dostupná aktualizácia"
+            "updateAvailable": "Dostupná aktualizácia",
+            "showProgress": "Zobraziť priebeh prenosu"
         },
         "migration": {
             "title": "Bezpečná migrácia prihlasovacích údajov",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} profilov · {unique} jedinečných cloudových diskov · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Ikona",
+                    "name": "Profil",
+                    "badges": "Odznaky",
+                    "subtitle": "Hostiteľ",
+                    "used": "Využité",
+                    "total": "Celkom",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Cesty",
+                    "time": "Naposledy použité",
+                    "health": "Stav",
+                    "actions": "Akcie",
+                    "favorite": "Obľúbené",
                     "saved": "Ušetrené",
                     "savedPct": "Ušetrené %",
                     "savedTitle": "Kompresia: {plaintext} na {compressed} (ušetrené {ratio}%)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Zavrieť",
             "kitUnavailable": "Súprava na obnovenie zatiaľ nie je pre tento trezor k dispozícii.",
             "defaultSaltLabel": "Predvolená soľ (voliteľné, prenositeľnosť iba pomocou hesla; vyžaduje vysokú entropiu a potvrdenie)",
-            "defaultSaltStrength128": "odporúča sa 128 bitov",
-            "defaultSaltStrength256": "256 bitov",
-            "defaultSaltAttestation": "Použil(a) som správcu hesiel a rozumiem kompromisu prepojiteľnosti.",
             "legacyMarkerNotice": "Tento vault stále používa starý marker .aeroftp-crypt.json. Po zadaní hesla alebo keyfile ho skonvertujte na .aerocrypt.tsv.",
             "migrateLegacyMarker": "Skonvertovať marker",
             "legacyMarkerMigrated": "Marker skonvertovaný na .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Typ šifrovania a prihlasovacie údaje sú uzamknuté: táto vrstva už obsahuje zašifrované údaje.",
             "addToExistingWarn": "Zapnutím prekrytia pre existujúci profil: akékoľvek súbory v čistom texte, ktoré sú už na tomto vzdialenom úložisku, zostanú nešifrované a zobrazia sa ako nedešifrovateľná zmes. Použite prázdne vzdialené úložisko.",
             "scopeHint": "Vyššie uvedené vzdialené a lokálne cesty určujú šifrovaný rozsah (ponechajte vzdialenú cestu prázdnu na zašifrovanie celého koreňa).",
-            "remotePathLockedNote": "Vzdialená cesta je uzamknutá: je koreňom šifrovaného prekrytia a po uložení dát ju nemožno zmeniť.",
+            "overlaysPathLockedNote": "Cesta prekrytí je uzamknutá: je kotvou šifrovania a po naviazaní prekrytia ju nemožno zmeniť.",
+            "remotePathMustReachOverlay": "Vzdialená cesta musí byť cesta prekrytí ({path}) alebo niektorý z jej nadradených priečinkov, inak zostane šifrovaný priečinok mimo tejto relácie.",
             "overlaysSection": "Obaly / Overlaye",
             "overlaysActiveBadge": "Zapnuté",
             "hintNative": "Natívny formát AeroCrypt: čitateľný iba z AeroFTP s týmto heslom.",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "Musí to byť Vzdialená cesta alebo jej podpriečinok",
             "defaultSaltToggle": "Predvolená soľ (len heslo otvára; po vytvorení nie je potrebná súprava ani úložisko kľúčov)",
             "defaultSaltToggleHint": "Verejná konštantná soľ (rclone-style). Vyžaduje vygenerované heslo s vysokou entropiou. Rovnaké heslo na viacerých trezoroch robí šifrované názvy prepojiteľnými bez kľúča.",
-            "defaultSaltAttestation": "Vygeneroval som toto heslo pomocou správcu hesiel a rozumiem kompromisu prepojiteľnosti.",
             "defaultSaltNeedsStronger": "Zadajte silné vygenerované heslo na zapnutie predvoleného saltu.",
-            "defaultSaltTier128": "128-bit (odporúčané, vyžaduje heslo s 20+ znakmi)",
-            "defaultSaltTier256": "256-bit (prísnejšie, vyžaduje heslo s 39+ znakmi)",
-            "defaultSaltTierMeaning": "Obe úrovne určujú, aké silné musí byť vaše heslo, nie veľkosť soli: soľ je jediná, 32 bajtov, rovnaká pre každý trezor s predvolenou soľou.",
+            "defaultSaltOneSaltNote": "Existuje jediná soľ: 32 bajtov, verejná, rovnaká pre každý trezor s predvolenou soľou.",
             "defaultSaltValueLabel": "Verejná predvolená soľ (AeroCrypt v3), SHA-256 z"
         },
         "modalGuard": {

@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown, Zap, AlertTriangle, Play } from 'lucide-react';
+import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown, Zap, AlertTriangle, Play, Minus, Plus } from 'lucide-react';
 import { formatBytes, formatSpeed } from '../utils/formatters';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
@@ -228,10 +228,15 @@ const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearComplet
 
     return (
         <>
+            {/* #364: unlabelled, it sat where the other transfer window keeps its
+                Minimize and was read as one. It is the actions menu; say so. */}
             <button
                 ref={buttonRef}
                 onClick={handleToggle}
                 className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors flex items-center gap-0.5"
+                title={t('transfer.moreActions')}
+                aria-label={t('transfer.moreActions')}
+                aria-expanded={isOpen}
             >
                 <ChevronDown size={14} />
             </button>
@@ -445,6 +450,15 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     const scrollRef = useRef<HTMLDivElement>(null);
     const [autoScroll, setAutoScroll] = useState(true);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: TransferItem } | null>(null);
+    // #364: this panel had no minimize of its own. Clicking its header hid it
+    // outright, and the only way back was the status-bar tab, while the progress
+    // card on the other side of the screen collapsed in place from a button in
+    // its top-right corner. Both windows now minimize the same way: a Minimize
+    // button in the top-right corner, and the header itself collapses to its
+    // title row rather than vanishing.
+    // Collapsed keeps the title row, so the counters and the live/staged badges
+    // stay readable; it is the user's choice and nothing re-expands behind them.
+    const [isCollapsed, setIsCollapsed] = useState(false);
 
     // Auto-scroll to bottom when new items added
     useEffect(() => {
@@ -537,7 +551,8 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                 {/* Header - Terminal Style */}
                 <div
                     className="flex items-center justify-between px-3 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700 cursor-pointer select-none"
-                    onClick={onToggle}
+                    onClick={() => setIsCollapsed(v => !v)}
+                    title={isCollapsed ? t('ui.restore') : t('ui.minimize')}
                 >
                     <div className="flex items-center gap-2">
                         {primaryType === 'upload'
@@ -648,9 +663,23 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 hasErrors={errorCount > 0}
                                 hasStaged={stagedCount > 0}
                             />
+                            {/* Last in the row, so the top-right corner means the
+                                same thing in both transfer windows (#364). */}
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setIsCollapsed(v => !v); }}
+                                className="p-1 rounded transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
+                                title={isCollapsed ? t('ui.restore') : t('ui.minimize')}
+                                aria-label={isCollapsed ? t('ui.restore') : t('ui.minimize')}
+                                aria-expanded={!isCollapsed}
+                            >
+                                {isCollapsed ? <Plus size={13} /> : <Minus size={13} />}
+                            </button>
                         </div>
                     </div>
                 </div>
+
+                {!isCollapsed && (
+                <>
 
                 {/* Pause Banner: shown when circuit breaker trips */}
                 {isPaused && (
@@ -761,6 +790,8 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                         animated={transferringCount > 0}
                     />
                 </div>
+                </>
+                )}
             </div>
 
             {/* Context menu overlay */}

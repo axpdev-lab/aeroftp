@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dotze connexions amb lectura anticipada optimitzada",
             "modeSafeDescription": "Una connexió: un fitxer cada vegada, un sol flux per fitxer",
             "modeBalancedDescription": "Fins a 3 connexions: fitxers en paral·lel o canals de rangs dins d'un fitxer gran",
-            "modeMaxDescription": "Fins a 5 connexions: fitxers en paral·lel o canals de rangs dins d'un fitxer gran"
+            "modeMaxDescription": "Fins a 5 connexions: fitxers en paral·lel o canals de rangs dins d'un fitxer gran",
+            "moreActions": "Més accions"
         },
         "settings": {
             "title": "Configuracio",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Cua de Transferència",
             "activityLog": "Registre d'Activitat",
             "aerocloudTitle": "Estat d'AeroCloud",
-            "updateAvailable": "Actualització Disponible"
+            "updateAvailable": "Actualització Disponible",
+            "showProgress": "Mostra el progrés de la transferència"
         },
         "migration": {
             "title": "Migració segura de credencials",
@@ -4621,18 +4623,18 @@
                 "footerSummary": "{count} perfils · {unique} unitats al núvol úniques · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
+                    "icon": "Icona",
+                    "name": "Perfil",
+                    "badges": "Etiquetes",
+                    "subtitle": "Amfitrió",
+                    "used": "Utilitzat",
                     "total": "Total",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Rutes",
+                    "time": "Últim ús",
+                    "health": "Estat",
+                    "actions": "Accions",
+                    "favorite": "Preferit",
                     "saved": "Estalviat",
                     "savedPct": "Estalviat %",
                     "savedTitle": "Compressió: {plaintext} a {compressed} ({ratio}% estalviat)"
@@ -5214,9 +5216,6 @@
             "hideKit": "Tanca",
             "kitUnavailable": "El kit de recuperació encara no està disponible per a aquest magatzem.",
             "defaultSaltLabel": "Sal predeterminada (opcional, portabilitat només amb contrasenya; requereix alta entropia i attestació)",
-            "defaultSaltStrength128": "128 bits recomanat",
-            "defaultSaltStrength256": "256 bits",
-            "defaultSaltAttestation": "He utilitzat un gestor de contrasenyes i entenc el compromís de vinculabilitat.",
             "legacyMarkerNotice": "Aquest vault encara usa el marcador antic .aeroftp-crypt.json. Convertiu-lo a .aerocrypt.tsv després d'introduir la contrasenya o el keyfile.",
             "migrateLegacyMarker": "Converteix el marcador",
             "legacyMarkerMigrated": "Marcador convertit a .aerocrypt.tsv.",
@@ -5301,7 +5300,8 @@
             "lockedNote": "El tipus de xifratge i les credencials estan bloquejats: aquesta capa ja conté dades xifrades.",
             "addToExistingWarn": "En activar una superposició en un perfil existent: els fitxers en text pla que ja hi hagi en aquest remot resten sense xifrar i es mostraran com una barreja inddesxifrable. Fes servir un remot buit.",
             "scopeHint": "Els camins Remot i Local indicats a dalt defineixen l'abast xifrat (deixa Remot buit per xifrar tota l'arrel).",
-            "remotePathLockedNote": "La ruta remota està bloquejada: és l'arrel de la superposició xifrada i no es pot canviar un cop la superposició conté dades.",
+            "overlaysPathLockedNote": "La ruta de superposicions està bloquejada: és l'ancoratge del xifratge i no es pot canviar un cop la superposició està vinculada.",
+            "remotePathMustReachOverlay": "La ruta remota ha de ser la ruta de superposicions ({path}) o una de les seves carpetes superiors; altrament, la carpeta xifrada queda fora d'aquesta sessió.",
             "overlaysSection": "Embolcalls / Overlays",
             "overlaysActiveBadge": "Actiu",
             "hintNative": "Format AeroCrypt natiu: només llegible des d'AeroFTP amb aquesta contrasenya.",
@@ -5323,12 +5323,9 @@
             "overlaysRemotePathInvalid": "Ha de ser la Ruta remota o una subcarpeta d'aquesta",
             "defaultSaltToggle": "Sal per defecte (només amb la contrasenya s'obre; no cal kit ni magatzem de claus després de crear)",
             "defaultSaltToggleHint": "Sal constant pública (estil rclone). Requereix una contrasenya generada d'alta entropia. La mateixa contrasenya en múltiples cofres fa que els noms xifrats siguin enllaçables sense la clau.",
-            "defaultSaltAttestation": "He generat aquesta contrasenya amb un gestor de contrasenyes i entenc el compromís de vinculabilitat.",
             "defaultSaltNeedsStronger": "Introduïu una contrasenya generada forta per activar la sal predeterminada.",
-            "defaultSaltTier128": "128-bit (recomanat, necessita una contrasenya de 20+ caràcters)",
-            "defaultSaltTier256": "256-bit (més estricte, necessita una contrasenya de 39+ caràcters)",
-            "defaultSaltTierMeaning": "Els dos nivells fixen com de forta ha de ser la contrasenya, no la mida de la sal: hi ha una sola sal, de 32 bytes, la mateixa per a cada caixa forta amb sal per defecte.",
-            "defaultSaltValueLabel": "Sal pública per defecte (AeroCrypt v3), SHA-256 de"
+            "defaultSaltOneSaltNote": "Hi ha un únic salt: 32 bytes, públic, idèntic per a tots els magatzems amb salt predeterminat.",
+            "defaultSaltValueLabel": "Salt públic predeterminat (AeroCrypt v3), SHA-256 de"
         },
         "modalGuard": {
             "busyTitle": "Operació en curs",

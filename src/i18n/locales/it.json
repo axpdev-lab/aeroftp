@@ -1014,7 +1014,8 @@
             "sftpModeMaximumTestedDescription": "Dodici connessioni con lettura anticipata ottimizzata",
             "modeSafeDescription": "Una connessione: un file alla volta, un singolo flusso per file",
             "modeBalancedDescription": "Fino a 3 connessioni: file in parallelo o canali di intervallo all'interno di un file di grandi dimensioni",
-            "modeMaxDescription": "Fino a 5 connessioni: file in parallelo o canali di intervallo all'interno di un file di grandi dimensioni"
+            "modeMaxDescription": "Fino a 5 connessioni: file in parallelo o canali di intervallo all'interno di un file di grandi dimensioni",
+            "moreActions": "Altre azioni"
         },
         "scanning": {
             "deleting": "Eliminazione",
@@ -2144,7 +2145,8 @@
             "transferQueue": "Coda Trasferimenti",
             "activityLog": "Log Attività",
             "aerocloudTitle": "Stato AeroCloud",
-            "updateAvailable": "Aggiornamento Disponibile"
+            "updateAvailable": "Aggiornamento Disponibile",
+            "showProgress": "Mostra avanzamento trasferimento"
         },
         "migration": {
             "title": "Migrazione Credenziali Sicura",
@@ -3434,9 +3436,6 @@
             "hideKit": "Chiudi",
             "kitUnavailable": "Il kit di ripristino non è ancora disponibile per questa cassaforte.",
             "defaultSaltLabel": "Salt predefinito (opt-in, portabilità solo con password; richiede alta entropia e attestazione)",
-            "defaultSaltStrength128": "128 bit consigliato",
-            "defaultSaltStrength256": "256 bit",
-            "defaultSaltAttestation": "Ho usato un gestore di password e comprendo il compromesso di collegabilità.",
             "legacyMarkerNotice": "Questo vault usa ancora il marker legacy .aeroftp-crypt.json. Convertilo in .aerocrypt.tsv dopo aver inserito la password o il keyfile.",
             "migrateLegacyMarker": "Converti marker",
             "legacyMarkerMigrated": "Marker convertito in .aerocrypt.tsv.",
@@ -4971,7 +4970,7 @@
                 "columns": {
                     "index": "#",
                     "icon": "Icona",
-                    "name": "Nome",
+                    "name": "Profilo",
                     "badges": "Badge",
                     "subtitle": "Host",
                     "used": "Usato",
@@ -5296,7 +5295,8 @@
             "lockedNote": "Tipo di cifratura e credenziali bloccati: questo overlay contiene gia dati cifrati.",
             "addToExistingWarn": "Stai attivando un overlay su un profilo esistente: gli eventuali file in chiaro gia presenti su questo remoto restano non cifrati e appariranno come un insieme indecifrabile. Usa un remoto vuoto.",
             "scopeHint": "I percorsi Remoto e Locale qui sopra definiscono l'ambito cifrato (lascia Remoto vuoto per cifrare l'intera root).",
-            "remotePathLockedNote": "Il percorso Remoto è bloccato: è la radice dell'overlay cifrato e non può cambiare una volta che l'overlay contiene dati.",
+            "overlaysPathLockedNote": "Il percorso overlay è bloccato: è l'ancora di cifratura e non può più cambiare una volta associato l'overlay.",
+            "remotePathMustReachOverlay": "Il percorso remoto deve essere il percorso overlay ({path}) o una delle sue cartelle superiori, altrimenti la cartella cifrata resta fuori da questa sessione.",
             "keyfileLabel": "File chiave (opzionale)",
             "keyfilePlaceholder": "Nessun file chiave: solo password",
             "keyfileHint": "Secondo fattore opzionale miscelato nella chiave di cifratura: la cassaforte si apre solo con la password E questo file. Fanne un backup: perderlo rende la cassaforte inapribile.",
@@ -5312,11 +5312,8 @@
             "overlaysRemotePathInvalid": "Deve essere il Percorso remoto o una sua sottocartella",
             "defaultSaltToggle": "Salt predefinito (solo la password apre; dopo la creazione non serve kit o keystore)",
             "defaultSaltToggleHint": "Salt costante pubblico (stile rclone). Richiede una password generata ad alta entropia. La stessa password su più vault rende i nomi cifrati collegabili senza la chiave.",
-            "defaultSaltAttestation": "Ho generato questa password con un gestore password e comprendo il compromesso di collegabilità.",
             "defaultSaltNeedsStronger": "Inserisci una password generata robusta per attivare il salt predefinito.",
-            "defaultSaltTier128": "128-bit (consigliato, richiede una password di 20+ caratteri)",
-            "defaultSaltTier256": "256-bit (più restrittivo, richiede una password di 39+ caratteri)",
-            "defaultSaltTierMeaning": "I due livelli stabiliscono quanto deve essere forte la password, non la dimensione del salt: il salt è uno solo, 32 byte, identico per ogni vault a salt predefinito.",
+            "defaultSaltOneSaltNote": "Esiste un solo salt: 32 byte, pubblico, identico per ogni vault in modalità salt predefinito.",
             "defaultSaltValueLabel": "Salt predefinito pubblico (AeroCrypt v3), SHA-256 di"
         },
         "modalGuard": {

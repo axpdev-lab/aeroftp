@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Douze connexions avec lecture anticipée optimisée",
             "modeSafeDescription": "Une connexion : un fichier à la fois, un seul flux par fichier",
             "modeBalancedDescription": "Jusqu'à 3 connexions : fichiers en parallèle ou canaux de plages dans un fichier volumineux",
-            "modeMaxDescription": "Jusqu'à 5 connexions : fichiers en parallèle ou canaux de plages dans un fichier volumineux"
+            "modeMaxDescription": "Jusqu'à 5 connexions : fichiers en parallèle ou canaux de plages dans un fichier volumineux",
+            "moreActions": "Plus d'actions"
         },
         "settings": {
             "title": "Paramètres",
@@ -1950,7 +1951,8 @@
             "transferQueue": "File de Transfert",
             "activityLog": "Journal d'Activité",
             "aerocloudTitle": "État AeroCloud",
-            "updateAvailable": "Mise à jour Disponible"
+            "updateAvailable": "Mise à jour Disponible",
+            "showProgress": "Afficher la progression du transfert"
         },
         "migration": {
             "title": "Migration sécurisée des identifiants",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} profils · {unique} disques cloud uniques · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
+                    "icon": "Icône",
+                    "name": "Profil",
                     "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
+                    "subtitle": "Hôte",
+                    "used": "Utilisé",
                     "total": "Total",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
+                    "paths": "Chemins",
+                    "time": "Dernière utilisation",
+                    "health": "État",
                     "actions": "Actions",
-                    "favorite": "Favorite",
+                    "favorite": "Favori",
                     "saved": "Économisé",
                     "savedPct": "Économisé %",
                     "savedTitle": "Compression : {plaintext} vers {compressed} ({ratio}% économisé)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Fermer",
             "kitUnavailable": "Le kit de récupération n'est pas encore disponible pour ce coffre.",
             "defaultSaltLabel": "Sel par défaut (activation volontaire, portabilité par mot de passe uniquement ; exige une entropie élevée et une attestation)",
-            "defaultSaltStrength128": "128 bits recommandé",
-            "defaultSaltStrength256": "256 bits",
-            "defaultSaltAttestation": "J'ai utilisé un gestionnaire de mots de passe et je comprends le compromis de liabilité.",
             "legacyMarkerNotice": "Ce vault utilise encore l'ancien marqueur .aeroftp-crypt.json. Convertissez-le en .aerocrypt.tsv après avoir saisi le mot de passe ou le keyfile.",
             "migrateLegacyMarker": "Convertir le marqueur",
             "legacyMarkerMigrated": "Marqueur converti en .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Le type de chiffrement et les identifiants sont verrouillés : cette surcouche contient déjà des données chiffrées.",
             "addToExistingWarn": "En activant une surcouche sur un profil existant : les fichiers en clair déjà présents sur ce distant restent non chiffrés et apparaîtront comme un mélange indéchiffrable. Utilisez un distant vide.",
             "scopeHint": "Les chemins distant et local indiqués ci-dessus définissent la portée chiffrée (laissez le chemin distant vide pour chiffrer toute la racine).",
-            "remotePathLockedNote": "Le chemin distant est verrouillé : c'est la racine de la surcouche chiffrée et il ne peut pas changer une fois que la surcouche contient des données.",
+            "overlaysPathLockedNote": "Le chemin des superpositions est verrouillé : il constitue l'ancre de chiffrement et ne peut plus changer une fois la superposition liée.",
+            "remotePathMustReachOverlay": "Le chemin distant doit être le chemin des superpositions ({path}) ou l'un de ses dossiers parents, sinon le dossier chiffré se retrouve hors de cette session.",
             "overlaysSection": "Enveloppes / Overlays",
             "overlaysActiveBadge": "Activé",
             "hintNative": "Format AeroCrypt natif : lisible uniquement depuis AeroFTP avec ce mot de passe.",
@@ -5304,12 +5304,9 @@
             "overlaysRemotePathInvalid": "Doit être le Chemin distant ou un de ses sous-dossiers",
             "defaultSaltToggle": "Sel par défaut (seul le mot de passe ouvre ; aucun kit ou magasin de clés nécessaire après création)",
             "defaultSaltToggleHint": "Sel constant public (style rclone). Nécessite un mot de passe généré à haute entropie. Le même mot de passe sur plusieurs coffres rend les noms chiffrés associables sans la clé.",
-            "defaultSaltAttestation": "J'ai généré ce mot de passe avec un gestionnaire de mots de passe et je comprends le compromis de traçabilité.",
             "defaultSaltNeedsStronger": "Saisissez un mot de passe généré fort pour activer le sel par défaut.",
-            "defaultSaltTier128": "128-bit (recommandé, nécessite un mot de passe de 20+ caractères)",
-            "defaultSaltTier256": "256-bit (plus strict, nécessite un mot de passe de 39+ caractères)",
-            "defaultSaltTierMeaning": "Les deux niveaux fixent la robustesse exigée de votre mot de passe, pas la taille du sel : il n'y a qu'un seul sel, de 32 octets, identique pour tous les coffres à sel par défaut.",
-            "defaultSaltValueLabel": "Sel public par défaut (AeroCrypt v3), SHA-256 de"
+            "defaultSaltOneSaltNote": "Il n'existe qu'un seul salt : 32 octets, public, identique pour tous les coffres en salt par défaut.",
+            "defaultSaltValueLabel": "Salt public par défaut (AeroCrypt v3), SHA-256 de"
         },
         "modalGuard": {
             "busyTitle": "Opération en cours",

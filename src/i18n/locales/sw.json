@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Miunganisho kumi na miwili yenye usomaji wa mapema ulioboreshwa",
             "modeSafeDescription": "Muunganisho mmoja: faili moja kwa wakati mmoja, mkondo mmoja kwa kila faili",
             "modeBalancedDescription": "Hadi miunganisho 3: faili sambamba, au njia za masafa ndani ya faili moja kubwa",
-            "modeMaxDescription": "Hadi miunganisho 5: faili sambamba, au njia za masafa ndani ya faili moja kubwa"
+            "modeMaxDescription": "Hadi miunganisho 5: faili sambamba, au njia za masafa ndani ya faili moja kubwa",
+            "moreActions": "Vitendo zaidi"
         },
         "settings": {
             "title": "Mipangilio",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Foleni ya Uhamisho",
             "activityLog": "Kumbukumbu ya Shughuli",
             "aerocloudTitle": "Hali ya AeroCloud",
-            "updateAvailable": "Sasisho Linapatikana"
+            "updateAvailable": "Sasisho Linapatikana",
+            "showProgress": "Onyesha maendeleo ya uhamishaji"
         },
         "migration": {
             "title": "Uhamishaji salama wa vitambulisho",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "Wasifu {count} · diski za wingu {unique} za kipekee · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Aikoni",
+                    "name": "Wasifu",
+                    "badges": "Beji",
+                    "subtitle": "Mwenyeji",
+                    "used": "Imetumika",
+                    "total": "Jumla",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Njia",
+                    "time": "Matumizi ya mwisho",
+                    "health": "Afya",
+                    "actions": "Vitendo",
+                    "favorite": "Kipendwa",
                     "saved": "Imehifadhiwa",
                     "savedPct": "Imehifadhiwa %",
                     "savedTitle": "Mbano: {plaintext} hadi {compressed} ({ratio}% imehifadhiwa)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Funga",
             "kitUnavailable": "Kifurushi cha kurejesha bado hakipatikani kwa hazina hii.",
             "defaultSaltLabel": "Salt chaguomsingi (hiari, uhamishikaji kwa nenosiri pekee; inahitaji entropy ya juu na attestation)",
-            "defaultSaltStrength128": "128-bit inapendekezwa",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Nilitumia kidhibiti cha manenosiri na ninaelewa mabadilishano ya linkability.",
             "legacyMarkerNotice": "Vault hii bado inatumia marker ya zamani .aeroftp-crypt.json. Ibadilishe kuwa .aerocrypt.tsv baada ya kuingiza nenosiri au keyfile.",
             "migrateLegacyMarker": "Badilisha marker",
             "legacyMarkerMigrated": "Marker imebadilishwa kuwa .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Aina ya usimbaji na stakabadhi zimefungwa: safu hii tayari ina data iliyosimbwa.",
             "addToExistingWarn": "Kuwezesha tabaka kwenye wasifu uliopo: faili zozote za maandishi wazi zilizopo tayari kwenye seva hii za mbali zinabaki bila kusimbwa na zitaonekana kama mchanganyiko usioweza kusimbuliwa. Tumia seva ya mbali tupu.",
             "scopeHint": "Njia za Mbali na za Karibu hapo juu hufafanua wigo uliosimbwa (acha Mbali wazi ili kusimba mzizi mzima).",
-            "remotePathLockedNote": "Njia ya mbali imefungwa: ndio mzizi wa tabaka lililosimbwa na haiwezi kubadilika mara tabaka linapokuwa na data.",
+            "overlaysPathLockedNote": "Njia ya Vifuniko imefungwa: ndiyo nanga ya usimbaji fiche na haiwezi kubadilishwa baada ya kifuniko kuunganishwa.",
+            "remotePathMustReachOverlay": "Njia ya mbali lazima iwe Njia ya Vifuniko ({path}) au mojawapo ya folda zake za juu, vinginevyo folda iliyosimbwa fiche itakuwa nje ya kipindi hiki.",
             "overlaysSection": "Vifuniko / Overlays",
             "overlaysActiveBadge": "Imewashwa",
             "hintNative": "Muundo asili wa AeroCrypt: husomeka tu kutoka AeroFTP kwa nenosiri hili.",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "Lazima iwe Njia ya Mbali au folda ndogo yake",
             "defaultSaltToggle": "Chumvi chaguomsingi (neno la siri pekee hufungua; hakuna kit au hifadhi ya funguo inayohitajika baada ya kuunda)",
             "defaultSaltToggleHint": "Chumvi ya mara kwa mara ya umma (mtindo wa rclone). Inahitaji neno la siri lililotengenezwa lenye entropia ya juu. Neno la siri sawa kwenye hifadhi nyingi hufanya majina yaliyosimbwa kuwa yanayoweza kuunganishwa bila ufunguo.",
-            "defaultSaltAttestation": "Nilitengeneza neno hili la siri kwa kutumia kidhibiti cha maneno ya siri na ninaelewa maelewano ya uunganishwaji.",
             "defaultSaltNeedsStronger": "Weka nenosiri imara lililozalishwa ili kuwasha salt chaguo-msingi.",
-            "defaultSaltTier128": "128-bit (inapendekezwa, inahitaji nenosiri la herufi 20+)",
-            "defaultSaltTier256": "256-bit (kali zaidi, inahitaji nenosiri la herufi 39+)",
-            "defaultSaltTierMeaning": "Ngazi hizi mbili huamua nenosiri lako liwe imara kiasi gani, si ukubwa wa chumvi: kuna chumvi moja tu, baiti 32, ile ile kwa kila hazina yenye chumvi chaguo-msingi.",
+            "defaultSaltOneSaltNote": "Kuna salt moja tu: baiti 32, ya umma, sawa kwa kila hazina inayotumia salt chaguo-msingi.",
             "defaultSaltValueLabel": "Chumvi chaguo-msingi ya umma (AeroCrypt v3), SHA-256 ya"
         },
         "modalGuard": {

@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Doce conexiones con lectura anticipada optimizada",
             "modeSafeDescription": "Una conexión: un archivo a la vez, un solo flujo por archivo",
             "modeBalancedDescription": "Hasta 3 conexiones: archivos en paralelo o canales de rangos dentro de un archivo grande",
-            "modeMaxDescription": "Hasta 5 conexiones: archivos en paralelo o canales de rangos dentro de un archivo grande"
+            "modeMaxDescription": "Hasta 5 conexiones: archivos en paralelo o canales de rangos dentro de un archivo grande",
+            "moreActions": "Más acciones"
         },
         "settings": {
             "title": "Configuración",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Cola de Transferencias",
             "activityLog": "Registro de Actividad",
             "aerocloudTitle": "Estado de AeroCloud",
-            "updateAvailable": "Actualización Disponible"
+            "updateAvailable": "Actualización Disponible",
+            "showProgress": "Mostrar progreso de la transferencia"
         },
         "migration": {
             "title": "Migración segura de credenciales",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} perfiles · {unique} unidades en la nube únicas · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
+                    "icon": "Icono",
+                    "name": "Perfil",
+                    "badges": "Etiquetas",
                     "subtitle": "Host",
-                    "used": "Used",
+                    "used": "Usado",
                     "total": "Total",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Rutas",
+                    "time": "Último uso",
+                    "health": "Estado",
+                    "actions": "Acciones",
+                    "favorite": "Favorito",
                     "saved": "Ahorrado",
                     "savedPct": "Ahorrado %",
                     "savedTitle": "Compresión: {plaintext} a {compressed} ({ratio}% ahorrado)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Cerrar",
             "kitUnavailable": "El kit de recuperación aún no está disponible para esta bóveda.",
             "defaultSaltLabel": "Sal predeterminada (opcional, portabilidad solo con contraseña; requiere alta entropía y atestación)",
-            "defaultSaltStrength128": "128 bits recomendado",
-            "defaultSaltStrength256": "256 bits",
-            "defaultSaltAttestation": "He usado un gestor de contraseñas y entiendo el compromiso de vinculabilidad.",
             "legacyMarkerNotice": "Este vault aún usa el marcador heredado .aeroftp-crypt.json. Conviértelo a .aerocrypt.tsv después de introducir la contraseña o el keyfile.",
             "migrateLegacyMarker": "Convertir marcador",
             "legacyMarkerMigrated": "Marcador convertido a .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "El tipo de cifrado y las credenciales están bloqueados: esta superposición ya contiene datos cifrados.",
             "addToExistingWarn": "Al activar una superposición en un perfil existente: los archivos en texto plano que ya haya en este remoto permanecen sin cifrar y se mostrarán como una mezcla indescifrable. Usa un remoto vacío.",
             "scopeHint": "Las rutas Remota y Local indicadas arriba definen el ámbito cifrado (deja Remota vacía para cifrar toda la raíz).",
-            "remotePathLockedNote": "La ruta remota está bloqueada: es la raíz de la superposición cifrada y no se puede cambiar una vez que la superposición contiene datos.",
+            "overlaysPathLockedNote": "La ruta de superposiciones está bloqueada: es el anclaje del cifrado y no se puede cambiar una vez vinculada la superposición.",
+            "remotePathMustReachOverlay": "La ruta remota debe ser la ruta de superposiciones ({path}) o una de sus carpetas superiores; de lo contrario, la carpeta cifrada queda fuera de esta sesión.",
             "overlaysSection": "Envoltorios / Overlays",
             "overlaysActiveBadge": "Activo",
             "hintNative": "Formato AeroCrypt nativo: legible solo desde AeroFTP con esta contraseña.",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "Debe ser la Ruta remota o una subcarpeta de ella",
             "defaultSaltToggle": "Sal por defecto (solo la contraseña abre; no se necesita kit ni almacén de claves tras crear)",
             "defaultSaltToggleHint": "Sal constante pública (rclone-style). Requiere una contraseña generada de alta entropía. Usar la misma contraseña en múltiples bóvedas hace que los nombres cifrados sean vinculables sin la clave.",
-            "defaultSaltAttestation": "Generé esta contraseña con un gestor de contraseñas y entiendo el compromiso de vinculabilidad.",
             "defaultSaltNeedsStronger": "Introduce una contraseña generada segura para activar la sal predeterminada.",
-            "defaultSaltTier128": "128-bit (recomendado, necesita una contraseña de 20+ caracteres)",
-            "defaultSaltTier256": "256-bit (más estricto, necesita una contraseña de 39+ caracteres)",
-            "defaultSaltTierMeaning": "Los dos niveles fijan lo fuerte que debe ser tu contraseña, no el tamaño del salt: hay un único salt, de 32 bytes, el mismo para todas las bóvedas con salt predeterminado.",
+            "defaultSaltOneSaltNote": "Existe un único salt: 32 bytes, público, idéntico para todas las bóvedas con salt predeterminado.",
             "defaultSaltValueLabel": "Salt predeterminado público (AeroCrypt v3), SHA-256 de"
         },
         "modalGuard": {

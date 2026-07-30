@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "अनुकूलित अग्रिम पठन वाले बारह कनेक्शन",
             "modeSafeDescription": "एक कनेक्शन: एक बार में एक फ़ाइल, प्रति फ़ाइल एक स्ट्रीम",
             "modeBalancedDescription": "अधिकतम 3 कनेक्शन: समानांतर फ़ाइलें, या एक बड़ी फ़ाइल के भीतर रेंज चैनल",
-            "modeMaxDescription": "अधिकतम 5 कनेक्शन: समानांतर फ़ाइलें, या एक बड़ी फ़ाइल के भीतर रेंज चैनल"
+            "modeMaxDescription": "अधिकतम 5 कनेक्शन: समानांतर फ़ाइलें, या एक बड़ी फ़ाइल के भीतर रेंज चैनल",
+            "moreActions": "और क्रियाएँ"
         },
         "settings": {
             "title": "सेटिंग्स",
@@ -1950,7 +1951,8 @@
             "transferQueue": "स्थानांतरण कतार",
             "activityLog": "गतिविधि लॉग",
             "aerocloudTitle": "AeroCloud स्थिति",
-            "updateAvailable": "अपडेट उपलब्ध"
+            "updateAvailable": "अपडेट उपलब्ध",
+            "showProgress": "स्थानांतरण प्रगति दिखाएँ"
         },
         "migration": {
             "title": "सुरक्षित प्रमाणपत्र स्थानांतरण",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} प्रोफ़ाइल · {unique} अद्वितीय क्लाउड ड्राइव · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "आइकन",
+                    "name": "प्रोफ़ाइल",
+                    "badges": "बैज",
+                    "subtitle": "होस्ट",
+                    "used": "उपयोग",
+                    "total": "कुल",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "पथ",
+                    "time": "अंतिम उपयोग",
+                    "health": "स्थिति",
+                    "actions": "क्रियाएँ",
+                    "favorite": "पसंदीदा",
                     "saved": "बचाया गया",
                     "savedPct": "बचाया गया %",
                     "savedTitle": "संपीड़न: {plaintext} से {compressed} ({ratio}% बचाया गया)"
@@ -5195,9 +5197,6 @@
             "hideKit": "बंद करें",
             "kitUnavailable": "इस वॉल्ट के लिए पुनर्प्राप्ति किट अभी उपलब्ध नहीं है।",
             "defaultSaltLabel": "डिफ़ॉल्ट salt (opt-in, केवल पासवर्ड से portability; उच्च entropy और attestation आवश्यक)",
-            "defaultSaltStrength128": "128-bit अनुशंसित",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "मैंने password manager का उपयोग किया है और linkability tradeoff को समझता/समझती हूँ।",
             "legacyMarkerNotice": "यह vault अभी भी पुराने .aeroftp-crypt.json मार्कर का उपयोग करता है। पासवर्ड या keyfile दर्ज करने के बाद इसे .aerocrypt.tsv में बदलें।",
             "migrateLegacyMarker": "मार्कर बदलें",
             "legacyMarkerMigrated": "मार्कर .aerocrypt.tsv में बदल दिया गया।",
@@ -5282,7 +5281,8 @@
             "lockedNote": "एन्क्रिप्शन प्रकार और क्रेडेंशियल लॉक हैं: इस ओवरले में पहले से एन्क्रिप्ट किया गया डेटा है।",
             "addToExistingWarn": "किसी मौजूदा प्रोफ़ाइल पर ओवरले सक्षम करने पर: इस रिमोट पर पहले से मौजूद कोई भी सादा-पाठ फ़ाइल बिना एन्क्रिप्शन के रहती है और एक अपठनीय मिश्रण के रूप में दिखेगी। एक खाली रिमोट का उपयोग करें।",
             "scopeHint": "ऊपर दिए गए रिमोट और लोकल पथ एन्क्रिप्टेड क्षेत्र को परिभाषित करते हैं (पूरे रूट को एन्क्रिप्ट करने के लिए रिमोट खाली छोड़ें)।",
-            "remotePathLockedNote": "रिमोट पथ लॉक है: यह एन्क्रिप्टेड ओवरले की जड़ है और ओवरले में डेटा होने पर इसे बदला नहीं जा सकता।",
+            "overlaysPathLockedNote": "ओवरले पथ लॉक है: यह एन्क्रिप्शन का आधार है और ओवरले जुड़ जाने के बाद इसे बदला नहीं जा सकता।",
+            "remotePathMustReachOverlay": "रिमोट पथ ओवरले पथ ({path}) या उसका कोई मूल फ़ोल्डर होना चाहिए, अन्यथा एन्क्रिप्टेड फ़ोल्डर इस सत्र से बाहर रह जाएगा।",
             "overlaysSection": "रैपर / ओवरले",
             "overlaysActiveBadge": "चालू",
             "hintNative": "नेटिव AeroCrypt प्रारूप: इस पासवर्ड के साथ केवल AeroFTP से पढ़ा जा सकता है।",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "यह रिमोट पथ या उसका उपफ़ोल्डर होना चाहिए",
             "defaultSaltToggle": "डिफ़ॉल्ट सॉल्ट (केवल पासवर्ड से खुलता है; बनाने के बाद किट या कीस्टोर की आवश्यकता नहीं)",
             "defaultSaltToggleHint": "सार्वजनिक स्थिर सॉल्ट (rclone-style)। उच्च एन्ट्रॉपी वाला जेनरेट किया गया पासवर्ड आवश्यक है। एकाधिक वॉल्ट पर समान पासवर्ड बिना कुंजी के एन्क्रिप्टेड नामों को लिंक करने योग्य बनाता है।",
-            "defaultSaltAttestation": "मैंने इस पासवर्ड को पासवर्ड मैनेजर से जेनरेट किया है और लिंकेबिलिटी ट्रेडऑफ को समझता हूँ।",
             "defaultSaltNeedsStronger": "डिफ़ॉल्ट सॉल्ट चालू करने के लिए एक मजबूत जनरेट किया गया पासवर्ड दर्ज करें।",
-            "defaultSaltTier128": "128-bit (अनुशंसित, 20+ वर्णों का पासवर्ड आवश्यक)",
-            "defaultSaltTier256": "256-bit (अधिक सख्त, 39+ वर्णों का पासवर्ड आवश्यक)",
-            "defaultSaltTierMeaning": "दोनों स्तर यह तय करते हैं कि आपका पासवर्ड कितना मज़बूत होना चाहिए, सॉल्ट का आकार नहीं: सॉल्ट एक ही है, 32 बाइट, हर डिफ़ॉल्ट-सॉल्ट वॉल्ट के लिए समान।",
+            "defaultSaltOneSaltNote": "केवल एक ही सॉल्ट है: 32 बाइट, सार्वजनिक, डिफ़ॉल्ट सॉल्ट वाले हर वॉल्ट के लिए समान।",
             "defaultSaltValueLabel": "सार्वजनिक डिफ़ॉल्ट सॉल्ट (AeroCrypt v3), निम्नलिखित स्ट्रिंग का SHA-256"
         },
         "modalGuard": {

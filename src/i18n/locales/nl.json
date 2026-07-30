@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Twaalf verbindingen met geoptimaliseerd vooruit lezen",
             "modeSafeDescription": "Eén verbinding: één bestand tegelijk, één stream per bestand",
             "modeBalancedDescription": "Maximaal 3 verbindingen: parallelle bestanden of bereikkanalen binnen één groot bestand",
-            "modeMaxDescription": "Maximaal 5 verbindingen: parallelle bestanden of bereikkanalen binnen één groot bestand"
+            "modeMaxDescription": "Maximaal 5 verbindingen: parallelle bestanden of bereikkanalen binnen één groot bestand",
+            "moreActions": "Meer acties"
         },
         "settings": {
             "title": "Instellingen",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Overdrachtwachtrij",
             "activityLog": "Activiteitenlogboek",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Beschikbaar"
+            "updateAvailable": "Update beschikbaar",
+            "showProgress": "Overdrachtsvoortgang tonen"
         },
         "migration": {
             "title": "Veilige migratie van inloggegevens",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} profielen · {unique} unieke cloudschijven · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
+                    "icon": "Pictogram",
+                    "name": "Profiel",
                     "badges": "Badges",
                     "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "used": "Gebruikt",
+                    "total": "Totaal",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Paden",
+                    "time": "Laatst gebruikt",
+                    "health": "Status",
+                    "actions": "Acties",
+                    "favorite": "Favoriet",
                     "saved": "Bespaard",
                     "savedPct": "Bespaard %",
                     "savedTitle": "Compressie: {plaintext} naar {compressed} ({ratio}% bespaard)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Sluiten",
             "kitUnavailable": "De herstelkit is nog niet beschikbaar voor deze kluis.",
             "defaultSaltLabel": "Standaard-salt (opt-in, portabiliteit met alleen wachtwoord; vereist hoge entropie en attestatie)",
-            "defaultSaltStrength128": "128-bit aanbevolen",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Ik heb een wachtwoordmanager gebruikt en begrijp de afweging rond koppelbaarheid.",
             "legacyMarkerNotice": "Deze vault gebruikt nog de oude marker .aeroftp-crypt.json. Converteer die naar .aerocrypt.tsv nadat je het wachtwoord of keyfile hebt ingevoerd.",
             "migrateLegacyMarker": "Marker converteren",
             "legacyMarkerMigrated": "Marker geconverteerd naar .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Versleutelingstype en inloggegevens zijn vergrendeld: deze overlay bevat al versleutelde gegevens.",
             "addToExistingWarn": "Bij het inschakelen van een overlay op een bestaand profiel: bestanden in platte tekst die al op deze externe locatie staan blijven onversleuteld en verschijnen als een niet-ontsleutelbare mix. Gebruik een lege externe locatie.",
             "scopeHint": "De bovenstaande externe en lokale paden bepalen het versleutelde bereik (laat Extern leeg om de hele hoofdmap te versleutelen).",
-            "remotePathLockedNote": "Het externe pad is vergrendeld: het is de hoofdmap van de versleutelde overlay en kan niet worden gewijzigd zodra de overlay gegevens bevat.",
+            "overlaysPathLockedNote": "Het overlay-pad is vergrendeld: het is het versleutelingsanker en kan niet meer wijzigen zodra de overlay is gekoppeld.",
+            "remotePathMustReachOverlay": "Het externe pad moet het overlay-pad ({path}) of een van de bovenliggende mappen zijn, anders valt de versleutelde map buiten deze sessie.",
             "overlaysSection": "Wrappers / Overlays",
             "overlaysActiveBadge": "Aan",
             "hintNative": "Native AeroCrypt-formaat: alleen leesbaar vanuit AeroFTP met dit wachtwoord.",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "Moet het Externe pad of een submap ervan zijn",
             "defaultSaltToggle": "Standaard salt (alleen wachtwoord opent; na aanmaken geen kit of sleutelopslag nodig)",
             "defaultSaltToggleHint": "Publieke constante salt (rclone-stijl). Vereist een gegenereerd wachtwoord met hoge entropie. Zelfde wachtwoord op meerdere kluizen maakt versleutelde namen koppelbaar zonder sleutel.",
-            "defaultSaltAttestation": "Ik heb dit wachtwoord gegenereerd met een wachtwoordbeheerder en begrijp de linkbaarheid-afweging.",
             "defaultSaltNeedsStronger": "Voer een sterk gegenereerd wachtwoord in om de standaard-salt in te schakelen.",
-            "defaultSaltTier128": "128-bit (aanbevolen, vereist een wachtwoord van 20+ tekens)",
-            "defaultSaltTier256": "256-bit (strenger, vereist een wachtwoord van 39+ tekens)",
-            "defaultSaltTierMeaning": "De twee niveaus bepalen hoe sterk uw wachtwoord moet zijn, niet de grootte van de salt: er is één salt van 32 bytes, dezelfde voor elke kluis met standaardsalt.",
+            "defaultSaltOneSaltNote": "Er is één enkel salt: 32 bytes, openbaar, identiek voor elke kluis met standaardsalt.",
             "defaultSaltValueLabel": "Openbare standaardsalt (AeroCrypt v3), SHA-256 van"
         },
         "modalGuard": {

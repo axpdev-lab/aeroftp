@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Deuddeg cysylltiad gyda rhagddarllen wedi'i optimeiddio",
             "modeSafeDescription": "Un cysylltiad: un ffeil ar y tro, un ffrwd i bob ffeil",
             "modeBalancedDescription": "Hyd at 3 cysylltiad: ffeiliaid yn gyfochrog, neu sianeli ystod o fewn un ffeil fawr",
-            "modeMaxDescription": "Hyd at 5 cysylltiad: ffeiliaid yn gyfochrog, neu sianeli ystod o fewn un ffeil fawr"
+            "modeMaxDescription": "Hyd at 5 cysylltiad: ffeiliaid yn gyfochrog, neu sianeli ystod o fewn un ffeil fawr",
+            "moreActions": "Rhagor o weithredoedd"
         },
         "settings": {
             "title": "Gosodiadau",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Transfer Queue",
             "activityLog": "Activity Log",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "Diweddariad ar gael",
+            "showProgress": "Dangos cynnydd y trosglwyddiad"
         },
         "migration": {
             "title": "Mudo Manylion Mewngofnodi'n Ddiogel",
@@ -4621,18 +4623,18 @@
                 "footerSummary": "{count} proffil · {unique} gyriant cwmwl unigryw · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Eicon",
+                    "name": "Proffil",
+                    "badges": "Bathodynnau",
+                    "subtitle": "Gwesteiwr",
+                    "used": "Defnyddiwyd",
+                    "total": "Cyfanswm",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Llwybrau",
+                    "time": "Defnydd diwethaf",
+                    "health": "Cyflwr",
+                    "actions": "Gweithredoedd",
+                    "favorite": "Ffefryn",
                     "saved": "Arbedwyd",
                     "savedPct": "Arbedwyd %",
                     "savedTitle": "Cywasgu: {plaintext} i {compressed} ({ratio}% wedi'i arbed)"
@@ -5214,9 +5216,6 @@
             "hideKit": "Cau",
             "kitUnavailable": "Nid yw'r pecyn adfer ar gael ar gyfer y gell hon eto.",
             "defaultSaltLabel": "Halen diofyn (dewisol, cludadwyedd gyda chyfrinair yn unig; mae angen entropi uchel ac ardystiad)",
-            "defaultSaltStrength128": "argymhellir 128-bit",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Defnyddiais reolwr cyfrineiriau ac rwy'n deall y cyfaddawd cysylltadwyedd.",
             "legacyMarkerNotice": "Mae'r vault hwn yn dal i ddefnyddio'r marciwr etifeddol .aeroftp-crypt.json. Troswch ef i .aerocrypt.tsv ar ôl rhoi'r cyfrinair neu'r keyfile.",
             "migrateLegacyMarker": "Trosi marciwr",
             "legacyMarkerMigrated": "Marciwr wedi'i drosi i .aerocrypt.tsv.",
@@ -5301,7 +5300,8 @@
             "lockedNote": "Mae'r math o amgryptio a'r manylion wedi'u cloi: mae'r troshaen hon eisoes yn dal data wedi'i amgryptio.",
             "addToExistingWarn": "Wrth alluogi troshaen ar broffil presennol: bydd unrhyw ffeiliau testun plaen sydd eisoes ar y pell hwn yn aros heb eu hamgryptio ac yn ymddangos fel cymysgedd na ellir ei ddatgryptio. Defnyddiwch bell gwag.",
             "scopeHint": "Mae'r llwybrau Pell a Lleol uchod yn diffinio'r cwmpas wedi'i amgryptio (gadewch Pell yn wag i amgryptio'r gwreiddyn cyfan).",
-            "remotePathLockedNote": "Mae'r llwybr pell wedi'i gloi: dyma wraidd y troshaen wedi'i amgryptio ac ni ellir ei newid unwaith y bydd data yn y troshaen.",
+            "overlaysPathLockedNote": "Mae Llwybr y Troshaenau wedi'i gloi: dyma angor yr amgryptio ac ni ellir ei newid ar ôl rhwymo'r troshaen.",
+            "remotePathMustReachOverlay": "Rhaid i'r llwybr pell fod yn Llwybr y Troshaenau ({path}) neu'n un o'i ffolderi uwch, neu bydd y ffolder wedi'i hamgryptio y tu allan i'r sesiwn hon.",
             "overlaysSection": "Amlenni / Troshaenau",
             "overlaysActiveBadge": "Ymlaen",
             "hintNative": "Fformat AeroCrypt brodorol: darllenadwy o AeroFTP yn unig gyda'r cyfrinair hwn.",
@@ -5323,11 +5323,8 @@
             "overlaysRemotePathInvalid": "Rhaid iddo fod y Llwybr Pell neu is-ffolder ohono",
             "defaultSaltToggle": "Halen diofyn (dim ond y cyfrinair sy'n agor; nid oes angen pecyn neu storfa allweddi ar ôl creu)",
             "defaultSaltToggleHint": "Halen cyson cyhoeddus (arddull rclone). Mae angen cyfrinair uchel-entropi a gynhyrchwyd. Mae'r un cyfrinair ar sawl storfa yn gwneud enwau wedi'u hamgryptio yn gysylltadwy heb yr allwedd.",
-            "defaultSaltAttestation": "Fe wnes i gynhyrchu'r cyfrinair hwn gyda rheolwr cyfrineiriau ac rwy'n deall y cyfaddawd cysylltedd.",
             "defaultSaltNeedsStronger": "Rhowch gyfrinair cryf wedi'i gynhyrchu i droi'r salt rhagosodedig ymlaen.",
-            "defaultSaltTier128": "128-bit (argymhellir, angen cyfrinair o 20+ nod)",
-            "defaultSaltTier256": "256-bit (llymach, angen cyfrinair o 39+ nod)",
-            "defaultSaltTierMeaning": "Mae'r ddwy haen yn pennu pa mor gryf y mae'n rhaid i'ch cyfrinair fod, nid maint yr halen: un halen sydd, 32 beit, yr un fath ar gyfer pob coffor â halen rhagosodedig.",
+            "defaultSaltOneSaltNote": "Dim ond un salt sydd: 32 beit, cyhoeddus, yr un peth ar gyfer pob cell ddiogel sy'n defnyddio'r salt rhagosodedig.",
             "defaultSaltValueLabel": "Halen rhagosodedig cyhoeddus (AeroCrypt v3), SHA-256 o"
         },
         "modalGuard": {

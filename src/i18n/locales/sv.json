@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Tolv anslutningar med optimerad förhandsläsning",
             "modeSafeDescription": "En anslutning: en fil i taget, en ström per fil",
             "modeBalancedDescription": "Upp till 3 anslutningar: parallella filer eller intervallkanaler i en stor fil",
-            "modeMaxDescription": "Upp till 5 anslutningar: parallella filer eller intervallkanaler i en stor fil"
+            "modeMaxDescription": "Upp till 5 anslutningar: parallella filer eller intervallkanaler i en stor fil",
+            "moreActions": "Fler åtgärder"
         },
         "settings": {
             "title": "Inställningar",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Överföringskö",
             "activityLog": "Aktivitetslogg",
             "aerocloudTitle": "AeroCloud-status",
-            "updateAvailable": "Uppdatering tillgänglig"
+            "updateAvailable": "Uppdatering tillgänglig",
+            "showProgress": "Visa överföringsförlopp"
         },
         "migration": {
             "title": "Säker migrering av inloggningsuppgifter",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} profiler · {unique} unika molnenheter · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Ikon",
+                    "name": "Profil",
+                    "badges": "Märken",
+                    "subtitle": "Värd",
+                    "used": "Använt",
+                    "total": "Totalt",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Sökvägar",
+                    "time": "Senast använd",
+                    "health": "Status",
+                    "actions": "Åtgärder",
+                    "favorite": "Favorit",
                     "saved": "Sparat",
                     "savedPct": "Sparat %",
                     "savedTitle": "Komprimering: {plaintext} till {compressed} ({ratio}% sparat)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Stäng",
             "kitUnavailable": "Återställningskitet är ännu inte tillgängligt för detta valv.",
             "defaultSaltLabel": "Standardsalt (valfritt, portabilitet endast med lösenord; kräver hög entropi och attestering)",
-            "defaultSaltStrength128": "128-bit rekommenderas",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Jag använde en lösenordshanterare och förstår avvägningen kring länkbarhet.",
             "legacyMarkerNotice": "Detta vault använder fortfarande den gamla .aeroftp-crypt.json-markören. Konvertera den till .aerocrypt.tsv efter att du har angett lösenordet eller keyfile.",
             "migrateLegacyMarker": "Konvertera markör",
             "legacyMarkerMigrated": "Markör konverterad till .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Krypteringstyp och autentiseringsuppgifter är låsta: detta överlägg innehåller redan krypterad data.",
             "addToExistingWarn": "När du aktiverar ett överlägg på en befintlig profil: alla klartextfiler som redan finns på denna fjärrplats förblir okrypterade och visas som en odekrypterbar blandning. Använd en tom fjärrplats.",
             "scopeHint": "De fjärr- och lokala sökvägar som anges ovan definierar det krypterade omfånget (lämna Fjärr tomt för att kryptera hela roten).",
-            "remotePathLockedNote": "Fjärrsökvägen är låst: den är roten för det krypterade överlägget och kan inte ändras när överlägget innehåller data.",
+            "overlaysPathLockedNote": "Överläggssökvägen är låst: den är krypteringens ankare och kan inte ändras när överlägget väl har bundits.",
+            "remotePathMustReachOverlay": "Fjärrsökvägen måste vara överläggssökvägen ({path}) eller någon av dess överordnade mappar, annars hamnar den krypterade mappen utanför den här sessionen.",
             "overlaysSection": "Omslag / Overlays",
             "overlaysActiveBadge": "På",
             "hintNative": "Inbyggt AeroCrypt-format: läsbart endast från AeroFTP med detta lösenord.",
@@ -5304,12 +5304,9 @@
             "overlaysRemotePathInvalid": "Måste vara Fjärrsökvägen eller en undermapp till den",
             "defaultSaltToggle": "Standardsalt (endast lösenord öppnar; inget kit eller nyckellager behövs efter skapande)",
             "defaultSaltToggleHint": "Offentligt konstant salt (rclone-style). Kräver ett genererat lösenord med hög entropi. Samma lösenord på flera valv gör krypterade namn länkbara utan nyckeln.",
-            "defaultSaltAttestation": "Jag genererade detta lösenord med en lösenordshanterare och förstår länkbarhetskompromissen.",
             "defaultSaltNeedsStronger": "Ange ett starkt genererat lösenord för att aktivera standardsaltet.",
-            "defaultSaltTier128": "128-bit (rekommenderas, kräver ett lösenord på 20+ tecken)",
-            "defaultSaltTier256": "256-bit (strängare, kräver ett lösenord på 39+ tecken)",
-            "defaultSaltTierMeaning": "De två nivåerna anger hur starkt ditt lösenord måste vara, inte saltets storlek: det finns ett enda salt på 32 byte, samma för varje valv med standardsalt.",
-            "defaultSaltValueLabel": "Publikt standardsalt (AeroCrypt v3), SHA-256 av"
+            "defaultSaltOneSaltNote": "Det finns bara ett salt: 32 byte, offentligt, identiskt för alla valv med standardsalt.",
+            "defaultSaltValueLabel": "Offentligt standardsalt (AeroCrypt v3), SHA-256 av"
         },
         "modalGuard": {
             "busyTitle": "Åtgärd pågår",

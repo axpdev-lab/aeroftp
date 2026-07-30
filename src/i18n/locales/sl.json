@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dvanajst povezav z optimiziranim vnaprejšnjim branjem",
             "modeSafeDescription": "Ena povezava: ena datoteka hkrati, en tok na datoteko",
             "modeBalancedDescription": "Do 3 povezave: vzporedne datoteke ali kanali obsegov znotraj ene velike datoteke",
-            "modeMaxDescription": "Do 5 povezav: vzporedne datoteke ali kanali obsegov znotraj ene velike datoteke"
+            "modeMaxDescription": "Do 5 povezav: vzporedne datoteke ali kanali obsegov znotraj ene velike datoteke",
+            "moreActions": "Več dejanj"
         },
         "settings": {
             "title": "Nastavitve",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Čakalna vrsta prenosov",
             "activityLog": "Dnevnik dejavnosti",
             "aerocloudTitle": "Status AeroCloud",
-            "updateAvailable": "Na voljo posodobitev"
+            "updateAvailable": "Posodobitev na voljo",
+            "showProgress": "Prikaži napredek prenosa"
         },
         "migration": {
             "title": "Varna selitev poverilnic",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} profilov · {unique} edinstvenih oblačnih pogonov · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Ikona",
+                    "name": "Profil",
+                    "badges": "Značke",
+                    "subtitle": "Gostitelj",
+                    "used": "Porabljeno",
+                    "total": "Skupaj",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Poti",
+                    "time": "Zadnja uporaba",
+                    "health": "Stanje",
+                    "actions": "Dejanja",
+                    "favorite": "Priljubljeno",
                     "saved": "Prihranjeno",
                     "savedPct": "Prihranjeno %",
                     "savedTitle": "Stiskanje: {plaintext} na {compressed} (prihranjeno {ratio}%)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Zapri",
             "kitUnavailable": "Komplet za obnovitev za ta trezor še ni na voljo.",
             "defaultSaltLabel": "Privzeta sol (izbirno, prenosljivost samo z geslom; zahteva visoko entropijo in potrditev)",
-            "defaultSaltStrength128": "priporočeno 128-bitno",
-            "defaultSaltStrength256": "256-bitno",
-            "defaultSaltAttestation": "Uporabil(a) sem upravitelja gesel in razumem kompromis povezljivosti.",
             "legacyMarkerNotice": "Ta vault še vedno uporablja stari marker .aeroftp-crypt.json. Po vnosu gesla ali keyfile ga pretvorite v .aerocrypt.tsv.",
             "migrateLegacyMarker": "Pretvori marker",
             "legacyMarkerMigrated": "Marker pretvorjen v .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Vrsta šifriranja in poverilnice so zaklenjene: ta plast že vsebuje šifrirane podatke.",
             "addToExistingWarn": "Ob omogočanju prekrivanja na obstoječem profilu: vse datoteke z navadnim besedilom, ki so že na tem oddaljenem mestu, ostanejo nešifrirane in se prikažejo kot nedešifrirljiva mešanica. Uporabite prazno oddaljeno mesto.",
             "scopeHint": "Zgornji oddaljeni in lokalni poti določata šifrirani obseg (pustite oddaljeno pot prazno za šifriranje celotnega korena).",
-            "remotePathLockedNote": "Oddaljena pot je zaklenjena: je koren šifriranega prekrivanja in je ni mogoče spremeniti, ko prekrivanje vsebuje podatke.",
+            "overlaysPathLockedNote": "Pot prekrivkov je zaklenjena: je sidro šifriranja in je po povezavi prekrivka ni več mogoče spremeniti.",
+            "remotePathMustReachOverlay": "Oddaljena pot mora biti pot prekrivkov ({path}) ali ena od njenih nadrejenih map, sicer šifrirana mapa ostane zunaj te seje.",
             "overlaysSection": "Ovoji / Prekrivi",
             "overlaysActiveBadge": "Vklopljeno",
             "hintNative": "Izvorni format AeroCrypt: berljiv samo iz AeroFTP s tem geslom.",
@@ -5304,12 +5304,9 @@
             "overlaysRemotePathInvalid": "Biti mora Oddaljena pot ali njena podmapa",
             "defaultSaltToggle": "Privzeta sol (samo geslo odpre; po ustvarjanju ni potreben komplet ali shramba ključev)",
             "defaultSaltToggleHint": "Javna konstantna sol (rclone-style). Zahteva ustvarjeno geslo z visoko entropijo. Isto geslo na več trezorjih naredi šifrirana imena povezljiva brez ključa.",
-            "defaultSaltAttestation": "To geslo sem ustvaril z upravljalnikom gesel in razumem kompromis povezljivosti.",
             "defaultSaltNeedsStronger": "Vnesite močno ustvarjeno geslo, da vklopite privzeti salt.",
-            "defaultSaltTier128": "128-bit (priporočeno, zahteva geslo z 20+ znaki)",
-            "defaultSaltTier256": "256-bit (strožje, zahteva geslo z 39+ znaki)",
-            "defaultSaltTierMeaning": "Stopnji določata, kako močno mora biti vaše geslo, ne velikosti soli: sol je ena sama, 32 bajtov, enaka za vsak trezor s privzeto soljo.",
-            "defaultSaltValueLabel": "Javna privzeta sol (AeroCrypt v3), SHA-256 od"
+            "defaultSaltOneSaltNote": "Obstaja samo en salt: 32 bajtov, javen, enak za vse trezorje s privzetim saltom.",
+            "defaultSaltValueLabel": "Javni privzeti salt (AeroCrypt v3), SHA-256 od"
         },
         "modalGuard": {
             "busyTitle": "Operacija poteka",

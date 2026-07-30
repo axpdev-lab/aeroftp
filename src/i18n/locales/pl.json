@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dwanaście połączeń ze zoptymalizowanym odczytem z wyprzedzeniem",
             "modeSafeDescription": "Jedno połączenie: jeden plik naraz, jeden strumień na plik",
             "modeBalancedDescription": "Do 3 połączeń: równoległe pliki lub kanały zakresowe w jednym dużym pliku",
-            "modeMaxDescription": "Do 5 połączeń: równoległe pliki lub kanały zakresowe w jednym dużym pliku"
+            "modeMaxDescription": "Do 5 połączeń: równoległe pliki lub kanały zakresowe w jednym dużym pliku",
+            "moreActions": "Więcej akcji"
         },
         "settings": {
             "title": "Ustawienia",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Kolejka Transferów",
             "activityLog": "Dziennik Aktywności",
             "aerocloudTitle": "Status AeroCloud",
-            "updateAvailable": "Dostępna Aktualizacja"
+            "updateAvailable": "Dostępna aktualizacja",
+            "showProgress": "Pokaż postęp transferu"
         },
         "migration": {
             "title": "Bezpieczna migracja danych uwierzytelniających",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} profili · {unique} unikalnych dysków chmurowych · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
+                    "icon": "Ikona",
+                    "name": "Profil",
+                    "badges": "Znaczniki",
                     "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "used": "Użyte",
+                    "total": "Łącznie",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Ścieżki",
+                    "time": "Ostatnie użycie",
+                    "health": "Stan",
+                    "actions": "Akcje",
+                    "favorite": "Ulubione",
                     "saved": "Zaoszczędzone",
                     "savedPct": "Zaoszczędzone %",
                     "savedTitle": "Kompresja: {plaintext} do {compressed} (zaoszczędzono {ratio}%)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Zamknij",
             "kitUnavailable": "Zestaw odzyskiwania nie jest jeszcze dostępny dla tego skarbca.",
             "defaultSaltLabel": "Domyślna sól (opcjonalnie, przenośność tylko z hasłem; wymaga wysokiej entropii i poświadczenia)",
-            "defaultSaltStrength128": "zalecane 128 bitów",
-            "defaultSaltStrength256": "256 bitów",
-            "defaultSaltAttestation": "Użyłem/użyłam menedżera haseł i rozumiem kompromis dotyczący linkowalności.",
             "legacyMarkerNotice": "Ten vault nadal używa starego znacznika .aeroftp-crypt.json. Po wpisaniu hasła lub keyfile przekonwertuj go na .aerocrypt.tsv.",
             "migrateLegacyMarker": "Konwertuj znacznik",
             "legacyMarkerMigrated": "Znacznik przekonwertowany na .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Typ szyfrowania i poświadczenia są zablokowane: ta nakładka zawiera już zaszyfrowane dane.",
             "addToExistingWarn": "Włączenie nakładki w istniejącym profilu: wszelkie pliki tekstem jawnym już obecne w tym zdalnym miejscu pozostają niezaszyfrowane i pojawią się jako nieodszyfrowalna mieszanka. Użyj pustego zdalnego miejsca.",
             "scopeHint": "Powyższe ścieżki zdalna i lokalna definiują zaszyfrowany zakres (pozostaw Zdalną pustą, aby zaszyfrować cały katalog główny).",
-            "remotePathLockedNote": "Ścieżka zdalna jest zablokowana: to katalog główny zaszyfrowanej nakładki i nie można jej zmienić, gdy nakładka zawiera dane.",
+            "overlaysPathLockedNote": "Ścieżka nakładek jest zablokowana: stanowi kotwicę szyfrowania i nie można jej zmienić po powiązaniu nakładki.",
+            "remotePathMustReachOverlay": "Ścieżka zdalna musi być ścieżką nakładek ({path}) lub jednym z jej folderów nadrzędnych, w przeciwnym razie zaszyfrowany folder znajdzie się poza tą sesją.",
             "overlaysSection": "Otoczki / Nakładki",
             "overlaysActiveBadge": "Wł.",
             "hintNative": "Natywny format AeroCrypt: czytelny tylko z AeroFTP przy tym haśle.",
@@ -5304,12 +5304,9 @@
             "overlaysRemotePathInvalid": "Musi to być Ścieżka zdalna lub jej podfolder",
             "defaultSaltToggle": "Domyślna sól (tylko hasło otwiera; po utworzeniu nie jest potrzebny zestaw ani magazyn kluczy)",
             "defaultSaltToggleHint": "Publiczna stała sól (styl rclone). Wymaga wygenerowanego hasła o wysokiej entropii. To samo hasło na wielu sejfach sprawia, że zaszyfrowane nazwy są powiązane bez klucza.",
-            "defaultSaltAttestation": "Wygenerowałem to hasło za pomocą menedżera haseł i rozumiem kompromis w zakresie powiązywalności.",
             "defaultSaltNeedsStronger": "Wprowadź silne wygenerowane hasło, aby włączyć domyślny salt.",
-            "defaultSaltTier128": "128-bit (zalecane, wymaga hasła o długości 20+ znaków)",
-            "defaultSaltTier256": "256-bit (bardziej restrykcyjne, wymaga hasła o długości 39+ znaków)",
-            "defaultSaltTierMeaning": "Dwa poziomy określają, jak silne musi być hasło, a nie rozmiar soli: sól jest jedna, 32 bajty, taka sama dla każdego sejfu z solą domyślną.",
-            "defaultSaltValueLabel": "Publiczna sól domyślna (AeroCrypt v3), SHA-256 z"
+            "defaultSaltOneSaltNote": "Istnieje tylko jeden salt: 32 bajty, publiczny, identyczny dla każdego sejfu z domyślnym saltem.",
+            "defaultSaltValueLabel": "Publiczny domyślny salt (AeroCrypt v3), SHA-256 z"
         },
         "modalGuard": {
             "busyTitle": "Operacja w toku",

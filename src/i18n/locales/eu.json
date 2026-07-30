@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Hamabi konexio aurreirakurketa optimizatuarekin",
             "modeSafeDescription": "Konexio bat: fitxategi bat aldi bakoitzean, korronte bakarra fitxategiko",
             "modeBalancedDescription": "Gehienez 3 konexio: fitxategi paraleloak edo tarte-kanalak fitxategi handi baten barruan",
-            "modeMaxDescription": "Gehienez 5 konexio: fitxategi paraleloak edo tarte-kanalak fitxategi handi baten barruan"
+            "modeMaxDescription": "Gehienez 5 konexio: fitxategi paraleloak edo tarte-kanalak fitxategi handi baten barruan",
+            "moreActions": "Ekintza gehiago"
         },
         "settings": {
             "title": "Ezarpenak",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Transfer Queue",
             "activityLog": "Activity Log",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "Eguneraketa eskuragarri",
+            "showProgress": "Erakutsi transferentziaren aurrerapena"
         },
         "migration": {
             "title": "Kredentzialen migrazio segurua",
@@ -4621,18 +4623,18 @@
                 "footerSummary": "{count} profil · {unique} hodeiko unitate esklusibo · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Ikonoa",
+                    "name": "Profila",
+                    "badges": "Bereizgarriak",
+                    "subtitle": "Ostalaria",
+                    "used": "Erabilia",
+                    "total": "Guztira",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Bideak",
+                    "time": "Azken erabilera",
+                    "health": "Egoera",
+                    "actions": "Ekintzak",
+                    "favorite": "Gogokoa",
                     "saved": "Aurreztua",
                     "savedPct": "Aurreztua %",
                     "savedTitle": "Konpresioa: {plaintext} hona {compressed} ({ratio}% aurreztua)"
@@ -5214,9 +5216,6 @@
             "hideKit": "Itxi",
             "kitUnavailable": "Berreskuratze-kita ez dago oraindik erabilgarri kutxa gotor honetarako.",
             "defaultSaltLabel": "Gatz lehenetsia (aukerakoa, pasahitz hutsezko eramangarritasuna; entropia handia eta egiaztapena behar ditu)",
-            "defaultSaltStrength128": "128-bit gomendatua",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Pasahitz-kudeatzaile bat erabili dut eta estekagarritasunaren konpromisoa ulertzen dut.",
             "legacyMarkerNotice": "Vault honek oraindik .aeroftp-crypt.json markatzaile zaharra erabiltzen du. Bihurtu .aerocrypt.tsv-ra pasahitza edo keyfile-a sartu ondoren.",
             "migrateLegacyMarker": "Bihurtu markatzailea",
             "legacyMarkerMigrated": "Markatzailea .aerocrypt.tsv-ra bihurtu da.",
@@ -5301,7 +5300,8 @@
             "lockedNote": "Zifratze mota eta kredentzialak blokeatuta daude: geruza honek dagoeneko zifratutako datuak ditu.",
             "addToExistingWarn": "Lehendik dagoen profil batean gainjartzea gaitzean: urruneko honetan dauden testu lауneko fitxategiak zifratu gabe geratzen dira eta deszifratu ezin den nahaste gisa agertuko dira. Erabili urruneko huts bat.",
             "scopeHint": "Goian adierazitako Urruneko eta Tokiko bideek zifratutako esparrua zehazten dute (utzi Urrunekoa hutsik erro osoa zifratzeko).",
-            "remotePathLockedNote": "Urruneko bidea blokeatuta dago: zifratutako gainjartzearen erroa da eta ezin da aldatu gainjartzeak datuak dituenean.",
+            "overlaysPathLockedNote": "Gainjarrien bidea blokeatuta dago: enkriptatzearen aingura da eta ezin da aldatu gainjarpena lotu ondoren.",
+            "remotePathMustReachOverlay": "Urruneko bideak gainjarrien bidea ({path}) edo haren goragoko karpetaren bat izan behar du; bestela, enkriptatutako karpeta saio honetatik kanpo geratzen da.",
             "overlaysSection": "Bilgarriak / Overlay-ak",
             "overlaysActiveBadge": "Aktibo",
             "hintNative": "AeroCrypt formatu natiboa: AeroFTP-tik soilik irakur daiteke pasahitz honekin.",
@@ -5323,11 +5323,8 @@
             "overlaysRemotePathInvalid": "Urruneko bidea edo horren azpikarpeta bat izan behar da",
             "defaultSaltToggle": "Gatza lehenetsia (pasahitza bakarrik irekitzen du; sortu ondoren ez da kitik edo giltza-biltegirik behar)",
             "defaultSaltToggleHint": "Gatz konstante publikoa (rclone-estiloa). Sortutako entropia handiko pasahitza behar du. Pasahitz bera hainbat kutxatan izateak giltzarik gabe estekagarri bihurtzen ditu zifratutako izenak.",
-            "defaultSaltAttestation": "Pasahitz kudeatzaile batekin sortu dut pasahitz hau eta ulertzen dut estekagarritasunaren trukea.",
             "defaultSaltNeedsStronger": "Sartu sortutako pasahitz sendo bat lehenetsitako salt-a aktibatzeko.",
-            "defaultSaltTier128": "128-bit (gomendatua, 20+ karaktereko pasahitza behar du)",
-            "defaultSaltTier256": "256-bit (zorrotzagoa, 39+ karaktereko pasahitza behar du)",
-            "defaultSaltTierMeaning": "Bi mailek pasahitzak zein indartsua izan behar duen zehazten dute, ez gatzaren tamaina: gatz bakarra dago, 32 byte, berdina gatz lehenetsidun kutxa gotor bakoitzerako.",
+            "defaultSaltOneSaltNote": "Salt bakarra dago: 32 byte, publikoa, salt lehenetsia darabilten kutxa guztietan berdina.",
             "defaultSaltValueLabel": "Gatz lehenetsi publikoa (AeroCrypt v3), honako kate honen SHA-256"
         },
         "modalGuard": {

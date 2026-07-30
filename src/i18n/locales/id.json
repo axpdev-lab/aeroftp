@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Dua belas koneksi dengan baca awal yang dioptimalkan",
             "modeSafeDescription": "Satu koneksi: satu file sekaligus, satu aliran per file",
             "modeBalancedDescription": "Hingga 3 koneksi: file paralel, atau saluran rentang dalam satu file besar",
-            "modeMaxDescription": "Hingga 5 koneksi: file paralel, atau saluran rentang dalam satu file besar"
+            "modeMaxDescription": "Hingga 5 koneksi: file paralel, atau saluran rentang dalam satu file besar",
+            "moreActions": "Tindakan lainnya"
         },
         "settings": {
             "title": "Pengaturan",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Antrian Transfer",
             "activityLog": "Log Aktivitas",
             "aerocloudTitle": "Status AeroCloud",
-            "updateAvailable": "Pembaruan Tersedia"
+            "updateAvailable": "Pembaruan Tersedia",
+            "showProgress": "Tampilkan kemajuan transfer"
         },
         "migration": {
             "title": "Migrasi kredensial yang aman",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} profil · {unique} drive cloud unik · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
+                    "icon": "Ikon",
+                    "name": "Profil",
+                    "badges": "Lencana",
                     "subtitle": "Host",
-                    "used": "Used",
+                    "used": "Terpakai",
                     "total": "Total",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Jalur",
+                    "time": "Terakhir dipakai",
+                    "health": "Kesehatan",
+                    "actions": "Tindakan",
+                    "favorite": "Favorit",
                     "saved": "Dihemat",
                     "savedPct": "Dihemat %",
                     "savedTitle": "Kompresi: {plaintext} menjadi {compressed} ({ratio}% dihemat)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Tutup",
             "kitUnavailable": "Kit pemulihan belum tersedia untuk brankas ini.",
             "defaultSaltLabel": "Salt default (opt-in, portabilitas hanya dengan kata sandi; memerlukan entropi tinggi dan atestasi)",
-            "defaultSaltStrength128": "128-bit disarankan",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Saya menggunakan pengelola kata sandi dan memahami kompromi keterhubungan.",
             "legacyMarkerNotice": "Vault ini masih menggunakan marker lama .aeroftp-crypt.json. Konversikan ke .aerocrypt.tsv setelah memasukkan kata sandi atau keyfile.",
             "migrateLegacyMarker": "Konversi marker",
             "legacyMarkerMigrated": "Marker dikonversi ke .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Jenis enkripsi dan kredensial terkunci: lapisan ini sudah berisi data terenkripsi.",
             "addToExistingWarn": "Mengaktifkan overlay pada profil yang sudah ada: berkas teks biasa yang sudah ada di remote ini tetap tidak terenkripsi dan akan tampil sebagai campuran yang tidak dapat didekripsi. Gunakan remote kosong.",
             "scopeHint": "Jalur Jarak Jauh dan Lokal di atas menentukan cakupan terenkripsi (biarkan Jarak Jauh kosong untuk mengenkripsi seluruh root).",
-            "remotePathLockedNote": "Jalur jarak jauh terkunci: itu adalah akar overlay terenkripsi dan tidak dapat diubah setelah overlay berisi data.",
+            "overlaysPathLockedNote": "Jalur Overlay terkunci: jalur ini adalah jangkar enkripsi dan tidak dapat diubah setelah overlay terikat.",
+            "remotePathMustReachOverlay": "Jalur jarak jauh harus berupa Jalur Overlay ({path}) atau salah satu folder induknya, jika tidak folder terenkripsi akan berada di luar sesi ini.",
             "overlaysSection": "Pembungkus / Overlay",
             "overlaysActiveBadge": "Aktif",
             "hintNative": "Format AeroCrypt asli: hanya dapat dibaca dari AeroFTP dengan kata sandi ini.",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "Harus berupa Jalur Jarak Jauh atau subfolder darinya",
             "defaultSaltToggle": "Salt default (hanya kata sandi yang membuka; setelah dibuat tidak perlu kit atau keystore)",
             "defaultSaltToggleHint": "Salt konstan publik (gaya rclone). Membutuhkan kata sandi berentropi tinggi yang dihasilkan. Kata sandi yang sama di beberapa brankas membuat nama terenkripsi dapat ditautkan tanpa kunci.",
-            "defaultSaltAttestation": "Saya menghasilkan kata sandi ini dengan manajer kata sandi dan memahami trade-off keterkaitan.",
             "defaultSaltNeedsStronger": "Masukkan kata sandi kuat yang dibuat untuk mengaktifkan salt bawaan.",
-            "defaultSaltTier128": "128-bit (disarankan, memerlukan kata sandi 20+ karakter)",
-            "defaultSaltTier256": "256-bit (lebih ketat, memerlukan kata sandi 39+ karakter)",
-            "defaultSaltTierMeaning": "Kedua tingkat ini menentukan seberapa kuat kata sandi Anda harus dibuat, bukan ukuran salt: salt-nya hanya ada satu, 32 bita, sama untuk setiap brankas yang memakai salt bawaan.",
+            "defaultSaltOneSaltNote": "Hanya ada satu salt: 32 byte, publik, sama untuk setiap vault dengan salt bawaan.",
             "defaultSaltValueLabel": "Salt bawaan publik (AeroCrypt v3), SHA-256 dari"
         },
         "modalGuard": {

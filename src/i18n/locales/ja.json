@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "最適化された先読みを使用する12接続",
             "modeSafeDescription": "接続数1: 一度に1ファイル、ファイルごとにシングルストリーム",
             "modeBalancedDescription": "最大3接続: 複数ファイルの並列転送、または1つの大きなファイル内でのレンジチャネル",
-            "modeMaxDescription": "最大5接続: 複数ファイルの並列転送、または1つの大きなファイル内でのレンジチャネル"
+            "modeMaxDescription": "最大5接続: 複数ファイルの並列転送、または1つの大きなファイル内でのレンジチャネル",
+            "moreActions": "その他の操作"
         },
         "settings": {
             "title": "設定",
@@ -1950,7 +1951,8 @@
             "transferQueue": "転送キュー",
             "activityLog": "アクティビティログ",
             "aerocloudTitle": "AeroCloud ステータス",
-            "updateAvailable": "アップデート利用可能"
+            "updateAvailable": "アップデート利用可能",
+            "showProgress": "転送の進行状況を表示"
         },
         "search": {
             "remote_placeholder": "リモートファイルを検索...",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} 個のプロファイル · {unique} 個の固有クラウドドライブ · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "アイコン",
+                    "name": "プロファイル",
+                    "badges": "バッジ",
+                    "subtitle": "ホスト",
+                    "used": "使用済み",
+                    "total": "合計",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "パス",
+                    "time": "最終使用",
+                    "health": "状態",
+                    "actions": "操作",
+                    "favorite": "お気に入り",
                     "saved": "節約",
                     "savedPct": "節約 %",
                     "savedTitle": "圧縮: {plaintext} から {compressed} ({ratio}% 節約)"
@@ -5195,9 +5197,6 @@
             "hideKit": "閉じる",
             "kitUnavailable": "このボルトのリカバリキットはまだ利用できません。",
             "defaultSaltLabel": "デフォルト salt (任意選択、パスワードのみでの移植性。高エントロピーと attestation が必要)",
-            "defaultSaltStrength128": "128-bit 推奨",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "パスワードマネージャーを使用しており、linkability のトレードオフを理解しています。",
             "legacyMarkerNotice": "このvaultはまだ旧式の.aeroftp-crypt.jsonマーカーを使用しています。パスワードまたはkeyfileの入力後に.aerocrypt.tsvへ変換してください。",
             "migrateLegacyMarker": "マーカーを変換",
             "legacyMarkerMigrated": "マーカーを.aerocrypt.tsvに変換しました。",
@@ -5282,7 +5281,8 @@
             "lockedNote": "暗号化の種類と認証情報はロックされています。このオーバーレイにはすでに暗号化されたデータがあります。",
             "addToExistingWarn": "既存のプロファイルでオーバーレイを有効にすると、このリモートに既にある平文ファイルは暗号化されないまま残り、復号できない混在状態として表示されます。空のリモートを使用してください。",
             "scopeHint": "上記のリモートとローカルのパスが暗号化の範囲を定義します（リモートを空欄にするとルート全体を暗号化します）。",
-            "remotePathLockedNote": "リモートパスはロックされています。これは暗号化オーバーレイのルートであり、オーバーレイにデータが入ると変更できません。",
+            "overlaysPathLockedNote": "オーバーレイパスはロックされています。暗号化のアンカーであり、オーバーレイを紐付けた後は変更できません。",
+            "remotePathMustReachOverlay": "リモートパスはオーバーレイパス（{path}）またはその上位フォルダーである必要があります。そうでない場合、暗号化フォルダーはこのセッションの範囲外になります。",
             "overlaysSection": "ラッパー / オーバーレイ",
             "overlaysActiveBadge": "オン",
             "hintNative": "ネイティブ AeroCrypt 形式: このパスワードで AeroFTP からのみ読み取れます。",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "リモートパス自体か、そのサブフォルダーである必要があります",
             "defaultSaltToggle": "デフォルトソルト (パスワードだけで開く; 作成後はキットやキーストアは不要)",
             "defaultSaltToggleHint": "公開定数ソルト (rclone-style)。高エントロピーの生成パスワードが必要です。複数のボールトで同じパスワードを使うと、鍵なしで暗号化名がリンク可能になります。",
-            "defaultSaltAttestation": "このパスワードをパスワードマネージャーで生成し、リンク可能性のトレードオフを理解しています。",
             "defaultSaltNeedsStronger": "デフォルトのソルトを有効にするには、強力な生成済みパスワードを入力してください。",
-            "defaultSaltTier128": "128-bit（推奨、20+文字のパスワードが必要）",
-            "defaultSaltTier256": "256-bit（より厳格、39+文字のパスワードが必要）",
-            "defaultSaltTierMeaning": "2 つの段階が定めるのはパスワードに求める強度であって、ソルトの大きさではありません。ソルトは 1 つ、32 バイトで、デフォルトソルトを使うすべてのボールトで同じです。",
+            "defaultSaltOneSaltNote": "ソルトは 1 つだけです。32 バイトで公開されており、既定ソルトを使うすべてのボールトで同一です。",
             "defaultSaltValueLabel": "公開デフォルトソルト (AeroCrypt v3)、次の文字列の SHA-256"
         },
         "modalGuard": {

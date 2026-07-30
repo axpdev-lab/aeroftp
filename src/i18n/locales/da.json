@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Tolv forbindelser med optimeret forhåndslæsning",
             "modeSafeDescription": "Én forbindelse: én fil ad gangen, én strøm pr. fil",
             "modeBalancedDescription": "Op til 3 forbindelser: parallelle filer eller intervalkanaler i én stor fil",
-            "modeMaxDescription": "Op til 5 forbindelser: parallelle filer eller intervalkanaler i én stor fil"
+            "modeMaxDescription": "Op til 5 forbindelser: parallelle filer eller intervalkanaler i én stor fil",
+            "moreActions": "Flere handlinger"
         },
         "settings": {
             "title": "Indstillinger",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Overførselskø",
             "activityLog": "Aktivitetslog",
             "aerocloudTitle": "AeroCloud-status",
-            "updateAvailable": "Opdatering tilgængelig"
+            "updateAvailable": "Opdatering tilgængelig",
+            "showProgress": "Vis overførselsforløb"
         },
         "migration": {
             "title": "Sikker migrering af legitimationsoplysninger",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} profiler · {unique} unikke cloud-drev · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Ikon",
+                    "name": "Profil",
+                    "badges": "Mærkater",
+                    "subtitle": "Vært",
+                    "used": "Brugt",
+                    "total": "I alt",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Stier",
+                    "time": "Sidst brugt",
+                    "health": "Tilstand",
+                    "actions": "Handlinger",
+                    "favorite": "Favorit",
                     "saved": "Sparet",
                     "savedPct": "Sparet %",
                     "savedTitle": "Komprimering: {plaintext} til {compressed} ({ratio}% sparet)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Luk",
             "kitUnavailable": "Gendannelsessættet er endnu ikke tilgængeligt for denne boks.",
             "defaultSaltLabel": "Standardsalt (tilvalg, portabilitet kun med adgangskode; kræver høj entropi og attestering)",
-            "defaultSaltStrength128": "128-bit anbefales",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Jeg har brugt en adgangskodeadministrator og forstår afvejningen om linkbarhed.",
             "legacyMarkerNotice": "Denne vault bruger stadig den gamle .aeroftp-crypt.json-markør. Konverter den til .aerocrypt.tsv efter indtastning af adgangskoden eller keyfile.",
             "migrateLegacyMarker": "Konverter markør",
             "legacyMarkerMigrated": "Markør konverteret til .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Krypteringstype og legitimationsoplysninger er låst: dette overlay indeholder allerede krypterede data.",
             "addToExistingWarn": "Når du aktiverer et overlay på en eksisterende profil: alle klartekstfiler, der allerede findes på denne fjernplacering, forbliver ukrypterede og vises som en ikke-dekrypterbar blanding. Brug en tom fjernplacering.",
             "scopeHint": "De eksterne og lokale stier ovenfor definerer det krypterede omfang (lad Ekstern stå tom for at kryptere hele roden).",
-            "remotePathLockedNote": "Fjernstien er låst: den er roden i det krypterede overlay og kan ikke ændres, når overlayet indeholder data.",
+            "overlaysPathLockedNote": "Overlay-stien er låst: den er krypteringens anker og kan ikke ændres, når overlayet først er bundet.",
+            "remotePathMustReachOverlay": "Fjernstien skal være overlay-stien ({path}) eller en af dens overordnede mapper, ellers ligger den krypterede mappe uden for denne session.",
             "overlaysSection": "Wrappers / Overlays",
             "overlaysActiveBadge": "Til",
             "hintNative": "Native AeroCrypt-format: kan kun læses fra AeroFTP med denne adgangskode.",
@@ -5304,11 +5304,8 @@
             "overlaysRemotePathInvalid": "Skal være Fjernstien eller en undermappe af den",
             "defaultSaltToggle": "Standardsalt (kun adgangskode åbner; ingen kit eller nøglelager nødvendigt efter oprettelse)",
             "defaultSaltToggleHint": "Offentligt konstant salt (rclone-style). Kræver en genereret høj-entropi adgangskode. Samme adgangskode på flere vaults gør krypterede navne linkbare uden nøglen.",
-            "defaultSaltAttestation": "Jeg genererede denne adgangskode med en adgangskodehåndtering og forstår linkbarheds-kompromiset.",
             "defaultSaltNeedsStronger": "Indtast en stærk genereret adgangskode for at aktivere standardsaltet.",
-            "defaultSaltTier128": "128-bit (anbefales, kræver en adgangskode på 20+ tegn)",
-            "defaultSaltTier256": "256-bit (strengere, kræver en adgangskode på 39+ tegn)",
-            "defaultSaltTierMeaning": "De to niveauer fastsætter, hvor stærk din adgangskode skal være, ikke saltets størrelse: der er ét salt på 32 byte, det samme for hver boks med standardsalt.",
+            "defaultSaltOneSaltNote": "Der findes kun ét salt: 32 byte, offentligt, identisk for alle bokse med standardsalt.",
             "defaultSaltValueLabel": "Offentligt standardsalt (AeroCrypt v3), SHA-256 af"
         },
         "modalGuard": {

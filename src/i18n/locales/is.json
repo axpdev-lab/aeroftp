@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Tólf tengingar með fínstilltri forlesningu",
             "modeSafeDescription": "Ein tenging: ein skrá í einu, einn straumur á skrá",
             "modeBalancedDescription": "Allt að 3 tengingar: samhliða skrár eða bilsrásir innan einnar stórrar skráar",
-            "modeMaxDescription": "Allt að 5 tengingar: samhliða skrár eða bilsrásir innan einnar stórrar skráar"
+            "modeMaxDescription": "Allt að 5 tengingar: samhliða skrár eða bilsrásir innan einnar stórrar skráar",
+            "moreActions": "Fleiri aðgerðir"
         },
         "settings": {
             "title": "Stillingar",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Transfer Queue",
             "activityLog": "Activity Log",
             "aerocloudTitle": "AeroCloud Status",
-            "updateAvailable": "Update Available"
+            "updateAvailable": "Update Available",
+            "showProgress": "Sýna framvindu flutnings"
         },
         "migration": {
             "title": "Öruggur flutningur auðkenna",
@@ -4621,18 +4623,18 @@
                 "footerSummary": "{count} snið · {unique} einstök skýjadrif · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Táknmynd",
+                    "name": "Snið",
+                    "badges": "Merki",
+                    "subtitle": "Hýsill",
+                    "used": "Notað",
+                    "total": "Alls",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Slóðir",
+                    "time": "Síðast notað",
+                    "health": "Staða",
+                    "actions": "Aðgerðir",
+                    "favorite": "Eftirlæti",
                     "saved": "Sparað",
                     "savedPct": "Sparað %",
                     "savedTitle": "Þjöppun: {plaintext} í {compressed} ({ratio}% sparað)"
@@ -5214,9 +5216,6 @@
             "hideKit": "Loka",
             "kitUnavailable": "Endurheimtarsettið er ekki enn tiltækt fyrir þessa hvelfingu.",
             "defaultSaltLabel": "Sjálfgefið salt (valkvætt, færanleiki aðeins með lykilorði; krefst mikillar óreiðu og staðfestingar)",
-            "defaultSaltStrength128": "128-bit mælt með",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Ég notaði lykilorðastjóra og skil málamiðlunina um tengjanleika.",
             "legacyMarkerNotice": "Þessi vault notar enn gamla .aeroftp-crypt.json-merkið. Umbreyttu því í .aerocrypt.tsv eftir að lykilorð eða keyfile hefur verið slegið inn.",
             "migrateLegacyMarker": "Umbreyta merki",
             "legacyMarkerMigrated": "Merki umbreytt í .aerocrypt.tsv.",
@@ -5301,7 +5300,8 @@
             "lockedNote": "Dulkóðunartegund og auðkenni eru læst: þetta yfirlag inniheldur þegar dulkóðuð gögn.",
             "addToExistingWarn": "Þegar yfirlag er virkjað á núverandi sniði: allar ódulkóðaðar skrár sem þegar eru á þessum fjartengda stað haldast ódulkóðaðar og birtast sem óafkóðanleg blanda. Notaðu tóman fjartengdan stað.",
             "scopeHint": "Fjar- og staðbundnu slóðirnar að ofan skilgreina dulkóðaða umfangið (skildu Fjar eftir autt til að dulkóða alla rótina).",
-            "remotePathLockedNote": "Fjarslóðin er læst: hún er rót dulkóðaða yfirlagsins og er ekki hægt að breyta þegar yfirlagið inniheldur gögn.",
+            "overlaysPathLockedNote": "Yfirlagsslóðin er læst: hún er akkeri dulkóðunarinnar og henni verður ekki breytt eftir að yfirlagið hefur verið tengt.",
+            "remotePathMustReachOverlay": "Fjarslóðin verður að vera yfirlagsslóðin ({path}) eða ein af yfirmöppum hennar, annars lendir dulkóðaða mappan utan þessarar lotu.",
             "overlaysSection": "Umbúðir / Yfirlög",
             "overlaysActiveBadge": "Á",
             "hintNative": "Innbyggt AeroCrypt-snið: aðeins læsilegt úr AeroFTP með þessu lykilorði.",
@@ -5323,11 +5323,8 @@
             "overlaysRemotePathInvalid": "Verður að vera Fjarslóðin eða undirmappa hennar",
             "defaultSaltToggle": "Sjálfgefið salt (aðeins lykilorð opnar; engin pakkning eða lyklageymsla þarf eftir stofnun)",
             "defaultSaltToggleHint": "Opinbert fast salt (rclone-stíll). Krefst myndaðs lykilorðs með mikilli óreiðu. Sama lykilorð á mörgum geymslum gerir dulrituð nöfn tengjanleg án lykils.",
-            "defaultSaltAttestation": "Ég bjó til þetta lykilorð með lykilorðastjóra og skil tengjanleikaviðskiptin.",
             "defaultSaltNeedsStronger": "Sláðu inn sterkt myndað lykilorð til að kveikja á sjálfgefna saltinu.",
-            "defaultSaltTier128": "128-bit (mælt með, þarf lykilorð með 20+ stöfum)",
-            "defaultSaltTier256": "256-bit (strangara, þarf lykilorð með 39+ stöfum)",
-            "defaultSaltTierMeaning": "Þrepin tvö ákveða hversu sterkt lykilorðið þitt þarf að vera, ekki stærð saltsins: saltið er eitt, 32 bæti, það sama fyrir hverja hirslu með sjálfgefnu salti.",
+            "defaultSaltOneSaltNote": "Það er aðeins eitt salt: 32 bæti, opinbert, eins fyrir allar hvelfingar með sjálfgefið salt.",
             "defaultSaltValueLabel": "Opinbert sjálfgefið salt (AeroCrypt v3), SHA-256 af"
         },
         "modalGuard": {

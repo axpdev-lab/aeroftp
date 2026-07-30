@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Doze ligações com leitura antecipada otimizada",
             "modeSafeDescription": "Uma conexão: um arquivo de cada vez, um único fluxo por arquivo",
             "modeBalancedDescription": "Até 3 conexões: arquivos em paralelo ou canais de intervalos dentro de um arquivo grande",
-            "modeMaxDescription": "Até 5 conexões: arquivos em paralelo ou canais de intervalos dentro de um arquivo grande"
+            "modeMaxDescription": "Até 5 conexões: arquivos em paralelo ou canais de intervalos dentro de um arquivo grande",
+            "moreActions": "Mais ações"
         },
         "settings": {
             "title": "Configurações",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Fila de Transferência",
             "activityLog": "Registro de Atividades",
             "aerocloudTitle": "Status AeroCloud",
-            "updateAvailable": "Atualização Disponível"
+            "updateAvailable": "Atualização Disponível",
+            "showProgress": "Mostrar progresso da transferência"
         },
         "migration": {
             "title": "Migração segura de credenciais",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} perfis · {unique} drives na nuvem únicos · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
+                    "icon": "Ícone",
+                    "name": "Perfil",
+                    "badges": "Etiquetas",
                     "subtitle": "Host",
-                    "used": "Used",
+                    "used": "Usado",
                     "total": "Total",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Caminhos",
+                    "time": "Último uso",
+                    "health": "Estado",
+                    "actions": "Ações",
+                    "favorite": "Favorito",
                     "saved": "Economizado",
                     "savedPct": "Economizado %",
                     "savedTitle": "Compressão: {plaintext} para {compressed} ({ratio}% economizado)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Fechar",
             "kitUnavailable": "O kit de recuperação ainda não está disponível para este cofre.",
             "defaultSaltLabel": "Sal predefinido (opcional, portabilidade apenas com senha; requer alta entropia e atestação)",
-            "defaultSaltStrength128": "128 bits recomendado",
-            "defaultSaltStrength256": "256 bits",
-            "defaultSaltAttestation": "Usei um gestor de senhas e compreendo o compromisso de vinculabilidade.",
             "legacyMarkerNotice": "Este vault ainda usa o marcador antigo .aeroftp-crypt.json. Converta-o para .aerocrypt.tsv depois de inserir a palavra-passe ou o keyfile.",
             "migrateLegacyMarker": "Converter marcador",
             "legacyMarkerMigrated": "Marcador convertido para .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "O tipo de cifragem e as credenciais estão bloqueados: esta sobreposição já contém dados cifrados.",
             "addToExistingWarn": "Ao ativar uma sobreposição num perfil existente: quaisquer ficheiros em texto simples já presentes neste remoto permanecem sem cifragem e aparecerão como uma mistura indecifrável. Use um remoto vazio.",
             "scopeHint": "Os caminhos Remoto e Local indicados acima definem o âmbito cifrado (deixe o Remoto vazio para cifrar toda a raiz).",
-            "remotePathLockedNote": "O caminho remoto está bloqueado: é a raiz da sobreposição cifrada e não pode mudar quando a sobreposição contém dados.",
+            "overlaysPathLockedNote": "O caminho de sobreposições está bloqueado: é a âncora da criptografia e não pode ser alterado depois que a sobreposição é vinculada.",
+            "remotePathMustReachOverlay": "O caminho remoto deve ser o caminho de sobreposições ({path}) ou uma de suas pastas superiores; caso contrário, a pasta criptografada fica fora desta sessão.",
             "overlaysSection": "Invólucros / Overlays",
             "overlaysActiveBadge": "Ativo",
             "hintNative": "Formato AeroCrypt nativo: legível apenas a partir do AeroFTP com esta palavra-passe.",
@@ -5304,12 +5304,9 @@
             "overlaysRemotePathInvalid": "Deve ser o Caminho remoto ou uma subpasta dele",
             "defaultSaltToggle": "Sal padrão (apenas a senha abre; nenhum kit ou armazenamento de chaves necessário após criar)",
             "defaultSaltToggleHint": "Sal constante público (estilo rclone). Requer uma senha gerada de alta entropia. A mesma senha em múltiplos cofres torna os nomes criptografados vinculáveis sem a chave.",
-            "defaultSaltAttestation": "Gerei esta senha com um gerenciador de senhas e entendo o compromisso de vinculabilidade.",
             "defaultSaltNeedsStronger": "Insira uma senha gerada forte para ativar o sal padrão.",
-            "defaultSaltTier128": "128-bit (recomendado, precisa de uma senha de 20+ caracteres)",
-            "defaultSaltTier256": "256-bit (mais rigoroso, precisa de uma senha de 39+ caracteres)",
-            "defaultSaltTierMeaning": "Os dois níveis definem quão forte tem de ser a sua palavra-passe, não o tamanho do salt: há um único salt, de 32 bytes, igual para todos os cofres com salt predefinido.",
-            "defaultSaltValueLabel": "Salt predefinido público (AeroCrypt v3), SHA-256 de"
+            "defaultSaltOneSaltNote": "Existe um único salt: 32 bytes, público, idêntico para todos os cofres com salt padrão.",
+            "defaultSaltValueLabel": "Salt padrão público (AeroCrypt v3), SHA-256 de"
         },
         "modalGuard": {
             "busyTitle": "Operação em curso",

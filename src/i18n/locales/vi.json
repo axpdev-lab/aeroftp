@@ -606,7 +606,8 @@
             "sftpModeMaximumTestedDescription": "Mười hai kết nối với khả năng đọc trước được tối ưu hóa",
             "modeSafeDescription": "Một kết nối: mỗi lần một tệp, một luồng cho mỗi tệp",
             "modeBalancedDescription": "Tối đa 3 kết nối: các tệp song song, hoặc các kênh phạm vi trong một tệp lớn",
-            "modeMaxDescription": "Tối đa 5 kết nối: các tệp song song, hoặc các kênh phạm vi trong một tệp lớn"
+            "modeMaxDescription": "Tối đa 5 kết nối: các tệp song song, hoặc các kênh phạm vi trong một tệp lớn",
+            "moreActions": "Thao tác khác"
         },
         "settings": {
             "title": "Cài đặt",
@@ -1950,7 +1951,8 @@
             "transferQueue": "Hàng đợi Truyền",
             "activityLog": "Nhật ký Hoạt động",
             "aerocloudTitle": "Trạng thái AeroCloud",
-            "updateAvailable": "Có bản cập nhật"
+            "updateAvailable": "Có bản cập nhật",
+            "showProgress": "Hiển thị tiến trình truyền"
         },
         "migration": {
             "title": "Di chuyển thông tin xác thực an toàn",
@@ -4602,18 +4604,18 @@
                 "footerSummary": "{count} hồ sơ · {unique} ổ đám mây duy nhất · {usage}",
                 "columns": {
                     "index": "#",
-                    "icon": "Icon",
-                    "name": "Name",
-                    "badges": "Badges",
-                    "subtitle": "Host",
-                    "used": "Used",
-                    "total": "Total",
+                    "icon": "Biểu tượng",
+                    "name": "Hồ sơ",
+                    "badges": "Huy hiệu",
+                    "subtitle": "Máy chủ",
+                    "used": "Đã dùng",
+                    "total": "Tổng",
                     "pct": "%",
-                    "paths": "Paths",
-                    "time": "Last used",
-                    "health": "Health",
-                    "actions": "Actions",
-                    "favorite": "Favorite",
+                    "paths": "Đường dẫn",
+                    "time": "Dùng lần cuối",
+                    "health": "Tình trạng",
+                    "actions": "Hành động",
+                    "favorite": "Yêu thích",
                     "saved": "Đã tiết kiệm",
                     "savedPct": "Đã tiết kiệm %",
                     "savedTitle": "Nén: {plaintext} thành {compressed} (tiết kiệm {ratio}%)"
@@ -5195,9 +5197,6 @@
             "hideKit": "Đóng",
             "kitUnavailable": "Bộ khôi phục chưa khả dụng cho kho này.",
             "defaultSaltLabel": "Salt mặc định (chọn bật, khả năng di chuyển chỉ bằng mật khẩu; yêu cầu entropy cao và attestation)",
-            "defaultSaltStrength128": "khuyến nghị 128-bit",
-            "defaultSaltStrength256": "256-bit",
-            "defaultSaltAttestation": "Tôi đã dùng trình quản lý mật khẩu và hiểu đánh đổi về linkability.",
             "legacyMarkerNotice": "Vault này vẫn dùng marker cũ .aeroftp-crypt.json. Chuyển đổi nó sang .aerocrypt.tsv sau khi nhập mật khẩu hoặc keyfile.",
             "migrateLegacyMarker": "Chuyển đổi marker",
             "legacyMarkerMigrated": "Marker đã được chuyển đổi sang .aerocrypt.tsv.",
@@ -5282,7 +5281,8 @@
             "lockedNote": "Loại mã hóa và thông tin đăng nhập đã bị khóa: lớp phủ này đã chứa dữ liệu mã hóa.",
             "addToExistingWarn": "Khi bật lớp phủ trên một hồ sơ hiện có: mọi tập tin văn bản thuần đã có trên máy từ xa này vẫn không được mã hóa và sẽ hiển thị như một hỗn hợp không thể giải mã. Hãy dùng một máy từ xa trống.",
             "scopeHint": "Các đường dẫn Từ xa và Cục bộ ở trên xác định phạm vi mã hóa (để trống Từ xa để mã hóa toàn bộ thư mục gốc).",
-            "remotePathLockedNote": "Đường dẫn từ xa bị khóa: đó là gốc của lớp phủ được mã hóa và không thể thay đổi khi lớp phủ đã chứa dữ liệu.",
+            "overlaysPathLockedNote": "Đường dẫn Overlay đã bị khóa: đây là mỏ neo mã hóa và không thể thay đổi sau khi overlay được liên kết.",
+            "remotePathMustReachOverlay": "Đường dẫn từ xa phải là Đường dẫn Overlay ({path}) hoặc một trong các thư mục cha của nó, nếu không thư mục đã mã hóa sẽ nằm ngoài phiên này.",
             "overlaysSection": "Lớp bọc / Overlay",
             "overlaysActiveBadge": "Bật",
             "hintNative": "Định dạng AeroCrypt gốc: chỉ đọc được từ AeroFTP với mật khẩu này.",
@@ -5304,12 +5304,9 @@
             "overlaysRemotePathInvalid": "Phải là Đường dẫn từ xa hoặc thư mục con của nó",
             "defaultSaltToggle": "Muối mặc định (chỉ mật khẩu mở; không cần bộ công cụ hay kho khóa sau khi tạo)",
             "defaultSaltToggleHint": "Muối hằng số công khai (kiểu rclone). Yêu cầu mật khẩu được tạo có độ entropy cao. Cùng một mật khẩu trên nhiều kho làm cho tên đã mã hóa có thể liên kết mà không cần khóa.",
-            "defaultSaltAttestation": "Tôi đã tạo mật khẩu này bằng trình quản lý mật khẩu và hiểu sự đánh đổi về khả năng liên kết.",
             "defaultSaltNeedsStronger": "Nhập mật khẩu mạnh đã tạo để bật salt mặc định.",
-            "defaultSaltTier128": "128-bit (khuyến nghị, cần mật khẩu 20+ ký tự)",
-            "defaultSaltTier256": "256-bit (nghiêm ngặt hơn, cần mật khẩu 39+ ký tự)",
-            "defaultSaltTierMeaning": "Hai mức quy định mật khẩu của bạn phải mạnh đến đâu, chứ không phải kích thước của muối: chỉ có một muối, 32 byte, giống nhau cho mọi két dùng muối mặc định.",
-            "defaultSaltValueLabel": "Muối mặc định công khai (AeroCrypt v3), SHA-256 của"
+            "defaultSaltOneSaltNote": "Chỉ có một salt duy nhất: 32 byte, công khai, giống nhau cho mọi kho sử dụng salt mặc định.",
+            "defaultSaltValueLabel": "Salt mặc định công khai (AeroCrypt v3), SHA-256 của"
         },
         "modalGuard": {
             "busyTitle": "Đang thực hiện thao tác",

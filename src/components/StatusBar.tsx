@@ -362,6 +362,24 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 {/* Separator */}
                 <div className="w-px h-4 bg-gray-300 dark:bg-gray-600" />
 
+                {/* Progress chip, first in the cluster (#364). This chip only
+                    exists while a transfer runs, and the cluster is anchored to
+                    the right edge, so anything placed after it gets pushed
+                    sideways every time a transfer starts or ends. Leading the
+                    cluster, it grows leftwards into empty space and the buttons
+                    after it never move. It also puts it on the same side as the
+                    window it reopens, which sits bottom-left. */}
+                {onReopenTransferToast && transferToastActive && (
+                    <button
+                        onClick={onReopenTransferToast}
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-100 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-400 transition-colors hover:bg-cyan-200 dark:hover:bg-cyan-900/60 shrink-0"
+                        title={t('statusbar.showProgress')}
+                    >
+                        <Loader2 size={12} className="animate-spin" />
+                        <span className="text-[10px] font-medium">{t('transfer.progress')}</span>
+                    </button>
+                )}
+
                 {/* Transfer Queue Toggle */}
                 {onToggleTransferQueue && (
                     <button
@@ -385,9 +403,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 {/* Activity Log Toggle. Sits immediately after the Queue: those
                     two are the only buttons in this cluster that are not part
                     of the Aero family and the only two that carry a count
-                    badge, so they read as one group. The transient Progress
-                    chip is placed after them rather than between them, so a
-                    running transfer cannot split the pair. */}
+                    badge, so they read as one group. */}
                 {onToggleActivityLog && (
                     <button
                         onClick={onToggleActivityLog}
@@ -404,17 +420,6 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                                 {activityLogCount > 99 ? '99+' : activityLogCount}
                             </span>
                         )}
-                    </button>
-                )}
-
-                {onReopenTransferToast && transferToastActive && (
-                    <button
-                        onClick={onReopenTransferToast}
-                        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-100 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-400 transition-colors hover:bg-cyan-200 dark:hover:bg-cyan-900/60 shrink-0"
-                        title="Show transfer progress"
-                    >
-                        <Loader2 size={12} className="animate-spin" />
-                        <span className="text-[10px] font-medium">Progress</span>
                     </button>
                 )}
 
