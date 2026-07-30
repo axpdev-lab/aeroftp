@@ -35,17 +35,37 @@ SEQ="${PORTAL_TEST_SEQ:-Export / Import|Import Servers Restore from .aeroftp bac
 
 PASS=0
 FAIL=0
+SKIP=0
 ok()  { printf '  ok   %s\n' "$1"; PASS=$((PASS + 1)); }
 bad() { printf '  FAIL %s\n' "$1" >&2; FAIL=$((FAIL + 1)); }
+skip() { printf '  skip %s\n' "$1"; SKIP=$((SKIP + 1)); }
 
 run_case() {
   local name="$1"; shift
   local out="$WORK/$name"
+  local rc
   rm -rf "$out"
   # shellcheck disable=SC2086
   env "$@" RECON_OUT="$out" RECON_PRESS="$SEQ" RECON_POST_SETTLE=6 \
       "$HERE/recon-session.sh" "$APP" >"$WORK/$name.log" 2>&1
-  echo "$?"
+  rc=$?
+
+  # A renderer that misses app_ready is an environmental precondition failure,
+  # not evidence about the chooser. Retry that one failure once, visibly, while
+  # preserving the first attempt for diagnosis. Other harness failures are not
+  # retried: repeating a malformed setup would only hide the real error.
+  if [ "$rc" -ne 0 ] &&
+      grep -q "::error::the app never reported app_ready" "$WORK/$name.log"; then
+    mv "$out" "$WORK/$name-attempt1"
+    mv "$WORK/$name.log" "$WORK/$name-attempt1.log"
+    printf '  RETRY %s missed the app_ready precondition; retrying once\n' "$name" >&2
+    # shellcheck disable=SC2086
+    env "$@" RECON_OUT="$out" RECON_PRESS="$SEQ" RECON_POST_SETTLE=6 \
+        "$HERE/recon-session.sh" "$APP" >"$WORK/$name.log" 2>&1
+    rc=$?
+  fi
+
+  echo "$rc"
 }
 
 # `grep -c` prints 0 AND exits 1 when a file has no matching lines, so the
@@ -76,87 +96,117 @@ call1() { head -1 "$WORK/$1/portal-calls.jsonl" 2>/dev/null; }
 
 echo "== 1. the portal is asked, and the request really comes from GTK =="
 rc=$(run_case cancel RECON_MODE=cancel)
-[ "$rc" = "0" ] && ok "the session ran to completion" || bad "the session failed (exit $rc), see $WORK/cancel.log"
-grep -q "windows with class aeroftp on" "$WORK/cancel.log" &&
-  ! grep -q "has NO window on" "$WORK/cancel.log" &&
-  ok "the app window is on the private display, not the developer session" ||
-  bad "the app did not open on the private display"
-grep -q "ok: the accessibility bus carries only our own" "$WORK/cancel.log" &&
-  ok "the accessibility bus is private" || bad "the accessibility bus was not private"
-[ "$(calls cancel)" -ge 1 ] &&
-  ok "the chooser reached the portal" ||
-  bad "the portal was never asked: the chooser did NOT go out of process"
-call1 cancel | grep -q '"method":"OpenFile"' &&
-  ok "it called OpenFile" || bad "no OpenFile call recorded"
-# The token prefix is the evidence that this came through GTK rather than
-# anything the harness could have produced: GTK generates gtk<random>.
-call1 cancel | grep -q '"handle_token":"gtk' &&
-  ok "the handle_token is GTK-generated, so the caller really is the toolkit" ||
-  bad "the handle_token does not look like GTK: the call may not be the real path"
-call1 cancel | grep -q '"title":"Import Servers"' &&
-  ok "the dialog carries the title the app asked for" ||
-  bad "the title is not the one the app set"
-call1 cancel | grep -q '"answered":"cancelled"' &&
-  ok "the portal answered with a cancellation" || bad "the portal did not answer cancelled"
-healthy cancel "a cancelled chooser leaves the app healthy" "panicked|Splash screen safety timeout"
-# The #510 pre-check must not cry wolf. A warning that fires on healthy hosts is a
-# warning users learn to dismiss, so on a machine that HAS a portal the check has
-# to run and find nothing wrong. Both halves matter: the line proves the frontend
-# asked, and the absence of the other line proves it got the right answer.
-grep -q "chooser checked: presentable" "$WORK/cancel/app.log" 2>/dev/null &&
-  ok "the chooser pre-check ran and passed on a host with a portal (#510)" ||
-  bad "the pre-check did not run on the happy path: it cannot report anything either"
-grep -q "chooser unavailable" "$WORK/cancel/app.log" 2>/dev/null &&
-  bad "a host WITH a portal was warned about a missing chooser (crying wolf)" ||
-  ok "no false alarm on a host with a working portal"
+if [ "$rc" != "0" ]; then
+  bad "the session failed its precondition (exit $rc), see $WORK/cancel.log"
+  skip "app-window assertion: the session did not run"
+  skip "accessibility-bus assertion: the session did not run"
+  skip "portal-call assertion: the chooser was never driven"
+  skip "OpenFile assertion: the chooser was never driven"
+  skip "GTK handle-token assertion: the chooser was never driven"
+  skip "dialog-title assertion: the chooser was never driven"
+  skip "portal-cancellation assertion: the chooser was never driven"
+  skip "post-cancellation health assertion: the chooser was never driven"
+  skip "chooser pre-check assertion: the chooser was never driven"
+  skip "false-alarm assertion: the chooser was never driven"
+else
+  ok "the session ran to completion"
+  grep -q "windows with class aeroftp on" "$WORK/cancel.log" &&
+    ! grep -q "has NO window on" "$WORK/cancel.log" &&
+    ok "the app window is on the private display, not the developer session" ||
+    bad "the app did not open on the private display"
+  grep -q "ok: the accessibility bus carries only our own" "$WORK/cancel.log" &&
+    ok "the accessibility bus is private" || bad "the accessibility bus was not private"
+  [ "$(calls cancel)" -ge 1 ] &&
+    ok "the chooser reached the portal" ||
+    bad "the portal was never asked: the chooser did NOT go out of process"
+  call1 cancel | grep -q '"method":"OpenFile"' &&
+    ok "it called OpenFile" || bad "no OpenFile call recorded"
+  # The token prefix is the evidence that this came through GTK rather than
+  # anything the harness could have produced: GTK generates gtk<random>.
+  call1 cancel | grep -q '"handle_token":"gtk' &&
+    ok "the handle_token is GTK-generated, so the caller really is the toolkit" ||
+    bad "the handle_token does not look like GTK: the call may not be the real path"
+  call1 cancel | grep -q '"title":"Import Servers"' &&
+    ok "the dialog carries the title the app asked for" ||
+    bad "the title is not the one the app set"
+  call1 cancel | grep -q '"answered":"cancelled"' &&
+    ok "the portal answered with a cancellation" || bad "the portal did not answer cancelled"
+  healthy cancel "a cancelled chooser leaves the app healthy" "panicked|Splash screen safety timeout"
+  # The #510 pre-check must not cry wolf. A warning that fires on healthy hosts is a
+  # warning users learn to dismiss, so on a machine that HAS a portal the check has
+  # to run and find nothing wrong. Both halves matter: the line proves the frontend
+  # asked, and the absence of the other line proves it got the right answer.
+  grep -q "chooser checked: presentable" "$WORK/cancel/app.log" 2>/dev/null &&
+    ok "the chooser pre-check ran and passed on a host with a portal (#510)" ||
+    bad "the pre-check did not run on the happy path: it cannot report anything either"
+  grep -q "chooser unavailable" "$WORK/cancel/app.log" 2>/dev/null &&
+    bad "a host WITH a portal was warned about a missing chooser (crying wolf)" ||
+    ok "no false alarm on a host with a working portal"
+fi
 
 echo "== 2. a portal that refuses does not take the app down =="
 rc=$(run_case error RECON_MODE=error)
-[ "$rc" = "0" ] && ok "the session ran to completion" || bad "the session failed (exit $rc)"
-[ "$(calls error)" -ge 1 ] &&
-  ok "the portal was still asked" || bad "the portal was not asked"
-call1 error | grep -q '"answered":"dbus-error"' &&
-  ok "the refusal was delivered as a D-Bus error" || bad "the refusal was not recorded"
-healthy error "the app survives a refusing portal" "panicked"
+if [ "$rc" != "0" ]; then
+  bad "the session failed its precondition (exit $rc), see $WORK/error.log"
+  skip "portal-call assertion: the chooser was never driven"
+  skip "D-Bus refusal assertion: the chooser was never driven"
+  skip "post-refusal health assertion: the chooser was never driven"
+else
+  ok "the session ran to completion"
+  [ "$(calls error)" -ge 1 ] &&
+    ok "the portal was still asked" || bad "the portal was not asked"
+  call1 error | grep -q '"answered":"dbus-error"' &&
+    ok "the refusal was delivered as a D-Bus error" || bad "the refusal was not recorded"
+  healthy error "the app survives a refusing portal" "panicked"
+fi
 
 echo "== 3. no portal installed: what actually happens =="
 rc=$(run_case noportal RECON_NO_PORTAL=1)
-[ "$rc" = "0" ] && ok "the session ran to completion" || bad "the session failed (exit $rc)"
-grep -q "portal service(s) omitted" "$WORK/noportal.log" &&
-  ok "the bus could activate everything except the portal" ||
-  bad "the no-portal bus was not built as intended"
-# A PIN on measured behaviour: GTK does NOT fall back to the native chooser, so no
-# extra window appears. That stays true after the #510 fix and is still worth
-# holding -- the remedy is a message rendered by the WebView, not a second window,
-# and the day a window does appear here somebody has reintroduced the in-process
-# chooser that corrupts the GLib heap. If this fails, read it before "fixing" it.
-wins=$(count_lines "$WORK/noportal/windows-after.txt")
-wins_ref=$(count_lines "$WORK/cancel/windows-after.txt")
-[ "$wins" = "$wins_ref" ] &&
-  ok "no extra window appears without a portal (measured: no native fallback)" ||
-  bad "window count changed ($wins vs $wins_ref): the fallback behaviour is not what was pinned"
+if [ "$rc" != "0" ]; then
+  bad "the session failed its precondition (exit $rc), see $WORK/noportal.log"
+  skip "no-portal bus assertion: the session did not run"
+  skip "native-fallback assertion: the chooser was never driven"
+  skip "chooser-unavailable assertion: the chooser was never driven"
+  skip "chooser-presentability assertion: the chooser was never driven"
+  skip "no-portal health assertion: the chooser was never driven"
+else
+  ok "the session ran to completion"
+  grep -q "portal service(s) omitted" "$WORK/noportal.log" &&
+    ok "the bus could activate everything except the portal" ||
+    bad "the no-portal bus was not built as intended"
+  # A PIN on measured behaviour: GTK does NOT fall back to the native chooser, so no
+  # extra window appears. That stays true after the #510 fix and is still worth
+  # holding -- the remedy is a message rendered by the WebView, not a second window,
+  # and the day a window does appear here somebody has reintroduced the in-process
+  # chooser that corrupts the GLib heap. If this fails, read it before "fixing" it.
+  wins=$(count_lines "$WORK/noportal/windows-after.txt")
+  wins_ref=$(count_lines "$WORK/cancel/windows-after.txt")
+  [ "$wins" = "$wins_ref" ] &&
+    ok "no extra window appears without a portal (measured: no native fallback)" ||
+    bad "window count changed ($wins vs $wins_ref): the fallback behaviour is not what was pinned"
 
-# The #510 assertion, and the one that made this case worth revisiting. Until the
-# fix, everything above could pass on an app that presented the user with nothing
-# whatsoever: a button that did nothing, indistinguishable from a cancel, because
-# rfd reports the same `null` for both. "No window appeared" is therefore only
-# half the claim -- the other half is that the app SAID SO.
-#
-# It is asserted through the backend log because the message itself is a toast
-# inside the WebView: no window count, no D-Bus trace and no screenshot diff can
-# see it from out here. `chooser_unavailable` is only ever called by a frontend
-# picker call site, so the line appearing at all is what proves the pre-check is
-# wired into the real click path in the real app.
-grep -q "chooser unavailable, telling the user: portal-missing" "$WORK/noportal/app.log" 2>/dev/null &&
-  ok "the app detected the missing portal and reported it to the user (#510)" ||
-  bad "no chooser-unavailable report: the picker is silent again, which is the #510 defect"
-# And it must be a real discriminator, not a line the app always prints.
-grep -q "chooser checked: presentable" "$WORK/noportal/app.log" 2>/dev/null &&
-  bad "the app called this host's chooser presentable while no portal existed" ||
-  ok "the host was not wrongly reported as having a working chooser"
-healthy noportal "the app survives with no portal present" "panicked"
+  # The #510 assertion, and the one that made this case worth revisiting. Until the
+  # fix, everything above could pass on an app that presented the user with nothing
+  # whatsoever: a button that did nothing, indistinguishable from a cancel, because
+  # rfd reports the same `null` for both. "No window appeared" is therefore only
+  # half the claim -- the other half is that the app SAID SO.
+  #
+  # It is asserted through the backend log because the message itself is a toast
+  # inside the WebView: no window count, no D-Bus trace and no screenshot diff can
+  # see it from out here. `chooser_unavailable` is only ever called by a frontend
+  # picker call site, so the line appearing at all is what proves the pre-check is
+  # wired into the real click path in the real app.
+  grep -q "chooser unavailable, telling the user: portal-missing" "$WORK/noportal/app.log" 2>/dev/null &&
+    ok "the app detected the missing portal and reported it to the user (#510)" ||
+    bad "no chooser-unavailable report: the picker is silent again, which is the #510 defect"
+  # And it must be a real discriminator, not a line the app always prints.
+  grep -q "chooser checked: presentable" "$WORK/noportal/app.log" 2>/dev/null &&
+    bad "the app called this host's chooser presentable while no portal existed" ||
+    ok "the host was not wrongly reported as having a working chooser"
+  healthy noportal "the app survives with no portal present" "panicked"
+fi
 
 echo
-echo "passed: $PASS   failed: $FAIL"
+echo "passed: $PASS   failed: $FAIL   skipped: $SKIP"
 echo "artefacts: $WORK"
 [ "$FAIL" -eq 0 ]
