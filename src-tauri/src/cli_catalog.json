@@ -913,9 +913,9 @@
     "company": "Alibaba OSS",
     "logoId": "alibaba-oss",
     "country": "CN",
-    "freeGb": 5,
-    "freeNote": "overseas only, card req.",
-    "freeRequiresCard": true,
+    "freeGb": null,
+    "freeNote": "new-user trial, overseas",
+    "freeRequiresCard": false,
     "regions": [
       "CN",
       "SG",

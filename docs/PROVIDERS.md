@@ -18,7 +18,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Provider | HQ | Free tier | Connection methods |
 | --- | --- | --- | --- |
 | 4shared | VG | 15 GB | OAuth, WebDAV |
-| Alibaba OSS | CN | 5 GB (overseas only, card req.) | S3* |
+| Alibaba OSS | CN | new-user trial, overseas | S3* |
 | Amazon Web Services (AWS) | US | 12-month trial | S3* |
 | Backblaze B2 | US | 10 GB | API, S3 |
 | Blomp | US | 40 GB (+40 GB per referral) | Swift |

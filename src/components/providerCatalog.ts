@@ -104,11 +104,12 @@ export interface CatalogCompany {
      *  between a no-card free tier and a paid-only product: such companies are
      *  kept OUT of the paid bucket but marked distinctly. See `companyTier`.
      *
-     *  Permanent is the load-bearing word. AWS S3 and Azure Blob were listed
-     *  here for a long time on the strength of a 5 GB figure that is actually
-     *  the 12-month new-account tier, not an always-free one — it expires with
-     *  the account's first year. A time-limited allowance is a trial, and
-     *  belongs in the paid bucket with `freeStorageGb: null`. */
+     *  Permanent is the load-bearing word. AWS S3, Azure Blob and Alibaba OSS
+     *  were all listed here for a long time on the strength of a 5 GB figure
+     *  that is actually a new-account offer: 12 months for AWS and Azure, 1-3
+     *  months for Alibaba depending on the package. All three expire and drop
+     *  to zero. A time-limited allowance is a trial, and belongs in the paid
+     *  bucket with `freeStorageGb: null`, however large the number looks. */
     freeRequiresCard?: boolean;
     /** Reachability probe URL (global API endpoint). Omitted for
      *  per-account / self-hosted services, which then show no health dot. */
@@ -290,8 +291,8 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'DigitalOcean Spaces', parentCompany: 'DigitalOcean', logoId: 'digitalocean-spaces', countryCode: 'US', freeStorageGb: null,
       freeNote: 'paid plan',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'digitalocean-spaces', category: 'object-storage', paid: true }] },
-    { company: 'Alibaba OSS', parentCompany: 'Alibaba', logoId: 'alibaba-oss', countryCode: 'CN', freeStorageGb: 5,
-      freeNote: 'overseas only, card req.', freeRequiresCard: true,
+    { company: 'Alibaba OSS', parentCompany: 'Alibaba', logoId: 'alibaba-oss', countryCode: 'CN', freeStorageGb: null,
+      freeNote: 'new-user trial, overseas',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'alibaba-oss', category: 'object-storage', paid: true }] },
     { company: 'Tencent COS', parentCompany: 'Tencent', logoId: 'tencent-cos', countryCode: 'CN', freeStorageGb: null,
       freeNote: '6-month trial',
