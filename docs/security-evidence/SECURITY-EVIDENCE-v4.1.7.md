@@ -159,7 +159,7 @@ Installed v4.1.6 engine stalls reproducibly when sync execution must create a mi
 | MCP-4 | LOW | cyber tools | `stage_hash_drop` ignores dir chmod failure (cyber_tools.rs:189-193) | OPEN |
 | MCP-5 | LOW | CLI trash | trash `id` interpolated unvalidated into DAV URLs (aeroftp_cli.rs:43425-43459, webdav.rs:1554-1560) | OPEN |
 | I18N-K1 | MED | i18n · in-scope | `aerocryptProfile.defaultSaltTierMeaning` (DefaultSaltDisclosure.tsx:41) in NO locale — raw key in all 47 languages; same class as 669814f32 | OPEN |
-| I18N-K2 | MED | i18n · pre-existing | 32 referenced keys absent from en.json → raw keys in UI; `|| 'fallback'` guards dead by construction (incl. `duplicates.confirmDelete` mis-reference of `deleteConfirm`); validator never scans code references | OPEN |
+| I18N-K2 | MED | i18n · pre-existing | 32 referenced keys absent from en.json → raw keys in UI; `\|\| 'fallback'` guards dead by construction (incl. `duplicates.confirmDelete` mis-reference of `deleteConfirm`); validator never scans code references | OPEN |
 | I18N-K3 | LOW | i18n · pre-existing | `speedTest.compareDisclaimer` `{total}` mismatch in 45 locales | **Cross-confirmed = I18N-2, Fixed** |
 | I18N-K4 | LOW | i18n · pre-existing | Cross-script corruption hy ×3 / ka ×1; ZWSP mid-word et ×2, km healthCheck | OPEN |
 | I18N-K5 | LOW | i18n · in-scope | 5d99fa9bc pre-mount fallback chain dead (both shells ship `lang="en"`) | OPEN |
@@ -187,4 +187,4 @@ Lanes verified clean (samples): S3 STS redirect fix + tests; OAuth profile expor
 
 ### 8.5 Updated acceptance gate
 
-The §7 gate stands, plus: **item 0 — LIVE-1 resolved (or tag slips)**, and items 2–6 of §8.4 fixed or explicitly deferred by the owner as accepted debt with a tracker row.
+The §7 gate stands, plus: **item 0 — LIVE-1 resolved (or tag slips)**, and items 2–7 of §8.4 fixed or explicitly deferred by the owner as accepted debt with a tracker row (item 7 included: the three uncovered lanes must be completed or formally deferred, not silently skipped).
