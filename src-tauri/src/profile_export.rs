@@ -866,7 +866,10 @@ mod tests {
         assert!(!map.contains_key("totp_secret"));
         assert!(!map.contains_key("key_passphrase"));
         assert!(!map.contains_key("sasToken"));
-        assert_eq!(map.get("remotePath").and_then(|v| v.as_str()), Some("/data"));
+        assert_eq!(
+            map.get("remotePath").and_then(|v| v.as_str()),
+            Some("/data")
+        );
     }
 
     #[test]
