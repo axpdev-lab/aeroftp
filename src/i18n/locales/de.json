@@ -3400,7 +3400,8 @@
             "copies": "Kopien",
             "delete": "LÖSCHEN",
             "skip": "ÜBERSPRINGEN",
-            "deleteConfirm": "Möchten Sie wirklich {count} doppelte Dateien löschen?"
+            "deleteConfirm": "Möchten Sie wirklich {count} doppelte Dateien löschen?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Speicherplatznutzung",

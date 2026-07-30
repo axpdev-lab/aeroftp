@@ -3400,7 +3400,8 @@
             "copies": "cópias",
             "delete": "EXCLUIR",
             "skip": "IGNORAR",
-            "deleteConfirm": "Tem certeza de que deseja excluir {count} arquivos duplicados?"
+            "deleteConfirm": "Tem certeza de que deseja excluir {count} arquivos duplicados?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Uso de Disco",

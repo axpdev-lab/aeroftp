@@ -3400,7 +3400,8 @@
             "copies": "копий",
             "delete": "УДАЛИТЬ",
             "skip": "ПРОПУСТИТЬ",
-            "deleteConfirm": "Вы уверены, что хотите удалить {count} файлов-дубликатов?"
+            "deleteConfirm": "Вы уверены, что хотите удалить {count} файлов-дубликатов?",
+            "fuzzyCutoffPlaceholder": "авто"
         },
         "diskUsage": {
             "title": "Использование диска",

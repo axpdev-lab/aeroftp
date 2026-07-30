@@ -3400,7 +3400,8 @@
             "copies": "ასლი",
             "delete": "წაშლა",
             "skip": "გამოტოვება",
-            "deleteConfirm": "დარწმუნებული ხართ, რომ გსურთ {count} დუბლიკატი ფაილის წაშლა?"
+            "deleteConfirm": "დარწმუნებული ხართ, რომ გსურთ {count} დუბლიკატი ფაილის წაშლა?",
+            "fuzzyCutoffPlaceholder": "ავტო"
         },
         "diskUsage": {
             "title": "დისკის გამოყენება",

@@ -3365,7 +3365,8 @@
             "copies": "コピー",
             "delete": "削除",
             "skip": "スキップ",
-            "deleteConfirm": "{count} 件の重複ファイルを削除しますか？"
+            "deleteConfirm": "{count} 件の重複ファイルを削除しますか？",
+            "fuzzyCutoffPlaceholder": "自動"
         },
         "diskUsage": {
             "title": "ディスク使用量",

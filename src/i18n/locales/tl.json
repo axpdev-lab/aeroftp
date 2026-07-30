@@ -3400,7 +3400,8 @@
             "copies": "mga kopya",
             "delete": "TANGGALIN",
             "skip": "LAKTAWAN",
-            "deleteConfirm": "Sigurado ka bang gusto mong tanggalin ang {count} duplikadong file?"
+            "deleteConfirm": "Sigurado ka bang gusto mong tanggalin ang {count} duplikadong file?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Paggamit ng Disk",

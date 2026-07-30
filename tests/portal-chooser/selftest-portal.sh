@@ -172,6 +172,9 @@ has "$W" "probe: NETMON available=true" \
 has "$W" 'NETMON GetStatus keys=\["available", "connectivity", "metered"\]' \
   && ok "GetStatus honours the advertised version 3, so a newer GIO is not handed UnknownMethod" \
   || { bad "the stand-in advertises NetworkMonitor v3 without implementing GetStatus"; sed -n '1,20p' "$W/case.out"; }
+has "$W" "probe: NETMON CanReach=true" \
+  && ok "CanReach is implemented, so the rest of the v3 NetworkMonitor surface is not UnknownMethod either" \
+  || { bad "NetworkMonitor v3 is incomplete without CanReach"; sed -n '1,20p' "$W/case.out"; }
 has "$W" "probe: PROXY lookup=" \
   && ok "ProxyResolver answers, so a URL fetch is not gated on a resolver that cannot reply" \
   || { bad "ProxyResolver is unanswered: WebKit resolves a proxy before every load"; sed -n '1,20p' "$W/case.out"; }

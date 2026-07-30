@@ -3400,7 +3400,8 @@
             "deleting": "Brisanje duplikata...",
             "deleted": "{count} duplih datoteka izbrisano",
             "scanFailed": "Skeniranje nije uspjelo",
-            "retry": "Ponovni pokušaj"
+            "retry": "Ponovni pokušaj",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Korištenje diska",

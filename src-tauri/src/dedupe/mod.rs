@@ -391,6 +391,8 @@ pub fn find_similar_local_with_progress(
             // reported through the progress callback so a truncated pass is
             // visible rather than silent.
             const MAX_TOTAL_SIGNATURE_BYTES: u64 = 2_000_000_000;
+            // No single file may dominate peak memory: fs::read buffers it whole.
+            const MAX_SIGNATURE_FILE_BYTES: u64 = 256_000_000;
             let mut sigs: Vec<Sig> = Vec::new();
             for p in paths {
                 let sz = match std::fs::metadata(p) {
@@ -405,8 +407,19 @@ pub fn find_similar_local_with_progress(
                         continue;
                     }
                 };
-                if bytes_processed.saturating_add(sz) > MAX_TOTAL_SIGNATURE_BYTES {
-                    break;
+                // Skip oversized or over-budget candidates and keep walking: a
+                // single huge file at the head of the list must not starve the
+                // small ones that follow (review on merged #519).
+                if sz > MAX_SIGNATURE_FILE_BYTES
+                    || bytes_processed.saturating_add(sz) > MAX_TOTAL_SIGNATURE_BYTES
+                {
+                    files_processed += 1;
+                    on_progress(DedupeProgress {
+                        files_processed,
+                        bytes_processed,
+                        files_total,
+                    });
+                    continue;
                 }
                 let bytes = match std::fs::read(p) {
                     Ok(b) => b,
@@ -861,6 +874,40 @@ mod tests {
         assert!(
             strict.iter().all(|g| g.files.len() < 2),
             "a zero cutoff must only cluster identical signatures",
+        );
+    }
+
+    #[test]
+    fn oversized_head_file_does_not_starve_remaining_candidates() {
+        // Regression pin (review on merged #519): a 3 GB candidate at paths[0]
+        // used to `break` the signature budget and return zero groups even when
+        // thousands of small similar files followed. Skip the oversized one.
+        let td = TempDir::new().unwrap();
+        let huge = td.path().join("huge.bin");
+        {
+            // Sparse: logical size over the per-file cap, almost no disk used.
+            let f = fs::File::create(&huge).unwrap();
+            f.set_len(3_000_000_000).unwrap();
+        }
+        let svg1 = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect x="0" y="0" width="10" height="10"/></svg>"#;
+        let svg2 = r#"<svg   xmlns = 'http://www.w3.org/2000/svg'
+            width='10'   height = "10"  >
+          <rect   x = "0"   y = '0' width = "10" height="10" />
+        </svg>"#;
+        let p1 = write_file(td.path(), "icon1.svg", svg1.as_bytes());
+        let p2 = write_file(td.path(), "icon2.svg", svg2.as_bytes());
+
+        let groups = find_similar_local(
+            &[huge, p1, p2],
+            SimilarityMode::NonIdentical,
+            Some(32),
+            None,
+        );
+        assert!(
+            groups
+                .iter()
+                .any(|g| g.files.len() >= 2 && g.modality.as_deref() == Some("text")),
+            "small similar files after an oversized head candidate must still group; got {groups:?}"
         );
     }
 

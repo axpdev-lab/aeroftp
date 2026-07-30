@@ -3400,7 +3400,8 @@
             "copies": "kopijų",
             "delete": "IŠTRINTI",
             "skip": "PRALEISTI",
-            "deleteConfirm": "Ar tikrai norite ištrinti {count} dublikatų failų?"
+            "deleteConfirm": "Ar tikrai norite ištrinti {count} dublikatų failų?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Disko naudojimas",

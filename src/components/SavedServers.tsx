@@ -22,6 +22,7 @@ import {
 } from '../utils/serverProfileStore';
 import { maskCredential } from '../utils/maskCredential';
 import { getStorageDedupKey } from '../utils/storageDedup';
+import { reorderInheritingIndex } from '../utils/reorderByIndex';
 import { useActivityLog } from '../hooks/useActivityLog';
 import { useContextMenu, ContextMenu, ContextMenuItem } from './ContextMenu';
 import { ServerHealthCheck } from './ServerHealthCheck';
@@ -201,9 +202,8 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     const handleReorderDrop = useCallback((e: React.DragEvent<HTMLDivElement>, idx: number) => {
         e.preventDefault();
         if (dragIdx === null || dragIdx === idx) return;
-        const reordered = [...servers];
-        const [moved] = reordered.splice(dragIdx, 1);
-        reordered.splice(idx, 0, moved);
+        // Inherit the drop target index (no classic to-1); see #453 / reorderByIndex.
+        const reordered = reorderInheritingIndex(servers, dragIdx, idx);
         setServers(reordered);
         saveServers(reordered);
     }, [dragIdx, servers]);

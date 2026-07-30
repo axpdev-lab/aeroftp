@@ -111,7 +111,7 @@ const badgeSortLabel = (server: ServerProfile) => {
 
 export function MyServersTable({
     servers,
-    allServers,
+    allServers: _allServers,
     columns,
     favorites,
     connectingId,
@@ -276,7 +276,9 @@ export function MyServersTable({
                 />
                 <tbody>
                     {sortedServers.map((server, idx) => {
-                        const realIdx = allServers.findIndex(s => s.id === server.id);
+                        // `idx` is the visible-list index (filtered / sorted). Drag
+                        // state is keyed to that list so a protocol chip does not
+                        // leave full-vault index gaps (#453 residual).
                         const selectionIndex = crossProfileSelection.indexOf(server.id);
                         const selectionRole: 'source' | 'destination' | null =
                             selectionIndex === 0 ? 'source' : selectionIndex === 1 ? 'destination' : null;
@@ -303,15 +305,15 @@ export function MyServersTable({
                                 onRenameCancel={onRenameCancel}
                                 onRenameStart={onRenameStart}
                                 isDraggable={canDrag}
-                                isDragging={dragIdx === realIdx}
-                                isDragTarget={overIdx === realIdx && dragIdx !== null && dragIdx !== realIdx}
+                                isDragging={dragIdx === idx}
+                                isDragTarget={overIdx === idx && dragIdx !== null && dragIdx !== idx}
                                 // A drop makes the dragged profile inherit this
                                 // row's index: coming from below it lands above
                                 // the row, coming from above it lands below it.
                                 // The line follows that, so what the user sees is
                                 // where the profile ends up (#453).
-                                dragTargetEdge={dragIdx !== null && dragIdx > realIdx ? 'top' : 'bottom'}
-                                dragIndex={realIdx}
+                                dragTargetEdge={dragIdx !== null && dragIdx > idx ? 'top' : 'bottom'}
+                                dragIndex={idx}
                                 onDragStart={canDrag ? onDragStart : undefined}
                                 onDragEnter={canDrag ? onDragEnter : undefined}
                                 onDragOver={canDrag ? onDragOver : undefined}

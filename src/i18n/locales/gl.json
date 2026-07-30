@@ -3400,7 +3400,8 @@
             "deleting": "Eliminando duplicados...",
             "deleted": "{count} duplicados eliminados",
             "scanFailed": "Fallo no escaneo",
-            "retry": "Reintentar"
+            "retry": "Reintentar",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Uso de disco",

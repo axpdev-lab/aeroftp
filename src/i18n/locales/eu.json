@@ -3400,7 +3400,8 @@
             "deleting": "Bikoiztuak ezabatzen...",
             "deleted": "{count} bikoiztu ezabatu dira",
             "scanFailed": "Eskaneatzeak huts egin du",
-            "retry": "Saiatu berriro"
+            "retry": "Saiatu berriro",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Diskoaren erabilera",

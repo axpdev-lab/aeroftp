@@ -132,11 +132,16 @@ an assumption.
 
 ```sh
 tests/portal-chooser/selftest-portal.sh
+# #521: precondition cascade-stop, no app / no X / no D-Bus
+tests/portal-chooser/selftest-precondition.sh
 ```
 
-At runtime it needs only `dbus-run-session`; no display packages, so it runs
-anywhere. The first run also needs `cargo` and the Rust toolchain, because it
-builds the crate.
+At runtime the portal self-test needs only `dbus-run-session`; no display
+packages, so it runs anywhere. The first run also needs `cargo` and the Rust
+toolchain, because it builds the crate. The precondition self-test needs only
+bash: it forces `PORTAL_TEST_FAKE_RC=1` so a cold-start session reports one
+failure per case and SKIPS chooser assertions (#521), instead of eleven reds
+that accuse the chooser when it was never reached.
 
 The six cases are **verified as pins, not by watching them pass**: with the
 Request path made to ignore the token, 4 of the 13 assertions fail, including

@@ -3400,7 +3400,8 @@
             "copies": "copii",
             "delete": "ȘTERGE",
             "skip": "OMITE",
-            "deleteConfirm": "Sunteți sigur că doriți să ștergeți {count} fișiere duplicate?"
+            "deleteConfirm": "Sunteți sigur că doriți să ștergeți {count} fișiere duplicate?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Utilizarea discului",

@@ -3400,7 +3400,8 @@
             "copies": "kopieën",
             "delete": "VERWIJDEREN",
             "skip": "OVERSLAAN",
-            "deleteConfirm": "Weet u zeker dat u {count} dubbele bestanden wilt verwijderen?"
+            "deleteConfirm": "Weet u zeker dat u {count} dubbele bestanden wilt verwijderen?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Schijfgebruik",

@@ -437,7 +437,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                 min={0}
                 max={200}
                 value={threshold ?? ''}
-                placeholder="auto"
+                placeholder={t('duplicates.fuzzyCutoffPlaceholder') || 'auto'}
                 disabled={isScanning}
                 onChange={(e) => {
                   const raw = e.target.value.trim();
@@ -640,7 +640,9 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              invoke('open_local_file', { path: filePath }).catch(() => { /* best-effort */ });
+                              invoke('open_local_file', { path: filePath }).catch((err) => {
+                                setError(err instanceof Error ? err.message : String(err));
+                              });
                             }}
                             title={t('contextMenu.open') || 'Open'}
                             aria-label={t('contextMenu.open') || 'Open'}
@@ -654,7 +656,9 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                               e.stopPropagation();
                               // the file, not its folder: the command reveals and
                               // selects it, which is the useful thing here.
-                              invoke('open_in_file_manager', { path: filePath }).catch(() => { /* best-effort */ });
+                              invoke('open_in_file_manager', { path: filePath }).catch((err) => {
+                                setError(err instanceof Error ? err.message : String(err));
+                              });
                             }}
                             title={t('aeroShare.inbox.revealFile') || 'Show in folder'}
                             aria-label={t('aeroShare.inbox.revealFile') || 'Show in folder'}

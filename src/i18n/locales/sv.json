@@ -3400,7 +3400,8 @@
             "copies": "kopior",
             "delete": "TA BORT",
             "skip": "HOPPA ÖVER",
-            "deleteConfirm": "Är du säker på att du vill ta bort {count} dubblettfiler?"
+            "deleteConfirm": "Är du säker på att du vill ta bort {count} dubblettfiler?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Diskanvändning",

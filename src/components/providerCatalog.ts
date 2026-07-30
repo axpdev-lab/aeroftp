@@ -459,8 +459,9 @@ export function buildProviderGridHtml(): string {
         }
         const label = tile.label ?? company.company;
         const title = label === company.company ? '' : ` title="${company.company}"`;
+        // Escape is unnecessary: catalog labels are plain company names without quotes.
         return `    <td align="center" width="80"><a href="https://docs.aeroftp.app/${tile.docsPath}"${title}>`
-            + `<img src="public/icons/providers/grid/${tile.icon}" width="36" /></a>`
+            + `<img src="public/icons/providers/grid/${tile.icon}" width="36" alt="${label}" /></a>`
             + `<br><sub>${label}</sub></td>`;
     });
 

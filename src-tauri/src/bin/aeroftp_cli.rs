@@ -21999,7 +21999,8 @@ struct CatalogPick<'a> {
 /// nothing so a bare `n` could not flood a line-mode prompt with 50+ companies,
 /// but that also meant there was no way to see what was on offer without already
 /// knowing a name to type. The rendered table is the thing that made browsing
-/// viable, so the guard moved there: the caller prints a page at a time.
+/// viable, so the guard moved there: the caller prints a page at a time via
+/// [`catalog_pick_page`] + [`render_catalog_picks`] (see `interactive_new_profile`).
 fn catalog_pick_matches<'a>(catalog: &'a [CliCatalogCompany], query: &str) -> Vec<CatalogPick<'a>> {
     let q = query.trim().to_ascii_lowercase();
     let mut rows: Vec<CatalogPick<'a>> = Vec::new();
@@ -22040,6 +22041,28 @@ fn catalog_pick_id(pick: &CatalogPick<'_>) -> String {
         .unwrap_or_else(|| pick.method.protocol.clone())
 }
 
+/// Page size for the interactive New(N) catalog table. Keeps a bare `n` from
+/// dumping every company into a line-mode prompt at once; the caller advances
+/// with Enter while row numbers stay global via `offset`.
+const CATALOG_PICK_PAGE_SIZE: usize = 20;
+
+/// One page of catalog picks for the interactive table.
+///
+/// `page_start` is the first global 0-based index shown. Returns the slice to
+/// hand to [`render_catalog_picks`] (with the same `page_start` as `offset`) and
+/// whether more rows remain after this page.
+fn catalog_pick_page<'a>(
+    picks: &'a [CatalogPick<'a>],
+    page_start: usize,
+    page_size: usize,
+) -> (&'a [CatalogPick<'a>], bool) {
+    if page_size == 0 || page_start >= picks.len() {
+        return (&[], false);
+    }
+    let end = page_start.saturating_add(page_size).min(picks.len());
+    (&picks[page_start..end], end < picks.len())
+}
+
 /// Render the provider picks as a table (#311).
 ///
 /// The picker used to print a flat numbered list with the method label cut to
@@ -22049,6 +22072,9 @@ fn catalog_pick_id(pick: &CatalogPick<'_>) -> String {
 /// does so a long list stays readable. Colour goes through `use_color`, so
 /// NO_COLOR and non-TTY output stay plain. Everything goes to stderr, keeping
 /// stdout free for piped output.
+///
+/// `offset` is the global 0-based index of `picks[0]` so multi-page browsing
+/// keeps stable 1-based row numbers (page 2 starts at 21, not 1 again).
 fn render_catalog_picks(picks: &[CatalogPick<'_>], offset: usize) {
     let color_on = use_color();
     // A pty with no size (a pipe, CI, `script` against /dev/null) reports 0
@@ -22243,9 +22269,11 @@ fn interactive_new_profile(
         return Ok(None);
     }
 
-    // Single unambiguous match skips the pick; otherwise show the table and
-    // prompt until the user picks a row or asks to leave. A selector that does
-    // not resolve re-prompts (it used to abort the whole creation flow).
+    // Single unambiguous match skips the pick; otherwise show the table a page
+    // at a time and prompt until the user picks a row or asks to leave. A
+    // selector that does not resolve re-prompts (it used to abort the whole
+    // creation flow). Empty Enter advances the page when more rows remain;
+    // empty on the last page (or `0`) aborts, same as before.
     let chosen = if matches.len() == 1 {
         &matches[0]
     } else {
@@ -22254,14 +22282,38 @@ fn interactive_new_profile(
         } else {
             eprintln!("\nMatches for '{}' ({}):", query, matches.len());
         }
-        render_catalog_picks(&matches, 0);
+        let mut page_start = 0usize;
         let mut index = None;
         while index.is_none() {
-            let sel = match section_prompt_line("pick # or name (0 to abort): ") {
+            let (page, more) = catalog_pick_page(&matches, page_start, CATALOG_PICK_PAGE_SIZE);
+            render_catalog_picks(page, page_start);
+            if more {
+                let remaining = matches.len() - page_start - page.len();
+                eprintln!(
+                    "  ({} more: Enter for next page, or pick # / name / 0 abort)",
+                    remaining
+                );
+            }
+            let prompt = if more {
+                "pick # or name (Enter=next page, 0=abort): "
+            } else {
+                "pick # or name (0 to abort): "
+            };
+            let sel = match section_prompt_line(prompt) {
                 Ok(Some(l)) => l.trim().to_string(),
                 Ok(None) => return Ok(None),
                 Err(e) => return Err(format!("Read error: {}", e)),
             };
+            // Enter (= empty) is "next page" only while more rows remain; on the
+            // last page it keeps the historic abort meaning.
+            if sel.is_empty() {
+                if more {
+                    page_start = page_start.saturating_add(CATALOG_PICK_PAGE_SIZE);
+                    continue;
+                }
+                eprintln!("New profile aborted.");
+                return Ok(None);
+            }
             match resolve_catalog_selector(&matches, &sel) {
                 CatalogSelection::Picked(i) => index = Some(i),
                 CatalogSelection::Retry => continue,
@@ -66775,6 +66827,49 @@ mod tests {
         render_catalog_picks(&picks[..1], 98);
     }
 
+    // Pin (review on merged #506 / NAS 0373): empty query returns the full
+    // catalog, but the interactive caller must not dump it in one shot. The
+    // page helper is what `interactive_new_profile` feeds to render_catalog_picks.
+    #[test]
+    fn catalog_pick_page_caps_empty_query_and_covers_all_rows() {
+        let catalog = load_cli_catalog().expect("embedded catalog parses");
+        let all = catalog_pick_matches(&catalog, "");
+        assert!(
+            all.len() > CATALOG_PICK_PAGE_SIZE,
+            "fixture must exceed one page so the cap is meaningful (got {})",
+            all.len()
+        );
+
+        let (first, more) = catalog_pick_page(&all, 0, CATALOG_PICK_PAGE_SIZE);
+        assert_eq!(first.len(), CATALOG_PICK_PAGE_SIZE);
+        assert!(more, "first page of a large catalog must leave a remainder");
+
+        // Walk every page: each slice is <= page size, numbers stay global, and
+        // the concatenation covers the full match list exactly once.
+        let mut seen = 0usize;
+        let mut start = 0usize;
+        loop {
+            let (page, more) = catalog_pick_page(&all, start, CATALOG_PICK_PAGE_SIZE);
+            assert!(page.len() <= CATALOG_PICK_PAGE_SIZE);
+            assert_eq!(
+                page.first().map(|p| p.company),
+                all.get(start).map(|p| p.company),
+                "page_start must index into the global list"
+            );
+            seen += page.len();
+            if !more {
+                break;
+            }
+            start = start.saturating_add(CATALOG_PICK_PAGE_SIZE);
+        }
+        assert_eq!(seen, all.len(), "paging must visit every row exactly once");
+
+        // Past the end: empty, no more.
+        let (past, more) = catalog_pick_page(&all, all.len(), CATALOG_PICK_PAGE_SIZE);
+        assert!(past.is_empty());
+        assert!(!more);
+    }
+
     #[test]
     fn new_profile_field_defaults_track_protocol() {
         // Network protocols prompt for host/port/path; clouds defer to the GUI.
@@ -68366,8 +68461,13 @@ mod tests {
         );
     }
 
+    // ConnectMetadata is built only from ProviderConfig fields (host / port /
+    // username). It never sees a human `server_info` banner, so a string with
+    // colons like `home: /srv/home:archive` cannot be mis-parsed into host/port.
+    // The old name claimed that property while never feeding the string in;
+    // this pins what the constructor actually does (IPv6 host + nonstandard port).
     #[test]
-    fn connect_metadata_ignores_human_server_info_shape_and_preserves_ipv6() {
+    fn connect_metadata_preserves_ipv6_host_and_nonstandard_port() {
         let config = ProviderConfig {
             name: "IPv6 SFTP".to_string(),
             provider_type: ProviderType::Sftp,
@@ -68379,13 +68479,10 @@ mod tests {
             extra: HashMap::new(),
         };
         let metadata = ConnectMetadata::from_config(&config);
-        let realistic_server_info =
-            "SFTP Server: [2001:db8::42]:22022 (user: alice, home: /srv/home:archive)";
 
         assert_eq!(metadata.host, "2001:db8::42");
         assert_eq!(metadata.port, 22022);
         assert_eq!(metadata.username, "alice");
-        assert!(realistic_server_info.contains("home:"));
     }
 
     #[test]

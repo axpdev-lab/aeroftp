@@ -3400,7 +3400,8 @@
             "copies": "kopii",
             "delete": "ZMAZAT",
             "skip": "PRESKOCIT",
-            "deleteConfirm": "Naozaj chcete zmazat {count} duplicitnych suborov?"
+            "deleteConfirm": "Naozaj chcete zmazat {count} duplicitnych suborov?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Vyuzitie disku",

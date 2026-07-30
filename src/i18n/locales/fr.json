@@ -3400,7 +3400,8 @@
             "copies": "copies",
             "delete": "SUPPRIMER",
             "skip": "IGNORER",
-            "deleteConfirm": "Etes-vous sur de vouloir supprimer {count} fichiers en double ?"
+            "deleteConfirm": "Etes-vous sur de vouloir supprimer {count} fichiers en double ?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Utilisation du disque",

@@ -3400,7 +3400,8 @@
             "copies": "kopiota",
             "delete": "POISTA",
             "skip": "OHITA",
-            "deleteConfirm": "Haluatko varmasti poistaa {count} kaksoiskappeletta?"
+            "deleteConfirm": "Haluatko varmasti poistaa {count} kaksoiskappeletta?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Levyn käyttö",

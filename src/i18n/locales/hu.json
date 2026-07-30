@@ -3400,7 +3400,8 @@
             "copies": "másolat",
             "delete": "TÖRLÉS",
             "skip": "KIHAGYÁS",
-            "deleteConfirm": "Biztosan törölni szeretné a(z) {count} duplikált fájlt?"
+            "deleteConfirm": "Biztosan törölni szeretné a(z) {count} duplikált fájlt?",
+            "fuzzyCutoffPlaceholder": "auto"
         },
         "diskUsage": {
             "title": "Lemezfoglalás",

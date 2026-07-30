@@ -3400,7 +3400,8 @@
             "copies": "afrit",
             "delete": "EYÐA",
             "skip": "SLEPPA",
-            "deleteConfirm": "Ertu viss um að þú viljir eyða {count} tvíritaskrám?"
+            "deleteConfirm": "Ertu viss um að þú viljir eyða {count} tvíritaskrám?",
+            "fuzzyCutoffPlaceholder": "sjálf"
         },
         "diskUsage": {
             "title": "Disknotkun",
