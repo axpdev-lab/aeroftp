@@ -96,6 +96,15 @@ export const TrashTable: React.FC<TrashTableProps> = ({
 
     // Rubber band. The hook keys items by `data-file-name`, which here carries
     // the row id, so the set it produces is the same set the checkboxes use.
+    //
+    // The element below is the full-height table wrapper, not the scroller: the
+    // scrolling ancestor belongs to each provider's dialog. Hit testing is
+    // unaffected, because an unclipped wrapper's bounding rect moves with the
+    // scroll and pointer-to-content coordinates stay consistent. What does not
+    // work is the hook's edge auto-scroll, which reads `scrollTop` from this
+    // element and always sees 0: dragging past the bottom edge selects what is
+    // visible and stops there instead of scrolling on. Selecting more means
+    // scrolling first, or holding Ctrl and dragging again to add.
     const noopSetSelected = React.useCallback(() => {}, []);
     const marquee = useMarqueeSelection({
         containerRef,
