@@ -269,14 +269,9 @@ pub fn jaccard_from_minhash(a: &[u64], b: &[u64]) -> f64 {
     matches as f64 / a.len() as f64
 }
 
-/// Find duplicate groups on a list of local file paths.
-/// - Exact: group by size then BLAKE3 (size prefilter kept).
-/// - NonIdentical: compute per-modality signatures; bypass size prefilter for Raster.
-///   Cluster by Hamming distance <= threshold (param overrides default).
-///
-///   Returns groups with >=2 files, sorted by wasted space desc (or distance asc for visibility).
 /// One tick of a similarity scan, so a caller can show what the engine is
 /// chewing through instead of an indeterminate spinner (discussion #347).
+///
 /// `files_total` is the candidate count the pass started with, which is what
 /// makes the tick a fraction rather than a running number.
 #[derive(Debug, Clone, Copy)]
@@ -286,6 +281,12 @@ pub struct DedupeProgress {
     pub files_total: u64,
 }
 
+/// Find duplicate groups on a list of local file paths.
+/// - Exact: group by size then BLAKE3 (size prefilter kept).
+/// - NonIdentical: compute per-modality signatures; bypass size prefilter for Raster.
+///   Cluster by Hamming distance <= threshold (param overrides default).
+///
+/// Returns groups with >=2 files, sorted by wasted space desc (or distance asc for visibility).
 pub fn find_similar_local(
     paths: &[PathBuf],
     mode: SimilarityMode,
