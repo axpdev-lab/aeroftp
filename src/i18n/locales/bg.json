@@ -70,7 +70,8 @@
             "duplicate": "Дублиране",
             "current": "текущ",
             "goToActiveSession": "Към активната сесия",
-            "password": "Парола"
+            "password": "Парола",
+            "default": "По подразбиране"
         },
         "connection": {
             "title": "Свързване със сървър",

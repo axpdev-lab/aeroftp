@@ -70,7 +70,8 @@
             "duplicate": "Másolat",
             "current": "jelenlegi",
             "goToActiveSession": "Ugrás az aktív munkamenethez",
-            "password": "Jelszó"
+            "password": "Jelszó",
+            "default": "Alapértelmezett"
         },
         "connection": {
             "title": "Csatlakozás szerverhez",

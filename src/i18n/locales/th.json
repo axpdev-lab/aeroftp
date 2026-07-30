@@ -70,7 +70,8 @@
             "duplicate": "ทำซ้ำ",
             "current": "ปัจจุบัน",
             "goToActiveSession": "ไปยังเซสชันที่ใช้งานอยู่",
-            "password": "รหัสผ่าน"
+            "password": "รหัสผ่าน",
+            "default": "ค่าเริ่มต้น"
         },
         "connection": {
             "title": "เชื่อมต่อเซิร์ฟเวอร์",

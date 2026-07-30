@@ -70,7 +70,8 @@
             "duplicate": "Gandakan",
             "current": "semasa",
             "goToActiveSession": "Pergi ke sesi aktif",
-            "password": "Kata laluan"
+            "password": "Kata laluan",
+            "default": "Lalai"
         },
         "connection": {
             "title": "Sambung ke Pelayan",

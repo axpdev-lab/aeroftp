@@ -70,7 +70,8 @@
             "duplicate": "복제",
             "current": "현재",
             "goToActiveSession": "활성 세션으로 이동",
-            "password": "비밀번호"
+            "password": "비밀번호",
+            "default": "기본값"
         },
         "connection": {
             "title": "서버에 연결",

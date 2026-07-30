@@ -1121,7 +1121,8 @@
             "warning": "Warning",
             "yes": "Yes",
             "goToActiveSession": "Go to active session",
-            "password": "Password"
+            "password": "Password",
+            "default": "Default"
         },
         "compare": {
             "title": "Compare panels",
