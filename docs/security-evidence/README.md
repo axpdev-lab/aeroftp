@@ -4,6 +4,8 @@ Audit remediation evidence files for AeroFTP, organized by version.
 
 ## Reports
 
+- **v4.1.7** (2026-07-30): Pre-release commit audit since `v4.1.6` — 12 ship findings fixed on PR #533; Sigstore hard-gate and Swift >10k pagination deferred
+  - [SECURITY-EVIDENCE-v4.1.7.md](SECURITY-EVIDENCE-v4.1.7.md)
 - **v2.9.5** (2026-03-13): Claude Opus 4.6 (8 area auditors) + GPT-5.4 counter-audit: all v2.9.4 findings tracked and resolved
   - [SECURITY-EVIDENCE-v2.9.5.md](SECURITY-EVIDENCE-v2.9.5.md)
 - **v2.8.7** (2026-03-07): Claude Opus 4.6 8-area audit + GPT-5.4 counter-audit: Grade B+ → A-, 45+ findings resolved
