@@ -779,10 +779,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools binutils file
           ./scripts/snap-abi-check.sh "$SNAP_FILE"
-          if unsquashfs -ll "$SNAP_FILE" | grep -E '/dri/[^/]+_dri\.so|/lib(EGL|GLX)_mesa\.so'; then
-            echo "::error::the application snap still bundles Mesa drivers/loaders; graphics-core22 must provide them"
-            exit 1
-          fi
+          # Full GPU-userspace gate (libgbm, vendor libdrm, vulkan ICDs, Mesa
+          # loaders, snapcraft gpu: lint). The two-pattern inline grep this
+          # replaces missed everything except the loudest DRI/EGL paths; the
+          # weekly snap-refresh job already ran the script, the tag-driven
+          # release pipeline must too.
+          ./scripts/snap-gpu-lint-check.sh "$SNAP_FILE"
           echo "OK: GPU userspace is supplied only by graphics-core22."
 
       # ----------------------------------------------------------------------

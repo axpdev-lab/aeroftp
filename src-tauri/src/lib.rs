@@ -17393,6 +17393,15 @@ pub async fn export_server_profiles_core(
                 log::warn!("Export: vault not ready, credentials will not be included");
             }
         }
+    } else {
+        // Unticking "include credentials" must also strip long-lived secrets
+        // that live in the opaque `options` JSON (TOTP seed, SSH key
+        // passphrase, SAS token, OAuth client secret, STS session token).
+        // Those never go through the vault gate above, so they would otherwise
+        // ride into a file labelled has_credentials=false.
+        for server in &mut servers {
+            profile_export::strip_options_borne_secrets(&mut server.options);
+        }
     }
 
     profile_export::export_profiles(

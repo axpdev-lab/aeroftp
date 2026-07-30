@@ -859,22 +859,6 @@ impl WebDavProvider {
         self.is_nextcloud_for_dav()
     }
 
-    /// The `scheme://host[:port]` origin of the configured URL, without any
-    /// path component. Used to rebuild absolute OCS / trashbin endpoints when
-    /// the profile URL is a bare base URL.
-    fn config_origin(&self) -> Option<String> {
-        let url = self.config.url.trim().trim_end_matches('/');
-        let after_scheme = url.find("://")? + 3;
-        let authority_end = url[after_scheme..]
-            .find('/')
-            .map(|i| after_scheme + i)
-            .unwrap_or(url.len());
-        if authority_end <= after_scheme {
-            return None;
-        }
-        Some(url[..authority_end].to_string())
-    }
-
     /// Extract the Nextcloud base URL (e.g. `https://cloud.felicloud.com`).
     ///
     /// The OCS and trashbin endpoints live outside the per-user `/files/` root,
@@ -882,21 +866,28 @@ impl WebDavProvider {
     ///
     /// Layered, mirroring [`Self::is_nextcloud_for_dav`]:
     /// 1. The configured URL carries the canonical `/remote.php/` prefix, so
-    ///    the origin is whatever precedes it. Most direct, no probing needed.
+    ///    the install root is whatever precedes it (includes a subpath such as
+    ///    `/owncloud` when the instance is not at the host root).
     /// 2. Otherwise, if this is a Nextcloud-class server by any reliable signal
     ///    (saved-profile preset id, or the `server_root` the connect-time
-    ///    well-known probe resolved), the origin is the configured URL with its
-    ///    path stripped.
+    ///    well-known probe resolved), keep the configured URL path. Stripping
+    ///    to bare origin broke subpath installs (ownCloud's default
+    ///    `https://host/owncloud`): OCS, trashbin and chunked upload all 404'd
+    ///    at the wrong root.
     ///
     /// Returning `None` here is what surfaces as `Not a Nextcloud instance`, so
     /// it must mean "this really is not Nextcloud", never "the user typed a
     /// short URL".
     fn nextcloud_base_url(&self) -> Option<String> {
         if let Some(idx) = self.config.url.find("/remote.php/") {
-            return Some(self.config.url[..idx].to_string());
+            return Some(self.config.url[..idx].trim_end_matches('/').to_string());
         }
         if self.is_nextcloud_for_dav() {
-            return self.config_origin();
+            let trimmed = self.config.url.trim().trim_end_matches('/');
+            if trimmed.is_empty() {
+                return None;
+            }
+            return Some(trimmed.to_string());
         }
         None
     }
@@ -4826,16 +4817,31 @@ mod tests {
         assert!(p.is_nextcloud());
     }
 
-    /// A trailing slash on the bare origin must not leak into the endpoint,
-    /// otherwise every built URL carries a double slash.
+    /// A trailing slash on a subpath install must not leak into the endpoint,
+    /// and the install subpath itself must be preserved (ownCloud default
+    /// `/owncloud`, reverse-proxied Nextcloud under `/nc`, …).
     #[test]
-    fn nextcloud_base_url_strips_trailing_slash_and_path() {
-        let mut cfg = test_config("https://cloud.example.com/subdir/");
+    fn nextcloud_base_url_keeps_install_subpath_strips_trailing_slash() {
+        let mut cfg = test_config("https://cloud.example.com/owncloud/");
         cfg.provider_id = Some("owncloud".to_string());
         let p = WebDavProvider::new(cfg).expect("provider");
         assert_eq!(
             p.nextcloud_base_url(),
-            Some("https://cloud.example.com".to_string())
+            Some("https://cloud.example.com/owncloud".to_string())
+        );
+    }
+
+    /// Canonical DAV URL under a subpath install: the base is everything
+    /// before `/remote.php/`, including the install prefix.
+    #[test]
+    fn nextcloud_base_url_keeps_subpath_before_remote_php() {
+        let p = WebDavProvider::new(test_config(
+            "https://cloud.example.com/owncloud/remote.php/dav/files/alice/",
+        ))
+        .expect("provider");
+        assert_eq!(
+            p.nextcloud_base_url(),
+            Some("https://cloud.example.com/owncloud".to_string())
         );
     }
 

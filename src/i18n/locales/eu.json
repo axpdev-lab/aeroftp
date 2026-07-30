@@ -4305,7 +4305,7 @@
             "tabCompare": "Konparatu",
             "compareSelectServers": "Hautatutako zerbitzariak ({count})",
             "compareHint": "Aukeratu 2 eta 8 arteko zerbitzariak alboz albo konparatzeko. Karga-tamaina bera guztientzat.",
-            "compareDisclaimer": "Hau {count} zerbitzaritan exekutatzeak {total} inguru transferentzia osoa esan nahi du ({size} zerbitzariko, igoera + jaitsiera). Hornitzailearen eskaera- eta egress-kostuak aplika daitezke.",
+            "compareDisclaimer": "Hau {count} zerbitzaritan exekutatzeak {total} inguru transferentzia osoa esan nahi du ({size} zerbitzariko, igoera + jaitsiera). Hornitzailearen eskaera- eta egress-kostuak aplika daitezke eta {localStorage} arteko tokiko biltegiratze tenporala erabiltzen du paraleloan.",
             "compareRunning": "Abiadura-proba {count} zerbitzaritan exekutatzen...",
             "compareFooter": "{count} zerbitzari hautatuta",
             "selectAll": "Hautatu guztiak",

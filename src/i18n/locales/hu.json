@@ -4286,7 +4286,7 @@
             "tabCompare": "Összehasonlítás",
             "compareSelectServers": "Kiválasztott kiszolgálók ({count})",
             "compareHint": "Válasszon 2-8 kiszolgálót az egymás melletti teljesítményméréshez. Mindegyikhez azonos adatméret.",
-            "compareDisclaimer": "{count} kiszolgálón történő futtatás körülbelül {total} teljes átvitelt jelent ({size} kiszolgálónként, feltöltés + letöltés). A szolgáltató kérési és kimenő forgalmi költségei merülhetnek fel.",
+            "compareDisclaimer": "{count} kiszolgálón történő futtatás körülbelül {total} teljes átvitelt jelent ({size} kiszolgálónként, feltöltés + letöltés). A szolgáltató kérési és kimenő forgalmi költségei merülhetnek fel és párhuzamosan legfeljebb {localStorage} helyi ideiglenes tárhelyet használ.",
             "compareRunning": "Sebességteszt futtatása {count} kiszolgálón...",
             "compareFooter": "{count} kiszolgáló kiválasztva",
             "selectAll": "Összes kijelölése",

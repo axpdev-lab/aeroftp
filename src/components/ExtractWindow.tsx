@@ -3,6 +3,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 import { pickFile } from '../utils/pickPath';
 import { Eye, EyeOff, FolderOpen, Loader2, Lock, CheckCircle2, XCircle, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
@@ -133,7 +134,26 @@ const ExtractWindow: React.FC = () => {
                     });
                     if (cancelled) return;
                     if (!chosen || Array.isArray(chosen)) {
-                        // User cancelled the destination picker: nothing to do.
+                        // pickFile returns null for both cancel and "no chooser".
+                        // The main App listens for aeroftp-toast; this window does
+                        // not, so a portal-less host would otherwise close silently
+                        // (#510 / #515 residual). Re-check before treating as cancel.
+                        let unavailable: string | null = null;
+                        try {
+                            unavailable = (await invoke<string | null>('chooser_unavailable')) ?? null;
+                        } catch {
+                            unavailable = null;
+                        }
+                        if (unavailable !== null) {
+                            const key =
+                                unavailable === 'portal-missing'
+                                    ? 'picker.unavailable.portalMissing'
+                                    : 'picker.unavailable.unknown';
+                            setError(`${t('picker.unavailable.title')}: ${t(key)}`);
+                            setPhase('error');
+                            return;
+                        }
+                        // Genuine user cancel.
                         closeWindow();
                         return;
                     }

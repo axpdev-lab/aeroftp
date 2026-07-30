@@ -1155,7 +1155,56 @@ impl StorageProvider for SwiftProvider {
                 .await?;
 
             if !resp.status().is_success() {
-                warn!("Bulk delete returned HTTP {}", resp.status());
+                return Err(ProviderError::ServerError(format!(
+                    "Bulk delete failed: HTTP {}",
+                    resp.status()
+                )));
+            }
+
+            // Swift bulk-delete can return HTTP 200 with per-object failures in
+            // the JSON body (`Errors` array). Accept is already application/json;
+            // parse it so we do not report a full success when objects remain.
+            // Spec: https://docs.openstack.org/swift/latest/middleware.html#bulk-delete
+            let body_bytes = resp.bytes().await.map_err(|e| {
+                ProviderError::ServerError(format!("Bulk delete body read failed: {e}"))
+            })?;
+            if !body_bytes.is_empty() {
+                if let Ok(report) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+                    let errors = report
+                        .get("Errors")
+                        .or_else(|| report.get("errors"))
+                        .and_then(|e| e.as_array());
+                    if let Some(errors) = errors {
+                        if !errors.is_empty() {
+                            let sample = errors
+                                .iter()
+                                .take(3)
+                                .map(|e| e.to_string())
+                                .collect::<Vec<_>>()
+                                .join("; ");
+                            return Err(ProviderError::ServerError(format!(
+                                "Bulk delete reported {} object failure(s): {sample}",
+                                errors.len()
+                            )));
+                        }
+                    }
+                    // Some proxies put the overall status in the body even when
+                    // the HTTP status is 200.
+                    if let Some(rs) = report
+                        .get("Response Status")
+                        .or_else(|| report.get("response_status"))
+                        .and_then(|v| v.as_str())
+                    {
+                        let ok = rs.starts_with('2')
+                            || rs.to_ascii_lowercase().contains("200")
+                            || rs.eq_ignore_ascii_case("ok");
+                        if !ok {
+                            return Err(ProviderError::ServerError(format!(
+                                "Bulk delete response status: {rs}"
+                            )));
+                        }
+                    }
+                }
             }
         }
 
@@ -1342,10 +1391,19 @@ impl StorageProvider for SwiftProvider {
     }
 
     /// HEAD {storage_url} -> X-Account-Bytes-Used + X-Account-Meta-Quota-Bytes.
-    /// Default 40GB for Blomp free tier if quota header absent.
+    /// Default 40GB for Blomp free tier if quota header absent on a successful
+    /// response. Non-success statuses (403 on account-level ops, 5xx, …) must
+    /// not fabricate "0 used / 40 GB" as if they were real readings.
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         let url = self.storage_url()?.to_string();
         let resp = self.swift_request(Method::HEAD, &url, None, &[]).await?;
+
+        if !resp.status().is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "Account HEAD failed: HTTP {}",
+                resp.status()
+            )));
+        }
 
         let used: u64 = resp
             .headers()

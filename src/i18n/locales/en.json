@@ -2064,7 +2064,7 @@
             "tabCompare": "Compare",
             "compareSelectServers": "Selected servers ({count})",
             "compareHint": "Pick 2 to 8 servers to benchmark side-by-side. Same payload size for all.",
-            "compareDisclaimer": "Running this on {count} servers transfers about {total} ({size} per server, upload + download) and uses up to {total} of local temp storage in parallel. Provider request and egress costs may apply.",
+            "compareDisclaimer": "Running this on {count} servers transfers about {total} ({size} per server, upload + download) and uses up to {localStorage} of local temp storage in parallel. Provider request and egress costs may apply.",
             "compareRunning": "Running speed test on {count} servers...",
             "compareFooter": "{count} server(s) selected",
             "selectAll": "Select all",

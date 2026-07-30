@@ -4286,7 +4286,7 @@
             "tabCompare": "Porovnať",
             "compareSelectServers": "Vybrané servery ({count})",
             "compareHint": "Vyberte 2 až 8 serverov na paralelné porovnanie. Rovnaká veľkosť dát pre všetky.",
-            "compareDisclaimer": "Spustenie na {count} serveroch znamená približne {total} celkového prenosu ({size} na server, odoslanie + stiahnutie). Môžu sa uplatniť poplatky poskytovateľa za požiadavky a odchádzajúcu prevádzku.",
+            "compareDisclaimer": "Spustenie na {count} serveroch znamená približne {total} celkového prenosu ({size} na server, odoslanie + stiahnutie). Môžu sa uplatniť poplatky poskytovateľa za požiadavky a odchádzajúcu prevádzku a paralelne využije až {localStorage} miestneho dočasného úložiska.",
             "compareRunning": "Spúšťa sa test rýchlosti na {count} serveroch...",
             "compareFooter": "Vybraných serverov: {count}",
             "selectAll": "Vybrať všetko",
