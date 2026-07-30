@@ -71,4 +71,46 @@ mod tests {
             "/org/freedesktop/portal/desktop/request/1_42/gtk1"
         );
     }
+
+    /// Pin: a stand-in that owns the portal name without the full v3
+    /// NetworkMonitor surface breaks the app under GTK_USE_PORTAL=1 instead of
+    /// degrading to "no portal". GetStatus and CanReach must stay alongside the
+    /// three getters; selftest-portal.sh also probes them live over D-Bus.
+    #[test]
+    fn network_monitor_implements_the_v3_surface_it_advertises() {
+        let src = include_str!("main.rs");
+        assert!(
+            src.contains("fn get_status("),
+            "NetworkMonitor must implement GetStatus when advertising version 3"
+        );
+        assert!(
+            src.contains("fn can_reach("),
+            "NetworkMonitor must implement CanReach when advertising version 3"
+        );
+        assert!(
+            src.contains("fn get_available(")
+                && src.contains("fn get_metered(")
+                && src.contains("fn get_connectivity("),
+            "NetworkMonitor must still answer the three v2 getters"
+        );
+        // version() on NetworkMonitor returns 3 (the interface attribute, not
+        // the doc comment that mentions the same name earlier).
+        let nm = src
+            .split("#[interface(name = \"org.freedesktop.portal.NetworkMonitor\")]")
+            .nth(1)
+            .expect("NetworkMonitor interface attribute present");
+        let version_body = nm
+            .split("fn version")
+            .nth(1)
+            .expect("NetworkMonitor version property present");
+        let first_return_line = version_body
+            .lines()
+            .map(str::trim)
+            .find(|l| l.starts_with("3") || *l == "3")
+            .expect("NetworkMonitor version body should return 3");
+        assert!(
+            first_return_line.starts_with('3'),
+            "NetworkMonitor must advertise version 3, got {first_return_line:?}"
+        );
+    }
 }

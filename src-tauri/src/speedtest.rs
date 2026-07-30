@@ -393,9 +393,23 @@ async fn run_speedtest_inner(
     let remote_path = join_remote_path(&scratch_dir, &temp_file_name);
 
     // Pre-existing scratch dir is fine (a previous run, or a provider that
-    // creates parents implicitly); only a hard failure is worth reporting.
-    if let Err(e) = provider.mkdir(&scratch_dir).await {
-        debug!("speedtest: scratch dir {} not created: {}", scratch_dir, e);
+    // creates parents implicitly); ordinary provider errors are soft. Cancellation
+    // is not: this call used to sit outside run_cancelable, so a stalled network
+    // left the speed test stuck before upload with no way for the user to abort.
+    match run_cancelable(
+        token.clone(),
+        provider.mkdir(&scratch_dir),
+        "Test cancelled while creating scratch directory",
+    )
+    .await
+    {
+        Ok(()) => {}
+        Err(msg) if msg == "Test cancelled while creating scratch directory" => {
+            return Err(msg);
+        }
+        Err(e) => {
+            debug!("speedtest: scratch dir {} not created: {}", scratch_dir, e);
+        }
     }
 
     info!(
@@ -891,6 +905,62 @@ mod tests {
             );
             assert_ne!(path, "/.aeroftp-speedtest-x.bin", "payload landed in root");
         }
+    }
+
+    /// Pin: scratch mkdir must go through run_cancelable. A bare `.await` here
+    /// is the defect that left a stalled provider with no cancel path.
+    #[test]
+    fn scratch_directory_creation_is_cancelable() {
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/speedtest.rs"));
+        // Build the forbidden bare-await shape without embedding it as one
+        // literal (this test body is part of the same source file).
+        let bare = format!("{}{}", "provider.mkdir(&scratch_dir)", ".await");
+        assert!(
+            !src.contains(&bare),
+            "scratch mkdir must not be a bare .await: route it through run_cancelable"
+        );
+        assert!(
+            src.contains("provider.mkdir(&scratch_dir)")
+                && src.contains("Test cancelled while creating scratch directory"),
+            "scratch mkdir must be wrapped in run_cancelable with an explicit cancel message"
+        );
+        // The cancel message appears as the third argument of run_cancelable
+        // around that mkdir, not only as a free-floating string.
+        let mkdir_at = src
+            .find("provider.mkdir(&scratch_dir)")
+            .expect("scratch mkdir call present");
+        let window = &src[mkdir_at.saturating_sub(120)..mkdir_at];
+        assert!(
+            window.contains("run_cancelable"),
+            "run_cancelable must wrap provider.mkdir(&scratch_dir)"
+        );
+    }
+
+    /// Pin: run_cancelable returns the cancel message instead of waiting forever
+    /// on a future that never completes (the shape of a stalled provider.mkdir).
+    #[tokio::test]
+    async fn run_cancelable_aborts_a_hanging_future() {
+        let token = CancellationToken::new();
+        let cancel = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            cancel.cancel();
+        });
+        let started = Instant::now();
+        let result = run_cancelable(
+            token,
+            std::future::pending::<Result<(), String>>(),
+            "Test cancelled while creating scratch directory",
+        )
+        .await;
+        assert_eq!(
+            result,
+            Err("Test cancelled while creating scratch directory".to_string())
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "cancel must win over a hanging future within a short bound"
+        );
     }
 
     #[test]

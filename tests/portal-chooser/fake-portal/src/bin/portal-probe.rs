@@ -51,6 +51,9 @@ trait NetworkMonitor {
     fn get_connectivity(&self) -> zbus::Result<u32>;
     /// What a v3-aware GIO calls instead of the three getters above.
     fn get_status(&self) -> zbus::Result<HashMap<String, OwnedValue>>;
+    /// Version 3 also adds reachability; a stand-in that owns the name without
+    /// this method is the same incomplete-portal defect GetStatus closed.
+    fn can_reach(&self, hostname: &str, port: u32) -> zbus::Result<bool>;
 }
 
 /// The other interface GIO takes over once the portal name is owned. WebKit
@@ -175,6 +178,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => {
                 println!("probe: NETMON GetStatus FAILED {e:?}");
+                std::process::exit(8);
+            }
+        }
+
+        // CanReach is the other v3 method. Probe it so a stand-in that only
+        // implements the three getters + GetStatus still fails this selftest
+        // instead of breaking a GIO path the chooser gate never exercises.
+        match nm.can_reach("127.0.0.1", 80).await {
+            Ok(reachable) => println!("probe: NETMON CanReach={reachable}"),
+            Err(e) => {
+                println!("probe: NETMON CanReach FAILED {e:?}");
                 std::process::exit(8);
             }
         }
