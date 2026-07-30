@@ -224,11 +224,19 @@ if session_ok noportal "$rc"; then
   # holding -- the remedy is a message rendered by the WebView, not a second window,
   # and the day a window does appear here somebody has reintroduced the in-process
   # chooser that corrupts the GLib heap. If this fails, read it before "fixing" it.
-  wins=$(count_lines "$WORK/noportal/windows-after.txt")
-  wins_ref=$(count_lines "$WORK/cancel/windows-after.txt")
-  [ "$wins" = "$wins_ref" ] &&
-    ok "no extra window appears without a portal (measured: no native fallback)" ||
-    bad "window count changed ($wins vs $wins_ref): the fallback behaviour is not what was pinned"
+  # The reference window count comes from case 1: if that session failed its
+  # precondition the file was never written and count_lines would quietly read
+  # it as 0, turning a missing baseline into a chooser-shaped FAIL. Missing
+  # baseline is a skip, not a verdict (same contract as the #521 cascade-stop).
+  if [ ! -f "$WORK/cancel/windows-after.txt" ]; then
+    skip "no extra window appears without a portal (case 1 reference missing)"
+  else
+    wins=$(count_lines "$WORK/noportal/windows-after.txt")
+    wins_ref=$(count_lines "$WORK/cancel/windows-after.txt")
+    [ "$wins" = "$wins_ref" ] &&
+      ok "no extra window appears without a portal (measured: no native fallback)" ||
+      bad "window count changed ($wins vs $wins_ref): the fallback behaviour is not what was pinned"
+  fi
 
   # The #510 assertion, and the one that made this case worth revisiting. Until the
   # fix, everything above could pass on an app that presented the user with nothing
