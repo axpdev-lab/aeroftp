@@ -28,6 +28,7 @@ import { ServerHealthCheck } from './ServerHealthCheck';
 import { AlertDialog } from './Dialogs';
 import { ProfileRelocateDialog } from './ProfileRelocateDialog';
 import { listUsers } from '../utils/userPartitions';
+import { getNativeE2eBits } from '../utils/nativeE2e';
 import {
     copyProfileVaultSecrets,
     deleteProfileVaultSecrets,
@@ -814,6 +815,28 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                             {megaBadge.label}
                                         </span>
                                     )}
+                                    {/* Native client-side encryption, same list as
+                                        the Add Service chip. A saved MEGA or Filen
+                                        profile used to say so only in the subtitle
+                                        prose, which is not where the eye goes. */}
+                                    {(() => {
+                                        const bits = getNativeE2eBits(server.protocol);
+                                        if (!bits) return null;
+                                        const label = `🔒 ${bits}-bit`;
+                                        // Reuses a string already translated in every locale rather
+                                        // than adding a 47th copy of "Zero-Knowledge Encryption";
+                                        // the key is named after Filen but the text is generic.
+                                        const title = `${t('connection.filenEncryptionTitle') || 'Zero-Knowledge Encryption'} · ${bits}-bit`;
+                                        return (
+                                            <span
+                                                className="text-xs px-1.5 py-0.5 rounded font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
+                                                title={title}
+                                                aria-label={title}
+                                            >
+                                                {label}
+                                            </span>
+                                        );
+                                    })()}
                                     {filenAuthVersion && (
                                         <span
                                             className="text-xs px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
