@@ -56,8 +56,18 @@ jobs:
     # happened to fall: on the integration test at 4df30affc and 45880d0a2, on
     # the post-job cache save at 8b39ed171, always reported as "cancelled"
     # rather than a failure. The sibling fallback-fixture job does comparable
-    # work, is allowed 25, and takes about 16. Match it.
-    timeout-minutes: 25
+    # work, is allowed 25, and takes about 16.
+    #
+    # 25 then turned out to be under the runtime too, twice (runs 30460276857
+    # and 30488867618), both times inside the apt step. The job cap is the
+    # worst place to die: GitHub cancels the job without naming a step and
+    # marks every test `skipped`, which is indistinguishable at a glance from
+    # a code defect. So the expensive steps below now carry their own budget
+    # and the job cap is only a backstop. The arithmetic it has to cover:
+    # ~1.6 min before apt, up to 10 for apt (two 5-minute attempts), up to ~22
+    # for the cargo steps on a cold cache, ~1 for teardown and the cache save
+    # = ~35. 40 leaves margin and matches the windows-native job below.
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -69,6 +79,7 @@ jobs:
       # the runner headroom (first red at d744affc). Same reclaim step
       # cli-smoke.yml and build.yml already use.
       - name: Free disk space
+        timeout-minutes: 6
         run: |
           echo "Before:"; df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
@@ -82,28 +93,81 @@ jobs:
           toolchain: stable
 
       - name: Rust cache
+        timeout-minutes: 15
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
           workspaces: './src-tauri -> target'
 
+      # The apt step below fetches 61.5 MB of .deb, and that download is the
+      # entire observed failure mode. In run 30488867618 the Azure mirror
+      # served this runner at roughly 45 kB/s: `libwebkit2gtk-4.1-0` alone
+      # (25.1 MB) took 12m02s, and the step was still fetching at 23m02s when
+      # the job cap killed it. `apt-get update` is *not* the cost -- in that
+      # same run it fetched 10.9 MB in 7s -- so caching the archives is what
+      # takes the mirror off the critical path. The key rotates weekly so
+      # security updates still land, and `restore-keys` means a rotation costs
+      # only the packages that actually changed.
+      - name: apt archive cache key
+        id: apt-archive-key
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache apt archives
+        timeout-minutes: 10
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/apt-archives
+          key: apt-delta-sync-keyauth-${{ runner.os }}-${{ steps.apt-archive-key.outputs.week }}
+          restore-keys: |
+            apt-delta-sync-keyauth-${{ runner.os }}-
+
+      # Bounded and retried. The budget is what makes the signal honest: a slow
+      # mirror now fails *this step*, with its name in the log, instead of
+      # cancelling the whole job and leaving every test marked `skipped`.
+      # 5 minutes is ~3.5x the slowest healthy run measured (86s; the other
+      # four sampled runs were 20-66s) and two attempts still fit under the
+      # job cap. The step-level `timeout-minutes` is a backstop in case the
+      # retry wrapper itself wedges.
       - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          # rsync + ssh client for the host side of the integration test.
-          # Webkit/GTK stack is needed because compiling the aeroftp
-          # library pulls Tauri deps even when we only run one test binary.
-          sudo apt-get install -y \
-            rsync \
-            openssh-client \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev
+        timeout-minutes: 12
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 2
+          retry_wait_seconds: 15
+          command: |
+            set -euo pipefail
+            # An attempt killed mid-unpack leaves dpkg half-configured, and the
+            # next apt-get would refuse to run until it is told to finish.
+            sudo dpkg --configure -a || true
+            mkdir -p "$HOME/apt-archives/partial"
+            sudo apt-get update
+            # rsync + ssh client for the host side of the integration test.
+            # Webkit/GTK stack is needed because compiling the aeroftp
+            # library pulls Tauri deps even when we only run one test binary.
+            # --no-install-recommends matches every other Linux lane in this
+            # repo (cli-smoke, aerorsync-protocol, portal-chooser,
+            # nightly-telemetry), which compile the same crate with the same
+            # three -dev packages.
+            sudo apt-get install -y --no-install-recommends \
+              -o Dir::Cache::archives="$HOME/apt-archives/" \
+              -o APT::Keep-Downloaded-Packages=true \
+              rsync \
+              openssh-client \
+              libwebkit2gtk-4.1-dev \
+              libappindicator3-dev \
+              librsvg2-dev
+            # apt ran as root; hand the archives back so the cache save (which
+            # runs as the runner user) can read them.
+            sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
 
       - name: Generate fixture SSH key
         working-directory: src-tauri/tests/fixtures/sftp-rsync
         run: bash setup.sh
 
+      # Measured at 4-6s, but it pulls a base image from Docker Hub, which this
+      # repo has already seen time out (see aerorsync-protocol.yml).
       - name: Build & start docker fixture
+        timeout-minutes: 10
         working-directory: src-tauri/tests/fixtures/sftp-rsync
         run: docker compose up -d --build
 
@@ -126,7 +190,10 @@ jobs:
           docker logs aeroftp-delta-sync-fixture >&2 || true
           exit 1
 
+      # Measured at 9m42s and 9m49s on a warm rust-cache; the budget covers a
+      # cold one, where this step also compiles the lib from scratch.
       - name: "Unit tests: delta-sync modules"
+        timeout-minutes: 25
         working-directory: src-tauri
         run: |
           cargo test --lib --no-fail-fast -- \
@@ -136,7 +203,9 @@ jobs:
             delta_transport:: \
             delta_sync_rsync::
 
+      # Measured at 3m55s and 4m04s.
       - name: "Integration test: delta sync over SSH"
+        timeout-minutes: 15
         working-directory: src-tauri
         run: cargo test --test integration_delta_sync -- --ignored --nocapture
 
@@ -164,8 +233,14 @@ jobs:
     # workspace + Tauri + aeroftp lib before the test binary links. The
     # sibling key-auth job needs ~11min on a warm shared cache; this lane
     # uses an isolated shared-key so the first cache miss can take 18-22
-    # minutes. 25min gives enough headroom without parking PRs forever.
-    timeout-minutes: 25
+    # minutes.
+    #
+    # Same reasoning as the key-auth job above: the expensive steps carry
+    # their own budget so a slow step is named, and this cap is only the
+    # backstop. This lane has not been killed by the cap yet, but it installs
+    # the same package set behind the same mirror and would have gone the same
+    # way had the slowdown landed 30 seconds earlier.
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -175,6 +250,7 @@ jobs:
       # "No space left on device" while rebuilding the lib for the second
       # cargo test invocation).
       - name: Free disk space
+        timeout-minutes: 6
         run: |
           echo "Before:"; df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
@@ -188,24 +264,52 @@ jobs:
           toolchain: stable
 
       - name: Rust cache
+        timeout-minutes: 15
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
           workspaces: './src-tauri -> target'
           shared-key: delta-sync-fallback
 
+      # See the key-auth job for the measurements this is based on. Separate
+      # cache key: this lane installs sshpass on top of the same set.
+      - name: apt archive cache key
+        id: apt-archive-key
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache apt archives
+        timeout-minutes: 10
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/apt-archives
+          key: apt-delta-sync-fallback-${{ runner.os }}-${{ steps.apt-archive-key.outputs.week }}
+          restore-keys: |
+            apt-delta-sync-fallback-${{ runner.os }}-
+
       - name: Install system dependencies
         # sshpass needed to poll the password-auth fixture readiness
         # (the integration test itself uses russh via SftpProvider -
         # sshpass is just a scripting convenience).
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            rsync \
-            openssh-client \
-            sshpass \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev
+        timeout-minutes: 12
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 2
+          retry_wait_seconds: 15
+          command: |
+            set -euo pipefail
+            sudo dpkg --configure -a || true
+            mkdir -p "$HOME/apt-archives/partial"
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              -o Dir::Cache::archives="$HOME/apt-archives/" \
+              -o APT::Keep-Downloaded-Packages=true \
+              rsync \
+              openssh-client \
+              sshpass \
+              libwebkit2gtk-4.1-dev \
+              libappindicator3-dev \
+              librsvg2-dev
+            sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
 
       - name: Build & start password-auth docker fixture
         uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v3
@@ -238,7 +342,9 @@ jobs:
           docker logs aeroftp-delta-sync-fixture-password >&2 || true
           exit 1
 
+      # Measured at 10m27s and 11m29s: this is where the lib gets compiled.
       - name: Offline hard-rejection contract
+        timeout-minutes: 25
         working-directory: src-tauri
         # Non-ignored offline pins: no fixture needed but we run them
         # here too so a change that breaks the string contract without
@@ -249,7 +355,9 @@ jobs:
             hard_error_branch_runs_before_classic_fallback_in_bivio \
             --nocapture
 
+      # Measured at 3m51s and 4m15s.
       - name: "Fallback integration test: password-only fixture"
+        timeout-minutes: 15
         working-directory: src-tauri
         run: |
           cargo test --test integration_delta_sync -- \
