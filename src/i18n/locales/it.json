@@ -3436,7 +3436,7 @@
             "showKit": "Kit di ripristino",
             "hideKit": "Chiudi",
             "kitUnavailable": "Il kit di ripristino non è ancora disponibile per questa cassaforte.",
-            "defaultSaltLabel": "Salt predefinito (opt-in, portabilità solo con password; richiede alta entropia e attestazione)",
+            "defaultSaltLabel": "Salt predefinito (opt-in, portabilità solo con password; richiede alta entropia)",
             "legacyMarkerNotice": "Questo vault usa ancora il marker legacy .aeroftp-crypt.json. Convertilo in .aerocrypt.tsv dopo aver inserito la password o il keyfile.",
             "migrateLegacyMarker": "Converti marker",
             "legacyMarkerMigrated": "Marker convertito in .aerocrypt.tsv.",

@@ -4286,7 +4286,7 @@
             "tabCompare": "Porównaj",
             "compareSelectServers": "Wybrane serwery ({count})",
             "compareHint": "Wybierz od 2 do 8 serwerów do porównania równoległego. Ten sam rozmiar danych dla wszystkich.",
-            "compareDisclaimer": "Uruchomienie tego na {count} serwerach oznacza około {total} łącznego transferu ({size} na serwer, wysyłanie + pobieranie). Mogą obowiązywać opłaty dostawcy za żądania i wychodzący ruch.",
+            "compareDisclaimer": "Uruchomienie tego na {count} serwerach oznacza około {total} łącznego transferu ({size} na serwer, wysyłanie + pobieranie). Mogą obowiązywać opłaty dostawcy za żądania i wychodzący ruch i zużywa do {total} lokalnego magazynu tymczasowego równolegle.",
             "compareRunning": "Uruchamianie testu prędkości na {count} serwerach...",
             "compareFooter": "Wybranych serwerów: {count}",
             "selectAll": "Zaznacz wszystkie",

@@ -4286,7 +4286,7 @@
             "tabCompare": "Bandingkan",
             "compareSelectServers": "Server terpilih ({count})",
             "compareHint": "Pilih 2 hingga 8 server untuk pengujian berdampingan. Ukuran data yang sama untuk semua.",
-            "compareDisclaimer": "Menjalankan ini pada {count} server berarti sekitar {total} total transfer ({size} per server, unggah + unduh). Biaya permintaan dan keluar penyedia mungkin berlaku.",
+            "compareDisclaimer": "Menjalankan ini pada {count} server berarti sekitar {total} total transfer ({size} per server, unggah + unduh). Biaya permintaan dan keluar penyedia mungkin berlaku dan menggunakan hingga {total} penyimpanan sementara lokal secara paralel.",
             "compareRunning": "Menjalankan uji kecepatan pada {count} server...",
             "compareFooter": "{count} server terpilih",
             "selectAll": "Pilih semua",

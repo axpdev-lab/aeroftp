@@ -4286,7 +4286,7 @@
             "tabCompare": "Vertaa",
             "compareSelectServers": "Valitut palvelimet ({count})",
             "compareHint": "Valitse 2-8 palvelinta rinnakkaiseen vertailuun. Sama hyötykuorman koko kaikille.",
-            "compareDisclaimer": "Tämän ajaminen {count} palvelimella tarkoittaa noin {total} kokonaissiirtoa ({size} per palvelin, lähetys + lataus). Palveluntarjoajan pyyntö- ja egress-kustannuksia voi syntyä.",
+            "compareDisclaimer": "Tämän ajaminen {count} palvelimella tarkoittaa noin {total} kokonaissiirtoa ({size} per palvelin, lähetys + lataus). Palveluntarjoajan pyyntö- ja egress-kustannuksia voi syntyä ja käyttää rinnakkain enintään {total} paikallista väliaikaista tallennustilaa.",
             "compareRunning": "Nopeustesti käynnissä {count} palvelimella...",
             "compareFooter": "{count} palvelinta valittu",
             "selectAll": "Valitse kaikki",

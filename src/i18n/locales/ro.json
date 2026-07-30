@@ -4286,7 +4286,7 @@
             "tabCompare": "Compară",
             "compareSelectServers": "Servere selectate ({count})",
             "compareHint": "Alege între 2 și 8 servere pentru a le testa în paralel. Aceeași dimensiune de date pentru toate.",
-            "compareDisclaimer": "Rularea pe {count} servere înseamnă aproximativ {total} de transfer total ({size} per server, încărcare + descărcare). Se pot aplica costuri ale furnizorului pentru cereri și trafic de ieșire.",
+            "compareDisclaimer": "Rularea pe {count} servere înseamnă aproximativ {total} de transfer total ({size} per server, încărcare + descărcare). Se pot aplica costuri ale furnizorului pentru cereri și trafic de ieșire și folosește până la {total} stocare temporară locală în paralel.",
             "compareRunning": "Se rulează testul de viteză pe {count} servere...",
             "compareFooter": "{count} server(e) selectat(e)",
             "selectAll": "Selectează tot",

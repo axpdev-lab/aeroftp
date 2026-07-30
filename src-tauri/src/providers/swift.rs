@@ -1155,7 +1155,10 @@ impl StorageProvider for SwiftProvider {
                 .await?;
 
             if !resp.status().is_success() {
-                warn!("Bulk delete returned HTTP {}", resp.status());
+                return Err(ProviderError::ServerError(format!(
+                    "Bulk delete failed: HTTP {}",
+                    resp.status()
+                )));
             }
         }
 
@@ -1342,10 +1345,19 @@ impl StorageProvider for SwiftProvider {
     }
 
     /// HEAD {storage_url} -> X-Account-Bytes-Used + X-Account-Meta-Quota-Bytes.
-    /// Default 40GB for Blomp free tier if quota header absent.
+    /// Default 40GB for Blomp free tier if quota header absent on a successful
+    /// response. Non-success statuses (403 on account-level ops, 5xx, …) must
+    /// not fabricate "0 used / 40 GB" as if they were real readings.
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         let url = self.storage_url()?.to_string();
         let resp = self.swift_request(Method::HEAD, &url, None, &[]).await?;
+
+        if !resp.status().is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "Account HEAD failed: HTTP {}",
+                resp.status()
+            )));
+        }
 
         let used: u64 = resp
             .headers()

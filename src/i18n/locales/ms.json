@@ -4286,7 +4286,7 @@
             "tabCompare": "Bandingkan",
             "compareSelectServers": "Pelayan dipilih ({count})",
             "compareHint": "Pilih 2 hingga 8 pelayan untuk penanda aras bersebelahan. Saiz muatan yang sama untuk semua.",
-            "compareDisclaimer": "Menjalankan ini pada {count} pelayan bermaksud kira-kira {total} jumlah pemindahan ({size} setiap pelayan, muat naik + muat turun). Kos permintaan dan keluaran pembekal mungkin dikenakan.",
+            "compareDisclaimer": "Menjalankan ini pada {count} pelayan bermaksud kira-kira {total} jumlah pemindahan ({size} setiap pelayan, muat naik + muat turun). Kos permintaan dan keluaran pembekal mungkin dikenakan dan menggunakan sehingga {total} storan sementara tempatan secara selari.",
             "compareRunning": "Menjalankan ujian kelajuan pada {count} pelayan...",
             "compareFooter": "{count} pelayan dipilih",
             "selectAll": "Pilih semua",

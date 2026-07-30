@@ -4286,7 +4286,7 @@
             "tabCompare": "Usporedi",
             "compareSelectServers": "Odabrani poslužitelji ({count})",
             "compareHint": "Odaberite od 2 do 8 poslužitelja za usporedno mjerenje. Ista veličina podataka za sve.",
-            "compareDisclaimer": "Pokretanje na {count} poslužitelja znači oko {total} ukupnog prijenosa ({size} po poslužitelju, slanje + preuzimanje). Mogu se primijeniti troškovi zahtjeva i odlaznog prometa pružatelja usluge.",
+            "compareDisclaimer": "Pokretanje na {count} poslužitelja znači oko {total} ukupnog prijenosa ({size} po poslužitelju, slanje + preuzimanje). Mogu se primijeniti troškovi zahtjeva i odlaznog prometa pružatelja usluge i paralelno koristi do {total} lokalne privremene pohrane.",
             "compareRunning": "Pokretanje testa brzine na {count} poslužitelja...",
             "compareFooter": "Odabrano poslužitelja: {count}",
             "selectAll": "Odaberi sve",

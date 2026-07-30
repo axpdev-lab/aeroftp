@@ -4286,7 +4286,7 @@
             "tabCompare": "Primerjaj",
             "compareSelectServers": "Izbrani strežniki ({count})",
             "compareHint": "Izberite od 2 do 8 strežnikov za vzporedno primerjavo. Enaka velikost podatkov za vse.",
-            "compareDisclaimer": "Izvajanje na {count} strežnikih pomeni približno {total} skupnega prenosa ({size} na strežnik, nalaganje + prenos). Stroški ponudnika za zahteve in odhodni promet se lahko uporabljajo.",
+            "compareDisclaimer": "Izvajanje na {count} strežnikih pomeni približno {total} skupnega prenosa ({size} na strežnik, nalaganje + prenos). Stroški ponudnika za zahteve in odhodni promet se lahko uporabljajo in vzporedno uporabi do {total} lokalne začasne shrambe.",
             "compareRunning": "Izvajanje testa hitrosti na {count} strežnikih...",
             "compareFooter": "Izbranih strežnikov: {count}",
             "selectAll": "Izberi vse",

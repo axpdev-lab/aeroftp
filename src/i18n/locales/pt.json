@@ -4286,7 +4286,7 @@
             "tabCompare": "Comparar",
             "compareSelectServers": "Servidores selecionados ({count})",
             "compareHint": "Escolha 2 a 8 servidores para avaliar lado a lado. O mesmo tamanho de dados para todos.",
-            "compareDisclaimer": "Executar isto em {count} servidores significa cerca de {total} de transferência total ({size} por servidor, envio + transferência). Podem aplicar-se custos do fornecedor por pedidos e tráfego de saída.",
+            "compareDisclaimer": "Executar isto em {count} servidores significa cerca de {total} de transferência total ({size} por servidor, envio + transferência). Podem aplicar-se custos do fornecedor por pedidos e tráfego de saída e usa até {total} de armazenamento temporário local em paralelo.",
             "compareRunning": "A executar teste de velocidade em {count} servidores...",
             "compareFooter": "{count} servidor(es) selecionado(s)",
             "selectAll": "Selecionar tudo",

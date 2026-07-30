@@ -207,6 +207,64 @@ pub struct ServerProfileExport {
 
 // ============ Export/Import ============
 
+/// Keys under `ServerProfileExport.options` that carry long-lived secrets
+/// (password-equivalent material). Stripped when the user unticks "include
+/// credentials", and counted toward `has_credentials` when they remain.
+pub const OPTIONS_SECRET_KEYS: &[&str] = &[
+    "totp_secret",
+    "key_passphrase",
+    "sessionToken",
+    "sasToken",
+    "clientSecret",
+    "client_secret",
+    "secret_key",
+    "secretKey",
+    "access_key_secret",
+    "password",
+    "passphrase",
+    "privateKey",
+    "private_key",
+    "api_key",
+    "apiKey",
+    "token",
+    "refresh_token",
+    "refreshToken",
+];
+
+/// Remove options-borne secrets in place. No-op when `options` is absent or
+/// not a JSON object.
+pub fn strip_options_borne_secrets(options: &mut Option<serde_json::Value>) {
+    let Some(value) = options.as_mut() else {
+        return;
+    };
+    let Some(map) = value.as_object_mut() else {
+        return;
+    };
+    for key in OPTIONS_SECRET_KEYS {
+        map.remove(*key);
+    }
+    if map.is_empty() {
+        *options = None;
+    }
+}
+
+fn options_carry_secrets(options: &Option<serde_json::Value>) -> bool {
+    let Some(value) = options.as_ref() else {
+        return false;
+    };
+    let Some(map) = value.as_object() else {
+        return false;
+    };
+    OPTIONS_SECRET_KEYS.iter().any(|k| {
+        map.get(*k)
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty())
+            || map
+                .get(*k)
+                .is_some_and(|v| !v.is_null() && v.as_str().is_none())
+    })
+}
+
 pub fn export_profiles(
     servers: Vec<ServerProfileExport>,
     provider_secrets: HashMap<String, ProviderSecrets>,
@@ -221,7 +279,8 @@ pub fn export_profiles(
     // profile can carry, not only OAuth/Jotta tokens. A profile whose only
     // saved secret is a crypt-overlay password (CWP-20B) or a per-protocol
     // snapshot (#215 `mode_credentials`) still contains credentials, so the
-    // import preview should say so.
+    // import preview should say so. Options-borne secrets (TOTP seed, key
+    // passphrase, SAS token, …) count the same way when they were left in.
     let any_provider_secret = provider_secrets.values().any(|s| {
         s.oauth.is_some()
             || s.jotta_refresh.is_some()
@@ -234,13 +293,16 @@ pub fn export_profiles(
             || s.onedrive_drive_id.is_some()
             || s.onedrive_drive_type.is_some()
     });
+    let any_options_secret = servers.iter().any(|s| options_carry_secrets(&s.options));
     let metadata = ExportMetadata {
         export_date: chrono::Utc::now().to_rfc3339(),
         aeroftp_version: env!("CARGO_PKG_VERSION").to_string(),
         server_count: servers.len() as u32,
         // Issue #214: the "has credentials" badge in the import dialog now
         // also reflects OAuth / Jotta refresh tokens, not only password blobs.
-        has_credentials: servers.iter().any(|s| s.credential.is_some()) || any_provider_secret,
+        has_credentials: servers.iter().any(|s| s.credential.is_some())
+            || any_provider_secret
+            || any_options_secret,
     };
 
     let payload = ExportPayload {
@@ -788,6 +850,39 @@ mod tests {
         let server = sample_server("server-a", "ftp");
         let metadata = export_profiles(vec![server], HashMap::new(), "pw-12345678", &tmp).unwrap();
         assert!(!metadata.has_credentials);
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn strip_options_borne_secrets_removes_totp_and_passphrase() {
+        let mut options = Some(serde_json::json!({
+            "totp_secret": "JBSWY3DPEHPK3PXP",
+            "key_passphrase": "hunter2",
+            "remotePath": "/data",
+            "sasToken": "sv=2020&sig=abc",
+        }));
+        strip_options_borne_secrets(&mut options);
+        let map = options.as_ref().unwrap().as_object().unwrap();
+        assert!(!map.contains_key("totp_secret"));
+        assert!(!map.contains_key("key_passphrase"));
+        assert!(!map.contains_key("sasToken"));
+        assert_eq!(map.get("remotePath").and_then(|v| v.as_str()), Some("/data"));
+    }
+
+    #[test]
+    fn options_totp_secret_flips_has_credentials() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp_export_totp_{}_{}.aeroftp",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        let mut server = sample_server("server-a", "filen");
+        server.options = Some(serde_json::json!({ "totp_secret": "JBSWY3DPEHPK3PXP" }));
+        let metadata = export_profiles(vec![server], HashMap::new(), "pw-12345678", &tmp).unwrap();
+        assert!(
+            metadata.has_credentials,
+            "a TOTP seed in options is a credential"
+        );
         let _ = std::fs::remove_file(&tmp);
     }
 }

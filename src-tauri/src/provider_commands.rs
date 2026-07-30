@@ -6660,6 +6660,12 @@ pub async fn provider_compare_directories(
         }
     }
 
+    // Pin the crypt overlay wrap state for the whole remote scan + normalize
+    // pass. Sampling only after the scan (old behaviour) raced a badge toggle
+    // mid-list: some rows listed as plaintext, later rows as ciphertext, then
+    // the post-scan flag mis-classified the whole map.
+    let overlay_wrapped_at_scan_start = state.overlay_wrapped.load(Ordering::SeqCst);
+
     let list_model = resolve_provider_list_session_model(&state.provider, 8).await;
     if list_model.is_clone_pool() {
         use crate::sync_core::scan::{scan_remote_tree_with_provider_lock_checked, ScanOptions};
@@ -6903,8 +6909,19 @@ pub async fn provider_compare_directories(
     // for the OTHER case, a compare launched while the box is unwrapped (badge
     // locked, or a scope that never applied the overlay slot), where the
     // listing really is encrypted.
+    //
+    // Use the wrap flag pinned at scan start. If the badge flipped mid-scan the
+    // listing is mixed ciphertext/plaintext and neither branch is safe: fail
+    // closed and ask the user to retry.
     if let Some(vault_id) = crypt_vault_id.as_deref() {
-        if state.overlay_wrapped.load(Ordering::SeqCst) {
+        let overlay_wrapped_now = state.overlay_wrapped.load(Ordering::SeqCst);
+        if overlay_wrapped_now != overlay_wrapped_at_scan_start {
+            return Err(
+                "Crypt overlay was toggled during Compare; the remote listing is inconsistent. Retry the compare."
+                    .to_string(),
+            );
+        }
+        if overlay_wrapped_at_scan_start {
             // An overlay that cannot map the ciphertext length back to the
             // plaintext one (legacy AeroCrypt v1/v2) reports the on-wire size,
             // so comparing it against the local plaintext size flags every
