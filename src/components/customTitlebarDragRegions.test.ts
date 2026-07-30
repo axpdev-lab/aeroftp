@@ -33,6 +33,15 @@ describe('titlebar drag fillers (#511)', () => {
     const rightHandFillers = dragRegionClasses(SOURCE).filter((cls) => cls.includes('self-stretch'));
     // The reserved 96px slot filler plus the two 12px inter-cluster spacers.
     expect(rightHandFillers).toHaveLength(3);
+    // Counted by role, not in aggregate: three fillers that all stretch would
+    // also satisfy the total while the slot filler had lost its `flex-1` and
+    // stopped claiming the empty width, or a spacer had lost its `w-3` and
+    // become a zero-width region that is just as ungrabbable as a zero-height
+    // one.
+    expect(rightHandFillers.filter((cls) => cls.includes('flex-1'))).toHaveLength(1);
+    expect(
+      rightHandFillers.filter((cls) => cls.includes('w-3') && cls.includes('shrink-0')),
+    ).toHaveLength(2);
     for (const cls of rightHandFillers) {
       // `h-full` next to `self-stretch` wins and puts the height back to 0.
       expect(cls).not.toContain('h-full');
