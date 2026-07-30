@@ -18,7 +18,19 @@
 #                                  and the app TELLS THE USER why instead of
 #                                  leaving a button that silently does nothing
 #
+# #521: when a session fails its precondition (app never reached app_ready,
+# window never opened on the private display, etc.), report ONE failure that
+# names the session, and SKIP every assertion that needs a live session. A
+# cascade of "chooser did NOT go out of process" lines after an environmental
+# cold-start is a lie about the product. One optional retry of a failed
+# scenario is on by default (PORTAL_TEST_RETRY=1) and is logged when it fires.
+#
 # Usage: portal-chooser-test.sh /path/to/aeroftp
+#
+# Pin the cascade-stop without a Tauri build:
+#   PORTAL_TEST_FAKE_RC=1 PORTAL_TEST_RETRY=0 \
+#     tests/portal-chooser/portal-chooser-test.sh /bin/true
+# Expect: three session failures, many skips, zero chooser-shaped fails.
 set -uo pipefail
 
 APP="${1:?usage: portal-chooser-test.sh /path/to/aeroftp}"
@@ -33,39 +45,84 @@ mkdir -p "$WORK"
 # that open no chooser and case 1 must go red.
 SEQ="${PORTAL_TEST_SEQ:-Export / Import|Import Servers Restore from .aeroftp backup file|Choose .aeroftp file...}"
 
+# One retry of a failed scenario by default: cold-start under Xvfb is
+# environmental and has been observed to pass on the same commit after a
+# re-run (#521). Set PORTAL_TEST_RETRY=0 to disable (and for the fake pin).
+RETRY="${PORTAL_TEST_RETRY:-1}"
+
 PASS=0
 FAIL=0
 SKIP=0
-ok()  { printf '  ok   %s\n' "$1"; PASS=$((PASS + 1)); }
-bad() { printf '  FAIL %s\n' "$1" >&2; FAIL=$((FAIL + 1)); }
+ok()   { printf '  ok   %s\n' "$1"; PASS=$((PASS + 1)); }
+bad()  { printf '  FAIL %s\n' "$1" >&2; FAIL=$((FAIL + 1)); }
 skip() { printf '  skip %s\n' "$1"; SKIP=$((SKIP + 1)); }
 
+# Run one scenario. Echoes the exit code on stdout (the only line callers may
+# capture). Retry chatter goes to stderr so it never pollutes `rc=$(...)`.
 run_case() {
   local name="$1"; shift
   local out="$WORK/$name"
-  local rc
-  rm -rf "$out"
-  # shellcheck disable=SC2086
-  env "$@" RECON_OUT="$out" RECON_PRESS="$SEQ" RECON_POST_SETTLE=6 \
-      "$HERE/recon-session.sh" "$APP" >"$WORK/$name.log" 2>&1
-  rc=$?
-
-  # A renderer that misses app_ready is an environmental precondition failure,
-  # not evidence about the chooser. Retry that one failure once, visibly, while
-  # preserving the first attempt for diagnosis. Other harness failures are not
-  # retried: repeating a malformed setup would only hide the real error.
-  if [ "$rc" -ne 0 ] &&
-      grep -q "::error::the app never reported app_ready" "$WORK/$name.log"; then
-    mv "$out" "$WORK/$name-attempt1"
-    mv "$WORK/$name.log" "$WORK/$name-attempt1.log"
-    printf '  RETRY %s missed the app_ready precondition; retrying once\n' "$name" >&2
-    # shellcheck disable=SC2086
-    env "$@" RECON_OUT="$out" RECON_PRESS="$SEQ" RECON_POST_SETTLE=6 \
-        "$HERE/recon-session.sh" "$APP" >"$WORK/$name.log" 2>&1
-    rc=$?
+  local attempt=1
+  local max_attempts=1
+  local last_rc=1
+  if [ "$RETRY" = "1" ]; then
+    max_attempts=2
   fi
 
-  echo "$rc"
+  while [ "$attempt" -le "$max_attempts" ]; do
+    rm -rf "$out"
+    mkdir -p "$out"
+
+    if [ -n "${PORTAL_TEST_FAKE_RC:-}" ]; then
+      # Harness-only path: force a non-zero session without starting the app,
+      # so the cascade-stop (#521) can be pinned on any machine.
+      printf 'fake session for %s (PORTAL_TEST_FAKE_RC=%s)\n' \
+          "$name" "$PORTAL_TEST_FAKE_RC" >"$WORK/$name.log"
+      last_rc="$PORTAL_TEST_FAKE_RC"
+    else
+      # shellcheck disable=SC2086
+      env "$@" RECON_OUT="$out" RECON_PRESS="$SEQ" RECON_POST_SETTLE=6 \
+          "$HERE/recon-session.sh" "$APP" >"$WORK/$name.log" 2>&1
+      last_rc=$?
+    fi
+
+    if [ "$last_rc" -eq 0 ]; then
+      if [ "$attempt" -gt 1 ]; then
+        printf '  retry of scenario %s succeeded on attempt %s (#521)\n' \
+            "$name" "$attempt" >&2
+      fi
+      echo "$last_rc"
+      return
+    fi
+
+    # Only retry environmental cold-start (app never reported app_ready). Other
+    # harness failures must not be hidden by a blind re-run (#523 shape, #521 pin).
+    if [ "$attempt" -lt "$max_attempts" ] &&
+        [ -z "${PORTAL_TEST_FAKE_RC:-}" ] &&
+        grep -q "::error::the app never reported app_ready" "$WORK/$name.log"; then
+      printf '  scenario %s attempt %s missed app_ready (exit %s); retrying once (#521)\n' \
+          "$name" "$attempt" "$last_rc" >&2
+      mv "$out" "$WORK/$name-attempt1" 2>/dev/null || true
+      mv "$WORK/$name.log" "$WORK/$name-attempt1.log" 2>/dev/null || true
+      attempt=$((attempt + 1))
+      continue
+    fi
+
+    echo "$last_rc"
+    return
+  done
+}
+
+# Session-level gate. On success: one ok, return 0. On failure: ONE bad that
+# names the precondition, return 1 so the caller skips chooser assertions.
+session_ok() {
+  local name="$1" rc="$2"
+  if [ "$rc" = "0" ]; then
+    ok "the session ran to completion"
+    return 0
+  fi
+  bad "the session failed its precondition (exit $rc), see $WORK/${name}.log; chooser assertions for this case are skipped (#521)"
+  return 1
 }
 
 # `grep -c` prints 0 AND exits 1 when a file has no matching lines, so the
@@ -96,20 +153,7 @@ call1() { head -1 "$WORK/$1/portal-calls.jsonl" 2>/dev/null; }
 
 echo "== 1. the portal is asked, and the request really comes from GTK =="
 rc=$(run_case cancel RECON_MODE=cancel)
-if [ "$rc" != "0" ]; then
-  bad "the session failed its precondition (exit $rc), see $WORK/cancel.log"
-  skip "app-window assertion: the session did not run"
-  skip "accessibility-bus assertion: the session did not run"
-  skip "portal-call assertion: the chooser was never driven"
-  skip "OpenFile assertion: the chooser was never driven"
-  skip "GTK handle-token assertion: the chooser was never driven"
-  skip "dialog-title assertion: the chooser was never driven"
-  skip "portal-cancellation assertion: the chooser was never driven"
-  skip "post-cancellation health assertion: the chooser was never driven"
-  skip "chooser pre-check assertion: the chooser was never driven"
-  skip "false-alarm assertion: the chooser was never driven"
-else
-  ok "the session ran to completion"
+if session_ok cancel "$rc"; then
   grep -q "windows with class aeroftp on" "$WORK/cancel.log" &&
     ! grep -q "has NO window on" "$WORK/cancel.log" &&
     ok "the app window is on the private display, not the developer session" ||
@@ -142,35 +186,36 @@ else
   grep -q "chooser unavailable" "$WORK/cancel/app.log" 2>/dev/null &&
     bad "a host WITH a portal was warned about a missing chooser (crying wolf)" ||
     ok "no false alarm on a host with a working portal"
+else
+  skip "the app window is on the private display (needs a live session)"
+  skip "the accessibility bus is private (needs a live session)"
+  skip "the chooser reached the portal (needs a live session)"
+  skip "it called OpenFile (needs a live session)"
+  skip "the handle_token is GTK-generated (needs a live session)"
+  skip "the dialog carries the title the app asked for (needs a live session)"
+  skip "the portal answered with a cancellation (needs a live session)"
+  skip "a cancelled chooser leaves the app healthy (needs a live session)"
+  skip "the chooser pre-check ran (#510) (needs a live session)"
+  skip "no false alarm on a host with a working portal (needs a live session)"
 fi
 
 echo "== 2. a portal that refuses does not take the app down =="
 rc=$(run_case error RECON_MODE=error)
-if [ "$rc" != "0" ]; then
-  bad "the session failed its precondition (exit $rc), see $WORK/error.log"
-  skip "portal-call assertion: the chooser was never driven"
-  skip "D-Bus refusal assertion: the chooser was never driven"
-  skip "post-refusal health assertion: the chooser was never driven"
-else
-  ok "the session ran to completion"
+if session_ok error "$rc"; then
   [ "$(calls error)" -ge 1 ] &&
     ok "the portal was still asked" || bad "the portal was not asked"
   call1 error | grep -q '"answered":"dbus-error"' &&
     ok "the refusal was delivered as a D-Bus error" || bad "the refusal was not recorded"
   healthy error "the app survives a refusing portal" "panicked"
+else
+  skip "the portal was still asked (needs a live session)"
+  skip "the refusal was delivered as a D-Bus error (needs a live session)"
+  skip "the app survives a refusing portal (needs a live session)"
 fi
 
 echo "== 3. no portal installed: what actually happens =="
 rc=$(run_case noportal RECON_NO_PORTAL=1)
-if [ "$rc" != "0" ]; then
-  bad "the session failed its precondition (exit $rc), see $WORK/noportal.log"
-  skip "no-portal bus assertion: the session did not run"
-  skip "native-fallback assertion: the chooser was never driven"
-  skip "chooser-unavailable assertion: the chooser was never driven"
-  skip "chooser-presentability assertion: the chooser was never driven"
-  skip "no-portal health assertion: the chooser was never driven"
-else
-  ok "the session ran to completion"
+if session_ok noportal "$rc"; then
   grep -q "portal service(s) omitted" "$WORK/noportal.log" &&
     ok "the bus could activate everything except the portal" ||
     bad "the no-portal bus was not built as intended"
@@ -204,6 +249,12 @@ else
     bad "the app called this host's chooser presentable while no portal existed" ||
     ok "the host was not wrongly reported as having a working chooser"
   healthy noportal "the app survives with no portal present" "panicked"
+else
+  skip "the bus could activate everything except the portal (needs a live session)"
+  skip "no extra window appears without a portal (needs a live session)"
+  skip "the app detected the missing portal (#510) (needs a live session)"
+  skip "the host was not wrongly reported as having a working chooser (needs a live session)"
+  skip "the app survives with no portal present (needs a live session)"
 fi
 
 echo

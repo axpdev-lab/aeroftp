@@ -83,6 +83,12 @@ jobs:
       - name: Self-test
         run: tests/portal-chooser/selftest-portal.sh
 
+      # #521: a session that fails its precondition must report one failure and
+      # skip chooser assertions, not cascade eleven reds that accuse the chooser.
+      # No D-Bus, no X, no app build: PORTAL_TEST_FAKE_RC forces the shape.
+      - name: Self-test precondition cascade-stop (#521)
+        run: tests/portal-chooser/selftest-precondition.sh
+
       # The stand-in must never be reachable from the shipped app's build graph.
       # Cheap here, and it catches the day somebody adds it as a path dependency
       # "just for tests".
