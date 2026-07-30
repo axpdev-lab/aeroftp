@@ -13117,7 +13117,9 @@ fn export_sync_template_cmd(
     profile_id: String,
     local_path: String,
     remote_path: String,
-    exclude_patterns: Vec<String>,
+    // `None` (or an empty list) means "the preset's own", see
+    // `sync::resolve_exclude_patterns`.
+    exclude_patterns: Option<Vec<String>>,
 ) -> Result<String, String> {
     let profiles = sync::load_sync_profiles()?;
     let profile = profiles
@@ -13130,13 +13132,14 @@ fn export_sync_template_cmd(
     } else {
         None
     };
+    let excludes = sync::resolve_exclude_patterns(exclude_patterns, &profile.exclude_patterns);
     let template = sync::export_sync_template(
         &name,
         &description,
         profile,
         &local_path,
         &remote_path,
-        &exclude_patterns,
+        &excludes,
         schedule_opt,
     )?;
     serde_json::to_string_pretty(&template).map_err(|e| e.to_string())
@@ -13163,7 +13166,9 @@ struct SyncScriptExportArgs {
     template_description: String,
     local_path: String,
     remote_path: String,
-    exclude_patterns: Vec<String>,
+    // `None` (or an empty list) means "the preset's own", see
+    // `sync::resolve_exclude_patterns`.
+    exclude_patterns: Option<Vec<String>>,
     format: String,
 }
 
@@ -13176,6 +13181,7 @@ fn export_sync_script_cmd(args: SyncScriptExportArgs) -> Result<String, String> 
         .iter()
         .find(|p| p.id == args.profile_id)
         .ok_or_else(|| format!("Profile '{}' not found", args.profile_id))?;
+    let excludes = sync::resolve_exclude_patterns(args.exclude_patterns, &profile.exclude_patterns);
     sync::export_sync_script(sync::SyncScriptExportOptions {
         profile,
         profile_display_name: &args.profile_display_name,
@@ -13183,7 +13189,7 @@ fn export_sync_script_cmd(args: SyncScriptExportArgs) -> Result<String, String> 
         template_description: &args.template_description,
         local_path: &args.local_path,
         remote_path: &args.remote_path,
-        exclude_patterns: &args.exclude_patterns,
+        exclude_patterns: &excludes,
         format,
     })
 }

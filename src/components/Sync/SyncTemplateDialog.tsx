@@ -137,7 +137,10 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
             profileId: presetId,
             localPath,
             remotePath,
-            excludePatterns,
+            // Empty means "the preset's own", the same contract the
+            // `.aeroftp-script` path has always used. Sending `[]` verbatim
+            // exported a Mirror script with no excludes at all.
+            excludePatterns: excludePatterns.length > 0 ? excludePatterns : null,
         });
         await writeTextFile(filePath, jsonContent);
         setResult({ success: true, message: t('syncPanel.templateExported') });
@@ -214,7 +217,8 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                 template_description: templateDesc,
                 local_path: localPath,
                 remote_path: remotePath,
-                exclude_patterns: excludePatterns,
+                exclude_patterns:
+                    excludePatterns.length > 0 ? excludePatterns : null,
                 format,
             },
         });
