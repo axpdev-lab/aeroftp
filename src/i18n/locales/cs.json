@@ -70,7 +70,8 @@
             "duplicate": "Duplikovat",
             "current": "aktuální",
             "goToActiveSession": "Přejít na aktivní relaci",
-            "password": "Heslo"
+            "password": "Heslo",
+            "default": "Výchozí"
         },
         "connection": {
             "title": "Připojení k serveru",

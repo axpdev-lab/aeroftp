@@ -70,7 +70,8 @@
             "required": "obbligatorio",
             "duplicate": "Duplica",
             "goToActiveSession": "Vai alla sessione attiva",
-            "password": "Password"
+            "password": "Password",
+            "default": "Predefinito"
         },
         "accountLock": {
             "title": "Scegli un account",

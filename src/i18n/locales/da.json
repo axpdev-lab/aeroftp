@@ -70,7 +70,8 @@
             "duplicate": "Dupliker",
             "current": "aktuel",
             "goToActiveSession": "Gå til aktiv session",
-            "password": "Adgangskode"
+            "password": "Adgangskode",
+            "default": "Standard"
         },
         "connection": {
             "title": "Forbind til server",

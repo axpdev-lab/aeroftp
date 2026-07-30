@@ -70,7 +70,8 @@
             "duplicate": "Çoğalt",
             "current": "geçerli",
             "goToActiveSession": "Etkin oturuma git",
-            "password": "Parola"
+            "password": "Parola",
+            "default": "Varsayılan"
         },
         "connection": {
             "title": "Sunucuya Bağlan",

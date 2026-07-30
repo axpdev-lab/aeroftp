@@ -70,7 +70,8 @@
             "duplicate": "ডুপ্লিকেট",
             "current": "বর্তমান",
             "goToActiveSession": "সক্রিয় সেশনে যান",
-            "password": "পাসওয়ার্ড"
+            "password": "পাসওয়ার্ড",
+            "default": "ডিফল্ট"
         },
         "connection": {
             "title": "সার্ভারে সংযোগ করুন",

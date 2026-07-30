@@ -70,7 +70,8 @@
             "duplicate": "დუბლირება",
             "current": "მიმდინარე",
             "goToActiveSession": "აქტიურ სესიაზე გადასვლა",
-            "password": "პაროლი"
+            "password": "პაროლი",
+            "default": "ნაგულისხმევი"
         },
         "connection": {
             "title": "სერვერთან დაკავშირება",

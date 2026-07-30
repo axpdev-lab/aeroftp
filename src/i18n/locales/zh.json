@@ -70,7 +70,8 @@
             "duplicate": "复制",
             "current": "当前",
             "goToActiveSession": "前往活动会话",
-            "password": "密码"
+            "password": "密码",
+            "default": "默认"
         },
         "connection": {
             "title": "连接到服务器",

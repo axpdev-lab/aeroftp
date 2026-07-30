@@ -70,7 +70,8 @@
             "duplicate": "Nhân bản",
             "current": "hiện tại",
             "goToActiveSession": "Đến phiên đang hoạt động",
-            "password": "Mật khẩu"
+            "password": "Mật khẩu",
+            "default": "Mặc định"
         },
         "connection": {
             "title": "Kết nối đến máy chủ",

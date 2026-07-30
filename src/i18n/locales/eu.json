@@ -70,7 +70,8 @@
             "duplicate": "Bikoiztu",
             "current": "uneko",
             "goToActiveSession": "Joan saio aktibora",
-            "password": "Pasahitza"
+            "password": "Pasahitza",
+            "default": "Lehenetsia"
         },
         "connection": {
             "title": "Zerbitzarira Konektatu",

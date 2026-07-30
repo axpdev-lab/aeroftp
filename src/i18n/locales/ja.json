@@ -70,7 +70,8 @@
             "duplicate": "複製",
             "current": "現在",
             "goToActiveSession": "アクティブなセッションへ移動",
-            "password": "パスワード"
+            "password": "パスワード",
+            "default": "デフォルト"
         },
         "connection": {
             "title": "サーバーに接続",

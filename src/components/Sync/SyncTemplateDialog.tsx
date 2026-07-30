@@ -137,7 +137,10 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
             profileId: presetId,
             localPath,
             remotePath,
-            excludePatterns,
+            // Empty means "the preset's own", the same contract the
+            // `.aeroftp-script` path has always used. Sending `[]` verbatim
+            // exported a Mirror script with no excludes at all.
+            excludePatterns: excludePatterns.length > 0 ? excludePatterns : null,
         });
         await writeTextFile(filePath, jsonContent);
         setResult({ success: true, message: t('syncPanel.templateExported') });
@@ -214,7 +217,8 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                 template_description: templateDesc,
                 local_path: localPath,
                 remote_path: remotePath,
-                exclude_patterns: excludePatterns,
+                exclude_patterns:
+                    excludePatterns.length > 0 ? excludePatterns : null,
                 format,
             },
         });
@@ -392,14 +396,14 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
 
     if (!isOpen) return null;
 
+    // The button names the action, never the format. Labelling it
+    // `templateFormatBash` put a second control reading `Bash script (.sh)`
+    // next to the radio of the same name, so the only button that does
+    // anything read as one more format to choose from.
     const exportButtonLabel =
         exportFormat === 'aerosync'
             ? t('syncPanel.templateExport')
-            : exportFormat === 'aeroftp-script'
-                ? t('syncPanel.aerosyncScriptExportButton') || 'Export script'
-                : exportFormat === 'bash'
-                    ? t('syncPanel.templateFormatBash')
-                    : t('syncPanel.templateFormatPwsh');
+            : t('syncPanel.aerosyncScriptExportButton');
 
     const formatRadio = (value: ExportFormat, label: string, hint?: string) => {
         const active = exportFormat === value;
@@ -428,7 +432,11 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                     ) : null}
                     {isDefault ? (
                         <span className="ml-1 text-[10px] uppercase tracking-wide text-purple-400">
-                            ({t('common.default') || 'default'})
+                            {/* No `|| 'default'` guard: `t()` returns the key
+                                itself on a miss, which is truthy, so the guard
+                                could never fire and the raw `common.default`
+                                reached the user. The key exists now. */}
+                            ({t('common.default')})
                         </span>
                     ) : null}
                 </span>

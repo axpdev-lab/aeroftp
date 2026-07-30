@@ -3883,6 +3883,25 @@ pub struct SyncTemplateProfile {
     pub compression_mode: crate::transfer_pool::CompressionMode,
 }
 
+/// What an export should exclude: the caller's list when it has one, the
+/// preset's own otherwise.
+///
+/// An empty list from the UI means "the user added nothing", not "exclude
+/// nothing". Sending it verbatim is how the `.sh` and `.ps1` exports came out
+/// with no excludes at all while the same preset exported as
+/// `.aeroftp-script` carried `node_modules`, `.git` and the rest: that path
+/// already passed `None` and fell back here. A Mirror script that has lost its
+/// excludes does not fail, it uploads `.git`, so the two paths have to agree.
+pub fn resolve_exclude_patterns(
+    caller_patterns: Option<Vec<String>>,
+    preset_patterns: &[String],
+) -> Vec<String> {
+    match caller_patterns {
+        Some(patterns) if !patterns.is_empty() => patterns,
+        _ => preset_patterns.to_vec(),
+    }
+}
+
 /// Export current sync config as a template
 pub fn export_sync_template(
     name: &str,
@@ -4207,6 +4226,38 @@ pub fn import_sync_script(script: &str) -> Result<SyncScriptMeta, String> {
         }
     }
     Err("No AEROFTP-META marker found in script".to_string())
+}
+
+#[cfg(test)]
+mod exclude_pattern_tests {
+    use super::*;
+
+    fn preset() -> Vec<String> {
+        vec!["node_modules".to_string(), ".git".to_string()]
+    }
+
+    #[test]
+    fn empty_caller_list_falls_back_to_the_preset() {
+        // The `.sh` and `.ps1` exports send `[]` when the user typed no
+        // extra pattern. Taking that literally is what shipped scripts that
+        // walked straight into `.git`.
+        assert_eq!(resolve_exclude_patterns(Some(vec![]), &preset()), preset());
+        assert_eq!(resolve_exclude_patterns(None, &preset()), preset());
+    }
+
+    #[test]
+    fn a_real_caller_list_replaces_the_preset() {
+        let mine = vec!["*.tmp".to_string()];
+        assert_eq!(
+            resolve_exclude_patterns(Some(mine.clone()), &preset()),
+            mine
+        );
+    }
+
+    #[test]
+    fn a_preset_with_no_patterns_still_yields_none() {
+        assert!(resolve_exclude_patterns(None, &[]).is_empty());
+    }
 }
 
 #[cfg(test)]

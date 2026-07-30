@@ -70,7 +70,8 @@
             "duplicate": "Կրկնակ",
             "current": "ընթացիկ",
             "goToActiveSession": "Անցնել ակտիվ նիստին",
-            "password": "Գաղտնաբառ"
+            "password": "Գաղտնաբառ",
+            "default": "Կանխադրված"
         },
         "connection": {
             "title": "Կապվել սերվերուհն",

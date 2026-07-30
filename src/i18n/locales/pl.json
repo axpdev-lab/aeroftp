@@ -70,7 +70,8 @@
             "duplicate": "Duplikuj",
             "current": "bieżący",
             "goToActiveSession": "Przejdź do aktywnej sesji",
-            "password": "Hasło"
+            "password": "Hasło",
+            "default": "Domyślny"
         },
         "connection": {
             "title": "Połącz z serwerem",
