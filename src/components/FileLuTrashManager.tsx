@@ -8,6 +8,7 @@ import { Trash2, RotateCcw, X, RefreshCw, Loader2, File, CheckSquare, Square, Cl
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { TrashTable, type TrashRow } from './Trash/TrashTable';
+import { fileLuDeletedAtLabel } from './Trash/fileLuDeletedLabel';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 // FileLu confirmed permanent delete endpoint: api/file/permanent_delete?key=X&file_code=Y
@@ -23,14 +24,6 @@ interface DeletedFileEntry {
 interface FileLuTrashManagerProps {
   onClose: () => void;
   onRefreshFiles?: () => void;
-}
-
-function formatDeletedAgo(seconds: number | null): string {
-  if (seconds === null) return '';
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
 }
 
 export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManagerProps) {
@@ -130,7 +123,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
         isDir: false,
         size: null,
         deletedAt: item.deleted,
-        deletedAtLabel: item.deleted ?? formatDeletedAgo(item.deleted_ago_sec),
+        deletedAtLabel: fileLuDeletedAtLabel(item.deleted, item.deleted_ago_sec),
       })),
     [items],
   );
