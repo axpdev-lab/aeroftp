@@ -383,6 +383,10 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                     const locked = isAboveMinPath(seg.fullPath);
                     return <button
                       key={seg.fullPath}
+                      // Collapsed ancestors answer the same right-click as the
+                      // visible ones: once the path is long enough to overflow,
+                      // the folder you want is exactly the one that got hidden.
+                      onContextMenu={onSegmentContextMenu ? (e) => onSegmentContextMenu(e, seg.fullPath) : undefined}
                       onClick={() => !locked && handleDropdownNavigate(seg.fullPath)}
                       className={`flex items-center gap-2 px-3 py-1.5 text-sm w-full text-left transition-colors ${
                         locked ? 'text-gray-600 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 cursor-pointer'

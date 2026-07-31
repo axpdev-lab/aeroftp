@@ -53,8 +53,9 @@ describe('directory actions reach the current directory (#347)', () => {
 
     it('wires the breadcrumb through to both local panels', () => {
         expect(breadcrumb).toMatch(/onSegmentContextMenu\?: \(e: React\.MouseEvent, path: string\) => void/);
-        // Root segment and every other segment, so the whole bar answers.
-        expect([...breadcrumb.matchAll(/onContextMenu=\{onSegmentContextMenu \?/g)]).toHaveLength(2);
+        // Root, every visible segment, and the collapsed ones in the overflow
+        // dropdown: a long path hides exactly the ancestors worth right-clicking.
+        expect([...breadcrumb.matchAll(/onContextMenu=\{onSegmentContextMenu \?/g)]).toHaveLength(3);
         expect([...localPanel.matchAll(/onSegmentContextMenu=\{onPathContextMenu\}/g)]).toHaveLength(2);
         expect([...appRaw.matchAll(/onPathContextMenu=/g)]).toHaveLength(2);
     });
@@ -63,7 +64,11 @@ describe('directory actions reach the current directory (#347)', () => {
         // `find_duplicate_files`, `calculate_folder_size` and the disk-usage scan
         // all take a local path. Offering them on a cloud breadcrumb would be a
         // menu entry that cannot work.
-        const remoteBar = appRaw.slice(appRaw.indexOf('currentPath={(rcloneCryptVaultId'));
-        expect(remoteBar.slice(0, 1200)).not.toMatch(/onSegmentContextMenu/);
+        // Anchor first. `indexOf` returning -1 would make `slice(-1)` the last
+        // character of the file, and the negative assertion would pass without
+        // having looked at the remote breadcrumb at all.
+        const remoteStart = appRaw.indexOf('currentPath={(rcloneCryptVaultId');
+        expect(remoteStart, 'remote breadcrumb exists in App.tsx').toBeGreaterThan(-1);
+        expect(appRaw.slice(remoteStart, remoteStart + 1200)).not.toMatch(/onSegmentContextMenu/);
     });
 });
