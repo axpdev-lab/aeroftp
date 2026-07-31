@@ -71,7 +71,16 @@
             "current": "dabartinis",
             "goToActiveSession": "Eiti į aktyvią sesiją",
             "password": "Slaptažodis",
-            "default": "Numatytasis"
+            "default": "Numatytasis",
+            "add": "Pridėti",
+            "apply": "Taikyti",
+            "later": "Vėliau",
+            "path": "Kelias",
+            "remove": "Pašalinti",
+            "reset": "Atstatyti",
+            "saved": "Išsaugota",
+            "saving": "Išsaugoma...",
+            "creating": "Kuriama..."
         },
         "connection": {
             "title": "Prisijungti prie serverio",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Išskleidus čia bus perrašyta {count} esamų elementų: {names}. Tęsti?",
             "permanentDeleteHint": "Visam laikui ištrina tik pasirinktus elementus iš Šiukšlinės. To negalima anuliuoti.",
             "emptyTrashHint": "Visam laikui ištrina VISUS Šiukšlinės elementus, ne tik pasirinktus. To negalima anuliuoti.",
-            "dropboxPurgeBusinessOnly": "Ištrynimui visam laikui ir šiukšlinės išvalymui reikia Dropbox Business/Team paskyros."
+            "dropboxPurgeBusinessOnly": "Ištrynimui visam laikui ir šiukšlinės išvalymui reikia Dropbox Business/Team paskyros.",
+            "setAsPrivate": "Nustatyti kaip privačią",
+            "setAsPublic": "Nustatyti kaip viešą",
+            "makeAllPrivate": "Padaryti visus privačius"
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Dabartinis doroklis",
             "encryptionPrivacyTitle": "Šifravimo privatumas",
             "warnSameNameEncrypted": "Pažymėti to paties pavadinimo įrašus šifruotose saugyklose",
-            "warnSameNameEncryptedDesc": "Pagal numatytuosius nustatymus išjungta. Aktyviame AeroCrypt arba rclone-crypt sluoksnyje pažymėkite failus ir aplankus, kurių pavadinimas taip pat pasirodo kitame jūsų lankomame kelyje. Pavadinimai šifruojami deterministiškai, todėl vienodi pavadinimai šifruotos saugyklos stebėtojui matomi kaip vienodi (tas pats kompromisas kaip rclone-crypt ir Cryptomator)."
+            "warnSameNameEncryptedDesc": "Pagal numatytuosius nustatymus išjungta. Aktyviame AeroCrypt arba rclone-crypt sluoksnyje pažymėkite failus ir aplankus, kurių pavadinimas taip pat pasirodo kitame jūsų lankomame kelyje. Pavadinimai šifruojami deterministiškai, todėl vienodi pavadinimai šifruotos saugyklos stebėtojui matomi kaip vienodi (tas pats kompromisas kaip rclone-crypt ir Cryptomator).",
+            "loading": "Įkeliama..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Poros pavadinimas",
             "managePairs": "Tvarkyti poras",
             "importLegacy": "Importuoti esamą kaip porą",
-            "importLegacyHint": "Importuokite esamą vienintelę AeroCloud konfigūraciją kaip pirmąją porą (išlaiko atgalinį suderinamumą)."
+            "importLegacyHint": "Importuokite esamą vienintelę AeroCloud konfigūraciją kaip pirmąją porą (išlaiko atgalinį suderinamumą).",
+            "versionHistory": "Versijų istorija",
+            "restoreVersion": "Atkurti šią versiją",
+            "cleanupDone": "Išvalyta",
+            "cleanupVersions": "Išvalyti senas versijas",
+            "noRemoteFolders": "Nuotolinių aplankų nerasta",
+            "noVersions": "Archyvuotų versijų nerasta",
+            "reauthRequired": "Leidimo galiojimas baigėsi. Kad sinchronizavimas būtų tęsiamas, suteikite leidimą iš naujo.",
+            "scanningFolders": "Nuskaitomi nuotoliniai aplankai..."
         },
         "statusBar": {
             "connected": "Prisijungta",
@@ -1424,7 +1445,10 @@
             "dropImported": "Į šį aplanką importuota {count} elementų",
             "dropFailed": "Nepavyko importuoti {count} elementų",
             "connectionCancelledHint": "Sąrašo sudarymas sustabdytas, ryšys uždarytas.",
-            "connectTimedOut": "Baigėsi ryšio skirtasis laikas. Serveris taip ir neatsakė, o bandymas buvo nutrauktas."
+            "connectTimedOut": "Baigėsi ryšio skirtasis laikas. Serveris taip ir neatsakė, o bandymas buvo nutrauktas.",
+            "transferFailed": "Perdavimas nepavyko",
+            "navigationFailed": "Nepavyko naršyti: {error}",
+            "transferComplete": "Nukopijuota failų: {count}"
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kureju irankiu rinkinys.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Tinklo klaida. Patikrinkite savo interneto ryšį ir teikėjo URL.",
                 "noProvider": "Įsitikinkite, kad nustatymuose sukonfigūravote AI teikėją.",
                 "rateLimited": "Teikėjo apribotas. Palaukite akimirką ir bandykite dar kartą.",
-                "toolsNotSupported": "Šis modelis nepalaiko įrankių naudojimo. Išjunkite \"Įrankiai\" šiam modeliui AI nustatymai → Modeliai."
+                "toolsNotSupported": "Šis modelis nepalaiko įrankių naudojimo. Išjunkite \"Įrankiai\" šiam modeliui AI nustatymai → Modeliai.",
+                "noProjectContext": "Agento atminčiai nėra prieinamo projekto konteksto."
             },
             "toolLabels": {
                 "agent_memory_write": "Atmintis",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Šakų sąrašas",
+            "noBranches": "Šakų nerasta",
+            "rawUrlCopied": "Neapdorotas URL nukopijuotas",
+            "working": "dirbama"
         },
         "filenNotes": {
             "title": "Šifruotos užrašai",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Vieša pastovi druska (rclone-style). Reikia sugeneruoto didelės entropijos slaptažodžio. Tas pats slaptažodis keliuose saugyklose daro užšifruotus pavadinimus susiejamus be rakto.",
             "defaultSaltNeedsStronger": "Įveskite stiprų sugeneruotą slaptažodį, kad įjungtumėte numatytąjį salt.",
             "defaultSaltOneSaltNote": "Yra tik vienas salt: 32 baitai, viešas, vienodas visoms saugykloms su numatytuoju salt.",
-            "defaultSaltValueLabel": "Vieša numatytoji druska (AeroCrypt v3), SHA-256 nuo"
+            "defaultSaltValueLabel": "Vieša numatytoji druska (AeroCrypt v3), SHA-256 nuo",
+            "defaultSaltTierMeaning": "Numatytoji druska reiškia, kad saugyklą atrakina vien slaptažodis: nieko daugiau nereikia nešiotis ir niekas kitas jos nesaugo."
         },
         "modalGuard": {
             "busyTitle": "Vykdoma operacija",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Nėra įdiegto darbalaukio portalo, todėl ši sistema negali atverti failų parinkiklio. Įdiekite xdg-desktop-portal ir jūsų darbalaukiui tinkamą vidinę dalį (pavyzdžiui, xdg-desktop-portal-gtk) ir pabandykite dar kartą.",
                 "unknown": "Nepavyko atverti failų parinkiklio. Išsamesnės informacijos ieškokite programos žurnale."
             }
+        },
+        "errors": {
+            "unknown": "Nežinoma klaida"
+        },
+        "rename": {
+            "invalidCharacters": "Pavadinime negali būti / ar \\, sekos .. ar nulinio simbolio."
         }
     }
 }

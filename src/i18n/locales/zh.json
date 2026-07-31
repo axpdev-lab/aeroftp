@@ -71,7 +71,16 @@
             "current": "当前",
             "goToActiveSession": "前往活动会话",
             "password": "密码",
-            "default": "默认"
+            "default": "默认",
+            "add": "添加",
+            "apply": "应用",
+            "later": "稍后",
+            "path": "路径",
+            "remove": "移除",
+            "reset": "重置",
+            "saved": "已保存",
+            "saving": "保存中...",
+            "creating": "正在创建..."
         },
         "connection": {
             "title": "连接到服务器",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "在此解压将覆盖 {count} 个现有项目：{names}。是否继续？",
             "permanentDeleteHint": "仅永久删除回收站中选定的项目。此操作无法撤销。",
             "emptyTrashHint": "永久删除回收站中的所有项目，而不仅仅是选定的项目。此操作无法撤销。",
-            "dropboxPurgeBusinessOnly": "永久删除和清空回收站需要 Dropbox Business/Team 账户。"
+            "dropboxPurgeBusinessOnly": "永久删除和清空回收站需要 Dropbox Business/Team 账户。",
+            "setAsPrivate": "设为私有",
+            "setAsPublic": "设为公开",
+            "makeAllPrivate": "全部设为私有"
         },
         "transfer": {
             "transferring": "传输中...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "当前处理程序",
             "encryptionPrivacyTitle": "加密隐私",
             "warnSameNameEncrypted": "在加密保险库中标记同名条目",
-            "warnSameNameEncryptedDesc": "默认关闭。在活动的 AeroCrypt 或 rclone-crypt 覆盖层中，标记名称也出现在你访问的另一个路径中的文件和文件夹。名称采用确定性加密，因此相同的名称对加密存储的观察者来说显示为相同（与 rclone-crypt 和 Cryptomator 相同的权衡）。"
+            "warnSameNameEncryptedDesc": "默认关闭。在活动的 AeroCrypt 或 rclone-crypt 覆盖层中，标记名称也出现在你访问的另一个路径中的文件和文件夹。名称采用确定性加密，因此相同的名称对加密存储的观察者来说显示为相同（与 rclone-crypt 和 Cryptomator 相同的权衡）。",
+            "loading": "加载中..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "配对名称",
             "managePairs": "管理配对",
             "importLegacy": "将当前导入为配对",
-            "importLegacyHint": "将您现有的单个 AeroCloud 配置作为第一个配对导入（保持向后兼容）。"
+            "importLegacyHint": "将您现有的单个 AeroCloud 配置作为第一个配对导入（保持向后兼容）。",
+            "versionHistory": "版本历史",
+            "restoreVersion": "还原此版本",
+            "cleanupDone": "已清理",
+            "cleanupVersions": "清理旧版本",
+            "noRemoteFolders": "未找到远程文件夹",
+            "noVersions": "未找到已归档的版本",
+            "reauthRequired": "授权已过期。请重新授权以继续同步。",
+            "scanningFolders": "正在扫描远程文件夹..."
         },
         "statusBar": {
             "connected": "已连接",
@@ -1424,7 +1445,10 @@
             "dropImported": "已将 {count} 个项目导入此文件夹",
             "dropFailed": "导入 {count} 个项目失败",
             "connectionCancelledHint": "已停止列出目录并关闭连接。",
-            "connectTimedOut": "连接超时。服务器始终没有响应，尝试已中止。"
+            "connectTimedOut": "连接超时。服务器始终没有响应，尝试已中止。",
+            "transferFailed": "传输失败",
+            "navigationFailed": "导航失败：{error}",
+            "transferComplete": "已复制 {count} 个文件"
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",
@@ -2685,7 +2709,8 @@
                 "networkError": "网络错误。请检查网络连接和提供商URL。",
                 "noProvider": "请确保已在设置中配置AI提供商。",
                 "rateLimited": "已被提供商限速。请稍后再试。",
-                "toolsNotSupported": "此模型不支持工具使用。请在AI设置→模型中禁用\"工具\"。"
+                "toolsNotSupported": "此模型不支持工具使用。请在AI设置→模型中禁用\"工具\"。",
+                "noProjectContext": "没有可用于代理记忆的项目上下文。"
             },
             "toolLabels": {
                 "agent_memory_write": "记忆",
@@ -4458,7 +4483,11 @@
             "accessToken": "个人访问令牌",
             "patHint": "具有仓库访问权限的细粒度PAT",
             "appHint": "PEM密钥从连接屏幕导入并存储在保险库中。",
-            "branchOptional": "分支（可选）"
+            "branchOptional": "分支（可选）",
+            "branchList": "分支列表",
+            "noBranches": "未找到分支",
+            "rawUrlCopied": "已复制原始 URL",
+            "working": "进行中"
         },
         "filenNotes": {
             "title": "加密笔记",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "公共常量盐值（rclone-style）。需要生成的高熵密码。在多个保险库上使用相同密码会使加密名称在无密钥情况下可关联。",
             "defaultSaltNeedsStronger": "输入生成的强密码以启用默认盐值。",
             "defaultSaltOneSaltNote": "只有一个盐值：32 字节，公开，所有使用默认盐值的保险库都相同。",
-            "defaultSaltValueLabel": "公开默认盐值（AeroCrypt v3），即以下字符串的 SHA-256"
+            "defaultSaltValueLabel": "公开默认盐值（AeroCrypt v3），即以下字符串的 SHA-256",
+            "defaultSaltTierMeaning": "默认盐值意味着仅凭密码即可打开保险库：无需随身携带其他东西，也没有其他东西在保护它。"
         },
         "modalGuard": {
             "busyTitle": "操作进行中",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "系统未安装桌面门户（desktop portal），因此无法打开文件选择器。请安装 xdg-desktop-portal 以及适用于您桌面环境的后端（例如 xdg-desktop-portal-gtk），然后重试。",
                 "unknown": "无法打开文件选择器。详情请查看应用程序日志。"
             }
+        },
+        "errors": {
+            "unknown": "未知错误"
+        },
+        "rename": {
+            "invalidCharacters": "名称不能包含 / 或 \\、.. 序列或空字符。"
         }
     }
 }

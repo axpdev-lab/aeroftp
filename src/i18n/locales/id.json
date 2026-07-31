@@ -71,7 +71,16 @@
             "current": "saat ini",
             "goToActiveSession": "Buka sesi aktif",
             "password": "Kata sandi",
-            "default": "Bawaan"
+            "default": "Bawaan",
+            "add": "Tambah",
+            "apply": "Terapkan",
+            "later": "Nanti",
+            "path": "Jalur",
+            "remove": "Hapus",
+            "reset": "Setel Ulang",
+            "saved": "Disimpan",
+            "saving": "Menyimpan...",
+            "creating": "Membuat..."
         },
         "connection": {
             "title": "Hubungkan ke Server",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Mengekstrak di sini akan menimpa {count} item yang ada: {names}. Lanjutkan?",
             "permanentDeleteHint": "Menghapus permanen hanya item yang dipilih dari Sampah. Ini tidak dapat dibatalkan.",
             "emptyTrashHint": "Menghapus permanen SEMUA item di Sampah, bukan hanya yang dipilih. Ini tidak dapat dibatalkan.",
-            "dropboxPurgeBusinessOnly": "Hapus Permanen dan Kosongkan Sampah memerlukan akun Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "Hapus Permanen dan Kosongkan Sampah memerlukan akun Dropbox Business/Team.",
+            "setAsPrivate": "Jadikan Privat",
+            "setAsPublic": "Jadikan Publik",
+            "makeAllPrivate": "Jadikan semua privat"
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Penangan saat ini",
             "encryptionPrivacyTitle": "Privasi enkripsi",
             "warnSameNameEncrypted": "Tandai entri bernama sama di brankas terenkripsi",
-            "warnSameNameEncryptedDesc": "Nonaktif secara default. Di dalam lapisan AeroCrypt atau rclone-crypt yang aktif, tandai berkas dan folder yang namanya juga muncul di jalur lain yang Anda kunjungi. Nama dienkripsi secara deterministik, sehingga nama yang identik terlihat identik bagi pengamat penyimpanan terenkripsi (kompromi yang sama seperti rclone-crypt dan Cryptomator)."
+            "warnSameNameEncryptedDesc": "Nonaktif secara default. Di dalam lapisan AeroCrypt atau rclone-crypt yang aktif, tandai berkas dan folder yang namanya juga muncul di jalur lain yang Anda kunjungi. Nama dienkripsi secara deterministik, sehingga nama yang identik terlihat identik bagi pengamat penyimpanan terenkripsi (kompromi yang sama seperti rclone-crypt dan Cryptomator).",
+            "loading": "Memuat..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Nama pasangan",
             "managePairs": "Kelola pasangan",
             "importLegacy": "Impor saat ini sebagai pasangan",
-            "importLegacyHint": "Impor konfigurasi AeroCloud tunggal Anda yang ada sebagai pasangan pertama (menjaga kompatibilitas ke belakang)."
+            "importLegacyHint": "Impor konfigurasi AeroCloud tunggal Anda yang ada sebagai pasangan pertama (menjaga kompatibilitas ke belakang).",
+            "versionHistory": "Riwayat Versi",
+            "restoreVersion": "Pulihkan versi ini",
+            "cleanupDone": "Dibersihkan",
+            "cleanupVersions": "Bersihkan versi lama",
+            "noRemoteFolders": "Tidak ada folder jarak jauh yang ditemukan",
+            "noVersions": "Tidak ada versi arsip yang ditemukan",
+            "reauthRequired": "Otorisasi kedaluwarsa. Silakan otorisasi ulang untuk melanjutkan sinkronisasi.",
+            "scanningFolders": "Memindai folder jarak jauh..."
         },
         "statusBar": {
             "connected": "Terhubung",
@@ -1424,7 +1445,10 @@
             "dropImported": "Mengimpor {count} item ke folder ini",
             "dropFailed": "Gagal mengimpor {count} item",
             "connectionCancelledHint": "Pendaftaran dihentikan dan koneksi ditutup.",
-            "connectTimedOut": "Waktu koneksi habis. Server tidak pernah merespons dan upaya dibatalkan."
+            "connectTimedOut": "Waktu koneksi habis. Server tidak pernah merespons dan upaya dibatalkan.",
+            "transferFailed": "Transfer gagal",
+            "navigationFailed": "Navigasi gagal: {error}",
+            "transferComplete": "{count} berkas disalin"
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Kesalahan jaringan. Periksa koneksi internet dan URL penyedia Anda.",
                 "noProvider": "Pastikan Anda telah mengonfigurasi penyedia AI di pengaturan.",
                 "rateLimited": "Dibatasi oleh penyedia. Tunggu sebentar dan coba lagi.",
-                "toolsNotSupported": "Model ini tidak mendukung penggunaan alat. Nonaktifkan \"Alat\" untuk model ini di Pengaturan AI → Model."
+                "toolsNotSupported": "Model ini tidak mendukung penggunaan alat. Nonaktifkan \"Alat\" untuk model ini di Pengaturan AI → Model.",
+                "noProjectContext": "Tidak ada konteks proyek yang tersedia untuk memori agen."
             },
             "toolLabels": {
                 "agent_memory_write": "Memori",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Daftar cabang",
+            "noBranches": "Tidak ada cabang yang ditemukan",
+            "rawUrlCopied": "URL mentah disalin",
+            "working": "bekerja"
         },
         "filenNotes": {
             "title": "Catatan Terenkripsi",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Salt konstan publik (gaya rclone). Membutuhkan kata sandi berentropi tinggi yang dihasilkan. Kata sandi yang sama di beberapa brankas membuat nama terenkripsi dapat ditautkan tanpa kunci.",
             "defaultSaltNeedsStronger": "Masukkan kata sandi kuat yang dibuat untuk mengaktifkan salt bawaan.",
             "defaultSaltOneSaltNote": "Hanya ada satu salt: 32 byte, publik, sama untuk setiap vault dengan salt bawaan.",
-            "defaultSaltValueLabel": "Salt bawaan publik (AeroCrypt v3), SHA-256 dari"
+            "defaultSaltValueLabel": "Salt bawaan publik (AeroCrypt v3), SHA-256 dari",
+            "defaultSaltTierMeaning": "Salt bawaan berarti kata sandi saja yang membuka brankas: tidak ada lagi yang perlu dibawa, dan tidak ada lagi yang melindunginya."
         },
         "modalGuard": {
             "busyTitle": "Operasi berlangsung",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Tidak ada portal desktop yang terpasang, sehingga sistem ini tidak dapat membuka pemilih berkas. Pasang xdg-desktop-portal dan backend untuk desktop Anda (misalnya xdg-desktop-portal-gtk), lalu coba lagi.",
                 "unknown": "Pemilih berkas tidak dapat dibuka. Lihat log aplikasi untuk detailnya."
             }
+        },
+        "errors": {
+            "unknown": "Kesalahan tidak diketahui"
+        },
+        "rename": {
+            "invalidCharacters": "Nama tidak boleh berisi / atau \\, urutan .., atau karakter null."
         }
     }
 }

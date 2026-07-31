@@ -71,7 +71,16 @@
             "current": "aktuell",
             "goToActiveSession": "Zur aktiven Sitzung",
             "password": "Passwort",
-            "default": "Standard"
+            "default": "Standard",
+            "add": "Hinzufügen",
+            "apply": "Anwenden",
+            "later": "Später",
+            "path": "Pfad",
+            "remove": "Entfernen",
+            "reset": "Zurücksetzen",
+            "saved": "Gespeichert",
+            "saving": "Wird gespeichert...",
+            "creating": "Wird erstellt..."
         },
         "connection": {
             "title": "Mit Server verbinden",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Das Extrahieren hierher überschreibt {count} vorhandene(s) Element(e): {names}. Fortfahren?",
             "permanentDeleteHint": "Löscht nur die ausgewählten Elemente endgültig aus dem Papierkorb. Dies kann nicht rückgängig gemacht werden.",
             "emptyTrashHint": "Löscht ALLE Elemente im Papierkorb endgültig, nicht nur die ausgewählten. Dies kann nicht rückgängig gemacht werden.",
-            "dropboxPurgeBusinessOnly": "Endgültiges Löschen und Papierkorb leeren erfordern ein Dropbox Business/Team-Konto."
+            "dropboxPurgeBusinessOnly": "Endgültiges Löschen und Papierkorb leeren erfordern ein Dropbox Business/Team-Konto.",
+            "setAsPrivate": "Als privat festlegen",
+            "setAsPublic": "Als öffentlich festlegen",
+            "makeAllPrivate": "Alle auf privat setzen"
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Aktueller Handler",
             "encryptionPrivacyTitle": "Verschlüsselungsdatenschutz",
             "warnSameNameEncrypted": "Einträge mit gleichem Namen in verschlüsselten Tresoren markieren",
-            "warnSameNameEncryptedDesc": "Standardmäßig aus. Innerhalb eines aktiven AeroCrypt- oder rclone-crypt-Overlays werden Dateien und Ordner markiert, deren Name auch an einem anderen von Ihnen besuchten Pfad erscheint. Namen werden deterministisch verschlüsselt, sodass identische Namen für einen Beobachter des verschlüsselten Speichers als identisch sichtbar sind (derselbe Kompromiss wie bei rclone-crypt und Cryptomator)."
+            "warnSameNameEncryptedDesc": "Standardmäßig aus. Innerhalb eines aktiven AeroCrypt- oder rclone-crypt-Overlays werden Dateien und Ordner markiert, deren Name auch an einem anderen von Ihnen besuchten Pfad erscheint. Namen werden deterministisch verschlüsselt, sodass identische Namen für einen Beobachter des verschlüsselten Speichers als identisch sichtbar sind (derselbe Kompromiss wie bei rclone-crypt und Cryptomator).",
+            "loading": "Lade..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Paarname",
             "managePairs": "Paare verwalten",
             "importLegacy": "Aktuelles als Paar importieren",
-            "importLegacyHint": "Importieren Sie Ihre bestehende einzelne AeroCloud-Konfiguration als erstes Paar (erhält Abwärtskompatibilität)."
+            "importLegacyHint": "Importieren Sie Ihre bestehende einzelne AeroCloud-Konfiguration als erstes Paar (erhält Abwärtskompatibilität).",
+            "versionHistory": "Versionsverlauf",
+            "restoreVersion": "Diese Version wiederherstellen",
+            "cleanupDone": "Bereinigt",
+            "cleanupVersions": "Alte Versionen bereinigen",
+            "noRemoteFolders": "Keine Remote-Ordner gefunden",
+            "noVersions": "Keine archivierten Versionen gefunden",
+            "reauthRequired": "Die Autorisierung ist abgelaufen. Bitte erneut autorisieren, um die Synchronisierung fortzusetzen.",
+            "scanningFolders": "Remote-Ordner werden durchsucht..."
         },
         "statusBar": {
             "connected": "Verbunden",
@@ -1424,7 +1445,10 @@
             "dropImported": "{count} Elemente in diesen Ordner importiert",
             "dropFailed": "{count} Elemente konnten nicht importiert werden",
             "connectionCancelledHint": "Die Auflistung wurde gestoppt und die Verbindung geschlossen.",
-            "connectTimedOut": "Zeitüberschreitung der Verbindung. Der Server hat nie geantwortet und der Versuch wurde abgebrochen."
+            "connectTimedOut": "Zeitüberschreitung der Verbindung. Der Server hat nie geantwortet und der Versuch wurde abgebrochen.",
+            "transferFailed": "Übertragung fehlgeschlagen",
+            "navigationFailed": "Navigation fehlgeschlagen: {error}",
+            "transferComplete": "{count} Datei(en) kopiert"
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Netzwerkfehler. Überprüfen Sie Ihre Internetverbindung und Provider-URL.",
                 "noProvider": "Stellen Sie sicher, dass Sie einen AI-Provider in den Einstellungen konfiguriert haben.",
                 "rateLimited": "Vom Provider ratenbegrenzt. Warten Sie einen Moment und versuchen Sie es erneut.",
-                "toolsNotSupported": "Dieses Modell unterstützt keine Tool-Verwendung. Deaktivieren Sie \"Tools\" für dieses Modell in AI-Einstellungen → Modelle."
+                "toolsNotSupported": "Dieses Modell unterstützt keine Tool-Verwendung. Deaktivieren Sie \"Tools\" für dieses Modell in AI-Einstellungen → Modelle.",
+                "noProjectContext": "Für den Agentenspeicher ist kein Projektkontext verfügbar."
             },
             "toolLabels": {
                 "agent_memory_write": "Speicher",
@@ -4458,7 +4483,11 @@
             "accessToken": "Persönliches Zugriffstoken",
             "patHint": "Feingranulares PAT mit Repository-Zugriff",
             "appHint": "Der PEM-Schlüssel wird vom Verbindungsbildschirm importiert und im Vault gespeichert.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Branch-Liste",
+            "noBranches": "Keine Branches gefunden",
+            "rawUrlCopied": "Raw-URL kopiert",
+            "working": "arbeitet"
         },
         "filenNotes": {
             "title": "Verschlüsselte Notizen",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Öffentliches konstantes Salt (rclone-style). Erfordert ein generiertes Passwort mit hoher Entropie. Dasselbe Passwort auf mehreren Tresoren macht verschlüsselte Namen ohne Schlüssel verknüpfbar.",
             "defaultSaltNeedsStronger": "Geben Sie ein starkes generiertes Passwort ein, um das Standard-Salt zu aktivieren.",
             "defaultSaltOneSaltNote": "Es gibt genau ein Salt: 32 Byte, öffentlich, identisch für jeden Tresor mit Standard-Salt.",
-            "defaultSaltValueLabel": "Öffentliches Standard-Salt (AeroCrypt v3), SHA-256 von"
+            "defaultSaltValueLabel": "Öffentliches Standard-Salt (AeroCrypt v3), SHA-256 von",
+            "defaultSaltTierMeaning": "Standard-Salt bedeutet, dass allein das Passwort den Tresor öffnet: es muss nichts weiter mitgeführt werden, und nichts weiter schützt ihn."
         },
         "modalGuard": {
             "busyTitle": "Vorgang läuft",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Es ist kein Desktop-Portal installiert, daher kann dieses System keine Dateiauswahl öffnen. Installieren Sie xdg-desktop-portal und ein Backend für Ihre Desktop-Umgebung (zum Beispiel xdg-desktop-portal-gtk) und versuchen Sie es erneut.",
                 "unknown": "Die Dateiauswahl konnte nicht geöffnet werden. Details finden Sie im Anwendungsprotokoll."
             }
+        },
+        "errors": {
+            "unknown": "Unbekannter Fehler"
+        },
+        "rename": {
+            "invalidCharacters": "Ein Name darf weder / noch \\, die Folge .. oder ein Nullzeichen enthalten."
         }
     }
 }

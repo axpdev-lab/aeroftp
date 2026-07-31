@@ -71,7 +71,16 @@
             "current": "bieżący",
             "goToActiveSession": "Przejdź do aktywnej sesji",
             "password": "Hasło",
-            "default": "Domyślny"
+            "default": "Domyślny",
+            "add": "Dodaj",
+            "apply": "Zastosuj",
+            "later": "Później",
+            "path": "Ścieżka",
+            "remove": "Usuń",
+            "reset": "Resetuj",
+            "saved": "Zapisano",
+            "saving": "Zapisywanie...",
+            "creating": "Tworzenie..."
         },
         "connection": {
             "title": "Połącz z serwerem",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Wyodrębnienie tutaj nadpisze {count} istniejących elementów: {names}. Kontynuować?",
             "permanentDeleteHint": "Trwale usuwa tylko zaznaczone elementy z Kosza. Tej operacji nie można cofnąć.",
             "emptyTrashHint": "Trwale usuwa WSZYSTKIE elementy w Koszu, nie tylko zaznaczone. Tej operacji nie można cofnąć.",
-            "dropboxPurgeBusinessOnly": "Trwałe usuwanie i opróżnianie kosza wymagają konta Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "Trwałe usuwanie i opróżnianie kosza wymagają konta Dropbox Business/Team.",
+            "setAsPrivate": "Ustaw jako prywatny",
+            "setAsPublic": "Ustaw jako publiczny",
+            "makeAllPrivate": "Ustaw wszystkie jako prywatne"
         },
         "transfer": {
             "transferring": "Przesyłanie...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Bieżący program obsługi",
             "encryptionPrivacyTitle": "Prywatność szyfrowania",
             "warnSameNameEncrypted": "Oznaczaj wpisy o tej samej nazwie w zaszyfrowanych sejfach",
-            "warnSameNameEncryptedDesc": "Domyślnie wyłączone. Wewnątrz aktywnej nakładki AeroCrypt lub rclone-crypt oznaczaj pliki i foldery, których nazwa pojawia się również na innej odwiedzanej ścieżce. Nazwy są szyfrowane deterministycznie, więc identyczne nazwy są widoczne jako identyczne dla obserwatora zaszyfrowanego magazynu (ten sam kompromis co w rclone-crypt i Cryptomator)."
+            "warnSameNameEncryptedDesc": "Domyślnie wyłączone. Wewnątrz aktywnej nakładki AeroCrypt lub rclone-crypt oznaczaj pliki i foldery, których nazwa pojawia się również na innej odwiedzanej ścieżce. Nazwy są szyfrowane deterministycznie, więc identyczne nazwy są widoczne jako identyczne dla obserwatora zaszyfrowanego magazynu (ten sam kompromis co w rclone-crypt i Cryptomator).",
+            "loading": "Ładowanie..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Nazwa pary",
             "managePairs": "Zarządzaj parami",
             "importLegacy": "Importuj bieżącą jako parę",
-            "importLegacyHint": "Zaimportuj istniejącą pojedynczą konfigurację AeroCloud jako pierwszą parę (zachowuje kompatybilność wsteczną)."
+            "importLegacyHint": "Zaimportuj istniejącą pojedynczą konfigurację AeroCloud jako pierwszą parę (zachowuje kompatybilność wsteczną).",
+            "versionHistory": "Historia wersji",
+            "restoreVersion": "Przywróć tę wersję",
+            "cleanupDone": "Wyczyszczono",
+            "cleanupVersions": "Wyczyść stare wersje",
+            "noRemoteFolders": "Nie znaleziono folderów zdalnych",
+            "noVersions": "Nie znaleziono zarchiwizowanych wersji",
+            "reauthRequired": "Autoryzacja wygasła. Autoryzuj ponownie, aby wznowić synchronizację.",
+            "scanningFolders": "Skanowanie folderów zdalnych..."
         },
         "statusBar": {
             "connected": "Połączono",
@@ -1424,7 +1445,10 @@
             "dropImported": "Zaimportowano {count} elementów do tego folderu",
             "dropFailed": "Nie udało się zaimportować {count} elementów",
             "connectionCancelledHint": "Listowanie zostało zatrzymane, a połączenie zamknięte.",
-            "connectTimedOut": "Przekroczono limit czasu połączenia. Serwer nie odpowiedział, a próba została przerwana."
+            "connectTimedOut": "Przekroczono limit czasu połączenia. Serwer nie odpowiedział, a próba została przerwana.",
+            "transferFailed": "Transfer nie powiódł się",
+            "navigationFailed": "Nawigacja nie powiodła się: {error}",
+            "transferComplete": "Skopiowano {count} plików"
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Błąd sieci. Sprawdź połączenie internetowe i URL dostawcy.",
                 "noProvider": "Upewnij się, że skonfigurowałeś dostawcę AI w ustawieniach.",
                 "rateLimited": "Limit zapytań przekroczony przez dostawcę. Poczekaj chwilę i spróbuj ponownie.",
-                "toolsNotSupported": "Ten model nie obsługuje użycia narzędzi. Wyłącz \"Narzędzia\" dla tego modelu w Ustawienia AI → Modele."
+                "toolsNotSupported": "Ten model nie obsługuje użycia narzędzi. Wyłącz \"Narzędzia\" dla tego modelu w Ustawienia AI → Modele.",
+                "noProjectContext": "Brak kontekstu projektu dla pamięci agenta."
             },
             "toolLabels": {
                 "agent_memory_write": "Pamiec",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Lista gałęzi",
+            "noBranches": "Nie znaleziono gałęzi",
+            "rawUrlCopied": "Skopiowano surowy adres URL",
+            "working": "w toku"
         },
         "filenNotes": {
             "title": "Zaszyfrowane notatki",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Publiczna stała sól (styl rclone). Wymaga wygenerowanego hasła o wysokiej entropii. To samo hasło na wielu sejfach sprawia, że zaszyfrowane nazwy są powiązane bez klucza.",
             "defaultSaltNeedsStronger": "Wprowadź silne wygenerowane hasło, aby włączyć domyślny salt.",
             "defaultSaltOneSaltNote": "Istnieje tylko jeden salt: 32 bajty, publiczny, identyczny dla każdego sejfu z domyślnym saltem.",
-            "defaultSaltValueLabel": "Publiczny domyślny salt (AeroCrypt v3), SHA-256 z"
+            "defaultSaltValueLabel": "Publiczny domyślny salt (AeroCrypt v3), SHA-256 z",
+            "defaultSaltTierMeaning": "Domyślna sól oznacza, że sejf otwiera samo hasło: nie trzeba nosić ze sobą niczego więcej i nic więcej go nie chroni."
         },
         "modalGuard": {
             "busyTitle": "Operacja w toku",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Nie zainstalowano portalu pulpitu, więc ten system nie może otworzyć okna wyboru plików. Zainstaluj xdg-desktop-portal oraz backend odpowiedni dla swojego pulpitu (na przykład xdg-desktop-portal-gtk) i spróbuj ponownie.",
                 "unknown": "Nie udało się otworzyć okna wyboru plików. Szczegóły znajdziesz w dzienniku aplikacji."
             }
+        },
+        "errors": {
+            "unknown": "Nieznany błąd"
+        },
+        "rename": {
+            "invalidCharacters": "Nazwa nie może zawierać / ani \\, sekwencji .. ani znaku null."
         }
     }
 }

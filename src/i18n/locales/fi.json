@@ -71,7 +71,16 @@
             "current": "nykyinen",
             "goToActiveSession": "Siirry aktiiviseen istuntoon",
             "password": "Salasana",
-            "default": "Oletus"
+            "default": "Oletus",
+            "add": "Lisää",
+            "apply": "Käytä",
+            "later": "Myöhemmin",
+            "path": "Polku",
+            "remove": "Poista",
+            "reset": "Palauta",
+            "saved": "Tallennettu",
+            "saving": "Tallennetaan...",
+            "creating": "Luodaan..."
         },
         "connection": {
             "title": "Yhdistä palvelimeen",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Tänne purkaminen korvaa {count} olemassa olevaa kohdetta: {names}. Jatketaanko?",
             "permanentDeleteHint": "Poistaa pysyvästi vain valitut kohteet roskakorista. Tätä ei voi kumota.",
             "emptyTrashHint": "Poistaa pysyvästi KAIKKI roskakorin kohteet, ei vain valittuja. Tätä ei voi kumota.",
-            "dropboxPurgeBusinessOnly": "Pysyvä poisto ja roskakorin tyhjennys vaativat Dropbox Business/Team -tilin."
+            "dropboxPurgeBusinessOnly": "Pysyvä poisto ja roskakorin tyhjennys vaativat Dropbox Business/Team -tilin.",
+            "setAsPrivate": "Aseta yksityiseksi",
+            "setAsPublic": "Aseta julkiseksi",
+            "makeAllPrivate": "Aseta kaikki yksityisiksi"
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Nykyinen käsittelijä",
             "encryptionPrivacyTitle": "Salauksen tietosuoja",
             "warnSameNameEncrypted": "Merkitse samannimiset kohteet salatuissa holveissa",
-            "warnSameNameEncryptedDesc": "Oletuksena pois päältä. Aktiivisen AeroCrypt- tai rclone-crypt-peiton sisällä merkitse tiedostot ja kansiot, joiden nimi esiintyy myös toisessa polussa, jolla käyt. Nimet salataan deterministisesti, joten identtiset nimet näkyvät identtisinä salatun tallennustilan tarkkailijalle (sama kompromissi kuin rclone-crypt ja Cryptomator)."
+            "warnSameNameEncryptedDesc": "Oletuksena pois päältä. Aktiivisen AeroCrypt- tai rclone-crypt-peiton sisällä merkitse tiedostot ja kansiot, joiden nimi esiintyy myös toisessa polussa, jolla käyt. Nimet salataan deterministisesti, joten identtiset nimet näkyvät identtisinä salatun tallennustilan tarkkailijalle (sama kompromissi kuin rclone-crypt ja Cryptomator).",
+            "loading": "Ladataan..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Parin nimi",
             "managePairs": "Hallitse pareja",
             "importLegacy": "Tuo nykyinen parina",
-            "importLegacyHint": "Tuo olemassa oleva yksittäinen AeroCloud-asetuksesi ensimmäisenä parina (säilyttää taaksepäin yhteensopivuuden)."
+            "importLegacyHint": "Tuo olemassa oleva yksittäinen AeroCloud-asetuksesi ensimmäisenä parina (säilyttää taaksepäin yhteensopivuuden).",
+            "versionHistory": "Versiohistoria",
+            "restoreVersion": "Palauta tämä versio",
+            "cleanupDone": "Siivottu",
+            "cleanupVersions": "Siivoa vanhat versiot",
+            "noRemoteFolders": "Etäkansioita ei löytynyt",
+            "noVersions": "Arkistoituja versioita ei löytynyt",
+            "reauthRequired": "Valtuutus on vanhentunut. Valtuuta uudelleen jatkaaksesi synkronointia.",
+            "scanningFolders": "Etäkansioita tarkistetaan..."
         },
         "statusBar": {
             "connected": "Yhdistetty",
@@ -1424,7 +1445,10 @@
             "dropImported": "Tuotiin {count} kohdetta tähän kansioon",
             "dropFailed": "{count} kohteen tuonti epäonnistui",
             "connectionCancelledHint": "Listaus pysäytettiin ja yhteys suljettiin.",
-            "connectTimedOut": "Yhteyden aikakatkaisu. Palvelin ei koskaan vastannut ja yritys keskeytettiin."
+            "connectTimedOut": "Yhteyden aikakatkaisu. Palvelin ei koskaan vastannut ja yritys keskeytettiin.",
+            "transferFailed": "Siirto epäonnistui",
+            "navigationFailed": "Siirtyminen epäonnistui: {error}",
+            "transferComplete": "{count} tiedostoa kopioitu"
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Verkkovirhe. Tarkista internetyhteytesi ja palveluntarjoajan URL.",
                 "noProvider": "Varmista, että olet määrittänyt AI-palveluntarjoajan asetuksissa.",
                 "rateLimited": "Palveluntarjoaja rajoittaa nopeutta. Odota hetki ja yritä uudelleen.",
-                "toolsNotSupported": "Tämä malli ei tue työkalujen käyttöä. Poista \"Työkalut\" käytöstä tälle mallille AI-asetukset → Mallit."
+                "toolsNotSupported": "Tämä malli ei tue työkalujen käyttöä. Poista \"Työkalut\" käytöstä tälle mallille AI-asetukset → Mallit.",
+                "noProjectContext": "Agentin muistille ei ole projektikontekstia saatavilla."
             },
             "toolLabels": {
                 "agent_memory_write": "Muisti",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Haaraluettelo",
+            "noBranches": "Haaroja ei löytynyt",
+            "rawUrlCopied": "Raaka URL kopioitu",
+            "working": "työskentelee"
         },
         "filenNotes": {
             "title": "Salatut muistiinpanot",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Julkinen vakiosuola (rclone-tyyli). Vaatii luodun korkean entropian salasanan. Sama salasana useissa holveissa tekee salatuista nimistä linkitettäviä ilman avainta.",
             "defaultSaltNeedsStronger": "Syötä vahva luotu salasana ottaaksesi oletussuolan käyttöön.",
             "defaultSaltOneSaltNote": "Saltteja on vain yksi: 32 tavua, julkinen, sama kaikissa oletussalttia käyttävissä holveissa.",
-            "defaultSaltValueLabel": "Julkinen oletussuola (AeroCrypt v3), SHA-256 merkkijonosta"
+            "defaultSaltValueLabel": "Julkinen oletussuola (AeroCrypt v3), SHA-256 merkkijonosta",
+            "defaultSaltTierMeaning": "Oletussuola tarkoittaa, että pelkkä salasana avaa holvin: mitään muuta ei tarvitse kantaa mukana, eikä mikään muu suojaa sitä."
         },
         "modalGuard": {
             "busyTitle": "Toiminto käynnissä",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Työpöytäportaalia ei ole asennettu, joten tämä järjestelmä ei voi avata tiedostovalitsinta. Asenna xdg-desktop-portal ja työpöydällesi sopiva taustaosa (esimerkiksi xdg-desktop-portal-gtk) ja yritä uudelleen.",
                 "unknown": "Tiedostovalitsinta ei voitu avata. Katso lisätietoja sovelluksen lokista."
             }
+        },
+        "errors": {
+            "unknown": "Tuntematon virhe"
+        },
+        "rename": {
+            "invalidCharacters": "Nimi ei voi sisältää merkkejä / tai \\, jaksoa .. eikä null-merkkiä."
         }
     }
 }

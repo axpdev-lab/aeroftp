@@ -71,7 +71,16 @@
             "current": "pašreizējais",
             "goToActiveSession": "Pāriet uz aktīvo sesiju",
             "password": "Parole",
-            "default": "Noklusējums"
+            "default": "Noklusējums",
+            "add": "Pievienot",
+            "apply": "Lietot",
+            "later": "Vēlāk",
+            "path": "Ceļš",
+            "remove": "Noņemt",
+            "reset": "Atiestatīt",
+            "saved": "Saglabāts",
+            "saving": "Saglabā...",
+            "creating": "Notiek izveide..."
         },
         "connection": {
             "title": "Savienoties ar serveri",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Izvilkšana šeit pārrakstīs {count} esošus vienumus: {names}. Turpināt?",
             "permanentDeleteHint": "Neatgriezeniski dzēš tikai atlasītos vienumus no Miskastes. To nevar atsaukt.",
             "emptyTrashHint": "Neatgriezeniski dzēš VISUS Miskastes vienumus, ne tikai atlasītos. To nevar atsaukt.",
-            "dropboxPurgeBusinessOnly": "Neatgriezeniska dzēšana un miskastes iztukšošana prasa Dropbox Business/Team kontu."
+            "dropboxPurgeBusinessOnly": "Neatgriezeniska dzēšana un miskastes iztukšošana prasa Dropbox Business/Team kontu.",
+            "setAsPrivate": "Iestatīt kā privātu",
+            "setAsPublic": "Iestatīt kā publisku",
+            "makeAllPrivate": "Padarīt visus privātus"
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Pašreizējais apstrādātājs",
             "encryptionPrivacyTitle": "Šifrēšanas konfidencialitāte",
             "warnSameNameEncrypted": "Atzīmēt ierakstus ar tādu pašu nosaukumu šifrētās glabātavās",
-            "warnSameNameEncryptedDesc": "Pēc noklusējuma izslēgts. Aktīvā AeroCrypt vai rclone-crypt pārklājumā atzīmējiet failus un mapes, kuru nosaukums parādās arī citā apmeklētajā ceļā. Nosaukumi tiek šifrēti deterministiski, tāpēc identiski nosaukumi šifrētās krātuves novērotājam ir redzami kā identiski (tāds pats kompromiss kā rclone-crypt un Cryptomator)."
+            "warnSameNameEncryptedDesc": "Pēc noklusējuma izslēgts. Aktīvā AeroCrypt vai rclone-crypt pārklājumā atzīmējiet failus un mapes, kuru nosaukums parādās arī citā apmeklētajā ceļā. Nosaukumi tiek šifrēti deterministiski, tāpēc identiski nosaukumi šifrētās krātuves novērotājam ir redzami kā identiski (tāds pats kompromiss kā rclone-crypt un Cryptomator).",
+            "loading": "Ielādē..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Pāra nosaukums",
             "managePairs": "Pārvaldīt pārus",
             "importLegacy": "Importēt pašreizējo kā pāri",
-            "importLegacyHint": "Importējiet savu esošo vienoto AeroCloud konfigurāciju kā pirmo pāri (saglabā atpakaļsaderību)."
+            "importLegacyHint": "Importējiet savu esošo vienoto AeroCloud konfigurāciju kā pirmo pāri (saglabā atpakaļsaderību).",
+            "versionHistory": "Versiju vēsture",
+            "restoreVersion": "Atjaunot šo versiju",
+            "cleanupDone": "Iztīrīts",
+            "cleanupVersions": "Iztīrīt vecās versijas",
+            "noRemoteFolders": "Attālās mapes nav atrastas",
+            "noVersions": "Arhivētas versijas nav atrastas",
+            "reauthRequired": "Autorizācijas termiņš beidzies. Lūdzu, autorizējiet atkārtoti, lai atsāktu sinhronizāciju.",
+            "scanningFolders": "Notiek attālo mapju skenēšana..."
         },
         "statusBar": {
             "connected": "Savienots",
@@ -1424,7 +1445,10 @@
             "dropImported": "Šajā mapē importēti {count} vienumi",
             "dropFailed": "Neizdevās importēt {count} vienumus",
             "connectionCancelledHint": "Saraksta izveide tika apturēta un savienojums slēgts.",
-            "connectTimedOut": "Iestājās savienojuma noildze. Serveris nekad neatbildēja, un mēģinājums tika pārtraukts."
+            "connectTimedOut": "Iestājās savienojuma noildze. Serveris nekad neatbildēja, un mēģinājums tika pārtraukts.",
+            "transferFailed": "Pārsūtīšana neizdevās",
+            "navigationFailed": "Navigācija neizdevās: {error}",
+            "transferComplete": "Nokopēti {count} faili"
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Tīkla kļūda. Pārbaudiet savu interneta savienojumu un pakalpojumu sniedzēja URL.",
                 "noProvider": "Pārliecinieties, ka iestatījumos esat konfigurējis AI pakalpojumu sniedzēju.",
                 "rateLimited": "Pakalpojumu sniedzēja ierobežots. Uzgaidiet brīdi un mēģiniet vēlreiz.",
-                "toolsNotSupported": "Šis modelis neatbalsta rīku lietošanu. Atspējojiet \"Rīki\" šim modelim AI iestatījumi → Modeļi."
+                "toolsNotSupported": "Šis modelis neatbalsta rīku lietošanu. Atspējojiet \"Rīki\" šim modelim AI iestatījumi → Modeļi.",
+                "noProjectContext": "Aģenta atmiņai nav pieejams projekta konteksts."
             },
             "toolLabels": {
                 "agent_memory_write": "Atmiņa",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Zaru saraksts",
+            "noBranches": "Zari nav atrasti",
+            "rawUrlCopied": "Neapstrādātais URL nokopēts",
+            "working": "darbojas"
         },
         "filenNotes": {
             "title": "Šifrētas piezīmes",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Publiska konstanta sāls (rclone-style). Nepieciešama augstas entropijas ģenerēta parole. Viena un tā pati parole vairākos seifos padara šifrētos nosaukumus saistāmus bez atslēgas.",
             "defaultSaltNeedsStronger": "Ievadiet spēcīgu ģenerētu paroli, lai ieslēgtu noklusējuma salt.",
             "defaultSaltOneSaltNote": "Ir tikai viena sāls: 32 baiti, publiska, vienāda visām glabātavām ar noklusējuma sāli.",
-            "defaultSaltValueLabel": "Publiskā noklusējuma sāls (AeroCrypt v3), šādas virknes SHA-256"
+            "defaultSaltValueLabel": "Publiskā noklusējuma sāls (AeroCrypt v3), šādas virknes SHA-256",
+            "defaultSaltTierMeaning": "Noklusējuma sāls nozīmē, ka glabātavu atver vienīgi parole: nekas cits nav jānēsā līdzi, un nekas cits to nesargā."
         },
         "modalGuard": {
             "busyTitle": "Notiek darbība",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Nav instalēts neviens darbvirsmas portāls, tāpēc šī sistēma nevar atvērt failu atlasītāju. Instalējiet xdg-desktop-portal un savai darbvirsmai piemērotu aizmuguri (piemēram, xdg-desktop-portal-gtk) un mēģiniet vēlreiz.",
                 "unknown": "Neizdevās atvērt failu atlasītāju. Sīkāku informāciju skatiet lietotnes žurnālā."
             }
+        },
+        "errors": {
+            "unknown": "Nezināma kļūda"
+        },
+        "rename": {
+            "invalidCharacters": "Nosaukumā nedrīkst būt / vai \\, secība .. vai nulles rakstzīme."
         }
     }
 }

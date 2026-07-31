@@ -71,7 +71,16 @@
             "current": "uneko",
             "goToActiveSession": "Joan saio aktibora",
             "password": "Pasahitza",
-            "default": "Lehenetsia"
+            "default": "Lehenetsia",
+            "add": "Gehitu",
+            "apply": "Aplikatu",
+            "later": "Geroago",
+            "path": "Bidea",
+            "remove": "Kendu",
+            "reset": "Berrezarri",
+            "saved": "Gordeta",
+            "saving": "Gordetzen...",
+            "creating": "Sortzen..."
         },
         "connection": {
             "title": "Zerbitzarira Konektatu",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Hemen erauzteak lehendik dauden {count} elementu gainidatziko ditu: {names}. Jarraitu?",
             "permanentDeleteHint": "Hautatutako elementuak soilik ezabatzen ditu behin betiko Zakarrontzitik. Ezin da desegin.",
             "emptyTrashHint": "Zakarrontziko elementu GUZTIAK ezabatzen ditu behin betiko, ez soilik hautatutakoak. Ezin da desegin.",
-            "dropboxPurgeBusinessOnly": "Behin betiko ezabatzeak eta zakarrontzia hustzeak Dropbox Business/Team kontua behar dute."
+            "dropboxPurgeBusinessOnly": "Behin betiko ezabatzeak eta zakarrontzia hustzeak Dropbox Business/Team kontua behar dute.",
+            "setAsPrivate": "Ezarri pribatu gisa",
+            "setAsPublic": "Ezarri publiko gisa",
+            "makeAllPrivate": "Egin denak pribatu"
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Uneko kudeatzailea",
             "encryptionPrivacyTitle": "Enkriptazio-pribatutasuna",
             "warnSameNameEncrypted": "Markatu izen bereko sarrerak enkriptatutako gordailuetan",
-            "warnSameNameEncryptedDesc": "Lehenetsita itzalita. AeroCrypt edo rclone-crypt gainjartze aktibo baten barruan, markatu izena bisitatzen duzun beste bide batean ere agertzen den fitxategiak eta karpetak. Izenak modu deterministikoan enkriptatzen dira, beraz, izen berdinak berdin ikusten dira enkriptatutako biltegiaren behatzaile batentzat (rclone-crypt eta Cryptomator-en truke bera)."
+            "warnSameNameEncryptedDesc": "Lehenetsita itzalita. AeroCrypt edo rclone-crypt gainjartze aktibo baten barruan, markatu izena bisitatzen duzun beste bide batean ere agertzen den fitxategiak eta karpetak. Izenak modu deterministikoan enkriptatzen dira, beraz, izen berdinak berdin ikusten dira enkriptatutako biltegiaren behatzaile batentzat (rclone-crypt eta Cryptomator-en truke bera).",
+            "loading": "Kargatzen..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Parearen izena",
             "managePairs": "Kudeatu pareak",
             "importLegacy": "Inportatu unekoa parea gisa",
-            "importLegacyHint": "Inportatu zure AeroCloud konfigurazio bakarra lehen parea gisa (atzerako bateragarritasuna mantentzen du)."
+            "importLegacyHint": "Inportatu zure AeroCloud konfigurazio bakarra lehen parea gisa (atzerako bateragarritasuna mantentzen du).",
+            "versionHistory": "Bertsio historia",
+            "restoreVersion": "Lehengoratu bertsio hau",
+            "cleanupDone": "Garbituta",
+            "cleanupVersions": "Garbitu bertsio zaharrak",
+            "noRemoteFolders": "Ez da urruneko karpetarik aurkitu",
+            "noVersions": "Ez da artxibatutako bertsiorik aurkitu",
+            "reauthRequired": "Baimena iraungi da. Baimendu berriro sinkronizazioarekin jarraitzeko.",
+            "scanningFolders": "Urruneko karpetak eskaneatzen..."
         },
         "statusBar": {
             "connected": "Konektatuta",
@@ -1424,7 +1445,10 @@
             "dropImported": "{count} elementu inportatu dira karpeta honetara",
             "dropFailed": "Ezin izan dira {count} elementu inportatu",
             "connectionCancelledHint": "Zerrendatzea gelditu da eta konexioa itxi da.",
-            "connectTimedOut": "Konexioaren denbora-muga gainditu da. Zerbitzariak ez du inoiz erantzun eta saiakera bertan behera utzi da."
+            "connectTimedOut": "Konexioaren denbora-muga gainditu da. Zerbitzariak ez du inoiz erantzun eta saiakera bertan behera utzi da.",
+            "transferFailed": "Transferentziak huts egin du",
+            "navigationFailed": "Nabigazioak huts egin du: {error}",
+            "transferComplete": "{count} fitxategi kopiatu dira"
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Sare-errorea. Egiaztatu zure Internet konexioa eta hornitzailearen URLa.",
                 "noProvider": "Ziurtatu AI hornitzailea konfiguratu duzula ezarpenetan.",
                 "rateLimited": "Hornitzaileak mugatuta. Itxaron pixka bat eta saiatu berriro.",
-                "toolsNotSupported": "Modelo honek ez du tresna-erabilera onartzen. Desaktibatu \"Tresnak\" modelo honetarako AI Ezarpenak → Modeloak atalean."
+                "toolsNotSupported": "Modelo honek ez du tresna-erabilera onartzen. Desaktibatu \"Tresnak\" modelo honetarako AI Ezarpenak → Modeloak atalean.",
+                "noProjectContext": "Ez dago proiektuaren testuingururik eskuragarri agentearen memoriarako."
             },
             "toolLabels": {
                 "agent_memory_write": "Memoria",
@@ -4477,7 +4502,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Adarren zerrenda",
+            "noBranches": "Ez da adarrik aurkitu",
+            "rawUrlCopied": "URL gordina kopiatu da",
+            "working": "lanean"
         },
         "filenNotes": {
             "title": "Enkriptatutako oharrak",
@@ -5332,7 +5361,8 @@
             "defaultSaltToggleHint": "Gatz konstante publikoa (rclone-estiloa). Sortutako entropia handiko pasahitza behar du. Pasahitz bera hainbat kutxatan izateak giltzarik gabe estekagarri bihurtzen ditu zifratutako izenak.",
             "defaultSaltNeedsStronger": "Sartu sortutako pasahitz sendo bat lehenetsitako salt-a aktibatzeko.",
             "defaultSaltOneSaltNote": "Salt bakarra dago: 32 byte, publikoa, salt lehenetsia darabilten kutxa guztietan berdina.",
-            "defaultSaltValueLabel": "Gatz lehenetsi publikoa (AeroCrypt v3), honako kate honen SHA-256"
+            "defaultSaltValueLabel": "Gatz lehenetsi publikoa (AeroCrypt v3), honako kate honen SHA-256",
+            "defaultSaltTierMeaning": "Gatz lehenetsiak esan nahi du pasahitzak bakarrik irekitzen duela kutxa gotorra: ez da beste ezer eraman behar, eta beste ezerk ez du babesten."
         },
         "modalGuard": {
             "busyTitle": "Eragiketa abian",
@@ -5608,6 +5638,12 @@
                 "portalMissing": "Ez dago mahaigaineko atari bat instalatuta, beraz sistema honek ezin du fitxategi-hautatzailea ireki. Instalatu xdg-desktop-portal eta zure mahaigainerako backend bat (adibidez xdg-desktop-portal-gtk), eta saiatu berriro.",
                 "unknown": "Ezin izan da fitxategi-hautatzailea ireki. Ikusi aplikazioaren egunkaria xehetasunetarako."
             }
+        },
+        "errors": {
+            "unknown": "Errore ezezaguna"
+        },
+        "rename": {
+            "invalidCharacters": "Izen batek ezin du / edo \\ eduki, ezta .. sekuentzia edo karaktere nulua ere."
         }
     }
 }

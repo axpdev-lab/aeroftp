@@ -10424,7 +10424,7 @@ const App: React.FC = () => {
           {
             onEntryError: (entry, error) => {
               notify.error(
-                t('toast.transferFailed') || 'Transfer failed',
+                t('toast.transferFailed'),
                 `${entry.sourcePath}: ${error}`,
               );
             },
@@ -10445,8 +10445,7 @@ const App: React.FC = () => {
         } else if (summary.succeeded > 0) {
           notify.success(
             'Cross-profile transfer',
-            t('toast.transferComplete', { count: summary.transferredFiles })
-              || `${summary.transferredFiles} file(s) copied`,
+            t('toast.transferComplete', { count: summary.transferredFiles }),
           );
         }
         return;
@@ -13525,7 +13524,7 @@ const App: React.FC = () => {
       ...(currentProtocol === 'fourshared' ? [
         ...(isFourSharedContext && !isFourSharedPrivate ? [
           {
-            label: t('contextMenu.setAsPrivate') || 'Set as Private',
+            label: t('contextMenu.setAsPrivate'),
             icon: <FourSharedLogo size={14} />,
             action: async () => {
               const targetPath = file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`;
@@ -13536,7 +13535,7 @@ const App: React.FC = () => {
                   isPublic: false,
                   isDir: !!file.is_dir,
                 });
-                notify.success(t('contextMenu.setAsPrivate') || 'Set as Private');
+                notify.success(t('contextMenu.setAsPrivate'));
                 humanLog.updateEntry(logId, { status: 'success', message: '[4shared] Set private' });
                 await loadRemoteFiles(undefined, true);
               } catch (err) {
@@ -13548,7 +13547,7 @@ const App: React.FC = () => {
         ] : []),
         ...(isFourSharedContext && !isFourSharedPublic ? [
           {
-            label: t('contextMenu.setAsPublic') || 'Set as Public',
+            label: t('contextMenu.setAsPublic'),
             icon: <FourSharedLogo size={14} />,
             action: async () => {
               const targetPath = file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`;
@@ -13559,7 +13558,7 @@ const App: React.FC = () => {
                   isPublic: true,
                   isDir: !!file.is_dir,
                 });
-                notify.success(t('contextMenu.setAsPublic') || 'Set as Public');
+                notify.success(t('contextMenu.setAsPublic'));
                 humanLog.updateEntry(logId, { status: 'success', message: '[4shared] Set public' });
                 await loadRemoteFiles(undefined, true);
               } catch (err) {
@@ -13570,7 +13569,7 @@ const App: React.FC = () => {
           },
         ] : []),
         ...(count > 1 ? [{
-          label: t('contextMenu.makeAllPrivate') || 'Make all private',
+          label: t('contextMenu.makeAllPrivate'),
           icon: <FourSharedLogo size={14} />,
           action: async () => {
             const selectedEntries = remoteFiles.filter(f => selection.has(f.name));
@@ -13586,10 +13585,10 @@ const App: React.FC = () => {
               const ok = results.filter(r => r.status === 'fulfilled').length;
               const failed = results.length - ok;
               if (failed === 0) {
-                notify.success(t('contextMenu.makeAllPrivate') || 'Make all private');
+                notify.success(t('contextMenu.makeAllPrivate'));
                 humanLog.updateEntry(logId, { status: 'success', message: `[4shared] Set ${ok} entries private` });
               } else {
-                notify.warning(`${t('contextMenu.makeAllPrivate') || 'Make all private'}: ${ok}/${results.length}`);
+                notify.warning(`${t('contextMenu.makeAllPrivate')}: ${ok}/${results.length}`);
                 humanLog.updateEntry(logId, { status: 'error', message: `[4shared] Set ${ok}/${results.length} entries private` });
               }
               await loadRemoteFiles(undefined, true);
@@ -13980,7 +13979,7 @@ const App: React.FC = () => {
             } catch {
               await invoke('copy_to_clipboard', { text: url });
             }
-            notify.success(t('github.rawUrlCopied') || 'Raw URL copied');
+            notify.success(t('github.rawUrlCopied'));
           },
         });
         items.push({
@@ -16401,7 +16400,7 @@ const App: React.FC = () => {
                 onClick={() => setRcloneCryptImportBanner(null)}
                 className="px-3 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
               >
-                {t('common.later') || 'Più tardi'}
+                {t('common.later')}
               </button>
               <button
                 onClick={async () => {

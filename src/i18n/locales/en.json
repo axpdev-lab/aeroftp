@@ -331,7 +331,8 @@
                 "noProvider": "Make sure you have configured an AI provider in settings.",
                 "operationFailed": "Operation failed",
                 "rateLimited": "Rate limited by the provider. Wait a moment and try again.",
-                "toolsNotSupported": "This model does not support tool use. Disable \"Tools\" for this model in AI Settings → Models."
+                "toolsNotSupported": "This model does not support tool use. Disable \"Tools\" for this model in AI Settings → Models.",
+                "noProjectContext": "No project context available for agent memory."
             },
             "errorAuth": "Authentication failed. Check your API key in AI Settings.",
             "errorDefault": "Make sure you have configured an AI provider in settings.",
@@ -1055,7 +1056,15 @@
             "pairNamePlaceholder": "Pair name",
             "managePairs": "Manage pairs",
             "importLegacy": "Import current as pair",
-            "importLegacyHint": "Import your existing single AeroCloud config as the first pair (keeps back-compat)."
+            "importLegacyHint": "Import your existing single AeroCloud config as the first pair (keeps back-compat).",
+            "versionHistory": "Version History",
+            "restoreVersion": "Restore this version",
+            "cleanupDone": "Cleaned up",
+            "cleanupVersions": "Clean up old versions",
+            "noRemoteFolders": "No remote folders found",
+            "noVersions": "No archived versions found",
+            "reauthRequired": "Authorization expired. Please re-authorize to resume sync.",
+            "scanningFolders": "Scanning remote folders..."
         },
         "common": {
             "about": "About",
@@ -1122,7 +1131,16 @@
             "yes": "Yes",
             "goToActiveSession": "Go to active session",
             "password": "Password",
-            "default": "Default"
+            "default": "Default",
+            "add": "Add",
+            "apply": "Apply",
+            "later": "Later",
+            "path": "Path",
+            "remove": "Remove",
+            "reset": "Reset",
+            "saved": "Saved",
+            "saving": "Saving...",
+            "creating": "Creating..."
         },
         "compare": {
             "title": "Compare panels",
@@ -1562,7 +1580,10 @@
             "newDocumentName": "Document name:",
             "openWithAeroVaultZip": "Open with AeroVault Zip",
             "importToAeroFTP": "Import to AeroFTP",
-            "permissionsEllipsis": "Permissions..."
+            "permissionsEllipsis": "Permissions...",
+            "setAsPrivate": "Set as Private",
+            "setAsPublic": "Set as Public",
+            "makeAllPrivate": "Make all private"
         },
         "aerocrypt": {
             "title": "Rclone Crypt overlay",
@@ -3524,7 +3545,8 @@
             "backupRowServersOnly": "Server Profiles",
             "backupRowServersOnlyDesc": "Server profiles only, no app settings",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Import & export with {count} other tools"
+            "backupRowBridgeDesc": "Import & export with {count} other tools",
+            "loading": "Loading..."
         },
         "sharing": {
             "add": "Add",
@@ -3972,7 +3994,10 @@
             "connectionCancelledHint": "The listing was stopped and the connection closed.",
             "connectTimedOut": "Connection timed out. The server never responded and the attempt was aborted.",
             "keepWaiting": "Keep waiting",
-            "cancelConnection": "Cancel connection"
+            "cancelConnection": "Cancel connection",
+            "transferFailed": "Transfer failed",
+            "navigationFailed": "Navigation failed: {error}",
+            "transferComplete": "{count} file(s) copied"
         },
         "toolbar": {
             "aerovaultOverlayActive": "AeroVault container overlay active - click to detach",
@@ -4685,7 +4710,11 @@
             "deleteRelease": "Delete release",
             "deleteAsset": "Delete asset",
             "confirmDeleteRelease": "Delete this release? This cannot be undone.",
-            "confirmDeleteAsset": "Delete this asset? This cannot be undone."
+            "confirmDeleteAsset": "Delete this asset? This cannot be undone.",
+            "branchList": "Branch list",
+            "noBranches": "No branches found",
+            "rawUrlCopied": "Raw URL copied",
+            "working": "working"
         },
         "gitlab": {
             "projectPath": "Project Path",
@@ -5331,7 +5360,8 @@
             "defaultSaltToggleHint": "Public constant salt (rclone-style). Requires a generated high-entropy password. Same password on multiple vaults makes encrypted names linkable without the key.",
             "defaultSaltNeedsStronger": "Enter a Strong generated password to turn on default salt.",
             "defaultSaltOneSaltNote": "There is a single salt: 32 bytes, public, identical for every default-salt vault.",
-            "defaultSaltValueLabel": "Public default salt (AeroCrypt v3), SHA-256 of"
+            "defaultSaltValueLabel": "Public default salt (AeroCrypt v3), SHA-256 of",
+            "defaultSaltTierMeaning": "Default salt means the password alone opens the vault: nothing else has to be carried, and nothing else protects it."
         },
         "modalView": {
             "listView": "List view",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "No desktop portal is installed, so this system cannot open a file chooser. Install xdg-desktop-portal and a backend for your desktop (for example xdg-desktop-portal-gtk), then try again.",
                 "unknown": "The file chooser could not be opened. See the application log for details."
             }
+        },
+        "errors": {
+            "unknown": "Unknown error"
+        },
+        "rename": {
+            "invalidCharacters": "A name cannot contain / or \\, the sequence .., or a null character."
         }
     }
 }
