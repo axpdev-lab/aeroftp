@@ -71,7 +71,16 @@
             "current": "現在",
             "goToActiveSession": "アクティブなセッションへ移動",
             "password": "パスワード",
-            "default": "デフォルト"
+            "default": "デフォルト",
+            "add": "追加",
+            "apply": "適用",
+            "later": "後で",
+            "path": "パス",
+            "remove": "削除",
+            "reset": "リセット",
+            "saved": "保存しました",
+            "saving": "保存中...",
+            "creating": "作成中..."
         },
         "connection": {
             "title": "サーバーに接続",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "ここに展開すると、既存の {count} 個の項目が上書きされます: {names}。続行しますか?",
             "permanentDeleteHint": "ゴミ箱から選択した項目のみを完全に削除します。この操作は元に戻せません。",
             "emptyTrashHint": "選択した項目だけでなく、ゴミ箱内のすべての項目を完全に削除します。この操作は元に戻せません。",
-            "dropboxPurgeBusinessOnly": "完全削除とゴミ箱を空にするには、Dropbox Business/Team アカウントが必要です。"
+            "dropboxPurgeBusinessOnly": "完全削除とゴミ箱を空にするには、Dropbox Business/Team アカウントが必要です。",
+            "setAsPrivate": "プライベートに設定",
+            "setAsPublic": "公開に設定",
+            "makeAllPrivate": "すべて非公開にする"
         },
         "transfer": {
             "transferring": "転送中...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "現在のハンドラー",
             "encryptionPrivacyTitle": "暗号化のプライバシー",
             "warnSameNameEncrypted": "暗号化ボールト内の同名項目にフラグを付ける",
-            "warnSameNameEncryptedDesc": "既定ではオフ。アクティブな AeroCrypt または rclone-crypt オーバーレイ内で、あなたが訪れた別のパスにも名前が表示されるファイルやフォルダーをマークします。名前は決定論的に暗号化されるため、同一の名前は暗号化ストアの観察者には同一のものとして見えます（rclone-crypt や Cryptomator と同じトレードオフです）。"
+            "warnSameNameEncryptedDesc": "既定ではオフ。アクティブな AeroCrypt または rclone-crypt オーバーレイ内で、あなたが訪れた別のパスにも名前が表示されるファイルやフォルダーをマークします。名前は決定論的に暗号化されるため、同一の名前は暗号化ストアの観察者には同一のものとして見えます（rclone-crypt や Cryptomator と同じトレードオフです）。",
+            "loading": "読み込み中..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "ペア名",
             "managePairs": "ペアを管理",
             "importLegacy": "現在の設定をペアとしてインポート",
-            "importLegacyHint": "既存の単一 AeroCloud 設定を最初のペアとしてインポートします（下位互換性を維持）。"
+            "importLegacyHint": "既存の単一 AeroCloud 設定を最初のペアとしてインポートします（下位互換性を維持）。",
+            "versionHistory": "バージョン履歴",
+            "restoreVersion": "このバージョンを復元",
+            "cleanupDone": "クリーンアップしました",
+            "cleanupVersions": "古いバージョンをクリーンアップ",
+            "noRemoteFolders": "リモートフォルダーが見つかりません",
+            "noVersions": "アーカイブされたバージョンが見つかりません",
+            "reauthRequired": "認証の有効期限が切れました。同期を再開するには再認証してください。",
+            "scanningFolders": "リモートフォルダーをスキャン中..."
         },
         "statusBar": {
             "connected": "接続済み",
@@ -1424,7 +1445,10 @@
             "dropImported": "{count}件の項目をこのフォルダーにインポートしました",
             "dropFailed": "{count}件の項目のインポートに失敗しました",
             "connectionCancelledHint": "一覧の取得を中止し、接続を閉じました。",
-            "connectTimedOut": "接続がタイムアウトしました。サーバーが応答しなかったため、試行は中止されました。"
+            "connectTimedOut": "接続がタイムアウトしました。サーバーが応答しなかったため、試行は中止されました。",
+            "transferFailed": "転送に失敗しました",
+            "navigationFailed": "移動に失敗しました: {error}",
+            "transferComplete": "{count} 個のファイルをコピーしました"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -2650,7 +2674,8 @@
                 "networkError": "ネットワークエラー。インターネット接続とプロバイダーURLを確認してください。",
                 "noProvider": "設定でAIプロバイダーが構成されていることを確認してください。",
                 "rateLimited": "プロバイダーによるレート制限。しばらく待ってから再試行してください。",
-                "toolsNotSupported": "このモデルはツール使用をサポートしていません。AI設定→モデルで「ツール」を無効にしてください。"
+                "toolsNotSupported": "このモデルはツール使用をサポートしていません。AI設定→モデルで「ツール」を無効にしてください。",
+                "noProjectContext": "エージェントメモリー用のプロジェクトコンテキストがありません。"
             },
             "toolLabels": {
                 "agent_memory_write": "メモリ",
@@ -4458,7 +4483,11 @@
             "accessToken": "個人アクセストークン",
             "patHint": "リポジトリアクセス付きの細粒度PAT",
             "appHint": "PEMキーは接続画面からインポートされVaultに保存されます。",
-            "branchOptional": "ブランチ（オプション）"
+            "branchOptional": "ブランチ（オプション）",
+            "branchList": "ブランチ一覧",
+            "noBranches": "ブランチが見つかりません",
+            "rawUrlCopied": "Raw URL をコピーしました",
+            "working": "処理中"
         },
         "filenNotes": {
             "title": "暗号化ノート",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "公開定数ソルト (rclone-style)。高エントロピーの生成パスワードが必要です。複数のボールトで同じパスワードを使うと、鍵なしで暗号化名がリンク可能になります。",
             "defaultSaltNeedsStronger": "デフォルトのソルトを有効にするには、強力な生成済みパスワードを入力してください。",
             "defaultSaltOneSaltNote": "ソルトは 1 つだけです。32 バイトで公開されており、既定ソルトを使うすべてのボールトで同一です。",
-            "defaultSaltValueLabel": "公開デフォルトソルト (AeroCrypt v3)、次の文字列の SHA-256"
+            "defaultSaltValueLabel": "公開デフォルトソルト (AeroCrypt v3)、次の文字列の SHA-256",
+            "defaultSaltTierMeaning": "既定のソルトとは、パスワードだけで保管庫が開くという意味です。ほかに持ち歩くものはなく、ほかに守るものもありません。"
         },
         "modalGuard": {
             "busyTitle": "操作の実行中",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "デスクトップポータルがインストールされていないため、このシステムではファイル選択ダイアログを開けません。xdg-desktop-portal と、お使いのデスクトップ向けのバックエンド（例: xdg-desktop-portal-gtk）をインストールしてから、もう一度お試しください。",
                 "unknown": "ファイル選択ダイアログを開けませんでした。詳細はアプリケーションのログを確認してください。"
             }
+        },
+        "errors": {
+            "unknown": "不明なエラー"
+        },
+        "rename": {
+            "invalidCharacters": "名前に / や \\、.. の並び、null 文字は使用できません。"
         }
     }
 }

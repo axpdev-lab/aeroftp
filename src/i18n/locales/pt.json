@@ -71,7 +71,16 @@
             "current": "atual",
             "goToActiveSession": "Ir para a sessão ativa",
             "password": "Palavra-passe",
-            "default": "Padrão"
+            "default": "Padrão",
+            "add": "Adicionar",
+            "apply": "Aplicar",
+            "later": "Mais tarde",
+            "path": "Caminho",
+            "remove": "Remover",
+            "reset": "Repor",
+            "saved": "Salvo",
+            "saving": "A guardar...",
+            "creating": "A criar..."
         },
         "connection": {
             "title": "Conectar ao Servidor",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Extrair aqui irá substituir {count} item(ns) existente(s): {names}. Continuar?",
             "permanentDeleteHint": "Exclui permanentemente apenas os itens selecionados da Lixeira. Isto não pode ser desfeito.",
             "emptyTrashHint": "Exclui permanentemente TODOS os itens da Lixeira, não apenas os selecionados. Isto não pode ser desfeito.",
-            "dropboxPurgeBusinessOnly": "Excluir permanentemente e Esvaziar lixeira exigem uma conta Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "Excluir permanentemente e Esvaziar lixeira exigem uma conta Dropbox Business/Team.",
+            "setAsPrivate": "Definir como privado",
+            "setAsPublic": "Definir como público",
+            "makeAllPrivate": "Tornar tudo privado"
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Manipulador atual",
             "encryptionPrivacyTitle": "Privacidade da encriptação",
             "warnSameNameEncrypted": "Sinalizar entradas com o mesmo nome em cofres encriptados",
-            "warnSameNameEncryptedDesc": "Desativado por predefinição. Dentro de uma sobreposição AeroCrypt ou rclone-crypt ativa, marque os ficheiros e pastas cujo nome também aparece noutro caminho que visita. Os nomes são encriptados de forma determinista, pelo que nomes idênticos são visíveis como idênticos para um observador do armazenamento encriptado (o mesmo compromisso que rclone-crypt e Cryptomator)."
+            "warnSameNameEncryptedDesc": "Desativado por predefinição. Dentro de uma sobreposição AeroCrypt ou rclone-crypt ativa, marque os ficheiros e pastas cujo nome também aparece noutro caminho que visita. Os nomes são encriptados de forma determinista, pelo que nomes idênticos são visíveis como idênticos para um observador do armazenamento encriptado (o mesmo compromisso que rclone-crypt e Cryptomator).",
+            "loading": "Carregando..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Nome do par",
             "managePairs": "Gerenciar pares",
             "importLegacy": "Importar atual como par",
-            "importLegacyHint": "Importe sua configuração única existente do AeroCloud como o primeiro par (mantém compatibilidade retroativa)."
+            "importLegacyHint": "Importe sua configuração única existente do AeroCloud como o primeiro par (mantém compatibilidade retroativa).",
+            "versionHistory": "Histórico de versões",
+            "restoreVersion": "Restaurar esta versão",
+            "cleanupDone": "Limpo",
+            "cleanupVersions": "Limpar versões antigas",
+            "noRemoteFolders": "Nenhuma pasta remota encontrada",
+            "noVersions": "Nenhuma versão arquivada encontrada",
+            "reauthRequired": "A autorização expirou. Autorize novamente para retomar a sincronização.",
+            "scanningFolders": "A analisar pastas remotas..."
         },
         "statusBar": {
             "connected": "Conectado",
@@ -1424,7 +1445,10 @@
             "dropImported": "{count} itens importados para esta pasta",
             "dropFailed": "Falha ao importar {count} itens",
             "connectionCancelledHint": "A listagem foi interrompida e a ligação fechada.",
-            "connectTimedOut": "Tempo limite de conexão esgotado. O servidor nunca respondeu e a tentativa foi cancelada."
+            "connectTimedOut": "Tempo limite de conexão esgotado. O servidor nunca respondeu e a tentativa foi cancelada.",
+            "transferFailed": "Falha na transferência",
+            "navigationFailed": "Falha na navegação: {error}",
+            "transferComplete": "{count} ficheiro(s) copiado(s)"
         },
         "about": {
             "tagline": "Mais que FTP. Um kit de ferramentas completo para desenvolvedores.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Erro de rede. Verifique a sua ligação à Internet e o URL do fornecedor.",
                 "noProvider": "Certifique-se de que configurou um fornecedor de AI nas definições.",
                 "rateLimited": "Limitado pelo fornecedor. Aguarde um momento e tente novamente.",
-                "toolsNotSupported": "Este modelo não suporta o uso de ferramentas. Desative \"Ferramentas\" para este modelo em Definições de AI → Modelos."
+                "toolsNotSupported": "Este modelo não suporta o uso de ferramentas. Desative \"Ferramentas\" para este modelo em Definições de AI → Modelos.",
+                "noProjectContext": "Não há contexto de projeto disponível para a memória do agente."
             },
             "toolLabels": {
                 "agent_memory_write": "Memoria",
@@ -4458,7 +4483,11 @@
             "accessToken": "Token de acesso pessoal",
             "patHint": "PAT de granularidade fina com acesso ao repositório",
             "appHint": "A chave PEM é importada e armazenada no cofre na tela de conexão.",
-            "branchOptional": "Branch (opcional)"
+            "branchOptional": "Branch (opcional)",
+            "branchList": "Lista de ramos",
+            "noBranches": "Nenhum ramo encontrado",
+            "rawUrlCopied": "URL bruto copiado",
+            "working": "em curso"
         },
         "filenNotes": {
             "title": "Notas criptografadas",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Sal constante público (estilo rclone). Requer uma senha gerada de alta entropia. A mesma senha em múltiplos cofres torna os nomes criptografados vinculáveis sem a chave.",
             "defaultSaltNeedsStronger": "Insira uma senha gerada forte para ativar o sal padrão.",
             "defaultSaltOneSaltNote": "Existe um único salt: 32 bytes, público, idêntico para todos os cofres com salt padrão.",
-            "defaultSaltValueLabel": "Salt padrão público (AeroCrypt v3), SHA-256 de"
+            "defaultSaltValueLabel": "Salt padrão público (AeroCrypt v3), SHA-256 de",
+            "defaultSaltTierMeaning": "O sal predefinido significa que apenas a palavra-passe abre o cofre: não há mais nada para levar consigo, e não há mais nada que o proteja."
         },
         "modalGuard": {
             "busyTitle": "Operação em curso",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Nenhum portal de desktop está instalado, portanto este sistema não pode abrir um seletor de arquivos. Instale o xdg-desktop-portal e um backend para o seu desktop (por exemplo xdg-desktop-portal-gtk) e tente novamente.",
                 "unknown": "Não foi possível abrir o seletor de arquivos. Consulte o log do aplicativo para mais detalhes."
             }
+        },
+        "errors": {
+            "unknown": "Erro desconhecido"
+        },
+        "rename": {
+            "invalidCharacters": "Um nome não pode conter / nem \\, a sequência .. nem um carácter nulo."
         }
     }
 }

@@ -1624,7 +1624,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         const executionArgs = toolCall.toolName === 'agent_memory_write'
             ? (() => {
                 if (!projectPath) {
-                    throw new Error(t('ai.error.noProjectContext') || 'No project context available for agent memory.');
+                    throw new Error(t('ai.error.noProjectContext'));
                 }
                 return { ...toolCall.args, project_path: projectPath };
             })()
