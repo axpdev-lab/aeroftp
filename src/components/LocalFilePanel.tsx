@@ -173,6 +173,8 @@ export interface LocalFilePanelProps {
   // --- Context Menu ---
   onContextMenu: (e: React.MouseEvent, file: LocalFile) => void;
   onEmptyContextMenu: (e: React.MouseEvent) => void;
+  /** Right-click on a breadcrumb segment, with that segment's full path (#347). */
+  onPathContextMenu?: (e: React.MouseEvent, path: string) => void;
 
   // --- File Actions ---
   onOpenUniversalPreview: (file: LocalFile, isRemote: boolean) => void;
@@ -298,6 +300,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   onPanelDragLeave,
   onContextMenu,
   onEmptyContextMenu,
+  onPathContextMenu,
   onOpenUniversalPreview,
   onOpenDevToolsPreview,
   onUploadFile,
@@ -614,6 +617,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                 onNavigate={onNavigate}
                 isCoherent={isPathCoherent}
                 minPath={isSyncNavigation && syncBasePaths ? syncBasePaths.local : undefined}
+                onSegmentContextMenu={onPathContextMenu}
                 t={t}
               />
             </div>
@@ -661,6 +665,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                 onNavigate={onNavigate}
                 isCoherent={isPathCoherent && !isSyncPathMismatch}
                 minPath={isSyncNavigation && syncBasePaths ? syncBasePaths.local : undefined}
+                onSegmentContextMenu={onPathContextMenu}
                 t={t}
               />
             </div>
