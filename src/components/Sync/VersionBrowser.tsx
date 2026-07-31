@@ -123,7 +123,7 @@ function VersionBrowserContent({ filePath, diskUsage, versions, loading, cleanup
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-medium">
                     <History size={16} className="text-cyan-500" />
-                    {t('cloud.versionHistory') || 'Version History'}
+                    {t('cloud.versionHistory')}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-400">
                     <HardDrive size={12} />
@@ -144,7 +144,7 @@ function VersionBrowserContent({ filePath, diskUsage, versions, loading, cleanup
                 </div>
             ) : versions.length === 0 ? (
                 <p className="text-xs text-gray-500 text-center py-4">
-                    {t('cloud.noVersions') || 'No archived versions found'}
+                    {t('cloud.noVersions')}
                 </p>
             ) : (
                 <div className="max-h-[200px] overflow-y-auto space-y-1">
@@ -158,7 +158,7 @@ function VersionBrowserContent({ filePath, diskUsage, versions, loading, cleanup
                             <button
                                 onClick={() => onRestore(v)}
                                 className="ml-2 p-1 hover:bg-cyan-500/20 rounded text-cyan-400"
-                                title={t('cloud.restoreVersion') || 'Restore this version'}
+                                title={t('cloud.restoreVersion')}
                             >
                                 <RotateCcw size={13} />
                             </button>
@@ -173,13 +173,13 @@ function VersionBrowserContent({ filePath, diskUsage, versions, loading, cleanup
                     className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
                 >
                     <Trash2 size={12} />
-                    {t('cloud.cleanupVersions') || 'Cleanup old versions'}
+                    {t('cloud.cleanupVersions')}
                 </button>
             </div>
 
             {cleanupResult && cleanupResult.deleted_count > 0 && (
                 <div className="text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded">
-                    {t('cloud.cleanupDone') || 'Cleaned up'}: {cleanupResult.deleted_count} files, {formatSize(cleanupResult.freed_bytes)} freed
+                    {t('cloud.cleanupDone')}: {cleanupResult.deleted_count} files, {formatSize(cleanupResult.freed_bytes)} freed
                 </div>
             )}
         </div>

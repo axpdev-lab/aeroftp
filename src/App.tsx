@@ -10424,7 +10424,7 @@ const App: React.FC = () => {
           {
             onEntryError: (entry, error) => {
               notify.error(
-                t('toast.transferFailed') || 'Transfer failed',
+                t('toast.transferFailed'),
                 `${entry.sourcePath}: ${error}`,
               );
             },
@@ -10445,8 +10445,7 @@ const App: React.FC = () => {
         } else if (summary.succeeded > 0) {
           notify.success(
             'Cross-profile transfer',
-            t('toast.transferComplete', { count: summary.transferredFiles })
-              || `${summary.transferredFiles} file(s) copied`,
+            t('toast.transferComplete', { count: summary.transferredFiles }),
           );
         }
         return;
@@ -13525,7 +13524,7 @@ const App: React.FC = () => {
       ...(currentProtocol === 'fourshared' ? [
         ...(isFourSharedContext && !isFourSharedPrivate ? [
           {
-            label: t('contextMenu.setAsPrivate') || 'Set as Private',
+            label: t('contextMenu.setAsPrivate'),
             icon: <FourSharedLogo size={14} />,
             action: async () => {
               const targetPath = file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`;
@@ -13536,7 +13535,7 @@ const App: React.FC = () => {
                   isPublic: false,
                   isDir: !!file.is_dir,
                 });
-                notify.success(t('contextMenu.setAsPrivate') || 'Set as Private');
+                notify.success(t('contextMenu.setAsPrivate'));
                 humanLog.updateEntry(logId, { status: 'success', message: '[4shared] Set private' });
                 await loadRemoteFiles(undefined, true);
               } catch (err) {
@@ -13548,7 +13547,7 @@ const App: React.FC = () => {
         ] : []),
         ...(isFourSharedContext && !isFourSharedPublic ? [
           {
-            label: t('contextMenu.setAsPublic') || 'Set as Public',
+            label: t('contextMenu.setAsPublic'),
             icon: <FourSharedLogo size={14} />,
             action: async () => {
               const targetPath = file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`;
@@ -13559,7 +13558,7 @@ const App: React.FC = () => {
                   isPublic: true,
                   isDir: !!file.is_dir,
                 });
-                notify.success(t('contextMenu.setAsPublic') || 'Set as Public');
+                notify.success(t('contextMenu.setAsPublic'));
                 humanLog.updateEntry(logId, { status: 'success', message: '[4shared] Set public' });
                 await loadRemoteFiles(undefined, true);
               } catch (err) {
@@ -13570,7 +13569,7 @@ const App: React.FC = () => {
           },
         ] : []),
         ...(count > 1 ? [{
-          label: t('contextMenu.makeAllPrivate') || 'Make all private',
+          label: t('contextMenu.makeAllPrivate'),
           icon: <FourSharedLogo size={14} />,
           action: async () => {
             const selectedEntries = remoteFiles.filter(f => selection.has(f.name));
@@ -13586,10 +13585,10 @@ const App: React.FC = () => {
               const ok = results.filter(r => r.status === 'fulfilled').length;
               const failed = results.length - ok;
               if (failed === 0) {
-                notify.success(t('contextMenu.makeAllPrivate') || 'Make all private');
+                notify.success(t('contextMenu.makeAllPrivate'));
                 humanLog.updateEntry(logId, { status: 'success', message: `[4shared] Set ${ok} entries private` });
               } else {
-                notify.warning(`${t('contextMenu.makeAllPrivate') || 'Make all private'}: ${ok}/${results.length}`);
+                notify.warning(`${t('contextMenu.makeAllPrivate')}: ${ok}/${results.length}`);
                 humanLog.updateEntry(logId, { status: 'error', message: `[4shared] Set ${ok}/${results.length} entries private` });
               }
               await loadRemoteFiles(undefined, true);
@@ -13980,7 +13979,7 @@ const App: React.FC = () => {
             } catch {
               await invoke('copy_to_clipboard', { text: url });
             }
-            notify.success(t('github.rawUrlCopied') || 'Raw URL copied');
+            notify.success(t('github.rawUrlCopied'));
           },
         });
         items.push({
@@ -14652,24 +14651,10 @@ const App: React.FC = () => {
       { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success(t('contextMenu.pathCopied')); } },
       { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success(t('contextMenu.nameCopied')); }, divider: true },
       { label: t('contextMenu.openInFileManager'), icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
-      // Directory-specific actions: Calculate Size, Find Duplicates, Disk Usage
-      ...(file.is_dir ? [
-        {
-          label: t('contextMenu.calculateSize'),
-          icon: <HardDrive size={14} />,
-          action: () => calculateFolderSize(file.path || `${currentLocalPath}/${file.name}`),
-        },
-        {
-          label: t('contextMenu.findDuplicates'),
-          icon: <Copy size={14} />,
-          action: () => setDuplicateFinderPath(file.path || `${currentLocalPath}/${file.name}`),
-        },
-        {
-          label: t('contextMenu.diskUsage'),
-          icon: <HardDrive size={14} />,
-          action: () => setDiskUsagePath(file.path || `${currentLocalPath}/${file.name}`),
-        },
-      ] : []),
+      // Directory-specific actions: Calculate Size, Find Duplicates, Disk Usage.
+      // Same list the empty-area and breadcrumb menus raise, so a folder answers
+      // the same way whether you reach it from its parent or from inside it.
+      ...(file.is_dir ? directoryActionItems(file.path || `${currentLocalPath}/${file.name}`) : []),
     ];
 
     // Helper: get paths for compression
@@ -15177,6 +15162,53 @@ const App: React.FC = () => {
     contextMenu.show(e, items);
   };
 
+  /**
+   * What can be done to a directory, given its path.
+   *
+   * These used to exist only on a folder *entry* in the listing, which meant
+   * running any of them on the folder you were already inside required leaving
+   * it, finding it in the parent, and right-clicking it there (discussion #347).
+   * They are now built from a path so the same three can be raised from the
+   * empty space of the panel and from a breadcrumb segment.
+   */
+  const directoryActionItems = (dirPath: string): ContextMenuItem[] => [
+    {
+      label: t('contextMenu.calculateSize'), icon: <HardDrive size={14} />,
+      action: () => calculateFolderSize(dirPath),
+    },
+    {
+      label: t('contextMenu.findDuplicates'), icon: <Copy size={14} />,
+      action: () => setDuplicateFinderPath(dirPath),
+    },
+    {
+      label: t('contextMenu.diskUsage'), icon: <HardDrive size={14} />,
+      action: () => setDiskUsagePath(dirPath),
+    },
+  ];
+
+  /**
+   * Context menu for one segment of the local breadcrumb, i.e. for a directory
+   * named in the path bar — including the one you are in, which is the case the
+   * listing could never offer.
+   */
+  const showLocalPathContextMenu = (e: React.MouseEvent, dirPath: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dirPath) return;
+    contextMenu.show(e, [
+      {
+        label: t('contextMenu.openInFileManager'), icon: <ExternalLink size={14} />,
+        action: () => openInFileManager(dirPath),
+      },
+      {
+        label: t('contextMenu.copyPath'), icon: <Copy size={14} />,
+        action: () => { navigator.clipboard.writeText(dirPath); notify.success(t('contextMenu.pathCopied')); },
+        divider: true,
+      },
+      ...directoryActionItems(dirPath),
+    ]);
+  };
+
   // Empty-area context menu for local panel (right-click on background).
   // Dual-panel aware: targets the panel that received the click.
   const showLocalEmptyContextMenu = (e: React.MouseEvent, localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
@@ -15204,7 +15236,11 @@ const App: React.FC = () => {
         label: t('contextMenu.selectAll') || 'Select All', icon: <CheckCircle2 size={14} />,
         action: () => ctxPanel.setSelection(new Set(ctxPanel.files.map(f => f.name))),
         disabled: ctxPanel.files.length === 0,
+        divider: true,
       },
+      // Aimed at the directory this panel is showing, so they no longer require
+      // going up a level to find it (#347).
+      ...(ctxPanel.currentPath ? directoryActionItems(ctxPanel.currentPath) : []),
     ];
     contextMenu.show(e, items);
   };
@@ -16401,7 +16437,7 @@ const App: React.FC = () => {
                 onClick={() => setRcloneCryptImportBanner(null)}
                 className="px-3 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
               >
-                {t('common.later') || 'Più tardi'}
+                {t('common.later')}
               </button>
               <button
                 onClick={async () => {
@@ -18369,6 +18405,7 @@ const App: React.FC = () => {
                   onPanelDragLeave={handlePanelDragLeave}
                   onContextMenu={showLocalContextMenu}
                   onEmptyContextMenu={showLocalEmptyContextMenu}
+                  onPathContextMenu={showLocalPathContextMenu}
                   onOpenUniversalPreview={openUniversalPreview}
                   onOpenDevToolsPreview={openDevToolsPreview}
                   onUploadFile={uploadFile}
@@ -18512,6 +18549,7 @@ const App: React.FC = () => {
                     onPanelDragLeave={handlePanelDragLeave}
                     onContextMenu={(e, file) => { setActiveLocalPanelId('local2'); showLocalContextMenu(e, file, 'local2'); }}
                     onEmptyContextMenu={(e) => { setActiveLocalPanelId('local2'); showLocalEmptyContextMenu(e, 'local2'); }}
+                    onPathContextMenu={(e, p) => { setActiveLocalPanelId('local2'); showLocalPathContextMenu(e, p); }}
                     onOpenUniversalPreview={openUniversalPreview}
                     onOpenDevToolsPreview={openDevToolsPreview}
                     onUploadFile={uploadFile}

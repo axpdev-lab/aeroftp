@@ -195,7 +195,9 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
             </div>
           }
           isRemote={false}
-          className="w-24 h-24 object-cover rounded-lg"
+          // `object-contain`: Large Icons is the view a user switches to in
+          // order to see the picture, so cropping its edges away defeats it.
+          className="w-24 h-24 object-contain rounded-lg"
         />
       );
     }

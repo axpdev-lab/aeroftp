@@ -1808,7 +1808,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                     <div className="mb-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 flex items-center justify-between">
                         <div className="flex items-center gap-2 text-sm text-red-800 dark:text-red-300">
                             <Shield size={16} />
-                            <span>{reauthRequired.provider.toUpperCase()}: {t('cloud.reauthRequired') || 'Authorization expired. Please re-authorize to resume sync.'}</span>
+                            <span>{reauthRequired.provider.toUpperCase()}: {t('cloud.reauthRequired')}</span>
                         </div>
                         <button
                             onClick={() => { setReauthRequired(null); setShowSettings(true); }}

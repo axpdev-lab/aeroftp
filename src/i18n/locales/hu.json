@@ -71,7 +71,16 @@
             "current": "jelenlegi",
             "goToActiveSession": "Ugrás az aktív munkamenethez",
             "password": "Jelszó",
-            "default": "Alapértelmezett"
+            "default": "Alapértelmezett",
+            "add": "Hozzáadás",
+            "apply": "Alkalmazás",
+            "later": "Később",
+            "path": "Útvonal",
+            "remove": "Eltávolítás",
+            "reset": "Visszaállítás",
+            "saved": "Mentve",
+            "saving": "Mentés...",
+            "creating": "Létrehozás..."
         },
         "connection": {
             "title": "Csatlakozás szerverhez",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Az ide való kibontás felülír {count} meglévő elemet: {names}. Folytatja?",
             "permanentDeleteHint": "Csak a kijelölt elemeket törli véglegesen a Kukából. Ezt nem lehet visszavonni.",
             "emptyTrashHint": "Az ÖSSZES elemet véglegesen törli a Kukából, nem csak a kijelölteket. Ezt nem lehet visszavonni.",
-            "dropboxPurgeBusinessOnly": "A végleges törléshez és a Kuka ürítéséhez Dropbox Business/Team fiók szükséges."
+            "dropboxPurgeBusinessOnly": "A végleges törléshez és a Kuka ürítéséhez Dropbox Business/Team fiók szükséges.",
+            "setAsPrivate": "Beállítás privátra",
+            "setAsPublic": "Beállítás nyilvánosra",
+            "makeAllPrivate": "Összes priváttá tétele"
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Jelenlegi kezelő",
             "encryptionPrivacyTitle": "Titkosítási adatvédelem",
             "warnSameNameEncrypted": "Azonos nevű bejegyzések megjelölése titkosított széfekben",
-            "warnSameNameEncryptedDesc": "Alapértelmezetten kikapcsolva. Aktív AeroCrypt vagy rclone-crypt átfedésen belül jelölje meg azokat a fájlokat és mappákat, amelyek neve egy másik meglátogatott útvonalon is megjelenik. A nevek determinisztikusan vannak titkosítva, így az azonos nevek azonosként láthatók a titkosított tároló megfigyelője számára (ugyanaz a kompromisszum, mint a rclone-crypt és a Cryptomator esetében)."
+            "warnSameNameEncryptedDesc": "Alapértelmezetten kikapcsolva. Aktív AeroCrypt vagy rclone-crypt átfedésen belül jelölje meg azokat a fájlokat és mappákat, amelyek neve egy másik meglátogatott útvonalon is megjelenik. A nevek determinisztikusan vannak titkosítva, így az azonos nevek azonosként láthatók a titkosított tároló megfigyelője számára (ugyanaz a kompromisszum, mint a rclone-crypt és a Cryptomator esetében).",
+            "loading": "Betöltés..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Pár neve",
             "managePairs": "Párok kezelése",
             "importLegacy": "Aktuális importálása párként",
-            "importLegacyHint": "Importálja meglévő egyetlen AeroCloud konfigurációját első párként (megtartja a visszafelé kompatibilitást)."
+            "importLegacyHint": "Importálja meglévő egyetlen AeroCloud konfigurációját első párként (megtartja a visszafelé kompatibilitást).",
+            "versionHistory": "Verzióelőzmények",
+            "restoreVersion": "Verzió visszaállítása",
+            "cleanupDone": "Megtisztítva",
+            "cleanupVersions": "Régi verziók törlése",
+            "noRemoteFolders": "Nem találhatók távoli mappák",
+            "noVersions": "Nem találhatók archivált verziók",
+            "reauthRequired": "Az engedély lejárt. Engedélyezze újra a szinkronizálás folytatásához.",
+            "scanningFolders": "Távoli mappák vizsgálata..."
         },
         "statusBar": {
             "connected": "Csatlakozva",
@@ -1424,7 +1445,10 @@
             "dropImported": "{count} elem importálva ebbe a mappába",
             "dropFailed": "{count} elem importálása sikertelen",
             "connectionCancelledHint": "A listázás leállt, a kapcsolat bezárult.",
-            "connectTimedOut": "A kapcsolat időtúllépés miatt megszakadt. A kiszolgáló soha nem válaszolt, és a próbálkozás megszakadt."
+            "connectTimedOut": "A kapcsolat időtúllépés miatt megszakadt. A kiszolgáló soha nem válaszolt, és a próbálkozás megszakadt.",
+            "transferFailed": "Az átvitel sikertelen",
+            "navigationFailed": "A navigáció sikertelen: {error}",
+            "transferComplete": "{count} fájl másolva"
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Hálózati hiba. Ellenőrizze az internetkapcsolatot és a szolgáltató URL-jét.",
                 "noProvider": "Győződjön meg róla, hogy beállított egy AI szolgáltatót a beállításokban.",
                 "rateLimited": "A szolgáltató korlátozta a sebességet. Várjon egy pillanatot, és próbálja újra.",
-                "toolsNotSupported": "Ez a modell nem támogatja az eszközhasználatot. Kapcsolja ki az \"Eszközök\" opciót ennél a modellnél az AI Beállítások → Modellek menüpontban."
+                "toolsNotSupported": "Ez a modell nem támogatja az eszközhasználatot. Kapcsolja ki az \"Eszközök\" opciót ennél a modellnél az AI Beállítások → Modellek menüpontban.",
+                "noProjectContext": "Nem érhető el projektkörnyezet az ügynök memóriájához."
             },
             "toolLabels": {
                 "agent_memory_write": "Memória",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Ágak listája",
+            "noBranches": "Nem találhatók ágak",
+            "rawUrlCopied": "Nyers URL másolva",
+            "working": "dolgozik"
         },
         "filenNotes": {
             "title": "Titkosított jegyzetek",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Nyilvános állandó só (rclone-stílus). Magas entrópia jelszót igényel. Ugyanaz a jelszó több tárolón a titkosított neveket kulcs nélkül összekapcsolhatóvá teszi.",
             "defaultSaltNeedsStronger": "Az alapértelmezett salt bekapcsolásához adjon meg egy erős, generált jelszót.",
             "defaultSaltOneSaltNote": "Egyetlen salt létezik: 32 bájt, nyilvános, és minden alapértelmezett saltot használó széf esetében azonos.",
-            "defaultSaltValueLabel": "Nyilvános alapértelmezett só (AeroCrypt v3), az alábbi szöveg SHA-256 értéke"
+            "defaultSaltValueLabel": "Nyilvános alapértelmezett só (AeroCrypt v3), az alábbi szöveg SHA-256 értéke",
+            "defaultSaltTierMeaning": "Az alapértelmezett só azt jelenti, hogy a széfet önmagában a jelszó nyitja: semmi mást nem kell magával vinni, és semmi más nem védi."
         },
         "modalGuard": {
             "busyTitle": "Művelet folyamatban",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Nincs telepítve asztali portál, ezért ez a rendszer nem tud fájlválasztót megnyitni. Telepítse az xdg-desktop-portal csomagot és az asztali környezetéhez tartozó háttérszolgáltatást (például xdg-desktop-portal-gtk), majd próbálja újra.",
                 "unknown": "A fájlválasztót nem sikerült megnyitni. A részleteket az alkalmazás naplójában találja."
             }
+        },
+        "errors": {
+            "unknown": "Ismeretlen hiba"
+        },
+        "rename": {
+            "invalidCharacters": "A név nem tartalmazhat / vagy \\ jelet, .. sorozatot, sem null karaktert."
         }
     }
 }

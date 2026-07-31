@@ -166,7 +166,7 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
                       text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {creating
-                      ? (t('common.creating') || 'Creating...')
+                      ? (t('common.creating'))
                       : (t('github.createPr') || 'Create PR')
                     }
                   </button>

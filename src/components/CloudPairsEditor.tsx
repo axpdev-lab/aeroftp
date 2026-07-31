@@ -520,7 +520,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                             onClick={handleSave}
                             disabled={saving || loading}
                         >
-                            {saving ? (t('common.saving') || 'Saving...') : t('common.save')}
+                            {saving ? (t('common.saving')) : t('common.save')}
                         </button>
                     </div>
                 </div>

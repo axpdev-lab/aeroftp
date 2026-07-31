@@ -71,7 +71,16 @@
             "current": "тренутно",
             "goToActiveSession": "Иди на активну сесију",
             "password": "Лозинка",
-            "default": "Подразумевано"
+            "default": "Подразумевано",
+            "add": "Додај",
+            "apply": "Primeni",
+            "later": "Касније",
+            "path": "Путања",
+            "remove": "Ukloni",
+            "reset": "Ресетуј",
+            "saved": "Sačuvano",
+            "saving": "Чување...",
+            "creating": "Креирање..."
         },
         "connection": {
             "title": "Повежи се на сервер",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Извлачење овде ће преписати {count} постојећих ставки: {names}. Наставити?",
             "permanentDeleteHint": "Трајно брише само изабране ставке из Корпе. Ово се не може опозвати.",
             "emptyTrashHint": "Трајно брише СВЕ ставке у Корпи, не само изабране. Ово се не може опозвати.",
-            "dropboxPurgeBusinessOnly": "Трајно брисање и пражњење смећа захтевају Dropbox Business/Team налог."
+            "dropboxPurgeBusinessOnly": "Трајно брисање и пражњење смећа захтевају Dropbox Business/Team налог.",
+            "setAsPrivate": "Постави као приватно",
+            "setAsPublic": "Постави као јавно",
+            "makeAllPrivate": "Учини све приватним"
         },
         "transfer": {
             "transferring": "Пренос...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Trenutni rukovalac",
             "encryptionPrivacyTitle": "Приватност шифровања",
             "warnSameNameEncrypted": "Означи ставке истог имена у шифрованим трезорима",
-            "warnSameNameEncryptedDesc": "Подразумевано искључено. Унутар активног AeroCrypt или rclone-crypt слоја означи датотеке и фасцикле чије се име појављује и на другој путањи коју посетите. Имена се шифрују детерминистички, па су идентична имена видљива као идентична посматрачу шифрованог складишта (исти компромис као код rclone-crypt и Cryptomator)."
+            "warnSameNameEncryptedDesc": "Подразумевано искључено. Унутар активног AeroCrypt или rclone-crypt слоја означи датотеке и фасцикле чије се име појављује и на другој путањи коју посетите. Имена се шифрују детерминистички, па су идентична имена видљива као идентична посматрачу шифрованог складишта (исти компромис као код rclone-crypt и Cryptomator).",
+            "loading": "Učitavanje..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Ime para",
             "managePairs": "Upravljaj parovima",
             "importLegacy": "Uvezi trenutno kao par",
-            "importLegacyHint": "Uvezite vašu postojeću jedinstvenu AeroCloud konfiguraciju kao prvi par (čuva kompatibilnost unazad)."
+            "importLegacyHint": "Uvezite vašu postojeću jedinstvenu AeroCloud konfiguraciju kao prvi par (čuva kompatibilnost unazad).",
+            "versionHistory": "Историја верзија",
+            "restoreVersion": "Vrati ovu verziju",
+            "cleanupDone": "Очишћено",
+            "cleanupVersions": "Очисти старе верзије",
+            "noRemoteFolders": "Нису пронађене удаљене фасцикле",
+            "noVersions": "Нису пронађене архивиране верзије",
+            "reauthRequired": "Овлашћење је истекло. Поново овластите да бисте наставили синхронизацију.",
+            "scanningFolders": "Скенирање удаљених фасцикли..."
         },
         "statusBar": {
             "connected": "Повезано",
@@ -1424,7 +1445,10 @@
             "dropImported": "Увезено {count} ставки у ову фасциклу",
             "dropFailed": "Увоз {count} ставки није успео",
             "connectionCancelledHint": "Излиставање је заустављено, а веза затворена.",
-            "connectTimedOut": "Време за повезивање је истекло. Сервер никада није одговорио и покушај је прекинут."
+            "connectTimedOut": "Време за повезивање је истекло. Сервер никада није одговорио и покушај је прекинут.",
+            "transferFailed": "Пренос није успео",
+            "navigationFailed": "Навигација није успела: {error}",
+            "transferComplete": "Копирано {count} датотека"
         },
         "about": {
             "tagline": "Више од FTP-а. Комплетан развојни алат.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Мрежна грешка. Проверите интернетску везу и URL даваоца услуге.",
                 "noProvider": "Проверите да ли сте конфигурисали AI даваоца услуге у подешавањима.",
                 "rateLimited": "Ограничење броја захтева од даваоца услуге. Сачекајте тренутак и покушајте поново.",
-                "toolsNotSupported": "Овај модел не подржава коришћење алата. Онемогућите \"Алате\" за овај модел у AI подешавања → Модели."
+                "toolsNotSupported": "Овај модел не подржава коришћење алата. Онемогућите \"Алате\" за овај модел у AI подешавања → Модели.",
+                "noProjectContext": "За меморију агента није доступан контекст пројекта."
             },
             "toolLabels": {
                 "agent_memory_write": "Меморија",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Списак грана",
+            "noBranches": "Нису пронађене гране",
+            "rawUrlCopied": "Сирови URL је копиран",
+            "working": "ради"
         },
         "filenNotes": {
             "title": "Шифроване белешке",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Јавна константна со (rclone-style). Захтева генерисану лозинку високе ентропије. Иста лозинка на више трезора чини шифрована имена повезивим без кључа.",
             "defaultSaltNeedsStronger": "Унесите јаку генерисану лозинку да бисте укључили подразумевани salt.",
             "defaultSaltOneSaltNote": "Постоји само један salt: 32 бајта, јаван, исти за сваки трезор са подразумеваним salt-ом.",
-            "defaultSaltValueLabel": "Јавна подразумевана со (AeroCrypt v3), SHA-256 од"
+            "defaultSaltValueLabel": "Јавна подразумевана со (AeroCrypt v3), SHA-256 од",
+            "defaultSaltTierMeaning": "Подразумевана со значи да сеф отвара сама лозинка: нема шта друго да се носи и ништа друго га не штити."
         },
         "modalGuard": {
             "busyTitle": "Операција у току",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Није инсталиран портал радне површине, па овај систем не може да отвори избирач датотека. Инсталирајте xdg-desktop-portal и позадински сервис за своју радну површину (на пример xdg-desktop-portal-gtk) и пробајте поново.",
                 "unknown": "Избирач датотека није могао да се отвори. Детаље потражите у дневнику апликације."
             }
+        },
+        "errors": {
+            "unknown": "Непозната грешка"
+        },
+        "rename": {
+            "invalidCharacters": "Назив не сме да садржи / ни \\, низ .. ни нулти знак."
         }
     }
 }

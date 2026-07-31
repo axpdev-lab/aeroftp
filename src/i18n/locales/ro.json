@@ -71,7 +71,16 @@
             "current": "curent",
             "goToActiveSession": "Mergi la sesiunea activă",
             "password": "Parolă",
-            "default": "Implicit"
+            "default": "Implicit",
+            "add": "Adaugă",
+            "apply": "Aplică",
+            "later": "Mai târziu",
+            "path": "Cale",
+            "remove": "Elimină",
+            "reset": "Resetare",
+            "saved": "Salvat",
+            "saving": "Se salvează...",
+            "creating": "Se creează..."
         },
         "connection": {
             "title": "Conectare la server",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Extragerea aici va suprascrie {count} element(e) existent(e): {names}. Continuați?",
             "permanentDeleteHint": "Șterge definitiv doar elementele selectate din Coșul de gunoi. Această acțiune nu poate fi anulată.",
             "emptyTrashHint": "Șterge definitiv TOATE elementele din Coșul de gunoi, nu doar cele selectate. Această acțiune nu poate fi anulată.",
-            "dropboxPurgeBusinessOnly": "Ștergerea permanentă și golirea coșului necesită un cont Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "Ștergerea permanentă și golirea coșului necesită un cont Dropbox Business/Team.",
+            "setAsPrivate": "Setați ca privat",
+            "setAsPublic": "Setați ca public",
+            "makeAllPrivate": "Fă totul privat"
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Gestionar actual",
             "encryptionPrivacyTitle": "Confidențialitatea criptării",
             "warnSameNameEncrypted": "Semnalează intrările cu același nume din seifurile criptate",
-            "warnSameNameEncryptedDesc": "Dezactivat implicit. În interiorul unui strat AeroCrypt sau rclone-crypt activ, marchează fișierele și folderele al căror nume apare și pe altă cale pe care o vizitezi. Numele sunt criptate determinist, așa că numele identice sunt vizibile ca identice pentru un observator al stocării criptate (același compromis ca la rclone-crypt și Cryptomator)."
+            "warnSameNameEncryptedDesc": "Dezactivat implicit. În interiorul unui strat AeroCrypt sau rclone-crypt activ, marchează fișierele și folderele al căror nume apare și pe altă cale pe care o vizitezi. Numele sunt criptate determinist, așa că numele identice sunt vizibile ca identice pentru un observator al stocării criptate (același compromis ca la rclone-crypt și Cryptomator).",
+            "loading": "Se încarcă..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Nume pereche",
             "managePairs": "Gestionați perechile",
             "importLegacy": "Importați curentul ca pereche",
-            "importLegacyHint": "Importați configurația unică AeroCloud existentă ca prima pereche (păstrează compatibilitatea înapoi)."
+            "importLegacyHint": "Importați configurația unică AeroCloud existentă ca prima pereche (păstrează compatibilitatea înapoi).",
+            "versionHistory": "Istoricul versiunilor",
+            "restoreVersion": "Restaurează această versiune",
+            "cleanupDone": "Curățat",
+            "cleanupVersions": "Curăță versiunile vechi",
+            "noRemoteFolders": "Nu s-au găsit foldere la distanță",
+            "noVersions": "Nu s-au găsit versiuni arhivate",
+            "reauthRequired": "Autorizarea a expirat. Autorizează din nou pentru a relua sincronizarea.",
+            "scanningFolders": "Se scanează folderele la distanță..."
         },
         "statusBar": {
             "connected": "Conectat",
@@ -1424,7 +1445,10 @@
             "dropImported": "{count} elemente importate în acest folder",
             "dropFailed": "Importul a {count} elemente a eșuat",
             "connectionCancelledHint": "Listarea a fost oprită și conexiunea închisă.",
-            "connectTimedOut": "Timpul de conectare a expirat. Serverul nu a răspuns niciodată și încercarea a fost anulată."
+            "connectTimedOut": "Timpul de conectare a expirat. Serverul nu a răspuns niciodată și încercarea a fost anulată.",
+            "transferFailed": "Transferul a eșuat",
+            "navigationFailed": "Navigarea a eșuat: {error}",
+            "transferComplete": "{count} fișiere copiate"
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Eroare de rețea. Verificați conexiunea la internet și URL-ul furnizorului.",
                 "noProvider": "Asigurați-vă că ați configurat un furnizor AI în setări.",
                 "rateLimited": "Limitat de furnizor. Așteptați un moment și încercați din nou.",
-                "toolsNotSupported": "Acest model nu suportă utilizarea instrumentelor. Dezactivați \"Instrumente\" pentru acest model în Setări AI → Modele."
+                "toolsNotSupported": "Acest model nu suportă utilizarea instrumentelor. Dezactivați \"Instrumente\" pentru acest model în Setări AI → Modele.",
+                "noProjectContext": "Nu există context de proiect disponibil pentru memoria agentului."
             },
             "toolLabels": {
                 "agent_memory_write": "Memorie",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Lista de ramuri",
+            "noBranches": "Nu s-au găsit ramuri",
+            "rawUrlCopied": "URL brut copiat",
+            "working": "în curs"
         },
         "filenNotes": {
             "title": "Note criptate",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Salt constant public (stil rclone). Necesită o parolă generată cu entropie ridicată. Aceeași parolă pe mai multe seifuri face ca numele criptate să fie conectabile fără cheie.",
             "defaultSaltNeedsStronger": "Introduceți o parolă generată puternică pentru a activa saltul implicit.",
             "defaultSaltOneSaltNote": "Există un singur salt: 32 de octeți, public, identic pentru fiecare seif cu salt implicit.",
-            "defaultSaltValueLabel": "Salt implicit public (AeroCrypt v3), SHA-256 al șirului"
+            "defaultSaltValueLabel": "Salt implicit public (AeroCrypt v3), SHA-256 al șirului",
+            "defaultSaltTierMeaning": "Sarea implicită înseamnă că doar parola deschide seiful: nu mai e nimic de purtat cu tine și nimic altceva nu îl protejează."
         },
         "modalGuard": {
             "busyTitle": "Operațiune în curs",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Nu este instalat niciun portal de desktop, așa că acest sistem nu poate deschide un selector de fișiere. Instalați xdg-desktop-portal și un backend pentru desktopul dumneavoastră (de exemplu xdg-desktop-portal-gtk), apoi încercați din nou.",
                 "unknown": "Selectorul de fișiere nu a putut fi deschis. Consultați jurnalul aplicației pentru detalii."
             }
+        },
+        "errors": {
+            "unknown": "Eroare necunoscută"
+        },
+        "rename": {
+            "invalidCharacters": "Un nume nu poate conține / sau \\, secvența .. ori un caracter nul."
         }
     }
 }
