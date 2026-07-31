@@ -107,7 +107,7 @@ export const SelectiveSyncTree: React.FC<SelectiveSyncTreeProps> = ({
         return (
             <div className="flex items-center justify-center py-8 text-gray-400">
                 <Loader2 size={20} className="animate-spin mr-2" />
-                {t('cloud.scanningFolders') || 'Scanning remote folders...'}
+                {t('cloud.scanningFolders')}
             </div>
         );
     }
@@ -132,7 +132,7 @@ export const SelectiveSyncTree: React.FC<SelectiveSyncTreeProps> = ({
             <div className="max-h-[300px] overflow-y-auto border border-gray-700 rounded-lg p-2 space-y-0.5">
                 {visibleFolders.length === 0 ? (
                     <p className="text-gray-500 text-xs text-center py-4">
-                        {t('cloud.noRemoteFolders') || 'No remote folders found'}
+                        {t('cloud.noRemoteFolders')}
                     </p>
                 ) : (
                     visibleFolders.map(folder => {
@@ -182,7 +182,7 @@ export const SelectiveSyncTree: React.FC<SelectiveSyncTreeProps> = ({
                         onClick={handleSave}
                         className="px-3 py-1.5 text-xs font-medium rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 transition-colors"
                     >
-                        {t('common.apply') || 'Apply'}
+                        {t('common.apply')}
                     </button>
                 </div>
             )}

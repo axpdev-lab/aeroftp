@@ -8,6 +8,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, KeyRound } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { WindowControls } from './WindowControls';
+import { MODAL_Z } from '../utils/modalLayers';
 
 // ============ Lock Screen Background Patterns ============
 // Each pattern is a lightweight inline SVG data URI.
@@ -204,7 +205,12 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, mode = 'master
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+        // `MODAL_Z.lock`: locking hides nothing on its own — `isAppLocked` gates
+        // no rendering in App.tsx, the whole tree stays mounted underneath — so
+        // this overlay has to outrank every dialog. At z-100 it did not: any
+        // dialog of the z-9999 tier left open when the idle probe fired stayed
+        // legible on top of the lock screen.
+        <div className={`fixed inset-0 ${MODAL_Z.lock} flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900`}>
             {/* Background pattern overlay */}
             {pattern.svg && (
                 <div className="absolute inset-0 opacity-[0.04]">

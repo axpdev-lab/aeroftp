@@ -18,6 +18,7 @@ import { PROFILES_CHANGED_EVENT } from '../../utils/serverProfileStore';
 import { dispatchMasterPasswordChanged } from '../../utils/masterPasswordEvents';
 import { PasswordStrengthBar } from '../vault/PasswordStrengthBar';
 import { PasswordMatchHint } from '../common/PasswordMatchHint';
+import { MODAL_Z } from '../../utils/modalLayers';
 
 // ============ Alert Dialog ============
 interface AlertDialogProps {
@@ -115,7 +116,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={message}>
+        // `MODAL_Z.globalConfirm`, not a bare `z-50`: this dialog is mounted before
+        // every modal in App.tsx, so on an equal z-index the modal that asked the
+        // question paints over it and its backdrop eats the clicks (#537).
+        <div className={`fixed inset-0 bg-black/50 flex items-center justify-center ${MODAL_Z.globalConfirm}`} role="dialog" aria-modal="true" aria-label={message}>
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in">
                 <p className="text-gray-900 dark:text-gray-100 mb-4">{message}</p>
                 <div className="flex justify-end gap-2">

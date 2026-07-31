@@ -11,6 +11,7 @@
 import React, { useEffect } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { MODAL_Z } from '../utils/modalLayers';
 import type { GuardKind } from '../hooks/useGuardedClose';
 
 interface GuardedCloseConfirmProps {
@@ -39,7 +40,7 @@ export const GuardedCloseConfirm: React.FC<GuardedCloseConfirmProps> = ({ kind, 
 
   return (
     <div
-      className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/40 backdrop-blur-[1px]"
+      className={`fixed inset-0 ${MODAL_Z.guardedClose} flex items-center justify-center bg-black/40 backdrop-blur-[1px]`}
       role="alertdialog"
       aria-modal="true"
       onClick={(e) => { if (e.target === e.currentTarget) onKeep(); }}

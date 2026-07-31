@@ -71,7 +71,16 @@
             "duplicate": "Duplica",
             "goToActiveSession": "Vai alla sessione attiva",
             "password": "Password",
-            "default": "Predefinito"
+            "default": "Predefinito",
+            "add": "Aggiungi",
+            "apply": "Applica",
+            "later": "Più tardi",
+            "path": "Percorso",
+            "remove": "Rimuovi",
+            "reset": "Ripristina",
+            "saved": "Salvato",
+            "saving": "Salvataggio...",
+            "creating": "Creazione..."
         },
         "accountLock": {
             "title": "Scegli un account",
@@ -895,7 +904,10 @@
             "extractOverwriteConfirm": "L'estrazione qui sovrascriverà {count} elemento/i esistente/i: {names}. Continuare?",
             "permanentDeleteHint": "Elimina definitivamente solo gli elementi selezionati dal Cestino. Questa operazione non può essere annullata.",
             "emptyTrashHint": "Elimina definitivamente TUTTI gli elementi nel Cestino, non solo quelli selezionati. Questa operazione non può essere annullata.",
-            "dropboxPurgeBusinessOnly": "Elimina definitivamente e Svuota cestino richiedono un account Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "Elimina definitivamente e Svuota cestino richiedono un account Dropbox Business/Team.",
+            "setAsPrivate": "Rendi Privato",
+            "setAsPublic": "Rendi Pubblico",
+            "makeAllPrivate": "Rendi tutto privato"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -1536,7 +1548,8 @@
             "fileAssociationCurrentHandler": "Gestore attuale",
             "encryptionPrivacyTitle": "Privacy della cifratura",
             "warnSameNameEncrypted": "Segnala le voci con lo stesso nome nelle casseforti cifrate",
-            "warnSameNameEncryptedDesc": "Disattivato per impostazione predefinita. All'interno di una sovrapposizione AeroCrypt o rclone-crypt attiva, contrassegna i file e le cartelle il cui nome compare anche in un altro percorso che visiti. I nomi sono cifrati in modo deterministico, quindi i nomi identici risultano identici a un osservatore dell'archivio cifrato (lo stesso compromesso di rclone-crypt e Cryptomator)."
+            "warnSameNameEncryptedDesc": "Disattivato per impostazione predefinita. All'interno di una sovrapposizione AeroCrypt o rclone-crypt attiva, contrassegna i file e le cartelle il cui nome compare anche in un altro percorso che visiti. I nomi sono cifrati in modo deterministico, quindi i nomi identici risultano identici a un osservatore dell'archivio cifrato (lo stesso compromesso di rclone-crypt e Cryptomator).",
+            "loading": "Caricamento..."
         },
         "appearance": {
             "patternCross": "Croce",
@@ -1710,7 +1723,15 @@
             "pairNamePlaceholder": "Nome coppia",
             "managePairs": "Gestisci coppie",
             "importLegacy": "Importa attuale come coppia",
-            "importLegacyHint": "Importa la tua configurazione AeroCloud singola esistente come prima coppia (mantiene retrocompatibilità)."
+            "importLegacyHint": "Importa la tua configurazione AeroCloud singola esistente come prima coppia (mantiene retrocompatibilità).",
+            "versionHistory": "Cronologia versioni",
+            "restoreVersion": "Ripristina questa versione",
+            "cleanupDone": "Ripulito",
+            "cleanupVersions": "Ripulisci le versioni vecchie",
+            "noRemoteFolders": "Nessuna cartella remota trovata",
+            "noVersions": "Nessuna versione archiviata trovata",
+            "reauthRequired": "Autorizzazione scaduta. Autorizza di nuovo per riprendere la sincronizzazione.",
+            "scanningFolders": "Scansione delle cartelle remote..."
         },
         "statusBar": {
             "connected": "Connesso",
@@ -1934,7 +1955,10 @@
             "keepWaiting": "Continua ad attendere",
             "cancelConnection": "Annulla connessione",
             "connectionCancelledHint": "L'elenco e' stato interrotto e la connessione chiusa.",
-            "connectTimedOut": "Timeout della connessione. Il server non ha mai risposto e il tentativo è stato annullato."
+            "connectTimedOut": "Timeout della connessione. Il server non ha mai risposto e il tentativo è stato annullato.",
+            "transferFailed": "Trasferimento non riuscito",
+            "navigationFailed": "Navigazione non riuscita: {error}",
+            "transferComplete": "{count} file copiati"
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -2886,7 +2910,8 @@
                 "networkError": "Errore di rete. Controlla la connessione internet e l'URL del provider.",
                 "noProvider": "Assicurati di aver configurato un provider AI nelle impostazioni.",
                 "rateLimited": "Limite di richieste raggiunto dal provider. Attendi un momento e riprova.",
-                "toolsNotSupported": "Questo modello non supporta l'uso degli strumenti. Disabilita \"Strumenti\" per questo modello in Impostazioni AI → Modelli."
+                "toolsNotSupported": "Questo modello non supporta l'uso degli strumenti. Disabilita \"Strumenti\" per questo modello in Impostazioni AI → Modelli.",
+                "noProjectContext": "Nessun contesto di progetto disponibile per la memoria dell'agente."
             },
             "analyzeThisImage": "Analizza questa immagine",
             "toolLabels": {
@@ -4776,7 +4801,11 @@
             "accessToken": "Token di accesso personale",
             "patHint": "PAT fine-grained con accesso al repository",
             "appHint": "La chiave PEM viene importata e memorizzata nel vault dalla schermata di connessione.",
-            "branchOptional": "Branch (opzionale)"
+            "branchOptional": "Branch (opzionale)",
+            "branchList": "Elenco dei branch",
+            "noBranches": "Nessun branch trovato",
+            "rawUrlCopied": "URL raw copiato",
+            "working": "in corso"
         },
         "filenNotes": {
             "title": "Note crittografate",
@@ -5321,7 +5350,8 @@
             "defaultSaltToggleHint": "Salt costante pubblico (stile rclone). Richiede una password generata ad alta entropia. La stessa password su più vault rende i nomi cifrati collegabili senza la chiave.",
             "defaultSaltNeedsStronger": "Inserisci una password generata robusta per attivare il salt predefinito.",
             "defaultSaltOneSaltNote": "Esiste un solo salt: 32 byte, pubblico, identico per ogni vault in modalità salt predefinito.",
-            "defaultSaltValueLabel": "Salt predefinito pubblico (AeroCrypt v3), SHA-256 di"
+            "defaultSaltValueLabel": "Salt predefinito pubblico (AeroCrypt v3), SHA-256 di",
+            "defaultSaltTierMeaning": "Il sale predefinito significa che la password da sola apre la cassaforte: non c'è altro da portare con sé, e non c'è altro che la protegga."
         },
         "modalGuard": {
             "busyTitle": "Operazione in corso",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Non è installato alcun portale desktop, quindi questo sistema non può aprire un selettore file. Installa xdg-desktop-portal e un backend per il tuo desktop (per esempio xdg-desktop-portal-gtk), poi riprova.",
                 "unknown": "Non è stato possibile aprire il selettore file. Consulta il registro dell'applicazione per i dettagli."
             }
+        },
+        "errors": {
+            "unknown": "Errore sconosciuto"
+        },
+        "rename": {
+            "invalidCharacters": "Un nome non può contenere / o \\, la sequenza .. o un carattere nullo."
         }
     }
 }
