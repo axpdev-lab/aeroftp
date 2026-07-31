@@ -11,7 +11,7 @@
  */
 
 import * as React from 'react';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { Search, X, Trash2, CheckCircle, AlertCircle, Loader2, Copy, FileX, Check, ExternalLink, FolderOpen } from 'lucide-react';
@@ -111,14 +111,21 @@ const RowCopyButton: React.FC<{ value: string; label: string }> = ({ value, labe
   );
 };
 
-type KeepPolicy = 'shortestName' | 'oldest' | 'newest' | 'firstFound';
+type KeepPolicy = 'shortestName' | 'smallest' | 'largest' | 'firstFound';
 
 /**
  * Which member of a group to keep, by policy.
  *
- * `oldest`/`newest` fall back to the scan order when the backend did not report
- * sizes to order by: the engine returns members in walk order, which is stable
- * but not meaningful, so the honest answer there is "the first one".
+ * `smallest`/`largest` fall back to the scan order when the backend did not
+ * report sizes to order by: the engine returns members in walk order, which is
+ * stable but not meaningful, so the honest answer there is "the first one".
+ *
+ * These two were called `oldest`/`newest` while ordering by size, which is what
+ * the labels and this code have always done. The names were the only thing that
+ * said otherwise, and they said it to every translator and every reviewer who
+ * read the option list: a review of this PR proposed "fixing" four locales to
+ * say oldest and newest, which would have made the label disagree with the file
+ * the policy actually keeps.
  */
 export function keeperOf(group: DuplicateGroup, policy: KeepPolicy): string | undefined {
   const files = group.files;
@@ -130,15 +137,14 @@ export function keeperOf(group: DuplicateGroup, policy: KeepPolicy): string | un
       // almost every time, so the shortest is the likeliest original.
       return files.reduce((best, cur) =>
         nameOf(cur).length < nameOf(best).length ? cur : best);
-    case 'oldest':
-    case 'newest': {
+    case 'smallest':
+    case 'largest': {
       const sizes = group.file_sizes;
       if (!sizes || sizes.length !== files.length) return files[0];
-      // Without mtimes from this command, size stands in for "the fuller copy":
-      // largest for `newest`, smallest for `oldest`.
+      // The command reports sizes, not mtimes, so these order by size.
       let bestIdx = 0;
       for (let i = 1; i < files.length; i++) {
-        const better = policy === 'newest' ? sizes[i] > sizes[bestIdx] : sizes[i] < sizes[bestIdx];
+        const better = policy === 'largest' ? sizes[i] > sizes[bestIdx] : sizes[i] < sizes[bestIdx];
         if (better) bestIdx = i;
       }
       return files[bestIdx];
@@ -209,7 +215,14 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   // then refuse to let it be changed; it is now only a starting point, and every
   // row can be ticked. 'shortestName' is the default because " (copy)" and
   // " (1)" make the derived file the longer name almost every time (#347).
-  const [keepPolicy, setKeepPolicy] = useState<'shortestName' | 'oldest' | 'newest' | 'firstFound'>('shortestName');
+  const [keepPolicy, setKeepPolicy] = useState<KeepPolicy>('shortestName');
+  // Read by `scan` through this ref rather than through its dependency list.
+  // The effect that runs `scan` keys off the callback's identity, on purpose, so
+  // that changing the mode or the fuzzy threshold re-scans: adding `keepPolicy`
+  // to those dependencies would turn a dropdown into a full filesystem walk.
+  // The ref gives Retry the policy in force now without that.
+  const keepPolicyRef = useRef(keepPolicy);
+  keepPolicyRef.current = keepPolicy;
   // The fuzzy cutoff, applied only in non-identical mode. null = engine defaults
   // (raster <=10, text <=3, other <=100), which is what every scan used before.
   const [threshold, setThreshold] = useState<number | null>(null);
@@ -239,7 +252,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
         // Exact mode ticks every copy but the one the keep policy picks. The
         // copies are byte-identical, so which one survives is a question about
         // names and dates rather than about content.
-        setSelectedPaths(selectionForPolicy(result, keepPolicy));
+        setSelectedPaths(selectionForPolicy(result, keepPolicyRef.current));
       } else {
         // Non-identical mode: NEVER auto-select. The members are not the same
         // file, so nothing here may be pre-ticked for deletion.
@@ -432,12 +445,17 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
    */
   const handleDelete = useCallback(() => {
     if (selectedPaths.size === 0) return;
-    if (!confirmBeforeDelete) {
+    // A selection that would leave a group with no copy at all is confirmed even
+    // when `confirmBeforeDelete` is off: that setting is about the routine case,
+    // and Select All deliberately produces the case that is not routine. The
+    // guard used to be a hard `disabled` on the button instead, which made Select
+    // All offer an action that could never be completed.
+    if (!confirmBeforeDelete && fullyTickedGroups.length === 0) {
       void runDelete();
       return;
     }
     setPendingDeleteConfirm(true);
-  }, [selectedPaths, confirmBeforeDelete, runDelete]);
+  }, [selectedPaths, confirmBeforeDelete, fullyTickedGroups, runDelete]);
 
   // Summary calculations
   const summary = useMemo(() => {
@@ -590,8 +608,8 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
               className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200"
             >
               <option value="shortestName">{t('duplicates.keepShortestName')}</option>
-              <option value="oldest">{t('duplicates.keepSmallest')}</option>
-              <option value="newest">{t('duplicates.keepLargest')}</option>
+              <option value="smallest">{t('duplicates.keepSmallest')}</option>
+              <option value="largest">{t('duplicates.keepLargest')}</option>
               <option value="firstFound">{t('duplicates.keepFirstFound')}</option>
             </select>
           </label>
@@ -935,7 +953,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
               <button
                 onClick={handleDelete}
                 title={fullyTickedGroups.length > 0 ? t('duplicates.everyCopyTickedHint') : undefined}
-                disabled={selectedCount === 0 || isDeleting || fullyTickedGroups.length > 0}
+                disabled={selectedCount === 0 || isDeleting}
                 className="flex items-center gap-2 px-4 py-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-sm"
               >
                 {isDeleting ? (
@@ -972,6 +990,25 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                   name at the user instead of a question (#537). */}
               {t('duplicates.deleteConfirm', { count: selectedPaths.size })}
             </p>
+            {fullyTickedGroups.length > 0 && (
+              /* Named, not just counted: "3 groups" is not something a user can
+                 check, and this is the one delete in this dialog that leaves no
+                 copy behind. */
+              <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                <p className="mb-1 flex items-center gap-1.5 font-medium">
+                  <AlertCircle size={13} className="shrink-0" />
+                  {t('duplicates.everyCopyTicked')} ({fullyTickedGroups.length})
+                </p>
+                <ul className="list-disc pl-4">
+                  {fullyTickedGroups.slice(0, 5).map((g) => (
+                    <li key={g.files[0]} className="truncate">{getFileName(g.files[0])}</li>
+                  ))}
+                </ul>
+                {fullyTickedGroups.length > 5 && (
+                  <p className="mt-1 opacity-80">+{fullyTickedGroups.length - 5}</p>
+                )}
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setPendingDeleteConfirm(false)}

@@ -3429,7 +3429,7 @@
             "deleteConfirm": "Sigurado ka bang gusto mong tanggalin ang {count} duplikadong file?",
             "fuzzyCutoffPlaceholder": "auto",
             "sortSizeSpread": "Pagkakaiba ng laki",
-            "keepByDefault": "Itago bilang default",
+            "keepByDefault": "Panatilihin bilang default",
             "keepShortestName": "Pinakamaikling pangalan",
             "keepSmallest": "Pinakamaliit",
             "keepLargest": "Pinakamalaki",

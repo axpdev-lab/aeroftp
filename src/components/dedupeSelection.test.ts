@@ -37,14 +37,14 @@ describe('which copy is kept (#347)', () => {
 
     it('keeps the smallest or the largest when asked', () => {
         const g = group(['/a.jpg', '/b.jpg', '/c.jpg'], [3000, 1000, 2000]);
-        expect(keeperOf(g, 'oldest')).toBe('/b.jpg');
-        expect(keeperOf(g, 'newest')).toBe('/a.jpg');
+        expect(keeperOf(g, 'smallest')).toBe('/b.jpg');
+        expect(keeperOf(g, 'largest')).toBe('/a.jpg');
     });
 
     it('falls back to scan order when there are no sizes to compare', () => {
         const g = group(['/a.jpg', '/b.jpg']);
-        expect(keeperOf(g, 'oldest')).toBe('/a.jpg');
-        expect(keeperOf(g, 'newest')).toBe('/a.jpg');
+        expect(keeperOf(g, 'smallest')).toBe('/a.jpg');
+        expect(keeperOf(g, 'largest')).toBe('/a.jpg');
         expect(keeperOf(g, 'firstFound')).toBe('/a.jpg');
     });
 
@@ -55,7 +55,7 @@ describe('which copy is kept (#347)', () => {
             group(['/a.jpg', '/a (1).jpg']),
             group(['/x.txt', '/y.txt', '/z.txt'], [10, 20, 30]),
         ];
-        for (const policy of ['shortestName', 'oldest', 'newest', 'firstFound'] as const) {
+        for (const policy of ['shortestName', 'smallest', 'largest', 'firstFound'] as const) {
             const selected = selectionForPolicy(groups, policy);
             for (const g of groups) {
                 expect(g.files.some((f) => !selected.has(f)), `${policy} keeps one of ${g.files}`).toBe(true);
@@ -101,9 +101,43 @@ describe('every copy can be ticked (#347)', () => {
         expect(code).not.toMatch(/const isFirst = fileIdx === 0/);
     });
 
-    it('refuses only the state where a group would lose every copy', () => {
+    it('confirms the state where a group would lose every copy, rather than blocking it', () => {
+        // The guard used to be a hard `disabled` on the Delete button. Combined
+        // with Select All, which ticks every copy of every group on purpose, that
+        // made the button offer an action the user could never complete: the only
+        // feedback was a tooltip on a dead control. The invariant is still
+        // watched, but it now costs a confirmation rather than the action.
         expect(dialogRaw).toMatch(/fullyTickedGroups/);
-        expect(dialogRaw).toMatch(/disabled=\{selectedCount === 0 \|\| isDeleting \|\| fullyTickedGroups\.length > 0\}/);
+        expect(dialogRaw).toMatch(/disabled=\{selectedCount === 0 \|\| isDeleting\}/);
+        expect(dialogRaw).not.toMatch(/disabled=\{[^}]*fullyTickedGroups[^}]*\}/);
+    });
+
+    it('names the groups that would lose every copy, instead of only counting them', () => {
+        // "3 groups" is not something a user can check against what they ticked.
+        const confirm = dialogRaw.slice(dialogRaw.indexOf('pendingDeleteConfirm &&'));
+        expect(confirm).toMatch(/fullyTickedGroups\.slice\(0, 5\)\.map/);
+        expect(confirm).toMatch(/getFileName\(g\.files\[0\]\)/);
+    });
+
+    it('keeps the keep policy out of the scan callback dependencies', () => {
+        // The effect that runs `scan` keys off the callback identity so that a
+        // mode or threshold change re-scans. Listing `keepPolicy` there would turn
+        // a dropdown into a full filesystem walk; a ref gives Retry the current
+        // policy without it.
+        expect(dialogRaw).toMatch(/keepPolicyRef\.current/);
+        const scan = dialogRaw.slice(dialogRaw.indexOf('const scan = useCallback'));
+        const deps = scan.slice(0, scan.indexOf('useEffect'));
+        expect(deps).not.toMatch(/\[scanPath, mode, appliedThreshold, keepPolicy\]/);
+    });
+
+    it('names the size policies after what they order by', () => {
+        // They were `oldest`/`newest` while ordering by size, which is what the
+        // labels say and what `keeperOf` does. A review of this change read the
+        // option values and proposed rewriting four locales to say oldest and
+        // newest, which would have made the label disagree with the file kept.
+        expect(dialogRaw).toMatch(/<option value="smallest">\{t\('duplicates\.keepSmallest'\)\}/);
+        expect(dialogRaw).toMatch(/<option value="largest">\{t\('duplicates\.keepLargest'\)\}/);
+        expect(dialogRaw).not.toMatch(/value="oldest"|value="newest"/);
     });
 
     it('labels the old button for what it does, and adds the one it claimed to be', () => {
