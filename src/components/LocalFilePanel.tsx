@@ -25,6 +25,7 @@ import { AeroFileTableHeader } from './AeroFileTableHeader';
 import type { AeroFileLocalColId, AeroFileLocalTableColumns } from '../hooks/useAeroFileTableColumns';
 import { LargeIconsGrid } from './LargeIconsGrid';
 import { ImageThumbnail } from './ImageThumbnail';
+import { signatureOf } from '../utils/thumbnailCache';
 import { getPreviewCategory, isPreviewable as isMediaPreviewable } from './Preview';
 import { isPreviewable } from './DevTools';
 import { formatBytes, formatDate, isWindowsDriveRoot, parentLocalPath } from '../utils';
@@ -1092,6 +1093,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                     path={file.path}
                     name={file.name}
                     fallbackIcon={iconProvider.getFileIcon(file.name).icon}
+                    signature={signatureOf(file.size, file.modified)}
                   />
                 ) : (
                   <div className="file-grid-icon">
