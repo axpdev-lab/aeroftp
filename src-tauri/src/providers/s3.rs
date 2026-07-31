@@ -6282,18 +6282,22 @@ mod tests {
     async fn bodyless_put_sends_explicit_content_length_zero() {
         use std::sync::{Arc, Mutex};
 
-        let seen: Arc<Mutex<Option<Option<String>>>> = Arc::new(Mutex::new(None));
+        /// (method, Content-Length) of the request the provider actually sent.
+        type SeenRequest = Option<(String, Option<String>)>;
+
+        let seen: Arc<Mutex<SeenRequest>> = Arc::new(Mutex::new(None));
         let captured = Arc::clone(&seen);
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let captured = Arc::clone(&captured);
                 async move {
+                    let method = req.method().to_string();
                     let value = req
                         .headers()
                         .get(reqwest::header::CONTENT_LENGTH)
                         .and_then(|v| v.to_str().ok())
                         .map(String::from);
-                    *captured.lock().unwrap() = Some(value);
+                    *captured.lock().unwrap() = Some((method, value));
                     axum::http::StatusCode::OK
                 }
             }));
@@ -6310,11 +6314,12 @@ mod tests {
         provider.connected = true;
         provider.mkdir("/some/folder").await.expect("mkdir");
 
-        let value = seen
+        let (method, value) = seen
             .lock()
             .unwrap()
             .clone()
             .expect("no request reached the server");
+        assert_eq!(method, "PUT", "mkdir must write the marker with a PUT");
         assert_eq!(
             value.as_deref(),
             Some("0"),
