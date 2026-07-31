@@ -1576,6 +1576,42 @@ impl StorageProvider for AzureProvider {
                 self.delete(&entry.path).await?;
             }
         }
+
+        // `mkdir` writes a zero-byte marker blob named `<path>/` so an empty
+        // folder survives a listing. That marker is invisible to `list`: with
+        // prefix `<path>/` it comes back as a blob whose name IS the prefix, so
+        // stripping the prefix leaves an empty string and the entry is dropped.
+        // The loop above therefore never deleted it, and `rmdir` reported
+        // "Removed empty directory" while the folder was still there on the
+        // next listing. Delete it explicitly; a folder that only ever held
+        // files has no marker, so a 404 here is the normal case and must not
+        // fail the operation.
+        let marker = format!("{}/", self.resolve_blob_path(path).trim_end_matches('/'));
+        let url = self.blob_url(&marker);
+        let mut headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        let resp = self
+            .send_with_auth_and_retry(reqwest::Method::DELETE, &url, headers, 0, None)
+            .await?;
+        let status = resp.status();
+        if !status.is_success()
+            && status.as_u16() != 202
+            && status != reqwest::StatusCode::NOT_FOUND
+        {
+            return Err(ProviderError::Other(format!(
+                "Delete of the directory marker failed: {}",
+                status
+            )));
+        }
+
         Ok(())
     }
 
