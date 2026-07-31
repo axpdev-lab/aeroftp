@@ -27,6 +27,13 @@ interface BreadcrumbBarProps {
   listSubdirectories?: (path: string) => Promise<SubDirectory[]>;
   /** Icon for the root segment button. Defaults to a hard-drive (local disk). */
   rootIcon?: React.ReactNode;
+  /**
+   * Right-click on a segment, with that segment's full path. Lets the host raise
+   * the directory actions on any folder named in the bar — including the current
+   * one, which the file listing cannot offer without going up a level (#347).
+   * Omitted by the remote pane, where those actions are local-only.
+   */
+  onSegmentContextMenu?: (e: React.MouseEvent, path: string) => void;
   t: (key: string) => string;
 }
 
@@ -83,6 +90,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
   minPath,
   listSubdirectories,
   rootIcon,
+  onSegmentContextMenu,
   t,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -335,6 +343,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
         {/* Root segment (always visible) */}
         <button
           onClick={() => handleSegmentClick(segments[0].fullPath)}
+          onContextMenu={onSegmentContextMenu ? (e) => onSegmentContextMenu(e, segments[0].fullPath) : undefined}
           className={`flex-shrink-0 p-1 rounded transition-colors ${
             isAboveMinPath(segments[0].fullPath)
               ? 'text-gray-600 cursor-not-allowed'
@@ -467,6 +476,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                 const locked = isAboveMinPath(seg.fullPath);
                 return <button
                   onClick={() => handleSegmentClick(seg.fullPath)}
+                  onContextMenu={onSegmentContextMenu ? (e) => onSegmentContextMenu(e, seg.fullPath) : undefined}
                   className={`text-sm px-1 py-0.5 rounded transition-colors truncate max-w-[150px] ${
                     locked
                       ? 'text-gray-600 cursor-not-allowed'
