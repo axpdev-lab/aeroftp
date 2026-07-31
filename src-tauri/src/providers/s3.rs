@@ -76,6 +76,37 @@ fn filen_decode_listed_key(key: String, filen_decode: bool) -> String {
     }
 }
 
+/// Undo one round of UTF-8-read-as-Latin-1 in a listed key.
+///
+/// FileLu's S3 gateway (`s5lu.com`) stores the key correctly, `stat`/`get` on
+/// the real name both succeed, but echoes it double-encoded in ListObjectsV2:
+/// `sp ace & ünïcodé.txt` comes back as `sp ace & Ã¼nÃ¯codÃ©.txt`. That is the
+/// LIVE-1 shape reached from a different direction: a GET of the name the
+/// listing just displayed 404s, and `sync --delete` reads the user's real local
+/// file as an orphan and plans to delete it.
+///
+/// The repair reinterprets the characters as the Latin-1 bytes they came from
+/// and decodes those as UTF-8. It is deliberately narrow: it runs only for the
+/// FileLu S3 endpoint, only when every character is in the Latin-1 range, and
+/// only when the classic mojibake lead byte (`Ã`/`Â`, U+00C0..U+00DF plus
+/// the mojibake lead range U+00C0..U+00DF) is actually present. A key that is genuinely
+/// named `Ã¼` on that one gateway would be rewritten, which is the accepted
+/// trade against a name that resolves to nothing at all.
+fn repair_double_utf8_key(key: String, repair: bool) -> String {
+    if !repair {
+        return key;
+    }
+    let has_mojibake_lead = key.chars().any(|c| matches!(c, '\u{00C0}'..='\u{00DF}'));
+    if !has_mojibake_lead || !key.chars().all(|c| (c as u32) < 0x100) {
+        return key;
+    }
+    let latin1: Vec<u8> = key.chars().map(|c| c as u8).collect();
+    match String::from_utf8(latin1) {
+        Ok(repaired) if repaired != key => repaired,
+        _ => key,
+    }
+}
+
 /// Convert a raw S3 `ETag` value to a usable MD5 hex digest, or `None`.
 ///
 /// An S3 ETag equals the object MD5 ONLY for single-part uploads without
@@ -652,6 +683,9 @@ impl S3Provider {
         }
     }
 
+    /// Detect FileLu's S3 gateway. Besides its other quirks, it echoes listed
+    /// keys double-UTF-8-encoded while storing and serving them correctly, so
+    /// listings from this endpoint go through `repair_double_utf8_key`.
     fn is_filelu_s3_endpoint(&self) -> bool {
         self.config
             .endpoint
@@ -1126,6 +1160,7 @@ impl S3Provider {
         // Decode here so RemoteEntry holds the logical name and downstream `build_url`
         // re-encodes consistently. Reported in #196 (Filen S3 tree shows `%20`).
         let filen_decode = self.is_filen_s3_endpoint();
+        let repair_mojibake = self.is_filelu_s3_endpoint();
 
         let mut reader = Reader::from_str(xml_str);
         // Do NOT enable trim_text: it trims every Event::Text fragment, and
@@ -1283,6 +1318,8 @@ impl S3Provider {
                                 } else {
                                     raw_prefix.clone()
                                 };
+                                let full_prefix =
+                                    repair_double_utf8_key(full_prefix, repair_mojibake);
                                 let name = full_prefix
                                     .trim_end_matches('/')
                                     .rsplit('/')
@@ -1308,6 +1345,7 @@ impl S3Provider {
                                 } else {
                                     raw_key.clone()
                                 };
+                                let key = repair_double_utf8_key(key, repair_mojibake);
                                 let key = key.as_str();
                                 // Skip directory markers
                                 if !key.ends_with('/') {
@@ -2304,6 +2342,7 @@ impl S3Provider {
         // "%25F0...", producing a copy-source / delete key that fails SigV4 with
         // "401 The signature does not match" (issue #368). Mirrors parse_list_response.
         let filen_decode = self.is_filen_s3_endpoint();
+        let repair_mojibake = self.is_filelu_s3_endpoint();
         let mut continuation_token: Option<String> = None;
 
         loop {
@@ -2394,9 +2433,12 @@ impl S3Provider {
                                 if !current_key.is_empty() {
                                     // #368: decode Filen-encoded keys so the single
                                     // downstream encode_s3_key_path() encodes once.
-                                    all_keys.push(filen_decode_listed_key(
-                                        std::mem::take(&mut current_key),
-                                        filen_decode,
+                                    all_keys.push(repair_double_utf8_key(
+                                        filen_decode_listed_key(
+                                            std::mem::take(&mut current_key),
+                                            filen_decode,
+                                        ),
+                                        repair_mojibake,
                                     ));
                                 }
                             }
@@ -6024,6 +6066,45 @@ mod tests {
         assert_eq!(encode_s3_key_path("a&b=c"), "a%26b%3Dc");
         // Empty stays empty.
         assert_eq!(encode_s3_key_path(""), "");
+    }
+
+    /// FILELU-S3 regression: the FileLu S3 gateway stores the key correctly
+    /// (`stat` and `get` on the real name both succeed) but echoes it
+    /// double-UTF-8-encoded in ListObjectsV2, so the listing showed
+    /// `sp ace & Ã¼nÃ¯codÃ©.txt` for a file actually named
+    /// `sp ace & ünïcodé.txt`. A GET of the displayed name 404s and
+    /// `sync --delete` reads the real local file as an orphan.
+    #[test]
+    fn repair_double_utf8_key_undoes_the_filelu_mojibake_only_when_gated() {
+        let broken = "sp ace & Ã¼nÃ¯codÃ©.txt".to_string();
+        assert_eq!(
+            repair_double_utf8_key(broken.clone(), true),
+            "sp ace & ünïcodé.txt",
+            "the exact name observed live on s5lu.com must round-trip"
+        );
+        // Off for every other endpoint: the key is returned untouched.
+        assert_eq!(repair_double_utf8_key(broken.clone(), false), broken);
+
+        // Already-correct UTF-8 has no mojibake lead byte in Latin-1 range and
+        // is left alone, on this endpoint too.
+        for good in [
+            "plain.bin",
+            "sp ace & ünïcodé.txt",
+            "a& &b.txt",
+            "日本語.txt",
+        ] {
+            assert_eq!(
+                repair_double_utf8_key(good.to_string(), true),
+                good,
+                "a correct key must never be rewritten"
+            );
+        }
+
+        // A Latin-1 string that is not valid UTF-8 when reinterpreted stays put.
+        assert_eq!(
+            repair_double_utf8_key("Ã(".to_string(), true),
+            "Ã(".to_string()
+        );
     }
 
     /// #368: on Filen's S3 bridge a listed <Key> comes back already percent-
