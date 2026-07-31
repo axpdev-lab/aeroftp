@@ -3402,7 +3402,16 @@
             "deleted": "{count} bikoiztu ezabatu dira",
             "scanFailed": "Eskaneatzeak huts egin du",
             "retry": "Saiatu berriro",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Tamaina-aldea",
+            "keepByDefault": "Lehenetsita gorde",
+            "keepShortestName": "Izenik laburrena",
+            "keepSmallest": "Txikiena",
+            "keepLargest": "Handiena",
+            "keepFirstFound": "Aurkitutako lehena",
+            "selectAllButOne": "Hautatu bat izan ezik denak talde bakoitzean",
+            "everyCopyTicked": "kopia guztiak markatuta",
+            "everyCopyTickedHint": "Kendu marka kopia bati nabarmendutako talde bakoitzean: bestela guztiak ezabatuko dira."
         },
         "diskUsage": {
             "title": "Diskoaren erabilera",

@@ -3402,7 +3402,16 @@
             "delete": "УДАЛИТЬ",
             "skip": "ПРОПУСТИТЬ",
             "deleteConfirm": "Вы уверены, что хотите удалить {count} файлов-дубликатов?",
-            "fuzzyCutoffPlaceholder": "авто"
+            "fuzzyCutoffPlaceholder": "авто",
+            "sortSizeSpread": "Разброс размеров",
+            "keepByDefault": "Что оставлять по умолчанию",
+            "keepShortestName": "Самое короткое имя",
+            "keepSmallest": "Наименьшую",
+            "keepLargest": "Наибольшую",
+            "keepFirstFound": "Первую найденную",
+            "selectAllButOne": "Выбрать все, кроме одной в каждой группе",
+            "everyCopyTicked": "отмечены все копии",
+            "everyCopyTickedHint": "Снимите отметку с одной копии в каждой выделенной группе: иначе будут удалены все."
         },
         "diskUsage": {
             "title": "Использование диска",

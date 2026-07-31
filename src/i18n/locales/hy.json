@@ -3395,7 +3395,16 @@
             "deleted": "Ջնջված է {count} կրկնօրինակ",
             "scanFailed": "Սկանավորումը ձախողվեց",
             "retry": "Կրկնել",
-            "fuzzyCutoffPlaceholder": "ավտո"
+            "fuzzyCutoffPlaceholder": "ավտո",
+            "sortSizeSpread": "Չափերի տարբերություն",
+            "keepByDefault": "Լռելյայն պահել",
+            "keepShortestName": "Ամենակարճ անունը",
+            "keepSmallest": "Ամենափոքրը",
+            "keepLargest": "Ամենամեծը",
+            "keepFirstFound": "Առաջինը գտնվածը",
+            "selectAllButOne": "Ընտրել բոլորը, բացի մեկից՝ ամեն խմբում",
+            "everyCopyTicked": "բոլոր պատճեններն ընտրված են",
+            "everyCopyTickedHint": "Յուրաքանչյուր ընդգծված խմբում հանեք մեկ պատճենի նշումը. հակառակ դեպքում կջնջվեն բոլորը։"
         },
         "diskUsage": {
             "title": "Սկավառակի օգտագործում",

@@ -3402,7 +3402,16 @@
             "delete": "删除",
             "skip": "跳过",
             "deleteConfirm": "确定要删除 {count} 个重复文件吗？",
-            "fuzzyCutoffPlaceholder": "自动"
+            "fuzzyCutoffPlaceholder": "自动",
+            "sortSizeSpread": "大小差值",
+            "keepByDefault": "默认保留",
+            "keepShortestName": "最短的名称",
+            "keepSmallest": "最小的",
+            "keepLargest": "最大的",
+            "keepFirstFound": "最先找到的",
+            "selectAllButOne": "每组全选但保留一个",
+            "everyCopyTicked": "所有副本均已勾选",
+            "everyCopyTickedHint": "请在每个高亮的组中取消勾选一个副本：否则所有副本都会被删除。"
         },
         "diskUsage": {
             "title": "磁盘使用情况",

@@ -3402,7 +3402,16 @@
             "delete": "HAPUS",
             "skip": "LEWATI",
             "deleteConfirm": "Apakah Anda yakin ingin menghapus {count} file duplikat?",
-            "fuzzyCutoffPlaceholder": "otomatis"
+            "fuzzyCutoffPlaceholder": "otomatis",
+            "sortSizeSpread": "Selisih ukuran",
+            "keepByDefault": "Simpan secara bawaan",
+            "keepShortestName": "Nama terpendek",
+            "keepSmallest": "Terkecil",
+            "keepLargest": "Terbesar",
+            "keepFirstFound": "Pertama ditemukan",
+            "selectAllButOne": "Pilih semua kecuali satu per grup",
+            "everyCopyTicked": "semua salinan dicentang",
+            "everyCopyTickedHint": "Hapus centang satu salinan di setiap grup yang disorot: jika tidak, semua salinan akan dihapus."
         },
         "diskUsage": {
             "title": "Penggunaan Disk",

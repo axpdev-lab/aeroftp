@@ -3402,7 +3402,16 @@
             "delete": "POISTA",
             "skip": "OHITA",
             "deleteConfirm": "Haluatko varmasti poistaa {count} kaksoiskappeletta?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Kokoero",
+            "keepByDefault": "Säilytä oletuksena",
+            "keepShortestName": "Lyhin nimi",
+            "keepSmallest": "Pienin",
+            "keepLargest": "Suurin",
+            "keepFirstFound": "Ensin löytynyt",
+            "selectAllButOne": "Valitse kaikki paitsi yksi ryhmää kohden",
+            "everyCopyTicked": "kaikki kopiot valittu",
+            "everyCopyTickedHint": "Poista valinta yhdeltä kopiolta jokaisessa korostetussa ryhmässä: muuten kaikki poistetaan."
         },
         "diskUsage": {
             "title": "Levyn käyttö",

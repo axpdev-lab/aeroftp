@@ -3402,7 +3402,16 @@
             "delete": "SMAZAT",
             "skip": "PRESKOCIT",
             "deleteConfirm": "Opravdu chcete smazat {count} duplicitnich souboru?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Rozptyl velikostí",
+            "keepByDefault": "Ve výchozím stavu ponechat",
+            "keepShortestName": "Nejkratší název",
+            "keepSmallest": "Nejmenší",
+            "keepLargest": "Největší",
+            "keepFirstFound": "První nalezený",
+            "selectAllButOne": "Vybrat vše kromě jednoho v každé skupině",
+            "everyCopyTicked": "zaškrtnuty všechny kopie",
+            "everyCopyTickedHint": "V každé zvýrazněné skupině odškrtněte jednu kopii: takto by se smazaly všechny."
         },
         "diskUsage": {
             "title": "Vyuziti disku",

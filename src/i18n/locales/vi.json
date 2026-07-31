@@ -3402,7 +3402,16 @@
             "delete": "XÓA",
             "skip": "BỎ QUA",
             "deleteConfirm": "Bạn có chắc chắn muốn xóa {count} tệp trùng lặp?",
-            "fuzzyCutoffPlaceholder": "tự động"
+            "fuzzyCutoffPlaceholder": "tự động",
+            "sortSizeSpread": "Chênh lệch kích thước",
+            "keepByDefault": "Giữ lại theo mặc định",
+            "keepShortestName": "Tên ngắn nhất",
+            "keepSmallest": "Nhỏ nhất",
+            "keepLargest": "Lớn nhất",
+            "keepFirstFound": "Tìm thấy đầu tiên",
+            "selectAllButOne": "Chọn tất cả trừ một trong mỗi nhóm",
+            "everyCopyTicked": "đã chọn mọi bản sao",
+            "everyCopyTickedHint": "Bỏ chọn một bản sao trong mỗi nhóm được tô sáng: nếu không, mọi bản sao sẽ bị xóa."
         },
         "diskUsage": {
             "title": "Sử dụng đĩa",

@@ -3402,7 +3402,16 @@
             "delete": "IŠTRINTI",
             "skip": "PRALEISTI",
             "deleteConfirm": "Ar tikrai norite ištrinti {count} dublikatų failų?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Dydžio skirtumas",
+            "keepByDefault": "Numatytai palikti",
+            "keepShortestName": "Trumpiausias pavadinimas",
+            "keepSmallest": "Mažiausią",
+            "keepLargest": "Didžiausią",
+            "keepFirstFound": "Pirmą rastą",
+            "selectAllButOne": "Pažymėti visus, išskyrus vieną kiekvienoje grupėje",
+            "everyCopyTicked": "pažymėtos visos kopijos",
+            "everyCopyTickedHint": "Kiekvienoje pažymėtoje grupėje atžymėkite vieną kopiją: kitaip bus ištrintos visos."
         },
         "diskUsage": {
             "title": "Disko naudojimas",

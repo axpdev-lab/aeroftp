@@ -3402,7 +3402,16 @@
             "deleted": "{count} डुप्लिकेट फ़ाइलें हटाई गईं",
             "scanFailed": "स्कैन विफल",
             "retry": "पुनः प्रयास करें",
-            "fuzzyCutoffPlaceholder": "स्वतः"
+            "fuzzyCutoffPlaceholder": "स्वतः",
+            "sortSizeSpread": "आकार का अंतर",
+            "keepByDefault": "डिफ़ॉल्ट रूप से रखें",
+            "keepShortestName": "सबसे छोटा नाम",
+            "keepSmallest": "सबसे छोटी",
+            "keepLargest": "सबसे बड़ी",
+            "keepFirstFound": "पहली मिली",
+            "selectAllButOne": "हर समूह में एक को छोड़कर सभी चुनें",
+            "everyCopyTicked": "सभी प्रतियाँ चयनित",
+            "everyCopyTickedHint": "हर चिह्नित समूह में एक प्रति का चयन हटाएँ: वरना सभी प्रतियाँ मिट जाएँगी।"
         },
         "diskUsage": {
             "title": "डिस्क उपयोग",

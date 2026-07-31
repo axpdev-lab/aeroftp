@@ -3402,7 +3402,16 @@
             "delete": "ИЗТРИВАНЕ",
             "skip": "ПРОПУСКАНЕ",
             "deleteConfirm": "Сигурни ли сте, че искате да изтриете {count} дублирани файла?",
-            "fuzzyCutoffPlaceholder": "авто"
+            "fuzzyCutoffPlaceholder": "авто",
+            "sortSizeSpread": "Разлика в размера",
+            "keepByDefault": "Запазвай по подразбиране",
+            "keepShortestName": "Най-късото име",
+            "keepSmallest": "Най-малкия",
+            "keepLargest": "Най-големия",
+            "keepFirstFound": "Първия намерен",
+            "selectAllButOne": "Избери всички освен по едно от група",
+            "everyCopyTicked": "всички копия са отметнати",
+            "everyCopyTickedHint": "Махнете отметката от едно копие във всяка откроена група: така биха се изтрили всички копия."
         },
         "diskUsage": {
             "title": "Използване на диска",

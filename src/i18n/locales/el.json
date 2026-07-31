@@ -3402,7 +3402,16 @@
             "delete": "ΔΙΑΓΡΑΦΗ",
             "skip": "ΠΑΡΑΛΕΙΨΗ",
             "deleteConfirm": "Είστε σίγουροι ότι θέλετε να διαγράψετε {count} διπλότυπα αρχεία;",
-            "fuzzyCutoffPlaceholder": "αυτόμ."
+            "fuzzyCutoffPlaceholder": "αυτόμ.",
+            "sortSizeSpread": "Διαφορά μεγέθους",
+            "keepByDefault": "Διατήρηση από προεπιλογή",
+            "keepShortestName": "Συντομότερο όνομα",
+            "keepSmallest": "Μικρότερο",
+            "keepLargest": "Μεγαλύτερο",
+            "keepFirstFound": "Πρώτο που βρέθηκε",
+            "selectAllButOne": "Επιλογή όλων εκτός από ένα ανά ομάδα",
+            "everyCopyTicked": "όλα τα αντίγραφα επιλεγμένα",
+            "everyCopyTickedHint": "Αποεπιλέξτε ένα αντίγραφο σε κάθε επισημασμένη ομάδα: αλλιώς θα διαγραφούν όλα."
         },
         "diskUsage": {
             "title": "Χρήση Δίσκου",

@@ -3402,7 +3402,16 @@
             "delete": "USUŃ",
             "skip": "POMIŃ",
             "deleteConfirm": "Czy na pewno chcesz usunąć {count} zduplikowanych plików?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Różnica rozmiarów",
+            "keepByDefault": "Domyślnie zachowaj",
+            "keepShortestName": "Najkrótsza nazwa",
+            "keepSmallest": "Najmniejszą",
+            "keepLargest": "Największą",
+            "keepFirstFound": "Pierwszą znalezioną",
+            "selectAllButOne": "Zaznacz wszystkie oprócz jednej w grupie",
+            "everyCopyTicked": "zaznaczone wszystkie kopie",
+            "everyCopyTickedHint": "W każdej wyróżnionej grupie odznacz jedną kopię: inaczej zostaną usunięte wszystkie."
         },
         "diskUsage": {
             "title": "Użycie dysku",

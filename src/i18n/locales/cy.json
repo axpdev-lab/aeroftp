@@ -3402,7 +3402,16 @@
             "delete": "DILEU",
             "skip": "HEPGOR",
             "deleteConfirm": "Ydych chi'n siŵr eich bod am ddileu {count} ffeil ddyblyg?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Gwahaniaeth maint",
+            "keepByDefault": "Cadw yn ddiofyn",
+            "keepShortestName": "Enw byrraf",
+            "keepSmallest": "Lleiaf",
+            "keepLargest": "Mwyaf",
+            "keepFirstFound": "Y cyntaf a ganfuwyd",
+            "selectAllButOne": "Dewis pob un ond un ym mhob grŵp",
+            "everyCopyTicked": "pob copi wedi'i dicio",
+            "everyCopyTickedHint": "Dad-diciwch un copi ym mhob grŵp a amlygwyd: fel arall byddai pob copi'n cael ei ddileu."
         },
         "diskUsage": {
             "title": "Defnydd Disg",

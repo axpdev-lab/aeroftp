@@ -3402,7 +3402,16 @@
             "delete": "ZMAZAT",
             "skip": "PRESKOCIT",
             "deleteConfirm": "Naozaj chcete zmazat {count} duplicitnych suborov?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Rozptyl veľkostí",
+            "keepByDefault": "Predvolene ponechať",
+            "keepShortestName": "Najkratší názov",
+            "keepSmallest": "Najmenšiu",
+            "keepLargest": "Najväčšiu",
+            "keepFirstFound": "Prvú nájdenú",
+            "selectAllButOne": "Vybrať všetky okrem jednej v každej skupine",
+            "everyCopyTicked": "označené všetky kópie",
+            "everyCopyTickedHint": "V každej zvýraznenej skupine odznačte jednu kópiu: inak sa zmažú všetky."
         },
         "diskUsage": {
             "title": "Vyuzitie disku",

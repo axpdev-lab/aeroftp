@@ -1053,12 +1053,38 @@ html[dir="rtl"] .file-grid-item {
   direction: rtl;
 }
 
-/* Modal open: hide all background scrollbars (WebKitGTK paints them above CSS z-index overlays) */
-html.modal-open *:not(.sync-panel):not(.sync-panel *)::-webkit-scrollbar {
+/* Modal open: hide all BACKGROUND scrollbars. WebKitGTK paints native scrollbars
+   above CSS z-index overlays, so the page behind a modal shows its bars through
+   it. The rule was written to hide those — but it matched every scrollable
+   element on the page, the modal's own content included, so a dialog with a long
+   list had no scrollbar at all on any platform (#347). `.modal-scroll` opts a
+   modal's own scroll container back in. */
+html.modal-open *:not(.sync-panel):not(.sync-panel *):not(.modal-scroll):not(.modal-scroll *)::-webkit-scrollbar {
   display: none !important;
 }
-html.modal-open *:not(.sync-panel):not(.sync-panel *) {
+html.modal-open *:not(.sync-panel):not(.sync-panel *):not(.modal-scroll):not(.modal-scroll *) {
   scrollbar-width: none !important;
+}
+
+/* A modal's own scrollable list. Wider than the 6px the main window uses: this
+   one is inside a dialog the user is reading and dragging a thumb in, not a
+   chrome detail to keep out of the way. */
+.modal-scroll::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+.modal-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 7px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+.modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
+  background-clip: padding-box;
+}
+.modal-scroll {
+  scrollbar-width: auto;
 }
 
 /* Dialogs and modals */

@@ -3402,7 +3402,16 @@
             "delete": "PADAM",
             "skip": "LANGKAU",
             "deleteConfirm": "Adakah anda pasti mahu memadam {count} fail pendua?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Beza saiz",
+            "keepByDefault": "Simpan secara lalai",
+            "keepShortestName": "Nama terpendek",
+            "keepSmallest": "Terkecil",
+            "keepLargest": "Terbesar",
+            "keepFirstFound": "Ditemui dahulu",
+            "selectAllButOne": "Pilih semua kecuali satu bagi setiap kumpulan",
+            "everyCopyTicked": "semua salinan ditanda",
+            "everyCopyTickedHint": "Nyahtanda satu salinan dalam setiap kumpulan yang diserlahkan: jika tidak, semua salinan akan dipadam."
         },
         "diskUsage": {
             "title": "Penggunaan Cakera",

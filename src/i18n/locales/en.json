@@ -1988,7 +1988,16 @@
             "skip": "SKIP",
             "summary": "{groups} groups, {files} duplicate files, {size} wasted",
             "title": "Find Duplicates",
-            "wasted": "wasted"
+            "wasted": "wasted",
+            "sortSizeSpread": "Byte-size spread",
+            "keepByDefault": "Keep by default",
+            "keepShortestName": "Shortest name",
+            "keepSmallest": "Smallest",
+            "keepLargest": "Largest",
+            "keepFirstFound": "First found",
+            "selectAllButOne": "Select all but one per group",
+            "everyCopyTicked": "every copy ticked",
+            "everyCopyTickedHint": "Untick one copy in each highlighted group: this would delete every copy."
         },
         "error": {
             "description": "AeroFTP encountered an unexpected error. You can try to recover or reload the application.",

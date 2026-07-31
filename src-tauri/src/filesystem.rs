@@ -1696,6 +1696,11 @@ pub struct DuplicateGroup {
     /// `hash` is the one BLAKE3 every member shares.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_hashes: Option<Vec<String>>,
+    /// Each entry's own size in bytes, parallel to `files`. Equal to `size` for
+    /// every member of an exact group; in fuzzy mode they differ, and the spread
+    /// is what tells a re-encode from a genuinely different picture (#347).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_sizes: Option<Vec<u64>>,
 }
 
 // ─── Command 11: find_duplicate_files ───────────────────────────────────────
@@ -1866,6 +1871,7 @@ pub async fn find_duplicate_files(
                 similarity: g.modality,
                 distance: g.distance,
                 file_hashes: g.file_hashes,
+                file_sizes: g.file_sizes,
             })
             .collect();
         return Ok(result);
@@ -1937,6 +1943,9 @@ pub async fn find_duplicate_files(
         .map(|(hash, (size, files))| DuplicateGroup {
             hash,
             size,
+            // Byte-identical by definition, but carried so the dialog reads one
+            // shape whichever mode produced the group.
+            file_sizes: Some(vec![size; files.len()]),
             files,
             similarity: None,
             distance: None,

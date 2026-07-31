@@ -15989,6 +15989,16 @@ const App: React.FC = () => {
             // behind its backdrop, while this promise never settled and the
             // "Delete Selected" button span forever.
             confirmBeforeDelete={confirmBeforeDelete}
+            // Opens the row's thumbnail full size in the app's own viewer, which
+            // is also the way into AeroImage and the <> editor (#347).
+            onPreviewFile={(filePath) => {
+              const name = filePath.split(/[\\/]/).pop() || filePath;
+              openUniversalPreview(
+                { name, path: filePath, size: null, is_dir: false, modified: null },
+                false,
+                [],
+              );
+            }}
             onDeleteFiles={async (paths) => {
               for (const p of paths) {
                 try {

@@ -3402,7 +3402,16 @@
             "delete": "ȘTERGE",
             "skip": "OMITE",
             "deleteConfirm": "Sunteți sigur că doriți să ștergeți {count} fișiere duplicate?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Diferența de mărime",
+            "keepByDefault": "Păstrează implicit",
+            "keepShortestName": "Cel mai scurt nume",
+            "keepSmallest": "Cea mai mică",
+            "keepLargest": "Cea mai mare",
+            "keepFirstFound": "Prima găsită",
+            "selectAllButOne": "Selectează toate în afară de una per grup",
+            "everyCopyTicked": "toate copiile bifate",
+            "everyCopyTickedHint": "Debifează o copie în fiecare grup evidențiat: altfel s-ar șterge toate copiile."
         },
         "diskUsage": {
             "title": "Utilizarea discului",
