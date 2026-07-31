@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getThumbnail, keyFor, putThumbnail } from '../utils/thumbnailCache';
 
 interface ImageThumbnailProps {
     path: string;
@@ -14,6 +15,18 @@ interface ImageThumbnailProps {
     fallbackIcon: React.ReactNode;
     isRemote?: boolean;
     className?: string;
+    /**
+     * The file's identity in time, from `signatureOf(size, modified)`. Supplied,
+     * the thumbnail is cached and survives a view switch or a walk out of the
+     * directory and back; omitted, it is fetched on every mount, which is the
+     * old behaviour and the safe one when a changed file cannot be told apart.
+     */
+    signature?: string | null;
+    /**
+     * What the path is relative to: the local disk, one remote session. Keeps two
+     * sources that use the same path from sharing a cache entry.
+     */
+    cacheScope?: string;
 }
 
 export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
@@ -21,12 +34,24 @@ export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
     name,
     fallbackIcon,
     isRemote = false,
-    className
+    className,
+    signature,
+    cacheScope,
 }) => {
-    const [src, setSrc] = useState<string | null>(null);
+    const cacheKey = keyFor(cacheScope ?? (isRemote ? 'remote' : 'local'), path, signature);
+    // Seeded from the cache so a cached thumbnail paints on the first frame,
+    // instead of flashing the fallback icon and swapping a moment later.
+    const [src, setSrc] = useState<string | null>(() => getThumbnail(cacheKey) ?? null);
     const [error, setError] = useState(false);
 
     useEffect(() => {
+        const cached = getThumbnail(cacheKey);
+        if (cached) {
+            setSrc(cached);
+            setError(false);
+            return;
+        }
+
         let cancelled = false;
         const loadImage = async () => {
             try {
@@ -40,14 +65,16 @@ export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
                     bmp: 'image/bmp', ico: 'image/x-icon'
                 };
                 const mime = mimeTypes[ext] || 'image/png';
-                setSrc(`data:${mime};base64,${base64}`);
+                const dataUrl = `data:${mime};base64,${base64}`;
+                putThumbnail(cacheKey, dataUrl);
+                setSrc(dataUrl);
             } catch {
                 if (!cancelled) setError(true);
             }
         };
         loadImage();
         return () => { cancelled = true; };
-    }, [path, name, isRemote]);
+    }, [path, name, isRemote, cacheKey]);
 
     if (error || !src) {
         return <div className="file-grid-icon">{fallbackIcon}</div>;

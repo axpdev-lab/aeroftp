@@ -472,6 +472,7 @@ import { findGvfsMtpMount, isGvfsMtpPath } from './utils/gvfsMtpMount';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
+import { signatureOf } from './utils/thumbnailCache';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
 import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
@@ -18128,6 +18129,11 @@ const App: React.FC = () => {
                     ) : viewMode === 'large' ? (
                       /* Large Icons View */
                       <LargeIconsGrid
+                        // This grid renders the REMOTE panel here. Without the
+                        // flag every thumbnail asked the local filesystem for a
+                        // remote path and fell back to a generic icon (#347).
+                        isRemote
+                        thumbnailScope={activeSessionId ? `remote:${activeSessionId}` : 'remote'}
                         files={sortedRemoteFiles as any}
                         archiveLockOf={remoteArchiveLockOf as any}
                         sameNameLeakOf={(file) => sameNameRepeats.has(file.name)}
@@ -18264,14 +18270,28 @@ const App: React.FC = () => {
                                   path={file.path}
                                   name={file.name}
                                   size={48}
+                                  signature={signatureOf(file.size, file.modified)}
+                                  cacheScope={activeSessionId ? `provider:${activeSessionId}` : 'provider'}
+                                  fallback={
+                                    <ImageThumbnail
+                                      path={file.path || (currentRemotePath === '/' ? `/${file.name}` : `${currentRemotePath}/${file.name}`)}
+                                      name={file.name}
+                                      fallbackIcon={iconProvider.getFileIcon(file.name).icon}
+                                      isRemote={true}
+                                      signature={signatureOf(file.size, file.modified)}
+                                      cacheScope={activeSessionId ? `remote:${activeSessionId}` : 'remote'}
+                                    />
+                                  }
                                 />
                               </div>
                             ) : isImageFile(file.name) ? (
                               <ImageThumbnail
-                                path={currentRemotePath === '/' ? `/${file.name}` : `${currentRemotePath}/${file.name}`}
+                                path={file.path || (currentRemotePath === '/' ? `/${file.name}` : `${currentRemotePath}/${file.name}`)}
                                 name={file.name}
                                 fallbackIcon={iconProvider.getFileIcon(file.name).icon}
                                 isRemote={true}
+                                signature={signatureOf(file.size, file.modified)}
+                                cacheScope={activeSessionId ? `remote:${activeSessionId}` : 'remote'}
                               />
                             ) : (
                               <div className="file-grid-icon">
