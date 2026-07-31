@@ -1074,6 +1074,19 @@ impl S3Provider {
             // Explicitly set Content-Length for empty bodies (required by some S3-compatible services like Backblaze B2)
             request = request.header("Content-Length", body_data.len().to_string());
             request = request.body(body_data);
+        } else if matches!(method, Method::PUT | Method::POST) {
+            // A PUT with NO body still needs an explicit `Content-Length: 0`:
+            // reqwest omits the header entirely when no body is set, and AWS S3
+            // and Backblaze answer `411 Length Required`. Both bodyless PUTs in
+            // this file are real operations, `mkdir` (the zero-byte directory
+            // marker) and `UploadPartCopy` (server-side copy of objects past the
+            // 5 GiB single-PUT limit), so on those two providers creating a
+            // folder failed outright and a large server-side copy could not
+            // complete. It went unnoticed because MinIO tolerates the omission,
+            // which is what the lab profile runs. `server_side_copy_single`
+            // already sets this header by hand; the shared helper did not, so
+            // every caller that goes through it missed out.
+            request = request.header("Content-Length", "0");
         }
 
         // ERR-03: Use retry wrapper for transient errors (429, 500, 502, 503, 504)
@@ -6177,6 +6190,57 @@ mod tests {
             verify_cert: true,
         })
         .expect("Failed to create S3Provider")
+    }
+
+    /// S3-411 regression: a bodyless PUT must still carry `Content-Length: 0`.
+    /// reqwest omits the header when no body is set, and AWS S3, Backblaze and
+    /// Cloudflare R2 answer `411 Length Required`, so `mkdir` (the zero-byte
+    /// directory marker) failed outright on them while MinIO, which tolerates
+    /// the omission, worked. `UploadPartCopy` goes through the same helper.
+    #[tokio::test]
+    async fn bodyless_put_sends_explicit_content_length_zero() {
+        use std::sync::{Arc, Mutex};
+
+        let seen: Arc<Mutex<Option<Option<String>>>> = Arc::new(Mutex::new(None));
+        let captured = Arc::clone(&seen);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let captured = Arc::clone(&captured);
+                async move {
+                    let value = req
+                        .headers()
+                        .get(reqwest::header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        .map(String::from);
+                    *captured.lock().unwrap() = Some(value);
+                    axum::http::StatusCode::OK
+                }
+            }));
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.mkdir("/some/folder").await.expect("mkdir");
+
+        let value = seen
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("no request reached the server");
+        assert_eq!(
+            value.as_deref(),
+            Some("0"),
+            "a bodyless PUT must send Content-Length: 0, otherwise AWS/B2/R2 reject it with 411"
+        );
+
+        server.abort();
     }
 
     /// Issue #301 (Fase 1): temporary credentials carry the STS session token
