@@ -380,32 +380,45 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     setIsDeleting(true);
     try {
       await onDeleteFiles(paths);
-      // Remove deleted files from groups and update state
-      const updatedGroups: DuplicateGroup[] = [];
-      for (const group of groups) {
-        // `file_hashes` and `file_sizes` are parallel to `files`; filtering one
-        // and not the others would silently shift every row's hash and size by
-        // the number of copies deleted above it.
-        const kept = group.files
-          .map((f, i) => ({ f, i }))
-          .filter(({ f }) => !selectedPaths.has(f));
-        if (kept.length > 1) {
-          updatedGroups.push({
-            ...group,
-            files: kept.map(({ f }) => f),
-            file_hashes: group.file_hashes ? kept.map(({ i }) => group.file_hashes![i]) : undefined,
-            file_sizes: group.file_sizes ? kept.map(({ i }) => group.file_sizes![i]) : undefined,
-          });
+      // Reconcile against whatever the state is NOW, not against the snapshot
+      // this callback closed over. A delete of many files takes long enough for
+      // a re-scan to land or the selection to move underneath it, and writing
+      // back the captured `groups` would then discard the newer results and
+      // clear a selection the user made after pressing the button.
+      const deleted = new Set(paths);
+      setGroups((current) => {
+        const updatedGroups: DuplicateGroup[] = [];
+        for (const group of current) {
+          // `file_hashes` and `file_sizes` are parallel to `files`; filtering
+          // one and not the others would silently shift every row's hash and
+          // size by the number of copies deleted above it.
+          const kept = group.files
+            .map((f, i) => ({ f, i }))
+            .filter(({ f }) => !deleted.has(f));
+          if (kept.length > 1) {
+            updatedGroups.push({
+              ...group,
+              files: kept.map(({ f }) => f),
+              file_hashes: group.file_hashes ? kept.map(({ i }) => group.file_hashes![i]) : undefined,
+              file_sizes: group.file_sizes ? kept.map(({ i }) => group.file_sizes![i]) : undefined,
+            });
+          }
         }
-      }
-      setGroups(updatedGroups);
-      setSelectedPaths(new Set());
+        return updatedGroups;
+      });
+      // Drop only what was actually deleted; anything ticked in the meantime
+      // stays ticked.
+      setSelectedPaths((prev) => {
+        const next = new Set(prev);
+        for (const p of deleted) next.delete(p);
+        return next;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsDeleting(false);
     }
-  }, [selectedPaths, groups, onDeleteFiles]);
+  }, [selectedPaths, onDeleteFiles]);
 
   /**
    * The one confirmation in this flow. `confirmBeforeDelete` decides whether it
@@ -520,7 +533,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
         <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
           <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Mode:</span>
           <button
-            disabled={isScanning}
+            disabled={isScanning || isDeleting}
             onClick={() => setMode('exact')}
             className={`px-3 py-1 text-xs rounded border transition-colors disabled:opacity-50 ${
               mode === 'exact'
@@ -531,7 +544,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
             Exact
           </button>
           <button
-            disabled={isScanning}
+            disabled={isScanning || isDeleting}
             onClick={() => setMode('non-identical')}
             className={`px-3 py-1 text-xs rounded border transition-colors disabled:opacity-50 ${
               mode === 'non-identical'
@@ -596,7 +609,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                 max={200}
                 value={threshold ?? ''}
                 placeholder={t('duplicates.fuzzyCutoffPlaceholder') || 'auto'}
-                disabled={isScanning}
+                disabled={isScanning || isDeleting}
                 onChange={(e) => {
                   const raw = e.target.value.trim();
                   setThreshold(raw === '' ? null : Math.max(0, Math.min(200, Number(raw))));
