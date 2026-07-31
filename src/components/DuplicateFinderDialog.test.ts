@@ -83,7 +83,17 @@ describe('a slow delete does not write back a stale snapshot', () => {
     expect(scope).not.toMatch(/setGroups\(updatedGroups\)/);
     expect(scope).not.toMatch(/setSelectedPaths\(new Set\(\)\)/);
     // Closing over `groups` is what made the snapshot stale in the first place.
-    expect(scope).toMatch(/\}, \[selectedPaths, onDeleteFiles\]\)/);
+    expect(scope).toMatch(/\}, \[selectedPaths, onDeleteFiles, scan\]\)/);
+  });
+
+  it('re-scans when the delete rejects, because it may have deleted some', () => {
+    // `onDeleteFiles` walks the list, so a reject can arrive with earlier paths
+    // already gone. Which ones is not knowable here, and keeping the old rows
+    // would leave the dialog offering to delete files that no longer exist.
+    const body = dialogRaw.slice(dialogRaw.indexOf('const runDelete'));
+    const catchBlock = body.slice(body.indexOf('} catch (err) {'), body.indexOf('} finally {'));
+    expect(catchBlock).toMatch(/setError\(/);
+    expect(catchBlock).toMatch(/void scan\(\)/);
   });
 
   it('lets nothing start a new scan while a delete is in flight', () => {
