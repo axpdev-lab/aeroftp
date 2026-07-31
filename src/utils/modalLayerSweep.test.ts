@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
-import { MODAL_LAYER, MODAL_Z } from './modalLayers';
+import { MODAL_LAYER, MODAL_Z, modalZIndexOf } from './modalLayers';
 
 /**
  * Sweeps every full-screen overlay in the source and checks it against the
@@ -19,20 +19,11 @@ import { MODAL_LAYER, MODAL_Z } from './modalLayers';
  * at z-100 and z-200, under those same 67.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const overlayModules = import.meta.glob('../**/*.tsx', {
     query: '?raw',
     import: 'default',
     eager: true,
 }) as Record<string, string>;
-
-/** `z-50` / `z-[9999]` → 50 / 9999. Anything else → null. */
-const readZ = (token: string): number | null => {
-    const arbitrary = token.match(/^z-\[(\d+)\]$/);
-    if (arbitrary) return Number(arbitrary[1]);
-    const scale = token.match(/^z-(\d+)$/);
-    return scale ? Number(scale[1]) : null;
-};
 
 interface Overlay {
     file: string;
@@ -40,54 +31,108 @@ interface Overlay {
     z: number;
     /** Which key of the scale it came through, when it uses `MODAL_Z`. */
     layer: keyof typeof MODAL_LAYER | null;
+    /** Set when the overlay declares no z-index at all. */
+    unlayered?: true;
 }
 
 /**
- * Every `fixed inset-0` in the tree, with the z-index it ends up at. The class
- * may be a literal (`z-[9999]`) or a `MODAL_Z` reference; both are resolved.
- * The class can also sit a line or two away from `fixed inset-0` when the JSX
- * wraps, so a small window around the match is searched.
+ * The text of the `className` value that contains `index`, or null.
+ *
+ * Reading a fixed window of lines around `fixed inset-0` is not good enough: the
+ * window reaches into the neighbouring element, so a `z-` class belonging to a
+ * sibling can be recorded as this overlay's. The attribute value is the only
+ * span that certainly belongs to the same element, so that is what is read,
+ * whether it is a quoted string or a `{...}` expression with a template literal
+ * inside it.
  */
+const classNameValueAt = (source: string, index: number): string | null => {
+    let from = source.lastIndexOf('className=', index);
+    while (from !== -1) {
+        let cursor = from + 'className='.length;
+        let end: number;
+        if (source[cursor] === '"' || source[cursor] === "'") {
+            end = source.indexOf(source[cursor], cursor + 1);
+            if (end === -1) return null;
+        } else if (source[cursor] === '{') {
+            let depth = 0;
+            end = cursor;
+            for (; end < source.length; end++) {
+                if (source[end] === '{') depth++;
+                else if (source[end] === '}' && --depth === 0) break;
+            }
+        } else {
+            return null;
+        }
+        if (index <= end) return source.slice(cursor, end + 1);
+        // The match sits after this attribute closes: it belongs to a later one.
+        from = source.indexOf('className=', end);
+        if (from === -1 || from > index) return null;
+    }
+    return null;
+};
+
+/**
+ * Comments blanked out, newlines kept so line numbers still line up.
+ *
+ * A comment that *mentions* `fixed inset-0`, and `SaveAllMenu` has one
+ * explaining why its confirm is portalled, is not an overlay. Counting it as one
+ * makes the sweep report a missing z-index for an element that does not exist.
+ */
+const withoutComments = (source: string): string =>
+    source
+        .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+        .replace(/(^|[^:])\/\/[^\n]*/g, (m, lead) => lead + ' '.repeat(m.length - lead.length));
+
+/** Every `fixed inset-0` in the tree, with the z-index it ends up at. */
 const collectOverlays = (): Overlay[] => {
     const found: Overlay[] = [];
-    for (const [file, source] of Object.entries(overlayModules)) {
-        const lines = source.split('\n');
-        for (let i = 0; i < lines.length; i++) {
-            if (!lines[i].includes('fixed inset-0')) continue;
-            const window = lines.slice(Math.max(0, i - 2), i + 3).join('\n');
+    for (const [file, raw] of Object.entries(overlayModules)) {
+        const source = withoutComments(raw);
+        let at = source.indexOf('fixed inset-0');
+        while (at !== -1) {
+            const line = source.slice(0, at).split('\n').length;
+            const value = classNameValueAt(source, at) ?? '';
 
-            const viaScale = window.match(/MODAL_Z\.([A-Za-z]+)/);
-            if (viaScale) {
-                const key = viaScale[1] as keyof typeof MODAL_LAYER;
-                expect(MODAL_LAYER[key], `${file}:${i + 1} uses MODAL_Z.${key}`).toBeTypeOf('number');
-                found.push({ file, line: i + 1, z: MODAL_LAYER[key], layer: key });
-                continue;
+            const viaScale = value.match(/MODAL_Z\.([A-Za-z]+)/);
+            const literal = value.match(/\bz-(?:\[\d+\]|\d+)(?![\w-])/);
+            if (viaScale && (MODAL_LAYER as Record<string, number>)[viaScale[1]] !== undefined) {
+                const layer = viaScale[1] as keyof typeof MODAL_LAYER;
+                found.push({ file, line, z: MODAL_LAYER[layer], layer });
+            } else if (literal) {
+                found.push({ file, line, z: modalZIndexOf(literal[0]) as number, layer: null });
+            } else {
+                found.push({ file, line, z: -1, layer: null, unlayered: true });
             }
-
-            const literal = window.match(/\bz-(?:\[\d+\]|\d+)(?![\w-])/);
-            const z = literal ? readZ(literal[0]) : null;
-            // An overlay with no z at all falls back to `z-index: auto` and is
-            // ordered purely by where it happens to sit in the DOM — the same
-            // trap by another route. There are none; keep it that way.
-            expect(z, `${file}:${i + 1} is a full-screen overlay with no z-index`).not.toBeNull();
-            found.push({ file, line: i + 1, z: z as number, layer: null });
+            at = source.indexOf('fixed inset-0', at + 1);
         }
     }
     return found;
 };
 
-const overlays = collectOverlays();
+let cached: Overlay[] | null = null;
+/** Collected on first use, inside a test, so a parse problem fails a named test
+ *  rather than aborting the whole file during evaluation. */
+const overlays = (): Overlay[] => (cached ??= collectOverlays());
+
 const at = (o: Overlay) => `${o.file.replace('../', 'src/')}:${o.line} (z=${o.z})`;
 
 describe('overlay stacking sweep (#537)', () => {
     it('finds the overlays to check', () => {
         // A guard on the sweep itself: if the glob or the pattern ever stops
         // matching, the assertions below would pass over an empty set.
-        expect(overlays.length).toBeGreaterThan(100);
+        expect(overlays().length).toBeGreaterThan(100);
+    });
+
+    it('finds a z-index on every one of them', () => {
+        // An overlay with no z at all falls back to `z-index: auto` and is
+        // ordered purely by where it happens to sit in the DOM, which is the
+        // same trap by another route.
+        const unlayered = overlays().filter((o) => o.unlayered).map(at);
+        expect(unlayered, 'full-screen overlays with no z-index').toEqual([]);
     });
 
     it('lets nothing but the quit guard and the lock screens cover the app-wide confirm', () => {
-        const covering = overlays.filter(
+        const covering = overlays().filter(
             (o) => o.z >= MODAL_LAYER.globalConfirm && o.layer !== 'globalConfirm'
                 && o.layer !== 'guardedClose' && o.layer !== 'lock',
         );
@@ -95,18 +140,18 @@ describe('overlay stacking sweep (#537)', () => {
     });
 
     it('renders the app-wide confirm above every dialog that can be waiting on it', () => {
-        const confirms = overlays.filter((o) => o.layer === 'globalConfirm');
+        const confirms = overlays().filter((o) => o.layer === 'globalConfirm');
         expect(confirms.length, 'ConfirmDialog must use MODAL_Z.globalConfirm').toBe(1);
-        const dialogs = overlays.filter((o) => o.layer !== 'globalConfirm' && o.layer !== 'guardedClose' && o.layer !== 'lock');
+        const dialogs = overlays().filter((o) => o.layer !== 'globalConfirm' && o.layer !== 'guardedClose' && o.layer !== 'lock');
         const highest = Math.max(...dialogs.map((o) => o.z));
         expect(MODAL_LAYER.globalConfirm).toBeGreaterThan(highest);
     });
 
     it('lets nothing cover the lock screens', () => {
-        const locks = overlays.filter((o) => o.layer === 'lock');
+        const locks = overlays().filter((o) => o.layer === 'lock');
         // Both LockScreen and AccountLockScreen.
         expect(locks.length, 'lock screens on MODAL_Z.lock').toBe(2);
-        const others = overlays.filter((o) => o.layer !== 'lock');
+        const others = overlays().filter((o) => o.layer !== 'lock');
         const highest = Math.max(...others.map((o) => o.z));
         expect(MODAL_LAYER.lock).toBeGreaterThan(highest);
     });
@@ -119,7 +164,7 @@ describe('overlay stacking sweep (#537)', () => {
     it('has the Find Duplicates modal and its own confirm on the modal tiers', () => {
         // The pair from #537, named explicitly: the modal must stay under the
         // app-wide confirm, and its own confirm must stay over itself.
-        const dedupe = overlays.filter((o) => o.file.includes('DuplicateFinderDialog'));
+        const dedupe = overlays().filter((o) => o.file.includes('DuplicateFinderDialog'));
         expect(dedupe.map((o) => o.layer).sort()).toEqual(['modal', 'modalConfirm']);
     });
 });

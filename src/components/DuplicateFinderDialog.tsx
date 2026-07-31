@@ -415,10 +415,16 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      // A reject does not mean nothing was deleted: `onDeleteFiles` walks the
+      // list, so it can fail partway with earlier paths already gone. Which ones
+      // is not knowable from here, and keeping the old rows would leave the
+      // dialog offering to delete files that no longer exist. Re-scanning is the
+      // only answer that cannot be wrong.
+      void scan();
     } finally {
       setIsDeleting(false);
     }
-  }, [selectedPaths, onDeleteFiles]);
+  }, [selectedPaths, onDeleteFiles, scan]);
 
   /**
    * The one confirmation in this flow. `confirmBeforeDelete` decides whether it

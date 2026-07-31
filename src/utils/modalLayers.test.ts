@@ -17,6 +17,23 @@ describe('modal stacking scale (#537)', () => {
         expect(MODAL_LAYER.modalConfirm).toBeGreaterThan(MODAL_LAYER.modal);
     });
 
+    it('keeps the elevated tier ordered the same way, and above the modal tier', () => {
+        // The dialogs that opted above the pack follow the same rule internally:
+        // a trash manager's own confirm over the trash manager, both over an
+        // ordinary modal, and all of them under the app-wide confirm.
+        expect(MODAL_LAYER.elevatedModal).toBeGreaterThan(MODAL_LAYER.modalConfirm);
+        expect(MODAL_LAYER.elevatedConfirm).toBeGreaterThan(MODAL_LAYER.elevatedModal);
+        expect(MODAL_LAYER.globalConfirm).toBeGreaterThan(MODAL_LAYER.elevatedConfirm);
+    });
+
+    it('orders the whole scale strictly, with no two layers sharing a number', () => {
+        // Equal z-index is what made #537: at a tie, DOM order decides, and the
+        // element mounted later wins whatever the intent was.
+        const values = Object.values(MODAL_LAYER);
+        expect(new Set(values).size, 'no two layers share a z-index').toBe(values.length);
+        expect([...values].sort((a, b) => a - b)).toEqual(values);
+    });
+
     it('keeps the Tailwind classes in step with the numbers', () => {
         // A class that drifts from its number is worse than no scale at all: the
         // test would keep passing while the rendered order silently changed.
