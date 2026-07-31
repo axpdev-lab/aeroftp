@@ -33,6 +33,8 @@ interface Overlay {
     layer: keyof typeof MODAL_LAYER | null;
     /** Set when the overlay declares no z-index at all. */
     unlayered?: true;
+    /** Set when the overlay takes its tier from a `zClass` prop instead. */
+    delegated?: true;
 }
 
 /**
@@ -100,6 +102,12 @@ const collectOverlays = (): Overlay[] => {
                 found.push({ file, line, z: MODAL_LAYER[layer], layer });
             } else if (literal) {
                 found.push({ file, line, z: modalZIndexOf(literal[0]) as number, layer: null });
+            } else if (/\$\{zClass\}/.test(value)) {
+                // A reusable overlay that is handed its tier: `ConfirmOverlay`
+                // is rendered inside the overlay of whoever raises it, so only
+                // the call site knows which tier that is. Its z is checked at
+                // the call sites instead, one test below.
+                found.push({ file, line, z: -1, layer: null, delegated: true });
             } else {
                 found.push({ file, line, z: -1, layer: null, unlayered: true });
             }
@@ -127,13 +135,37 @@ describe('overlay stacking sweep (#537)', () => {
         // An overlay with no z at all falls back to `z-index: auto` and is
         // ordered purely by where it happens to sit in the DOM, which is the
         // same trap by another route.
-        const unlayered = overlays().filter((o) => o.unlayered).map(at);
+        const unlayered = overlays().filter((o) => o.unlayered && !o.delegated).map(at);
         expect(unlayered, 'full-screen overlays with no z-index').toEqual([]);
+    });
+
+    it('gives every delegated overlay a MODAL_Z tier at each call site', () => {
+        // The escape hatch above is only sound while it stays an escape hatch:
+        // a `zClass` that is not one of ours puts the overlay back at
+        // `z-index: auto`, and a computed one never reaches the stylesheet at
+        // all, since Tailwind builds its utilities by scanning the source.
+        const passed: string[] = [];
+        for (const [file, raw] of Object.entries(overlayModules)) {
+            const source = withoutComments(raw);
+            for (const m of source.matchAll(/zClass=\{([^}]*)\}/g)) {
+                const key = m[1].trim().match(/^MODAL_Z\.([A-Za-z]+)$/);
+                const line = source.slice(0, m.index ?? 0).split('\n').length;
+                expect(
+                    key && (MODAL_LAYER as Record<string, number>)[key[1]] !== undefined,
+                    `${file.replace('../', 'src/')}:${line} passes ${m[1].trim()}`,
+                ).toBe(true);
+                passed.push(`${file}:${line}`);
+            }
+        }
+        // The delegated overlay is only worth an exemption if it is in use; an
+        // empty sweep here would let the exemption cover nothing.
+        const delegated = overlays().filter((o) => o.delegated);
+        if (delegated.length > 0) expect(passed.length).toBeGreaterThan(0);
     });
 
     it('lets nothing but the quit guard and the lock screens cover the app-wide confirm', () => {
         const covering = overlays().filter(
-            (o) => o.z >= MODAL_LAYER.globalConfirm && o.layer !== 'globalConfirm'
+            (o) => !o.delegated && o.z >= MODAL_LAYER.globalConfirm && o.layer !== 'globalConfirm'
                 && o.layer !== 'guardedClose' && o.layer !== 'lock',
         );
         expect(covering.map(at), 'overlays at or above the app-wide confirm').toEqual([]);
