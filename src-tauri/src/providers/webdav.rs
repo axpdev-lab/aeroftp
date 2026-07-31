@@ -2869,8 +2869,11 @@ impl StorageProvider for WebDavProvider {
             .send_with_too_early_retry(Method::GET, remote_path)
             .await?;
 
+        let accept_as_full = response.status() == StatusCode::OK
+            || (response.status() == StatusCode::PARTIAL_CONTENT
+                && partial_content_covers_whole_object(response.headers()));
         match response.status() {
-            StatusCode::OK => {
+            _ if accept_as_full => {
                 let total_size = response.content_length().unwrap_or(0);
                 let mut stream = response.bytes_stream();
                 let mut atomic = super::atomic_write::AtomicFile::new(local_path)
@@ -2952,8 +2955,11 @@ impl StorageProvider for WebDavProvider {
             .send_with_too_early_retry(Method::GET, remote_path)
             .await?;
 
+        let accept_as_full = response.status() == StatusCode::OK
+            || (response.status() == StatusCode::PARTIAL_CONTENT
+                && partial_content_covers_whole_object(response.headers()));
         match response.status() {
-            StatusCode::OK => {
+            _ if accept_as_full => {
                 // H2: Size-limited download to prevent OOM on large files
                 super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
             }
@@ -4223,6 +4229,47 @@ pub async fn webdav_empty_trash(
 ///
 /// RFC 4918 §9.7.1 says a PUT whose parent collection is missing should answer
 /// `409 Conflict`, but Koofr's WebDAV gateway returns `404 Not Found` for that
+/// True when a `206 Partial Content` answer to a request we sent WITHOUT a
+/// `Range` header still carries the entire object, so the body can be consumed
+/// exactly like a `200`.
+///
+/// FileLu's WebDAV (nginx) does this: a plain `GET` comes back
+/// `206` with `content-range: bytes 0-65535/65536`, which is the whole file.
+/// Matching only on `StatusCode::OK` made every such download fail with
+/// "Download failed with status: 206 Partial Content", after three retries,
+/// leaving no local file at all even though the complete bytes were in hand.
+///
+/// The check stays strict on purpose: a `Content-Range` that does not start at
+/// 0 or does not reach the last byte is a genuinely partial body and must keep
+/// failing, otherwise a truncated download would be committed as complete. A
+/// `206` with no `Content-Range` at all is not trusted either.
+fn partial_content_covers_whole_object(headers: &reqwest::header::HeaderMap) -> bool {
+    let Some(raw) = headers
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+    else {
+        return false;
+    };
+    // `bytes <start>-<end>/<total>`; `*` for either side means "unknown".
+    let Some(spec) = raw.trim().strip_prefix("bytes ") else {
+        return false;
+    };
+    let Some((range, total)) = spec.split_once('/') else {
+        return false;
+    };
+    let Some((start, end)) = range.split_once('-') else {
+        return false;
+    };
+    let (Ok(start), Ok(end), Ok(total)) = (
+        start.trim().parse::<u64>(),
+        end.trim().parse::<u64>(),
+        total.trim().parse::<u64>(),
+    ) else {
+        return false;
+    };
+    total > 0 && start == 0 && end + 1 == total
+}
+
 /// case (and also when the target path is itself an existing collection rather
 /// than a file). Without this, a Koofr upload to a missing-parent or directory
 /// target surfaced as the opaque, retryable "Upload failed with status: 404"
@@ -4473,6 +4520,43 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "a& &b.txt");
         assert_eq!(entries[0].size, 10);
+    }
+
+    /// WEBDAV-206 regression: FileLu's WebDAV answers a plain GET (no Range
+    /// sent) with `206 Partial Content` and `content-range: bytes 0-65535/65536`,
+    /// the complete object. Accepting only `200` made those downloads fail,
+    /// after three retries, with no local file at all. A `Content-Range` that
+    /// is genuinely partial, or missing, must still be rejected so a truncated
+    /// body is never committed as a complete download.
+    #[test]
+    fn partial_content_is_accepted_only_when_it_spans_the_whole_object() {
+        use reqwest::header::{HeaderMap, HeaderValue, CONTENT_RANGE};
+
+        let with = |v: &str| {
+            let mut h = HeaderMap::new();
+            h.insert(CONTENT_RANGE, HeaderValue::from_str(v).unwrap());
+            h
+        };
+
+        // The exact header observed live on webdav.filelu.com.
+        assert!(partial_content_covers_whole_object(&with(
+            "bytes 0-65535/65536"
+        )));
+        assert!(partial_content_covers_whole_object(&with("bytes 0-0/1")));
+
+        // Genuinely partial bodies stay failures.
+        assert!(!partial_content_covers_whole_object(&with(
+            "bytes 0-1023/65536"
+        )));
+        assert!(!partial_content_covers_whole_object(&with(
+            "bytes 1024-65535/65536"
+        )));
+        // Unknown total, unparsable, or absent: not trusted.
+        assert!(!partial_content_covers_whole_object(&with(
+            "bytes 0-65535/*"
+        )));
+        assert!(!partial_content_covers_whole_object(&with("garbage")));
+        assert!(!partial_content_covers_whole_object(&HeaderMap::new()));
     }
 
     /// CR-536 regression, Nextcloud trashbin parser: same whitespace-only
