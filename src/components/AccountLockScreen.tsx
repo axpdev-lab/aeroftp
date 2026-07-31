@@ -24,6 +24,7 @@ import {
 } from '../utils/userPartitions';
 import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
 import { mapUserPartitionError } from '../utils/userPartitionErrors';
+import { MODAL_Z } from '../utils/modalLayers';
 
 const LOCK_PATTERN_KEY = 'aeroftp_lock_pattern';
 const DEFAULT_PATTERN = 'isometric';
@@ -231,7 +232,9 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
 
     return (
         <div
-            className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-auto bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-100"
+            // Same layer as the master-password lock screen: this one also
+            // renders over a fully mounted app tree (see MODAL_Z.lock).
+            className={`fixed inset-0 ${MODAL_Z.lock} flex flex-col items-center justify-center overflow-auto bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-100`}
         >
             {/* Background pattern overlay. This screen reuses the lock screen's
                 always-dark backdrop (theme-independent) so the chosen lock

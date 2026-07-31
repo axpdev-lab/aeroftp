@@ -21,6 +21,7 @@ import { DuplicateGroup } from '../types/aerofile';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useClipboardCopy } from '../hooks/useClipboardCopy';
+import { MODAL_Z } from '../utils/modalLayers';
 
 /** Payload of the backend's `duplicate-scan-progress` event (filesystem.rs). */
 interface DuplicateScanProgress {
@@ -49,7 +50,18 @@ interface DuplicateFinderDialogProps {
   isOpen: boolean;
   scanPath: string;
   onClose: () => void;
+  /**
+   * Deletes the given paths. It must NOT ask the user anything: this dialog owns
+   * the confirmation, and a second prompt raised by the caller is exactly the
+   * deadlock of #537 — it renders behind this modal, unreachable behind its
+   * backdrop, while the promise it gates never settles.
+   */
   onDeleteFiles: (paths: string[]) => Promise<void>;
+  /**
+   * The app's "confirm before delete" setting. It governs *this* dialog's own
+   * confirmation; when it is off the delete runs straight away.
+   */
+  confirmBeforeDelete?: boolean;
 }
 
 /** Extract the filename from a full path */
@@ -93,6 +105,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   scanPath,
   onClose,
   onDeleteFiles,
+  confirmBeforeDelete = true,
 }) => {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
@@ -262,14 +275,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   // Inline confirmation dialog state (replaces window.confirm for styled UX)
   const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState(false);
 
-  // Delete selected files: shows styled confirmation first
-  const handleDelete = useCallback(() => {
-    const paths = Array.from(selectedPaths);
-    if (paths.length === 0) return;
-    setPendingDeleteConfirm(true);
-  }, [selectedPaths]);
-
-  const confirmDelete = useCallback(async () => {
+  const runDelete = useCallback(async () => {
     setPendingDeleteConfirm(false);
     const paths = Array.from(selectedPaths);
     if (paths.length === 0) return;
@@ -277,22 +283,54 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     setIsDeleting(true);
     try {
       await onDeleteFiles(paths);
-      // Remove deleted files from groups and update state
-      const updatedGroups: DuplicateGroup[] = [];
-      for (const group of groups) {
-        const remaining = group.files.filter(f => !selectedPaths.has(f));
-        if (remaining.length > 1) {
-          updatedGroups.push({ ...group, files: remaining });
+      // Reconcile against whatever the state is NOW, not against the snapshot
+      // this callback closed over. A delete of many files takes long enough for
+      // a re-scan to land or the selection to move underneath it, and writing
+      // back the captured `groups` would then discard the newer results and
+      // clear a selection the user made after pressing the button.
+      const deleted = new Set(paths);
+      setGroups((current) => {
+        const updatedGroups: DuplicateGroup[] = [];
+        for (const group of current) {
+          const remaining = group.files.filter(f => !deleted.has(f));
+          if (remaining.length > 1) {
+            updatedGroups.push({ ...group, files: remaining });
+          }
         }
-      }
-      setGroups(updatedGroups);
-      setSelectedPaths(new Set());
+        return updatedGroups;
+      });
+      // Drop only what was actually deleted; anything ticked in the meantime
+      // stays ticked.
+      setSelectedPaths((prev) => {
+        const next = new Set(prev);
+        for (const p of deleted) next.delete(p);
+        return next;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      // A reject does not mean nothing was deleted: `onDeleteFiles` walks the
+      // list, so it can fail partway with earlier paths already gone. Which ones
+      // is not knowable from here, and keeping the old rows would leave the
+      // dialog offering to delete files that no longer exist. Re-scanning is the
+      // only answer that cannot be wrong.
+      void scan();
     } finally {
       setIsDeleting(false);
     }
-  }, [selectedPaths, groups, onDeleteFiles]);
+  }, [selectedPaths, onDeleteFiles, scan]);
+
+  /**
+   * The one confirmation in this flow. `confirmBeforeDelete` decides whether it
+   * is raised at all; `onDeleteFiles` must not raise a second one (#537).
+   */
+  const handleDelete = useCallback(() => {
+    if (selectedPaths.size === 0) return;
+    if (!confirmBeforeDelete) {
+      void runDelete();
+      return;
+    }
+    setPendingDeleteConfirm(true);
+  }, [selectedPaths, confirmBeforeDelete, runDelete]);
 
   // Summary calculations
   const summary = useMemo(() => {
@@ -343,7 +381,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className={`fixed inset-0 ${MODAL_Z.modal} flex items-center justify-center bg-black/50`}>
       <div
         {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[700px] max-h-[80vh] flex flex-col animate-scale-in"
@@ -377,7 +415,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
         <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
           <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Mode:</span>
           <button
-            disabled={isScanning}
+            disabled={isScanning || isDeleting}
             onClick={() => setMode('exact')}
             className={`px-3 py-1 text-xs rounded border transition-colors disabled:opacity-50 ${
               mode === 'exact'
@@ -388,7 +426,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
             Exact
           </button>
           <button
-            disabled={isScanning}
+            disabled={isScanning || isDeleting}
             onClick={() => setMode('non-identical')}
             className={`px-3 py-1 text-xs rounded border transition-colors disabled:opacity-50 ${
               mode === 'non-identical'
@@ -438,7 +476,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                 max={200}
                 value={threshold ?? ''}
                 placeholder={t('duplicates.fuzzyCutoffPlaceholder') || 'auto'}
-                disabled={isScanning}
+                disabled={isScanning || isDeleting}
                 onChange={(e) => {
                   const raw = e.target.value.trim();
                   setThreshold(raw === '' ? null : Math.max(0, Math.min(200, Number(raw))));
@@ -739,10 +777,13 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
 
       {/* Styled confirmation dialog (replaces window.confirm) */}
       {pendingDeleteConfirm && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true">
+        <div className={`fixed inset-0 ${MODAL_Z.modalConfirm} bg-black/50 flex items-center justify-center`} role="dialog" aria-modal="true">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in">
             <p className="text-gray-900 dark:text-gray-100 mb-4">
-              {t('duplicates.confirmDelete', { count: selectedPaths.size })}
+              {/* `deleteConfirm`, the key that exists. `duplicates.confirmDelete`
+                  was in none of the 47 locales, so this line printed its own key
+                  name at the user instead of a question (#537). */}
+              {t('duplicates.deleteConfirm', { count: selectedPaths.size })}
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -752,7 +793,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                 {t('common.cancel')}
               </button>
               <button
-                onClick={confirmDelete}
+                onClick={runDelete}
                 className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600"
               >
                 {t('common.delete')}

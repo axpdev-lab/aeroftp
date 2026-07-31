@@ -15982,18 +15982,13 @@ const App: React.FC = () => {
             isOpen={true}
             scanPath={duplicateFinderPath}
             onClose={() => setDuplicateFinderPath(null)}
+            // The setting governs the dialog's own confirmation. Raising a second
+            // one here is what made #537: `ConfirmDialog` is mounted far above in
+            // this tree, so it rendered behind the finder's overlay, unreachable
+            // behind its backdrop, while this promise never settled and the
+            // "Delete Selected" button span forever.
+            confirmBeforeDelete={confirmBeforeDelete}
             onDeleteFiles={async (paths) => {
-              // Respect confirmBeforeDelete setting
-              if (confirmBeforeDelete) {
-                const confirmed = await new Promise<boolean>(resolve => {
-                  setConfirmDialog({
-                    message: t('duplicates.deleteConfirm', { count: paths.length }),
-                    onConfirm: () => { setConfirmDialog(null); resolve(true); },
-                    onCancel: () => { setConfirmDialog(null); resolve(false); },
-                  });
-                });
-                if (!confirmed) return;
-              }
               for (const p of paths) {
                 try {
                   await invoke('delete_to_trash', { path: p });
