@@ -68,6 +68,32 @@ describe('the delete flow asks exactly once (#537)', () => {
   });
 });
 
+describe('a slow delete does not write back a stale snapshot', () => {
+  it('reconciles against current state rather than the captured one', () => {
+    // `runDelete` closes over `groups` and `selectedPaths` at the time the
+    // button was pressed. Deleting many files takes long enough for a re-scan to
+    // land or the selection to move underneath it, and writing the captured
+    // values back would discard the newer results and clear ticks the user made
+    // after pressing. Both writes are therefore functional updates keyed by the
+    // set of paths that were actually deleted.
+    const body = dialogRaw.slice(dialogRaw.indexOf('const runDelete'));
+    const scope = body.slice(0, body.indexOf('const handleDelete'));
+    expect(scope).toMatch(/setGroups\(\(current\) =>/);
+    expect(scope).toMatch(/setSelectedPaths\(\(prev\) =>/);
+    expect(scope).not.toMatch(/setGroups\(updatedGroups\)/);
+    expect(scope).not.toMatch(/setSelectedPaths\(new Set\(\)\)/);
+    // Closing over `groups` is what made the snapshot stale in the first place.
+    expect(scope).toMatch(/\}, \[selectedPaths, onDeleteFiles\]\)/);
+  });
+
+  it('lets nothing start a new scan while a delete is in flight', () => {
+    // The mode toggles and the fuzzy-cutoff field all re-run the scan. A scan
+    // completing mid-delete is the other half of the same race.
+    expect([...dialogRaw.matchAll(/disabled=\{isScanning \|\| isDeleting\}/g)]).toHaveLength(3);
+    expect(dialogRaw).not.toMatch(/disabled=\{isScanning\}/);
+  });
+});
+
 describe('every string the dialog asks for exists', () => {
   const resolve = (key: string): unknown => {
     let cursor: unknown = (en as { translations: Record<string, unknown> }).translations;
