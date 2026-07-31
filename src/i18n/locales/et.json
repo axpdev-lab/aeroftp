@@ -71,7 +71,16 @@
             "current": "praegune",
             "goToActiveSession": "Ava aktiivne seanss",
             "password": "Parool",
-            "default": "Vaikimisi"
+            "default": "Vaikimisi",
+            "add": "Lisa",
+            "apply": "Rakenda",
+            "later": "Hiljem",
+            "path": "Tee",
+            "remove": "Eemalda",
+            "reset": "Lähtesta",
+            "saved": "Salvestatud",
+            "saving": "Salvestamine...",
+            "creating": "Loomine..."
         },
         "connection": {
             "title": "Ühenda serveriga",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Siia lahtipakkimine kirjutab üle {count} olemasolevat üksust: {names}. Kas jätkata?",
             "permanentDeleteHint": "Kustutab jäädavalt ainult valitud üksused Prügikastist. Seda ei saa tagasi võtta.",
             "emptyTrashHint": "Kustutab jäädavalt KÕIK üksused Prügikastis, mitte ainult valitud. Seda ei saa tagasi võtta.",
-            "dropboxPurgeBusinessOnly": "Jäädav kustutamine ja prügikasti tühjendamine nõuavad Dropbox Business/Team kontot."
+            "dropboxPurgeBusinessOnly": "Jäädav kustutamine ja prügikasti tühjendamine nõuavad Dropbox Business/Team kontot.",
+            "setAsPrivate": "Määra privaatseks",
+            "setAsPublic": "Määra avalikuks",
+            "makeAllPrivate": "Muuda kõik privaatseks"
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Praegune käitleja",
             "encryptionPrivacyTitle": "Krüpteerimise privaatsus",
             "warnSameNameEncrypted": "Märgi sama nimega kirjed krüpteeritud hoidlates",
-            "warnSameNameEncryptedDesc": "Vaikimisi väljas. Aktiivse AeroCrypt või rclone-crypt kihi sees märgi failid ja kaustad, mille nimi esineb ka teisel teel, mida külastad. Nimed krüpteeritakse deterministlikult, seega on identsed nimed krüpteeritud salvestusruumi vaatlejale nähtavad identsetena (sama kompromiss nagu rclone-crypt ja Cryptomator puhul)."
+            "warnSameNameEncryptedDesc": "Vaikimisi väljas. Aktiivse AeroCrypt või rclone-crypt kihi sees märgi failid ja kaustad, mille nimi esineb ka teisel teel, mida külastad. Nimed krüpteeritakse deterministlikult, seega on identsed nimed krüpteeritud salvestusruumi vaatlejale nähtavad identsetena (sama kompromiss nagu rclone-crypt ja Cryptomator puhul).",
+            "loading": "Laadimine..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Paari nimi",
             "managePairs": "Halda paare",
             "importLegacy": "Impordi praegune paarina",
-            "importLegacyHint": "Impordi oma olemasolev üksik AeroCloud seadistus esimese paarina (säilitab tagasiühilduvuse)."
+            "importLegacyHint": "Impordi oma olemasolev üksik AeroCloud seadistus esimese paarina (säilitab tagasiühilduvuse).",
+            "versionHistory": "Versiooniajalugu",
+            "restoreVersion": "Taasta see versioon",
+            "cleanupDone": "Puhastatud",
+            "cleanupVersions": "Puhasta vanad versioonid",
+            "noRemoteFolders": "Kaugkaustu ei leitud",
+            "noVersions": "Arhiveeritud versioone ei leitud",
+            "reauthRequired": "Autoriseering on aegunud. Sünkroonimise jätkamiseks autoriseeri uuesti.",
+            "scanningFolders": "Kaugkaustade skannimine..."
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -1424,7 +1445,10 @@
             "dropImported": "{count} üksust imporditi sellesse kausta",
             "dropFailed": "{count} üksuse importimine ebaõnnestus",
             "connectionCancelledHint": "Loend peatati ja ühendus suleti.",
-            "connectTimedOut": "Ühenduse ajalimiit ületati. Server ei vastanud kunagi ja katse katkestati."
+            "connectTimedOut": "Ühenduse ajalimiit ületati. Server ei vastanud kunagi ja katse katkestati.",
+            "transferFailed": "Ülekanne ebaõnnestus",
+            "navigationFailed": "Navigeerimine ebaõnnestus: {error}",
+            "transferComplete": "Kopeeriti {count} faili"
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Võrguviga. Kontrollige oma internetiühendust ja pakkuja URL-i.",
                 "noProvider": "Veenduge, et olete seadetes konfigureerinud AI pakkuja.",
                 "rateLimited": "Pakkuja poolt piiratud. Oodake hetk ja proovige uuesti.",
-                "toolsNotSupported": "See mudel ei toeta tööriistade kasutamist. Keelake \"Tööriistad\" selle mudeli jaoks AI seaded → Mudelid."
+                "toolsNotSupported": "See mudel ei toeta tööriistade kasutamist. Keelake \"Tööriistad\" selle mudeli jaoks AI seaded → Mudelid.",
+                "noProjectContext": "Agendi mälu jaoks pole projekti konteksti saadaval."
             },
             "toolLabels": {
                 "agent_memory_write": "Mälu",
@@ -4467,7 +4492,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Harude loend",
+            "noBranches": "Harusid ei leitud",
+            "rawUrlCopied": "Toor-URL kopeeritud",
+            "working": "töötab"
         },
         "filenNotes": {
             "title": "Krüpteeritud märkmed",
@@ -5322,7 +5351,8 @@
             "defaultSaltToggleHint": "Avalik konstantne sool (rclone-style). Nõuab genereeritud kõrge entroopiaga parooli. Sama parool mitmel hoidlal muudab krüpteeritud nimed võtmeta lingitavaks.",
             "defaultSaltNeedsStronger": "Vaikimisi salti sisselülitamiseks sisestage tugev genereeritud parool.",
             "defaultSaltOneSaltNote": "Salt on ainult üks: 32 baiti, avalik, sama kõigi vaikesaltiga hoidlate puhul.",
-            "defaultSaltValueLabel": "Avalik vaikesool (AeroCrypt v3), järgneva teksti SHA-256"
+            "defaultSaltValueLabel": "Avalik vaikesool (AeroCrypt v3), järgneva teksti SHA-256",
+            "defaultSaltTierMeaning": "Vaikimisi sool tähendab, et hoidla avab ainuüksi parool: kaasas ei pea olema midagi muud ja miski muu seda ei kaitse."
         },
         "modalGuard": {
             "busyTitle": "Toiming käib",
@@ -5598,6 +5628,12 @@
                 "portalMissing": "Töölauaportaali pole paigaldatud, seega ei saa see süsteem failivalijat avada. Paigaldage xdg-desktop-portal ja teie töölauale sobiv taustaprogramm (näiteks xdg-desktop-portal-gtk) ning proovige uuesti.",
                 "unknown": "Failivalijat ei õnnestunud avada. Üksikasjad leiate rakenduse logist."
             }
+        },
+        "errors": {
+            "unknown": "Tundmatu viga"
+        },
+        "rename": {
+            "invalidCharacters": "Nimi ei tohi sisaldada märke / ega \\, jada .. ega nullmärki."
         }
     }
 }

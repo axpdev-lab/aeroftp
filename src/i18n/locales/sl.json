@@ -71,7 +71,16 @@
             "current": "trenutno",
             "goToActiveSession": "Pojdi na aktivno sejo",
             "password": "Geslo",
-            "default": "Privzeto"
+            "default": "Privzeto",
+            "add": "Dodaj",
+            "apply": "Uporabi",
+            "later": "Pozneje",
+            "path": "Pot",
+            "remove": "Odstrani",
+            "reset": "Ponastavi",
+            "saved": "Shranjeno",
+            "saving": "Shranjevanje...",
+            "creating": "Ustvarjanje..."
         },
         "connection": {
             "title": "Poveži se s strežnikom",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Razširjanje sem bo prepisalo {count} obstoječih elementov: {names}. Nadaljujem?",
             "permanentDeleteHint": "Trajno izbriše samo izbrane elemente iz Koša. Tega ni mogoče razveljaviti.",
             "emptyTrashHint": "Trajno izbriše VSE elemente v Košu, ne samo izbranih. Tega ni mogoče razveljaviti.",
-            "dropboxPurgeBusinessOnly": "Trajno brisanje in praznjenje koša zahtevata račun Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "Trajno brisanje in praznjenje koša zahtevata račun Dropbox Business/Team.",
+            "setAsPrivate": "Nastavi kot zasebno",
+            "setAsPublic": "Nastavi kot javno",
+            "makeAllPrivate": "Nastavi vse kot zasebno"
         },
         "transfer": {
             "transferring": "Prenašanje...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Trenutni upravljalnik",
             "encryptionPrivacyTitle": "Zasebnost šifriranja",
             "warnSameNameEncrypted": "Označi vnose z enakim imenom v šifriranih trezorjih",
-            "warnSameNameEncryptedDesc": "Privzeto izklopljeno. Znotraj aktivne prekrivne plasti AeroCrypt ali rclone-crypt označi datoteke in mape, katerih ime se pojavi tudi na drugi poti, ki jo obiščete. Imena se šifrirajo deterministično, zato so enaka imena za opazovalca šifrirane shrambe vidna kot enaka (enak kompromis kot pri rclone-crypt in Cryptomator)."
+            "warnSameNameEncryptedDesc": "Privzeto izklopljeno. Znotraj aktivne prekrivne plasti AeroCrypt ali rclone-crypt označi datoteke in mape, katerih ime se pojavi tudi na drugi poti, ki jo obiščete. Imena se šifrirajo deterministično, zato so enaka imena za opazovalca šifrirane shrambe vidna kot enaka (enak kompromis kot pri rclone-crypt in Cryptomator).",
+            "loading": "Nalaganje..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Ime para",
             "managePairs": "Upravljaj pare",
             "importLegacy": "Uvozi trenutno kot par",
-            "importLegacyHint": "Uvozite obstoječo enojno AeroCloud konfiguracijo kot prvi par (ohranja združljivost nazaj)."
+            "importLegacyHint": "Uvozite obstoječo enojno AeroCloud konfiguracijo kot prvi par (ohranja združljivost nazaj).",
+            "versionHistory": "Zgodovina različic",
+            "restoreVersion": "Obnovi to različico",
+            "cleanupDone": "Počiščeno",
+            "cleanupVersions": "Počisti stare različice",
+            "noRemoteFolders": "Oddaljenih map ni bilo mogoče najti",
+            "noVersions": "Arhiviranih različic ni bilo mogoče najti",
+            "reauthRequired": "Pooblastilo je poteklo. Za nadaljevanje sinhronizacije znova podelite pooblastilo.",
+            "scanningFolders": "Pregledovanje oddaljenih map..."
         },
         "statusBar": {
             "connected": "Povezano",
@@ -1424,7 +1445,10 @@
             "dropImported": "V to mapo je bilo uvoženih {count} elementov",
             "dropFailed": "Uvoz {count} elementov ni uspel",
             "connectionCancelledHint": "Izpis je bil ustavljen in povezava zaprta.",
-            "connectTimedOut": "Časovna omejitev povezave je potekla. Strežnik se ni nikoli odzval in poskus je bil prekinjen."
+            "connectTimedOut": "Časovna omejitev povezave je potekla. Strežnik se ni nikoli odzval in poskus je bil prekinjen.",
+            "transferFailed": "Prenos ni uspel",
+            "navigationFailed": "Krmarjenje ni uspelo: {error}",
+            "transferComplete": "Kopiranih {count} datotek"
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Omrežna napaka. Preverite internetno povezavo in URL ponudnika.",
                 "noProvider": "Preverite, ali ste konfigurirali AI ponudnika v nastavitvah.",
                 "rateLimited": "Omejitev števila zahtev s strani ponudnika. Počakajte trenutek in poskusite znova.",
-                "toolsNotSupported": "Ta model ne podpira uporabe orodij. Onemogočite \"Orodja\" za ta model v AI nastavitve → Modeli."
+                "toolsNotSupported": "Ta model ne podpira uporabe orodij. Onemogočite \"Orodja\" za ta model v AI nastavitve → Modeli.",
+                "noProjectContext": "Za pomnilnik agenta ni na voljo konteksta projekta."
             },
             "toolLabels": {
                 "agent_memory_write": "Spomin",
@@ -4467,7 +4492,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Seznam vej",
+            "noBranches": "Vej ni bilo mogoče najti",
+            "rawUrlCopied": "Neobdelan URL kopiran",
+            "working": "poteka"
         },
         "filenNotes": {
             "title": "Šifrirane beležke",
@@ -5322,7 +5351,8 @@
             "defaultSaltToggleHint": "Javna konstantna sol (rclone-style). Zahteva ustvarjeno geslo z visoko entropijo. Isto geslo na več trezorjih naredi šifrirana imena povezljiva brez ključa.",
             "defaultSaltNeedsStronger": "Vnesite močno ustvarjeno geslo, da vklopite privzeti salt.",
             "defaultSaltOneSaltNote": "Obstaja samo en salt: 32 bajtov, javen, enak za vse trezorje s privzetim saltom.",
-            "defaultSaltValueLabel": "Javni privzeti salt (AeroCrypt v3), SHA-256 od"
+            "defaultSaltValueLabel": "Javni privzeti salt (AeroCrypt v3), SHA-256 od",
+            "defaultSaltTierMeaning": "Privzeta sol pomeni, da trezor odpre že samo geslo: ničesar drugega ni treba nositi s seboj in nič drugega ga ne varuje."
         },
         "modalGuard": {
             "busyTitle": "Operacija poteka",
@@ -5598,6 +5628,12 @@
                 "portalMissing": "Namizni portal ni nameščen, zato ta sistem ne more odpreti izbirnika datotek. Namestite xdg-desktop-portal in zaledje za svoje namizje (na primer xdg-desktop-portal-gtk) ter poskusite znova.",
                 "unknown": "Izbirnika datotek ni bilo mogoče odpreti. Podrobnosti si oglejte v dnevniku programa."
             }
+        },
+        "errors": {
+            "unknown": "Neznana napaka"
+        },
+        "rename": {
+            "invalidCharacters": "Ime ne sme vsebovati / ali \\, zaporedja .. ali ničelnega znaka."
         }
     }
 }

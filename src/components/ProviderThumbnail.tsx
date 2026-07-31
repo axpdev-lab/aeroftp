@@ -83,7 +83,9 @@ export function ProviderThumbnail({ path, name, size = 48, className, signature,
     <img
       src={imgSrc}
       alt={name}
-      className={`object-cover rounded ${className || ''}`}
+      // Same rule as `.file-grid-thumbnail`: show the whole image, letterboxed
+      // inside a fixed box, rather than a centre crop of it.
+      className={`object-contain rounded ${className || ''}`}
       style={{ width: size, height: size }}
       onError={() => setFailed(true)}
     />

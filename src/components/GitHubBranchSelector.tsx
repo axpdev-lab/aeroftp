@@ -147,7 +147,7 @@ export const GitHubBranchSelector: React.FC<GitHubBranchSelectorProps> = ({
             borderColor: 'var(--color-border)',
           }}
           role="listbox"
-          aria-label={t('github.branchList') || 'Branch list'}
+          aria-label={t('github.branchList')}
         >
           {/* Header */}
           <div
@@ -181,7 +181,7 @@ export const GitHubBranchSelector: React.FC<GitHubBranchSelectorProps> = ({
                 className="px-3 py-4 text-xs text-center"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
-                {t('github.noBranches') || 'No branches found'}
+                {t('github.noBranches')}
               </div>
             ) : (
               branches.map((b, index) => {
@@ -219,7 +219,7 @@ export const GitHubBranchSelector: React.FC<GitHubBranchSelectorProps> = ({
                     {/* Working branch indicator */}
                     {isWorking && !isCurrent && (
                       <span className="px-1 py-0.5 rounded text-[10px] font-medium text-yellow-500 bg-yellow-500/10">
-                        {t('github.working') || 'working'}
+                        {t('github.working')}
                       </span>
                     )}
 

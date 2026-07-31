@@ -106,7 +106,7 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
 
   if (loading && !status) {
     return (
-      <div className="text-sm text-gray-500 py-2">{t('settings.loading') || 'Loading…'}</div>
+      <div className="text-sm text-gray-500 py-2">{t('settings.loading')}</div>
     );
   }
 

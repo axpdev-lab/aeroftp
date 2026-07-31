@@ -395,7 +395,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                         }}
                         className="w-full text-xs py-1.5 rounded-lg font-medium text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-50 transition-colors"
                       >
-                        {savingConfig ? (t('common.saving') || 'Saving...') : (t('common.save') || 'Save')}
+                        {savingConfig ? (t('common.saving')) : (t('common.save') || 'Save')}
                       </button>
                     </div>
                   )}

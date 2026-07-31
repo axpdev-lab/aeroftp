@@ -71,7 +71,16 @@
             "current": "aktuell",
             "goToActiveSession": "Gå till aktiv session",
             "password": "Lösenord",
-            "default": "Standard"
+            "default": "Standard",
+            "add": "Lägg till",
+            "apply": "Tillämpa",
+            "later": "Senare",
+            "path": "Sökväg",
+            "remove": "Ta bort",
+            "reset": "Återställ",
+            "saved": "Sparat",
+            "saving": "Sparar...",
+            "creating": "Skapar..."
         },
         "connection": {
             "title": "Anslut till server",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Att extrahera här skriver över {count} befintliga objekt: {names}. Fortsätta?",
             "permanentDeleteHint": "Tar bort endast de markerade objekten permanent från Papperskorgen. Detta kan inte ångras.",
             "emptyTrashHint": "Tar bort ALLA objekt i Papperskorgen permanent, inte bara de markerade. Detta kan inte ångras.",
-            "dropboxPurgeBusinessOnly": "Permanent radering och tömning av papperskorgen kräver ett Dropbox Business/Team-konto."
+            "dropboxPurgeBusinessOnly": "Permanent radering och tömning av papperskorgen kräver ett Dropbox Business/Team-konto.",
+            "setAsPrivate": "Ange som privat",
+            "setAsPublic": "Ange som offentlig",
+            "makeAllPrivate": "Gör alla privata"
         },
         "transfer": {
             "transferring": "Överför...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Aktuell hanterare",
             "encryptionPrivacyTitle": "Krypteringsintegritet",
             "warnSameNameEncrypted": "Flagga poster med samma namn i krypterade valv",
-            "warnSameNameEncryptedDesc": "Av som standard. Inuti ett aktivt AeroCrypt- eller rclone-crypt-överlägg markeras filer och mappar vars namn även visas på en annan sökväg du besöker. Namn krypteras deterministiskt, så identiska namn syns som identiska för en observatör av det krypterade lagret (samma avvägning som rclone-crypt och Cryptomator)."
+            "warnSameNameEncryptedDesc": "Av som standard. Inuti ett aktivt AeroCrypt- eller rclone-crypt-överlägg markeras filer och mappar vars namn även visas på en annan sökväg du besöker. Namn krypteras deterministiskt, så identiska namn syns som identiska för en observatör av det krypterade lagret (samma avvägning som rclone-crypt och Cryptomator).",
+            "loading": "Laddar..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Parnamn",
             "managePairs": "Hantera par",
             "importLegacy": "Importera nuvarande som par",
-            "importLegacyHint": "Importera din befintliga enskilda AeroCloud-konfiguration som första paret (behåller bakåtkompatibilitet)."
+            "importLegacyHint": "Importera din befintliga enskilda AeroCloud-konfiguration som första paret (behåller bakåtkompatibilitet).",
+            "versionHistory": "Versionshistorik",
+            "restoreVersion": "Återställ denna version",
+            "cleanupDone": "Rensat",
+            "cleanupVersions": "Rensa gamla versioner",
+            "noRemoteFolders": "Inga fjärrmappar hittades",
+            "noVersions": "Inga arkiverade versioner hittades",
+            "reauthRequired": "Behörigheten har gått ut. Ge behörighet igen för att återuppta synkroniseringen.",
+            "scanningFolders": "Söker igenom fjärrmappar..."
         },
         "statusBar": {
             "connected": "Ansluten",
@@ -1424,7 +1445,10 @@
             "dropImported": "Importerade {count} objekt till den här mappen",
             "dropFailed": "Det gick inte att importera {count} objekt",
             "connectionCancelledHint": "Listningen stoppades och anslutningen stängdes.",
-            "connectTimedOut": "Anslutningen fick timeout. Servern svarade aldrig och försöket avbröts."
+            "connectTimedOut": "Anslutningen fick timeout. Servern svarade aldrig och försöket avbröts.",
+            "transferFailed": "Överföringen misslyckades",
+            "navigationFailed": "Navigeringen misslyckades: {error}",
+            "transferComplete": "{count} fil(er) kopierade"
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Nätverksfel. Kontrollera din internetanslutning och leverantörs-URL.",
                 "noProvider": "Se till att du har konfigurerat en AI-leverantör i inställningar.",
                 "rateLimited": "Hastighetsbegränsad av leverantören. Vänta ett ögonblick och försök igen.",
-                "toolsNotSupported": "Denna modell stöder inte verktygsanvändning. Inaktivera \"Verktyg\" för denna modell i AI-inställningar → Modeller."
+                "toolsNotSupported": "Denna modell stöder inte verktygsanvändning. Inaktivera \"Verktyg\" för denna modell i AI-inställningar → Modeller.",
+                "noProjectContext": "Ingen projektkontext tillgänglig för agentminnet."
             },
             "toolLabels": {
                 "agent_memory_write": "Minne",
@@ -4467,7 +4492,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Lista över grenar",
+            "noBranches": "Inga grenar hittades",
+            "rawUrlCopied": "Rå URL kopierad",
+            "working": "arbetar"
         },
         "filenNotes": {
             "title": "Krypterade anteckningar",
@@ -5322,7 +5351,8 @@
             "defaultSaltToggleHint": "Offentligt konstant salt (rclone-style). Kräver ett genererat lösenord med hög entropi. Samma lösenord på flera valv gör krypterade namn länkbara utan nyckeln.",
             "defaultSaltNeedsStronger": "Ange ett starkt genererat lösenord för att aktivera standardsaltet.",
             "defaultSaltOneSaltNote": "Det finns bara ett salt: 32 byte, offentligt, identiskt för alla valv med standardsalt.",
-            "defaultSaltValueLabel": "Offentligt standardsalt (AeroCrypt v3), SHA-256 av"
+            "defaultSaltValueLabel": "Offentligt standardsalt (AeroCrypt v3), SHA-256 av",
+            "defaultSaltTierMeaning": "Standardsalt betyder att lösenordet ensamt öppnar valvet: inget annat behöver bäras med, och inget annat skyddar det."
         },
         "modalGuard": {
             "busyTitle": "Åtgärd pågår",
@@ -5598,6 +5628,12 @@
                 "portalMissing": "Ingen skrivbordsportal är installerad, så det här systemet kan inte öppna en filväljare. Installera xdg-desktop-portal och en backend för ditt skrivbord (till exempel xdg-desktop-portal-gtk) och försök igen.",
                 "unknown": "Filväljaren kunde inte öppnas. Se programmets logg för detaljer."
             }
+        },
+        "errors": {
+            "unknown": "Okänt fel"
+        },
+        "rename": {
+            "invalidCharacters": "Ett namn får inte innehålla / eller \\, sekvensen .. eller ett nolltecken."
         }
     }
 }

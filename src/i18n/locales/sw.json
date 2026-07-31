@@ -71,7 +71,16 @@
             "current": "ya sasa",
             "goToActiveSession": "Nenda kwenye kipindi kinachoendelea",
             "password": "Nywila",
-            "default": "Chaguo-msingi"
+            "default": "Chaguo-msingi",
+            "add": "Ongeza",
+            "apply": "Tumia",
+            "later": "Baadaye",
+            "path": "Njia",
+            "remove": "Ondoa",
+            "reset": "Weka upya",
+            "saved": "Imehifadhiwa",
+            "saving": "Inahifadhi...",
+            "creating": "Inaunda..."
         },
         "connection": {
             "title": "Unganisha na Seva",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Kuchambua hapa kutaandika juu ya vipengele {count} vilivyopo: {names}. Kuendelea?",
             "permanentDeleteHint": "Inafuta kabisa vipengele vilivyochaguliwa pekee kutoka kwenye Tapo. Hatua hii haiwezi kutenduliwa.",
             "emptyTrashHint": "Inafuta kabisa vipengele VYOTE kwenye Tapo, si vilivyochaguliwa pekee. Hatua hii haiwezi kutenduliwa.",
-            "dropboxPurgeBusinessOnly": "Kufuta Kabisa na Kumwaga Tapisho kunahitaji akaunti ya Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "Kufuta Kabisa na Kumwaga Tapisho kunahitaji akaunti ya Dropbox Business/Team.",
+            "setAsPrivate": "Weka kama Binafsi",
+            "setAsPublic": "Weka kama Umma",
+            "makeAllPrivate": "Fanya zote za faragha"
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Kishughulikia cha sasa",
             "encryptionPrivacyTitle": "Faragha ya usimbaji",
             "warnSameNameEncrypted": "Weka alama kwenye vipengele venye jina moja katika hifadhi zilizosimbwa",
-            "warnSameNameEncryptedDesc": "Imezimwa kwa chaguomsingi. Ndani ya safu amilifu ya AeroCrypt au rclone-crypt, weka alama kwenye faili na folda ambazo jina lake pia linaonekana kwenye njia nyingine unayotembelea. Majina yanasimbwa kwa njia ya kubainika, hivyo majina yanayofanana yanaonekana yakifanana kwa mtazamaji wa hifadhi iliyosimbwa (mbadala uleule kama rclone-crypt na Cryptomator)."
+            "warnSameNameEncryptedDesc": "Imezimwa kwa chaguomsingi. Ndani ya safu amilifu ya AeroCrypt au rclone-crypt, weka alama kwenye faili na folda ambazo jina lake pia linaonekana kwenye njia nyingine unayotembelea. Majina yanasimbwa kwa njia ya kubainika, hivyo majina yanayofanana yanaonekana yakifanana kwa mtazamaji wa hifadhi iliyosimbwa (mbadala uleule kama rclone-crypt na Cryptomator).",
+            "loading": "Inapakia..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Jina la jozi",
             "managePairs": "Dhibiti jozi",
             "importLegacy": "Leta ya sasa kama jozi",
-            "importLegacyHint": "Leta usanidi wako wa AeroCloud mmoja uliopo kama jozi ya kwanza (hudumisha utangamano wa nyuma)."
+            "importLegacyHint": "Leta usanidi wako wa AeroCloud mmoja uliopo kama jozi ya kwanza (hudumisha utangamano wa nyuma).",
+            "versionHistory": "Historia ya Toleo",
+            "restoreVersion": "Rejesha toleo hili",
+            "cleanupDone": "Imesafishwa",
+            "cleanupVersions": "Safisha matoleo ya zamani",
+            "noRemoteFolders": "Hakuna folda za mbali zilizopatikana",
+            "noVersions": "Hakuna matoleo yaliyohifadhiwa yaliyopatikana",
+            "reauthRequired": "Idhini imeisha muda. Tafadhali toa idhini upya ili kuendeleza usawazishaji.",
+            "scanningFolders": "Inachanganua folda za mbali..."
         },
         "statusBar": {
             "connected": "Imeunganishwa",
@@ -1424,7 +1445,10 @@
             "dropImported": "Vimeingizwa vipengele {count} kwenye folda hii",
             "dropFailed": "Imeshindwa kuingiza vipengele {count}",
             "connectionCancelledHint": "Uorodheshaji ulisimamishwa na muunganisho ukafungwa.",
-            "connectTimedOut": "Muda wa muunganisho umeisha. Seva haikujibu kamwe na jaribio limeghairiwa."
+            "connectTimedOut": "Muda wa muunganisho umeisha. Seva haikujibu kamwe na jaribio limeghairiwa.",
+            "transferFailed": "Uhamishaji umeshindwa",
+            "navigationFailed": "Urambazaji umeshindwa: {error}",
+            "transferComplete": "Faili {count} zimenakiliwa"
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Hitilafu ya mtandao. Angalia muunganisho wako wa wavuti na URL ya mtoa huduma.",
                 "noProvider": "Hakikisha umesanidi mtoa huduma wa AI katika mipangilio.",
                 "rateLimited": "Umepunguzwa kiwango na mtoa huduma. Subiri kidogo na ujaribu tena.",
-                "toolsNotSupported": "Muundo huu hauwezi matumizi ya zana. Lemaza \"Zana\" kwa muundo huu katika Mipangilio ya AI → Miundo."
+                "toolsNotSupported": "Muundo huu hauwezi matumizi ya zana. Lemaza \"Zana\" kwa muundo huu katika Mipangilio ya AI → Miundo.",
+                "noProjectContext": "Hakuna muktadha wa mradi unaopatikana kwa kumbukumbu ya wakala."
             },
             "toolLabels": {
                 "agent_memory_write": "Kumbukumbu",
@@ -4467,7 +4492,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Orodha ya matawi",
+            "noBranches": "Hakuna matawi yaliyopatikana",
+            "rawUrlCopied": "URL ghafi imenakiliwa",
+            "working": "inaendelea"
         },
         "filenNotes": {
             "title": "Maelezo Yaliyofichwa",
@@ -5322,7 +5351,8 @@
             "defaultSaltToggleHint": "Chumvi ya mara kwa mara ya umma (mtindo wa rclone). Inahitaji neno la siri lililotengenezwa lenye entropia ya juu. Neno la siri sawa kwenye hifadhi nyingi hufanya majina yaliyosimbwa kuwa yanayoweza kuunganishwa bila ufunguo.",
             "defaultSaltNeedsStronger": "Weka nenosiri imara lililozalishwa ili kuwasha salt chaguo-msingi.",
             "defaultSaltOneSaltNote": "Kuna salt moja tu: baiti 32, ya umma, sawa kwa kila hazina inayotumia salt chaguo-msingi.",
-            "defaultSaltValueLabel": "Chumvi chaguo-msingi ya umma (AeroCrypt v3), SHA-256 ya"
+            "defaultSaltValueLabel": "Chumvi chaguo-msingi ya umma (AeroCrypt v3), SHA-256 ya",
+            "defaultSaltTierMeaning": "Chumvi chaguo-msingi inamaanisha nywila peke yake hufungua kasha: hakuna kingine cha kubeba, na hakuna kingine kinachokilinda."
         },
         "modalGuard": {
             "busyTitle": "Operesheni inaendelea",
@@ -5598,6 +5628,12 @@
                 "portalMissing": "Hakuna lango la eneo-kazi lililowekwa, kwa hivyo mfumo huu hauwezi kufungua kichagua faili. Weka xdg-desktop-portal na backend ya eneo-kazi lako (kwa mfano xdg-desktop-portal-gtk), kisha ujaribu tena.",
                 "unknown": "Kichagua faili hakikuweza kufunguliwa. Tazama kumbukumbu ya programu kwa maelezo."
             }
+        },
+        "errors": {
+            "unknown": "Hitilafu isiyojulikana"
+        },
+        "rename": {
+            "invalidCharacters": "Jina haliwezi kuwa na / au \\, mfuatano .., wala herufi tupu."
         }
     }
 }

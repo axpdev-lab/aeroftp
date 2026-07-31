@@ -71,7 +71,16 @@
             "current": "huidig",
             "goToActiveSession": "Naar actieve sessie",
             "password": "Wachtwoord",
-            "default": "Standaard"
+            "default": "Standaard",
+            "add": "Toevoegen",
+            "apply": "Toepassen",
+            "later": "Later",
+            "path": "Pad",
+            "remove": "Verwijderen",
+            "reset": "Resetten",
+            "saved": "Opgeslagen",
+            "saving": "Opslaan...",
+            "creating": "Bezig met maken..."
         },
         "connection": {
             "title": "Verbinden met Server",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Hier uitpakken overschrijft {count} bestaand(e) item(s): {names}. Doorgaan?",
             "permanentDeleteHint": "Verwijdert alleen de geselecteerde items permanent uit de Prullenbak. Dit kan niet ongedaan worden gemaakt.",
             "emptyTrashHint": "Verwijdert ALLE items in de Prullenbak permanent, niet alleen de geselecteerde. Dit kan niet ongedaan worden gemaakt.",
-            "dropboxPurgeBusinessOnly": "Permanent verwijderen en Prullenbak legen vereisen een Dropbox Business/Team-account."
+            "dropboxPurgeBusinessOnly": "Permanent verwijderen en Prullenbak legen vereisen een Dropbox Business/Team-account.",
+            "setAsPrivate": "Instellen als privé",
+            "setAsPublic": "Instellen als openbaar",
+            "makeAllPrivate": "Alles privé maken"
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Huidige handler",
             "encryptionPrivacyTitle": "Privacy van versleuteling",
             "warnSameNameEncrypted": "Markeer items met dezelfde naam in versleutelde kluizen",
-            "warnSameNameEncryptedDesc": "Standaard uit. Markeer binnen een actieve AeroCrypt- of rclone-crypt-overlay bestanden en mappen waarvan de naam ook voorkomt op een ander pad dat je bezoekt. Namen worden deterministisch versleuteld, dus identieke namen zijn zichtbaar als identiek voor een waarnemer van de versleutelde opslag (dezelfde afweging als rclone-crypt en Cryptomator)."
+            "warnSameNameEncryptedDesc": "Standaard uit. Markeer binnen een actieve AeroCrypt- of rclone-crypt-overlay bestanden en mappen waarvan de naam ook voorkomt op een ander pad dat je bezoekt. Namen worden deterministisch versleuteld, dus identieke namen zijn zichtbaar als identiek voor een waarnemer van de versleutelde opslag (dezelfde afweging als rclone-crypt en Cryptomator).",
+            "loading": "Laden..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Paarnaam",
             "managePairs": "Paren beheren",
             "importLegacy": "Huidige importeren als paar",
-            "importLegacyHint": "Importeer uw bestaande enkele AeroCloud-configuratie als eerste paar (behoudt achterwaartse compatibiliteit)."
+            "importLegacyHint": "Importeer uw bestaande enkele AeroCloud-configuratie als eerste paar (behoudt achterwaartse compatibiliteit).",
+            "versionHistory": "Versiegeschiedenis",
+            "restoreVersion": "Deze versie herstellen",
+            "cleanupDone": "Opgeruimd",
+            "cleanupVersions": "Oude versies opruimen",
+            "noRemoteFolders": "Geen externe mappen gevonden",
+            "noVersions": "Geen gearchiveerde versies gevonden",
+            "reauthRequired": "De autorisatie is verlopen. Autoriseer opnieuw om de synchronisatie te hervatten.",
+            "scanningFolders": "Externe mappen scannen..."
         },
         "statusBar": {
             "connected": "Verbonden",
@@ -1424,7 +1445,10 @@
             "dropImported": "{count} items geïmporteerd in deze map",
             "dropFailed": "Kan {count} items niet importeren",
             "connectionCancelledHint": "Het ophalen van de lijst is gestopt en de verbinding is gesloten.",
-            "connectTimedOut": "Time-out van de verbinding. De server heeft nooit gereageerd en de poging is afgebroken."
+            "connectTimedOut": "Time-out van de verbinding. De server heeft nooit gereageerd en de poging is afgebroken.",
+            "transferFailed": "Overdracht mislukt",
+            "navigationFailed": "Navigatie mislukt: {error}",
+            "transferComplete": "{count} bestand(en) gekopieerd"
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Netwerkfout. Controleer uw internetverbinding en provider-URL.",
                 "noProvider": "Zorg ervoor dat u een AI-provider hebt geconfigureerd in de instellingen.",
                 "rateLimited": "Beperkt door de provider. Wacht even en probeer het opnieuw.",
-                "toolsNotSupported": "Dit model ondersteunt geen toolgebruik. Schakel \"Tools\" uit voor dit model in AI-instellingen → Modellen."
+                "toolsNotSupported": "Dit model ondersteunt geen toolgebruik. Schakel \"Tools\" uit voor dit model in AI-instellingen → Modellen.",
+                "noProjectContext": "Geen projectcontext beschikbaar voor het agentgeheugen."
             },
             "toolLabels": {
                 "agent_memory_write": "Geheugen",
@@ -4467,7 +4492,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Lijst met branches",
+            "noBranches": "Geen branches gevonden",
+            "rawUrlCopied": "Ruwe URL gekopieerd",
+            "working": "bezig"
         },
         "filenNotes": {
             "title": "Versleutelde notities",
@@ -5322,7 +5351,8 @@
             "defaultSaltToggleHint": "Publieke constante salt (rclone-stijl). Vereist een gegenereerd wachtwoord met hoge entropie. Zelfde wachtwoord op meerdere kluizen maakt versleutelde namen koppelbaar zonder sleutel.",
             "defaultSaltNeedsStronger": "Voer een sterk gegenereerd wachtwoord in om de standaard-salt in te schakelen.",
             "defaultSaltOneSaltNote": "Er is één enkel salt: 32 bytes, openbaar, identiek voor elke kluis met standaardsalt.",
-            "defaultSaltValueLabel": "Openbare standaardsalt (AeroCrypt v3), SHA-256 van"
+            "defaultSaltValueLabel": "Openbare standaardsalt (AeroCrypt v3), SHA-256 van",
+            "defaultSaltTierMeaning": "Standaardsalt betekent dat het wachtwoord alleen de kluis opent: er hoeft niets anders meegedragen te worden, en niets anders beschermt hem."
         },
         "modalGuard": {
             "busyTitle": "Bewerking bezig",
@@ -5598,6 +5628,12 @@
                 "portalMissing": "Er is geen desktopportaal geïnstalleerd, waardoor dit systeem geen bestandskiezer kan openen. Installeer xdg-desktop-portal en een backend voor uw desktop (bijvoorbeeld xdg-desktop-portal-gtk) en probeer het opnieuw.",
                 "unknown": "De bestandskiezer kon niet worden geopend. Bekijk het logboek van de toepassing voor details."
             }
+        },
+        "errors": {
+            "unknown": "Onbekende fout"
+        },
+        "rename": {
+            "invalidCharacters": "Een naam mag geen / of \\, de reeks .. of een null-teken bevatten."
         }
     }
 }

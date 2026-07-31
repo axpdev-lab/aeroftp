@@ -875,10 +875,15 @@ html {
   height: 32px;
 }
 
+/* Box only. How the image is fitted inside it is decided by the components that
+   render a file thumbnail (`object-contain` there), so the three of them state
+   the same rule in the same way and a test can read it — a `?raw` import of a
+   stylesheet comes back empty under Vite, so a rule left here would be the one
+   part of the decision nothing could check. The size, the background behind the
+   letterboxing and the radius stay here. */
 .file-grid-thumbnail {
   width: 48px;
   height: 48px;
-  object-fit: cover;
   border-radius: 6px;
   margin-bottom: 8px;
   background: var(--color-bg-tertiary);

@@ -71,7 +71,16 @@
             "current": "현재",
             "goToActiveSession": "활성 세션으로 이동",
             "password": "비밀번호",
-            "default": "기본값"
+            "default": "기본값",
+            "add": "추가",
+            "apply": "적용",
+            "later": "나중에",
+            "path": "경로",
+            "remove": "제거",
+            "reset": "초기화",
+            "saved": "저장됨",
+            "saving": "저장 중...",
+            "creating": "만드는 중..."
         },
         "connection": {
             "title": "서버에 연결",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "여기에 압축을 풀면 기존 항목 {count}개를 덮어씁니다: {names}. 계속하시겠습니까?",
             "permanentDeleteHint": "휴지통에서 선택한 항목만 영구적으로 삭제합니다. 이 작업은 취소할 수 없습니다.",
             "emptyTrashHint": "선택한 항목뿐만 아니라 휴지통의 모든 항목을 영구적으로 삭제합니다. 이 작업은 취소할 수 없습니다.",
-            "dropboxPurgeBusinessOnly": "영구 삭제 및 휴지통 비우기에는 Dropbox Business/Team 계정이 필요합니다."
+            "dropboxPurgeBusinessOnly": "영구 삭제 및 휴지통 비우기에는 Dropbox Business/Team 계정이 필요합니다.",
+            "setAsPrivate": "비공개로 설정",
+            "setAsPublic": "공개로 설정",
+            "makeAllPrivate": "모두 비공개로 설정"
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "현재 처리기",
             "encryptionPrivacyTitle": "암호화 개인정보 보호",
             "warnSameNameEncrypted": "암호화된 볼트에서 같은 이름의 항목 표시",
-            "warnSameNameEncryptedDesc": "기본적으로 꺼짐. 활성화된 AeroCrypt 또는 rclone-crypt 오버레이 내에서 방문한 다른 경로에도 이름이 나타나는 파일과 폴더를 표시합니다. 이름은 결정론적으로 암호화되므로 동일한 이름은 암호화된 저장소의 관찰자에게 동일하게 보입니다(rclone-crypt 및 Cryptomator와 동일한 절충안)."
+            "warnSameNameEncryptedDesc": "기본적으로 꺼짐. 활성화된 AeroCrypt 또는 rclone-crypt 오버레이 내에서 방문한 다른 경로에도 이름이 나타나는 파일과 폴더를 표시합니다. 이름은 결정론적으로 암호화되므로 동일한 이름은 암호화된 저장소의 관찰자에게 동일하게 보입니다(rclone-crypt 및 Cryptomator와 동일한 절충안).",
+            "loading": "로딩 중..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "쌍 이름",
             "managePairs": "쌍 관리",
             "importLegacy": "현재를 쌍으로 가져오기",
-            "importLegacyHint": "기존 단일 AeroCloud 구성을 첫 번째 쌍으로 가져옵니다 (하위 호환성 유지)."
+            "importLegacyHint": "기존 단일 AeroCloud 구성을 첫 번째 쌍으로 가져옵니다 (하위 호환성 유지).",
+            "versionHistory": "버전 기록",
+            "restoreVersion": "이 버전 복원",
+            "cleanupDone": "정리 완료",
+            "cleanupVersions": "이전 버전 정리",
+            "noRemoteFolders": "원격 폴더를 찾을 수 없습니다",
+            "noVersions": "보관된 버전을 찾을 수 없습니다",
+            "reauthRequired": "인증이 만료되었습니다. 동기화를 재개하려면 다시 인증하세요.",
+            "scanningFolders": "원격 폴더 검사 중..."
         },
         "statusBar": {
             "connected": "연결됨",
@@ -1424,7 +1445,10 @@
             "dropImported": "이 폴더에 {count}개 항목을 가져왔습니다",
             "dropFailed": "{count}개 항목을 가져오지 못했습니다",
             "connectionCancelledHint": "목록 조회를 중지하고 연결을 닫았습니다.",
-            "connectTimedOut": "연결 시간이 초과되었습니다. 서버가 응답하지 않아 시도가 중단되었습니다."
+            "connectTimedOut": "연결 시간이 초과되었습니다. 서버가 응답하지 않아 시도가 중단되었습니다.",
+            "transferFailed": "전송 실패",
+            "navigationFailed": "이동 실패: {error}",
+            "transferComplete": "{count}개 파일을 복사했습니다"
         },
         "about": {
             "tagline": "FTP 그 이상. 완벽한 개발자 툴킷.",
@@ -2685,7 +2709,8 @@
                 "networkError": "네트워크 오류. 인터넷 연결과 프로바이더 URL을 확인하세요.",
                 "noProvider": "설정에서 AI 프로바이더가 구성되어 있는지 확인하세요.",
                 "rateLimited": "프로바이더의 속도 제한. 잠시 후 다시 시도하세요.",
-                "toolsNotSupported": "이 모델은 도구 사용을 지원하지 않습니다. AI 설정 → 모델에서 \"도구\"를 비활성화하세요."
+                "toolsNotSupported": "이 모델은 도구 사용을 지원하지 않습니다. AI 설정 → 모델에서 \"도구\"를 비활성화하세요.",
+                "noProjectContext": "에이전트 메모리에 사용할 프로젝트 컨텍스트가 없습니다."
             },
             "toolLabels": {
                 "agent_memory_write": "메모리",
@@ -4467,7 +4492,11 @@
             "accessToken": "개인 액세스 토큰",
             "patHint": "저장소 액세스가 있는 세분화된 PAT",
             "appHint": "PEM 키는 연결 화면에서 가져와 볼트에 저장됩니다.",
-            "branchOptional": "브랜치 (선택)"
+            "branchOptional": "브랜치 (선택)",
+            "branchList": "브랜치 목록",
+            "noBranches": "브랜치를 찾을 수 없습니다",
+            "rawUrlCopied": "Raw URL을 복사했습니다",
+            "working": "작업 중"
         },
         "filenNotes": {
             "title": "암호화된 노트",
@@ -5322,7 +5351,8 @@
             "defaultSaltToggleHint": "공개 상수 솔트 (rclone-style). 높은 엔트로피의 생성된 비밀번호가 필요합니다. 여러 볼트에서 동일한 비밀번호를 사용하면 키 없이 암호화된 이름을 연결할 수 있게 됩니다.",
             "defaultSaltNeedsStronger": "기본 솔트를 켜려면 강력하게 생성된 비밀번호를 입력하세요.",
             "defaultSaltOneSaltNote": "솔트는 하나뿐입니다. 32바이트이며 공개되어 있고, 기본 솔트를 사용하는 모든 보관소에서 동일합니다.",
-            "defaultSaltValueLabel": "공개 기본 솔트 (AeroCrypt v3), 다음 문자열의 SHA-256"
+            "defaultSaltValueLabel": "공개 기본 솔트 (AeroCrypt v3), 다음 문자열의 SHA-256",
+            "defaultSaltTierMeaning": "기본 솔트는 비밀번호만으로 보관함이 열린다는 뜻입니다. 따로 지녀야 할 것도, 따로 보호해 주는 것도 없습니다."
         },
         "modalGuard": {
             "busyTitle": "작업 진행 중",
@@ -5598,6 +5628,12 @@
                 "portalMissing": "데스크톱 포털이 설치되어 있지 않아 이 시스템에서는 파일 선택 창을 열 수 없습니다. xdg-desktop-portal과 사용 중인 데스크톱용 백엔드(예: xdg-desktop-portal-gtk)를 설치한 뒤 다시 시도하세요.",
                 "unknown": "파일 선택 창을 열 수 없습니다. 자세한 내용은 애플리케이션 로그를 확인하세요."
             }
+        },
+        "errors": {
+            "unknown": "알 수 없는 오류"
+        },
+        "rename": {
+            "invalidCharacters": "이름에는 / 또는 \\, .. 시퀀스, 널 문자를 사용할 수 없습니다."
         }
     }
 }

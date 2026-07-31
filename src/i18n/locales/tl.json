@@ -71,7 +71,16 @@
             "current": "kasalukuyan",
             "goToActiveSession": "Pumunta sa aktibong session",
             "password": "Password",
-            "default": "Default"
+            "default": "Default",
+            "add": "Idagdag",
+            "apply": "Ilapat",
+            "later": "Mamaya",
+            "path": "Path",
+            "remove": "Alisin",
+            "reset": "I-reset",
+            "saved": "Na-save",
+            "saving": "Nagse-save...",
+            "creating": "Ginagawa..."
         },
         "connection": {
             "title": "Kumonekta sa Server",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Ang pag-extract dito ay magpapatong sa {count} umiiral na item: {names}. Magpatuloy?",
             "permanentDeleteHint": "Permanenteng tinatanggal lamang ang mga napiling item mula sa Basurahan. Hindi ito maibabalik.",
             "emptyTrashHint": "Permanenteng tinatanggal ang LAHAT ng item sa Basurahan, hindi lang ang mga napili. Hindi ito maibabalik.",
-            "dropboxPurgeBusinessOnly": "Ang Permanenteng Pagbura at Pag-empty ng Basurahan ay nangangailangan ng Dropbox Business/Team account."
+            "dropboxPurgeBusinessOnly": "Ang Permanenteng Pagbura at Pag-empty ng Basurahan ay nangangailangan ng Dropbox Business/Team account.",
+            "setAsPrivate": "Itakda bilang Pribado",
+            "setAsPublic": "Itakda bilang Pampubliko",
+            "makeAllPrivate": "Gawing pribado lahat"
         },
         "transfer": {
             "transferring": "Naglilipat...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Kasalukuyang handler",
             "encryptionPrivacyTitle": "Privacy ng pag-encrypt",
             "warnSameNameEncrypted": "Markahan ang mga entry na parehong pangalan sa mga naka-encrypt na vault",
-            "warnSameNameEncryptedDesc": "Naka-off bilang default. Sa loob ng aktibong AeroCrypt o rclone-crypt overlay, markahan ang mga file at folder na ang pangalan ay lumalabas din sa ibang landas na binibisita mo. Deterministikong naka-encrypt ang mga pangalan, kaya ang magkaparehong pangalan ay nakikitang magkapareho ng isang tagamasid ng naka-encrypt na imbakan (ang parehong trade-off gaya ng rclone-crypt at Cryptomator)."
+            "warnSameNameEncryptedDesc": "Naka-off bilang default. Sa loob ng aktibong AeroCrypt o rclone-crypt overlay, markahan ang mga file at folder na ang pangalan ay lumalabas din sa ibang landas na binibisita mo. Deterministikong naka-encrypt ang mga pangalan, kaya ang magkaparehong pangalan ay nakikitang magkapareho ng isang tagamasid ng naka-encrypt na imbakan (ang parehong trade-off gaya ng rclone-crypt at Cryptomator).",
+            "loading": "Naglo-load..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Pangalan ng pares",
             "managePairs": "Pamahalaan ang mga pares",
             "importLegacy": "I-import ang kasalukuyan bilang pares",
-            "importLegacyHint": "I-import ang iyong umiiral na solong AeroCloud config bilang unang pares (pinapanatili ang back-compat)."
+            "importLegacyHint": "I-import ang iyong umiiral na solong AeroCloud config bilang unang pares (pinapanatili ang back-compat).",
+            "versionHistory": "Kasaysayan ng Bersyon",
+            "restoreVersion": "Ibalik ang bersyon na ito",
+            "cleanupDone": "Nalinis na",
+            "cleanupVersions": "Linisin ang mga lumang bersyon",
+            "noRemoteFolders": "Walang natagpuang malayong folder",
+            "noVersions": "Walang natagpuang naka-archive na bersyon",
+            "reauthRequired": "Nag-expire na ang awtorisasyon. Mangyaring mag-awtorisa muli upang ipagpatuloy ang sync.",
+            "scanningFolders": "Sinusuri ang mga malayong folder..."
         },
         "statusBar": {
             "connected": "Nakakonekta",
@@ -1424,7 +1445,10 @@
             "dropImported": "Na-import ang {count} item sa folder na ito",
             "dropFailed": "Nabigong i-import ang {count} item",
             "connectionCancelledHint": "Itinigil ang paglilista at isinara ang koneksyon.",
-            "connectTimedOut": "Nag-timeout ang koneksyon. Hindi kailanman tumugon ang server at ikinansela ang pagtatangka."
+            "connectTimedOut": "Nag-timeout ang koneksyon. Hindi kailanman tumugon ang server at ikinansela ang pagtatangka.",
+            "transferFailed": "Nabigo ang paglipat",
+            "navigationFailed": "Nabigo ang paglipat: {error}",
+            "transferComplete": "{count} (na) file ang nakopya"
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Network error. Suriin ang iyong internet connection at provider URL.",
                 "noProvider": "Siguraduhing naka-configure ka ng AI provider sa settings.",
                 "rateLimited": "Na-rate limit ng provider. Maghintay ng sandali at subukan muli.",
-                "toolsNotSupported": "Ang model na ito ay hindi sumusuporta sa paggamit ng tool. I-disable ang \"Tools\" para sa model na ito sa AI Settings → Models."
+                "toolsNotSupported": "Ang model na ito ay hindi sumusuporta sa paggamit ng tool. I-disable ang \"Tools\" para sa model na ito sa AI Settings → Models.",
+                "noProjectContext": "Walang available na konteksto ng proyekto para sa memorya ng ahente."
             },
             "toolLabels": {
                 "agent_memory_write": "Memory",
@@ -4486,7 +4511,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Listahan ng mga branch",
+            "noBranches": "Walang natagpuang branch",
+            "rawUrlCopied": "Nakopya ang raw URL",
+            "working": "gumagana"
         },
         "filenNotes": {
             "title": "Naka-encrypt na Mga Tala",
@@ -5341,7 +5370,8 @@
             "defaultSaltToggleHint": "Pampublikong constant salt (rclone-style). Nangangailangan ng high-entropy na generated password. Ang parehong password sa maraming vault ay nagpapagawang naka-link ang mga encrypted name nang walang key.",
             "defaultSaltNeedsStronger": "Maglagay ng malakas na binuong password para i-on ang default na salt.",
             "defaultSaltOneSaltNote": "Iisa lang ang salt: 32 byte, pampubliko, pareho para sa bawat vault na gumagamit ng default na salt.",
-            "defaultSaltValueLabel": "Pampublikong default na salt (AeroCrypt v3), SHA-256 ng"
+            "defaultSaltValueLabel": "Pampublikong default na salt (AeroCrypt v3), SHA-256 ng",
+            "defaultSaltTierMeaning": "Ang default na salt ay nangangahulugang ang password lamang ang nagbubukas ng vault: wala nang iba pang dapat dalhin, at wala nang iba pang nagpoprotekta rito."
         },
         "modalGuard": {
             "busyTitle": "May isinasagawang operasyon",
@@ -5617,6 +5647,12 @@
                 "portalMissing": "Walang naka-install na desktop portal, kaya hindi makakapagbukas ng file chooser ang sistemang ito. I-install ang xdg-desktop-portal at isang backend para sa iyong desktop (halimbawa xdg-desktop-portal-gtk), pagkatapos ay subukan muli.",
                 "unknown": "Hindi mabuksan ang file chooser. Tingnan ang log ng application para sa mga detalye."
             }
+        },
+        "errors": {
+            "unknown": "Hindi kilalang error"
+        },
+        "rename": {
+            "invalidCharacters": "Hindi maaaring maglaman ang pangalan ng / o \\, ng pagkakasunod na .., o ng null na karakter."
         }
     }
 }

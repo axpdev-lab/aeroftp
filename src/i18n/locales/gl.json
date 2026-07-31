@@ -71,7 +71,16 @@
             "current": "actual",
             "goToActiveSession": "Ir á sesión activa",
             "password": "Contrasinal",
-            "default": "Predeterminado"
+            "default": "Predeterminado",
+            "add": "Engadir",
+            "apply": "Aplicar",
+            "later": "Máis tarde",
+            "path": "Ruta",
+            "remove": "Eliminar",
+            "reset": "Restablecer",
+            "saved": "Gardado",
+            "saving": "Gardando...",
+            "creating": "Creando..."
         },
         "connection": {
             "title": "Conectar ao Servidor",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Extraer aquí sobrescribirá {count} elemento(s) existente(s): {names}. Continuar?",
             "permanentDeleteHint": "Elimina permanentemente só os elementos seleccionados do Lixo. Isto non se pode desfacer.",
             "emptyTrashHint": "Elimina permanentemente TODOS os elementos do Lixo, non só os seleccionados. Isto non se pode desfacer.",
-            "dropboxPurgeBusinessOnly": "A eliminación permanente e o baleirado do lixo requiren unha conta Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "A eliminación permanente e o baleirado do lixo requiren unha conta Dropbox Business/Team.",
+            "setAsPrivate": "Establecer como privado",
+            "setAsPublic": "Establecer como público",
+            "makeAllPrivate": "Facer todo privado"
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Xestor actual",
             "encryptionPrivacyTitle": "Privacidade do cifrado",
             "warnSameNameEncrypted": "Marcar entradas co mesmo nome en caixas fortes cifradas",
-            "warnSameNameEncryptedDesc": "Desactivado de forma predeterminada. Dentro dunha superposición AeroCrypt ou rclone-crypt activa, marca os ficheiros e cartafoles cuxo nome tamén aparece noutra ruta que visitas. Os nomes cífranse de forma determinista, polo que os nomes idénticos son visibles como idénticos para un observador do almacén cifrado (o mesmo compromiso que rclone-crypt e Cryptomator)."
+            "warnSameNameEncryptedDesc": "Desactivado de forma predeterminada. Dentro dunha superposición AeroCrypt ou rclone-crypt activa, marca os ficheiros e cartafoles cuxo nome tamén aparece noutra ruta que visitas. Os nomes cífranse de forma determinista, polo que os nomes idénticos son visibles como idénticos para un observador do almacén cifrado (o mesmo compromiso que rclone-crypt e Cryptomator).",
+            "loading": "Cargando..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Nome do par",
             "managePairs": "Xestionar pares",
             "importLegacy": "Importar actual como par",
-            "importLegacyHint": "Importe a súa configuración única actual de AeroCloud como primeiro par (mantén a compatibilidade cara atrás)."
+            "importLegacyHint": "Importe a súa configuración única actual de AeroCloud como primeiro par (mantén a compatibilidade cara atrás).",
+            "versionHistory": "Historial de versións",
+            "restoreVersion": "Restaurar esta versión",
+            "cleanupDone": "Limpado",
+            "cleanupVersions": "Limpar versións antigas",
+            "noRemoteFolders": "Non se atoparon cartafoles remotos",
+            "noVersions": "Non se atoparon versións arquivadas",
+            "reauthRequired": "A autorización caducou. Autoriza de novo para retomar a sincronización.",
+            "scanningFolders": "Analizando cartafoles remotos..."
         },
         "statusBar": {
             "connected": "Conectado",
@@ -1424,7 +1445,10 @@
             "dropImported": "Importáronse {count} elementos a este cartafol",
             "dropFailed": "Non se puideron importar {count} elementos",
             "connectionCancelledHint": "Detívose a listaxe e pechouse a conexión.",
-            "connectTimedOut": "Esgotouse o tempo de conexión. O servidor nunca respondeu e o intento foi cancelado."
+            "connectTimedOut": "Esgotouse o tempo de conexión. O servidor nunca respondeu e o intento foi cancelado.",
+            "transferFailed": "Produciuse un erro na transferencia",
+            "navigationFailed": "Fallou a navegación: {error}",
+            "transferComplete": "{count} ficheiros copiados"
         },
         "about": {
             "tagline": "Máis que FTP. Unha caixa de ferramentas completa para desenvolvedores.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Erro de rede. Verifica a túa conexión a Internet e a URL do provedor.",
                 "noProvider": "Asegúrate de ter configurado un provedor de AI na configuración.",
                 "rateLimited": "Limitado polo provedor. Agarda un momento e téntao de novo.",
-                "toolsNotSupported": "Este modelo non admite o uso de ferramentas. Desactiva \"Ferramentas\" para este modelo en Configuración de AI → Modelos."
+                "toolsNotSupported": "Este modelo non admite o uso de ferramentas. Desactiva \"Ferramentas\" para este modelo en Configuración de AI → Modelos.",
+                "noProjectContext": "Non hai contexto de proxecto dispoñible para a memoria do axente."
             },
             "toolLabels": {
                 "agent_memory_write": "Memoria",
@@ -4486,7 +4511,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Lista de ramas",
+            "noBranches": "Non se atoparon ramas",
+            "rawUrlCopied": "URL en bruto copiado",
+            "working": "traballando"
         },
         "filenNotes": {
             "title": "Notas cifradas",
@@ -5341,7 +5370,8 @@
             "defaultSaltToggleHint": "Sal constante pública (estilo rclone). Require un contrasinal xerado de alta entropía. O mesmo contrasinal en varias bóvedas fai que os nomes cifrados sexan ligables sen a chave.",
             "defaultSaltNeedsStronger": "Introduce un contrasinal xerado forte para activar o sal predeterminado.",
             "defaultSaltOneSaltNote": "Existe un único salt: 32 bytes, público, idéntico para todos os cofres con salt predeterminado.",
-            "defaultSaltValueLabel": "Salt público predeterminado (AeroCrypt v3), SHA-256 de"
+            "defaultSaltValueLabel": "Salt público predeterminado (AeroCrypt v3), SHA-256 de",
+            "defaultSaltTierMeaning": "O sal predeterminado significa que só o contrasinal abre a caixa forte: non hai que levar nada máis, e nada máis a protexe."
         },
         "modalGuard": {
             "busyTitle": "Operación en curso",
@@ -5617,6 +5647,12 @@
                 "portalMissing": "Non hai ningún portal de escritorio instalado, polo que este sistema non pode abrir un selector de ficheiros. Instale xdg-desktop-portal e un backend para o seu escritorio (por exemplo xdg-desktop-portal-gtk) e ténteo de novo.",
                 "unknown": "Non foi posible abrir o selector de ficheiros. Consulte o rexistro da aplicación para máis detalles."
             }
+        },
+        "errors": {
+            "unknown": "Erro descoñecido"
+        },
+        "rename": {
+            "invalidCharacters": "Un nome non pode conter / nin \\, a secuencia .. nin un carácter nulo."
         }
     }
 }
