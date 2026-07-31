@@ -71,7 +71,16 @@
             "current": "cyfredol",
             "goToActiveSession": "Mynd i'r sesiwn weithredol",
             "password": "Cyfrinair",
-            "default": "Rhagosodedig"
+            "default": "Rhagosodedig",
+            "add": "Ychwanegu",
+            "apply": "Cymhwyso",
+            "later": "Yn nes ymlaen",
+            "path": "Llwybr",
+            "remove": "Dileu",
+            "reset": "Ailosod",
+            "saved": "Wedi cadw",
+            "saving": "Yn cadw...",
+            "creating": "Wrthi'n creu..."
         },
         "connection": {
             "title": "Cysylltu a'r Gweinydd",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Bydd echdynnu yma yn trosysgrifo {count} eitem sy'n bodoli eisoes: {names}. Parhau?",
             "permanentDeleteHint": "Yn dileu'n barhaol dim ond yr eitemau a ddewiswyd o'r Sbwriel. Ni ellir dadwneud hyn.",
             "emptyTrashHint": "Yn dileu'n barhaol BOB eitem yn y Sbwriel, nid dim ond y rhai a ddewiswyd. Ni ellir dadwneud hyn.",
-            "dropboxPurgeBusinessOnly": "Mae Dileu'n Barhaol a Gwagio'r Bin yn gofyn am gyfrif Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "Mae Dileu'n Barhaol a Gwagio'r Bin yn gofyn am gyfrif Dropbox Business/Team.",
+            "setAsPrivate": "Gosod fel Preifat",
+            "setAsPublic": "Gosod fel Cyhoeddus",
+            "makeAllPrivate": "Gwneud pob un yn breifat"
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Trinydd cyfredol",
             "encryptionPrivacyTitle": "Preifatrwydd amgryptio",
             "warnSameNameEncrypted": "Nodi cofnodion â'r un enw mewn claddgelloedd wedi'u hamgryptio",
-            "warnSameNameEncryptedDesc": "Wedi'i ddiffodd yn ddiofyn. O fewn troshaen AeroCrypt neu rclone-crypt gweithredol, marciwch ffeiliau a ffolderi y mae eu henw hefyd yn ymddangos ar lwybr arall rydych chi'n ymweld ag ef. Mae enwau'n cael eu hamgryptio'n benderfyniadol, felly mae enwau union yr un fath yn weladwy fel rhai union i arsylwr o'r storfa wedi'i hamgryptio (yr un cyfaddawd â rclone-crypt a Cryptomator)."
+            "warnSameNameEncryptedDesc": "Wedi'i ddiffodd yn ddiofyn. O fewn troshaen AeroCrypt neu rclone-crypt gweithredol, marciwch ffeiliau a ffolderi y mae eu henw hefyd yn ymddangos ar lwybr arall rydych chi'n ymweld ag ef. Mae enwau'n cael eu hamgryptio'n benderfyniadol, felly mae enwau union yr un fath yn weladwy fel rhai union i arsylwr o'r storfa wedi'i hamgryptio (yr un cyfaddawd â rclone-crypt a Cryptomator).",
+            "loading": "Yn llwytho..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Enw pâr",
             "managePairs": "Rheoli parau",
             "importLegacy": "Mewnforio'r presennol fel pâr",
-            "importLegacyHint": "Mewnforiwch eich ffurfwedd AeroCloud sengl presennol fel y pâr cyntaf (yn cadw cydweddu cefn)."
+            "importLegacyHint": "Mewnforiwch eich ffurfwedd AeroCloud sengl presennol fel y pâr cyntaf (yn cadw cydweddu cefn).",
+            "versionHistory": "Hanes Fersiynau",
+            "restoreVersion": "Adfer y fersiwn hon",
+            "cleanupDone": "Wedi'i lanhau",
+            "cleanupVersions": "Clirio hen fersiynau",
+            "noRemoteFolders": "Ni ddaethpwyd o hyd i ffolderi pell",
+            "noVersions": "Ni ddaethpwyd o hyd i fersiynau archifedig",
+            "reauthRequired": "Mae'r awdurdodiad wedi dod i ben. Ail-awdurdodwch i ailddechrau'r cydweddu.",
+            "scanningFolders": "Wrthi'n sganio ffolderi pell..."
         },
         "statusBar": {
             "connected": "Wedi cysylltu",
@@ -1424,7 +1445,10 @@
             "dropImported": "Mewnforiwyd {count} eitem i'r ffolder hwn",
             "dropFailed": "Methwyd â mewnforio {count} eitem",
             "connectionCancelledHint": "Cafodd y rhestru ei atal a'r cysylltiad ei gau.",
-            "connectTimedOut": "Cyrhaeddwyd terfyn amser y cysylltiad. Ni wnaeth y gweinydd ymateb erioed a chafodd y cais ei ddiddymu."
+            "connectTimedOut": "Cyrhaeddwyd terfyn amser y cysylltiad. Ni wnaeth y gweinydd ymateb erioed a chafodd y cais ei ddiddymu.",
+            "transferFailed": "Methodd y trosglwyddo",
+            "navigationFailed": "Methodd y llywio: {error}",
+            "transferComplete": "Copïwyd {count} ffeil"
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Gwall rhwydwaith. Gwiriwch eich cysylltiad rhyngrwyd a URL y darparwr.",
                 "noProvider": "Gwnewch yn siŵr eich bod wedi ffurfweddu darparwr AI yn y gosodiadau.",
                 "rateLimited": "Cyfyngedig gan y darparwr. Arhoswch ennyd a rhowch gynnig arall arni.",
-                "toolsNotSupported": "Nid yw'r model hwn yn cefnogi defnyddio offer. Analluogwch \"Offer\" ar gyfer y model hwn yn Gosodiadau AI → Modelau."
+                "toolsNotSupported": "Nid yw'r model hwn yn cefnogi defnyddio offer. Analluogwch \"Offer\" ar gyfer y model hwn yn Gosodiadau AI → Modelau.",
+                "noProjectContext": "Nid oes cyd-destun prosiect ar gael ar gyfer cof yr asiant."
             },
             "toolLabels": {
                 "agent_memory_write": "Cof",
@@ -4477,7 +4502,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Rhestr canghennau",
+            "noBranches": "Ni ddaethpwyd o hyd i ganghennau",
+            "rawUrlCopied": "Copïwyd yr URL crai",
+            "working": "wrthi"
         },
         "filenNotes": {
             "title": "Nodiadau Wedi'u Hamgryptio",
@@ -5332,7 +5361,8 @@
             "defaultSaltToggleHint": "Halen cyson cyhoeddus (arddull rclone). Mae angen cyfrinair uchel-entropi a gynhyrchwyd. Mae'r un cyfrinair ar sawl storfa yn gwneud enwau wedi'u hamgryptio yn gysylltadwy heb yr allwedd.",
             "defaultSaltNeedsStronger": "Rhowch gyfrinair cryf wedi'i gynhyrchu i droi'r salt rhagosodedig ymlaen.",
             "defaultSaltOneSaltNote": "Dim ond un salt sydd: 32 beit, cyhoeddus, yr un peth ar gyfer pob cell ddiogel sy'n defnyddio'r salt rhagosodedig.",
-            "defaultSaltValueLabel": "Halen rhagosodedig cyhoeddus (AeroCrypt v3), SHA-256 o"
+            "defaultSaltValueLabel": "Halen rhagosodedig cyhoeddus (AeroCrypt v3), SHA-256 o",
+            "defaultSaltTierMeaning": "Mae halen rhagosodedig yn golygu mai'r cyfrinair yn unig sy'n agor y gladdgell: nid oes rhaid cario dim arall, ac nid oes dim arall yn ei diogelu."
         },
         "modalGuard": {
             "busyTitle": "Gweithrediad ar y gweill",
@@ -5608,6 +5638,12 @@
                 "portalMissing": "Nid oes porth bwrdd gwaith wedi'i osod, felly ni all y system hon agor dewisydd ffeiliau. Gosodwch xdg-desktop-portal a chefnwr ar gyfer eich bwrdd gwaith (er enghraifft xdg-desktop-portal-gtk), ac yna ceisiwch eto.",
                 "unknown": "Nid oedd modd agor y dewisydd ffeiliau. Gwelwch gofnod y rhaglen am fanylion."
             }
+        },
+        "errors": {
+            "unknown": "Gwall anhysbys"
+        },
+        "rename": {
+            "invalidCharacters": "Ni all enw gynnwys / na \\, y dilyniant .., na nod nwl."
         }
     }
 }

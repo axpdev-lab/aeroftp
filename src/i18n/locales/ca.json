@@ -71,7 +71,16 @@
             "current": "actual",
             "goToActiveSession": "Vés a la sessió activa",
             "password": "Contrasenya",
-            "default": "Predeterminat"
+            "default": "Predeterminat",
+            "add": "Afegir",
+            "apply": "Aplicar",
+            "later": "Més tard",
+            "path": "Ruta",
+            "remove": "Eliminar",
+            "reset": "Restablir",
+            "saved": "Desat",
+            "saving": "Guardant...",
+            "creating": "S'està creant..."
         },
         "connection": {
             "title": "Connectar al Servidor",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Extreure aquí sobreescriurà {count} element(s) existent(s): {names}. Voleu continuar?",
             "permanentDeleteHint": "Elimina permanentment només els elements seleccionats de la Paperera. Això no es pot desfer.",
             "emptyTrashHint": "Elimina permanentment TOTS els elements de la Paperera, no només els seleccionats. Això no es pot desfer.",
-            "dropboxPurgeBusinessOnly": "L'eliminació permanent i el buidatge de la paperera requereixen un compte Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "L'eliminació permanent i el buidatge de la paperera requereixen un compte Dropbox Business/Team.",
+            "setAsPrivate": "Establir com a privat",
+            "setAsPublic": "Establir com a públic",
+            "makeAllPrivate": "Fes-ho tot privat"
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Gestor actual",
             "encryptionPrivacyTitle": "Privadesa del xifratge",
             "warnSameNameEncrypted": "Marca les entrades amb el mateix nom a les bústies xifrades",
-            "warnSameNameEncryptedDesc": "Desactivat per defecte. Dins d'una superposició AeroCrypt o rclone-crypt activa, marca els fitxers i les carpetes el nom dels quals també apareix en una altra ruta que visites. Els noms es xifren de manera determinista, de manera que els noms idèntics són visibles com a idèntics per a un observador del magatzem xifrat (el mateix compromís que rclone-crypt i Cryptomator)."
+            "warnSameNameEncryptedDesc": "Desactivat per defecte. Dins d'una superposició AeroCrypt o rclone-crypt activa, marca els fitxers i les carpetes el nom dels quals també apareix en una altra ruta que visites. Els noms es xifren de manera determinista, de manera que els noms idèntics són visibles com a idèntics per a un observador del magatzem xifrat (el mateix compromís que rclone-crypt i Cryptomator).",
+            "loading": "Carregant..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Nom del parell",
             "managePairs": "Gestionar parells",
             "importLegacy": "Importar actual com a parell",
-            "importLegacyHint": "Importeu la vostra configuració única actual d'AeroCloud com a primer parell (manté la compatibilitat cap enrere)."
+            "importLegacyHint": "Importeu la vostra configuració única actual d'AeroCloud com a primer parell (manté la compatibilitat cap enrere).",
+            "versionHistory": "Historial de versions",
+            "restoreVersion": "Restaurar aquesta versió",
+            "cleanupDone": "Netejat",
+            "cleanupVersions": "Neteja les versions antigues",
+            "noRemoteFolders": "No s'ha trobat cap carpeta remota",
+            "noVersions": "No s'ha trobat cap versió arxivada",
+            "reauthRequired": "L'autorització ha caducat. Torneu a autoritzar per reprendre la sincronització.",
+            "scanningFolders": "S'estan escanejant les carpetes remotes..."
         },
         "statusBar": {
             "connected": "Connectat",
@@ -1424,7 +1445,10 @@
             "dropImported": "S'han importat {count} elements en aquesta carpeta",
             "dropFailed": "No s'han pogut importar {count} elements",
             "connectionCancelledHint": "S'ha aturat el llistat i s'ha tancat la connexió.",
-            "connectTimedOut": "S'ha esgotat el temps d'espera de la connexió. El servidor no ha respost mai i l'intent s'ha cancel·lat."
+            "connectTimedOut": "S'ha esgotat el temps d'espera de la connexió. El servidor no ha respost mai i l'intent s'ha cancel·lat.",
+            "transferFailed": "La transferència ha fallat",
+            "navigationFailed": "Ha fallat la navegació: {error}",
+            "transferComplete": "{count} fitxers copiats"
         },
         "about": {
             "tagline": "Més que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Error de xarxa. Verifica la teva connexió a Internet i l'URL del proveïdor.",
                 "noProvider": "Assegura't d'haver configurat un proveïdor d'AI a la configuració.",
                 "rateLimited": "Limitat pel proveïdor. Espera un moment i torna-ho a provar.",
-                "toolsNotSupported": "Aquest model no admet l'ús d'eines. Desactiva \"Eines\" per a aquest model a Configuració d'AI → Models."
+                "toolsNotSupported": "Aquest model no admet l'ús d'eines. Desactiva \"Eines\" per a aquest model a Configuració d'AI → Models.",
+                "noProjectContext": "No hi ha context de projecte disponible per a la memòria de l'agent."
             },
             "toolLabels": {
                 "agent_memory_write": "Memòria",
@@ -4477,7 +4502,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Llista de branques",
+            "noBranches": "No s'ha trobat cap branca",
+            "rawUrlCopied": "S'ha copiat l'URL en brut",
+            "working": "en curs"
         },
         "filenNotes": {
             "title": "Notes xifrades",
@@ -5332,7 +5361,8 @@
             "defaultSaltToggleHint": "Sal constant pública (estil rclone). Requereix una contrasenya generada d'alta entropia. La mateixa contrasenya en múltiples cofres fa que els noms xifrats siguin enllaçables sense la clau.",
             "defaultSaltNeedsStronger": "Introduïu una contrasenya generada forta per activar la sal predeterminada.",
             "defaultSaltOneSaltNote": "Hi ha un únic salt: 32 bytes, públic, idèntic per a tots els magatzems amb salt predeterminat.",
-            "defaultSaltValueLabel": "Salt públic predeterminat (AeroCrypt v3), SHA-256 de"
+            "defaultSaltValueLabel": "Salt públic predeterminat (AeroCrypt v3), SHA-256 de",
+            "defaultSaltTierMeaning": "La sal per defecte significa que només la contrasenya obre la caixa forta: no cal portar res més, i res més la protegeix."
         },
         "modalGuard": {
             "busyTitle": "Operació en curs",
@@ -5608,6 +5638,12 @@
                 "portalMissing": "No hi ha cap portal d'escriptori instal·lat, de manera que aquest sistema no pot obrir un selector de fitxers. Instal·leu xdg-desktop-portal i un rerefons per al vostre escriptori (per exemple xdg-desktop-portal-gtk) i torneu-ho a provar.",
                 "unknown": "No s'ha pogut obrir el selector de fitxers. Consulteu el registre de l'aplicació per a més detalls."
             }
+        },
+        "errors": {
+            "unknown": "Error desconegut"
+        },
+        "rename": {
+            "invalidCharacters": "Un nom no pot contenir / ni \\, la seqüència .. ni un caràcter nul."
         }
     }
 }

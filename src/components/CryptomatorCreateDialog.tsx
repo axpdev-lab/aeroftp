@@ -248,7 +248,7 @@ export default function CryptomatorCreateDialog({ outputDir, files, onClose, onC
                 {creating ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
-                    {t('common.creating') || 'Creating...'}
+                    {t('common.creating')}
                   </>
                 ) : (
                   <>

@@ -456,7 +456,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
           className="w-full py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
         >
           {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : null}
-          {saved ? (t('common.saved') || 'Saved') : (t('common.save') || 'Save')}
+          {saved ? (t('common.saved')) : (t('common.save') || 'Save')}
         </button>
       </div>
     </div>

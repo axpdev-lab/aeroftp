@@ -71,7 +71,16 @@
             "current": "gjeldende",
             "goToActiveSession": "Gå til aktiv økt",
             "password": "Passord",
-            "default": "Standard"
+            "default": "Standard",
+            "add": "Legg til",
+            "apply": "Bruk",
+            "later": "Senere",
+            "path": "Sti",
+            "remove": "Fjern",
+            "reset": "Tilbakestill",
+            "saved": "Lagret",
+            "saving": "Lagrer...",
+            "creating": "Oppretter..."
         },
         "connection": {
             "title": "Koble til server",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Å pakke ut her vil overskrive {count} eksisterende element(er): {names}. Fortsette?",
             "permanentDeleteHint": "Sletter permanent bare de valgte elementene fra Papirkurven. Dette kan ikke angres.",
             "emptyTrashHint": "Sletter permanent ALLE elementer i Papirkurven, ikke bare de valgte. Dette kan ikke angres.",
-            "dropboxPurgeBusinessOnly": "Permanent sletting og tømming av papirkurven krever en Dropbox Business/Team-konto."
+            "dropboxPurgeBusinessOnly": "Permanent sletting og tømming av papirkurven krever en Dropbox Business/Team-konto.",
+            "setAsPrivate": "Angi som privat",
+            "setAsPublic": "Angi som offentlig",
+            "makeAllPrivate": "Gjør alle private"
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Gjeldende behandler",
             "encryptionPrivacyTitle": "Krypteringspersonvern",
             "warnSameNameEncrypted": "Merk oppføringer med samme navn i krypterte hvelv",
-            "warnSameNameEncryptedDesc": "Av som standard. Inne i et aktivt AeroCrypt- eller rclone-crypt-overlegg merkes filer og mapper hvis navn også vises på en annen sti du besøker. Navn krypteres deterministisk, så identiske navn er synlige som identiske for en observatør av det krypterte lageret (den samme avveiningen som rclone-crypt og Cryptomator)."
+            "warnSameNameEncryptedDesc": "Av som standard. Inne i et aktivt AeroCrypt- eller rclone-crypt-overlegg merkes filer og mapper hvis navn også vises på en annen sti du besøker. Navn krypteres deterministisk, så identiske navn er synlige som identiske for en observatør av det krypterte lageret (den samme avveiningen som rclone-crypt og Cryptomator).",
+            "loading": "Laster..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Parnavn",
             "managePairs": "Administrer par",
             "importLegacy": "Importer gjeldende som par",
-            "importLegacyHint": "Importer din eksisterende enkelt AeroCloud-konfigurasjon som første par (beholder bakoverkompatibilitet)."
+            "importLegacyHint": "Importer din eksisterende enkelt AeroCloud-konfigurasjon som første par (beholder bakoverkompatibilitet).",
+            "versionHistory": "Versjonshistorikk",
+            "restoreVersion": "Gjenopprett denne versjonen",
+            "cleanupDone": "Ryddet opp",
+            "cleanupVersions": "Rydd opp i gamle versjoner",
+            "noRemoteFolders": "Fant ingen eksterne mapper",
+            "noVersions": "Fant ingen arkiverte versjoner",
+            "reauthRequired": "Autorisasjonen er utløpt. Autoriser på nytt for å gjenoppta synkroniseringen.",
+            "scanningFolders": "Skanner eksterne mapper..."
         },
         "statusBar": {
             "connected": "Tilkoblet",
@@ -1424,7 +1445,10 @@
             "dropImported": "Importerte {count} elementer til denne mappen",
             "dropFailed": "Kunne ikke importere {count} elementer",
             "connectionCancelledHint": "Opplistingen ble stoppet og tilkoblingen lukket.",
-            "connectTimedOut": "Tidsavbrudd for tilkoblingen. Serveren svarte aldri, og forsøket ble avbrutt."
+            "connectTimedOut": "Tidsavbrudd for tilkoblingen. Serveren svarte aldri, og forsøket ble avbrutt.",
+            "transferFailed": "Overføring mislyktes",
+            "navigationFailed": "Navigering mislyktes: {error}",
+            "transferComplete": "{count} fil(er) kopiert"
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Nettverksfeil. Sjekk internettforbindelsen din og leverandør-URL.",
                 "noProvider": "Sørg for at du har konfigurert en AI-leverandør i innstillinger.",
                 "rateLimited": "Hastighetsbegrenset av leverandøren. Vent et øyeblikk og prøv igjen.",
-                "toolsNotSupported": "Denne modellen støtter ikke verktøybruk. Deaktiver \"Verktøy\" for denne modellen i AI-innstillinger → Modeller."
+                "toolsNotSupported": "Denne modellen støtter ikke verktøybruk. Deaktiver \"Verktøy\" for denne modellen i AI-innstillinger → Modeller.",
+                "noProjectContext": "Ingen prosjektkontekst tilgjengelig for agentminnet."
             },
             "toolLabels": {
                 "agent_memory_write": "Minne",
@@ -4477,7 +4502,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Liste over grener",
+            "noBranches": "Fant ingen grener",
+            "rawUrlCopied": "Rå URL kopiert",
+            "working": "arbeider"
         },
         "filenNotes": {
             "title": "Krypterte notater",
@@ -5332,7 +5361,8 @@
             "defaultSaltToggleHint": "Offentlig konstant salt (rclone-style). Krever et generert høyt entropi-passord. Samme passord på flere hvelv gjør krypterte navn lenkbare uten nøkkelen.",
             "defaultSaltNeedsStronger": "Skriv inn et sterkt generert passord for å slå på standardsaltet.",
             "defaultSaltOneSaltNote": "Det finnes bare ett salt: 32 byte, offentlig, likt for alle hvelv med standardsalt.",
-            "defaultSaltValueLabel": "Offentlig standardsalt (AeroCrypt v3), SHA-256 av"
+            "defaultSaltValueLabel": "Offentlig standardsalt (AeroCrypt v3), SHA-256 av",
+            "defaultSaltTierMeaning": "Standardsalt betyr at passordet alene åpner hvelvet: ingenting annet må bæres med, og ingenting annet beskytter det."
         },
         "modalGuard": {
             "busyTitle": "Operasjon pågår",
@@ -5608,6 +5638,12 @@
                 "portalMissing": "Ingen skrivebordsportal er installert, så dette systemet kan ikke åpne en filvelger. Installer xdg-desktop-portal og en backend for skrivebordet ditt (for eksempel xdg-desktop-portal-gtk), og prøv igjen.",
                 "unknown": "Filvelgeren kunne ikke åpnes. Se programloggen for detaljer."
             }
+        },
+        "errors": {
+            "unknown": "Ukjent feil"
+        },
+        "rename": {
+            "invalidCharacters": "Et navn kan ikke inneholde / eller \\, sekvensen .. eller et null-tegn."
         }
     }
 }

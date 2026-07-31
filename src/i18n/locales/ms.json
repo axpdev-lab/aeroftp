@@ -71,7 +71,16 @@
             "current": "semasa",
             "goToActiveSession": "Pergi ke sesi aktif",
             "password": "Kata laluan",
-            "default": "Lalai"
+            "default": "Lalai",
+            "add": "Tambah",
+            "apply": "Guna",
+            "later": "Kemudian",
+            "path": "Laluan",
+            "remove": "Buang",
+            "reset": "Tetapkan Semula",
+            "saved": "Disimpan",
+            "saving": "Menyimpan...",
+            "creating": "Mencipta..."
         },
         "connection": {
             "title": "Sambung ke Pelayan",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Mengekstrak di sini akan menulis ganti {count} item sedia ada: {names}. Teruskan?",
             "permanentDeleteHint": "Memadam secara kekal hanya item yang dipilih daripada Tong Sampah. Ini tidak boleh dibatalkan.",
             "emptyTrashHint": "Memadam secara kekal SEMUA item dalam Tong Sampah, bukan hanya yang dipilih. Ini tidak boleh dibatalkan.",
-            "dropboxPurgeBusinessOnly": "Padam Kekal dan Kosongkan Sampah memerlukan akaun Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "Padam Kekal dan Kosongkan Sampah memerlukan akaun Dropbox Business/Team.",
+            "setAsPrivate": "Tetapkan sebagai Peribadi",
+            "setAsPublic": "Tetapkan sebagai Awam",
+            "makeAllPrivate": "Jadikan semua peribadi"
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Pengendali semasa",
             "encryptionPrivacyTitle": "Privasi penyulitan",
             "warnSameNameEncrypted": "Tandakan entri bernama sama dalam bilik kebal tersulit",
-            "warnSameNameEncryptedDesc": "Dimatikan secara lalai. Di dalam tindanan AeroCrypt atau rclone-crypt yang aktif, tandakan fail dan folder yang namanya juga muncul di laluan lain yang anda lawati. Nama disulitkan secara deterministik, jadi nama yang serupa kelihatan serupa kepada pemerhati storan tersulit (pertukaran yang sama seperti rclone-crypt dan Cryptomator)."
+            "warnSameNameEncryptedDesc": "Dimatikan secara lalai. Di dalam tindanan AeroCrypt atau rclone-crypt yang aktif, tandakan fail dan folder yang namanya juga muncul di laluan lain yang anda lawati. Nama disulitkan secara deterministik, jadi nama yang serupa kelihatan serupa kepada pemerhati storan tersulit (pertukaran yang sama seperti rclone-crypt dan Cryptomator).",
+            "loading": "Memuatkan..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Nama pasangan",
             "managePairs": "Urus pasangan",
             "importLegacy": "Import semasa sebagai pasangan",
-            "importLegacyHint": "Import konfigurasi AeroCloud tunggal sedia ada anda sebagai pasangan pertama (mengekalkan keserasian belakang)."
+            "importLegacyHint": "Import konfigurasi AeroCloud tunggal sedia ada anda sebagai pasangan pertama (mengekalkan keserasian belakang).",
+            "versionHistory": "Sejarah Versi",
+            "restoreVersion": "Pulihkan versi ini",
+            "cleanupDone": "Dibersihkan",
+            "cleanupVersions": "Bersihkan versi lama",
+            "noRemoteFolders": "Tiada folder jauh ditemui",
+            "noVersions": "Tiada versi arkib ditemui",
+            "reauthRequired": "Kebenaran telah tamat tempoh. Sila beri kebenaran semula untuk menyambung semula penyegerakan.",
+            "scanningFolders": "Mengimbas folder jauh..."
         },
         "statusBar": {
             "connected": "Disambung",
@@ -1424,7 +1445,10 @@
             "dropImported": "Mengimport {count} item ke dalam folder ini",
             "dropFailed": "Gagal mengimport {count} item",
             "connectionCancelledHint": "Penyenaraian dihentikan dan sambungan ditutup.",
-            "connectTimedOut": "Sambungan tamat masa. Pelayan tidak pernah membalas dan percubaan telah dibatalkan."
+            "connectTimedOut": "Sambungan tamat masa. Pelayan tidak pernah membalas dan percubaan telah dibatalkan.",
+            "transferFailed": "Pemindahan gagal",
+            "navigationFailed": "Navigasi gagal: {error}",
+            "transferComplete": "{count} fail disalin"
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Ralat rangkaian. Semak sambungan internet dan URL penyedia anda.",
                 "noProvider": "Pastikan anda telah mengkonfigurasi penyedia AI dalam tetapan.",
                 "rateLimited": "Dihadkan oleh penyedia. Tunggu seketika dan cuba lagi.",
-                "toolsNotSupported": "Model ini tidak menyokong penggunaan alat. Lumpuhkan \"Alat\" untuk model ini di Tetapan AI → Model."
+                "toolsNotSupported": "Model ini tidak menyokong penggunaan alat. Lumpuhkan \"Alat\" untuk model ini di Tetapan AI → Model.",
+                "noProjectContext": "Tiada konteks projek tersedia untuk memori ejen."
             },
             "toolLabels": {
                 "agent_memory_write": "Memori",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Senarai cabang",
+            "noBranches": "Tiada cabang ditemui",
+            "rawUrlCopied": "URL mentah disalin",
+            "working": "sedang berjalan"
         },
         "filenNotes": {
             "title": "Nota Tersulit",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Salt malar awam (gaya rclone). Memerlukan kata laluan berentropi tinggi yang dijana. Kata laluan sama pada berbilang vault menjadikan nama tersulit boleh dipaut tanpa kunci.",
             "defaultSaltNeedsStronger": "Masukkan kata laluan kuat yang dijana untuk menghidupkan salt lalai.",
             "defaultSaltOneSaltNote": "Hanya ada satu salt: 32 bait, awam, sama untuk setiap peti besi dengan salt lalai.",
-            "defaultSaltValueLabel": "Salt lalai awam (AeroCrypt v3), SHA-256 bagi"
+            "defaultSaltValueLabel": "Salt lalai awam (AeroCrypt v3), SHA-256 bagi",
+            "defaultSaltTierMeaning": "Garam lalai bermakna kata laluan sahaja membuka peti besi: tiada apa-apa lagi yang perlu dibawa, dan tiada apa-apa lagi yang melindunginya."
         },
         "modalGuard": {
             "busyTitle": "Operasi sedang berjalan",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Tiada portal desktop dipasang, jadi sistem ini tidak dapat membuka pemilih fail. Pasang xdg-desktop-portal dan backend untuk desktop anda (contohnya xdg-desktop-portal-gtk), kemudian cuba lagi.",
                 "unknown": "Pemilih fail tidak dapat dibuka. Lihat log aplikasi untuk perincian."
             }
+        },
+        "errors": {
+            "unknown": "Ralat tidak diketahui"
+        },
+        "rename": {
+            "invalidCharacters": "Nama tidak boleh mengandungi / atau \\, jujukan .., atau aksara null."
         }
     }
 }

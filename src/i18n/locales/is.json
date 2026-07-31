@@ -71,7 +71,16 @@
             "current": "núverandi",
             "goToActiveSession": "Fara í virka lotu",
             "password": "Lykilorð",
-            "default": "Sjálfgefið"
+            "default": "Sjálfgefið",
+            "add": "Bæta við",
+            "apply": "Nota",
+            "later": "Síðar",
+            "path": "Slóð",
+            "remove": "Fjarlægja",
+            "reset": "Endurstilla",
+            "saved": "Vistað",
+            "saving": "Vistar...",
+            "creating": "Verið að búa til..."
         },
         "connection": {
             "title": "Tengjast þjóni",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Að afþjappa hér skrifar yfir {count} fyrirliggjandi atriði: {names}. Halda áfram?",
             "permanentDeleteHint": "Eyðir varanlega aðeins völdum atriðum úr Ruslinu. Þessu er ekki hægt að afturkalla.",
             "emptyTrashHint": "Eyðir varanlega ÖLLUM atriðum í Ruslinu, ekki bara völdum. Þessu er ekki hægt að afturkalla.",
-            "dropboxPurgeBusinessOnly": "Varanleg eyðing og tæming ruslsins krefjast Dropbox Business/Team reiknings."
+            "dropboxPurgeBusinessOnly": "Varanleg eyðing og tæming ruslsins krefjast Dropbox Business/Team reiknings.",
+            "setAsPrivate": "Stilla sem einkamál",
+            "setAsPublic": "Stilla sem opinbert",
+            "makeAllPrivate": "Gera allt einkamál"
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Núverandi meðhöndlun",
             "encryptionPrivacyTitle": "Persónuvernd dulkóðunar",
             "warnSameNameEncrypted": "Merkja færslur með sama nafni í dulkóðuðum hvelfingum",
-            "warnSameNameEncryptedDesc": "Sjálfgefið slökkt. Innan virks AeroCrypt eða rclone-crypt yfirlags skaltu merkja skrár og möppur sem bera nafn sem einnig birtist á annarri slóð sem þú heimsækir. Nöfn eru dulkóðuð með ákveðnum hætti, þannig að eins nöfn eru sýnileg sem eins fyrir áhorfanda dulkóðuðu geymslunnar (sama málamiðlun og rclone-crypt og Cryptomator)."
+            "warnSameNameEncryptedDesc": "Sjálfgefið slökkt. Innan virks AeroCrypt eða rclone-crypt yfirlags skaltu merkja skrár og möppur sem bera nafn sem einnig birtist á annarri slóð sem þú heimsækir. Nöfn eru dulkóðuð með ákveðnum hætti, þannig að eins nöfn eru sýnileg sem eins fyrir áhorfanda dulkóðuðu geymslunnar (sama málamiðlun og rclone-crypt og Cryptomator).",
+            "loading": "Hleður..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Nafn pars",
             "managePairs": "Stjórna pörum",
             "importLegacy": "Flytja inn núverandi sem par",
-            "importLegacyHint": "Flyttu inn núverandi staka AeroCloud stillinguna þína sem fyrsta parið (heldur afturábak samrýmanleika)."
+            "importLegacyHint": "Flyttu inn núverandi staka AeroCloud stillinguna þína sem fyrsta parið (heldur afturábak samrýmanleika).",
+            "versionHistory": "Útgáfusaga",
+            "restoreVersion": "Endurheimta þessa útgáfu",
+            "cleanupDone": "Hreinsað",
+            "cleanupVersions": "Hreinsa gamlar útgáfur",
+            "noRemoteFolders": "Engar fjarmöppur fundust",
+            "noVersions": "Engar geymdar útgáfur fundust",
+            "reauthRequired": "Heimildin er útrunnin. Veittu heimild aftur til að halda samstillingu áfram.",
+            "scanningFolders": "Skanna fjarmöppur..."
         },
         "statusBar": {
             "connected": "Tengt",
@@ -1424,7 +1445,10 @@
             "dropImported": "Flutti inn {count} atriði í þessa möppu",
             "dropFailed": "Mistókst að flytja inn {count} atriði",
             "connectionCancelledHint": "Skráningin var stöðvuð og tengingunni lokað.",
-            "connectTimedOut": "Tíminn fyrir tengingu rann út. Þjónninn svaraði aldrei og tilraunin var stöðvuð."
+            "connectTimedOut": "Tíminn fyrir tengingu rann út. Þjónninn svaraði aldrei og tilraunin var stöðvuð.",
+            "transferFailed": "Flutningur mistókst",
+            "navigationFailed": "Flakk mistókst: {error}",
+            "transferComplete": "{count} skrár afritaðar"
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Netvilla. Athugaðu nettengingu þína og vefslóð veitanda.",
                 "noProvider": "Gakktu úr skugga um að þú hafir stillt AI-veitanda í stillingum.",
                 "rateLimited": "Takmarkað af veitanda. Bíddu augnablik og reyndu aftur.",
-                "toolsNotSupported": "Þetta líkan styður ekki verkfæri. Slökktu á \"Verkfærum\" fyrir þetta líkan í AI-stillingar → Líkön."
+                "toolsNotSupported": "Þetta líkan styður ekki verkfæri. Slökktu á \"Verkfærum\" fyrir þetta líkan í AI-stillingar → Líkön.",
+                "noProjectContext": "Ekkert verkefnasamhengi er tiltækt fyrir minni umboðsmannsins."
             },
             "toolLabels": {
                 "agent_memory_write": "Minni",
@@ -4477,7 +4502,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Listi yfir greinar",
+            "noBranches": "Engar greinar fundust",
+            "rawUrlCopied": "Hrátt vefslóð afrituð",
+            "working": "vinnur"
         },
         "filenNotes": {
             "title": "Dulkóðaðar minnispunktar",
@@ -5332,7 +5361,8 @@
             "defaultSaltToggleHint": "Opinbert fast salt (rclone-stíll). Krefst myndaðs lykilorðs með mikilli óreiðu. Sama lykilorð á mörgum geymslum gerir dulrituð nöfn tengjanleg án lykils.",
             "defaultSaltNeedsStronger": "Sláðu inn sterkt myndað lykilorð til að kveikja á sjálfgefna saltinu.",
             "defaultSaltOneSaltNote": "Það er aðeins eitt salt: 32 bæti, opinbert, eins fyrir allar hvelfingar með sjálfgefið salt.",
-            "defaultSaltValueLabel": "Opinbert sjálfgefið salt (AeroCrypt v3), SHA-256 af"
+            "defaultSaltValueLabel": "Opinbert sjálfgefið salt (AeroCrypt v3), SHA-256 af",
+            "defaultSaltTierMeaning": "Sjálfgefið salt þýðir að lykilorðið eitt opnar hvelfinguna: ekkert annað þarf að hafa meðferðis og ekkert annað verndar hana."
         },
         "modalGuard": {
             "busyTitle": "Aðgerð í gangi",
@@ -5608,6 +5638,12 @@
                 "portalMissing": "Engin skjáborðsgátt er uppsett, því getur þetta kerfi ekki opnað skráaval. Settu upp xdg-desktop-portal og bakenda fyrir skjáborðið þitt (til dæmis xdg-desktop-portal-gtk) og prófaðu aftur.",
                 "unknown": "Ekki var unnt að opna skráaval. Sjá annál forritsins fyrir nánari upplýsingar."
             }
+        },
+        "errors": {
+            "unknown": "Óþekkt villa"
+        },
+        "rename": {
+            "invalidCharacters": "Nafn má ekki innihalda / eða \\, röðina .. eða núlltákn."
         }
     }
 }

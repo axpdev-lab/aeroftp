@@ -359,7 +359,7 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
                   disabled={!newCoAuthor.trim()}
                   className="p-1.5 rounded-lg transition-colors disabled:opacity-30"
                   style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
-                  title={t('common.add') || 'Add'}
+                  title={t('common.add')}
                 >
                   <Plus size={12} />
                 </button>

@@ -71,7 +71,16 @@
             "current": "geçerli",
             "goToActiveSession": "Etkin oturuma git",
             "password": "Parola",
-            "default": "Varsayılan"
+            "default": "Varsayılan",
+            "add": "Ekle",
+            "apply": "Uygula",
+            "later": "Daha sonra",
+            "path": "Yol",
+            "remove": "Kaldır",
+            "reset": "Sıfırla",
+            "saved": "Kaydedildi",
+            "saving": "Kaydediliyor...",
+            "creating": "Oluşturuluyor..."
         },
         "connection": {
             "title": "Sunucuya Bağlan",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Buraya çıkarmak mevcut {count} öğenin üzerine yazacak: {names}. Devam edilsin mi?",
             "permanentDeleteHint": "Yalnızca seçili öğeleri Çöp Kutusu'ndan kalıcı olarak siler. Bu işlem geri alınamaz.",
             "emptyTrashHint": "Yalnızca seçili olanları değil, Çöp Kutusu'ndaki TÜM öğeleri kalıcı olarak siler. Bu işlem geri alınamaz.",
-            "dropboxPurgeBusinessOnly": "Kalıcı Silme ve Çöp Kutusunu Boşaltma, Dropbox Business/Team hesabı gerektirir."
+            "dropboxPurgeBusinessOnly": "Kalıcı Silme ve Çöp Kutusunu Boşaltma, Dropbox Business/Team hesabı gerektirir.",
+            "setAsPrivate": "Gizli Olarak Ayarla",
+            "setAsPublic": "Herkese Açık Olarak Ayarla",
+            "makeAllPrivate": "Tümünü özel yap"
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Geçerli işleyici",
             "encryptionPrivacyTitle": "Şifreleme gizliliği",
             "warnSameNameEncrypted": "Şifreli kasalarda aynı adlı girişleri işaretle",
-            "warnSameNameEncryptedDesc": "Varsayılan olarak kapalı. Etkin bir AeroCrypt veya rclone-crypt katmanı içinde, adı ziyaret ettiğiniz başka bir yolda da görünen dosya ve klasörleri işaretleyin. Adlar deterministik olarak şifrelenir, bu nedenle özdeş adlar şifreli deponun bir gözlemcisine özdeş olarak görünür (rclone-crypt ve Cryptomator ile aynı ödünleşim)."
+            "warnSameNameEncryptedDesc": "Varsayılan olarak kapalı. Etkin bir AeroCrypt veya rclone-crypt katmanı içinde, adı ziyaret ettiğiniz başka bir yolda da görünen dosya ve klasörleri işaretleyin. Adlar deterministik olarak şifrelenir, bu nedenle özdeş adlar şifreli deponun bir gözlemcisine özdeş olarak görünür (rclone-crypt ve Cryptomator ile aynı ödünleşim).",
+            "loading": "Yükleniyor..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Çift adı",
             "managePairs": "Çiftleri yönet",
             "importLegacy": "Mevcut olanı çift olarak içe aktar",
-            "importLegacyHint": "Mevcut tek AeroCloud yapılandırmanızı ilk çift olarak içe aktarın (geriye uyumluluğu korur)."
+            "importLegacyHint": "Mevcut tek AeroCloud yapılandırmanızı ilk çift olarak içe aktarın (geriye uyumluluğu korur).",
+            "versionHistory": "Sürüm Geçmişi",
+            "restoreVersion": "Bu sürümü geri yükle",
+            "cleanupDone": "Temizlendi",
+            "cleanupVersions": "Eski sürümleri temizle",
+            "noRemoteFolders": "Uzak klasör bulunamadı",
+            "noVersions": "Arşivlenmiş sürüm bulunamadı",
+            "reauthRequired": "Yetkilendirmenin süresi doldu. Eşitlemeyi sürdürmek için lütfen yeniden yetkilendirin.",
+            "scanningFolders": "Uzak klasörler taranıyor..."
         },
         "statusBar": {
             "connected": "Bağlı",
@@ -1424,7 +1445,10 @@
             "dropImported": "Bu klasöre {count} öğe içe aktarıldı",
             "dropFailed": "{count} öğe içe aktarılamadı",
             "connectionCancelledHint": "Listeleme durduruldu ve bağlantı kapatıldı.",
-            "connectTimedOut": "Bağlantı zaman aşımına uğradı. Sunucu hiç yanıt vermedi ve deneme iptal edildi."
+            "connectTimedOut": "Bağlantı zaman aşımına uğradı. Sunucu hiç yanıt vermedi ve deneme iptal edildi.",
+            "transferFailed": "Aktarım başarısız",
+            "navigationFailed": "Gezinme başarısız: {error}",
+            "transferComplete": "{count} dosya kopyalandı"
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Ağ hatası. İnternet bağlantınızı ve sağlayıcı URL'sini kontrol edin.",
                 "noProvider": "Ayarlarda bir AI sağlayıcısı yapılandırdığınızdan emin olun.",
                 "rateLimited": "Sağlayıcı tarafından hız sınırlandırıldı. Bir süre bekleyin ve tekrar deneyin.",
-                "toolsNotSupported": "Bu model araç kullanımını desteklemiyor. AI Ayarları → Modeller'de bu model için \"Araçlar\" seçeneğini devre dışı bırakın."
+                "toolsNotSupported": "Bu model araç kullanımını desteklemiyor. AI Ayarları → Modeller'de bu model için \"Araçlar\" seçeneğini devre dışı bırakın.",
+                "noProjectContext": "Aracı belleği için proje bağlamı yok."
             },
             "toolLabels": {
                 "agent_memory_write": "Bellek",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Dal listesi",
+            "noBranches": "Dal bulunamadı",
+            "rawUrlCopied": "Ham URL kopyalandı",
+            "working": "çalışıyor"
         },
         "filenNotes": {
             "title": "Şifreli Notlar",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Herkese açık sabit tuz (rclone-style). Yüksek entropili üretilmiş parola gerektirir. Birden fazla kasada aynı parola kullanmak, anahtar olmadan şifrelenmiş adları bağlanabilir hale getirir.",
             "defaultSaltNeedsStronger": "Varsayılan salt'ı açmak için güçlü, oluşturulmuş bir parola girin.",
             "defaultSaltOneSaltNote": "Tek bir salt vardır: 32 bayt, herkese açık ve varsayılan salt kullanan tüm kasalarda aynıdır.",
-            "defaultSaltValueLabel": "Herkese açık varsayılan tuz (AeroCrypt v3), şunun SHA-256'sı"
+            "defaultSaltValueLabel": "Herkese açık varsayılan tuz (AeroCrypt v3), şunun SHA-256'sı",
+            "defaultSaltTierMeaning": "Varsayılan tuz, kasayı yalnızca parolanın açtığı anlamına gelir: yanınızda taşımanız gereken başka bir şey yoktur ve onu koruyan başka bir şey de yoktur."
         },
         "modalGuard": {
             "busyTitle": "İşlem sürüyor",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Masaüstü portalı kurulu olmadığı için bu sistemde dosya seçici açılamıyor. xdg-desktop-portal paketini ve masaüstünüz için bir arka uç (örneğin xdg-desktop-portal-gtk) kurup yeniden deneyin.",
                 "unknown": "Dosya seçici açılamadı. Ayrıntılar için uygulama günlüğüne bakın."
             }
+        },
+        "errors": {
+            "unknown": "Bilinmeyen hata"
+        },
+        "rename": {
+            "invalidCharacters": "Bir ad / veya \\ karakterini, .. dizisini ya da boş karakteri içeremez."
         }
     }
 }

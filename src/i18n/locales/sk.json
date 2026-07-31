@@ -71,7 +71,16 @@
             "current": "aktuálny",
             "goToActiveSession": "Prejsť na aktívnu reláciu",
             "password": "Heslo",
-            "default": "Predvolené"
+            "default": "Predvolené",
+            "add": "Pridať",
+            "apply": "Aplikovat",
+            "later": "Neskôr",
+            "path": "Cesta",
+            "remove": "Odobrat",
+            "reset": "Resetovať",
+            "saved": "Ulozene",
+            "saving": "Ukladanie...",
+            "creating": "Vytvára sa..."
         },
         "connection": {
             "title": "Pripojenie k serveru",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Rozbalenie sem prepíše {count} existujúce položky: {names}. Pokračovať?",
             "permanentDeleteHint": "Natrvalo odstráni iba vybrané položky z Koša. Túto akciu nie je možné vrátiť späť.",
             "emptyTrashHint": "Natrvalo odstráni VŠETKY položky v Koši, nielen vybrané. Túto akciu nie je možné vrátiť späť.",
-            "dropboxPurgeBusinessOnly": "Trvalé odstránenie a vyprázdnenie koša vyžadujú účet Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "Trvalé odstránenie a vyprázdnenie koša vyžadujú účet Dropbox Business/Team.",
+            "setAsPrivate": "Nastaviť ako súkromný",
+            "setAsPublic": "Nastaviť ako verejný",
+            "makeAllPrivate": "Nastaviť všetko ako súkromné"
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Aktuálny obslužný program",
             "encryptionPrivacyTitle": "Súkromie šifrovania",
             "warnSameNameEncrypted": "Označiť položky s rovnakým názvom v šifrovaných trezoroch",
-            "warnSameNameEncryptedDesc": "Predvolene vypnuté. Vnútri aktívnej vrstvy AeroCrypt alebo rclone-crypt označuj súbory a priečinky, ktorých názov sa objavuje aj na inej ceste, ktorú navštívite. Názvy sa šifrujú deterministicky, takže zhodné názvy sú pre pozorovateľa šifrovaného úložiska viditeľné ako zhodné (rovnaký kompromis ako pri rclone-crypt a Cryptomator)."
+            "warnSameNameEncryptedDesc": "Predvolene vypnuté. Vnútri aktívnej vrstvy AeroCrypt alebo rclone-crypt označuj súbory a priečinky, ktorých názov sa objavuje aj na inej ceste, ktorú navštívite. Názvy sa šifrujú deterministicky, takže zhodné názvy sú pre pozorovateľa šifrovaného úložiska viditeľné ako zhodné (rovnaký kompromis ako pri rclone-crypt a Cryptomator).",
+            "loading": "Nacitavanie..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Názov páru",
             "managePairs": "Spravovať páry",
             "importLegacy": "Importovať aktuálne ako pár",
-            "importLegacyHint": "Importujte svoju existujúcu jedinú konfiguráciu AeroCloud ako prvý pár (zachováva spätnú kompatibilitu)."
+            "importLegacyHint": "Importujte svoju existujúcu jedinú konfiguráciu AeroCloud ako prvý pár (zachováva spätnú kompatibilitu).",
+            "versionHistory": "História verzií",
+            "restoreVersion": "Obnovit tuto verziu",
+            "cleanupDone": "Vyčistené",
+            "cleanupVersions": "Vyčistiť staré verzie",
+            "noRemoteFolders": "Nenašli sa žiadne vzdialené priečinky",
+            "noVersions": "Nenašli sa žiadne archivované verzie",
+            "reauthRequired": "Platnosť autorizácie vypršala. Pre pokračovanie synchronizácie autorizujte znova.",
+            "scanningFolders": "Prehľadávanie vzdialených priečinkov..."
         },
         "statusBar": {
             "connected": "Pripojený",
@@ -1424,7 +1445,10 @@
             "dropImported": "Importovaných {count} položiek do tohto priečinka",
             "dropFailed": "Nepodarilo sa importovať {count} položiek",
             "connectionCancelledHint": "Výpis bol zastavený a pripojenie zatvorené.",
-            "connectTimedOut": "Vypršal časový limit pripojenia. Server nikdy neodpovedal a pokus bol prerušený."
+            "connectTimedOut": "Vypršal časový limit pripojenia. Server nikdy neodpovedal a pokus bol prerušený.",
+            "transferFailed": "Prenos zlyhal",
+            "navigationFailed": "Navigácia zlyhala: {error}",
+            "transferComplete": "Skopírovaných {count} súborov"
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Chyba siete. Skontrolujte internetové pripojenie a URL poskytovateľa.",
                 "noProvider": "Uistite sa, že ste nakonfigurovali poskytovateľa AI v nastavení.",
                 "rateLimited": "Limit požiadaviek prekročený poskytovateľom. Počkajte chvíľu a skúste to znova.",
-                "toolsNotSupported": "Tento model nepodporuje použitie nástrojov. Deaktivujte \"Nástroje\" pre tento model v Nastavenie AI → Modely."
+                "toolsNotSupported": "Tento model nepodporuje použitie nástrojov. Deaktivujte \"Nástroje\" pre tento model v Nastavenie AI → Modely.",
+                "noProjectContext": "Pre pamäť agenta nie je k dispozícii žiadny kontext projektu."
             },
             "toolLabels": {
                 "agent_memory_write": "Pamäť",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Zoznam vetiev",
+            "noBranches": "Nenašli sa žiadne vetvy",
+            "rawUrlCopied": "Nespracovaná adresa URL skopírovaná",
+            "working": "pracuje"
         },
         "filenNotes": {
             "title": "Šifrované poznámky",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Verejná konštantná soľ (rclone-style). Vyžaduje vygenerované heslo s vysokou entropiou. Rovnaké heslo na viacerých trezoroch robí šifrované názvy prepojiteľnými bez kľúča.",
             "defaultSaltNeedsStronger": "Zadajte silné vygenerované heslo na zapnutie predvoleného saltu.",
             "defaultSaltOneSaltNote": "Existuje jediná soľ: 32 bajtov, verejná, rovnaká pre každý trezor s predvolenou soľou.",
-            "defaultSaltValueLabel": "Verejná predvolená soľ (AeroCrypt v3), SHA-256 z"
+            "defaultSaltValueLabel": "Verejná predvolená soľ (AeroCrypt v3), SHA-256 z",
+            "defaultSaltTierMeaning": "Predvolená soľ znamená, že trezor otvorí samotné heslo: nič ďalšie netreba nosiť so sebou a nič ďalšie ho nechráni."
         },
         "modalGuard": {
             "busyTitle": "Prebieha operácia",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Nie je nainštalovaný žiadny portál pracovnej plochy, takže tento systém nemôže otvoriť dialóg na výber súborov. Nainštalujte xdg-desktop-portal a backend pre vaše prostredie (napríklad xdg-desktop-portal-gtk) a skúste to znova.",
                 "unknown": "Dialóg na výber súborov sa nepodarilo otvoriť. Podrobnosti nájdete v protokole aplikácie."
             }
+        },
+        "errors": {
+            "unknown": "Neznáma chyba"
+        },
+        "rename": {
+            "invalidCharacters": "Názov nesmie obsahovať / ani \\, sekvenciu .. ani nulový znak."
         }
     }
 }

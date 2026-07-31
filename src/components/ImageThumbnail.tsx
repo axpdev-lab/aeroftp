@@ -52,7 +52,10 @@ export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
     if (error || !src) {
         return <div className="file-grid-icon">{fallbackIcon}</div>;
     }
-    return <img src={src} alt={name} className={className || "file-grid-thumbnail"} />;
+    // `object-contain`: show the file whole. `cover` crops whatever does not fit
+    // the square, which on a wide photo is both edges and on a screenshot is
+    // usually the part that identifies it (discussion #347).
+    return <img src={src} alt={name} className={className || "file-grid-thumbnail object-contain"} />;
 };
 
 export default ImageThumbnail;

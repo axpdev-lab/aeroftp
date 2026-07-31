@@ -71,7 +71,16 @@
             "current": "hiện tại",
             "goToActiveSession": "Đến phiên đang hoạt động",
             "password": "Mật khẩu",
-            "default": "Mặc định"
+            "default": "Mặc định",
+            "add": "Thêm",
+            "apply": "Áp dụng",
+            "later": "Để sau",
+            "path": "Đường dẫn",
+            "remove": "Xóa",
+            "reset": "Đặt lại",
+            "saved": "Đã lưu",
+            "saving": "Đang lưu...",
+            "creating": "Đang tạo..."
         },
         "connection": {
             "title": "Kết nối đến máy chủ",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Giải nén tại đây sẽ ghi đè {count} mục hiện có: {names}. Tiếp tục?",
             "permanentDeleteHint": "Xóa vĩnh viễn chỉ các mục đã chọn khỏi Thùng rác. Không thể hoàn tác thao tác này.",
             "emptyTrashHint": "Xóa vĩnh viễn TẤT CẢ các mục trong Thùng rác, không chỉ những mục đã chọn. Không thể hoàn tác thao tác này.",
-            "dropboxPurgeBusinessOnly": "Xóa vĩnh viễn và Dọn sạch thùng rác yêu cầu tài khoản Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "Xóa vĩnh viễn và Dọn sạch thùng rác yêu cầu tài khoản Dropbox Business/Team.",
+            "setAsPrivate": "Đặt làm riêng tư",
+            "setAsPublic": "Đặt làm công khai",
+            "makeAllPrivate": "Đặt tất cả ở chế độ riêng tư"
         },
         "transfer": {
             "transferring": "Đang truyền...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Trình xử lý hiện tại",
             "encryptionPrivacyTitle": "Quyền riêng tư mã hóa",
             "warnSameNameEncrypted": "Đánh dấu các mục trùng tên trong kho mã hóa",
-            "warnSameNameEncryptedDesc": "Tắt theo mặc định. Bên trong lớp phủ AeroCrypt hoặc rclone-crypt đang hoạt động, hãy đánh dấu các tệp và thư mục có tên cũng xuất hiện ở một đường dẫn khác mà bạn truy cập. Tên được mã hóa theo cách xác định, nên các tên giống hệt nhau hiển thị giống hệt nhau đối với người quan sát kho lưu trữ đã mã hóa (cùng sự đánh đổi như rclone-crypt và Cryptomator)."
+            "warnSameNameEncryptedDesc": "Tắt theo mặc định. Bên trong lớp phủ AeroCrypt hoặc rclone-crypt đang hoạt động, hãy đánh dấu các tệp và thư mục có tên cũng xuất hiện ở một đường dẫn khác mà bạn truy cập. Tên được mã hóa theo cách xác định, nên các tên giống hệt nhau hiển thị giống hệt nhau đối với người quan sát kho lưu trữ đã mã hóa (cùng sự đánh đổi như rclone-crypt và Cryptomator).",
+            "loading": "Đang tải..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Tên cặp",
             "managePairs": "Quản lý cặp",
             "importLegacy": "Nhập hiện tại làm cặp",
-            "importLegacyHint": "Nhập cấu hình AeroCloud đơn lẻ hiện có của bạn làm cặp đầu tiên (giữ tương thích ngược)."
+            "importLegacyHint": "Nhập cấu hình AeroCloud đơn lẻ hiện có của bạn làm cặp đầu tiên (giữ tương thích ngược).",
+            "versionHistory": "Lịch sử phiên bản",
+            "restoreVersion": "Khôi phục phiên bản này",
+            "cleanupDone": "Đã dọn dẹp",
+            "cleanupVersions": "Dọn dẹp các phiên bản cũ",
+            "noRemoteFolders": "Không tìm thấy thư mục từ xa",
+            "noVersions": "Không tìm thấy phiên bản lưu trữ",
+            "reauthRequired": "Ủy quyền đã hết hạn. Vui lòng ủy quyền lại để tiếp tục đồng bộ.",
+            "scanningFolders": "Đang quét thư mục từ xa..."
         },
         "statusBar": {
             "connected": "Đã kết nối",
@@ -1424,7 +1445,10 @@
             "dropImported": "Đã nhập {count} mục vào thư mục này",
             "dropFailed": "Không thể nhập {count} mục",
             "connectionCancelledHint": "Đã dừng liệt kê và đóng kết nối.",
-            "connectTimedOut": "Kết nối đã hết thời gian chờ. Máy chủ không bao giờ phản hồi và nỗ lực đã bị hủy bỏ."
+            "connectTimedOut": "Kết nối đã hết thời gian chờ. Máy chủ không bao giờ phản hồi và nỗ lực đã bị hủy bỏ.",
+            "transferFailed": "Truyền thất bại",
+            "navigationFailed": "Điều hướng thất bại: {error}",
+            "transferComplete": "Đã sao chép {count} tệp"
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Lỗi mạng. Kiểm tra kết nối internet và URL nhà cung cấp.",
                 "noProvider": "Đảm bảo bạn đã cấu hình nhà cung cấp AI trong cài đặt.",
                 "rateLimited": "Bị giới hạn tốc độ bởi nhà cung cấp. Chờ một lát rồi thử lại.",
-                "toolsNotSupported": "Mô hình này không hỗ trợ sử dụng công cụ. Tắt \"Công cụ\" cho mô hình này trong Cài đặt AI → Mô hình."
+                "toolsNotSupported": "Mô hình này không hỗ trợ sử dụng công cụ. Tắt \"Công cụ\" cho mô hình này trong Cài đặt AI → Mô hình.",
+                "noProjectContext": "Không có ngữ cảnh dự án nào cho bộ nhớ tác nhân."
             },
             "toolLabels": {
                 "agent_memory_write": "Bộ nhớ",
@@ -4458,7 +4483,11 @@
             "accessToken": "Personal Access Token",
             "patHint": "Fine-grained PAT with repository access",
             "appHint": "PEM key is imported and stored in the vault from the connection screen.",
-            "branchOptional": "Branch (optional)"
+            "branchOptional": "Branch (optional)",
+            "branchList": "Danh sách nhánh",
+            "noBranches": "Không tìm thấy nhánh",
+            "rawUrlCopied": "Đã sao chép URL thô",
+            "working": "đang chạy"
         },
         "filenNotes": {
             "title": "Ghi chú mã hóa",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Muối hằng số công khai (kiểu rclone). Yêu cầu mật khẩu được tạo có độ entropy cao. Cùng một mật khẩu trên nhiều kho làm cho tên đã mã hóa có thể liên kết mà không cần khóa.",
             "defaultSaltNeedsStronger": "Nhập mật khẩu mạnh đã tạo để bật salt mặc định.",
             "defaultSaltOneSaltNote": "Chỉ có một salt duy nhất: 32 byte, công khai, giống nhau cho mọi kho sử dụng salt mặc định.",
-            "defaultSaltValueLabel": "Salt mặc định công khai (AeroCrypt v3), SHA-256 của"
+            "defaultSaltValueLabel": "Salt mặc định công khai (AeroCrypt v3), SHA-256 của",
+            "defaultSaltTierMeaning": "Muối mặc định nghĩa là chỉ riêng mật khẩu mở được kho: không phải mang theo gì khác, và cũng không có gì khác bảo vệ nó."
         },
         "modalGuard": {
             "busyTitle": "Đang thực hiện thao tác",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Chưa cài đặt cổng desktop nào, nên hệ thống này không thể mở hộp thoại chọn tệp. Hãy cài xdg-desktop-portal và một backend cho desktop của bạn (ví dụ xdg-desktop-portal-gtk), rồi thử lại.",
                 "unknown": "Không thể mở hộp thoại chọn tệp. Xem bản ghi ứng dụng để biết chi tiết."
             }
+        },
+        "errors": {
+            "unknown": "Lỗi không xác định"
+        },
+        "rename": {
+            "invalidCharacters": "Tên không được chứa / hoặc \\, chuỗi .. hay ký tự null."
         }
     }
 }

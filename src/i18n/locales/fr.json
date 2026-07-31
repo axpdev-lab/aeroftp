@@ -71,7 +71,16 @@
             "current": "actuel",
             "goToActiveSession": "Aller à la session active",
             "password": "Mot de passe",
-            "default": "Par défaut"
+            "default": "Par défaut",
+            "add": "Ajouter",
+            "apply": "Appliquer",
+            "later": "Plus tard",
+            "path": "Chemin",
+            "remove": "Supprimer",
+            "reset": "Réinitialiser",
+            "saved": "Enregistre",
+            "saving": "Enregistrement...",
+            "creating": "Création..."
         },
         "connection": {
             "title": "Connexion au Serveur",
@@ -487,7 +496,10 @@
             "extractOverwriteConfirm": "Extraire ici écrasera {count} élément(s) existant(s) : {names}. Continuer ?",
             "permanentDeleteHint": "Supprime définitivement uniquement les éléments sélectionnés de la Corbeille. Cette action est irréversible.",
             "emptyTrashHint": "Supprime définitivement TOUS les éléments de la Corbeille, pas seulement ceux sélectionnés. Cette action est irréversible.",
-            "dropboxPurgeBusinessOnly": "La suppression définitive et le vidage de la corbeille nécessitent un compte Dropbox Business/Team."
+            "dropboxPurgeBusinessOnly": "La suppression définitive et le vidage de la corbeille nécessitent un compte Dropbox Business/Team.",
+            "setAsPrivate": "Définir comme privé",
+            "setAsPublic": "Définir comme public",
+            "makeAllPrivate": "Tout rendre privé"
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -1122,7 +1134,8 @@
             "fileAssociationCurrentHandler": "Gestionnaire actuel",
             "encryptionPrivacyTitle": "Confidentialité du chiffrement",
             "warnSameNameEncrypted": "Signaler les entrées de même nom dans les coffres chiffrés",
-            "warnSameNameEncryptedDesc": "Désactivé par défaut. Dans une superposition AeroCrypt ou rclone-crypt active, marquez les fichiers et dossiers dont le nom apparaît également sur un autre chemin que vous visitez. Les noms sont chiffrés de manière déterministe, de sorte que les noms identiques sont visibles comme identiques pour un observateur du stockage chiffré (le même compromis que rclone-crypt et Cryptomator)."
+            "warnSameNameEncryptedDesc": "Désactivé par défaut. Dans une superposition AeroCrypt ou rclone-crypt active, marquez les fichiers et dossiers dont le nom apparaît également sur un autre chemin que vous visitez. Les noms sont chiffrés de manière déterministe, de sorte que les noms identiques sont visibles comme identiques pour un observateur du stockage chiffré (le même compromis que rclone-crypt et Cryptomator).",
+            "loading": "Chargement..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1282,7 +1295,15 @@
             "pairNamePlaceholder": "Nom de la paire",
             "managePairs": "Gérer les paires",
             "importLegacy": "Importer l'actuel comme paire",
-            "importLegacyHint": "Importez votre configuration AeroCloud unique existante comme première paire (maintient la rétrocompatibilité)."
+            "importLegacyHint": "Importez votre configuration AeroCloud unique existante comme première paire (maintient la rétrocompatibilité).",
+            "versionHistory": "Historique des versions",
+            "restoreVersion": "Restaurer cette version",
+            "cleanupDone": "Nettoyé",
+            "cleanupVersions": "Nettoyer les anciennes versions",
+            "noRemoteFolders": "Aucun dossier distant trouvé",
+            "noVersions": "Aucune version archivée trouvée",
+            "reauthRequired": "L'autorisation a expiré. Veuillez réautoriser pour reprendre la synchronisation.",
+            "scanningFolders": "Analyse des dossiers distants..."
         },
         "statusBar": {
             "connected": "Connecté",
@@ -1424,7 +1445,10 @@
             "dropImported": "{count} éléments importés dans ce dossier",
             "dropFailed": "Échec de l'importation de {count} éléments",
             "connectionCancelledHint": "Le listage a été arrêté et la connexion fermée.",
-            "connectTimedOut": "Délai de connexion dépassé. Le serveur n'a jamais répondu et la tentative a été abandonnée."
+            "connectTimedOut": "Délai de connexion dépassé. Le serveur n'a jamais répondu et la tentative a été abandonnée.",
+            "transferFailed": "Échec du transfert",
+            "navigationFailed": "Échec de la navigation : {error}",
+            "transferComplete": "{count} fichier(s) copié(s)"
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
@@ -2685,7 +2709,8 @@
                 "networkError": "Erreur réseau. Vérifiez votre connexion Internet et l'URL du fournisseur.",
                 "noProvider": "Assurez-vous d'avoir configuré un fournisseur AI dans les paramètres.",
                 "rateLimited": "Limité par le fournisseur. Attendez un moment et réessayez.",
-                "toolsNotSupported": "Ce modèle ne prend pas en charge l'utilisation d'outils. Désactivez \"Outils\" pour ce modèle dans Paramètres AI → Modèles."
+                "toolsNotSupported": "Ce modèle ne prend pas en charge l'utilisation d'outils. Désactivez \"Outils\" pour ce modèle dans Paramètres AI → Modèles.",
+                "noProjectContext": "Aucun contexte de projet disponible pour la mémoire de l'agent."
             },
             "toolLabels": {
                 "agent_memory_write": "Mémoire",
@@ -4458,7 +4483,11 @@
             "accessToken": "Jeton d'accès personnel",
             "patHint": "PAT à granularité fine avec accès au dépôt",
             "appHint": "La clé PEM est importée et stockée dans le coffre depuis l'écran de connexion.",
-            "branchOptional": "Branche (optionnel)"
+            "branchOptional": "Branche (optionnel)",
+            "branchList": "Liste des branches",
+            "noBranches": "Aucune branche trouvée",
+            "rawUrlCopied": "URL brute copiée",
+            "working": "en cours"
         },
         "filenNotes": {
             "title": "Notes chiffrées",
@@ -5313,7 +5342,8 @@
             "defaultSaltToggleHint": "Sel constant public (style rclone). Nécessite un mot de passe généré à haute entropie. Le même mot de passe sur plusieurs coffres rend les noms chiffrés associables sans la clé.",
             "defaultSaltNeedsStronger": "Saisissez un mot de passe généré fort pour activer le sel par défaut.",
             "defaultSaltOneSaltNote": "Il n'existe qu'un seul salt : 32 octets, public, identique pour tous les coffres en salt par défaut.",
-            "defaultSaltValueLabel": "Salt public par défaut (AeroCrypt v3), SHA-256 de"
+            "defaultSaltValueLabel": "Salt public par défaut (AeroCrypt v3), SHA-256 de",
+            "defaultSaltTierMeaning": "Le sel par défaut signifie que le mot de passe seul ouvre le coffre : il n'y a rien d'autre à emporter, et rien d'autre ne le protège."
         },
         "modalGuard": {
             "busyTitle": "Opération en cours",
@@ -5589,6 +5619,12 @@
                 "portalMissing": "Aucun portail de bureau n'est installé, ce système ne peut donc pas ouvrir de sélecteur de fichiers. Installez xdg-desktop-portal ainsi qu'un backend adapté à votre bureau (par exemple xdg-desktop-portal-gtk), puis réessayez.",
                 "unknown": "Le sélecteur de fichiers n'a pas pu être ouvert. Consultez le journal de l'application pour plus de détails."
             }
+        },
+        "errors": {
+            "unknown": "Erreur inconnue"
+        },
+        "rename": {
+            "invalidCharacters": "Un nom ne peut pas contenir / ni \\, la séquence .. ni un caractère nul."
         }
     }
 }
