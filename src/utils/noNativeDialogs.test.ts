@@ -87,8 +87,26 @@ describe('native browser dialogs', () => {
         // is reachable while a Tauri event storm re-renders the panel behind.
         const overlay = sources['../components/common/ConfirmOverlay.tsx'];
         expect(overlay).toMatch(/onCancelRef\.current\(\)/);
+        // Anchored on the effect's own closing dependency array rather than on a
+        // fixed window: the effect grew when the focus trap landed, and a window
+        // that no longer reached the end would have failed on a correct file.
         const effect = overlay.slice(overlay.indexOf('const onKey'));
-        expect(effect.slice(0, 400)).toMatch(/\}, \[\]\);/);
+        const deps = effect.slice(0, effect.indexOf('\n\n'));
+        expect(deps).toMatch(/\}, \[\]\);\s*$/);
+    });
+
+    it('holds Tab inside the question and gives focus back on close', () => {
+        // These overlays render inside the modal that raised them and hide
+        // nothing, so without a trap Tab walks straight out of something that
+        // declares `aria-modal` into the panel underneath; and without the
+        // restore, answering moves focus to the body and the next tab run starts
+        // from the top of the page.
+        const overlay = sources['../components/common/ConfirmOverlay.tsx'];
+        expect(overlay).toMatch(/const returnTo = document\.activeElement/);
+        expect(overlay).toMatch(/returnTo\?\.focus\?\.\(\)/);
+        expect(overlay).toMatch(/event\.key !== 'Tab'/);
+        expect(overlay).toMatch(/event\.shiftKey/);
+        expect(overlay).toMatch(/ref=\{boxRef\}/);
     });
 
     it('every component that raises one passes a MODAL_Z tier', () => {

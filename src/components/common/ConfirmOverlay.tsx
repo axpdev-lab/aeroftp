@@ -53,18 +53,45 @@ export const ConfirmOverlay: React.FC<ConfirmOverlayProps> = ({
     const onCancelRef = React.useRef(onCancel);
     onCancelRef.current = onCancel;
 
+    const boxRef = React.useRef<HTMLDivElement>(null);
+
     // Escape answers "no". A confirmation with no keyboard way out is the same
     // trap as one that cannot be clicked.
+    //
+    // Tab is held inside the two buttons, and focus goes back where it came from
+    // on close. Without the trap, tabbing walks straight out of a dialog that
+    // declares `aria-modal` into the panel underneath, which is still there:
+    // these overlays are rendered inside the modal that raised them and hide
+    // nothing. Without the restore, answering a question moves focus to the body
+    // and a keyboard user starts the next tab run from the top of the page.
     React.useEffect(() => {
+        const returnTo = document.activeElement as HTMLElement | null;
         const onKey = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
                 event.stopPropagation();
                 onCancelRef.current();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const focusable = boxRef.current?.querySelectorAll<HTMLElement>('button:not([disabled])');
+            if (!focusable || focusable.length === 0) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            const active = document.activeElement;
+            if (event.shiftKey && (active === first || !boxRef.current?.contains(active))) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && (active === last || !boxRef.current?.contains(active))) {
+                event.preventDefault();
+                first.focus();
             }
         };
         document.addEventListener('keydown', onKey, true);
         cancelRef.current?.focus();
-        return () => document.removeEventListener('keydown', onKey, true);
+        return () => {
+            document.removeEventListener('keydown', onKey, true);
+            returnTo?.focus?.();
+        };
     }, []);
 
     const confirmColorClass =
@@ -85,6 +112,7 @@ export const ConfirmOverlay: React.FC<ConfirmOverlayProps> = ({
             }}
         >
             <div
+                ref={boxRef}
                 className="mx-4 max-w-sm animate-scale-in rounded-lg border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-800"
                 onClick={(event) => event.stopPropagation()}
             >
