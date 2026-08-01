@@ -1251,8 +1251,9 @@ async fn remote_versions(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
 /// include_noncurrent to include older versions); undelete drops a delete marker
 /// so the object reappears; restore copies an older version forward; purge
 /// permanently removes one version or marker; empty purges the whole trash under
-/// the prefix (dry_run previews the count/bytes without deleting). All destructive
-/// actions are irreversible.
+/// the prefix (defaults to dry_run=true, a preview that deletes nothing; a real
+/// whole-bucket purge with an empty prefix also needs confirm_whole_bucket=true).
+/// All destructive actions are irreversible.
 async fn remote_trash(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let server = normalize_server(args)?;
     let action = get_str_opt(args, "action").unwrap_or_else(|| "list".to_string());
@@ -1314,7 +1315,16 @@ async fn remote_trash(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
             Ok(json!({ "server": server, "key": key, "version_id": version_id, "purged": true }))
         }
         "empty" => {
-            let dry_run = get_bool_opt(args, "dry_run").unwrap_or(false);
+            // Destructive-default guards: preview unless told otherwise, and a
+            // real whole-bucket sweep needs an explicit acknowledgement.
+            let dry_run = get_bool_opt(args, "dry_run").unwrap_or(true);
+            let confirm_whole_bucket = get_bool_opt(args, "confirm_whole_bucket").unwrap_or(false);
+            if !dry_run && prefix.is_empty() && !confirm_whole_bucket {
+                return Err(ToolError::InvalidArgs {
+                    tool: "remote_trash".to_string(),
+                    reason: "action=empty with an empty prefix permanently purges every version and delete marker in the whole bucket: pass a non-empty 'prefix' to scope the purge, or set confirm_whole_bucket=true to acknowledge a whole-bucket purge".to_string(),
+                });
+            }
             let (count, bytes) = backend
                 .empty_object_versions(&prefix, include_noncurrent, dry_run)
                 .await
@@ -2459,6 +2469,19 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let upload_sha = format!("{:x}", sha2::Sha256::digest(&payload));
 
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+
+    // Overwrite guard: the test uploads to remote_path and then deletes it,
+    // so a path that already exists is a real user file about to be destroyed.
+    // Refuse instead of clobbering (no overwrite flag exists by design).
+    if backend.stat(&remote_path).await.is_ok() {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_speed".to_string(),
+            reason: format!(
+                "remote_path '{remote_path}' already exists; the speed test would overwrite and then delete it. Omit remote_path for an auto-generated scratch path, or pick a path that does not exist"
+            ),
+        });
+    }
+
     let started = std::time::Instant::now();
     let mut upload_total_bps: f64 = 0.0;
     let mut download_total_bps: f64 = 0.0;
@@ -3321,6 +3344,9 @@ mod tests {
         renames: Mutex<Vec<(String, String)>>,
         deleted: Mutex<Vec<String>>,
         deleted_recursive: Mutex<Vec<String>>,
+        /// Every `empty_object_versions` call as (prefix, include_noncurrent,
+        /// dry_run), so trash tests can assert the flags the tool passed.
+        empty_calls: Mutex<Vec<(String, bool, bool)>>,
         /// When set, `delete` fails with this message, the way a provider's
         /// `rmdir` fails on a non-empty directory.
         delete_fails_with: Option<String>,
@@ -3360,6 +3386,7 @@ mod tests {
                 renames: Mutex::new(Vec::new()),
                 deleted: Mutex::new(Vec::new()),
                 deleted_recursive: Mutex::new(Vec::new()),
+                empty_calls: Mutex::new(Vec::new()),
                 delete_fails_with: None,
                 rename_fails_with: None,
             }
@@ -3483,6 +3510,19 @@ mod tests {
         }
         async fn storage_info(&self) -> Result<StorageQuota, String> {
             Err("unused".into())
+        }
+        async fn empty_object_versions(
+            &self,
+            prefix: &str,
+            include_noncurrent: bool,
+            dry_run: bool,
+        ) -> Result<(u64, u64), String> {
+            self.empty_calls.lock().unwrap().push((
+                prefix.to_string(),
+                include_noncurrent,
+                dry_run,
+            ));
+            Ok((7, 1234))
         }
     }
 
@@ -3875,5 +3915,129 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("Permission denied"), "got: {msg}");
         assert!(!msg.contains("recursive=true"), "must not mislead: {msg}");
+    }
+
+    // --- destructive-default guards: speed and trash empty -----------------
+
+    #[tokio::test]
+    async fn speed_refuses_an_existing_remote_path() {
+        // The speed test uploads to remote_path and then deletes it: a path
+        // that already exists is a real user file, so the tool must refuse
+        // before any upload.
+        let backend = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&backend));
+        let err = speed(
+            &ctx,
+            &json!({
+                "server": "s",
+                "remote_path": "/root/a.txt",
+                "size_mb": 1,
+            }),
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("already exists"), "got: {msg}");
+        assert!(backend.uploads.lock().unwrap().is_empty());
+        assert!(backend.deleted.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn speed_runs_on_a_fresh_scratch_path() {
+        // The guard must not break the normal case: a path that does not
+        // exist yet runs the test and cleans up afterwards.
+        let mut fake = FakeBackend::sample();
+        fake.downloads
+            .insert("/scratch/speed.bin".to_string(), vec![0u8; 16]);
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+        let value = speed(
+            &ctx,
+            &json!({
+                "server": "s",
+                "remote_path": "/scratch/speed.bin",
+                "size_mb": 1,
+                "verify_integrity": false,
+            }),
+        )
+        .await
+        .expect("speed should run on a fresh path");
+        assert_eq!(value["cleanup_ok"], json!(true));
+        assert_eq!(
+            backend.deleted.lock().unwrap().as_slice(),
+            &["/scratch/speed.bin".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn trash_empty_defaults_to_dry_run() {
+        let backend = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&backend));
+        let value = remote_trash(&ctx, &json!({"server": "s", "action": "empty"}))
+            .await
+            .expect("empty with defaults is a preview");
+        assert_eq!(value["dry_run"], json!(true));
+        let calls = backend.empty_calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].2, "backend must be called with dry_run=true");
+    }
+
+    #[tokio::test]
+    async fn trash_empty_whole_bucket_requires_confirm_flag() {
+        let backend = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&backend));
+        let err = remote_trash(
+            &ctx,
+            &json!({"server": "s", "action": "empty", "dry_run": false}),
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("confirm_whole_bucket"), "got: {msg}");
+        assert!(backend.empty_calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn trash_empty_scoped_prefix_purges_without_confirm() {
+        let backend = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&backend));
+        let value = remote_trash(
+            &ctx,
+            &json!({
+                "server": "s",
+                "action": "empty",
+                "dry_run": false,
+                "prefix": "logs/",
+            }),
+        )
+        .await
+        .expect("a scoped purge needs no whole-bucket flag");
+        assert_eq!(value["dry_run"], json!(false));
+        let calls = backend.empty_calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "logs/");
+        assert!(!calls[0].2);
+    }
+
+    #[tokio::test]
+    async fn trash_empty_whole_bucket_with_confirm_flag_proceeds() {
+        let backend = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&backend));
+        let value = remote_trash(
+            &ctx,
+            &json!({
+                "server": "s",
+                "action": "empty",
+                "dry_run": false,
+                "confirm_whole_bucket": true,
+            }),
+        )
+        .await
+        .expect("explicit confirmation allows the whole-bucket purge");
+        assert_eq!(value["dry_run"], json!(false));
+        let calls = backend.empty_calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "");
+        assert!(!calls[0].2);
     }
 }

@@ -4736,7 +4736,7 @@ enum VersionCommands {
         /// Preview the count and bytes without deleting anything
         #[arg(long)]
         dry_run: bool,
-        /// Skip the interactive confirmation prompt
+        /// Skip the interactive confirmation prompt (required in non-interactive runs)
         #[arg(long)]
         yes: bool,
     },
@@ -34029,9 +34029,21 @@ async fn cmd_versions_trash(
     code
 }
 
+/// Consent check for `versions empty-trash`: a real (non-dry-run) purge
+/// requires `--yes` or an interactive TTY confirmation. Non-interactive runs
+/// cannot answer the prompt, so without `--yes` they are refused outright.
+fn ensure_empty_trash_consent(dry_run: bool, yes: bool, interactive: bool) -> Result<(), String> {
+    if dry_run || yes || interactive {
+        Ok(())
+    } else {
+        Err("Refusing to purge trashed versions without --yes in non-interactive mode (use --dry-run to preview)".to_string())
+    }
+}
+
 /// `versions empty-trash`: purge every trashed version and delete marker under a
-/// prefix. Irreversible; `--dry-run` previews the count and bytes, and without
-/// `--yes` a real sweep prompts for confirmation on a TTY.
+/// prefix. Irreversible; `--dry-run` previews the count and bytes, without
+/// `--yes` a real sweep prompts for confirmation on a TTY, and non-interactive
+/// runs without `--yes` are refused.
 async fn cmd_versions_empty_trash(
     url: &str,
     prefix: &str,
@@ -34042,10 +34054,17 @@ async fn cmd_versions_empty_trash(
     format: OutputFormat,
 ) -> i32 {
     let rprefix = prefix.trim().to_string();
-    // Confirm the irreversible sweep before connecting (dry runs never prompt).
-    if !dry_run {
+    // Consent gate before connecting (dry runs and --yes pass straight through).
+    {
         use std::io::IsTerminal;
-        if !yes && std::io::stdin().is_terminal() {
+        if let Err(msg) = ensure_empty_trash_consent(dry_run, yes, std::io::stdin().is_terminal()) {
+            print_error(format, &msg, 2);
+            return 2;
+        }
+    }
+    // At this point a real sweep without --yes is interactive: prompt.
+    if !dry_run && !yes {
+        {
             let scope = if rprefix.is_empty() {
                 "the entire bucket".to_string()
             } else {
@@ -39959,6 +39978,20 @@ async fn run_single_speed_test(
             ))
         }
     };
+
+    // Overwrite guard: the test uploads to remote_test_path and then deletes
+    // it, so a path that already exists is a real user file about to be
+    // destroyed. Refuse instead of clobbering (no overwrite flag exists).
+    if provider.stat(remote_test_path).await.is_ok() {
+        let _ = provider.disconnect().await;
+        return Err((
+            format!(
+                "remote test path already exists: {} (refusing to overwrite; omit --remote-path for an auto-generated scratch path, or pick a path that does not exist)",
+                remote_test_path
+            ),
+            5,
+        ));
+    }
 
     let protocol = provider.provider_type().to_string();
 
@@ -65919,6 +65952,18 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn empty_trash_consent_refuses_non_interactive_without_yes() {
+        // A real purge in a piped/CI run used to skip the TTY prompt and
+        // sweep the trash with no confirmation at all.
+        let err = ensure_empty_trash_consent(false, false, false).unwrap_err();
+        assert!(err.contains("--yes"), "got: {err}");
+        // Dry runs, --yes, and an interactive TTY all pass the gate.
+        assert!(ensure_empty_trash_consent(true, false, false).is_ok());
+        assert!(ensure_empty_trash_consent(false, true, false).is_ok());
+        assert!(ensure_empty_trash_consent(false, false, true).is_ok());
+    }
 
     #[test]
     fn mode_endpoint_preset_rewrites_koofr_webdav_host() {

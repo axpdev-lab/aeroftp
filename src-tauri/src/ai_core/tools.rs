@@ -1345,7 +1345,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "remote_trash",
-            description: "Browse and manage the S3-family soft-delete trash under a prefix (every version and delete marker from ListObjectVersions). action=list returns entries ({key, display_key, version_id, is_delete_marker, is_latest, size, last_modified}); set include_noncurrent=true to also list older versions. action=undelete drops a delete marker so the object reappears (needs key+version_id); action=restore copies an older version forward (needs key+version_id); action=purge permanently removes one version or marker (needs key+version_id); action=empty purges the whole trash under the prefix (set dry_run=true to preview the count/bytes without deleting). All destructive actions are irreversible. S3 only. Defaults to list.",
+            description: "Browse and manage the S3-family soft-delete trash under a prefix (every version and delete marker from ListObjectVersions). action=list returns entries ({key, display_key, version_id, is_delete_marker, is_latest, size, last_modified}); set include_noncurrent=true to also list older versions. action=undelete drops a delete marker so the object reappears (needs key+version_id); action=restore copies an older version forward (needs key+version_id); action=purge permanently removes one version or marker (needs key+version_id); action=empty purges the whole trash under the prefix (defaults to dry_run=true, a preview that deletes nothing; a real whole-bucket purge with an empty prefix also needs confirm_whole_bucket=true). All destructive actions are irreversible. S3 only. Defaults to list.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -1355,7 +1355,8 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "key": {"type": "string", "description": "Raw object key from action=list; required for undelete, restore, purge"},
                     "version_id": {"type": "string", "description": "Required for undelete, restore, purge"},
                     "include_noncurrent": {"type": "boolean", "description": "List older (non-current) versions too. Default false."},
-                    "dry_run": {"type": "boolean", "description": "For action=empty: preview only, delete nothing. Default false."},
+                    "dry_run": {"type": "boolean", "description": "For action=empty: preview only, delete nothing. Default true."},
+                    "confirm_whole_bucket": {"type": "boolean", "description": "For action=empty with dry_run=false and an empty prefix: explicit acknowledgement of a whole-bucket purge. Default false."},
                 },
                 "required": [],
             }),
@@ -1668,7 +1669,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "size_mb": {"type": "integer", "description": "Test payload size in MiB (default 4, cap 64)"},
                     "iterations": {"type": "integer", "description": "Number of upload/download cycles (default 1, cap 3)"},
                     "verify_integrity": {"type": "boolean", "description": "Compare SHA-256 of upload vs download (default: true)"},
-                    "remote_path": {"type": "string", "description": "Optional explicit remote test path (default: '/.aeroftp-speedtest-<uuid>.bin'). Caller is responsible for choosing a writable location."}
+                    "remote_path": {"type": "string", "description": "Optional explicit remote test path (default: '/.aeroftp-speedtest-<uuid>.bin'). Caller is responsible for choosing a writable location. The path must not already exist: an existing file is refused, never overwritten."}
                 },
                 "required": ["server"],
             }),
