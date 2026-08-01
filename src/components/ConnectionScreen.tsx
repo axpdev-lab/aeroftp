@@ -4009,6 +4009,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 isEditing={!!editingProfileId}
                                 existingNames={servers.map(s => s.name)}
                                 onConnected={async (displayName, extraOptions) => {
+                                    // #369: same anchor-escape rule as the other save
+                                    // paths. Edit mode implies saveConnection=true, so
+                                    // completing the OAuth sign-in would persist the
+                                    // escaping Remote Path + overlay fields below even
+                                    // though the footer Save is disabled in this state.
+                                    if (remotePathEscapesOverlay) return;
                                     // The saved profile id this live OAuth connection maps to. Seeded
                                     // from editingProfileId (edit mode) so the connect carries a
                                     // savedServerId even when several accounts share the provider:
