@@ -1800,6 +1800,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // does not connect.
     const handleOAuthMetadataSave = async () => {
         if (!editingProfileId) return;
+        // #369: same anchor-escape rule as the primary save path. Without it
+        // this metadata save could persist a Remote Path that leaves the
+        // pinned overlay anchor outside the session (the vault reads as
+        // empty). The footer Save is disabled in that state; defense-in-depth.
+        if (remotePathEscapesOverlay) return;
         const existingServers = await loadSavedServerProfiles();
         const prevProfile = existingServers.find((s) => s.id === editingProfileId);
         if (!prevProfile) return;
@@ -1873,6 +1878,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     const handleSaveAsNew = async () => {
         if (!protocol || !editingProfileId) return;
+        // #369: same anchor-escape rule as the primary save path. The copy
+        // carries the overlay binding to the new id, so persisting a Remote
+        // Path that leaves the pinned anchor outside would duplicate the
+        // profile straight into the orphaned state. Defense-in-depth behind
+        // the disabled button.
+        if (remotePathEscapesOverlay) return;
         // Validate name is different
         const existingServers = await loadSavedServerProfiles();
         const originalServer = existingServers.find((s: ServerProfile) => s.id === editingProfileId);
@@ -2011,6 +2022,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // 10 seconds.
     const handleConvertMode = async () => {
         if (!protocol || !editingProfileId || !modeChanged) return;
+        // #369: same anchor-escape rule as the primary save path. The converted
+        // profile carries the overlay binding to the new id, so it must not be
+        // persisted with a Remote Path that leaves the pinned anchor outside.
+        // Defense-in-depth behind the disabled button.
+        if (remotePathEscapesOverlay) return;
 
         const existingServers = await loadSavedServerProfiles();
         const originalIdx = existingServers.findIndex(s => s.id === editingProfileId);
@@ -2921,7 +2937,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </button>
                 <button
                     onClick={handleSaveAsNew}
-                    disabled={loading}
+                    disabled={loading || remotePathEscapesOverlay}
                     className="flex-1 min-w-[140px] py-3 px-4 rounded-lg font-medium text-white bg-green-600 hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={t('connection.saveAsNewProfileTitle')}
                 >
@@ -2930,7 +2946,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </button>
                 <button
                     onClick={handleConvertMode}
-                    disabled={loading}
+                    disabled={loading || remotePathEscapesOverlay}
                     className="flex-1 min-w-[140px] py-3 px-4 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={t('connection.convertReplacesOriginal')}
                 >
@@ -3545,7 +3561,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             </button>
                         )}
                         {showCancelSaveAsNew && editingProfileId && (
-                            <button onClick={handleSaveAsNew} className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2" title={t('connection.saveAsNew')}>
+                            <button onClick={handleSaveAsNew} disabled={remotePathEscapesOverlay} className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" title={t('connection.saveAsNew')}>
                                 <Copy size={18} />
                             </button>
                         )}
@@ -3977,7 +3993,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 rightColumn={renderRightColumn(
                                     editingProfileId
                                         ? {
-                                            disabled: !oauthEditHasChanges(),
+                                            disabled: !oauthEditHasChanges() || remotePathEscapesOverlay,
                                             buttonColorClass: 'bg-green-600 hover:bg-green-700',
                                             hideSaveButton: false,
                                             saveOverride: handleOAuthMetadataSave,
