@@ -45,19 +45,27 @@ export const ConfirmOverlay: React.FC<ConfirmOverlayProps> = ({
     const t = useTranslation();
     const cancelRef = React.useRef<HTMLButtonElement>(null);
 
+    // Read through a ref so this effect runs once per mount. Every call site
+    // passes an inline arrow for `onCancel`, so depending on it would tear the
+    // listener down and re-run on each caller re-render, and `focus()` would
+    // pull focus back to Cancel each time. That is reachable: CloudPanel
+    // re-renders on Tauri cloud events, which can fire while the question is up.
+    const onCancelRef = React.useRef(onCancel);
+    onCancelRef.current = onCancel;
+
     // Escape answers "no". A confirmation with no keyboard way out is the same
     // trap as one that cannot be clicked.
     React.useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
                 event.stopPropagation();
-                onCancel();
+                onCancelRef.current();
             }
         };
         document.addEventListener('keydown', onKey, true);
         cancelRef.current?.focus();
         return () => document.removeEventListener('keydown', onKey, true);
-    }, [onCancel]);
+    }, []);
 
     const confirmColorClass =
         confirmColor === 'red' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600';

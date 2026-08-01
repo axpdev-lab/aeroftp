@@ -80,6 +80,17 @@ describe('native browser dialogs', () => {
         expect(overlay).toMatch(/\$\{zClass\}/);
     });
 
+    it('keeps the keydown listener mounted across the caller re-rendering', () => {
+        // Every call site passes an inline arrow for `onCancel`. Depending on it
+        // tears the listener down and re-runs the effect on each caller render,
+        // and the `focus()` inside pulls focus back to Cancel each time, which
+        // is reachable while a Tauri event storm re-renders the panel behind.
+        const overlay = sources['../components/common/ConfirmOverlay.tsx'];
+        expect(overlay).toMatch(/onCancelRef\.current\(\)/);
+        const effect = overlay.slice(overlay.indexOf('const onKey'));
+        expect(effect.slice(0, 400)).toMatch(/\}, \[\]\);/);
+    });
+
     it('every component that raises one passes a MODAL_Z tier', () => {
         // `(?![A-Za-z])` so the component's own `React.FC<ConfirmOverlayProps>`
         // is not read as a call site: without it the match runs from that type
