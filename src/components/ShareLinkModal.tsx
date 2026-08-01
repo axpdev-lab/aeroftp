@@ -7,6 +7,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { Link2, Copy, Check, X, Loader2, AlertTriangle, Key, RefreshCw, Clock, Shield, Eye, Trash2, ExternalLink } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { PasswordInput } from './common/PasswordInput';
+import { ConfirmOverlay } from './common/ConfirmOverlay';
+import { MODAL_Z } from '../utils/modalLayers';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import type { ProviderType } from '../types';
@@ -190,6 +192,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
   const [manageLoading, setManageLoading] = useState(false);
   const [manageError, setManageError] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [pendingRevokeId, setPendingRevokeId] = useState<string | null>(null);
   const [manageCopiedId, setManageCopiedId] = useState<string | null>(null);
 
   const humanLogRef = React.useRef(humanLog);
@@ -463,11 +466,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
                       {caps.supportsRevoke && (
                         <div className="flex justify-end mt-2">
                           <button
-                            onClick={() => {
-                              if (window.confirm(t('shareLinkModal.manageRevokeConfirm'))) {
-                                handleRevoke(link.id);
-                              }
-                            }}
+                            onClick={() => setPendingRevokeId(link.id)}
                             disabled={revokingId === link.id}
                             className="flex items-center gap-1 px-2 py-1 text-[10px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
                           >
@@ -746,6 +745,19 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
           </div>
         )}
       </div>
+      {pendingRevokeId && (
+        <ConfirmOverlay
+          message={t('shareLinkModal.manageRevokeConfirm')}
+          confirmLabel={t('shareLinkModal.manageRevoke')}
+          onConfirm={() => {
+            const id = pendingRevokeId;
+            setPendingRevokeId(null);
+            void handleRevoke(id);
+          }}
+          onCancel={() => setPendingRevokeId(null)}
+          zClass={MODAL_Z.elevatedConfirm}
+        />
+      )}
     </div>
   );
 }

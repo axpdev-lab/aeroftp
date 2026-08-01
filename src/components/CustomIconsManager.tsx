@@ -14,6 +14,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ConfirmOverlay } from './common/ConfirmOverlay';
+import { MODAL_Z } from '../utils/modalLayers';
 import { Pencil, Trash2, Upload, Check, X, ArrowDownAZ, Clock } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
@@ -75,6 +77,7 @@ export const CustomIconsManager: React.FC = () => {
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [overIdx, setOverIdx] = useState<number | null>(null);
     const [uploading, setUploading] = useState(false);
+    const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null);
 
     // Mirror external changes (the per-profile picker dialog also writes to the
     // same key) so users see the gallery up to date if they roundtrip through
@@ -136,18 +139,22 @@ export const CustomIconsManager: React.FC = () => {
 
     const cancelRename = useCallback(() => setRenameId(null), []);
 
+    // The question is raised from the handler, not from inside the `setIcons`
+    // updater: an updater is a reducer and must stay pure, and `window.confirm`
+    // does not draw at all on WebKitGTK, so the icon went with no question asked.
     const deleteIcon = useCallback((id: string) => {
+        const target = icons.find(i => i.id === id);
+        setPendingDelete({ id, label: target?.name || t('iconPicker.removeIcon') });
+    }, [icons, t]);
+
+    const performDeleteIcon = useCallback((id: string) => {
+        setPendingDelete(null);
         setIcons(prev => {
-            const target = prev.find(i => i.id === id);
-            const label = target?.name || t('iconPicker.removeIcon');
-            if (!window.confirm(t('iconPicker.confirmDelete', { name: label }))) {
-                return prev;
-            }
             const next = prev.filter(i => i.id !== id);
             persistCustomIcons(next);
             return next;
         });
-    }, [t]);
+    }, []);
 
     const handleDragStart = useCallback((idx: number) => (e: React.DragEvent) => {
         // Reorder is only meaningful in `recent` mode where the array order
@@ -421,6 +428,14 @@ export const CustomIconsManager: React.FC = () => {
                         );
                     })}
                 </div>
+            )}
+            {pendingDelete && (
+                <ConfirmOverlay
+                    message={t('iconPicker.confirmDelete', { name: pendingDelete.label })}
+                    onConfirm={() => performDeleteIcon(pendingDelete.id)}
+                    onCancel={() => setPendingDelete(null)}
+                    zClass={MODAL_Z.modalConfirm}
+                />
             )}
         </div>
     );

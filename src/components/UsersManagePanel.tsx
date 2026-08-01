@@ -53,6 +53,8 @@ import {
 } from '../utils/userPartitions';
 import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
 import { mapUserPartitionError } from '../utils/userPartitionErrors';
+import { ConfirmOverlay } from './common/ConfirmOverlay';
+import { MODAL_Z } from '../utils/modalLayers';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 
@@ -112,6 +114,15 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         showNew: boolean;
     } | null>(null);
     const [draggingUserId, setDraggingUserId] = React.useState<number | null>(null);
+    // The panel's own confirmation. `window.confirm` cannot be used here: on
+    // WebKitGTK it never draws and the caller proceeds as if the answer were
+    // yes, which for `deleteUser` is an account and its encrypted payloads gone
+    // with nothing asked.
+    const [pendingConfirm, setPendingConfirm] = React.useState<{
+        message: string;
+        confirmLabel?: string;
+        onConfirm: () => void;
+    } | null>(null);
     const [resetTarget, setResetTarget] = React.useState<UserMetadata | null>(null);
     const [avatarEditingUser, setAvatarEditingUser] = React.useState<UserMetadata | null>(null);
     const [avatarDraftEmoji, setAvatarDraftEmoji] = React.useState('');
@@ -285,13 +296,19 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         const userStats = statsByUserId.get(user.id);
         const profileCount = userStats?.profileCount ?? 0;
         const settingsCount = userStats?.settingsCount ?? 0;
-        const confirmed = window.confirm(
-            t('manageUsers.confirmDelete')
+        setPendingConfirm({
+            message: t('manageUsers.confirmDelete')
                 .replace('{name}', user.name)
                 .replace('{profiles}', String(profileCount))
                 .replace('{settings}', String(settingsCount)),
-        );
-        if (!confirmed) return;
+            onConfirm: () => {
+                setPendingConfirm(null);
+                void performDelete(user);
+            },
+        });
+    };
+
+    const performDelete = async (user: UserMetadata) => {
         setBusyUserId(user.id);
         setError('');
         try {
@@ -341,11 +358,21 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             return;
         }
         if (user.hasPassphrase && !passphraseForm.newPassphrase) {
-            const confirmed = window.confirm(
-                t('manageUsers.confirmRemovePassword').replace('{name}', user.name),
-            );
-            if (!confirmed) return;
+            setPendingConfirm({
+                message: t('manageUsers.confirmRemovePassword').replace('{name}', user.name),
+                confirmLabel: t('common.confirm'),
+                onConfirm: () => {
+                    setPendingConfirm(null);
+                    void performPassphraseChange(user);
+                },
+            });
+            return;
         }
+        await performPassphraseChange(user);
+    };
+
+    const performPassphraseChange = async (user: UserMetadata) => {
+        if (!passphraseForm || passphraseForm.userId !== user.id) return;
         // First-time setup requires explicit acknowledgement.
         if (!user.hasPassphrase && passphraseForm.newPassphrase && !acknowledgeNoRecoveryForm) {
             setError(t('manageUsers.errAckRequired'));
@@ -1053,6 +1080,21 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                         />
                     )}
                 </div>
+            )}
+            {/*
+              * Last child of the panel's own `z-[80]` overlay, so it is inside
+              * that stacking context and `modalConfirm` is enough to sit over
+              * the panel body: the number only has to beat this panel's own
+              * children, never the rest of the app.
+              */}
+            {pendingConfirm && (
+                <ConfirmOverlay
+                    message={pendingConfirm.message}
+                    confirmLabel={pendingConfirm.confirmLabel}
+                    onConfirm={pendingConfirm.onConfirm}
+                    onCancel={() => setPendingConfirm(null)}
+                    zClass={MODAL_Z.modalConfirm}
+                />
             )}
         </div>
     );

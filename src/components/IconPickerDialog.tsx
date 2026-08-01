@@ -9,6 +9,8 @@ import { PROVIDER_LOGOS } from './ProviderLogos';
 import { buildDiscoverCategories, type DiscoverItem } from './IntroHub/discoverData';
 import { useTranslation } from '../i18n';
 import { SearchBox } from './SearchBox';
+import { ConfirmOverlay } from './common/ConfirmOverlay';
+import { MODAL_Z } from '../utils/modalLayers';
 import { logger } from '../utils/logger';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 
@@ -197,6 +199,7 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
     // Drag-reorder state for the Custom icons grid. `dragIdx` tracks the
     // source index, `overIdx` the current hover target. Both reset on drop or
     // dragend, including when the drop happens outside the dialog.
+    const [pendingIconDelete, setPendingIconDelete] = useState<{ id: string; label: string } | null>(null);
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [overIdx, setOverIdx] = useState<number | null>(null);
 
@@ -347,21 +350,26 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
         setOverIdx(null);
     }, []);
 
+    // Confirm before removing: the library is small and easy to lose an upload
+    // by accident. The question used to be a `window.confirm` raised *inside*
+    // the `setCustomIcons` updater, which is a side effect in a reducer: under
+    // StrictMode the updater runs twice, so the prompt was asked twice.
     const handleDeleteCustom = useCallback((id: string) => {
+        const target = customIcons.find(i => i.id === id);
+        setPendingIconDelete({
+            id,
+            label: target?.name || t('iconPicker.removeIcon'),
+        });
+    }, [customIcons, t]);
+
+    const performDeleteCustom = useCallback((id: string) => {
+        setPendingIconDelete(null);
         setCustomIcons(prev => {
-            const target = prev.find(i => i.id === id);
-            // Confirm before removing: the library is small and easy to lose
-            // an upload by accident. window.confirm is intentional here: same
-            // surface as the existing profile delete dialog and zero new i18n.
-            const label = target?.name || t('iconPicker.removeIcon');
-            if (!window.confirm(t('iconPicker.confirmDelete', { name: label }))) {
-                return prev;
-            }
             const next = prev.filter(i => i.id !== id);
             persistCustomIcons(next);
             return next;
         });
-    }, [t]);
+    }, []);
 
     // Shared ingestion path for both file-picker uploads and drag & drop.
     // Accepts a Uint8Array of file bytes plus the original filename so we can
@@ -756,6 +764,14 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
                     </button>
                 </div>
             </div>
+            {pendingIconDelete && (
+                <ConfirmOverlay
+                    message={t('iconPicker.confirmDelete', { name: pendingIconDelete.label })}
+                    onConfirm={() => performDeleteCustom(pendingIconDelete.id)}
+                    onCancel={() => setPendingIconDelete(null)}
+                    zClass={MODAL_Z.modalConfirm}
+                />
+            )}
         </div>
     );
 }

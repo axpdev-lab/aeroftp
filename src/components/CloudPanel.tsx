@@ -23,6 +23,8 @@ import { Checkbox } from './ui/Checkbox';
 import { SelectiveSyncTree } from './Sync/SelectiveSyncTree';
 import { VersionBrowser } from './Sync/VersionBrowser';
 import { CloudPairsEditor } from './CloudPairsEditor';
+import { ConfirmOverlay } from './common/ConfirmOverlay';
+import { MODAL_Z } from '../utils/modalLayers';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { loadSavedServerProfiles } from '../utils/serverProfileStore';
@@ -1320,6 +1322,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
     const [showSettings, setShowSettings] = useState(false);
     const [showVersionBrowser, setShowVersionBrowser] = useState(false);
     const [showCloudPairs, setShowCloudPairs] = useState(false);
+    const [pendingDisableConfirm, setPendingDisableConfirm] = useState(false);
     const [reauthRequired, setReauthRequired] = useState<{ provider: string; message: string } | null>(null);
 
     // Use modular tray sync hook. Pause/Resume/Disable now go through the
@@ -1450,14 +1453,16 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
         }
     };
 
-    const handleDisable = async () => {
+    const handleDisable = () => {
         // Disable is destructive: it wipes the AeroCloud configuration and
         // forces the user to run the setup wizard again. Confirm before acting.
-        const confirmed = window.confirm(
-            t('cloud.disableConfirm')
-                || 'Disable AeroCloud? This removes the current configuration. You will need to configure it again to use it.'
-        );
-        if (!confirmed) return;
+        // The `t(...) || '...'` this used to carry protected nothing: `t()`
+        // returns the key when it does not resolve, and a key is truthy.
+        setPendingDisableConfirm(true);
+    };
+
+    const performDisable = async () => {
+        setPendingDisableConfirm(false);
         try {
             await invoke('disable_aerocloud');
             setConfig(null);
@@ -1832,6 +1837,15 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                 isOpen={showCloudPairs}
                 onClose={() => setShowCloudPairs(false)}
             />
+            {pendingDisableConfirm && (
+                <ConfirmOverlay
+                    message={t('cloud.disableConfirm')}
+                    confirmLabel={t('cloud.disable')}
+                    onConfirm={() => { void performDisable(); }}
+                    onCancel={() => setPendingDisableConfirm(false)}
+                    zClass={MODAL_Z.elevatedConfirm}
+                />
+            )}
         </div>
     );
 };
