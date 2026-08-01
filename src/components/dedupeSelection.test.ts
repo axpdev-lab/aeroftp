@@ -2,9 +2,23 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
-import { keeperOf, selectionForPolicy, shortHash, SHORT_HASH_HEX } from './DuplicateFinderDialog';
+import { keeperOf, selectionForPolicy, shortHash, SHORT_HASH_HEX, extentOf } from './DuplicateFinderDialog';
 import dialogRaw from './DuplicateFinderDialog.tsx?raw';
 import type { DuplicateGroup } from '../types/aerofile';
+
+/**
+ * Comments blanked, newlines kept.
+ *
+ * A source scan that counts comments counts the explanation of a defect as the
+ * defect: the note above `sizeSpreadOf` quotes the `Math.max(...sizes)` it
+ * replaced, and reading it raw fails the assertion on the fix.
+ */
+const withoutComments = (source: string): string =>
+    source
+        .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+        .replace(/(^|[^:])\/\/[^\n]*/g, (m, lead) => lead + ' '.repeat(m.length - lead.length));
+
+const dialogCode = withoutComments(dialogRaw);
 
 const group = (files: string[], sizes?: number[]): DuplicateGroup => ({
     hash: files[0],
@@ -130,6 +144,31 @@ describe('every copy can be ticked (#347)', () => {
         expect(deps).not.toMatch(/\[scanPath, mode, appliedThreshold, keepPolicy\]/);
     });
 
+    it('reads the group size list once per group, and without a spread', () => {
+        // `Math.max(...sizes)` pushes every element onto the call stack, so a
+        // scan of a cache or a log directory can hand it a group large enough to
+        // throw. It was also called inside the per-row map, rescanning the whole
+        // list once per file in the group.
+        expect(dialogCode).not.toMatch(/Math\.(max|min)\(\.\.\./);
+        expect(dialogCode).toMatch(/const groupLargest = group\.file_sizes\?\.length/);
+        const rows = dialogCode.slice(dialogCode.indexOf('return group.files.map'));
+        expect(rows.slice(0, 1200)).not.toMatch(/extentOf\(group\.file_sizes\)/);
+    });
+
+    it('gives a duplicate row a cache signature that changes with its bytes', () => {
+        // Every member of an exact group has the same byte size, and the command
+        // reports no mtime, so `signatureOf(size, null)` is the same string for
+        // a file before and after an edit that kept its length. It reports a
+        // content hash instead, which is the stronger half of the pair.
+        expect(dialogRaw).toMatch(/signature=\{signatureOf\(fileSize, rowHash\)\}/);
+        expect(dialogRaw).not.toMatch(/signatureOf\(fileSize, null\)/);
+    });
+
+    it('writes the keep-policy ref from an effect, not during render', () => {
+        const ref = dialogRaw.slice(dialogRaw.indexOf('const keepPolicyRef'));
+        expect(ref.slice(0, 200)).toMatch(/useEffect\(\(\) => \{\s*\n?\s*keepPolicyRef\.current = keepPolicy;/);
+    });
+
     it('names the size policies after what they order by', () => {
         // They were `oldest`/`newest` while ordering by size, which is what the
         // labels say and what `keeperOf` does. A review of this change read the
@@ -160,5 +199,21 @@ describe('rows carry their own size (#347)', () => {
         const after = dialogRaw.slice(dialogRaw.indexOf('const updatedGroups'));
         expect(after.slice(0, 900)).toMatch(/file_hashes: group\.file_hashes \? kept\.map/);
         expect(after.slice(0, 900)).toMatch(/file_sizes: group\.file_sizes \? kept\.map/);
+    });
+});
+
+describe('extentOf', () => {
+    it('returns the smallest and the largest', () => {
+        expect(extentOf([5])).toEqual([5, 5]);
+        expect(extentOf([3, 1, 2])).toEqual([1, 3]);
+        expect(extentOf([-2, 7, 0])).toEqual([-2, 7]);
+    });
+
+    it('survives a list a spread could not', () => {
+        // The size that makes `Math.max(...values)` throw in V8.
+        const big = new Array(200_000).fill(1);
+        big[123_456] = 9;
+        expect(extentOf(big)).toEqual([1, 9]);
+        expect(() => Math.max(...big)).toThrow();
     });
 });

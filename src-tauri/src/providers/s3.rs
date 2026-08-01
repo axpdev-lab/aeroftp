@@ -76,6 +76,37 @@ fn filen_decode_listed_key(key: String, filen_decode: bool) -> String {
     }
 }
 
+/// Undo one round of UTF-8-read-as-Latin-1 in a listed key.
+///
+/// FileLu's S3 gateway (`s5lu.com`) stores the key correctly, `stat`/`get` on
+/// the real name both succeed, but echoes it double-encoded in ListObjectsV2:
+/// `sp ace & ünïcodé.txt` comes back as `sp ace & Ã¼nÃ¯codÃ©.txt`. That is the
+/// LIVE-1 shape reached from a different direction: a GET of the name the
+/// listing just displayed 404s, and `sync --delete` reads the user's real local
+/// file as an orphan and plans to delete it.
+///
+/// The repair reinterprets the characters as the Latin-1 bytes they came from
+/// and decodes those as UTF-8. It is deliberately narrow: it runs only for the
+/// FileLu S3 endpoint, only when every character is in the Latin-1 range, and
+/// only when the classic mojibake lead byte (`Ã`/`Â`, U+00C0..U+00DF plus
+/// the mojibake lead range U+00C0..U+00DF) is actually present. A key that is genuinely
+/// named `Ã¼` on that one gateway would be rewritten, which is the accepted
+/// trade against a name that resolves to nothing at all.
+fn repair_double_utf8_key(key: String, repair: bool) -> String {
+    if !repair {
+        return key;
+    }
+    let has_mojibake_lead = key.chars().any(|c| matches!(c, '\u{00C0}'..='\u{00DF}'));
+    if !has_mojibake_lead || !key.chars().all(|c| (c as u32) < 0x100) {
+        return key;
+    }
+    let latin1: Vec<u8> = key.chars().map(|c| c as u8).collect();
+    match String::from_utf8(latin1) {
+        Ok(repaired) if repaired != key => repaired,
+        _ => key,
+    }
+}
+
 /// Convert a raw S3 `ETag` value to a usable MD5 hex digest, or `None`.
 ///
 /// An S3 ETag equals the object MD5 ONLY for single-part uploads without
@@ -652,6 +683,9 @@ impl S3Provider {
         }
     }
 
+    /// Detect FileLu's S3 gateway. Besides its other quirks, it echoes listed
+    /// keys double-UTF-8-encoded while storing and serving them correctly, so
+    /// listings from this endpoint go through `repair_double_utf8_key`.
     fn is_filelu_s3_endpoint(&self) -> bool {
         self.config
             .endpoint
@@ -1074,6 +1108,19 @@ impl S3Provider {
             // Explicitly set Content-Length for empty bodies (required by some S3-compatible services like Backblaze B2)
             request = request.header("Content-Length", body_data.len().to_string());
             request = request.body(body_data);
+        } else if matches!(method, Method::PUT | Method::POST) {
+            // A PUT with NO body still needs an explicit `Content-Length: 0`:
+            // reqwest omits the header entirely when no body is set, and AWS S3
+            // and Backblaze answer `411 Length Required`. Both bodyless PUTs in
+            // this file are real operations, `mkdir` (the zero-byte directory
+            // marker) and `UploadPartCopy` (server-side copy of objects past the
+            // 5 GiB single-PUT limit), so on those two providers creating a
+            // folder failed outright and a large server-side copy could not
+            // complete. It went unnoticed because MinIO tolerates the omission,
+            // which is what the lab profile runs. `server_side_copy_single`
+            // already sets this header by hand; the shared helper did not, so
+            // every caller that goes through it missed out.
+            request = request.header("Content-Length", "0");
         }
 
         // ERR-03: Use retry wrapper for transient errors (429, 500, 502, 503, 504)
@@ -1113,6 +1160,7 @@ impl S3Provider {
         // Decode here so RemoteEntry holds the logical name and downstream `build_url`
         // re-encodes consistently. Reported in #196 (Filen S3 tree shows `%20`).
         let filen_decode = self.is_filen_s3_endpoint();
+        let repair_mojibake = self.is_filelu_s3_endpoint();
 
         let mut reader = Reader::from_str(xml_str);
         // Do NOT enable trim_text: it trims every Event::Text fragment, and
@@ -1270,6 +1318,8 @@ impl S3Provider {
                                 } else {
                                     raw_prefix.clone()
                                 };
+                                let full_prefix =
+                                    repair_double_utf8_key(full_prefix, repair_mojibake);
                                 let name = full_prefix
                                     .trim_end_matches('/')
                                     .rsplit('/')
@@ -1295,6 +1345,7 @@ impl S3Provider {
                                 } else {
                                     raw_key.clone()
                                 };
+                                let key = repair_double_utf8_key(key, repair_mojibake);
                                 let key = key.as_str();
                                 // Skip directory markers
                                 if !key.ends_with('/') {
@@ -2291,6 +2342,7 @@ impl S3Provider {
         // "%25F0...", producing a copy-source / delete key that fails SigV4 with
         // "401 The signature does not match" (issue #368). Mirrors parse_list_response.
         let filen_decode = self.is_filen_s3_endpoint();
+        let repair_mojibake = self.is_filelu_s3_endpoint();
         let mut continuation_token: Option<String> = None;
 
         loop {
@@ -2381,9 +2433,12 @@ impl S3Provider {
                                 if !current_key.is_empty() {
                                     // #368: decode Filen-encoded keys so the single
                                     // downstream encode_s3_key_path() encodes once.
-                                    all_keys.push(filen_decode_listed_key(
-                                        std::mem::take(&mut current_key),
-                                        filen_decode,
+                                    all_keys.push(repair_double_utf8_key(
+                                        filen_decode_listed_key(
+                                            std::mem::take(&mut current_key),
+                                            filen_decode,
+                                        ),
+                                        repair_mojibake,
                                     ));
                                 }
                             }
@@ -6013,6 +6068,45 @@ mod tests {
         assert_eq!(encode_s3_key_path(""), "");
     }
 
+    /// FILELU-S3 regression: the FileLu S3 gateway stores the key correctly
+    /// (`stat` and `get` on the real name both succeed) but echoes it
+    /// double-UTF-8-encoded in ListObjectsV2, so the listing showed
+    /// `sp ace & Ã¼nÃ¯codÃ©.txt` for a file actually named
+    /// `sp ace & ünïcodé.txt`. A GET of the displayed name 404s and
+    /// `sync --delete` reads the real local file as an orphan.
+    #[test]
+    fn repair_double_utf8_key_undoes_the_filelu_mojibake_only_when_gated() {
+        let broken = "sp ace & Ã¼nÃ¯codÃ©.txt".to_string();
+        assert_eq!(
+            repair_double_utf8_key(broken.clone(), true),
+            "sp ace & ünïcodé.txt",
+            "the exact name observed live on s5lu.com must round-trip"
+        );
+        // Off for every other endpoint: the key is returned untouched.
+        assert_eq!(repair_double_utf8_key(broken.clone(), false), broken);
+
+        // Already-correct UTF-8 has no mojibake lead byte in Latin-1 range and
+        // is left alone, on this endpoint too.
+        for good in [
+            "plain.bin",
+            "sp ace & ünïcodé.txt",
+            "a& &b.txt",
+            "日本語.txt",
+        ] {
+            assert_eq!(
+                repair_double_utf8_key(good.to_string(), true),
+                good,
+                "a correct key must never be rewritten"
+            );
+        }
+
+        // A Latin-1 string that is not valid UTF-8 when reinterpreted stays put.
+        assert_eq!(
+            repair_double_utf8_key("Ã(".to_string(), true),
+            "Ã(".to_string()
+        );
+    }
+
     /// #368: on Filen's S3 bridge a listed <Key> comes back already percent-
     /// encoded, so it must be decoded once in list_keys_with_prefix. Otherwise
     /// the single downstream encode_s3_key_path() double-encodes an emoji child
@@ -6177,6 +6271,62 @@ mod tests {
             verify_cert: true,
         })
         .expect("Failed to create S3Provider")
+    }
+
+    /// S3-411 regression: a bodyless PUT must still carry `Content-Length: 0`.
+    /// reqwest omits the header when no body is set, and AWS S3, Backblaze and
+    /// Cloudflare R2 answer `411 Length Required`, so `mkdir` (the zero-byte
+    /// directory marker) failed outright on them while MinIO, which tolerates
+    /// the omission, worked. `UploadPartCopy` goes through the same helper.
+    #[tokio::test]
+    async fn bodyless_put_sends_explicit_content_length_zero() {
+        use std::sync::{Arc, Mutex};
+
+        /// (method, Content-Length) of the request the provider actually sent.
+        type SeenRequest = Option<(String, Option<String>)>;
+
+        let seen: Arc<Mutex<SeenRequest>> = Arc::new(Mutex::new(None));
+        let captured = Arc::clone(&seen);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let captured = Arc::clone(&captured);
+                async move {
+                    let method = req.method().to_string();
+                    let value = req
+                        .headers()
+                        .get(reqwest::header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        .map(String::from);
+                    *captured.lock().unwrap() = Some((method, value));
+                    axum::http::StatusCode::OK
+                }
+            }));
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.mkdir("/some/folder").await.expect("mkdir");
+
+        let (method, value) = seen
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("no request reached the server");
+        assert_eq!(method, "PUT", "mkdir must write the marker with a PUT");
+        assert_eq!(
+            value.as_deref(),
+            Some("0"),
+            "a bodyless PUT must send Content-Length: 0, otherwise AWS/B2/R2 reject it with 411"
+        );
+
+        server.abort();
     }
 
     /// Issue #301 (Fase 1): temporary credentials carry the STS session token

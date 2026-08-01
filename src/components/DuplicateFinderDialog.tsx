@@ -155,6 +155,17 @@ export function keeperOf(group: DuplicateGroup, policy: KeepPolicy): string | un
   }
 }
 
+/** Smallest and largest of a non-empty list, in one pass and without a spread. */
+export function extentOf(values: number[]): [number, number] {
+  let min = values[0];
+  let max = values[0];
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] < min) min = values[i];
+    if (values[i] > max) max = values[i];
+  }
+  return [min, max];
+}
+
 /** Every copy except each group's keeper. */
 export function selectionForPolicy(groups: DuplicateGroup[], policy: KeepPolicy): Set<string> {
   const selected = new Set<string>();
@@ -222,7 +233,9 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   // to those dependencies would turn a dropdown into a full filesystem walk.
   // The ref gives Retry the policy in force now without that.
   const keepPolicyRef = useRef(keepPolicy);
-  keepPolicyRef.current = keepPolicy;
+  useEffect(() => {
+    keepPolicyRef.current = keepPolicy;
+  }, [keepPolicy]);
   // The fuzzy cutoff, applied only in non-identical mode. null = engine defaults
   // (raster <=10, text <=3, other <=100), which is what every scan used before.
   const [threshold, setThreshold] = useState<number | null>(null);
@@ -490,11 +503,18 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   // which is the question when deciding what is a real duplicate: byte-identical
   // groups (no fuzzy distance at all) first, then the closest signatures, then
   // the ones the threshold only just let in.
-  /** Largest minus smallest member, in bytes. 0 when sizes are unknown. */
+  /**
+   * Largest minus smallest member, in bytes. 0 when sizes are unknown.
+   *
+   * One linear pass rather than `Math.max(...sizes)`: a spread pushes every
+   * element onto the call stack, and a scan of a cache or a log directory can
+   * hand this a group with more members than the stack has room for.
+   */
   const sizeSpreadOf = (group: DuplicateGroup): number => {
     const sizes = group.file_sizes;
     if (!sizes || sizes.length < 2) return 0;
-    return Math.max(...sizes) - Math.min(...sizes);
+    const [min, max] = extentOf(sizes);
+    return max - min;
   };
 
   const orderedGroups = useMemo(() => {
@@ -776,7 +796,13 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
 
                   {/* File entries */}
                   <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                    {group.files.map((filePath, fileIdx) => {
+                    {/* Computed once for the group, not once per row: inside the
+                        map it rescanned the whole size list for every file. */}
+                    {(() => {
+                      const groupLargest = group.file_sizes?.length
+                        ? extentOf(group.file_sizes)[1]
+                        : undefined;
+                      return group.files.map((filePath, fileIdx) => {
                       const isChecked = selectedPaths.has(filePath);
                       const isKept = !isChecked;
                       const fileName = getFileName(filePath);
@@ -786,9 +812,8 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                       // group. The pair Ehud described as "clearly different"
                       // differed by a third; the pair that looked identical, by
                       // a rounding error.
-                      const largest = group.file_sizes?.length ? Math.max(...group.file_sizes) : undefined;
-                      const delta = fileSize != null && largest != null && largest !== fileSize
-                        ? fileSize - largest
+                      const delta = fileSize != null && groupLargest != null && groupLargest !== fileSize
+                        ? fileSize - groupLargest
                         : null;
                       // Exact mode: one BLAKE3 for the whole group. Fuzzy mode:
                       // this file's own signature, which is what explains why it
@@ -830,7 +855,13 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                               <ImageThumbnail
                                 path={filePath}
                                 name={fileName}
-                                signature={fileSize != null ? signatureOf(fileSize, null) : null}
+                                /* The dedupe command reports a content hash
+                                   rather than an mtime, and a hash is the
+                                   stronger half of the pair: a file whose bytes
+                                   changed is a different entry even if its size
+                                   and timestamp did not. Without either, the
+                                   signature is null and the row is not cached. */
+                                signature={signatureOf(fileSize, rowHash)}
                                 cacheScope="dedupe"
                                 fallbackIcon={<div className="w-10 h-10" />}
                                 className="w-10 h-10 object-contain bg-gray-50 dark:bg-gray-900"
@@ -921,7 +952,8 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                           </span>
                         </div>
                       );
-                    })}
+                      });
+                    })()}
                   </div>
                 </div>
               ))}

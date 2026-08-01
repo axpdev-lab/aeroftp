@@ -417,9 +417,17 @@ pub async fn assume_role(
 /// Extract `Code`/`Message` from an STS `ErrorResponse` body, if present.
 fn parse_sts_error(xml: &str) -> (Option<String>, Option<String>) {
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
-    let mut code = None;
-    let mut message = None;
+    // An STS `<Message>` is free text and may carry `&amp;` / `&lt;` / `&quot;`.
+    // quick-xml splits such a run into Text / GeneralRef / Text, so the value
+    // has to be ACCUMULATED: assigning each fragment (as this used to) left
+    // only the tail after the last entity, turning a full sentence into its
+    // last few words. `trim_text(false)` keeps the fragments intact; `cur` is
+    // set only inside <Code>/<Message>, so pretty-print indentation between
+    // elements is still ignored, and the outer whitespace is trimmed once at
+    // the end.
+    reader.config_mut().trim_text(false);
+    let mut code: Option<String> = None;
+    let mut message: Option<String> = None;
     let mut in_error = false;
     let mut cur: Option<&'static str> = None;
     let mut buf = Vec::new();
@@ -433,14 +441,22 @@ fn parse_sts_error(xml: &str) -> (Option<String>, Option<String>) {
             },
             Ok(Event::Text(t)) => {
                 if let Some(field) = cur {
-                    // AWS credential values are base64 (no XML-special chars),
-                    // so the raw bytes are byte-exact; matches the rest of the
-                    // S3 XML parsing in this crate.
                     let text = String::from_utf8_lossy(t.as_ref()).into_owned();
                     match field {
-                        "code" => code = Some(text),
-                        "message" => message = Some(text),
+                        "code" => code.get_or_insert_with(String::new).push_str(&text),
+                        "message" => message.get_or_insert_with(String::new).push_str(&text),
                         _ => {}
+                    }
+                }
+            }
+            Ok(Event::GeneralRef(e)) => {
+                if let Some(field) = cur {
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        match field {
+                            "code" => code.get_or_insert_with(String::new).push_str(&ch),
+                            "message" => message.get_or_insert_with(String::new).push_str(&ch),
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -455,7 +471,10 @@ fn parse_sts_error(xml: &str) -> (Option<String>, Option<String>) {
         }
         buf.clear();
     }
-    (code, message)
+    (
+        code.map(|c| c.trim().to_string()),
+        message.map(|m| m.trim().to_string()),
+    )
 }
 
 /// Parse the `<Credentials>` block of a successful `AssumeRole` response.
@@ -761,6 +780,27 @@ mod tests {
         assert_eq!(
             message.as_deref(),
             Some("User is not authorized to perform sts:AssumeRole")
+        );
+    }
+
+    /// An STS `<Message>` carrying XML entities must survive whole. quick-xml
+    /// reports `a &amp; b` as Text("a ") / GeneralRef(amp) / Text(" b"), so a
+    /// parser that assigns each fragment keeps only the tail: the operator
+    /// used to be shown "b" (or an empty reason) instead of the real cause.
+    #[test]
+    fn parses_sts_error_message_with_entities() {
+        let xml = r#"<ErrorResponse>
+  <Error>
+    <Code>AccessDenied</Code>
+    <Message>Not authorized for role &quot;dev &amp; ops&quot; on bucket &lt;shared&gt;</Message>
+  </Error>
+</ErrorResponse>"#;
+        let (code, message) = parse_sts_error(xml);
+        assert_eq!(code.as_deref(), Some("AccessDenied"));
+        assert_eq!(
+            message.as_deref(),
+            Some(r#"Not authorized for role "dev & ops" on bucket <shared>"#),
+            "entity-split fragments must be accumulated, not overwritten"
         );
     }
 
