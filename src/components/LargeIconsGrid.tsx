@@ -12,6 +12,7 @@ import React, { useCallback, useRef } from 'react';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { Lock, LockOpen } from 'lucide-react';
 import { ImageThumbnail } from './ImageThumbnail';
+import { signatureOf } from '../utils/thumbnailCache';
 import { DecryptingText } from './DecryptingText';
 import type { LocalFile } from '../types';
 
@@ -27,6 +28,16 @@ interface LargeIconsGridProps {
   files: LocalFile[];
   selectedFiles: Set<string>;
   currentPath: string;
+  /**
+   * True when these entries live on the connected remote. The grid is used for
+   * both panels, and it used to pass `isRemote={false}` to every thumbnail
+   * regardless — so on the remote panel each preview asked the local filesystem
+   * for a remote path, failed, and fell back to a generic icon. Large Icons over
+   * a cloud drive could not show a picture at all (discussion #347).
+   */
+  isRemote?: boolean;
+  /** Cache scope for thumbnails, e.g. the session id. See `thumbnailCache`. */
+  thumbnailScope?: string;
   onFileClick: (file: LocalFile, event: React.MouseEvent) => void;
   onFileDoubleClick: (file: LocalFile) => void;
   onNavigateUp: () => void;
@@ -72,6 +83,8 @@ interface LargeIconCardProps {
   isSelected: boolean;
   isDragOver: boolean;
   currentPath: string;
+  isRemote?: boolean;
+  thumbnailScope?: string;
   getFileIcon: LargeIconsGridProps['getFileIcon'];
   onFileClick: LargeIconsGridProps['onFileClick'];
   onFileDoubleClick: LargeIconsGridProps['onFileDoubleClick'];
@@ -102,6 +115,8 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
   isSelected,
   isDragOver,
   currentPath,
+  isRemote,
+  thumbnailScope,
   getFileIcon,
   onFileClick,
   onFileDoubleClick,
@@ -182,9 +197,11 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
       return getFileIcon(file.name, true).icon;
     }
     if (isImage) {
-      const imagePath = currentPath === '/'
-        ? `/${file.name}`
-        : `${currentPath}/${file.name}`;
+      // `file.path` is what the backend was given when the entry was listed.
+      // Rebuilding it from `currentPath` with a forward slash produced a path
+      // that was merely usually right — and on Windows a mixed-separator one.
+      const imagePath = file.path
+        || (currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`);
       return (
         <ImageThumbnail
           path={imagePath}
@@ -194,7 +211,9 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
               {getFileIcon(file.name, false).icon}
             </div>
           }
-          isRemote={false}
+          isRemote={isRemote}
+          signature={signatureOf(file.size, file.modified)}
+          cacheScope={thumbnailScope}
           // `object-contain`: Large Icons is the view a user switches to in
           // order to see the picture, so cropping its edges away defeats it.
           className="w-24 h-24 object-contain rounded-lg"
@@ -293,6 +312,8 @@ export function LargeIconsGrid({
   files,
   selectedFiles,
   currentPath,
+  isRemote,
+  thumbnailScope,
   onFileClick,
   onFileDoubleClick,
   onNavigateUp,
@@ -350,6 +371,8 @@ export function LargeIconsGrid({
         isSelected={selectedFiles.has(file.name)}
         isDragOver={dragOverTarget === file.path}
         currentPath={currentPath}
+        isRemote={isRemote}
+        thumbnailScope={thumbnailScope}
         getFileIcon={getFileIcon}
         onFileClick={onFileClick}
         onFileDoubleClick={onFileDoubleClick}
@@ -375,7 +398,7 @@ export function LargeIconsGrid({
         sameNameLeakTooltip={sameNameLeakTooltip}
       />
     );
-  }, [files, selectedFiles, dragOverTarget, currentPath, getFileIcon, onFileClick,
+  }, [files, selectedFiles, dragOverTarget, currentPath, isRemote, thumbnailScope, getFileIcon, onFileClick,
     onFileDoubleClick, onContextMenu, onDragStart, onDragOver, onDrop, onDragLeave,
     onDragEnd, inlineRename, onInlineRenameChange, onInlineRenameCommit,
     onInlineRenameCancel, formatBytes, showFileExtensions, decrypting,

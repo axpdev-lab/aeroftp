@@ -450,7 +450,16 @@ impl AzureProvider {
 
     /// Parse XML blob list response using quick-xml event-based parser.
     /// Returns (items, next_marker) where next_marker is Some if pagination continues.
-    fn parse_blob_list(&self, xml: &str) -> (Vec<BlobItem>, Option<String>) {
+    /// Parse one page of a `comp=list` response.
+    ///
+    /// `strip_prefix` MUST be the blob prefix the request was issued with (the
+    /// `&prefix=` query value), not the provider's `current_prefix`: Azure
+    /// echoes every `<Name>` as a full path from the container root, so the
+    /// listed prefix is what makes an entry relative. Using `current_prefix`
+    /// instead made every one-shot `ls /a/b` (CLI, MCP, first GUI call, sync
+    /// scan) return an empty directory, because each blob still carried a `/`
+    /// and was dropped by the depth filter below.
+    fn parse_blob_list(xml: &str, strip_prefix: &str) -> (Vec<BlobItem>, Option<String>) {
         let mut items = Vec::new();
         let mut next_marker: Option<String> = None;
 
@@ -570,7 +579,7 @@ impl AzureProvider {
                     b"BlobPrefix" if in_prefix => {
                         let display_name = current_name.trim_end_matches('/');
                         let relative = display_name
-                            .strip_prefix(&self.current_prefix)
+                            .strip_prefix(strip_prefix)
                             .unwrap_or(display_name);
                         let relative = relative.trim_start_matches('/');
                         if !relative.is_empty() {
@@ -586,7 +595,7 @@ impl AzureProvider {
                     }
                     b"Blob" if in_blob => {
                         let relative = current_name
-                            .strip_prefix(&self.current_prefix)
+                            .strip_prefix(strip_prefix)
                             .unwrap_or(&current_name);
                         let relative = relative.trim_start_matches('/');
                         if !relative.is_empty() && !relative.contains('/') {
@@ -649,7 +658,11 @@ impl AzureProvider {
     /// Execute a paginated blob list request, returning all items across pages.
     /// AZ-004: Checks HTTP status before attempting XML parsing.
     /// AZ-005: Uses retry logic for transient errors.
-    async fn list_blobs_paginated(&self, base_url: &str) -> Result<Vec<BlobItem>, ProviderError> {
+    async fn list_blobs_paginated(
+        &self,
+        base_url: &str,
+        strip_prefix: &str,
+    ) -> Result<Vec<BlobItem>, ProviderError> {
         let mut all_items = Vec::new();
         let mut marker: Option<String> = None;
 
@@ -690,7 +703,7 @@ impl AzureProvider {
                 .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-            let (items, next_marker) = self.parse_blob_list(&body);
+            let (items, next_marker) = Self::parse_blob_list(&body, strip_prefix);
             all_items.extend(items);
 
             match next_marker {
@@ -971,15 +984,19 @@ impl StorageProvider for AzureProvider {
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let prefix = self.resolve_blob_path(path);
-        let prefix_param = if prefix.is_empty() {
+        // The prefix actually sent to Azure, trailing slash included. It is
+        // also what makes the echoed full-path names relative, so the parser
+        // gets this exact string and not `current_prefix` (which is unrelated
+        // to `path` on any absolute or one-shot listing).
+        let listing_prefix = if prefix.is_empty() || prefix.ends_with('/') {
+            prefix.clone()
+        } else {
+            format!("{}/", prefix)
+        };
+        let prefix_param = if listing_prefix.is_empty() {
             String::new()
         } else {
-            let p = if prefix.ends_with('/') {
-                prefix.clone()
-            } else {
-                format!("{}/", prefix)
-            };
-            format!("&prefix={}", urlencoding::encode(&p))
+            format!("&prefix={}", urlencoding::encode(&listing_prefix))
         };
 
         let base_url = format!(
@@ -989,7 +1006,9 @@ impl StorageProvider for AzureProvider {
             prefix_param
         );
 
-        let items = self.list_blobs_paginated(&base_url).await?;
+        let items = self
+            .list_blobs_paginated(&base_url, &listing_prefix)
+            .await?;
 
         let display_prefix = if prefix.is_empty() { "/" } else { &prefix };
         Ok(items
@@ -1557,6 +1576,42 @@ impl StorageProvider for AzureProvider {
                 self.delete(&entry.path).await?;
             }
         }
+
+        // `mkdir` writes a zero-byte marker blob named `<path>/` so an empty
+        // folder survives a listing. That marker is invisible to `list`: with
+        // prefix `<path>/` it comes back as a blob whose name IS the prefix, so
+        // stripping the prefix leaves an empty string and the entry is dropped.
+        // The loop above therefore never deleted it, and `rmdir` reported
+        // "Removed empty directory" while the folder was still there on the
+        // next listing. Delete it explicitly; a folder that only ever held
+        // files has no marker, so a 404 here is the normal case and must not
+        // fail the operation.
+        let marker = format!("{}/", self.resolve_blob_path(path).trim_end_matches('/'));
+        let url = self.blob_url(&marker);
+        let mut headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        let resp = self
+            .send_with_auth_and_retry(reqwest::Method::DELETE, &url, headers, 0, None)
+            .await?;
+        let status = resp.status();
+        if !status.is_success()
+            && status.as_u16() != 202
+            && status != reqwest::StatusCode::NOT_FOUND
+        {
+            return Err(ProviderError::Other(format!(
+                "Delete of the directory marker failed: {}",
+                status
+            )));
+        }
+
         Ok(())
     }
 
@@ -2761,7 +2816,6 @@ Time:2026-01-01</Message>
     /// a NextMarker signalling another page.
     #[test]
     fn parse_blob_list_extracts_dirs_files_and_pagination_marker() {
-        let p = test_provider(); // current_prefix == ""
         let xml = r#"<?xml version="1.0" encoding="utf-8"?>
 <EnumerationResults ServiceEndpoint="https://myacc.blob.core.windows.net/" ContainerName="mycontainer">
   <Blobs>
@@ -2787,7 +2841,7 @@ Time:2026-01-01</Message>
   <NextMarker>2!ABC</NextMarker>
 </EnumerationResults>"#;
 
-        let (items, marker) = p.parse_blob_list(xml);
+        let (items, marker) = AzureProvider::parse_blob_list(xml, "");
 
         // The nested blob (photos/deep.jpg) is filtered -> only the prefix and
         // the top-level file survive.
@@ -2815,12 +2869,10 @@ Time:2026-01-01</Message>
         assert_eq!(marker.as_deref(), Some("2!ABC"));
     }
 
-    /// Inside a sub-prefix the current_prefix is stripped from every entry,
+    /// Inside a sub-prefix the LISTED prefix is stripped from every entry,
     /// and an absent NextMarker yields None (last page).
     #[test]
-    fn parse_blob_list_strips_current_prefix_and_reports_last_page() {
-        let mut p = test_provider();
-        p.current_prefix = "photos/".to_string();
+    fn parse_blob_list_strips_listed_prefix_and_reports_last_page() {
         let xml = r#"<?xml version="1.0"?>
 <EnumerationResults>
   <Blobs>
@@ -2836,25 +2888,74 @@ Time:2026-01-01</Message>
   </Blobs>
 </EnumerationResults>"#;
 
-        let (items, marker) = p.parse_blob_list(xml);
+        let (items, marker) = AzureProvider::parse_blob_list(xml, "photos/");
         assert_eq!(items.len(), 2);
 
         let file = items.iter().find(|i| !i.is_prefix).unwrap();
-        assert_eq!(file.name, "sunset.jpg", "current_prefix must be stripped");
+        assert_eq!(file.name, "sunset.jpg", "listed prefix must be stripped");
         assert_eq!(file.size, 2048);
 
         let dir = items.iter().find(|i| i.is_prefix).unwrap();
-        assert_eq!(dir.name, "2026", "sub-prefix relative to current_prefix");
+        assert_eq!(dir.name, "2026", "sub-prefix relative to the listed prefix");
 
         assert_eq!(marker, None, "no NextMarker -> last page");
+    }
+
+    /// AZURE-LIST-1 regression: a nested listing must strip the prefix the
+    /// REQUEST carried, not the provider's `current_prefix`. Every one-shot
+    /// `ls /a/b` (CLI, MCP, sync's remote scan, the first GUI call after
+    /// connect) runs with `current_prefix` still empty; stripping that instead
+    /// left each blob name as a full path, the `!relative.contains('/')` depth
+    /// filter dropped all of them, and the directory came back EMPTY even
+    /// though `stat` on the very same blob succeeded. A `sync --delete`
+    /// against such a directory then planned `delete_local` for every local
+    /// file, i.e. data loss on files that do exist remotely.
+    #[test]
+    fn parse_blob_list_nested_listing_ignores_current_prefix() {
+        let mut p = test_provider();
+        p.current_prefix = String::new(); // one-shot listing: never cd'd
+
+        let xml = r#"<?xml version="1.0"?>
+<EnumerationResults>
+  <Blobs>
+    <Blob>
+      <Name>backup/2026/report.pdf</Name>
+      <Properties>
+        <Content-Length>512</Content-Length>
+      </Properties>
+    </Blob>
+    <BlobPrefix>
+      <Name>backup/2026/raw/</Name>
+    </BlobPrefix>
+  </Blobs>
+</EnumerationResults>"#;
+
+        // What `list("/backup/2026")` now passes down: the prefix it queried.
+        let (items, _) = AzureProvider::parse_blob_list(xml, "backup/2026/");
+        assert_eq!(items.len(), 2, "nested blobs must not be swallowed");
+
+        let file = items.iter().find(|i| !i.is_prefix).unwrap();
+        assert_eq!(file.name, "report.pdf");
+        assert_eq!(file.size, 512);
+
+        let dir = items.iter().find(|i| i.is_prefix).unwrap();
+        assert_eq!(dir.name, "raw");
+
+        // The old behaviour, reproduced: stripping the (empty) current_prefix
+        // leaves full paths, so the depth filter eats the file and the
+        // directory keeps a bogus multi-segment name.
+        let (broken, _) = AzureProvider::parse_blob_list(xml, &p.current_prefix);
+        assert!(
+            !broken.iter().any(|i| !i.is_prefix),
+            "regression guard: this is exactly the empty-directory bug"
+        );
     }
 
     /// A malformed / non-list body never panics: it yields no items and no
     /// marker (the async caller then surfaces the HTTP error instead).
     #[test]
     fn parse_blob_list_tolerates_garbage_body() {
-        let p = test_provider();
-        let (items, marker) = p.parse_blob_list("not xml at all <<<");
+        let (items, marker) = AzureProvider::parse_blob_list("not xml at all <<<", "");
         assert!(items.is_empty());
         assert_eq!(marker, None);
     }
@@ -2866,7 +2967,6 @@ Time:2026-01-01</Message>
     /// between elements must still be ignored.
     #[test]
     fn parse_blob_list_preserves_whitespace_only_fragments_around_entities() {
-        let p = test_provider();
         let xml = r#"<?xml version="1.0" encoding="utf-8"?>
 <EnumerationResults>
   <Blobs>
@@ -2885,7 +2985,7 @@ Time:2026-01-01</Message>
   </Blobs>
 </EnumerationResults>"#;
 
-        let (items, marker) = p.parse_blob_list(xml);
+        let (items, marker) = AzureProvider::parse_blob_list(xml, "");
         assert_eq!(marker, None);
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].name, "a& &b.txt");

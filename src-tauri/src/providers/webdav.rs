@@ -2869,9 +2869,21 @@ impl StorageProvider for WebDavProvider {
             .send_with_too_early_retry(Method::GET, remote_path)
             .await?;
 
+        // For an accepted 206 this is the authoritative object size and the
+        // received bytes are checked against it below; FileLu sends the body
+        // chunked, so `Content-Length` is absent and this is the only total we
+        // get. `None` for a 200, whose behaviour is unchanged.
+        let full_object_total = if response.status() == StatusCode::PARTIAL_CONTENT {
+            whole_object_total_from_content_range(response.headers())
+        } else {
+            None
+        };
+        let accept_as_full = response.status() == StatusCode::OK || full_object_total.is_some();
         match response.status() {
-            StatusCode::OK => {
-                let total_size = response.content_length().unwrap_or(0);
+            _ if accept_as_full => {
+                let total_size = full_object_total
+                    .or_else(|| response.content_length())
+                    .unwrap_or(0);
                 let mut stream = response.bytes_stream();
                 let mut atomic = super::atomic_write::AtomicFile::new(local_path)
                     .await
@@ -2903,6 +2915,19 @@ impl StorageProvider for WebDavProvider {
                             return Err(ProviderError::TransferFailed(e.to_string()));
                         }
                         None => break,
+                    }
+                }
+                // A 206 we accepted as "the whole object" must actually deliver
+                // that many bytes. Without this the chunked case has nothing to
+                // validate against and a truncated body would be committed as a
+                // complete file. The 200 path keeps its previous behaviour.
+                if let Some(expected) = full_object_total {
+                    if downloaded != expected {
+                        return Err(ProviderError::TransferFailed(format!(
+                            "Truncated 206 response: received {} of the {} bytes the \
+                             Content-Range declared",
+                            downloaded, expected
+                        )));
                     }
                 }
                 atomic.commit().await.map_err(ProviderError::IoError)?;
@@ -2952,10 +2977,29 @@ impl StorageProvider for WebDavProvider {
             .send_with_too_early_retry(Method::GET, remote_path)
             .await?;
 
+        let full_object_total = if response.status() == StatusCode::PARTIAL_CONTENT {
+            whole_object_total_from_content_range(response.headers())
+        } else {
+            None
+        };
+        let accept_as_full = response.status() == StatusCode::OK || full_object_total.is_some();
         match response.status() {
-            StatusCode::OK => {
+            _ if accept_as_full => {
                 // H2: Size-limited download to prevent OOM on large files
-                super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
+                let bytes =
+                    super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES)
+                        .await?;
+                if let Some(expected) = full_object_total {
+                    if bytes.len() as u64 != expected {
+                        return Err(ProviderError::TransferFailed(format!(
+                            "Truncated 206 response: received {} of the {} bytes the \
+                             Content-Range declared",
+                            bytes.len(),
+                            expected
+                        )));
+                    }
+                }
+                Ok(bytes)
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
             status => Err(ProviderError::TransferFailed(format!(
@@ -4223,6 +4267,46 @@ pub async fn webdav_empty_trash(
 ///
 /// RFC 4918 §9.7.1 says a PUT whose parent collection is missing should answer
 /// `409 Conflict`, but Koofr's WebDAV gateway returns `404 Not Found` for that
+/// The declared object size when a `206 Partial Content` answer to a request we
+/// sent WITHOUT a `Range` header still carries the entire object, so the body
+/// can be consumed exactly like a `200`. `None` when it does not.
+///
+/// The size is returned, not just a yes/no, because the caller MUST verify it:
+/// FileLu answers `transfer-encoding: chunked`, so there is no `Content-Length`
+/// to check the received bytes against, and a truncated body would otherwise be
+/// committed as a complete download. `Content-Range` carries the only
+/// authoritative total in that case.
+///
+/// FileLu's WebDAV (nginx) does this: a plain `GET` comes back
+/// `206` with `content-range: bytes 0-65535/65536`, which is the whole file.
+/// Matching only on `StatusCode::OK` made every such download fail with
+/// "Download failed with status: 206 Partial Content", after three retries,
+/// leaving no local file at all even though the complete bytes were in hand.
+///
+/// The check stays strict on purpose: a `Content-Range` that does not start at
+/// 0 or does not reach the last byte is a genuinely partial body and must keep
+/// failing, otherwise a truncated download would be committed as complete. A
+/// `206` with no `Content-Range` at all is not trusted either.
+fn whole_object_total_from_content_range(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    let raw = headers
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())?;
+    // `bytes <start>-<end>/<total>`; `*` for either side means "unknown".
+    let spec = raw.trim().strip_prefix("bytes ")?;
+    let (range, total) = spec.split_once('/')?;
+    let (start, end) = range.split_once('-')?;
+    let (Ok(start), Ok(end), Ok(total)) = (
+        start.trim().parse::<u64>(),
+        end.trim().parse::<u64>(),
+        total.trim().parse::<u64>(),
+    ) else {
+        return None;
+    };
+    // `checked_add`: `end` is attacker-controlled, and `u64::MAX + 1` would
+    // wrap in release and panic in debug before `total` was ever compared.
+    (total > 0 && start == 0 && end.checked_add(1) == Some(total)).then_some(total)
+}
+
 /// case (and also when the target path is itself an existing collection rather
 /// than a file). Without this, a Koofr upload to a missing-parent or directory
 /// target surfaced as the opaque, retryable "Upload failed with status: 404"
@@ -4473,6 +4557,67 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "a& &b.txt");
         assert_eq!(entries[0].size, 10);
+    }
+
+    /// WEBDAV-206 regression: FileLu's WebDAV answers a plain GET (no Range
+    /// sent) with `206 Partial Content` and `content-range: bytes 0-65535/65536`,
+    /// the complete object. Accepting only `200` made those downloads fail,
+    /// after three retries, with no local file at all. A `Content-Range` that
+    /// is genuinely partial, or missing, must still be rejected so a truncated
+    /// body is never committed as a complete download.
+    #[test]
+    fn partial_content_is_accepted_only_when_it_spans_the_whole_object() {
+        use reqwest::header::{HeaderMap, HeaderValue, CONTENT_RANGE};
+
+        let with = |v: &str| {
+            let mut h = HeaderMap::new();
+            h.insert(CONTENT_RANGE, HeaderValue::from_str(v).unwrap());
+            h
+        };
+
+        // The exact header observed live on webdav.filelu.com. The declared
+        // total comes back so the caller can check the received byte count,
+        // which is the only guard available when the body is chunked.
+        assert_eq!(
+            whole_object_total_from_content_range(&with("bytes 0-65535/65536")),
+            Some(65536)
+        );
+        assert_eq!(
+            whole_object_total_from_content_range(&with("bytes 0-0/1")),
+            Some(1)
+        );
+
+        // Genuinely partial bodies stay failures.
+        assert_eq!(
+            whole_object_total_from_content_range(&with("bytes 0-1023/65536")),
+            None
+        );
+        assert_eq!(
+            whole_object_total_from_content_range(&with("bytes 1024-65535/65536")),
+            None
+        );
+        // Unknown total, unparsable, or absent: not trusted.
+        assert_eq!(
+            whole_object_total_from_content_range(&with("bytes 0-65535/*")),
+            None
+        );
+        assert_eq!(
+            whole_object_total_from_content_range(&with("garbage")),
+            None
+        );
+        assert_eq!(
+            whole_object_total_from_content_range(&HeaderMap::new()),
+            None
+        );
+
+        // CR-539: `end` is attacker-controlled. `u64::MAX + 1` wraps in release
+        // and panics in debug, so the boundary uses checked arithmetic.
+        assert_eq!(
+            whole_object_total_from_content_range(&with(
+                "bytes 0-18446744073709551615/18446744073709551615"
+            )),
+            None
+        );
     }
 
     /// CR-536 regression, Nextcloud trashbin parser: same whitespace-only
