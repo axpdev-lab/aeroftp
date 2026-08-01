@@ -3427,7 +3427,16 @@
             "delete": "ELIMINAR",
             "skip": "OMETRE",
             "deleteConfirm": "Esteu segur que voleu eliminar {count} fitxers duplicats?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Diferència de mida",
+            "keepByDefault": "Conserva per defecte",
+            "keepShortestName": "Nom més curt",
+            "keepSmallest": "El més petit",
+            "keepLargest": "El més gran",
+            "keepFirstFound": "El primer trobat",
+            "selectAllButOne": "Selecciona tots menys un per grup",
+            "everyCopyTicked": "totes les còpies marcades",
+            "everyCopyTickedHint": "Desmarqueu una còpia de cada grup destacat: així s'esborrarien totes les còpies."
         },
         "diskUsage": {
             "title": "Ús del disc",

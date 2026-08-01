@@ -3427,7 +3427,16 @@
             "delete": "លុប",
             "skip": "រំលង",
             "deleteConfirm": "តើអ្នកប្រាកដថាអ្នកចង់លុប {count} ឯកសារស្ទួនទេ?",
-            "fuzzyCutoffPlaceholder": "ស្វ័យ"
+            "fuzzyCutoffPlaceholder": "ស្វ័យ",
+            "sortSizeSpread": "គម្លាតទំហំ",
+            "keepByDefault": "រក្សាទុកតាមលំនាំដើម",
+            "keepShortestName": "ឈ្មោះខ្លីបំផុត",
+            "keepSmallest": "តូចបំផុត",
+            "keepLargest": "ធំបំផុត",
+            "keepFirstFound": "រកឃើញមុនគេ",
+            "selectAllButOne": "ជ្រើសទាំងអស់លើកលែងមួយក្នុងមួយក្រុម",
+            "everyCopyTicked": "ច្រកចម្លងទាំងអស់ត្រូវបានធីក",
+            "everyCopyTickedHint": "ដកធីកច្បាប់ចម្លងមួយក្នុងក្រុមដែលបានបន្លិចនីមួយៗ៖ បើមិនដូច្នេះទេច្បាប់ចម្លងទាំងអស់នឹងត្រូវលុប។"
         },
         "diskUsage": {
             "title": "ការប្រើប្រាស់ថាស",

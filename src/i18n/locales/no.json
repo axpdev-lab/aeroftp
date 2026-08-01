@@ -3427,7 +3427,16 @@
             "delete": "SLETT",
             "skip": "HOPP OVER",
             "deleteConfirm": "Er du sikker på at du vil slette {count} dupliserte filer?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Størrelsesforskjell",
+            "keepByDefault": "Behold som standard",
+            "keepShortestName": "Korteste navn",
+            "keepSmallest": "Minste",
+            "keepLargest": "Største",
+            "keepFirstFound": "Først funnet",
+            "selectAllButOne": "Velg alle unntatt én per gruppe",
+            "everyCopyTicked": "alle kopier merket",
+            "everyCopyTickedHint": "Fjern merket fra én kopi i hver uthevet gruppe: ellers slettes alle kopiene."
         },
         "diskUsage": {
             "title": "Diskbruk",

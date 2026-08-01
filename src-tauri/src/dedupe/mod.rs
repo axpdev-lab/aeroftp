@@ -126,6 +126,14 @@ pub struct DuplicateGroup {
     /// Surfaced so the UI can show why two files were called duplicates
     /// (discussion #347).
     pub file_hashes: Option<Vec<String>>,
+    /// Each entry's own size in bytes, same order and length as `files`.
+    ///
+    /// In exact mode every member shares `size` by construction (the engine
+    /// prefilters by size before it hashes). In fuzzy mode they do not, and the
+    /// spread is the reader's best single clue about what separates two images
+    /// that look alike: a re-encode moves the byte count a lot and the perceptual
+    /// hash barely at all (discussion #347).
+    pub file_sizes: Option<Vec<u64>>,
 }
 
 /// Compute BLAKE3 of a local file (for Exact mode consistency with GUI).
@@ -352,6 +360,9 @@ pub fn find_similar_local_with_progress(
                 .map(|(hash, (sz, fs))| DuplicateGroup {
                     hash: Some(hash),
                     size: sz,
+                    // Every member of an exact group shares the size that let it
+                    // be hashed at all; carried anyway so the UI has one shape.
+                    file_sizes: Some(vec![sz; fs.len()]),
                     files: fs,
                     distance: None,
                     modality: None,
@@ -606,6 +617,7 @@ pub fn find_similar_local_with_progress(
                 let files: Vec<String> = g.iter().map(|(p, _, _)| p.clone()).collect();
                 let file_hashes: Vec<String> =
                     g.iter().map(|(_, _, h)| format!("{:016x}", h)).collect();
+                let file_sizes: Vec<u64> = g.iter().map(|(_, s, _)| *s).collect();
                 let sz = g.first().map(|(_, s, _)| *s).unwrap_or(0);
                 result.push(DuplicateGroup {
                     hash: None,
@@ -614,6 +626,7 @@ pub fn find_similar_local_with_progress(
                     distance: Some(rep_dist),
                     modality: Some(Modality::Raster.as_str().to_string()),
                     file_hashes: Some(file_hashes),
+                    file_sizes: Some(file_sizes),
                 });
             }
 
@@ -633,6 +646,7 @@ pub fn find_similar_local_with_progress(
                 let files: Vec<String> = g.iter().map(|(p, _, _)| p.clone()).collect();
                 let file_hashes: Vec<String> =
                     g.iter().map(|(_, _, h)| format!("{:016x}", h)).collect();
+                let file_sizes: Vec<u64> = g.iter().map(|(_, s, _)| *s).collect();
                 let sz = g.first().map(|(_, s, _)| *s).unwrap_or(0);
                 result.push(DuplicateGroup {
                     hash: None,
@@ -641,6 +655,7 @@ pub fn find_similar_local_with_progress(
                     distance: Some(rep_dist),
                     modality: Some(Modality::Text.as_str().to_string()),
                     file_hashes: Some(file_hashes),
+                    file_sizes: Some(file_sizes),
                 });
             }
 
@@ -665,6 +680,7 @@ pub fn find_similar_local_with_progress(
                             .to_string()
                     })
                     .collect();
+                let file_sizes: Vec<u64> = g.iter().map(|(_, s, _)| *s).collect();
                 let sz = g.first().map(|(_, s, _)| *s).unwrap_or(0);
                 result.push(DuplicateGroup {
                     hash: None,
@@ -673,6 +689,7 @@ pub fn find_similar_local_with_progress(
                     distance: Some(rep_dist),
                     modality: Some(Modality::Other.as_str().to_string()),
                     file_hashes: Some(file_hashes),
+                    file_sizes: Some(file_sizes),
                 });
             }
 

@@ -3427,7 +3427,16 @@
             "delete": "মুছুন",
             "skip": "এড়িয়ে যান",
             "deleteConfirm": "আপনি কি নিশ্চিত যে আপনি {count} টি ডুপ্লিকেট ফাইল মুছতে চান?",
-            "fuzzyCutoffPlaceholder": "স্বয়ং"
+            "fuzzyCutoffPlaceholder": "স্বয়ং",
+            "sortSizeSpread": "আকারের ব্যবধান",
+            "keepByDefault": "ডিফল্টে যেটি রাখা হবে",
+            "keepShortestName": "সবচেয়ে ছোট নাম",
+            "keepSmallest": "সবচেয়ে ছোট",
+            "keepLargest": "সবচেয়ে বড়",
+            "keepFirstFound": "প্রথম পাওয়া",
+            "selectAllButOne": "প্রতি গ্রুপে একটি বাদে সব নির্বাচন করুন",
+            "everyCopyTicked": "সব কপি টিক দেওয়া",
+            "everyCopyTickedHint": "প্রতিটি চিহ্নিত গ্রুপে একটি কপির টিক তুলে দিন: নাহলে সব কপি মুছে যাবে।"
         },
         "diskUsage": {
             "title": "ডিস্ক ব্যবহার",

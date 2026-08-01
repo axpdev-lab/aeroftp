@@ -3427,7 +3427,16 @@
             "delete": "LÖSCHEN",
             "skip": "ÜBERSPRINGEN",
             "deleteConfirm": "Möchten Sie wirklich {count} doppelte Dateien löschen?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Größenspanne",
+            "keepByDefault": "Standardmäßig behalten",
+            "keepShortestName": "Kürzester Name",
+            "keepSmallest": "Kleinste",
+            "keepLargest": "Größte",
+            "keepFirstFound": "Zuerst gefunden",
+            "selectAllButOne": "Alle bis auf eine je Gruppe auswählen",
+            "everyCopyTicked": "alle Kopien markiert",
+            "everyCopyTickedHint": "Entfernen Sie in jeder hervorgehobenen Gruppe die Markierung einer Kopie: sonst werden alle gelöscht."
         },
         "diskUsage": {
             "title": "Speicherplatznutzung",

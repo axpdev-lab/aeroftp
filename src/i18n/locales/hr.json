@@ -3427,7 +3427,16 @@
             "deleted": "{count} duplih datoteka izbrisano",
             "scanFailed": "Skeniranje nije uspjelo",
             "retry": "Ponovni pokušaj",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Raspon veličina",
+            "keepByDefault": "Zadržati prema zadanome",
+            "keepShortestName": "Najkraći naziv",
+            "keepSmallest": "Najmanja",
+            "keepLargest": "Najveća",
+            "keepFirstFound": "Prva pronađena",
+            "selectAllButOne": "Odaberi sve osim jedne po grupi",
+            "everyCopyTicked": "označene sve kopije",
+            "everyCopyTickedHint": "U svakoj istaknutoj grupi odznačite jednu kopiju: inače bi se izbrisale sve."
         },
         "diskUsage": {
             "title": "Korištenje diska",

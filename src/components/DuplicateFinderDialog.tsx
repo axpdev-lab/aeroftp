@@ -11,7 +11,7 @@
  */
 
 import * as React from 'react';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { Search, X, Trash2, CheckCircle, AlertCircle, Loader2, Copy, FileX, Check, ExternalLink, FolderOpen } from 'lucide-react';
@@ -22,6 +22,12 @@ import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useClipboardCopy } from '../hooks/useClipboardCopy';
 import { MODAL_Z } from '../utils/modalLayers';
+import { ImageThumbnail } from './ImageThumbnail';
+import { signatureOf } from '../utils/thumbnailCache';
+
+/** Extensions ImageThumbnail can render, i.e. what is worth a preview square. */
+const PREVIEWABLE_IMAGE = /\.(jpe?g|png|gif|svg|webp|bmp|ico)$/i;
+const isPreviewableImage = (name: string): boolean => PREVIEWABLE_IMAGE.test(name);
 
 /** Payload of the backend's `duplicate-scan-progress` event (filesystem.rs). */
 interface DuplicateScanProgress {
@@ -62,6 +68,11 @@ interface DuplicateFinderDialogProps {
    * confirmation; when it is off the delete runs straight away.
    */
   confirmBeforeDelete?: boolean;
+  /**
+   * Opens one file in the app's preview, where it can also be edited. Given, the
+   * rows grow a clickable thumbnail; omitted, they do not.
+   */
+  onPreviewFile?: (path: string) => void;
 }
 
 /** Extract the filename from a full path */
@@ -100,12 +111,94 @@ const RowCopyButton: React.FC<{ value: string; label: string }> = ({ value, labe
   );
 };
 
+type KeepPolicy = 'shortestName' | 'smallest' | 'largest' | 'firstFound';
+
+/**
+ * Which member of a group to keep, by policy.
+ *
+ * `smallest`/`largest` fall back to the scan order when the backend did not
+ * report sizes to order by: the engine returns members in walk order, which is
+ * stable but not meaningful, so the honest answer there is "the first one".
+ *
+ * These two were called `oldest`/`newest` while ordering by size, which is what
+ * the labels and this code have always done. The names were the only thing that
+ * said otherwise, and they said it to every translator and every reviewer who
+ * read the option list: a review of this PR proposed "fixing" four locales to
+ * say oldest and newest, which would have made the label disagree with the file
+ * the policy actually keeps.
+ */
+export function keeperOf(group: DuplicateGroup, policy: KeepPolicy): string | undefined {
+  const files = group.files;
+  if (files.length === 0) return undefined;
+  const nameOf = (p: string) => getFileName(p);
+  switch (policy) {
+    case 'shortestName':
+      // " (copy)", " (1)", " - Copy" — the derived file is the longer name
+      // almost every time, so the shortest is the likeliest original.
+      return files.reduce((best, cur) =>
+        nameOf(cur).length < nameOf(best).length ? cur : best);
+    case 'smallest':
+    case 'largest': {
+      const sizes = group.file_sizes;
+      if (!sizes || sizes.length !== files.length) return files[0];
+      // The command reports sizes, not mtimes, so these order by size.
+      let bestIdx = 0;
+      for (let i = 1; i < files.length; i++) {
+        const better = policy === 'largest' ? sizes[i] > sizes[bestIdx] : sizes[i] < sizes[bestIdx];
+        if (better) bestIdx = i;
+      }
+      return files[bestIdx];
+    }
+    case 'firstFound':
+    default:
+      return files[0];
+  }
+}
+
+/** Smallest and largest of a non-empty list, in one pass and without a spread. */
+export function extentOf(values: number[]): [number, number] {
+  let min = values[0];
+  let max = values[0];
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] < min) min = values[i];
+    if (values[i] > max) max = values[i];
+  }
+  return [min, max];
+}
+
+/** Every copy except each group's keeper. */
+export function selectionForPolicy(groups: DuplicateGroup[], policy: KeepPolicy): Set<string> {
+  const selected = new Set<string>();
+  for (const group of groups) {
+    const keeper = keeperOf(group, policy);
+    for (const file of group.files) if (file !== keeper) selected.add(file);
+  }
+  return selected;
+}
+
+/**
+ * A hash for reading, not for comparing byte-for-byte.
+ *
+ * Ehud's point on #347: 128 bits is past any collision anyone will meet, and a
+ * 64-hex-digit string on every row is a wall. The full value stays one hover or
+ * one copy away — and, importantly, stays the grouping key in the engine: there
+ * is no reason to weaken the key of an operation that deletes files when the
+ * digest has already been computed in full.
+ */
+export const SHORT_HASH_HEX = 32;
+export function shortHash(hash: string): string {
+  return /^[0-9a-f]+$/i.test(hash) && hash.length > SHORT_HASH_HEX
+    ? `${hash.slice(0, SHORT_HASH_HEX)}…`
+    : hash;
+}
+
 export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   isOpen,
   scanPath,
   onClose,
   onDeleteFiles,
   confirmBeforeDelete = true,
+  onPreviewFile,
 }) => {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
@@ -128,7 +221,21 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   // 'waste' is the historical order (biggest reclaimable space first).
   // 'similarity' answers "which of these are really the same file?": exact
   // groups first, then fuzzy groups from the closest signature to the loosest.
-  const [sortBy, setSortBy] = useState<'waste' | 'similarity'>('waste');
+  const [sortBy, setSortBy] = useState<'waste' | 'similarity' | 'sizeSpread'>('waste');
+  // Which copy a group starts out keeping. The dialog used to decide this and
+  // then refuse to let it be changed; it is now only a starting point, and every
+  // row can be ticked. 'shortestName' is the default because " (copy)" and
+  // " (1)" make the derived file the longer name almost every time (#347).
+  const [keepPolicy, setKeepPolicy] = useState<KeepPolicy>('shortestName');
+  // Read by `scan` through this ref rather than through its dependency list.
+  // The effect that runs `scan` keys off the callback's identity, on purpose, so
+  // that changing the mode or the fuzzy threshold re-scans: adding `keepPolicy`
+  // to those dependencies would turn a dropdown into a full filesystem walk.
+  // The ref gives Retry the policy in force now without that.
+  const keepPolicyRef = useRef(keepPolicy);
+  useEffect(() => {
+    keepPolicyRef.current = keepPolicy;
+  }, [keepPolicy]);
   // The fuzzy cutoff, applied only in non-identical mode. null = engine defaults
   // (raster <=10, text <=3, other <=100), which is what every scan used before.
   const [threshold, setThreshold] = useState<number | null>(null);
@@ -155,17 +262,13 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       setGroups(result);
 
       if (mode === 'exact') {
-        // Exact mode: auto-select all non-first files (duplicates) by default (original behavior)
-        const autoSelected = new Set<string>();
-        for (const group of result) {
-          for (let i = 1; i < group.files.length; i++) {
-            autoSelected.add(group.files[i]);
-          }
-        }
-        setSelectedPaths(autoSelected);
+        // Exact mode ticks every copy but the one the keep policy picks. The
+        // copies are byte-identical, so which one survives is a question about
+        // names and dates rather than about content.
+        setSelectedPaths(selectionForPolicy(result, keepPolicyRef.current));
       } else {
-        // Non-identical mode: NEVER auto-select. User must manually tick files.
-        // The first file in each group is visually suggested as KEEP (largest-quality heuristic).
+        // Non-identical mode: NEVER auto-select. The members are not the same
+        // file, so nothing here may be pre-ticked for deletion.
         setSelectedPaths(new Set());
       }
     } catch (err) {
@@ -256,21 +359,41 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     });
   }, []);
 
-  // Select all duplicates (all non-first files)
-  const selectAllDuplicates = useCallback(() => {
-    const all = new Set<string>();
-    for (const group of groups) {
-      for (let i = 1; i < group.files.length; i++) {
-        all.add(group.files[i]);
-      }
-    }
-    setSelectedPaths(all);
+  /**
+   * Tick every copy except the one the keep policy picks — what the button
+   * labelled "Select All Duplicates" actually did. It is now labelled that way.
+   */
+  const selectAllButOne = useCallback(() => {
+    setSelectedPaths(selectionForPolicy(groups, keepPolicy));
+  }, [groups, keepPolicy]);
+
+  /**
+   * Tick everything, including the copy the policy would have kept. Allowed:
+   * "delete every copy of this" is a thing a user can mean, and the group guard
+   * below makes them say so on purpose rather than by not noticing.
+   */
+  const selectAll = useCallback(() => {
+    setSelectedPaths(new Set(groups.flatMap((g) => g.files)));
   }, [groups]);
 
   // Deselect everything
   const deselectAll = useCallback(() => {
     setSelectedPaths(new Set());
   }, []);
+
+  /**
+   * The groups where every single copy is ticked.
+   *
+   * This is the invariant the disabled first checkbox was protecting, and it was
+   * protecting it by removing the choice: one file per group could not be ticked
+   * at all, so a copy in the wrong folder, or the one actually named " (copy)",
+   * was the one you could not delete (#347). Watching the invariant instead of
+   * amputating the control gives the choice back and still refuses the accident.
+   */
+  const fullyTickedGroups = useMemo(
+    () => groups.filter((g) => g.files.length > 0 && g.files.every((f) => selectedPaths.has(f))),
+    [groups, selectedPaths],
+  );
 
   // Inline confirmation dialog state (replaces window.confirm for styled UX)
   const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState(false);
@@ -292,9 +415,19 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       setGroups((current) => {
         const updatedGroups: DuplicateGroup[] = [];
         for (const group of current) {
-          const remaining = group.files.filter(f => !deleted.has(f));
-          if (remaining.length > 1) {
-            updatedGroups.push({ ...group, files: remaining });
+          // `file_hashes` and `file_sizes` are parallel to `files`; filtering
+          // one and not the others would silently shift every row's hash and
+          // size by the number of copies deleted above it.
+          const kept = group.files
+            .map((f, i) => ({ f, i }))
+            .filter(({ f }) => !deleted.has(f));
+          if (kept.length > 1) {
+            updatedGroups.push({
+              ...group,
+              files: kept.map(({ f }) => f),
+              file_hashes: group.file_hashes ? kept.map(({ i }) => group.file_hashes![i]) : undefined,
+              file_sizes: group.file_sizes ? kept.map(({ i }) => group.file_sizes![i]) : undefined,
+            });
           }
         }
         return updatedGroups;
@@ -325,12 +458,17 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
    */
   const handleDelete = useCallback(() => {
     if (selectedPaths.size === 0) return;
-    if (!confirmBeforeDelete) {
+    // A selection that would leave a group with no copy at all is confirmed even
+    // when `confirmBeforeDelete` is off: that setting is about the routine case,
+    // and Select All deliberately produces the case that is not routine. The
+    // guard used to be a hard `disabled` on the button instead, which made Select
+    // All offer an action that could never be completed.
+    if (!confirmBeforeDelete && fullyTickedGroups.length === 0) {
       void runDelete();
       return;
     }
     setPendingDeleteConfirm(true);
-  }, [selectedPaths, confirmBeforeDelete, runDelete]);
+  }, [selectedPaths, confirmBeforeDelete, fullyTickedGroups, runDelete]);
 
   // Summary calculations
   const summary = useMemo(() => {
@@ -365,7 +503,31 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   // which is the question when deciding what is a real duplicate: byte-identical
   // groups (no fuzzy distance at all) first, then the closest signatures, then
   // the ones the threshold only just let in.
+  /**
+   * Largest minus smallest member, in bytes. 0 when sizes are unknown.
+   *
+   * One linear pass rather than `Math.max(...sizes)`: a spread pushes every
+   * element onto the call stack, and a scan of a cache or a log directory can
+   * hand this a group with more members than the stack has room for.
+   */
+  const sizeSpreadOf = (group: DuplicateGroup): number => {
+    const sizes = group.file_sizes;
+    if (!sizes || sizes.length < 2) return 0;
+    const [min, max] = extentOf(sizes);
+    return max - min;
+  };
+
   const orderedGroups = useMemo(() => {
+    if (sortBy === 'sizeSpread') {
+      // Ehud's observation on #347: the pair that looked identical differed by a
+      // few bytes, the pair that was clearly different differed by a third. The
+      // spread does not replace the Hamming distance as the clustering metric —
+      // a re-encode moves bytes a lot and the perceptual hash barely at all,
+      // which is exactly the case worth catching — but as an ordering it puts
+      // the "same picture, different encoder" groups first and the "same subject,
+      // different picture" groups last.
+      return [...groups].sort((a, b) => sizeSpreadOf(a) - sizeSpreadOf(b));
+    }
     if (sortBy !== 'similarity') return groups;
     return [...groups].sort((a, b) => {
       const da = a.distance ?? -1;
@@ -449,11 +611,26 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
             {t('browser.sortBy')}
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as 'waste' | 'similarity')}
+              onChange={(e) => setSortBy(e.target.value as 'waste' | 'similarity' | 'sizeSpread')}
               className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200"
             >
               <option value="waste">{t('duplicates.sortWasted')}</option>
               <option value="similarity">{t('duplicates.sortSimilarity')}</option>
+              <option value="sizeSpread">{t('duplicates.sortSizeSpread')}</option>
+            </select>
+          </label>
+
+          <label className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+            {t('duplicates.keepByDefault')}
+            <select
+              value={keepPolicy}
+              onChange={(e) => setKeepPolicy(e.target.value as typeof keepPolicy)}
+              className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+            >
+              <option value="shortestName">{t('duplicates.keepShortestName')}</option>
+              <option value="smallest">{t('duplicates.keepSmallest')}</option>
+              <option value="largest">{t('duplicates.keepLargest')}</option>
+              <option value="firstFound">{t('duplicates.keepFirstFound')}</option>
             </select>
           </label>
 
@@ -587,7 +764,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
             </div>
 
             {/* Groups list (scrollable) */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
+            <div className="modal-scroll flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
               {orderedGroups.map((group, groupIdx) => (
                 <div
                   key={group.hash}
@@ -605,6 +782,11 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                     <span className="text-gray-400 dark:text-gray-500 ml-auto shrink-0">
                       {formatBytes(group.size)} &times; {group.files.length} {t('duplicates.copies')}
                     </span>
+                    {group.files.every((f) => selectedPaths.has(f)) && (
+                      <span className="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 shrink-0">
+                        {t('duplicates.everyCopyTicked')}
+                      </span>
+                    )}
                     {group.similarity && (
                       <span className="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 shrink-0">
                         {group.similarity}{group.distance != null ? `, dist ${group.distance}` : ''}
@@ -614,11 +796,25 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
 
                   {/* File entries */}
                   <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                    {group.files.map((filePath, fileIdx) => {
-                      const isFirst = fileIdx === 0;
+                    {/* Computed once for the group, not once per row: inside the
+                        map it rescanned the whole size list for every file. */}
+                    {(() => {
+                      const groupLargest = group.file_sizes?.length
+                        ? extentOf(group.file_sizes)[1]
+                        : undefined;
+                      return group.files.map((filePath, fileIdx) => {
                       const isChecked = selectedPaths.has(filePath);
+                      const isKept = !isChecked;
                       const fileName = getFileName(filePath);
                       const dirPath = getDirectory(filePath);
+                      const fileSize = group.file_sizes?.[fileIdx];
+                      // How much smaller this copy is than the largest in the
+                      // group. The pair Ehud described as "clearly different"
+                      // differed by a third; the pair that looked identical, by
+                      // a rounding error.
+                      const delta = fileSize != null && groupLargest != null && groupLargest !== fileSize
+                        ? fileSize - groupLargest
+                        : null;
                       // Exact mode: one BLAKE3 for the whole group. Fuzzy mode:
                       // this file's own signature, which is what explains why it
                       // was clustered with the others.
@@ -628,21 +824,50 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                         <div
                           key={filePath}
                           className={`flex items-start gap-3 px-3 py-2 cursor-pointer transition-colors ${
-                            isFirst
-                              ? 'bg-green-50/50 dark:bg-green-900/10'
-                              : isChecked
-                                ? 'bg-red-50/50 dark:bg-red-900/10 hover:bg-red-50 dark:hover:bg-red-900/20'
-                                : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
+                            isChecked
+                              ? 'bg-red-50/50 dark:bg-red-900/10 hover:bg-red-50 dark:hover:bg-red-900/20'
+                              : 'bg-green-50/50 dark:bg-green-900/10 hover:bg-green-50 dark:hover:bg-green-900/20'
                           }`}
                         >
-                          {/* Checkbox: disabled for the first (kept) file */}
+                          {/* Every copy can be ticked, including the one the
+                              policy kept. Which one survives is the user's
+                              call; the guard below refuses only the case where
+                              none of them does. */}
                           <div className="mt-1 shrink-0">
                             <Checkbox
                               checked={isChecked}
-                              disabled={isFirst}
                               onChange={() => toggleFile(filePath)}
                             />
                           </div>
+
+                          {/* A square of the file itself. Deciding which of two
+                              near-identical pictures to keep from their names
+                              and byte counts alone is guesswork (#347). Click to
+                              open it full size in the preview, where AeroImage
+                              can edit it. */}
+                          {onPreviewFile && isPreviewableImage(fileName) ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onPreviewFile(filePath); }}
+                              title={t('contextMenu.preview')}
+                              className="shrink-0 mt-0.5 rounded overflow-hidden border border-gray-200 dark:border-gray-600 hover:border-blue-400 transition-colors"
+                            >
+                              <ImageThumbnail
+                                path={filePath}
+                                name={fileName}
+                                /* The dedupe command reports a content hash
+                                   rather than an mtime, and a hash is the
+                                   stronger half of the pair: a file whose bytes
+                                   changed is a different entry even if its size
+                                   and timestamp did not. Without either, the
+                                   signature is null and the row is not cached. */
+                                signature={signatureOf(fileSize, rowHash)}
+                                cacheScope="dedupe"
+                                fallbackIcon={<div className="w-10 h-10" />}
+                                className="w-10 h-10 object-contain bg-gray-50 dark:bg-gray-900"
+                              />
+                            </button>
+                          ) : null}
 
                           {/* File info, each line with its own copy button */}
                           <div className="flex-1 min-w-0">
@@ -651,6 +876,16 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                                 {fileName}
                               </span>
                               <RowCopyButton value={fileName} label={t('contextMenu.copyName') || 'Copy Name'} />
+                              {fileSize != null && (
+                                <span className="shrink-0 ml-auto text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
+                                  {formatBytes(fileSize)}
+                                  {delta != null && (
+                                    <span className="ml-1 text-gray-400 dark:text-gray-500">
+                                      ({formatBytes(delta)})
+                                    </span>
+                                  )}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-1 min-w-0">
                               <span className="text-xs text-gray-500 dark:text-gray-400 truncate" title={dirPath}>
@@ -664,7 +899,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                                   className="font-mono text-[10px] text-gray-400 dark:text-gray-500 truncate"
                                   title={rowHash}
                                 >
-                                  {group.similarity ? `${group.similarity}: ` : ''}{rowHash}
+                                  {group.similarity ? `${group.similarity}: ` : ''}{shortHash(rowHash)}
                                 </span>
                                 <RowCopyButton value={rowHash} label={t('common.copy') || 'Copy'} />
                               </div>
@@ -708,22 +943,17 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                           {/* Keep / delete badge */}
                           <span
                             className={`shrink-0 mt-0.5 px-2 py-0.5 text-[10px] font-medium rounded ${
-                              isFirst
+                              isKept
                                 ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
-                                : isChecked
-                                  ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
-                                  : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                                : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
                             }`}
                           >
-                            {isFirst
-                              ? t('duplicates.keep')
-                              : isChecked
-                                ? t('duplicates.delete')
-                                : t('duplicates.skip')}
+                            {isChecked ? t('duplicates.delete') : t('duplicates.keep')}
                           </span>
                         </div>
                       );
-                    })}
+                      });
+                    })()}
                   </div>
                 </div>
               ))}
@@ -733,7 +963,13 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center gap-2">
                 <button
-                  onClick={selectAllDuplicates}
+                  onClick={selectAllButOne}
+                  className="px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded border border-gray-300 dark:border-gray-600"
+                >
+                  {t('duplicates.selectAllButOne')}
+                </button>
+                <button
+                  onClick={selectAll}
                   className="px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded border border-gray-300 dark:border-gray-600"
                 >
                   {t('duplicates.selectAll')}
@@ -748,6 +984,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
 
               <button
                 onClick={handleDelete}
+                title={fullyTickedGroups.length > 0 ? t('duplicates.everyCopyTickedHint') : undefined}
                 disabled={selectedCount === 0 || isDeleting}
                 className="flex items-center gap-2 px-4 py-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-sm"
               >
@@ -785,6 +1022,25 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                   name at the user instead of a question (#537). */}
               {t('duplicates.deleteConfirm', { count: selectedPaths.size })}
             </p>
+            {fullyTickedGroups.length > 0 && (
+              /* Named, not just counted: "3 groups" is not something a user can
+                 check, and this is the one delete in this dialog that leaves no
+                 copy behind. */
+              <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                <p className="mb-1 flex items-center gap-1.5 font-medium">
+                  <AlertCircle size={13} className="shrink-0" />
+                  {t('duplicates.everyCopyTicked')} ({fullyTickedGroups.length})
+                </p>
+                <ul className="list-disc pl-4">
+                  {fullyTickedGroups.slice(0, 5).map((g) => (
+                    <li key={g.files[0]} className="truncate">{getFileName(g.files[0])}</li>
+                  ))}
+                </ul>
+                {fullyTickedGroups.length > 5 && (
+                  <p className="mt-1 opacity-80">+{fullyTickedGroups.length - 5}</p>
+                )}
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setPendingDeleteConfirm(false)}

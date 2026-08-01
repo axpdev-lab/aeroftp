@@ -3427,7 +3427,16 @@
             "delete": "TA BORT",
             "skip": "HOPPA ÖVER",
             "deleteConfirm": "Är du säker på att du vill ta bort {count} dubblettfiler?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Storleksskillnad",
+            "keepByDefault": "Behåll som standard",
+            "keepShortestName": "Kortaste namnet",
+            "keepSmallest": "Minsta",
+            "keepLargest": "Största",
+            "keepFirstFound": "Först hittad",
+            "selectAllButOne": "Markera alla utom en per grupp",
+            "everyCopyTicked": "alla kopior markerade",
+            "everyCopyTickedHint": "Avmarkera en kopia i varje markerad grupp: annars raderas alla kopior."
         },
         "diskUsage": {
             "title": "Diskanvändning",

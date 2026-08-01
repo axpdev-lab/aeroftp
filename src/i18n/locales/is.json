@@ -3427,7 +3427,16 @@
             "delete": "EYÐA",
             "skip": "SLEPPA",
             "deleteConfirm": "Ertu viss um að þú viljir eyða {count} tvíritaskrám?",
-            "fuzzyCutoffPlaceholder": "sjálf"
+            "fuzzyCutoffPlaceholder": "sjálf",
+            "sortSizeSpread": "Stærðarmunur",
+            "keepByDefault": "Halda sjálfgefið",
+            "keepShortestName": "Stysta heitið",
+            "keepSmallest": "Minnst",
+            "keepLargest": "Stærst",
+            "keepFirstFound": "Fannst fyrst",
+            "selectAllButOne": "Velja allt nema eitt í hverjum hópi",
+            "everyCopyTicked": "öll afrit valin",
+            "everyCopyTickedHint": "Taktu hakið af einu afriti í hverjum auðkenndum hópi: annars eyðast öll afritin."
         },
         "diskUsage": {
             "title": "Disknotkun",

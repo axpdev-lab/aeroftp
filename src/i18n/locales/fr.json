@@ -3427,7 +3427,16 @@
             "delete": "SUPPRIMER",
             "skip": "IGNORER",
             "deleteConfirm": "Êtes-vous sûr de vouloir supprimer {count} fichiers en double ?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Écart de taille",
+            "keepByDefault": "Conserver par défaut",
+            "keepShortestName": "Nom le plus court",
+            "keepSmallest": "La plus petite",
+            "keepLargest": "La plus grande",
+            "keepFirstFound": "Le premier trouvé",
+            "selectAllButOne": "Tout sélectionner sauf un par groupe",
+            "everyCopyTicked": "toutes les copies cochées",
+            "everyCopyTickedHint": "Décochez une copie dans chaque groupe surligné : sinon toutes les copies seraient supprimées."
         },
         "diskUsage": {
             "title": "Utilisation du disque",

@@ -3427,7 +3427,16 @@
             "delete": "ОБРИШИ",
             "skip": "ПРЕСКОЧИ",
             "deleteConfirm": "Да ли сте сигурни да желите да обришете {count} дупликата фајлова?",
-            "fuzzyCutoffPlaceholder": "ауто"
+            "fuzzyCutoffPlaceholder": "ауто",
+            "sortSizeSpread": "Распон величина",
+            "keepByDefault": "Подразумевано задржати",
+            "keepShortestName": "Најкраће име",
+            "keepSmallest": "Најмању",
+            "keepLargest": "Највећу",
+            "keepFirstFound": "Прву пронађену",
+            "selectAllButOne": "Изабери све осим једне по групи",
+            "everyCopyTicked": "означене све копије",
+            "everyCopyTickedHint": "У свакој истакнутој групи уклоните ознаку са једне копије: иначе ће бити обрисане све."
         },
         "diskUsage": {
             "title": "Коришћење диска",

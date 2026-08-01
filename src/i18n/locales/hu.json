@@ -3427,7 +3427,16 @@
             "delete": "TÖRLÉS",
             "skip": "KIHAGYÁS",
             "deleteConfirm": "Biztosan törölni szeretné a(z) {count} duplikált fájlt?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Méretkülönbség",
+            "keepByDefault": "Alapértelmezésben megtartva",
+            "keepShortestName": "Legrövidebb név",
+            "keepSmallest": "Legkisebb",
+            "keepLargest": "Legnagyobb",
+            "keepFirstFound": "Elsőként talált",
+            "selectAllButOne": "Csoportonként egy kivételével mind kijelölése",
+            "everyCopyTicked": "minden másolat kijelölve",
+            "everyCopyTickedHint": "Vegye ki a jelölést egy másolatról minden kiemelt csoportban: különben mind törlődik."
         },
         "diskUsage": {
             "title": "Lemezfoglalás",

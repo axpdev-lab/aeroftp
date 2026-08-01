@@ -3427,7 +3427,16 @@
             "deleted": "{count} duplicados eliminados",
             "scanFailed": "Fallo no escaneo",
             "retry": "Reintentar",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Diferenza de tamaño",
+            "keepByDefault": "Conservar de forma predeterminada",
+            "keepShortestName": "Nome máis curto",
+            "keepSmallest": "O máis pequeno",
+            "keepLargest": "O máis grande",
+            "keepFirstFound": "O primeiro atopado",
+            "selectAllButOne": "Seleccionar todos agás un por grupo",
+            "everyCopyTicked": "todas as copias marcadas",
+            "everyCopyTickedHint": "Desmarca unha copia en cada grupo destacado: doutro xeito borraríanse todas."
         },
         "diskUsage": {
             "title": "Uso de disco",

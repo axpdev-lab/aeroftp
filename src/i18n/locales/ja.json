@@ -3392,7 +3392,16 @@
             "delete": "削除",
             "skip": "スキップ",
             "deleteConfirm": "{count} 件の重複ファイルを削除しますか？",
-            "fuzzyCutoffPlaceholder": "自動"
+            "fuzzyCutoffPlaceholder": "自動",
+            "sortSizeSpread": "サイズ差",
+            "keepByDefault": "既定で残すもの",
+            "keepShortestName": "最も短い名前",
+            "keepSmallest": "最小",
+            "keepLargest": "最大",
+            "keepFirstFound": "最初に見つかったもの",
+            "selectAllButOne": "グループごとに 1 つを除いてすべて選択",
+            "everyCopyTicked": "すべての複製が選択済み",
+            "everyCopyTickedHint": "強調表示された各グループで 1 つの選択を外してください。このままではすべての複製が削除されます。"
         },
         "diskUsage": {
             "title": "ディスク使用量",

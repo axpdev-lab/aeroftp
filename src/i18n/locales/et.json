@@ -3427,7 +3427,16 @@
             "delete": "KUSTUTA",
             "skip": "JÄTA VAHELE",
             "deleteConfirm": "Kas olete kindel, et soovite kustutada {count} duplikaatfaili?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Suuruste vahe",
+            "keepByDefault": "Vaikimisi säilitatav",
+            "keepShortestName": "Lühim nimi",
+            "keepSmallest": "Väikseim",
+            "keepLargest": "Suurim",
+            "keepFirstFound": "Esimesena leitud",
+            "selectAllButOne": "Vali kõik peale ühe igas rühmas",
+            "everyCopyTicked": "kõik koopiad märgitud",
+            "everyCopyTickedHint": "Eemalda igas esiletõstetud rühmas ühelt koopialt märge: muidu kustutatakse kõik."
         },
         "diskUsage": {
             "title": "Kettakasutus",

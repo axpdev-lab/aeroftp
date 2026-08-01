@@ -3427,7 +3427,16 @@
             "delete": "DZĒST",
             "skip": "IZLAIST",
             "deleteConfirm": "Vai tiešām vēlaties dzēst {count} dublikātu failus?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Izmēra starpība",
+            "keepByDefault": "Pēc noklusējuma paturēt",
+            "keepShortestName": "Īsākais nosaukums",
+            "keepSmallest": "Mazāko",
+            "keepLargest": "Lielāko",
+            "keepFirstFound": "Pirmo atrasto",
+            "selectAllButOne": "Atlasīt visus, izņemot vienu katrā grupā",
+            "everyCopyTicked": "atzīmētas visas kopijas",
+            "everyCopyTickedHint": "Katrā izceltajā grupā noņemiet atzīmi vienai kopijai: citādi tiks dzēstas visas."
         },
         "diskUsage": {
             "title": "Diska izmantošana",

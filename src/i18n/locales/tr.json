@@ -3427,7 +3427,16 @@
             "delete": "SİL",
             "skip": "ATLA",
             "deleteConfirm": "{count} yinelenen dosyayı silmek istediğinizden emin misiniz?",
-            "fuzzyCutoffPlaceholder": "oto"
+            "fuzzyCutoffPlaceholder": "oto",
+            "sortSizeSpread": "Boyut farkı",
+            "keepByDefault": "Varsayılan olarak saklanacak",
+            "keepShortestName": "En kısa ad",
+            "keepSmallest": "En küçüğü",
+            "keepLargest": "En büyüğü",
+            "keepFirstFound": "İlk bulunan",
+            "selectAllButOne": "Her grupta biri hariç tümünü seç",
+            "everyCopyTicked": "tüm kopyalar işaretli",
+            "everyCopyTickedHint": "Vurgulanan her grupta bir kopyanın işaretini kaldırın: aksi hâlde tüm kopyalar silinir."
         },
         "diskUsage": {
             "title": "Disk Kullanımı",

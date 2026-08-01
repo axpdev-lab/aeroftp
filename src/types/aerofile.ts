@@ -113,6 +113,10 @@ export interface DuplicateGroup {
   /** Per-file fuzzy signature, parallel to `files`. Absent in exact mode,
    *  where `hash` is the one BLAKE3 every member of the group shares. */
   file_hashes?: string[];
+  /** Each entry's own size in bytes, parallel to `files`. Equal to `size` for
+   *  every member of an exact group; in fuzzy mode they differ, and the spread
+   *  is what tells a re-encode from a genuinely different picture (#347). */
+  file_sizes?: number[];
 }
 
 /** Node in a disk usage tree for treemap visualization */

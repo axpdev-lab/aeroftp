@@ -3816,7 +3816,16 @@
             "delete": "ELIMINA",
             "skip": "SALTA",
             "deleteConfirm": "Sei sicuro di voler eliminare {count} file duplicati?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Differenza di dimensione",
+            "keepByDefault": "Da conservare per impostazione predefinita",
+            "keepShortestName": "Nome più corto",
+            "keepSmallest": "La più piccola",
+            "keepLargest": "La più grande",
+            "keepFirstFound": "La prima trovata",
+            "selectAllButOne": "Seleziona tutte tranne una per gruppo",
+            "everyCopyTicked": "tutte le copie selezionate",
+            "everyCopyTickedHint": "Deseleziona una copia in ogni gruppo evidenziato: così le cancelleresti tutte."
         },
         "diskUsage": {
             "title": "Uso Disco",

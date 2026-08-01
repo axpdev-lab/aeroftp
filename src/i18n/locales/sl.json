@@ -3427,7 +3427,16 @@
             "delete": "IZBRIŠI",
             "skip": "PRESKOČI",
             "deleteConfirm": "Ali ste prepričani, da želite izbrisati {count} podvojenih datotek?",
-            "fuzzyCutoffPlaceholder": "avto"
+            "fuzzyCutoffPlaceholder": "avto",
+            "sortSizeSpread": "Razpon velikosti",
+            "keepByDefault": "Privzeto obdrži",
+            "keepShortestName": "Najkrajše ime",
+            "keepSmallest": "Najmanjšo",
+            "keepLargest": "Največjo",
+            "keepFirstFound": "Prvo najdeno",
+            "selectAllButOne": "Izberi vse razen ene v vsaki skupini",
+            "everyCopyTicked": "označene vse kopije",
+            "everyCopyTickedHint": "V vsaki označeni skupini odznačite eno kopijo: sicer bodo izbrisane vse."
         },
         "diskUsage": {
             "title": "Zasedenost diska",

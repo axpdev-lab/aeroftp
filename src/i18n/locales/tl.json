@@ -3427,7 +3427,16 @@
             "delete": "TANGGALIN",
             "skip": "LAKTAWAN",
             "deleteConfirm": "Sigurado ka bang gusto mong tanggalin ang {count} duplikadong file?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Pagkakaiba ng laki",
+            "keepByDefault": "Panatilihin bilang default",
+            "keepShortestName": "Pinakamaikling pangalan",
+            "keepSmallest": "Pinakamaliit",
+            "keepLargest": "Pinakamalaki",
+            "keepFirstFound": "Unang natagpuan",
+            "selectAllButOne": "Piliin lahat maliban sa isa bawat grupo",
+            "everyCopyTicked": "lahat ng kopya ay nakatik",
+            "everyCopyTickedHint": "Alisin ang tik sa isang kopya sa bawat naka-highlight na grupo: kung hindi, mabubura lahat ng kopya."
         },
         "diskUsage": {
             "title": "Paggamit ng Disk",

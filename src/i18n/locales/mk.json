@@ -3427,7 +3427,16 @@
             "delete": "ИЗБРИШИ",
             "skip": "ПРЕСКОКНИ",
             "deleteConfirm": "Дали сте сигурни дека сакате да избришете {count} дуплирани датотеки?",
-            "fuzzyCutoffPlaceholder": "авто"
+            "fuzzyCutoffPlaceholder": "авто",
+            "sortSizeSpread": "Разлика во големина",
+            "keepByDefault": "Задржи стандардно",
+            "keepShortestName": "Најкратко име",
+            "keepSmallest": "Најмалата",
+            "keepLargest": "Најголемата",
+            "keepFirstFound": "Првата пронајдена",
+            "selectAllButOne": "Избери ги сите освен по една од група",
+            "everyCopyTicked": "сите копии се обележани",
+            "everyCopyTickedHint": "Во секоја истакната група тргнете ја ознаката од една копија: инаку ќе се избришат сите."
         },
         "diskUsage": {
             "title": "Користење на диск",

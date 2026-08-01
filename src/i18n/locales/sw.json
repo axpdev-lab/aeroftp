@@ -3427,7 +3427,16 @@
             "delete": "FUTA",
             "skip": "RUKA",
             "deleteConfirm": "Una uhakika unataka kufuta faili nakala {count}?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Tofauti ya ukubwa",
+            "keepByDefault": "Hifadhi kwa chaguo-msingi",
+            "keepShortestName": "Jina fupi zaidi",
+            "keepSmallest": "Ndogo zaidi",
+            "keepLargest": "Kubwa zaidi",
+            "keepFirstFound": "Iliyopatikana kwanza",
+            "selectAllButOne": "Chagua zote isipokuwa moja kwa kila kundi",
+            "everyCopyTicked": "nakala zote zimetiwa alama",
+            "everyCopyTickedHint": "Ondoa alama kwenye nakala moja katika kila kundi lililoangaziwa: vinginevyo nakala zote zitafutwa."
         },
         "diskUsage": {
             "title": "Matumizi ya Diski",

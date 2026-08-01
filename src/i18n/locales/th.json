@@ -3427,7 +3427,16 @@
             "delete": "ลบ",
             "skip": "ข้าม",
             "deleteConfirm": "คุณแน่ใจหรือไม่ว่าต้องการลบไฟล์ซ้ำ {count} ไฟล์?",
-            "fuzzyCutoffPlaceholder": "อัตโนมัติ"
+            "fuzzyCutoffPlaceholder": "อัตโนมัติ",
+            "sortSizeSpread": "ส่วนต่างขนาด",
+            "keepByDefault": "เก็บไว้โดยค่าเริ่มต้น",
+            "keepShortestName": "ชื่อสั้นที่สุด",
+            "keepSmallest": "เล็กที่สุด",
+            "keepLargest": "ใหญ่ที่สุด",
+            "keepFirstFound": "พบเป็นอันแรก",
+            "selectAllButOne": "เลือกทั้งหมดยกเว้นหนึ่งในแต่ละกลุ่ม",
+            "everyCopyTicked": "ติ๊กสำเนาครบทุกอัน",
+            "everyCopyTickedHint": "ยกเลิกการติ๊กสำเนาหนึ่งอันในแต่ละกลุ่มที่ไฮไลต์ มิฉะนั้นสำเนาทั้งหมดจะถูกลบ"
         },
         "diskUsage": {
             "title": "การใช้พื้นที่ดิสก์",

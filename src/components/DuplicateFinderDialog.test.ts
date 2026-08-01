@@ -63,8 +63,17 @@ describe('the delete flow asks exactly once (#537)', () => {
     // caller's prompt gone, a dialog that ignored the setting would confirm even
     // for users who turned confirmations off.
     const handler = dialogRaw.slice(dialogRaw.indexOf('const handleDelete'));
-    expect(handler.slice(0, 400)).toMatch(/if \(!confirmBeforeDelete\)/);
-    expect(handler.slice(0, 400)).toMatch(/runDelete\(\)/);
+    expect(handler.slice(0, 700)).toMatch(/if \(!confirmBeforeDelete && fullyTickedGroups\.length === 0\)/);
+    expect(handler.slice(0, 700)).toMatch(/runDelete\(\)/);
+  });
+
+  it('still asks when the selection would leave a group with no copy', () => {
+    // The one case the setting does not cover. `confirmBeforeDelete` is about the
+    // routine delete; Select All deliberately produces the case that is not
+    // routine, and skipping the question there would delete every copy of a group
+    // silently.
+    const handler = dialogRaw.slice(dialogRaw.indexOf('const handleDelete'));
+    expect(handler.slice(0, 700)).toMatch(/fullyTickedGroups\.length === 0/);
   });
 });
 

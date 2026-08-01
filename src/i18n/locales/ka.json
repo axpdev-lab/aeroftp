@@ -3427,7 +3427,16 @@
             "delete": "წაშლა",
             "skip": "გამოტოვება",
             "deleteConfirm": "დარწმუნებული ხართ, რომ გსურთ {count} დუბლიკატი ფაილის წაშლა?",
-            "fuzzyCutoffPlaceholder": "ავტო"
+            "fuzzyCutoffPlaceholder": "ავტო",
+            "sortSizeSpread": "ზომების სხვაობა",
+            "keepByDefault": "ნაგულისხმევად შესანარჩუნებელი",
+            "keepShortestName": "უმოკლესი სახელი",
+            "keepSmallest": "უმცირესი",
+            "keepLargest": "უდიდესი",
+            "keepFirstFound": "პირველად ნაპოვნი",
+            "selectAllButOne": "მონიშნეთ ყველა, გარდა ერთისა თითო ჯგუფში",
+            "everyCopyTicked": "ყველა ასლი მონიშნულია",
+            "everyCopyTickedHint": "თითოეულ გამოკვეთილ ჯგუფში მოხსენით ერთ ასლს მონიშვნა: სხვაგვარად წაიშლება ყველა."
         },
         "diskUsage": {
             "title": "დისკის გამოყენება",

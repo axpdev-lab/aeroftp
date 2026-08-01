@@ -3427,7 +3427,16 @@
             "delete": "VERWIJDEREN",
             "skip": "OVERSLAAN",
             "deleteConfirm": "Weet u zeker dat u {count} dubbele bestanden wilt verwijderen?",
-            "fuzzyCutoffPlaceholder": "auto"
+            "fuzzyCutoffPlaceholder": "auto",
+            "sortSizeSpread": "Grootteverschil",
+            "keepByDefault": "Standaard behouden",
+            "keepShortestName": "Kortste naam",
+            "keepSmallest": "Kleinste",
+            "keepLargest": "Grootste",
+            "keepFirstFound": "Eerst gevonden",
+            "selectAllButOne": "Alles op één na per groep selecteren",
+            "everyCopyTicked": "alle kopieën aangevinkt",
+            "everyCopyTickedHint": "Vink in elke gemarkeerde groep één kopie uit: anders worden alle kopieën verwijderd."
         },
         "diskUsage": {
             "title": "Schijfgebruik",
