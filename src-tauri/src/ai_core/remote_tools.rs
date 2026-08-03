@@ -86,6 +86,23 @@ fn backend_error(e: String) -> ToolError {
     }
 }
 
+/// True when a `RemoteBackend` error means "the path is not there", as opposed
+/// to "the lookup did not complete" (auth, connection, provider 5xx, unsupported
+/// operation). `RemoteBackend` errors are opaque `String`s, so this is a string
+/// probe; it mirrors `is_not_found_error` on the `ProviderError` side of the CLI.
+///
+/// Callers that use a failed `stat` as permission to write MUST go through this:
+/// treating every error as "absent" is fail-open, and on a transient error it
+/// hands out a write on a path that may hold user data.
+fn stat_error_is_not_found(e: &str) -> bool {
+    let msg = e.to_ascii_lowercase();
+    msg.contains("not found")
+        || msg.contains("no such")
+        || msg.contains("does not exist")
+        || msg.contains("doesn't exist")
+        || msg.contains("404")
+}
+
 /// Hard cap per pagina per `aeroftp_list_files` / `aeroftp_search_files`.
 /// Se l'agente passa un `limit` superiore, viene clampato a questo valore.
 const MAX_LIST_PAGE: usize = 5_000;
@@ -792,14 +809,7 @@ async fn preview_delete(
     let (is_dir, root_size): (bool, u64) = match backend.stat(path).await {
         Ok(r) => (r.is_dir, r.size),
         Err(e) => {
-            let em = e.to_lowercase();
-            if recursive
-                && (em.contains("not found")
-                    || em.contains("path not found")
-                    || em.contains("404")
-                    || em.contains("no such")
-                    || em.contains("does not exist"))
-            {
+            if recursive && stat_error_is_not_found(&e) {
                 // Assume pseudo-directory for recursive preview; contents will
                 // be discovered by list below.
                 (true, 0)
@@ -2456,7 +2466,12 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         .map(|n| (n as u32).clamp(1, SPEED_MAX_ITERATIONS))
         .unwrap_or(SPEED_DEFAULT_ITERATIONS);
     let verify_integrity = get_bool_opt(args, "verify_integrity").unwrap_or(true);
-    let remote_path = get_str_opt(args, "remote_path")
+    // Whether the path came from the caller decides how strict the overwrite
+    // guard below has to be: an auto-generated UUID scratch path cannot be
+    // user data, a caller-named one can be anything.
+    let caller_named_path = get_str_opt(args, "remote_path");
+    let path_is_caller_named = caller_named_path.is_some();
+    let remote_path = caller_named_path
         .unwrap_or_else(|| format!("/.aeroftp-speedtest-{}.bin", uuid::Uuid::new_v4()));
     validate_remote_path(&remote_path, "remote_path")?;
 
@@ -2473,13 +2488,31 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     // Overwrite guard: the test uploads to remote_path and then deletes it,
     // so a path that already exists is a real user file about to be destroyed.
     // Refuse instead of clobbering (no overwrite flag exists by design).
-    if backend.stat(&remote_path).await.is_ok() {
-        return Err(ToolError::InvalidArgs {
-            tool: "aeroftp_speed".to_string(),
-            reason: format!(
-                "remote_path '{remote_path}' already exists; the speed test would overwrite and then delete it. Omit remote_path for an auto-generated scratch path, or pick a path that does not exist"
-            ),
-        });
+    //
+    // The guard fails CLOSED on a caller-named path: `stat` returning an error
+    // is only taken as "absent" when the provider actually said not-found. An
+    // auth failure, a dropped connection or a provider 5xx must not be read as
+    // permission to write — that is the same fail-open shape this guard exists
+    // to close. An auto-generated UUID scratch path is exempt: it holds no user
+    // data by construction, so a flaky `stat` must not block a legitimate run.
+    match backend.stat(&remote_path).await {
+        Ok(_) => {
+            return Err(ToolError::InvalidArgs {
+                tool: "aeroftp_speed".to_string(),
+                reason: format!(
+                    "remote_path '{remote_path}' already exists; the speed test would overwrite and then delete it. Omit remote_path for an auto-generated scratch path, or pick a path that does not exist"
+                ),
+            });
+        }
+        Err(e) if path_is_caller_named && !stat_error_is_not_found(&e) => {
+            return Err(ToolError::InvalidArgs {
+                tool: "aeroftp_speed".to_string(),
+                reason: format!(
+                    "cannot confirm remote_path '{remote_path}' is free: the existence check failed with '{e}'. The speed test overwrites and then deletes this path, so it will not run on an unverified path. Retry, or omit remote_path for an auto-generated scratch path"
+                ),
+            });
+        }
+        Err(_) => {}
     }
 
     let started = std::time::Instant::now();
@@ -3351,6 +3384,9 @@ mod tests {
         /// `rmdir` fails on a non-empty directory.
         delete_fails_with: Option<String>,
         rename_fails_with: Option<String>,
+        /// When set, `stat` fails with this message for every path, the way a
+        /// provider fails on an expired token or a dropped connection.
+        stat_fails_with: Option<String>,
     }
 
     impl FakeBackend {
@@ -3389,6 +3425,7 @@ mod tests {
                 empty_calls: Mutex::new(Vec::new()),
                 delete_fails_with: None,
                 rename_fails_with: None,
+                stat_fails_with: None,
             }
         }
 
@@ -3410,6 +3447,9 @@ mod tests {
                 .ok_or_else(|| format!("not found: {path}"))
         }
         async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
+            if let Some(msg) = &self.stat_fails_with {
+                return Err(msg.clone());
+            }
             let (is_dir, size) = *self
                 .stats
                 .get(path)
@@ -3417,9 +3457,14 @@ mod tests {
             Ok(entry(path, is_dir, size))
         }
         async fn download_to_bytes(&self, _path: &str) -> Result<Vec<u8>, String> {
+            // Pre-seeded fixture first, then whatever a previous
+            // `upload_from_bytes` left there — a real backend reads back what
+            // was just written, which is what the speed test relies on for a
+            // path it generated itself.
             self.downloads
                 .get(_path)
                 .cloned()
+                .or_else(|| self.remote_files.lock().unwrap().get(_path).cloned())
                 .ok_or_else(|| format!("unused download: {_path}"))
         }
         async fn download_to_bytes_capped(
@@ -3966,6 +4011,65 @@ mod tests {
         assert_eq!(
             backend.deleted.lock().unwrap().as_slice(),
             &["/scratch/speed.bin".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn speed_refuses_a_caller_named_path_when_the_check_cannot_complete() {
+        // Fail-closed: a `stat` that fails for any reason OTHER than not-found
+        // (expired token, dropped connection, provider 5xx) is not permission
+        // to write. Reading every error as "absent" would hand the upload +
+        // delete a path that may well hold user data.
+        let mut fake = FakeBackend::sample();
+        fake.stat_fails_with = Some("503 Service Unavailable".to_string());
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+        let err = speed(
+            &ctx,
+            &json!({
+                "server": "s",
+                "remote_path": "/root/unverifiable.bin",
+                "size_mb": 1,
+            }),
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("cannot confirm"), "got: {msg}");
+        assert!(
+            msg.contains("503"),
+            "the provider error must reach the caller: {msg}"
+        );
+        assert!(backend.uploads.lock().unwrap().is_empty());
+        assert!(backend.deleted.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn speed_still_runs_on_the_scratch_path_when_the_check_cannot_complete() {
+        // The strict check applies only to a caller-named path. The auto-generated
+        // UUID scratch path holds no user data by construction, so a provider
+        // whose `stat` is flaky or unsupported must not lose the speed test.
+        let mut fake = FakeBackend::sample();
+        fake.stat_fails_with = Some("stat unsupported by provider".to_string());
+        let backend = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&backend));
+        let value = speed(
+            &ctx,
+            &json!({
+                "server": "s",
+                "size_mb": 1,
+                "verify_integrity": false,
+            }),
+        )
+        .await
+        .expect("an auto-generated scratch path must not be blocked by a flaky stat");
+        assert_eq!(value["cleanup_ok"], json!(true));
+        let uploaded = backend.uploads.lock().unwrap();
+        assert_eq!(uploaded.len(), 1);
+        assert!(
+            uploaded[0].0.starts_with("/.aeroftp-speedtest-"),
+            "got: {}",
+            uploaded[0].0
         );
     }
 
