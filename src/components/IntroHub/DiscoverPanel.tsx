@@ -18,8 +18,8 @@ import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
 import { useDiscoverHealthCheck } from '../../hooks/useDiscoverHealthCheck';
 import { openUrl } from '../../utils/openUrl';
 import { middleClickOpen } from '../../utils/middleClick';
-import { CatalogTable } from './CatalogTable';
-import { PROVIDER_CATALOG, companyInCategory, isDevOnlyProvider } from '../providerCatalog';
+import { CatalogTable, loadTierFilter, persistTierFilter, TIER_FILTERS, type TierFilter } from './CatalogTable';
+import { PROVIDER_CATALOG, companyInCategory, companyTierInCategory, isDevOnlyProvider } from '../providerCatalog';
 
 /** All category sidebar entries share these keys; 'all' is a virtual category. */
 type DiscoverCategoryId = CatalogCategoryId | 'all';
@@ -89,12 +89,12 @@ const CATEGORY_COLORS: Record<CatalogCategoryId, string> = {
 
 interface DiscoverPanelProps {
     onSelectProvider: (protocol: ProviderType, providerId?: string, demo?: { server: string; port: number; username: string; password: string }, openInBackground?: boolean) => void;
-    // Search strings lifted to IntroHub (Ehud #274) so they survive tab switches
-    // (DiscoverPanel unmounts on switch) and reset only when the app quits.
-    gridQuery: string;
-    onGridQueryChange: (value: string) => void;
-    listQuery: string;
-    onListQueryChange: (value: string) => void;
+    // One search string, lifted to IntroHub (Ehud #274) so it survives tab
+    // switches (DiscoverPanel unmounts on switch) and resets only when the app
+    // quits. Grid and table used to hold one each, which is why a term typed in
+    // one view was gone after switching to the other (Ehud #347).
+    query: string;
+    onQueryChange: (value: string) => void;
 }
 
 function ServiceCard({
@@ -196,7 +196,7 @@ function ServiceCard({
     );
 }
 
-export function DiscoverPanel({ onSelectProvider, gridQuery, onGridQueryChange, listQuery, onListQueryChange }: DiscoverPanelProps) {
+export function DiscoverPanel({ onSelectProvider, query, onQueryChange }: DiscoverPanelProps) {
     const t = useTranslation();
     const introHubIconSize = useIntroHubIconSize();
     const categories = useMemo(() => buildDiscoverCategories(), []);
@@ -230,10 +230,14 @@ export function DiscoverPanel({ onSelectProvider, gridQuery, onGridQueryChange, 
         const saved = localStorage.getItem(VIEW_MODE_KEY);
         return saved === 'list' ? 'list' : 'grid';
     });
-    // Grid-view search (the list view has its own search inside CatalogTable).
-    // Both are controlled by IntroHub (Ehud #274) so they survive tab switches;
-    // `setGridQuery` just forwards to the lifted setter.
-    const setGridQuery = onGridQueryChange;
+    // Tier filter, owned here because it now applies to both views. Persisted,
+    // like the view mode and the category: it is a preference, not a transient
+    // toggle (Ehud #274).
+    const [tierFilter, setTierFilterState] = useState<TierFilter>(loadTierFilter);
+    const setTierFilter = useCallback((id: TierFilter) => {
+        setTierFilterState(id);
+        persistTierFilter(id);
+    }, []);
 
     // Provider health scan: per-tab eager (small categories) + chunked
     // sequential for the large All / list views (My Servers pattern). The
@@ -260,15 +264,45 @@ export function DiscoverPanel({ onSelectProvider, gridQuery, onGridQueryChange, 
         return base;
     }, [categories, activeCategory, peerTile]);
 
-    // Grid view, filtered by the search box (health scans still cover the full
-    // category, so a query never changes reachability results).
+    // Resolve a grid tile back to its catalog company, so the tier filter can
+    // apply to the grid as well as to the table. Same keying the signup-URL map
+    // below uses: provider id first, then protocol.
+    const companyByKey = useMemo(() => {
+        const map = new Map<string, CatalogCompany>();
+        for (const c of PROVIDER_CATALOG) {
+            for (const p of c.protocols) {
+                if (p.providerId && !map.has(p.providerId)) map.set(p.providerId, c);
+                if (!map.has(p.protocol)) map.set(p.protocol, c);
+            }
+        }
+        return map;
+    }, []);
+
+    // Grid view, filtered by the shared search box and the shared tier filter
+    // (health scans still cover the full category, so neither changes
+    // reachability results).
+    //
+    // A tile with no catalog company behind it — the AeroShare tile, the generic
+    // protocol entries — is never hidden by a tier: it has no price to filter on,
+    // and dropping it would remove the entry point rather than narrow a choice.
     const visibleGridItems = useMemo(() => {
-        const q = gridQuery.trim().toLowerCase();
-        if (!q) return activeItems;
-        return activeItems.filter(item =>
-            [item.name, item.description, item.badge, item.protocol, item.providerId, item.id, ...(item.searchAliases ?? [])]
-                .filter(Boolean).join(' ').toLowerCase().includes(q));
-    }, [activeItems, gridQuery]);
+        const q = query.trim().toLowerCase();
+        let items = activeItems;
+        if (q) {
+            items = items.filter(item =>
+                [item.name, item.description, item.badge, item.protocol, item.providerId, item.id, ...(item.searchAliases ?? [])]
+                    .filter(Boolean).join(' ').toLowerCase().includes(q));
+        }
+        if (tierFilter !== 'all') {
+            const wanted = tierFilter === 'freecard' ? 'free-card' : tierFilter;
+            items = items.filter(item => {
+                const company = companyByKey.get(item.providerId || '') ?? companyByKey.get(item.protocol);
+                if (!company) return true;
+                return companyTierInCategory(company, activeCategory) === wanted;
+            });
+        }
+        return items;
+    }, [activeItems, query, tierFilter, companyByKey, activeCategory]);
 
     // Signup/website URL per company, resolved from the discover items (which
     // carry the registry/protocol signupUrl). Keyed by providerId first, then
@@ -524,8 +558,10 @@ export function DiscoverPanel({ onSelectProvider, gridQuery, onGridQueryChange, 
                     </button>
                 </div>
 
-                {/* Info banner per category (grid view, the 6 named categories) */}
-                {viewMode === 'grid' && activeCategory !== 'all' && (() => {
+                {/* Info banner per category (both views, the 6 named categories).
+                    It describes the category, not the way it is drawn, so it has
+                    no reason to disappear in the table (Ehud #347). */}
+                {activeCategory !== 'all' && (() => {
                     const infoKeyMap: Record<CatalogCategoryId, string> = {
                         'protocols': 'protocols',
                         'object-storage': 's3',
@@ -548,63 +584,61 @@ export function DiscoverPanel({ onSelectProvider, gridQuery, onGridQueryChange, 
                     );
                 })()}
 
+                {/* Search and tier filter: one instance, above the view switch,
+                    so switching between grid and table changes the body and
+                    nothing else. Each view used to render its own copy backed by
+                    its own state, which is why a typed query and a chosen tier
+                    were lost on switching, and why the box moved (Ehud #347). */}
+                <div className="flex items-center gap-2 mb-3">
+                    <SearchBox
+                        value={query}
+                        onChange={onQueryChange}
+                        onClear={() => onQueryChange('')}
+                        clearAriaLabel={t('common.close')}
+                        clearIconSize={13}
+                        placeholder={t('introHub.list.searchPlaceholder')}
+                        containerClassName="flex-1 max-w-md"
+                        className="w-full pl-3 pr-8 py-1.5 bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    />
+                    {/* Free / paid tier filter (parity with `aeroftp-cli catalog --free/--paid`) */}
+                    <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden">
+                        {TIER_FILTERS.map((id) => (
+                            <button
+                                key={id}
+                                onClick={() => setTierFilter(id)}
+                                aria-pressed={tierFilter === id}
+                                className={`px-2.5 py-1.5 text-[11px] transition-colors ${
+                                    tierFilter === id
+                                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium'
+                                        : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                                }`}
+                            >
+                                {id === 'all' ? t('introHub.filter.all')
+                                    : id === 'free' ? t('providers.freeTier')
+                                    : id === 'freecard' ? t('providers.freeCardTier')
+                                    : t('providers.paidTier')}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
                 {viewMode === 'list' ? (
                     /* Company-centric list view (issue #224) */
                     <div className="flex-1 min-h-0 flex flex-col">
                         <CatalogTable
                             companies={catalogCompanies}
                             category={activeCategory}
-                            query={listQuery}
-                            onQueryChange={onListQueryChange}
+                            query={query}
+                            tierFilter={tierFilter}
                             onSelectProvider={(protocol, providerId, openInBackground) => onSelectProvider(protocol, providerId, undefined, openInBackground)}
                             getHealth={(logoId) => getStatus(logoId).status}
                             healthEnabled={healthEnabled}
                             getSignupUrl={resolveCompanySignupUrl}
                             onOpenUrl={openUrl}
                         />
-                        {/* Custom / generic servers below the table, filtered to
-                            the active tab (Ehud #274): hidden entirely in tabs
-                            with no generic protocol (cloud / media / developer). */}
-                        {(() => {
-                            const customProfiles = CUSTOM_PROFILES.filter(
-                                (p) => activeCategory === 'all' || p.categories.includes(activeCategory),
-                            );
-                            if (customProfiles.length === 0) return null;
-                            return (
-                                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                                    <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
-                                        {t('introHub.list.customProfiles')}
-                                    </div>
-                                    <div className="flex flex-wrap gap-2">
-                                        {customProfiles.map((p) => (
-                                            <button
-                                                key={p.labelKey}
-                                                onClick={() => onSelectProvider(p.protocol, p.providerId)}
-                                                {...middleClickOpen(() => onSelectProvider(p.protocol, p.providerId, undefined, true))}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-blue-300 dark:hover:border-blue-500/40 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
-                                            >
-                                                <Server size={12} className="text-gray-400" />
-                                                {t(p.labelKey)}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        })()}
                     </div>
                 ) : (
                     <>
-                        {/* Grid search (the list view has its own search inside CatalogTable) */}
-                        <SearchBox
-                            value={gridQuery}
-                            onChange={setGridQuery}
-                            onClear={() => setGridQuery('')}
-                            clearAriaLabel={t('common.close')}
-                            clearIconSize={13}
-                            placeholder={t('introHub.list.searchPlaceholder')}
-                            containerClassName="mb-3 max-w-md"
-                            className="w-full pl-3 pr-8 py-1.5 bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                        />
                         {/* Provider grid */}
                         <div className="flex-1 overflow-y-auto">
                             {visibleGridItems.length === 0 ? (
@@ -639,6 +673,39 @@ export function DiscoverPanel({ onSelectProvider, gridQuery, onGridQueryChange, 
                         </div>
                     </>
                 )}
+
+                {/* Custom / generic servers, filtered to the active tab (Ehud
+                    #274) and hidden entirely in tabs with no generic protocol
+                    (cloud / media / developer). Below both views: these are the
+                    same entry points whichever way the catalog is drawn, and
+                    having them only under the table is one of the differences
+                    that made switching views feel like changing page (#347). */}
+                {(() => {
+                    const customProfiles = CUSTOM_PROFILES.filter(
+                        (p) => activeCategory === 'all' || p.categories.includes(activeCategory),
+                    );
+                    if (customProfiles.length === 0) return null;
+                    return (
+                        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
+                                {t('introHub.list.customProfiles')}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {customProfiles.map((p) => (
+                                    <button
+                                        key={p.labelKey}
+                                        onClick={() => onSelectProvider(p.protocol, p.providerId)}
+                                        {...middleClickOpen(() => onSelectProvider(p.protocol, p.providerId, undefined, true))}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-blue-300 dark:hover:border-blue-500/40 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                                    >
+                                        <Server size={12} className="text-gray-400" />
+                                        {t(p.labelKey)}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })()}
             </div>
         </div>
     );

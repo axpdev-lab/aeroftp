@@ -138,12 +138,14 @@ export function IntroHub(props: IntroHubProps) {
     // Dynamic form tabs
     const [formTabs, setFormTabs] = useState<FormTabState[]>([]);
 
-    // Discover search strings are lifted here (Ehud #274) so switching tabs —
-    // which unmounts DiscoverPanel — no longer wipes them. They live in memory
-    // and reset only when the app quits, exactly as requested. `grid` backs the
-    // card view's search box; `list` backs the CatalogTable search box.
-    const [discoverGridQuery, setDiscoverGridQuery] = useState('');
-    const [discoverListQuery, setDiscoverListQuery] = useState('');
+    // The Discover search string is lifted here (Ehud #274) so switching tabs —
+    // which unmounts DiscoverPanel — no longer wipes it. It lives in memory and
+    // resets only when the app quits, exactly as requested.
+    //
+    // One string, not one per view: the grid and the table each used to keep
+    // their own, so a term typed in one was gone after switching to the other
+    // (Ehud #347). Both now render the same box, backed by this.
+    const [discoverQuery, setDiscoverQuery] = useState('');
 
     // Command Palette
     // showPalette removed: CommandPalette was redundant with filter chips
@@ -458,10 +460,8 @@ export function IntroHub(props: IntroHubProps) {
                 {activeTab === 'discover' && (
                     <DiscoverPanel
                         onSelectProvider={handleSelectProvider}
-                        gridQuery={discoverGridQuery}
-                        onGridQueryChange={setDiscoverGridQuery}
-                        listQuery={discoverListQuery}
-                        onListQueryChange={setDiscoverListQuery}
+                        query={discoverQuery}
+                        onQueryChange={setDiscoverQuery}
                     />
                 )}
 
