@@ -15,13 +15,14 @@
  * Renders nothing when no group is active, so it can be unconditionally
  * mounted in the form layout.
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { FileText } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import {
     findActiveMode,
     findActiveModeGroup,
 } from './providerModeGroups';
+import { protocolBadgeRank } from './providerCatalog';
 import BridgeStatusBanner from './BridgeStatusBanner';
 import type { ProviderType } from '../types';
 
@@ -69,6 +70,23 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
     const group = findActiveModeGroup(activeProviderId, activeProtocol);
     const active = group ? findActiveMode(group, activeProviderId, activeProtocol) : null;
     const bridgeKind = active?.bridgeKind;
+
+    // Tabs follow the same order the Add Service badges do (#347). Sorted here
+    // rather than in the group definitions so there is one sequence, shared with
+    // the catalog, instead of two lists that have to be kept in agreement by
+    // hand — which is how FileLu ended up with FTP last here and second there.
+    // Stable, on a copy: equal ranks keep the authored order and the exported
+    // groups are never reordered under another consumer.
+    const orderedModes = useMemo(() => {
+        if (!group) return [];
+        return group.modes
+            .map((m, i) => ({ m, i }))
+            .sort((a, b) => {
+                const byRank = protocolBadgeRank(a.m.protocol) - protocolBadgeRank(b.m.protocol);
+                return byRank !== 0 ? byRank : a.i - b.i;
+            })
+            .map(({ m }) => m);
+    }, [group]);
 
     // Clear bridge-derived state when the active mode is not a local-bridge mode
     // (the banner clears its own on unmount, but a non-bridge group never mounts
@@ -120,7 +138,7 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mr-2">
                     {group.headerLabel}
                 </span>
-                {group.modes.map(mode => {
+                {orderedModes.map(mode => {
                     const isActive = active === mode;
                     return (
                         <button

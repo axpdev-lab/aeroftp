@@ -130,7 +130,10 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 protocol: 's3',
                 icon: <Database size={14} />,
                 activeColor: 'text-amber-500',
-                label: 'S3',
+                // Branded "S5" by FileLu; the wire protocol stays S3. Same text
+                // the Add Service badge uses (#347): the tab and the badge for
+                // one method should not read differently.
+                label: 'S5 (S3)',
                 description:
                     'S3-compatible API on port 443. Use rclone, AWS CLI, or any S3 SDK.',
             },
@@ -308,7 +311,8 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 protocol: 's3',
                 icon: <Database size={14} />,
                 activeColor: 'text-amber-500',
-                label: 'S4',
+                // Branded "S4" by MEGA; matches the Add Service badge (#347).
+                label: 'S4 (S3)',
                 description:
                     'MEGA S4 object storage, S3-compatible (EU/CA regions). Access key + secret key + bucket. Requires a Pro plan.',
                 badge: 'PRO',
