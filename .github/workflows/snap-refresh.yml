@@ -58,6 +58,7 @@ jobs:
       stale: ${{ steps.audit.outputs.stale }}
       count: ${{ steps.audit.outputs.count }}
       tag: ${{ steps.resolve.outputs.tag }}
+      publishable: ${{ steps.compat.outputs.publishable }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -86,6 +87,42 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Rebuild candidate: $TAG"
 
+      # A rebuild carries the tag's snapcraft.yaml but is gated by the tooling
+      # on main. Tags cut before the graphics-core22 migration (#465) bundle
+      # their own Mesa stack, so on those tags:
+      #   - G4 fails by construction (the package is exactly what G4 rejects),
+      #   - G2/G3 cannot `snap connect aeroftp:graphics-core22` at all, and
+      #   - publishing would push a bundled-Mesa revision back to stable,
+      #     which is the outcome #465 exists to stop.
+      # Refusing the rebuild is the correct result, so it is reported as a
+      # skip and a summary rather than as a red gate: nothing is broken, the
+      # newest tag simply predates the fix and a new tag is what releases it.
+      - name: Is the rebuild candidate gate-compatible?
+        id: compat
+        shell: bash
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git show "refs/tags/${TAG}:snap/snapcraft.yaml" 2>/dev/null \
+              | grep -q 'graphics-core22'; then
+            echo "publishable=true" >> "$GITHUB_OUTPUT"
+            echo "$TAG consumes graphics-core22; gates G2/G3/G4 apply."
+            exit 0
+          fi
+          echo "publishable=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::${TAG} predates the graphics-core22 migration (#465); skipping the rebuild"
+          {
+            echo "### Snap refresh skipped: \`${TAG}\` predates the graphics-core22 migration"
+            echo
+            echo "The newest release tag still bundles its own Mesa/DRI stack, so a rebuild"
+            echo "of it cannot pass gate G4, cannot connect the \`graphics-core22\` content"
+            echo "interface in G2/G3, and must not be published to stable (issue #465)."
+            echo
+            echo "The migration is already on \`main\`. Cutting the next release tag is what"
+            echo "ships it to the Snap Store; no code change is owed here."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Setup Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -104,7 +141,9 @@ jobs:
   # ---------------------------------------------------------------------------
   payload:
     needs: audit
-    if: ${{ needs.audit.outputs.stale == 'true' || inputs.force }}
+    # `force` overrides staleness, never gate-compatibility: a forced rebuild of
+    # a pre-migration tag is exactly the publish #465 forbids.
+    if: ${{ (needs.audit.outputs.stale == 'true' || inputs.force) && needs.audit.outputs.publishable == 'true' }}
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout the release tag
