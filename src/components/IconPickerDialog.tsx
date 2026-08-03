@@ -128,9 +128,17 @@ function reactLogoToSvgDataUrl(LogoComp: React.FC<{ size?: number }>): string | 
             // MinIO, Koofr, FileLu, Blomp, OpenDrive...) used to silently fail
             // here, leaving the click as a no-op. Fall back to the image src
             // so the selection still works for the whole shipped catalog.
+            //
+            // The authored attribute, not the `src` property: the property
+            // resolves against the document, so it hands back an absolute URL
+            // (`http://tauri.localhost/icons/providers/filelu.png`) whose origin
+            // is an accident of how the app was loaded. Storing that in a user
+            // record makes the avatar depend on an origin that can change; the
+            // path the component actually declares does not.
             const img = container.querySelector('img');
-            if (img && img.src) {
-                return img.src;
+            const authoredSrc = img?.getAttribute('src');
+            if (authoredSrc) {
+                return authoredSrc;
             }
             logger.warn(`icon-picker: no <svg> or <img> found after render for ${compName}`);
             return null;
