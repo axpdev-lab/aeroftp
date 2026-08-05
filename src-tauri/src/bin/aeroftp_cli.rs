@@ -4736,7 +4736,7 @@ enum VersionCommands {
         /// Preview the count and bytes without deleting anything
         #[arg(long)]
         dry_run: bool,
-        /// Skip the interactive confirmation prompt
+        /// Skip the interactive confirmation prompt (required for real non-interactive purges)
         #[arg(long)]
         yes: bool,
     },
@@ -34029,9 +34029,50 @@ async fn cmd_versions_trash(
     code
 }
 
+/// Consent check for `versions empty-trash`: a real (non-dry-run) purge
+/// requires `--yes` or an interactive TTY confirmation. Non-interactive runs
+/// cannot answer the prompt, so without `--yes` they are refused outright.
+/// Decides whether the speed test may write to `path`, given what `stat` said.
+///
+/// The speed test uploads to `path` and then deletes it, so an occupied path is
+/// a user file about to be destroyed. The check fails CLOSED on a caller-named
+/// `--remote-path`: a failed lookup counts as "absent" only when the provider
+/// actually said not-found. An auth failure, a dropped connection or a provider
+/// 5xx is not permission to write.
+///
+/// `path_is_caller_named` is false for the auto-generated UUID scratch path,
+/// which holds no user data by construction: a flaky or unsupported `stat` must
+/// not cost a legitimate speed test there.
+fn ensure_speed_path_is_free(
+    lookup: Result<(), &ProviderError>,
+    path: &str,
+    path_is_caller_named: bool,
+) -> Result<(), String> {
+    match lookup {
+        Ok(()) => Err(format!(
+            "remote test path already exists: {} (refusing to overwrite; omit --remote-path for an auto-generated scratch path, or pick a path that does not exist)",
+            path
+        )),
+        Err(e) if path_is_caller_named && !is_not_found_error(e) => Err(format!(
+            "cannot confirm the remote test path is free: {} (existence check failed with: {}). The speed test overwrites and then deletes this path, so it will not run on an unverified path; retry, or omit --remote-path for an auto-generated scratch path",
+            path, e
+        )),
+        Err(_) => Ok(()),
+    }
+}
+
+fn ensure_empty_trash_consent(dry_run: bool, yes: bool, interactive: bool) -> Result<(), String> {
+    if dry_run || yes || interactive {
+        Ok(())
+    } else {
+        Err("Refusing to purge trashed versions without --yes in non-interactive mode (use --dry-run to preview)".to_string())
+    }
+}
+
 /// `versions empty-trash`: purge every trashed version and delete marker under a
-/// prefix. Irreversible; `--dry-run` previews the count and bytes, and without
-/// `--yes` a real sweep prompts for confirmation on a TTY.
+/// prefix. Irreversible; `--dry-run` previews the count and bytes, without
+/// `--yes` a real sweep prompts for confirmation on a TTY, and non-interactive
+/// runs without `--yes` are refused.
 async fn cmd_versions_empty_trash(
     url: &str,
     prefix: &str,
@@ -34042,10 +34083,17 @@ async fn cmd_versions_empty_trash(
     format: OutputFormat,
 ) -> i32 {
     let rprefix = prefix.trim().to_string();
-    // Confirm the irreversible sweep before connecting (dry runs never prompt).
-    if !dry_run {
+    // Consent gate before connecting (dry runs and --yes pass straight through).
+    {
         use std::io::IsTerminal;
-        if !yes && std::io::stdin().is_terminal() {
+        if let Err(msg) = ensure_empty_trash_consent(dry_run, yes, std::io::stdin().is_terminal()) {
+            print_error(format, &msg, 2);
+            return 2;
+        }
+    }
+    // At this point a real sweep without --yes is interactive: prompt.
+    if !dry_run && !yes {
+        {
             let scope = if rprefix.is_empty() {
                 "the entire bucket".to_string()
             } else {
@@ -39838,6 +39886,7 @@ async fn cmd_speed(
         size,
         iterations,
         &remote_test_path,
+        remote_path.is_some(),
         !no_integrity,
         cli,
         format,
@@ -39931,6 +39980,10 @@ async fn run_single_speed_test(
     size: u64,
     iterations: u32,
     remote_test_path: &str,
+    // True when `remote_test_path` came from `--remote-path` rather than from
+    // the auto-generated UUID scratch path; it decides how strict the
+    // overwrite guard below has to be.
+    path_is_caller_named: bool,
     verify_integrity: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -39959,6 +40012,26 @@ async fn run_single_speed_test(
             ))
         }
     };
+
+    // Overwrite guard: the test uploads to remote_test_path and then deletes
+    // it, so a path that already exists is a real user file about to be
+    // destroyed. Refuse instead of clobbering (no overwrite flag exists).
+    //
+    // The guard fails CLOSED on a `--remote-path` the caller named: a failed
+    // `stat` is only taken as "absent" when the provider actually said
+    // not-found. An auth failure, a dropped connection or a provider 5xx must
+    // not be read as permission to write. The auto-generated UUID scratch path
+    // is exempt: it holds no user data by construction, so a flaky `stat` must
+    // not block a legitimate run.
+    let lookup = provider.stat(remote_test_path).await;
+    if let Err(msg) = ensure_speed_path_is_free(
+        lookup.as_ref().map(|_| ()),
+        remote_test_path,
+        path_is_caller_named,
+    ) {
+        let _ = provider.disconnect().await;
+        return Err((msg, 5));
+    }
 
     let protocol = provider.provider_type().to_string();
 
@@ -40173,6 +40246,7 @@ async fn cmd_speed_compare(
             size,
             1,
             &remote_test_path,
+            false, // always the auto-generated scratch path in compare mode
             !no_integrity,
             cli_ref,
             OutputFormat::Json, // suppress per-test text output during compare
@@ -65919,6 +65993,49 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn empty_trash_consent_refuses_non_interactive_without_yes() {
+        // A real purge in a piped/CI run used to skip the TTY prompt and
+        // sweep the trash with no confirmation at all.
+        let err = ensure_empty_trash_consent(false, false, false).unwrap_err();
+        assert!(err.contains("--yes"), "got: {err}");
+        // Dry runs, --yes, and an interactive TTY all pass the gate.
+        assert!(ensure_empty_trash_consent(true, false, false).is_ok());
+        assert!(ensure_empty_trash_consent(false, true, false).is_ok());
+        assert!(ensure_empty_trash_consent(false, false, true).is_ok());
+    }
+
+    #[test]
+    fn speed_path_guard_fails_closed_on_a_lookup_it_could_not_complete() {
+        // An occupied path is refused whoever named it.
+        let occupied = ensure_speed_path_is_free(Ok(()), "/data/report.pdf", true).unwrap_err();
+        assert!(occupied.contains("already exists"), "got: {occupied}");
+
+        // A caller-named --remote-path proceeds only on an explicit not-found.
+        let missing = ProviderError::NotFound("/data/scratch.bin".into());
+        assert!(ensure_speed_path_is_free(Err(&missing), "/data/scratch.bin", true).is_ok());
+
+        // Anything else is not permission to write: reading a 5xx or an auth
+        // failure as "absent" is what hands the upload + delete a user file.
+        for opaque in [
+            ProviderError::ServerError("503 Service Unavailable".into()),
+            ProviderError::AuthenticationFailed("token expired".into()),
+            ProviderError::PermissionDenied("/data/scratch.bin".into()),
+            ProviderError::NotConnected,
+        ] {
+            let err = ensure_speed_path_is_free(Err(&opaque), "/data/scratch.bin", true)
+                .expect_err("an unverifiable caller-named path must be refused");
+            assert!(err.contains("cannot confirm"), "got: {err}");
+
+            // The auto-generated scratch path is exempt: it cannot be user data,
+            // so a provider with a flaky or unsupported stat still gets to run.
+            assert!(
+                ensure_speed_path_is_free(Err(&opaque), "/.aeroftp-speedtest-x.bin", false).is_ok(),
+                "the scratch path must not be blocked by {opaque}"
+            );
+        }
+    }
 
     #[test]
     fn mode_endpoint_preset_rewrites_koofr_webdav_host() {
