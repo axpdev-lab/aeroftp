@@ -59,6 +59,13 @@ describe('remote panel thumbnails (#347)', () => {
         expect(providerThumb).not.toMatch(/new Map<string, string>\(\)/);
     });
 
+    it('loads only near the viewport and bounds the first-read burst', () => {
+        expect(imageThumb).toContain('MAX_CONCURRENT_THUMBNAIL_READS = 4');
+        expect(imageThumb).toContain('new IntersectionObserver');
+        expect(imageThumb).toContain('scheduleThumbnailRead(loadImage)');
+        expect(imageThumb).not.toMatch(/^\s*loadImage\(\);\s*$/m);
+    });
+
     it('passes a signature at every call site that renders a file thumbnail', () => {
         // A call site that forgets it silently opts out of the cache, which is
         // the bug this replaces in a quieter form.
