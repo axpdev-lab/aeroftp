@@ -54,6 +54,7 @@ interface ToastDetail {
 let toasts: ToastDetail[] = [];
 let storage: Record<string, string> = {};
 let htmlLang = '';
+let publishedLang = '';
 const savedWindow = (globalThis as { window?: unknown }).window;
 const savedStorage = (globalThis as { localStorage?: unknown }).localStorage;
 const savedDocument = (globalThis as { document?: unknown }).document;
@@ -65,9 +66,17 @@ beforeEach(() => {
     toasts = [];
     storage = {};
     htmlLang = '';
+    publishedLang = '';
     // What the mounted I18nProvider publishes, and what `translate()` reads.
     (globalThis as { document?: unknown }).document = {
-        get documentElement() { return { get lang() { return htmlLang; } }; },
+        get documentElement() {
+            return {
+                get lang() { return htmlLang; },
+                dataset: {
+                    get aeroftpLanguage() { return publishedLang; },
+                },
+            };
+        },
     };
     (globalThis as { window?: unknown }).window = {
         dispatchEvent: (e: Event) => {
@@ -151,6 +160,16 @@ describe('pickFile / pickSave when no chooser can be presented', () => {
         expect(IT.portalMissing).not.toBe(EN.portalMissing);
     });
 
+    it('does not mistake the static HTML lang default for a mounted provider', async () => {
+        htmlLang = 'en';
+        storage['aeroftp_language'] = 'it';
+        mockInvoke.mockResolvedValue('portal-missing');
+
+        await pickFile();
+
+        expect(toasts[0].title).toBe(IT.title);
+    });
+
     it('follows the window it is rendered in, not the last language the main app was left in', async () => {
         // The gap this closes. `extract-main.tsx` mounts the provider with
         // `initialLanguage` set to the desktop language Rust injects, and never
@@ -159,7 +178,8 @@ describe('pickFile / pickSave when no chooser can be presented', () => {
         // `translate()` that consulted storage would have contradicted that, in a
         // window whose folder picker is one of the migrated call sites.
         storage['aeroftp_language'] = 'it';   // what the main app was left in
-        htmlLang = 'de';                      // what THIS window is rendering in
+        htmlLang = 'de';                      // accessibility attribute
+        publishedLang = 'de';                 // what THIS provider is rendering in
         mockInvoke.mockResolvedValue('portal-missing');
 
         await pickFile({ directory: true });

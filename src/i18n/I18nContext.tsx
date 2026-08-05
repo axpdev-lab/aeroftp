@@ -216,12 +216,20 @@ function lookup(
  */
 function activeLanguage(): Language | null {
     try {
-        const lang = document.documentElement.lang;
+        // The static HTML shells intentionally start at `lang="en"`; that is
+        // an accessibility default, not proof that a provider has mounted.
+        // Only the provider marker may outrank the persisted pre-mount choice.
+        const lang = document.documentElement.dataset.aeroftpLanguage;
         return AVAILABLE_LANGUAGES.some((l) => l.code === lang) ? (lang as Language) : null;
     } catch {
         // No DOM: a non-browser host, handled by the fallbacks in `translate`.
         return null;
     }
+}
+
+function publishActiveLanguage(language: Language): void {
+    document.documentElement.lang = language;
+    document.documentElement.dataset.aeroftpLanguage = language;
 }
 
 /**
@@ -347,6 +355,10 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children, initialLan
             return;
         }
 
+        // Publish synchronously before notifying hookless listeners. Waiting
+        // for the effect below leaves a post-switch window where translate()
+        // still resolves the previous locale.
+        publishActiveLanguage(newLanguage);
         setLanguageState(newLanguage);
         persistLanguage(newLanguage);
 
@@ -358,7 +370,7 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children, initialLan
     // reads for the out-of-React path, so this is load-bearing beyond a11y now:
     // see `activeLanguage` above before changing or removing it.
     useEffect(() => {
-        document.documentElement.lang = language;
+        publishActiveLanguage(language);
     }, [language]);
 
     // Memoize context value to prevent unnecessary re-renders
