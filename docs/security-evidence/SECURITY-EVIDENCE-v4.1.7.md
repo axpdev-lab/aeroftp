@@ -197,9 +197,9 @@ The §7 gate stands, plus: **item 0 — LIVE-1 resolved (or tag slips)**, and it
 
 ### 9.1 Scope and method
 
-The final candidate review covers `v4.1.6..3e8d69eae`: **325 commits, 230 non-merge commits, 338 changed files, 45,510 insertions, and 12,834 deletions**. Four adversarial lanes reviewed AeroRsync (55/55 assigned commits), frontend and UI regressions (99/99), CI, release, and dependencies (60/60), plus the remaining provider, sync, crypt, CLI, MCP, and i18n boundaries. Each confirmed release-risk finding was fixed on `audit/v4.1.7-fixes` and paired with targeted regression coverage before the full repository gate.
+The final candidate review covers `v4.1.6..da4d2812b`: **327 commits, 232 non-merge commits, 338 changed files, 45,515 insertions, and 12,836 deletions**. Four adversarial lanes reviewed AeroRsync (55/55 assigned commits), frontend and UI regressions (99/99), CI, release, and dependencies (60/60), plus the remaining provider, sync, crypt, CLI, MCP, and i18n boundaries. Each confirmed release-risk finding was fixed on `audit/v4.1.7-fixes` and paired with targeted regression coverage before the full repository gate.
 
-The dependency candidate includes the exact two commits from PR #569 rather than a duplicate remediation: `rkyv 0.7.46` is removed from the graph and the JavaScript `plugin-log` package is aligned with the Rust crate. `cargo audit` is clean without an advisory ignore.
+The dependency candidate includes the exact two commits from PR #569 rather than a duplicate remediation: `rkyv 0.7.46` is removed from the graph and the JavaScript `plugin-log` package is aligned with the Rust crate. The final Dependabot refresh also found GHSA-fxqj-rqcc-2cmp in `postcss` 8.5.20 and GHSA-m65r-rprj-r5rg in `russh` 0.62.4; the candidate moves them to 8.5.25 and 0.62.5 respectively. `npm audit` reports zero vulnerabilities and the project-configured `cargo audit` is clean without adding an advisory ignore.
 
 ### 9.2 Final findings ledger
 
@@ -216,7 +216,7 @@ The dependency candidate includes the exact two commits from PR #569 rather than
 | Watchers and reporting | A stale slow local watcher could replace the newest navigation; dedupe resource-cap skips were invisible | Generation arbitration makes latest navigation/stop win; skipped-file count is carried to progress and result UI |
 | i18n | Static shell `lang="en"` was mistaken for a mounted locale and could override the saved locale before provider mount | Provider publishes an explicit mounted-language marker synchronously; pre-mount saved-locale regression test |
 | CI | Delta-sync job timeout was shorter than the combined legitimate step budgets | Job timeout raised from 40 to 60 minutes |
-| Dependencies | `RUSTSEC-2026-0235` through `rkyv 0.7.46` | Closed by PR #569 dependency graph change; no duplicate fix and no audit suppression |
+| Dependencies | `RUSTSEC-2026-0235` through `rkyv 0.7.46`; GHSA-fxqj-rqcc-2cmp through `postcss` 8.5.20; GHSA-m65r-rprj-r5rg through `russh` 0.62.4 | `rkyv` closed by PR #569; PostCSS and russh bumped to patched releases; no new audit suppression |
 
 ### 9.3 Reconciliation of the historical §8 snapshot
 
@@ -239,5 +239,6 @@ The two previously accepted deferred items remain explicit and unchanged:
 | CLI | 502 passed, 0 failed |
 | Offline integration and doc tests | Passed |
 | `cargo audit` | 1,186 dependencies scanned, no vulnerability reported |
+| `npm audit` | Zero vulnerabilities |
 
 **Verdict: PRE-TAG COMMIT AUDIT PASS.** No confirmed release-blocking finding remains on the candidate branch. This is not authorization to tag: manifests still identify 4.1.6, PR #569 and the audit fixes must land on `main`, and the release workflow must complete its version bump and all-platform green gate before creating v4.1.7.
