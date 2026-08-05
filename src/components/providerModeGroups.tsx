@@ -18,7 +18,7 @@
  * group automatically based on the form's current providerId+protocol.
  */
 import React from 'react';
-import { Key, Globe, Database, Server, Cloud, Layers } from 'lucide-react';
+import { methodIcon } from './connectionMethodIcons';
 import type { ProviderType } from '../types';
 
 export interface ProviderMode {
@@ -110,7 +110,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 // no providerId). Declaring providerId:'filelu' here forced the strict
                 // providerId match, which never fired on the native entry point.
                 protocol: 'filelu',
-                icon: <Key size={14} />,
+                icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-sky-500',
                 label: 'Native API',
                 description:
@@ -119,7 +119,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             {
                 providerId: 'filelu-webdav',
                 protocol: 'webdav',
-                icon: <Globe size={14} />,
+                icon: methodIcon('WebDAV', { size: 14 }),
                 activeColor: 'text-emerald-500',
                 label: 'WebDAV',
                 description:
@@ -128,7 +128,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             {
                 providerId: 'filelu-s3',
                 protocol: 's3',
-                icon: <Database size={14} />,
+                icon: methodIcon('S3', { size: 14 }),
                 activeColor: 'text-amber-500',
                 // Branded "S5" by FileLu; the wire protocol stays S3. Same text
                 // the Add Service badge uses (#347): the tab and the badge for
@@ -140,7 +140,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             {
                 providerId: 'filelu-ftp',
                 protocol: 'ftp',
-                icon: <Server size={14} />,
+                icon: methodIcon('FTP', { size: 14 }),
                 activeColor: 'text-blue-500',
                 label: 'FTP',
                 description:
@@ -161,7 +161,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 // ProtocolSelector (`type: 'filen'`): no registry preset
                 // is involved, so providerId is intentionally omitted.
                 protocol: 'filen',
-                icon: <Cloud size={14} />,
+                icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-emerald-500',
                 label: 'Native API',
                 description:
@@ -171,7 +171,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             {
                 providerId: 'filen-desktop-webdav',
                 protocol: 'webdav',
-                icon: <Globe size={14} />,
+                icon: methodIcon('WebDAV', { size: 14 }),
                 activeColor: 'text-blue-500',
                 label: 'WebDAV',
                 description:
@@ -182,7 +182,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             {
                 providerId: 'filen-desktop-s3',
                 protocol: 's3',
-                icon: <Layers size={14} />,
+                icon: methodIcon('S3', { size: 14 }),
                 activeColor: 'text-amber-500',
                 label: 'S3',
                 description:
@@ -217,7 +217,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 // OpenDrive native API selected via ProtocolSelector
                 // (`type: 'opendrive'`); no registry preset is involved.
                 protocol: 'opendrive',
-                icon: <Cloud size={14} />,
+                icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-cyan-500',
                 label: 'Native API',
                 description:
@@ -226,7 +226,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             {
                 providerId: 'opendrive-webdav',
                 protocol: 'webdav',
-                icon: <Globe size={14} />,
+                icon: methodIcon('WebDAV', { size: 14 }),
                 activeColor: 'text-blue-500',
                 label: 'WebDAV',
                 description:
@@ -251,7 +251,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 // only registry entry id 'koofr' is the WebDAV preset, so
                 // the native mode is intentionally preset-less (issue #213).
                 protocol: 'koofr',
-                icon: <Cloud size={14} />,
+                icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-teal-500',
                 label: 'Native API',
                 description:
@@ -260,7 +260,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             {
                 providerId: 'koofr',
                 protocol: 'webdav',
-                icon: <Globe size={14} />,
+                icon: methodIcon('WebDAV', { size: 14 }),
                 activeColor: 'text-blue-500',
                 label: 'WebDAV',
                 description:
@@ -288,7 +288,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 // findActiveModeGroup covers both (activeProviderId undefined or
                 // equal to the protocol).
                 protocol: 'mega',
-                icon: <Cloud size={14} />,
+                icon: methodIcon('API', { size: 14 }),
                 activeColor: 'text-red-500',
                 label: 'API',
                 description:
@@ -298,7 +298,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             {
                 providerId: 'megacmd-webdav',
                 protocol: 'webdav',
-                icon: <Globe size={14} />,
+                icon: methodIcon('WebDAV', { size: 14 }),
                 activeColor: 'text-blue-500',
                 label: 'WebDAV (MEGAcmd)',
                 description:
@@ -309,7 +309,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             {
                 providerId: 'mega-s4',
                 protocol: 's3',
-                icon: <Database size={14} />,
+                icon: methodIcon('S3', { size: 14 }),
                 activeColor: 'text-amber-500',
                 // Branded "S4" by MEGA; matches the Add Service badge (#347).
                 label: 'S4 (S3)',

@@ -2,7 +2,8 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { Cloud, Database, Globe, KeyRound, Server as ServerIcon, Shield } from 'lucide-react';
+import { Cloud, Server as ServerIcon } from 'lucide-react';
+import { methodIcon } from '../connectionMethodIcons';
 import { getE2EBits, getProfileProtocolClass, ServerProfile, type ProviderType } from '../../types';
 import {
     MY_SERVERS_TABLE_COLUMNS,
@@ -78,18 +79,23 @@ const dateOf = (server: ServerProfile) => {
     return Number.isFinite(ts) ? ts : -1;
 };
 
+// Shapes come from the shared map (#347); only the tint is this table's own.
+// API used to draw `Database` here, the same glyph as S3 with a different
+// colour, and `Cloud` here meant OAuth while it meant a native API in Quick
+// Connect. Azure and AeroCloud are surfaces of their own rather than wire
+// methods, so they keep their local glyph.
 const PROTOCOL_ICON: Record<string, React.ReactNode> = {
-    OAuth: <Cloud size={14} className="text-blue-500" />,
-    API: <Database size={14} className="text-emerald-500" />,
-    WebDAV: <Globe size={14} className="text-cyan-500" />,
-    E2E: <Shield size={14} className="text-violet-500" />,
-    FTP: <ServerIcon size={14} className="text-gray-500" />,
-    FTPS: <ServerIcon size={14} className="text-sky-500" />,
-    SFTP: <KeyRound size={14} className="text-indigo-500" />,
-    S3: <Database size={14} className="text-orange-500" />,
+    OAuth: methodIcon('OAuth', { size: 14, className: 'text-blue-500' }),
+    API: methodIcon('API', { size: 14, className: 'text-emerald-500' }),
+    WebDAV: methodIcon('WebDAV', { size: 14, className: 'text-cyan-500' }),
+    E2E: methodIcon('E2E', { size: 14, className: 'text-violet-500' }),
+    FTP: methodIcon('FTP', { size: 14, className: 'text-gray-500' }),
+    FTPS: methodIcon('FTPS', { size: 14, className: 'text-sky-500' }),
+    SFTP: methodIcon('SFTP', { size: 14, className: 'text-indigo-500' }),
+    S3: methodIcon('S3', { size: 14, className: 'text-orange-500' }),
     Azure: <Cloud size={14} className="text-blue-600" />,
     AeroCloud: <Cloud size={14} className="text-purple-500" />,
-    Crypt: <Shield size={14} className="text-emerald-500" />,
+    Crypt: methodIcon('Crypt', { size: 14, className: 'text-emerald-500' }),
 };
 
 const badgeSortLabel = (server: ServerProfile) => {
