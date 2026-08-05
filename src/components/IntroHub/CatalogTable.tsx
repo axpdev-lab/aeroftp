@@ -19,7 +19,6 @@ import type { CatalogProtocol } from '../providerCatalog';
 import { CountryFlag } from '../CountryFlag';
 import { useTranslation } from '../../i18n';
 import { middleClickOpen } from '../../utils/middleClick';
-import { SearchBox } from '../SearchBox';
 import { useTableColumns, type TableColumnDef } from '../../hooks/useTableColumns';
 import { TableColumnsManager } from '../ui/TableColumnsManager';
 import type { HealthStatus } from '../../hooks/useProviderHealth';
@@ -36,21 +35,29 @@ import {
 } from '../providerCatalog';
 
 type CatalogColId = 'company' | 'parent' | 'region' | 'freeGb' | 'free' | 'paid' | 'health';
-type TierFilter = 'all' | 'free' | 'freecard' | 'paid';
+export type TierFilter = 'all' | 'free' | 'freecard' | 'paid';
 
 // The pricing filter is a preference, not a transient toggle (Ehud #274): it
 // survives tab switches and restarts like the view mode, the Discover category
 // and the column settings do.
+//
+// It is owned by DiscoverPanel rather than by this table: the same filter now
+// applies to the grid too, and a control that exists once but is stored twice
+// is how the two views drifted apart in the first place (Ehud #347).
 const TIER_FILTER_KEY = 'aeroftp-discover-tier';
-const TIER_FILTERS: readonly TierFilter[] = ['all', 'free', 'freecard', 'paid'];
+export const TIER_FILTERS: readonly TierFilter[] = ['all', 'free', 'freecard', 'paid'];
 
-function loadTierFilter(): TierFilter {
+export function loadTierFilter(): TierFilter {
     try {
         const saved = localStorage.getItem(TIER_FILTER_KEY);
         return TIER_FILTERS.includes(saved as TierFilter) ? (saved as TierFilter) : 'all';
     } catch {
         return 'all';
     }
+}
+
+export function persistTierFilter(id: TierFilter): void {
+    try { localStorage.setItem(TIER_FILTER_KEY, id); } catch { /* ignore */ }
 }
 
 const CATALOG_COLUMNS: TableColumnDef<CatalogColId>[] = [
@@ -142,10 +149,11 @@ interface CatalogTableProps {
     category: CatalogCategoryId | 'all';
     /** `openInBackground` (middle-click, Ehud #274) opens the tab without focus. */
     onSelectProvider: (protocol: ProviderType, providerId?: string, openInBackground?: boolean) => void;
-    /** Controlled search string (lifted to IntroHub to survive tab switches, Ehud
-     *  #274); falls back to local state when omitted. */
-    query?: string;
-    onQueryChange?: (value: string) => void;
+    /** Search string, owned by the panel: the same box filters both views, so
+     *  the table no longer keeps a copy of its own (Ehud #347). */
+    query: string;
+    /** Tier filter, owned by the panel for the same reason. */
+    tierFilter: TierFilter;
     getHealth: (logoId: string) => HealthStatus;
     /** When false the health feature is off: dots render dimmed grey. */
     healthEnabled: boolean;
@@ -155,18 +163,8 @@ interface CatalogTableProps {
     onOpenUrl: (url: string) => void;
 }
 
-export function CatalogTable({ companies, category, onSelectProvider, getHealth, healthEnabled, getSignupUrl, onOpenUrl, query: controlledQuery, onQueryChange }: CatalogTableProps) {
+export function CatalogTable({ companies, category, onSelectProvider, getHealth, healthEnabled, getSignupUrl, onOpenUrl, query, tierFilter }: CatalogTableProps) {
     const t = useTranslation();
-    // Search string is controlled by the parent (IntroHub) when provided so it
-    // survives tab switches (Ehud #274); otherwise falls back to local state.
-    const [localQuery, setLocalQuery] = useState('');
-    const query = controlledQuery ?? localQuery;
-    const setQuery = onQueryChange ?? setLocalQuery;
-    const [tierFilter, setTierFilterState] = useState<TierFilter>(loadTierFilter);
-    const setTierFilter = useCallback((id: TierFilter) => {
-        setTierFilterState(id);
-        try { localStorage.setItem(TIER_FILTER_KEY, id); } catch { /* ignore */ }
-    }, []);
     const [showColumns, setShowColumns] = useState(false);
     const columnsBtnRef = useRef<HTMLDivElement>(null);
 
@@ -383,40 +381,12 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
 
     return (
         <div className="flex flex-col h-full min-h-0">
-            {/* Toolbar: search + column manager */}
-            <div className="flex items-center gap-2 mb-3">
-                <SearchBox
-                    value={query}
-                    onChange={setQuery}
-                    onClear={() => setQuery('')}
-                    clearAriaLabel={t('common.close')}
-                    clearIconSize={13}
-                    placeholder={t('introHub.list.searchPlaceholder')}
-                    containerClassName="flex-1 max-w-md"
-                    className="w-full pl-3 pr-8 py-1.5 bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                />
-                {/* Free / paid tier filter (parity with `aeroftp-cli catalog --free/--paid`) */}
-                <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden">
-                    {([
-                        ['all', t('introHub.filter.all')],
-                        ['free', t('providers.freeTier')],
-                        ['freecard', t('providers.freeCardTier')],
-                        ['paid', t('providers.paidTier')],
-                    ] as [TierFilter, string][]).map(([id, label]) => (
-                        <button
-                            key={id}
-                            onClick={() => setTierFilter(id)}
-                            aria-pressed={tierFilter === id}
-                            className={`px-2.5 py-1.5 text-[11px] transition-colors ${
-                                tierFilter === id
-                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium'
-                                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
-                            }`}
-                        >
-                            {label}
-                        </button>
-                    ))}
-                </div>
+            {/* Toolbar: column manager only. The search box and the tier filter
+                apply to both views, so they live in the panel above the view
+                switch rather than inside the table (Ehud, #347): keeping a
+                second copy here is what made the query and the tier reset when
+                switching between grid and table. */}
+            <div className="flex items-center justify-end gap-2 mb-3">
                 <div className="relative" ref={columnsBtnRef}>
                     <button
                         onClick={() => setShowColumns(v => !v)}
