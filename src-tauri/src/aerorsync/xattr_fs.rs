@@ -19,19 +19,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::aerorsync::real_wire::{XattrDatum, XattrPair};
+pub use crate::aerorsync::real_wire::{MAX_XATTR_NAME_LEN, MAX_XATTR_PAIRS, MAX_XATTR_TOTAL_BYTES};
 
 /// Only attributes whose name starts with this prefix are read or applied.
 pub const USER_XATTR_PREFIX: &str = "user.";
-
-/// Hard ceiling on how many attributes one entry may carry after sanitize.
-/// Hostile peers cannot inflate destination metadata beyond this.
-pub const MAX_XATTR_PAIRS: usize = 256;
-
-/// Hard ceiling on a single attribute name (including the `user.` prefix).
-pub const MAX_XATTR_NAME_LEN: usize = 255;
-
-/// Hard ceiling on the total size of all attribute values on one entry.
-pub const MAX_XATTR_TOTAL_BYTES: usize = 1024 * 1024;
 
 /// Why a received xattr blob was refused (X.4b). These are always hard
 /// errors: a malformed or hostile peer must not write to disk.
