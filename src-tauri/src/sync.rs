@@ -33,6 +33,12 @@ static JOURNAL_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> =
 static MULTI_PATH_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> =
     std::sync::LazyLock::new(|| Mutex::new(()));
 
+/// Serializes the final publish step for sync-owned JSON files. The staging
+/// names are unique too, but Windows cannot atomically replace an existing
+/// destination from two simultaneous renames.
+static ATOMIC_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
+
 /// Tolerance for timestamp comparison (seconds)
 /// Accounts for filesystem and timezone differences
 const TIMESTAMP_TOLERANCE_SECS: i64 = 30;
@@ -2797,18 +2803,45 @@ impl SyncIndex {
 /// Atomic write: write to temp file, then rename to target path.
 /// Prevents corruption from crash/power-loss during write.
 fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
-    let tmp_path = path.with_extension("tmp");
-    std::fs::write(&tmp_path, data)
-        .map_err(|e| format!("Failed to write temp file {}: {}", tmp_path.display(), e))?;
-    std::fs::rename(&tmp_path, path).map_err(|e| {
-        format!(
-            "Failed to rename {} to {}: {}",
-            tmp_path.display(),
-            path.display(),
-            e
-        )
-    })?;
-    Ok(())
+    let _lock = ATOMIC_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| format!("Atomic-write target has no file name: {}", path.display()))?
+        .to_string_lossy();
+    // Several commands now run on the blocking pool and can save the same
+    // config family concurrently. A fixed `.tmp` sibling lets one writer
+    // truncate or rename another writer's staging file. Give every attempt an
+    // exclusive sibling, then atomically publish only its own complete bytes.
+    let tmp_path = path.with_file_name(format!(
+        ".{file_name}.{}.tmp",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let result = (|| {
+        let mut tmp = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)
+            .map_err(|e| format!("Failed to create temp file {}: {}", tmp_path.display(), e))?;
+        tmp.write_all(data)
+            .map_err(|e| format!("Failed to write temp file {}: {}", tmp_path.display(), e))?;
+        tmp.sync_all()
+            .map_err(|e| format!("Failed to sync temp file {}: {}", tmp_path.display(), e))?;
+        drop(tmp);
+        std::fs::rename(&tmp_path, path).map_err(|e| {
+            format!(
+                "Failed to rename {} to {}: {}",
+                tmp_path.display(),
+                path.display(),
+                e
+            )
+        })
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+    result
 }
 
 /// Get the directory where sync indices are stored
@@ -4605,6 +4638,33 @@ pub fn journal_sig_filename(local_path: &str, remote_path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn atomic_write_uses_private_staging_files_for_concurrent_writers() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("state.json");
+        let payloads: Vec<Vec<u8>> = (0..12)
+            .map(|i| format!("{{\"writer\":{i},\"pad\":\"{}\"}}", "x".repeat(4096)).into_bytes())
+            .collect();
+        let threads: Vec<_> = payloads
+            .iter()
+            .cloned()
+            .map(|payload| {
+                let target = target.clone();
+                std::thread::spawn(move || atomic_write(&target, &payload))
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap().unwrap();
+        }
+
+        let landed = std::fs::read(&target).unwrap();
+        assert!(
+            payloads.contains(&landed),
+            "landed bytes must be one complete writer"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 
     // --- P1-T03: delta savings aggregation in apply_sync_tree_outcome -------
 
