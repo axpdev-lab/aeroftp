@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.7] - Unreleased
+
+#### Security
+- **Pre-tag commit audit: PASS.** The adversarial review covered all 322 commits (228 non-merge) since v4.1.6 across AeroRsync, providers and core security boundaries, frontend and regressions, CI, release workflows, and dependencies. Release-blocking findings were fixed with regression coverage: bounded xattr wire state and out-of-band decoding, lazy and concurrency-limited thumbnails, fail-closed crypt/provider paths, redirect-token containment, collision-safe atomic sync writes, honest dedupe skip reporting, locale mount-state selection, and a CI timeout aligned with the job's step budgets. `RUSTSEC-2026-0235` is closed by removing `rkyv 0.7.46`; the mandatory local gate passed with 714 frontend tests, 3,448 Rust library tests, 501 CLI tests, offline integrations, Clippy with warnings denied, complete 46-locale validation, and `cargo audit` over 1,186 dependencies. Previously accepted debt remains explicit: SEC-2 (Sigstore hard-gate and published-digest product flow) and PROV-4 (Swift recursive-delete pagination beyond 10,000 objects). Version bump, all-platform CI on the final merge, and the tag remain separate release gates.
+
+---
+
 ## [4.1.6] - 2026-07-25
 
 ### AeroRsync Closes the Gap With rsync, a Stabilised DAG Transfer Engine, and MTP Portable Devices
