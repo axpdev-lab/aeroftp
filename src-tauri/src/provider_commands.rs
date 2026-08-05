@@ -6660,8 +6660,10 @@ pub async fn provider_compare_directories(
     // checker/list leases; legacy providers keep the per-directory lock path.
     let mut remote_files: HashMap<String, FileInfo> = HashMap::new();
 
-    // First check we're connected
-    {
+    // Pin both listing authority and connection identity. A reconnect during
+    // the scan must not let rows from two provider sessions become one
+    // deletion-capable Compare plan.
+    let compare_generation = {
         let provider_lock = state.provider.lock().await;
         let provider = provider_lock
             .as_ref()
@@ -6673,7 +6675,8 @@ pub async fn provider_compare_directories(
                 provider.display_name(),
             ));
         }
-    }
+        state.connection_generation.load(Ordering::SeqCst)
+    };
 
     // Pin the crypt overlay wrap state for the whole remote scan + normalize
     // pass. Sampling only after the scan (old behaviour) raced a badge toggle
@@ -6800,9 +6803,21 @@ pub async fn provider_compare_directories(
             // Lock provider only for this single list operation, then release
             let entries = {
                 let mut provider_lock = state.provider.lock().await;
+                if state.connection_generation.load(Ordering::SeqCst) != compare_generation {
+                    return Err(format!(
+                        "{}: provider session changed during Compare; retry the scan.",
+                        crate::SCAN_INCOMPLETE_MARKER
+                    ));
+                }
                 let provider = provider_lock
                     .as_mut()
                     .ok_or("Not connected to any provider")?;
+                if !provider.listing_is_authoritative() {
+                    return Err(format!(
+                        "{}: the current provider listing is not authoritative; refusing to build an actionable compare plan.",
+                        crate::SCAN_INCOMPLETE_MARKER
+                    ));
+                }
                 provider.list(&current_dir).await.map_err(|e| {
                     // CLAUDE-AV-B3-13: a directory that would not list leaves
                     // its files out of the compare, where they read as deleted.
@@ -6912,6 +6927,28 @@ pub async fn provider_compare_directories(
                     "bytes_found": remote_bytes_found,
                 }),
             );
+        }
+    }
+
+    // Clone-pool scans acquire and release provider leases internally, while
+    // legacy scans release the lock between directories. In both cases this
+    // final check makes a mid-scan swap discard every collected row before an
+    // actionable plan can be constructed.
+    {
+        let provider_lock = state.provider.lock().await;
+        let provider = provider_lock.as_ref().ok_or_else(|| {
+            format!(
+                "{}: provider disconnected during Compare; retry the scan.",
+                crate::SCAN_INCOMPLETE_MARKER
+            )
+        })?;
+        if state.connection_generation.load(Ordering::SeqCst) != compare_generation
+            || !provider.listing_is_authoritative()
+        {
+            return Err(format!(
+                "{}: provider session or listing authority changed during Compare; retry the scan.",
+                crate::SCAN_INCOMPLETE_MARKER
+            ));
         }
     }
 

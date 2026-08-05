@@ -2526,7 +2526,9 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     for _ in 0..iterations {
         let nonce = uuid::Uuid::new_v4();
         payload[..nonce.as_bytes().len()].copy_from_slice(nonce.as_bytes());
-        upload_sha = format!("{:x}", sha2::Sha256::digest(&payload));
+        if verify_integrity {
+            upload_sha = format!("{:x}", sha2::Sha256::digest(&payload));
+        }
         let up_start = std::time::Instant::now();
         backend
             .upload_from_bytes(&payload, &remote_path)

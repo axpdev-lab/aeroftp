@@ -169,6 +169,58 @@ impl SwiftProvider {
 
     // ─── Auth ──────────────────────────────────────────────────
 
+    /// Swift deliberately permits Identity and Object Storage to use different
+    /// hosts, so same-origin with `auth_url` is not a valid requirement (Blomp
+    /// is one concrete example). The TLS-authenticated auth response is the
+    /// protocol trust boundary. Still reject malformed endpoints, embedded
+    /// credentials, and HTTPS-to-HTTP downgrade before retaining a token.
+    fn validate_storage_endpoint(&self, candidate: &str) -> Result<String, ProviderError> {
+        let auth = reqwest::Url::parse(&self.config.auth_url).map_err(|e| {
+            ProviderError::AuthenticationFailed(format!("Invalid Swift auth URL: {e}"))
+        })?;
+        let endpoint = reqwest::Url::parse(candidate).map_err(|e| {
+            ProviderError::AuthenticationFailed(format!("Invalid Swift storage URL: {e}"))
+        })?;
+        if !matches!(endpoint.scheme(), "http" | "https") || endpoint.host_str().is_none() {
+            return Err(ProviderError::AuthenticationFailed(
+                "Swift storage endpoint must be an absolute HTTP(S) URL".into(),
+            ));
+        }
+        if !endpoint.username().is_empty() || endpoint.password().is_some() {
+            return Err(ProviderError::AuthenticationFailed(
+                "Swift storage endpoint must not contain URL credentials".into(),
+            ));
+        }
+        if auth.scheme() == "https" && endpoint.scheme() != "https" {
+            return Err(ProviderError::AuthenticationFailed(
+                "Swift storage endpoint attempted to downgrade an HTTPS authentication session"
+                    .into(),
+            ));
+        }
+        Ok(candidate.trim_end_matches('/').to_string())
+    }
+
+    /// Every token-bearing request must stay on the origin selected by the
+    /// authenticated storage endpoint. This also re-runs after a 401 refresh,
+    /// because a refreshed catalog is allowed to move the endpoint.
+    fn validate_request_target(&self, target: &str) -> Result<(), ProviderError> {
+        let storage = reqwest::Url::parse(self.storage_url()?).map_err(|e| {
+            ProviderError::AuthenticationFailed(format!("Invalid Swift storage URL: {e}"))
+        })?;
+        let target = reqwest::Url::parse(target)
+            .map_err(|e| ProviderError::InvalidPath(format!("Invalid Swift request URL: {e}")))?;
+        let same_origin = storage.scheme() == target.scheme()
+            && storage.host_str() == target.host_str()
+            && storage.port_or_known_default() == target.port_or_known_default();
+        if !same_origin {
+            return Err(ProviderError::AuthenticationFailed(
+                "Refusing to send X-Auth-Token outside the authenticated Swift storage origin"
+                    .into(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Authenticate against OpenStack Swift.
     /// Auto-detects auth version by probing the endpoint:
     ///   - If root JSON contains "v2.0" → Keystone v2 (POST /v2.0/tokens)
@@ -273,8 +325,8 @@ impl SwiftProvider {
                             "Invalid storage URL header encoding".into(),
                         )
                     })?
-                    .trim_end_matches('/')
                     .to_string();
+                let storage_url = self.validate_storage_endpoint(&storage_url)?;
 
                 info!("Swift TempAuth OK: storage: {}", storage_url);
                 self.auth = Some(SwiftAuth {
@@ -392,7 +444,7 @@ impl SwiftProvider {
                             "No storage endpoint in Keystone service catalog".into(),
                         )
                     })?;
-                let storage_url = storage_url_str.trim_end_matches('/').to_string();
+                let storage_url = self.validate_storage_endpoint(storage_url_str)?;
 
                 info!("Swift Keystone v2 OK: storage: {}", storage_url);
                 self.auth = Some(SwiftAuth {
@@ -560,6 +612,7 @@ impl SwiftProvider {
         extra_headers: &[(String, String)],
     ) -> Result<reqwest::Response, ProviderError> {
         self.ensure_auth().await?;
+        self.validate_request_target(url)?;
 
         let mut req = self
             .client
@@ -582,6 +635,7 @@ impl SwiftProvider {
         if resp.status() == StatusCode::UNAUTHORIZED {
             // Re-auth and retry once
             self.authenticate().await?;
+            self.validate_request_target(url)?;
             let mut req2 = self
                 .client
                 .request(method, url)
@@ -1486,5 +1540,37 @@ mod tests {
             obtained_at: Instant::now(),
         };
         assert!(auth.is_valid());
+    }
+
+    #[test]
+    fn storage_endpoint_allows_catalog_host_but_rejects_downgrade_and_credentials() {
+        let p = test_provider();
+        assert_eq!(
+            p.validate_storage_endpoint("https://objects.example.net/v1/AUTH_a/")
+                .unwrap(),
+            "https://objects.example.net/v1/AUTH_a"
+        );
+        assert!(p
+            .validate_storage_endpoint("http://objects.example.net/v1/AUTH_a")
+            .is_err());
+        assert!(p
+            .validate_storage_endpoint("https://user:pw@objects.example.net/v1/AUTH_a")
+            .is_err());
+    }
+
+    #[test]
+    fn token_bearing_requests_stay_on_authenticated_storage_origin() {
+        let mut p = test_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: "https://objects.example.net/v1/AUTH_a".to_string(),
+            obtained_at: Instant::now(),
+        });
+        assert!(p
+            .validate_request_target("https://objects.example.net/v1/AUTH_a/container/file")
+            .is_ok());
+        assert!(p
+            .validate_request_target("https://other.example.net/v1/AUTH_a/container/file")
+            .is_err());
     }
 }

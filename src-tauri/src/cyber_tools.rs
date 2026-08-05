@@ -179,20 +179,7 @@ pub async fn stage_hash_drop(name: String, data_base64: String) -> Result<String
         ));
     }
 
-    let dir = std::env::temp_dir().join("aeroftp-hash-drops");
-    tokio::fs::create_dir_all(&dir)
-        .await
-        .map_err(|e| format!("Failed to create drop stage dir: {e}"))?;
-    // The staged copy is the file's plaintext: keep the directory owner-only.
-    // create_dir_all leaves 0777&!umask (0755 on a default umask), which would
-    // let every local account read a dropped key or vault file.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
-            .await
-            .map_err(|e| format!("Failed to secure drop stage dir: {e}"))?;
-    }
+    let dir = secure_hash_drop_dir()?;
     // Sweep stale drops from earlier sessions: a staged file is consumed by the
     // very next hash_file call, so anything older than an hour is a leftover.
     sweep_stale_hash_drops(&dir).await;
@@ -242,6 +229,34 @@ pub async fn stage_hash_drop(name: String, data_base64: String) -> Result<String
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Process-private staging directory created atomically below the shared temp
+/// root. A random, exclusive `create` avoids the check/chmod/write symlink race
+/// of the old predictable `aeroftp-hash-drops` path.
+fn secure_hash_drop_dir() -> Result<std::path::PathBuf, String> {
+    static DIR: std::sync::OnceLock<Result<std::path::PathBuf, String>> =
+        std::sync::OnceLock::new();
+
+    DIR.get_or_init(|| {
+        for _ in 0..16 {
+            let path =
+                std::env::temp_dir().join(format!("aeroftp-hash-drops-{}", uuid::Uuid::new_v4()));
+            let mut builder = std::fs::DirBuilder::new();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                builder.mode(0o700);
+            }
+            match builder.create(&path) {
+                Ok(()) => return Ok(path),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(format!("Failed to create secure drop stage dir: {e}")),
+            }
+        }
+        Err("Failed to allocate a unique drop stage directory".to_string())
+    })
+    .clone()
+}
+
 /// Remove staged drops left by earlier runs.
 ///
 /// A staged file exists only to be handed straight back to `hash_file`, so it
@@ -280,7 +295,7 @@ async fn sweep_stale_hash_drops(dir: &std::path::Path) {
 /// arbitrary-delete primitive.
 #[tauri::command]
 pub async fn discard_hash_drop(path: String) -> Result<(), String> {
-    let dir = std::env::temp_dir().join("aeroftp-hash-drops");
+    let dir = secure_hash_drop_dir()?;
     let target = std::path::PathBuf::from(&path);
     if target.parent() != Some(dir.as_path()) {
         return Err("Not a staged drop path".to_string());
@@ -929,6 +944,35 @@ const WORDLIST: &[&str] = &[
 #[cfg(test)]
 mod hash_forge_tests {
     use super::*;
+
+    #[test]
+    fn dropped_plaintext_uses_the_process_private_stage_directory() {
+        let rt = tokio::runtime::Runtime::new().expect("test runtime");
+        let path = rt
+            .block_on(stage_hash_drop("secret key.txt".into(), "aGVsbG8=".into()))
+            .expect("stage drop");
+        let path = std::path::PathBuf::from(path);
+        let dir = secure_hash_drop_dir().expect("secure stage directory");
+        assert_eq!(path.parent(), Some(dir.as_path()));
+        assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+
+        rt.block_on(discard_hash_drop(path.to_string_lossy().into_owned()))
+            .expect("discard drop");
+        assert!(!path.exists());
+    }
 
     /// `hash_text` must never run on the main thread: `text` is whatever the
     /// user pasted, nothing bounds its length, and both the decode and the

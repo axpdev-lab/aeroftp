@@ -68,14 +68,18 @@ impl LocalPanelWatcherState {
         Arc::clone(&self.generation)
     }
 
-    fn begin_request(&self) -> u64 {
-        self.generation
+    fn begin_request(&self) -> Result<u64, String> {
+        // Serialize generation changes with the final watcher-slot install.
+        // Otherwise a newer request can increment after the installer's last
+        // generation check but before it replaces the slot.
+        let _slot = self
+            .inner
+            .lock()
+            .map_err(|_| "watcher state poisoned".to_string())?;
+        Ok(self
+            .generation
             .fetch_add(1, Ordering::SeqCst)
-            .wrapping_add(1)
-    }
-
-    fn invalidate_requests(&self) {
-        self.generation.fetch_add(1, Ordering::SeqCst);
+            .wrapping_add(1))
     }
 }
 
@@ -101,7 +105,7 @@ pub async fn local_panel_watch(
 ) -> Result<(), String> {
     let slot = state.handle();
     let generation = state.generation_handle();
-    let request = state.begin_request();
+    let request = state.begin_request()?;
     tokio::task::spawn_blocking(move || {
         local_panel_watch_blocking(path, app, &slot, &generation, request)
     })
@@ -113,7 +117,7 @@ fn local_panel_watch_blocking(
     path: String,
     app: AppHandle,
     state: &Mutex<Option<WatcherSlot>>,
-    generation: &AtomicU64,
+    generation: &Arc<AtomicU64>,
     request: u64,
 ) -> Result<(), String> {
     let new_path = PathBuf::from(&path);
@@ -123,10 +127,14 @@ fn local_panel_watch_blocking(
 
     let app_for_cb = app.clone();
     let watch_root = new_path.clone();
+    let callback_generation = Arc::clone(generation);
     let last_emit = std::sync::Arc::new(Mutex::new(Instant::now() - Duration::from_secs(60)));
 
     let mut watcher: RecommendedWatcher =
         notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+            if callback_generation.load(Ordering::SeqCst) != request {
+                return;
+            }
             let event = match res {
                 Ok(ev) => ev,
                 Err(_) => return,
@@ -148,6 +156,9 @@ fn local_panel_watch_blocking(
             let payload = LocalFsChanged {
                 path: watch_root.display().to_string(),
             };
+            if callback_generation.load(Ordering::SeqCst) != request {
+                return;
+            }
             // Best-effort emit; swallow errors (frontend may be unmounted).
             let _ = app_for_cb.emit("local-fs-changed", payload);
         })
@@ -194,13 +205,14 @@ pub async fn local_panel_watch_stop(
     state: State<'_, LocalPanelWatcherState>,
 ) -> Result<(), String> {
     let slot = state.handle();
-    // Invalidate any start currently blocked in stat/watcher setup before the
-    // slot is cleared, so it cannot resurrect itself after stop returns.
-    state.invalidate_requests();
+    let generation = state.generation_handle();
     tokio::task::spawn_blocking(move || {
         let mut slot = slot
             .lock()
             .map_err(|_| "watcher state poisoned".to_string())?;
+        // Invalidation and clearing are one critical section shared with both
+        // request creation and watcher installation.
+        generation.fetch_add(1, Ordering::SeqCst);
         *slot = None;
         Ok(())
     })
@@ -215,13 +227,16 @@ mod tests {
     #[test]
     fn only_the_latest_watch_generation_can_install() {
         let state = LocalPanelWatcherState::new();
-        let first = state.begin_request();
-        let second = state.begin_request();
+        let first = state.begin_request().unwrap();
+        let second = state.begin_request().unwrap();
 
         assert_ne!(state.generation.load(Ordering::SeqCst), first);
         assert_eq!(state.generation.load(Ordering::SeqCst), second);
 
-        state.invalidate_requests();
+        {
+            let _slot = state.inner.lock().unwrap();
+            state.generation.fetch_add(1, Ordering::SeqCst);
+        }
         assert_ne!(state.generation.load(Ordering::SeqCst), second);
     }
 }

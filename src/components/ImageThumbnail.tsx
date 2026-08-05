@@ -71,33 +71,33 @@ export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
     const [src, setSrc] = useState<string | null>(() => getThumbnail(cacheKey) ?? null);
     const [error, setError] = useState(false);
     const placeholderRef = useRef<HTMLDivElement>(null);
-    const [mayLoad, setMayLoad] = useState(false);
+    const [eligibleKey, setEligibleKey] = useState<string | null>(null);
 
     useEffect(() => {
         setSrc(getThumbnail(cacheKey) ?? null);
         setError(false);
-        setMayLoad(false);
+        setEligibleKey(null);
     }, [cacheKey]);
 
     // A duplicate scan can render thousands of image rows. Observe the cheap
     // placeholder and do not enqueue an IPC read until the row approaches the
     // viewport; the shared queue below then bounds the visible burst as well.
     useEffect(() => {
-        if (src || error || mayLoad) return;
+        if (src || error || eligibleKey === cacheKey) return;
         const node = placeholderRef.current;
         if (!node || typeof IntersectionObserver === 'undefined') {
-            setMayLoad(true);
+            setEligibleKey(cacheKey);
             return;
         }
         const observer = new IntersectionObserver(([entry]) => {
             if (entry.isIntersecting) {
-                setMayLoad(true);
+                setEligibleKey(cacheKey);
                 observer.disconnect();
             }
         }, { rootMargin: '160px' });
         observer.observe(node);
         return () => observer.disconnect();
-    }, [src, error, mayLoad, cacheKey]);
+    }, [src, error, eligibleKey, cacheKey]);
 
     useEffect(() => {
         const cached = getThumbnail(cacheKey);
@@ -106,7 +106,7 @@ export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
             setError(false);
             return;
         }
-        if (!mayLoad) return;
+        if (eligibleKey !== cacheKey) return;
 
         let cancelled = false;
         const loadImage = async () => {
@@ -133,7 +133,7 @@ export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
             cancelled = true;
             cancelQueued();
         };
-    }, [path, name, isRemote, cacheKey, mayLoad]);
+    }, [path, name, isRemote, cacheKey, eligibleKey]);
 
     if (error || !src) {
         return <div ref={placeholderRef} className="file-grid-icon">{fallbackIcon}</div>;

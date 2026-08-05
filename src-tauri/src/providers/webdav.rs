@@ -12,7 +12,7 @@
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use md5::{Digest as _, Md5};
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, CONTROLS};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use rand::Rng;
@@ -1395,7 +1395,8 @@ impl WebDavProvider {
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
         let url = format!(
             "{}/remote.php/dav/trashbin/{}/trash/",
-            base, self.config.username
+            base,
+            encode_nextcloud_trash_segment(&self.config.username)
         );
 
         let propfind_body = r#"<?xml version="1.0" encoding="utf-8"?>
@@ -1502,11 +1503,12 @@ impl WebDavProvider {
                             in_response = false;
                             // Skip the collection itself (the trash/ container)
                             if !trash_filename.is_empty() {
-                                let id = href
-                                    .rsplit('/')
-                                    .find(|s| !s.is_empty())
-                                    .unwrap_or("")
-                                    .to_string();
+                                let encoded_id =
+                                    href.rsplit('/').find(|s| !s.is_empty()).unwrap_or("");
+                                let id = percent_decode_str(encoded_id)
+                                    .decode_utf8()
+                                    .map_err(|e| ProviderError::ParseError(e.to_string()))?
+                                    .into_owned();
                                 entries.push(NextcloudTrashEntry {
                                     id,
                                     name: trash_filename.trim().to_string(),
@@ -4682,6 +4684,11 @@ mod tests {
         let entries = provider.parse_trashbin_response(xml).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "a& &b.txt");
+        assert_eq!(entries[0].id, "a& &b.txt.d1700000000");
+        assert_eq!(
+            encode_nextcloud_trash_segment(&entries[0].id),
+            "a&%20&b%2Etxt%2Ed1700000000"
+        );
         assert_eq!(entries[0].original_path, "docs/a& &b.txt");
         assert_eq!(entries[0].deleted_at, 1700000000);
     }
