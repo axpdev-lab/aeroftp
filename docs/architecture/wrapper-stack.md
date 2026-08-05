@@ -147,6 +147,11 @@ The AeroVault v3 defaults are:
 | `cipher_hash` | `blake3-256` | 1 |
 | `ecc` | absent in v3 (reserved extension slot) | n/a |
 
+> The `ecc` field is an **error-correcting code**, the Reed-Solomon parity that
+> repairs a damaged vault. It is not Elliptic Curve Cryptography, which is what
+> the abbreviation usually means on a security page: the cipher in this stack is
+> AES-256-GCM-SIV and the hash is BLAKE3, both named in the table above.
+
 v4 reuses the same header layout and only adds the `ecc` field, so
 **v3 + error correction = v4** and a v3-only build opens a v4 vault for the
 data it understands.
