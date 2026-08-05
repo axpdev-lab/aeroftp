@@ -492,8 +492,41 @@ const BADGE_CATEGORY_RANK: Partial<Record<CatalogCategoryId, number>> = {
     webdav: 1,
     'object-storage': 2,
 };
-const badgeRank = (p: CatalogProtocolRef): number => BADGE_CATEGORY_RANK[p.category] ?? 0;
-const byBadgeRank = (a: CatalogProtocolRef, b: CatalogProtocolRef): number => badgeRank(a) - badgeRank(b);
+
+/**
+ * Refined for #347. The category rank above ranked FTP and a native API the
+ * same — both fall in the unranked bucket — so companies exposing both kept
+ * whichever order they happened to be authored in, and FileLu showed
+ * `API · FTP · WebDAV · S5 (S3)` in Add Service while its Quick Connect tabs
+ * read `Native API · WebDAV · S3 · FTP`. Ehud asked for one order used
+ * everywhere, and gave the sequence: roughly most to least chatty, by the
+ * number of round trips a transfer costs.
+ *
+ * This is a presentation order, not a recommendation. Which method is actually
+ * fastest depends on the shape of the transfer, and the "recommended" marker
+ * stays deferred on #368 rather than being guessed at here.
+ *
+ * A company's own API is unranked and sorts first: it is the fullest feature
+ * set, and it is what the company *is* rather than a wire protocol it also
+ * happens to speak. `PROTOCOL_BADGE_ORDER` is exported so the Quick Connect
+ * mode tabs sort by the same sequence instead of keeping a second opinion.
+ */
+export const PROTOCOL_BADGE_ORDER: readonly string[] = ['webdav', 'sftp', 'ftps', 'ftp', 's3'];
+
+/** Rank of a wire protocol in `PROTOCOL_BADGE_ORDER`; native APIs sort first. */
+export function protocolBadgeRank(protocol: string): number {
+    const i = PROTOCOL_BADGE_ORDER.indexOf(protocol);
+    return i === -1 ? -1 : i;
+}
+
+// Protocol first, then the category rank as the tie-breaker so a company whose
+// methods share a protocol keeps the arrangement the catalog authored.
+const badgeRank = (p: CatalogProtocolRef): number => protocolBadgeRank(p.protocol);
+const byBadgeRank = (a: CatalogProtocolRef, b: CatalogProtocolRef): number => {
+    const byProtocol = badgeRank(a) - badgeRank(b);
+    if (byProtocol !== 0) return byProtocol;
+    return (BADGE_CATEGORY_RANK[a.category] ?? 0) - (BADGE_CATEGORY_RANK[b.category] ?? 0);
+};
 
 /** Connection methods available on the free tier (blue badges). */
 export function freeProtocols(c: CatalogCompany): CatalogProtocolRef[] {
