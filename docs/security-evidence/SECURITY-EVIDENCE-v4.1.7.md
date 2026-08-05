@@ -197,7 +197,7 @@ The §7 gate stands, plus: **item 0 — LIVE-1 resolved (or tag slips)**, and it
 
 ### 9.1 Scope and method
 
-The final candidate review covers `v4.1.6..da4d2812b`: **327 commits, 232 non-merge commits, 338 changed files, 45,515 insertions, and 12,836 deletions**. Four adversarial lanes reviewed AeroRsync (55/55 assigned commits), frontend and UI regressions (99/99), CI, release, and dependencies (60/60), plus the remaining provider, sync, crypt, CLI, MCP, and i18n boundaries. Each confirmed release-risk finding was fixed on `audit/v4.1.7-fixes` and paired with targeted regression coverage before the full repository gate.
+The final code candidate review covers `v4.1.6..b8054861a`: **333 commits, 236 non-merge commits, 342 changed files, 45,916 insertions, and 12,879 deletions**. Four adversarial lanes reviewed AeroRsync (55/55 assigned commits), frontend and UI regressions (99/99), CI, release, and dependencies (60/60), plus the remaining provider, sync, crypt, CLI, MCP, and i18n boundaries. Each confirmed release-risk finding was fixed on `audit/v4.1.7-fixes` and paired with targeted regression coverage before the full repository gate.
 
 The dependency candidate includes the exact two commits from PR #569 rather than a duplicate remediation: `rkyv 0.7.46` is removed from the graph and the JavaScript `plugin-log` package is aligned with the Rust crate. The final Dependabot refresh also found GHSA-fxqj-rqcc-2cmp in `postcss` 8.5.20 and GHSA-m65r-rprj-r5rg in `russh` 0.62.4; the candidate moves them to 8.5.25 and 0.62.5 respectively. `npm audit` reports zero vulnerabilities and the project-configured `cargo audit` is clean without adding an advisory ignore.
 
@@ -206,16 +206,16 @@ The dependency candidate includes the exact two commits from PR #569 rather than
 | Area | Confirmed risk | Resolution |
 | ---- | -------------- | ---------- |
 | AeroRsync | Unbounded peer-controlled xattr count, names, values, and retry buffering; download did not resolve out-of-band xattr data before finalization | Bounded at decode and buffering boundaries; transactional multi-frame OOB resolution; sender/receiver regression tests |
-| Frontend performance | Duplicate thumbnails mounted and read eagerly for every result; size-only cache keys could serve stale images | Intersection-observer lazy loading, process-wide concurrency cap of four, cancellation, and versioned cache keys |
+| Frontend performance | Duplicate thumbnails mounted and read eagerly for every result; size-only cache keys could serve stale images; a reused component could carry viewport eligibility to a new cache key | Intersection-observer lazy loading, process-wide concurrency cap of four, cancellation, versioned cache keys, and eligibility bound to the current key |
 | Frontend regressions | Generic/demo providers could inherit an unrelated company identity; Trash range anchor survived sort and marquee lacked the owning scroller | Exact provider identity before protocol fallback; generic/demo tier bypass; anchor reset and scroller-owned marquee autoscroll |
-| Provider security | Swift could forward `X-Auth-Token` across redirects; Nextcloud username and trash IDs were not confined to one encoded URL segment | Redirects disabled for the authenticated Swift client; exact single-segment encoding with traversal coverage |
+| Provider security | Swift could forward `X-Auth-Token` across redirects or a stale refreshed endpoint; Nextcloud trash listing left the username raw and href-derived IDs were double-encoded | Redirects disabled; storage endpoints reject downgrade/URL credentials and every token-bearing request is origin-bound; username and decoded trash IDs are encoded exactly once with coverage |
 | Crypt boundaries | View-only lock could disarm the raw-write guard; scope checks did not conservatively handle case-insensitive or backslash-backed paths | Capability remains armed after overlay removal; normalized fail-closed scope comparison with regression tests |
-| Filesystem and sync | Hash-drop directory permission failure was ignored; concurrent atomic sync writes reused one staging sibling | Permission failure aborts; unique `create_new` staging, durable flush, cleanup, and serialized publish with concurrent-writer coverage |
-| Provider listing authority | ImageKit can successfully store and serve an upload while its Media Library List API omits that object; CLI `sync --direction download --delete` could therefore classify the local copy as an orphan | Storage providers explicitly declare listing authority; ImageKit is non-authoritative; CLI delete, legacy/DAG orphan deletion, and the actionable GUI Compare plan all fail closed |
-| MCP and CLI | Content-addressed speed-test uploads could report dedupe speed; OAuth/cloud connect output could show an empty host | Per-iteration unique payload and hash; profile-name fallback with tests. The #549 fail-closed existence guard remains intact |
-| Watchers and reporting | A stale slow local watcher could replace the newest navigation; dedupe resource-cap skips were invisible | Generation arbitration makes latest navigation/stop win; skipped-file count is carried to progress and result UI |
+| Filesystem and sync | Predictable shared-temp hash-drop staging had a symlink replacement window; concurrent atomic sync writes reused one staging sibling | Hash drops use an atomically created random owner-only process directory and 0600 files; sync uses unique `create_new` staging, durable flush, cleanup, and serialized publish |
+| Provider listing authority | ImageKit can store and serve an upload while its List API omits it; Compare could also span a reconnect and mix two provider sessions | Providers declare listing authority; ImageKit is non-authoritative; CLI/legacy/DAG deletes fail closed; GUI Compare pins connection generation and revalidates authority before constructing a plan |
+| MCP and CLI | Content-addressed speed-test uploads could report dedupe speed; disabled integrity checks still hashed every upload; OAuth/cloud connect output could show an empty host | Per-iteration unique payload, conditional integrity hashing, and profile-name fallback with tests. The #549 fail-closed existence guard remains intact |
+| Watchers and reporting | Generation changes could race the final watcher-slot write and stale callbacks could still emit; dedupe resource-cap skips were invisible | Request creation, stop, and installation share the slot mutex; callbacks verify generation before emission; skipped-file count reaches progress and result UI |
 | i18n | Static shell `lang="en"` was mistaken for a mounted locale and could override the saved locale before provider mount | Provider publishes an explicit mounted-language marker synchronously; pre-mount saved-locale regression test |
-| CI | Delta-sync job timeout was shorter than the combined legitimate step budgets | Job timeout raised from 40 to 60 minutes |
+| CI | Delta-sync job timeout was shorter than the combined legitimate step budgets | Job timeout raised from 40 to 110 minutes, above the 93-minute declared sequential budget plus setup and teardown |
 | Dependencies | `RUSTSEC-2026-0235` through `rkyv 0.7.46`; GHSA-fxqj-rqcc-2cmp through `postcss` 8.5.20; GHSA-m65r-rprj-r5rg through `russh` 0.62.4 | `rkyv` closed by PR #569; PostCSS and russh bumped to patched releases; no new audit suppression |
 
 ### 9.3 Reconciliation of the historical §8 snapshot
@@ -231,11 +231,11 @@ The two previously accepted deferred items remain explicit and unchanged:
 
 | Check | Final candidate result |
 | ----- | ---------------------- |
-| Frontend Vitest | 79 files, 714 passed |
+| Frontend Vitest | 80 files, 718 passed |
 | TypeScript | Passed |
 | i18n validation | 46/46 non-English locales, 5,185 keys each, zero errors, warnings, or placeholders |
 | Clippy | All targets, warnings denied, passed |
-| Rust library | 3,450 passed, 0 failed, 19 ignored |
+| Rust library | 3,453 passed, 0 failed, 19 ignored |
 | CLI | 502 passed, 0 failed |
 | Offline integration and doc tests | Passed |
 | `cargo audit` | 1,186 dependencies scanned, no vulnerability reported |
