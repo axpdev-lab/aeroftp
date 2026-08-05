@@ -6663,8 +6663,15 @@ pub async fn provider_compare_directories(
     // First check we're connected
     {
         let provider_lock = state.provider.lock().await;
-        if provider_lock.is_none() {
-            return Err("Not connected to any provider".to_string());
+        let provider = provider_lock
+            .as_ref()
+            .ok_or_else(|| "Not connected to any provider".to_string())?;
+        if !provider.listing_is_authoritative() {
+            return Err(format!(
+                "{}: {} does not provide an authoritative listing. Refusing to build an actionable compare plan because a stored remote object may appear absent and a Mirror preset could delete its local copy.",
+                crate::SCAN_INCOMPLETE_MARKER,
+                provider.display_name(),
+            ));
         }
     }
 

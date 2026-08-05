@@ -6470,6 +6470,14 @@ fn is_valid_sync_direction(direction: &str) -> bool {
     matches!(direction, "upload" | "download" | "both")
 }
 
+fn remote_listing_authorizes_sync_delete(
+    listing_is_authoritative: bool,
+    direction: &str,
+    delete: bool,
+) -> bool {
+    !delete || direction == "upload" || listing_is_authoritative
+}
+
 const SYNC_ERROR_CORRECTION_DEFAULT_PCT: u32 = 15;
 const SYNC_ERROR_CORRECTION_MIN_PCT: u32 = 5;
 const SYNC_ERROR_CORRECTION_MAX_PCT: u32 = 50;
@@ -45162,6 +45170,20 @@ async fn cmd_sync(
         Err(code) => return code.into(),
     };
 
+    if !remote_listing_authorizes_sync_delete(
+        provider.listing_is_authoritative(),
+        direction,
+        delete,
+    ) {
+        print_error(
+            format,
+            "refusing --delete: this provider's listing is not authoritative, so a stored remote object may appear absent and be misclassified as a local orphan; run without --delete",
+            4,
+        );
+        let _ = provider.disconnect().await;
+        return 4.into();
+    }
+
     let remote = &resolve_cli_remote_path(&initial_path, remote);
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
     let error_correction_enabled = error_correction_pct.is_some();
@@ -66000,6 +66022,21 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn non_authoritative_listing_blocks_only_local_delete_directions() {
+        assert!(remote_listing_authorizes_sync_delete(
+            true, "download", true
+        ));
+        assert!(remote_listing_authorizes_sync_delete(false, "upload", true));
+        assert!(remote_listing_authorizes_sync_delete(
+            false, "download", false
+        ));
+        assert!(!remote_listing_authorizes_sync_delete(
+            false, "download", true
+        ));
+        assert!(!remote_listing_authorizes_sync_delete(false, "both", true));
+    }
 
     #[test]
     fn empty_trash_consent_refuses_non_interactive_without_yes() {

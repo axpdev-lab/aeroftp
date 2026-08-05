@@ -486,6 +486,14 @@ impl StorageProvider for ImageKitProvider {
         "ImageKit".to_string()
     }
 
+    fn listing_is_authoritative(&self) -> bool {
+        // Live verification on 2026-08-01: upload returned a valid fileId and
+        // CDN URL (the exact bytes were served), while every Media Library
+        // List query omitted the object. Absence from this listing therefore
+        // cannot authorise deleting a local file during sync.
+        false
+    }
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
         let resp = self
             .auth(
@@ -1135,6 +1143,12 @@ mod tests {
         let p = empty_provider();
         assert!(p.supports_server_copy());
         assert!(p.supports_server_side_copy());
+    }
+
+    #[test]
+    fn imagekit_listing_cannot_authorize_sync_deletes() {
+        let p = empty_provider();
+        assert!(!p.listing_is_authoritative());
     }
 
     /// SG-T09 gate: both the trait-level entry point and the legacy

@@ -595,6 +595,18 @@ pub trait StorageProvider: Send + Sync {
 
     // Optional capabilities - providers can override these
 
+    /// Whether a successful directory listing is an authoritative statement
+    /// that every stored child was returned.
+    ///
+    /// Sync may use absence from an authoritative source listing to delete an
+    /// orphan on the other side. Providers whose upstream listing can omit
+    /// successfully stored objects must return `false`; uploads and ordinary
+    /// browsing remain available, but a remote-to-local delete pass must fail
+    /// closed.
+    fn listing_is_authoritative(&self) -> bool {
+        true
+    }
+
     /// Hard-delete a path bypassing the provider's recycle bin.
     ///
     /// `delete()` on consumer-cloud providers (Google Drive, Dropbox, OneDrive,

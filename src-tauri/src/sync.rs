@@ -1243,6 +1243,25 @@ pub(crate) fn orphan_delete_guard(
     Ok(())
 }
 
+/// Refuse any delete pass whose local-deletion decision would be authorised by
+/// a provider listing known not to report every successfully stored object.
+/// An `Ok(empty)` response is not a scan error, so completeness counters alone
+/// cannot close this class.
+pub(crate) fn remote_listing_delete_guard(
+    listing_is_authoritative: bool,
+    direction: SyncDirection,
+) -> Result<(), String> {
+    if !listing_is_authoritative
+        && matches!(direction, SyncDirection::Download | SyncDirection::Both)
+    {
+        return Err(
+            "remote listing is not authoritative for this provider; local orphan deletes are disabled because a stored object may be absent from the listing"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 /// Run a sync between `local_root` and `remote_root` using `provider` and
 /// record progress via `sink`.
 pub async fn sync_tree_core(
@@ -1456,9 +1475,18 @@ pub async fn sync_tree_core(
         // an unmounted root otherwise returns an empty/partial tree that the
         // loop below mirrors into a destructive delete of files the user still
         // has, with no trash to recover from.
-        if let Err(reason) =
-            orphan_delete_guard(opts.direction, &locals, &remotes, &local_scan, &remote_scan)
-        {
+        let delete_guard =
+            remote_listing_delete_guard(provider.listing_is_authoritative(), opts.direction)
+                .and_then(|()| {
+                    orphan_delete_guard(
+                        opts.direction,
+                        &locals,
+                        &remotes,
+                        &local_scan,
+                        &remote_scan,
+                    )
+                });
+        if let Err(reason) = delete_guard {
             tracing::warn!("sync.delete_orphans refused: {}", reason);
             report.errors.push(SyncError {
                 rel_path: String::new(),
@@ -5575,6 +5603,14 @@ mod tests {
         assert!(
             orphan_delete_guard(SyncDirection::Both, &[], &rfile, &incomplete, &incomplete).is_ok()
         );
+    }
+
+    #[test]
+    fn non_authoritative_remote_listing_never_authorizes_local_deletes() {
+        assert!(remote_listing_delete_guard(true, SyncDirection::Download).is_ok());
+        assert!(remote_listing_delete_guard(false, SyncDirection::Upload).is_ok());
+        assert!(remote_listing_delete_guard(false, SyncDirection::Download).is_err());
+        assert!(remote_listing_delete_guard(false, SyncDirection::Both).is_err());
     }
 
     /// CLAUDE-AV-B3-09: config exclude patterns must match gitignore-style
