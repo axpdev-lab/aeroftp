@@ -148,6 +148,11 @@ impl SwiftProvider {
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(Duration::from_secs(30))
             .read_timeout(Duration::from_secs(1800))
+            // Swift requests carry the non-standard X-Auth-Token header.
+            // reqwest strips a few standard credentials on cross-origin
+            // redirects, but cannot know this provider-specific header is a
+            // secret. Refuse redirects rather than forwarding the token.
+            .redirect(reqwest::redirect::Policy::none())
             .danger_accept_invalid_certs(!config.verify_cert)
             .build()
             .unwrap_or_else(|_| Client::new());

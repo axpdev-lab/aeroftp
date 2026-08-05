@@ -219,7 +219,13 @@ impl ProviderState {
     /// Both sides go through `norm_anchor`, which resolves `..`, so a crafted
     /// `/outside/../vault/secret` cannot pose as out-of-scope.
     fn path_is_outside_crypt_scope(scope: &str, path: &str) -> bool {
-        let anchor = crate::crypt_overlay_provider::norm_anchor(scope);
+        // Provider paths are not uniformly cased or separated: Windows-backed
+        // remotes may return `\\`, and case-insensitive servers may change case.
+        // Fold both forms for this security boundary. False negatives merely
+        // keep a raw write blocked; false positives could inject plaintext.
+        let scope = scope.replace('\\', "/");
+        let path = path.replace('\\', "/");
+        let anchor = crate::crypt_overlay_provider::norm_anchor(&scope).to_ascii_lowercase();
         if anchor.is_empty() {
             // Whole-remote anchor: nothing is outside it.
             return false;
@@ -228,7 +234,7 @@ impl ProviderState {
             // Relative: resolves against the raw cwd, which may be inside.
             return false;
         }
-        let target = crate::crypt_overlay_provider::norm_anchor(path);
+        let target = crate::crypt_overlay_provider::norm_anchor(&path).to_ascii_lowercase();
         if target.is_empty() {
             // The remote root: an ancestor of the anchor, never a safe write target.
             return false;
@@ -1869,8 +1875,8 @@ pub async fn provider_clear_crypt_overlay(
 /// like a locked overlay, but KEEP the cached overlay keys so a following
 /// [`provider_rearm_cached_crypt_overlay`] can re-arm instantly without
 /// re-running the KDF. Backs the fast crypt toggle (off then on on the same
-/// connection). Mirrors the flag effect of a full clear (capability dropped so
-/// the raw view is honest) but never touches the key cache. Idempotent.
+/// connection). The crypt capability stays armed while the raw view is visible,
+/// so write guards continue to prevent plaintext injection. Idempotent.
 #[tauri::command]
 pub async fn provider_lock_crypt_overlay(state: State<'_, ProviderState>) -> Result<bool, String> {
     let removed = {
@@ -1878,7 +1884,9 @@ pub async fn provider_lock_crypt_overlay(state: State<'_, ProviderState>) -> Res
         crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard)
     };
     state.overlay_wrapped.store(false, Ordering::SeqCst);
-    state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    if removed {
+        state.active_crypt_overlay.store(true, Ordering::SeqCst);
+    }
     Ok(removed)
 }
 
@@ -13001,6 +13009,12 @@ mod tests {
         // Traversal cannot pose as outside: both sides resolve `..` first.
         assert!(!out("/Vault", "/Plain/../Vault/secret"));
         assert!(out("/Vault", "/Vault/../Plain/file"));
+
+        // Separator and case aliases must fail closed for Windows-backed and
+        // case-insensitive remotes.
+        assert!(!out("/Vault", "\\Vault\\secret"));
+        assert!(!out("/Vault", "/vault/secret"));
+        assert!(!out("/VAULT/Inner", "/vault"));
 
         // Whole-remote anchor owns everything.
         assert!(!out("", "/anything"));

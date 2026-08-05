@@ -189,7 +189,9 @@ pub async fn stage_hash_drop(name: String, data_base64: String) -> Result<String
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = tokio::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).await;
+        tokio::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+            .await
+            .map_err(|e| format!("Failed to secure drop stage dir: {e}"))?;
     }
     // Sweep stale drops from earlier sessions: a staged file is consumed by the
     // very next hash_file call, so anything older than an hour is a leftover.

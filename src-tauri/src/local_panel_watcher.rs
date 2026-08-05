@@ -9,12 +9,16 @@
 //! emits a single `local-fs-changed` Tauri event when its contents change.
 //!
 //! The frontend swaps the watched path when the user navigates to a new
-//! folder; the watcher is cheap to recreate so we just drop the old one.
+//! folder; the watcher is cheap to recreate, so a ready replacement atomically
+//! takes the old one's slot.
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 
@@ -44,18 +48,34 @@ struct WatcherSlot {
 /// `State` borrows the app and cannot cross that boundary itself.
 pub struct LocalPanelWatcherState {
     inner: Arc<Mutex<Option<WatcherSlot>>>,
+    generation: Arc<AtomicU64>,
 }
 
 impl LocalPanelWatcherState {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(None)),
+            generation: Arc::new(AtomicU64::new(0)),
         }
     }
 
     /// A `'static` handle to the slot, for use off the main thread.
     fn handle(&self) -> Arc<Mutex<Option<WatcherSlot>>> {
         Arc::clone(&self.inner)
+    }
+
+    fn generation_handle(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.generation)
+    }
+
+    fn begin_request(&self) -> u64 {
+        self.generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1)
+    }
+
+    fn invalidate_requests(&self) {
+        self.generation.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -65,8 +85,8 @@ impl Default for LocalPanelWatcherState {
     }
 }
 
-/// Start watching `path` non-recursively. If a previous watcher is active,
-/// it is dropped first. Idempotent: passing the same path again is a no-op.
+/// Start watching `path` non-recursively. A successfully prepared watcher
+/// replaces the previous one. Idempotent: passing the same path again is a no-op.
 ///
 /// `async`: `path` comes from the frontend, and `is_dir()` on it is a `stat(2)`
 /// that blocks for the mount's own timeout when that mount is a network share
@@ -80,34 +100,26 @@ pub async fn local_panel_watch(
     state: State<'_, LocalPanelWatcherState>,
 ) -> Result<(), String> {
     let slot = state.handle();
-    tokio::task::spawn_blocking(move || local_panel_watch_blocking(path, app, &slot))
-        .await
-        .unwrap_or_else(|err| Err(format!("Watcher start task failed: {err}")))
+    let generation = state.generation_handle();
+    let request = state.begin_request();
+    tokio::task::spawn_blocking(move || {
+        local_panel_watch_blocking(path, app, &slot, &generation, request)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("Watcher start task failed: {err}")))
 }
 
 fn local_panel_watch_blocking(
     path: String,
     app: AppHandle,
     state: &Mutex<Option<WatcherSlot>>,
+    generation: &AtomicU64,
+    request: u64,
 ) -> Result<(), String> {
     let new_path = PathBuf::from(&path);
     if !new_path.is_dir() {
         return Err(format!("not a directory: {}", path));
     }
-
-    let mut slot = state
-        .lock()
-        .map_err(|_| "watcher state poisoned".to_string())?;
-
-    if let Some(existing) = slot.as_ref() {
-        if existing.path == new_path {
-            return Ok(());
-        }
-    }
-
-    // Drop any previous watcher before creating a new one to release inotify
-    // descriptors/handles.
-    *slot = None;
 
     let app_for_cb = app.clone();
     let watch_root = new_path.clone();
@@ -145,6 +157,25 @@ fn local_panel_watch_blocking(
         .watch(&new_path, RecursiveMode::NonRecursive)
         .map_err(|e| format!("watch start failed: {}", e))?;
 
+    // `stat` and watcher creation may block on a remote mount. A newer request
+    // (or stop) must win even if this older call completes last.
+    if generation.load(Ordering::SeqCst) != request {
+        return Ok(());
+    }
+
+    let mut slot = state
+        .lock()
+        .map_err(|_| "watcher state poisoned".to_string())?;
+    if generation.load(Ordering::SeqCst) != request {
+        return Ok(());
+    }
+    if slot
+        .as_ref()
+        .is_some_and(|existing| existing.path == new_path)
+    {
+        return Ok(());
+    }
+
     *slot = Some(WatcherSlot {
         watcher,
         path: new_path,
@@ -163,6 +194,9 @@ pub async fn local_panel_watch_stop(
     state: State<'_, LocalPanelWatcherState>,
 ) -> Result<(), String> {
     let slot = state.handle();
+    // Invalidate any start currently blocked in stat/watcher setup before the
+    // slot is cleared, so it cannot resurrect itself after stop returns.
+    state.invalidate_requests();
     tokio::task::spawn_blocking(move || {
         let mut slot = slot
             .lock()
@@ -172,4 +206,22 @@ pub async fn local_panel_watch_stop(
     })
     .await
     .unwrap_or_else(|err| Err(format!("Watcher stop task failed: {err}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_latest_watch_generation_can_install() {
+        let state = LocalPanelWatcherState::new();
+        let first = state.begin_request();
+        let second = state.begin_request();
+
+        assert_ne!(state.generation.load(Ordering::SeqCst), first);
+        assert_eq!(state.generation.load(Ordering::SeqCst), second);
+
+        state.invalidate_requests();
+        assert_ne!(state.generation.load(Ordering::SeqCst), second);
+    }
 }

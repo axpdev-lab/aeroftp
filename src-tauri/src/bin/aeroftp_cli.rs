@@ -26805,7 +26805,14 @@ struct ConnectMetadata {
 impl ConnectMetadata {
     fn from_config(config: &ProviderConfig) -> Self {
         Self {
-            host: config.host.clone(),
+            // OAuth/cloud profiles often have no network host field. Keep the
+            // human profile name so connect output and audit records do not
+            // silently lose the endpoint identity.
+            host: if config.host.trim().is_empty() {
+                config.name.clone()
+            } else {
+                config.host.clone()
+            },
             port: config.effective_port(),
             username: config.username.clone().unwrap_or_default(),
         }
@@ -68651,6 +68658,25 @@ mod tests {
         let metadata = ConnectMetadata::from_config(&config);
         assert_eq!(metadata.port, 22);
         assert_eq!(metadata.username, "");
+    }
+
+    #[test]
+    fn connect_metadata_falls_back_to_profile_name_when_host_is_empty() {
+        let config = ProviderConfig {
+            name: "My Google Drive".to_string(),
+            provider_type: ProviderType::GoogleDrive,
+            host: String::new(),
+            port: None,
+            username: None,
+            password: None,
+            initial_path: None,
+            extra: HashMap::new(),
+        };
+
+        assert_eq!(
+            ConnectMetadata::from_config(&config).host,
+            "My Google Drive"
+        );
     }
 
     #[test]

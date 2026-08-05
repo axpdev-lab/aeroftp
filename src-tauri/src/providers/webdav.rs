@@ -26,6 +26,31 @@ use super::{
     WebDavConfig,
 };
 
+/// Encode one untrusted Nextcloud trash identifier as exactly one URL segment.
+/// Dots are encoded too so an identifier equal to `..` cannot traverse out of
+/// the `trash` / `restore` collection after URL normalization.
+fn encode_nextcloud_trash_segment(value: &str) -> String {
+    const SEGMENT: &AsciiSet = &CONTROLS
+        .add(b' ')
+        .add(b'"')
+        .add(b'#')
+        .add(b'%')
+        .add(b'/')
+        .add(b'.')
+        .add(b'<')
+        .add(b'>')
+        .add(b'?')
+        .add(b'[')
+        .add(b'\\')
+        .add(b']')
+        .add(b'^')
+        .add(b'`')
+        .add(b'{')
+        .add(b'|')
+        .add(b'}');
+    utf8_percent_encode(value, SEGMENT).to_string()
+}
+
 /// A trash item from a Nextcloud trashbin PROPFIND response.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct NextcloudTrashEntry {
@@ -1554,13 +1579,12 @@ impl WebDavProvider {
         let base = self
             .nextcloud_base_url()
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
-        let from = format!(
-            "{}/remote.php/dav/trashbin/{}/trash/{}",
-            base, self.config.username, id
-        );
+        let username = encode_nextcloud_trash_segment(&self.config.username);
+        let id = encode_nextcloud_trash_segment(id);
+        let from = format!("{}/remote.php/dav/trashbin/{}/trash/{}", base, username, id);
         let dest = format!(
             "{}/remote.php/dav/trashbin/{}/restore/{}",
-            base, self.config.username, id
+            base, username, id
         );
 
         let resp = self
@@ -1591,7 +1615,9 @@ impl WebDavProvider {
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
         let url = format!(
             "{}/remote.php/dav/trashbin/{}/trash/{}",
-            base, self.config.username, id
+            base,
+            encode_nextcloud_trash_segment(&self.config.username),
+            encode_nextcloud_trash_segment(id)
         );
 
         let resp = self
@@ -1617,7 +1643,8 @@ impl WebDavProvider {
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
         let url = format!(
             "{}/remote.php/dav/trashbin/{}/trash",
-            base, self.config.username
+            base,
+            encode_nextcloud_trash_segment(&self.config.username)
         );
 
         let resp = self
@@ -4386,6 +4413,15 @@ mod tests {
             provider.build_url("/Documents"),
             "https://cloud.example.com/remote.php/dav/files/user/Documents"
         );
+    }
+
+    #[test]
+    fn nextcloud_trash_segments_cannot_escape_their_collection() {
+        assert_eq!(
+            encode_nextcloud_trash_segment("../files/alice/secret"),
+            "%2E%2E%2Ffiles%2Falice%2Fsecret"
+        );
+        assert_eq!(encode_nextcloud_trash_segment("alice"), "alice");
     }
 
     #[test]
