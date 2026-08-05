@@ -1601,7 +1601,11 @@ aeroftp-cli export restic --output ./restic-env.sh
 aeroftp-cli export s3cmd  --output ./.s3cfg
 ```
 
-OAuth-based providers (pCloud, Dropbox, Google Drive, Box, OneDrive, Yandex, Zoho, Koofr, Internxt, kDrive) **cannot be exported to rclone** because rclone uses its own OAuth flow with provider-issued client IDs; those entries are emitted as `# manual setup required` comments instead. Passwords for non-OAuth profiles are re-encoded in the target tool's native obfuscation (rclone reversible obscure, WinSCP password mask, FileZilla base64). Use `--json` on any subcommand for a machine-readable summary of what was exported and what was skipped.
+OAuth profiles **are** exported to rclone for every provider that has a matching rclone backend: Google Drive, Dropbox, OneDrive, Box, pCloud Drive, Yandex Disk, Koofr and Jottacloud. Each remote is written with its `client_id`, `client_secret` and `token`, so it is usable and refreshable without re-authorising. This requires all three to be in the vault, which is the case for a profile you authorised in AeroFTP with your own OAuth app; when any of them is missing, the remote is still written and a comment tells you to run `rclone config reconnect <remote>:` before use, rather than emitting a silently broken half-remote.
+
+Keep in mind that AeroFTP and rclone use different redirect URIs. Register both under the same app in the provider's developer console so the one `client_id` / `client_secret` pair works in both tools.
+
+The providers with no rclone export today are Zoho WorkDrive, 4shared, Internxt and kDrive; those entries are emitted as `# manual setup required` comments instead. Zoho WorkDrive is a gap rather than a limitation, tracked in [#458](https://github.com/axpdev-lab/aeroftp/issues/458): rclone does have a `zoho` backend, so the export is reachable. Passwords for non-OAuth profiles are re-encoded in the target tool's native obfuscation (rclone reversible obscure, WinSCP password mask, FileZilla base64). Use `--json` on any subcommand for a machine-readable summary of what was exported and what was skipped.
 
 ### profile-export / profile-import - Native `.aeroftp` Profile Backup
 

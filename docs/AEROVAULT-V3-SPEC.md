@@ -201,6 +201,12 @@ The v2 wire format stores the HMAC-SHA512 at bytes `448..512` and computes it ov
 
 ## 11. v4 Evolution Note (T-AEROVAULT-ECC, shipped)
 
+> **ECC here means error-correcting code**, the Reed-Solomon parity that lets a
+> damaged vault be repaired. It does **not** mean Elliptic Curve Cryptography, which
+> is the usual reading of the abbreviation in a security document and is not used
+> anywhere in the AeroVault stack: the cipher is AES-256-GCM-SIV and the hash is
+> BLAKE3. The header field is spelled `ecc` for the same reason.
+
 v4 = v3 + non-critical "error-correction.reed-solomon" extension (always critical=false). The extension carries a v2 Reed-Solomon payload (AVEC magic, version=2, K=10/P=2 fixed grid over the concatenated live-block stream, per-shard 16-byte truncated BLAKE3 for erasure localization, parity data). 
 
 - Overhead target: ~P/K = 20% (clamped shard size; proven on real incompressible data).
@@ -252,7 +258,7 @@ An empty `avec_bytes` for a segment means that region is not protected.
   parity carries no wholesale checksum because each Reed-Solomon shard self-checks and a
   rotted shard is routed around as an erasure. v1 sidecars are still read.
 - **Add-later win**: `export-parity` writes/refreshes a sidecar for an existing vault by
-  reading the encrypted container without rewriting it (Kopia can only enable ECC at repo
+  reading the encrypted container without rewriting it (Kopia can only enable error correction at repo
   creation). `strip-parity` drops the embedded copy, refusing unless a sidecar exists (or
   `--force`) so a vault is never silently left with no recovery.
 - **Source resolution** (scrub/repair): explicit `--parity` -> `<vault>.aerocorrect`
