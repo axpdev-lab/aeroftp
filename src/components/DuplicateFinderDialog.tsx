@@ -38,6 +38,7 @@ interface DuplicateScanProgress {
   max_depth: number;
   files_processed: number;
   files_total: number;
+  files_skipped: number;
   current_path: string;
 }
 
@@ -708,6 +709,11 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                   {progress.files_processed.toLocaleString()} / {progress.files_total.toLocaleString()}
                 </span>
               )}
+              {(progress?.files_skipped ?? 0) > 0 && (
+                <span className="tabular-nums text-amber-600 dark:text-amber-400">
+                  ⚠ {t('saveAll.skipped', { count: progress!.files_skipped })}
+                </span>
+              )}
             </div>
 
             {progress?.phase === 'walk' && progress.current_path && (
@@ -741,6 +747,11 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
             <span className="text-sm text-gray-600 dark:text-gray-400">
               {t('duplicates.noDuplicates')}
             </span>
+            {(progress?.files_skipped ?? 0) > 0 && (
+              <span className="text-xs text-amber-600 dark:text-amber-400">
+                {t('saveAll.skipped', { count: progress!.files_skipped })}
+              </span>
+            )}
           </div>
         )}
 
@@ -761,6 +772,11 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                 <Trash2 size={13} className="text-red-400" />
                 {formatBytes(summary.wastedBytes)} {mode === 'non-identical' ? 'potential waste (selected)' : t('duplicates.wasted')}
               </span>
+              {(progress?.files_skipped ?? 0) > 0 && (
+                <span className="text-amber-600 dark:text-amber-400">
+                  ⚠ {t('saveAll.skipped', { count: progress!.files_skipped })}
+                </span>
+              )}
             </div>
 
             {/* Groups list (scrollable) */}
