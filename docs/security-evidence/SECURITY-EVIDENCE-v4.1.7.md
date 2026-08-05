@@ -197,7 +197,7 @@ The §7 gate stands, plus: **item 0 — LIVE-1 resolved (or tag slips)**, and it
 
 ### 9.1 Scope and method
 
-The final candidate review covers `v4.1.6..9736a64db`: **322 commits, 228 non-merge commits, 335 changed files, 45,327 insertions, and 12,823 deletions**. Four adversarial lanes reviewed AeroRsync (55/55 assigned commits), frontend and UI regressions (99/99), CI, release, and dependencies (60/60), plus the remaining provider, sync, crypt, CLI, MCP, and i18n boundaries. Each confirmed release-risk finding was fixed on `audit/v4.1.7-fixes` and paired with targeted regression coverage before the full repository gate.
+The final candidate review covers `v4.1.6..3e8d69eae`: **325 commits, 230 non-merge commits, 338 changed files, 45,510 insertions, and 12,834 deletions**. Four adversarial lanes reviewed AeroRsync (55/55 assigned commits), frontend and UI regressions (99/99), CI, release, and dependencies (60/60), plus the remaining provider, sync, crypt, CLI, MCP, and i18n boundaries. Each confirmed release-risk finding was fixed on `audit/v4.1.7-fixes` and paired with targeted regression coverage before the full repository gate.
 
 The dependency candidate includes the exact two commits from PR #569 rather than a duplicate remediation: `rkyv 0.7.46` is removed from the graph and the JavaScript `plugin-log` package is aligned with the Rust crate. `cargo audit` is clean without an advisory ignore.
 
@@ -211,6 +211,7 @@ The dependency candidate includes the exact two commits from PR #569 rather than
 | Provider security | Swift could forward `X-Auth-Token` across redirects; Nextcloud username and trash IDs were not confined to one encoded URL segment | Redirects disabled for the authenticated Swift client; exact single-segment encoding with traversal coverage |
 | Crypt boundaries | View-only lock could disarm the raw-write guard; scope checks did not conservatively handle case-insensitive or backslash-backed paths | Capability remains armed after overlay removal; normalized fail-closed scope comparison with regression tests |
 | Filesystem and sync | Hash-drop directory permission failure was ignored; concurrent atomic sync writes reused one staging sibling | Permission failure aborts; unique `create_new` staging, durable flush, cleanup, and serialized publish with concurrent-writer coverage |
+| Provider listing authority | ImageKit can successfully store and serve an upload while its Media Library List API omits that object; CLI `sync --direction download --delete` could therefore classify the local copy as an orphan | Storage providers explicitly declare listing authority; ImageKit is non-authoritative; CLI delete, legacy/DAG orphan deletion, and the actionable GUI Compare plan all fail closed |
 | MCP and CLI | Content-addressed speed-test uploads could report dedupe speed; OAuth/cloud connect output could show an empty host | Per-iteration unique payload and hash; profile-name fallback with tests. The #549 fail-closed existence guard remains intact |
 | Watchers and reporting | A stale slow local watcher could replace the newest navigation; dedupe resource-cap skips were invisible | Generation arbitration makes latest navigation/stop win; skipped-file count is carried to progress and result UI |
 | i18n | Static shell `lang="en"` was mistaken for a mounted locale and could override the saved locale before provider mount | Provider publishes an explicit mounted-language marker synchronously; pre-mount saved-locale regression test |
@@ -219,7 +220,7 @@ The dependency candidate includes the exact two commits from PR #569 rather than
 
 ### 9.3 Reconciliation of the historical §8 snapshot
 
-The §8 snapshot is evidence of the state on 2026-07-30, not the final release verdict. LIVE-1 was fixed by #536; MCP-1 and MCP-2 by #549; SEC-K1 by #548; I18N-K1 and I18N-K2 by `b13372f21`; PR-2 by the serialized configuration mutation helpers; SEC-K2, SEC-K6, SYNC-K3, and CI-4 by intervening main commits; and SEC-K3 through SEC-K5, MCP-3 through MCP-5, PR-3, SYNC-K1, SYNC-K2, and I18N-K5 by the final audit branch. I18N-K4 is pre-existing locale-quality debt rather than a v4.1.7 regression. SYNC-K4 remains a noted multipart lifecycle design concern rather than a confirmed release regression.
+The §8 snapshot is evidence of the state on 2026-07-30, not the final release verdict. LIVE-1 was fixed by #536; MCP-1 and MCP-2 by #549; SEC-K1 by #548; I18N-K1 and I18N-K2 by `b13372f21`; PR-2 by the serialized configuration mutation helpers; SEC-K2, SEC-K6, SYNC-K3, and CI-4 by intervening main commits; and SEC-K3 through SEC-K5, MCP-3 through MCP-5, PR-3, SYNC-K1, SYNC-K2, and I18N-K5 by the final audit branch. The later tracker reconciliation also surfaced ImageKit's non-authoritative upstream listing; the final audit closes its local-data-loss path rather than leaving it as an untracked provider caveat. I18N-K4 is pre-existing locale-quality debt rather than a v4.1.7 regression. SYNC-K4 remains a noted multipart lifecycle design concern rather than a confirmed release regression.
 
 The two previously accepted deferred items remain explicit and unchanged:
 
@@ -234,8 +235,8 @@ The two previously accepted deferred items remain explicit and unchanged:
 | TypeScript | Passed |
 | i18n validation | 46/46 non-English locales, 5,185 keys each, zero errors, warnings, or placeholders |
 | Clippy | All targets, warnings denied, passed |
-| Rust library | 3,448 passed, 0 failed, 19 ignored |
-| CLI | 501 passed, 0 failed |
+| Rust library | 3,450 passed, 0 failed, 19 ignored |
+| CLI | 502 passed, 0 failed |
 | Offline integration and doc tests | Passed |
 | `cargo audit` | 1,186 dependencies scanned, no vulnerability reported |
 
