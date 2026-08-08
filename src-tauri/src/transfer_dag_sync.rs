@@ -1080,13 +1080,20 @@ pub async fn execute_sync_dag(
     // transient listing failure cannot mirror a destructive delete here either.
     let dag_opts;
     let plan_opts = if opts.delete_orphans {
-        match crate::sync::orphan_delete_guard(
+        let delete_guard = crate::sync::remote_listing_delete_guard(
+            provider.listing_is_authoritative(),
             opts.direction,
-            &locals,
-            &remotes,
-            &local_scan,
-            &remote_scan,
-        ) {
+        )
+        .and_then(|()| {
+            crate::sync::orphan_delete_guard(
+                opts.direction,
+                &locals,
+                &remotes,
+                &local_scan,
+                &remote_scan,
+            )
+        });
+        match delete_guard {
             Ok(()) => opts,
             Err(reason) => {
                 tracing::warn!("sync.delete_orphans refused (dag): {}", reason);

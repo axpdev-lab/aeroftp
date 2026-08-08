@@ -2477,11 +2477,13 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
 
     let size_bytes = size_mb * 1024 * 1024;
 
-    // Allocate the random payload once; reuse across iterations.
-    let payload: Vec<u8> = (0..size_bytes)
+    // Allocate once, but stamp fresh entropy into every iteration below.
+    // Re-uploading identical bytes lets content-addressed providers deduplicate
+    // iterations 2+ and report impossible throughput instead of a transfer.
+    let mut payload: Vec<u8> = (0..size_bytes)
         .map(|i| ((i ^ 0x9e37_79b9) & 0xff) as u8)
         .collect();
-    let upload_sha = format!("{:x}", sha2::Sha256::digest(&payload));
+    let mut upload_sha = String::new();
 
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
 
@@ -2522,6 +2524,11 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let mut last_download_sha = String::new();
 
     for _ in 0..iterations {
+        let nonce = uuid::Uuid::new_v4();
+        payload[..nonce.as_bytes().len()].copy_from_slice(nonce.as_bytes());
+        if verify_integrity {
+            upload_sha = format!("{:x}", sha2::Sha256::digest(&payload));
+        }
         let up_start = std::time::Instant::now();
         backend
             .upload_from_bytes(&payload, &remote_path)
@@ -4012,6 +4019,28 @@ mod tests {
             backend.deleted.lock().unwrap().as_slice(),
             &["/scratch/speed.bin".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn speed_uses_fresh_content_for_every_iteration() {
+        let backend = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&backend));
+        speed(
+            &ctx,
+            &json!({
+                "server": "s",
+                "iterations": 3,
+                "size_mb": 1,
+                "verify_integrity": false,
+            }),
+        )
+        .await
+        .expect("speed should complete");
+
+        let uploads = backend.uploads.lock().unwrap();
+        assert_eq!(uploads.len(), 3);
+        assert_ne!(uploads[0].1, uploads[1].1);
+        assert_ne!(uploads[1].1, uploads[2].1);
     }
 
     #[tokio::test]

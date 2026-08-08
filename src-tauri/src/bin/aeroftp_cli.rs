@@ -6470,6 +6470,14 @@ fn is_valid_sync_direction(direction: &str) -> bool {
     matches!(direction, "upload" | "download" | "both")
 }
 
+fn remote_listing_authorizes_sync_delete(
+    listing_is_authoritative: bool,
+    direction: &str,
+    delete: bool,
+) -> bool {
+    !delete || direction == "upload" || listing_is_authoritative
+}
+
 const SYNC_ERROR_CORRECTION_DEFAULT_PCT: u32 = 15;
 const SYNC_ERROR_CORRECTION_MIN_PCT: u32 = 5;
 const SYNC_ERROR_CORRECTION_MAX_PCT: u32 = 50;
@@ -26805,7 +26813,14 @@ struct ConnectMetadata {
 impl ConnectMetadata {
     fn from_config(config: &ProviderConfig) -> Self {
         Self {
-            host: config.host.clone(),
+            // OAuth/cloud profiles often have no network host field. Keep the
+            // human profile name so connect output and audit records do not
+            // silently lose the endpoint identity.
+            host: if config.host.trim().is_empty() {
+                config.name.clone()
+            } else {
+                config.host.clone()
+            },
             port: config.effective_port(),
             username: config.username.clone().unwrap_or_default(),
         }
@@ -45154,6 +45169,20 @@ async fn cmd_sync(
         Ok(v) => v,
         Err(code) => return code.into(),
     };
+
+    if !remote_listing_authorizes_sync_delete(
+        provider.listing_is_authoritative(),
+        direction,
+        delete,
+    ) {
+        print_error(
+            format,
+            "refusing --delete: this provider's listing is not authoritative, so a stored remote object may appear absent and be misclassified as a local orphan; run without --delete",
+            4,
+        );
+        let _ = provider.disconnect().await;
+        return 4.into();
+    }
 
     let remote = &resolve_cli_remote_path(&initial_path, remote);
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
@@ -65995,6 +66024,21 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn non_authoritative_listing_blocks_only_local_delete_directions() {
+        assert!(remote_listing_authorizes_sync_delete(
+            true, "download", true
+        ));
+        assert!(remote_listing_authorizes_sync_delete(false, "upload", true));
+        assert!(remote_listing_authorizes_sync_delete(
+            false, "download", false
+        ));
+        assert!(!remote_listing_authorizes_sync_delete(
+            false, "download", true
+        ));
+        assert!(!remote_listing_authorizes_sync_delete(false, "both", true));
+    }
+
+    #[test]
     fn empty_trash_consent_refuses_non_interactive_without_yes() {
         // A real purge in a piped/CI run used to skip the TTY prompt and
         // sweep the trash with no confirmation at all.
@@ -68651,6 +68695,25 @@ mod tests {
         let metadata = ConnectMetadata::from_config(&config);
         assert_eq!(metadata.port, 22);
         assert_eq!(metadata.username, "");
+    }
+
+    #[test]
+    fn connect_metadata_falls_back_to_profile_name_when_host_is_empty() {
+        let config = ProviderConfig {
+            name: "My Google Drive".to_string(),
+            provider_type: ProviderType::GoogleDrive,
+            host: String::new(),
+            port: None,
+            username: None,
+            password: None,
+            initial_path: None,
+            extra: HashMap::new(),
+        };
+
+        assert_eq!(
+            ConnectMetadata::from_config(&config).host,
+            "My Google Drive"
+        );
     }
 
     #[test]

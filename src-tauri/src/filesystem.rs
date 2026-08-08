@@ -1722,6 +1722,7 @@ pub struct DuplicateScanProgress {
     pub max_depth: u32,
     pub files_processed: u64,
     pub files_total: u64,
+    pub files_skipped: u64,
     pub current_path: String,
 }
 
@@ -1811,6 +1812,7 @@ pub async fn find_duplicate_files(
                     max_depth,
                     files_processed: 0,
                     files_total: 0,
+                    files_skipped: 0,
                     current_path: entry.path().to_string_lossy().to_string(),
                 },
             );
@@ -1824,7 +1826,7 @@ pub async fn find_duplicate_files(
     let mut emit_analysis = {
         let app = app.clone();
         let mut last = std::time::Instant::now();
-        move |files_processed: u64, files_total: u64, force: bool| {
+        move |files_processed: u64, files_total: u64, files_skipped: u64, force: bool| {
             if !force && last.elapsed().as_millis() < DUPLICATE_PROGRESS_INTERVAL_MS {
                 return;
             }
@@ -1839,6 +1841,7 @@ pub async fn find_duplicate_files(
                     max_depth,
                     files_processed,
                     files_total,
+                    files_skipped,
                     current_path: String::new(),
                 },
             );
@@ -1851,16 +1854,20 @@ pub async fn find_duplicate_files(
         // out, so this call cannot drift from the exact-mode file list.
         let paths: Vec<PathBuf> = walked.into_iter().map(|(p, _)| p).collect();
         let paths_total = paths.len() as u64;
+        let mut final_skipped = 0;
         let engine_groups = crate::dedupe::find_similar_local_with_progress(
             &paths,
             crate::dedupe::SimilarityMode::NonIdentical,
             distance, // None keeps the engine defaults: raster <=10, text <=3
             min_size,
-            &mut |p| emit_analysis(p.files_processed, p.files_total, false),
+            &mut |p| {
+                final_skipped = p.files_skipped;
+                emit_analysis(p.files_processed, p.files_total, p.files_skipped, false);
+            },
         );
         // The throttle can swallow the last tick, leaving the bar short of the
         // total for the rest of the dialog's life. Force one at the end.
-        emit_analysis(paths_total, paths_total, true);
+        emit_analysis(paths_total, paths_total, final_skipped, true);
         let result: Vec<DuplicateGroup> = engine_groups
             .into_iter()
             .map(|g| DuplicateGroup {
@@ -1921,7 +1928,7 @@ pub async fn find_duplicate_files(
                 break;
             }
             hashed += 1;
-            emit_analysis(hashed, hash_total, false);
+            emit_analysis(hashed, hash_total, 0, false);
             match compute_file_hash(file_path) {
                 Ok(hash) => {
                     let entry = hash_groups
@@ -1934,7 +1941,12 @@ pub async fn find_duplicate_files(
         }
     }
 
-    emit_analysis(hashed, hash_total, true);
+    let files_skipped = if budget_exceeded {
+        hash_total.saturating_sub(hashed)
+    } else {
+        0
+    };
+    emit_analysis(hashed, hash_total, files_skipped, true);
 
     // Phase 3: collect groups with 2+ files, sort by wasted space
     let mut result: Vec<DuplicateGroup> = hash_groups

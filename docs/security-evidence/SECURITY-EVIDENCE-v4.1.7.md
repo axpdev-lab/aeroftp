@@ -3,10 +3,10 @@
 > Pre-release commit audit evidence for AeroFTP v4.1.7.
 > Tracks confirmed findings on `v4.1.6..main`, applied fixes, deferred items, and acceptance gates.
 >
-> Status: Fixes on PR (pre-merge); gate at tag after merge  
-> Date: 2026-07-30  
+> Status: **PRE-TAG AUDIT PASS** on the candidate branch; final merge, version bump, all-platform CI, and tag still pending
+> Date: 2026-08-05
 > Scope: cycle commits since tag `v4.1.6` (not a full-surface re-audit)  
-> Independent audit (Kimi L2): appended in §8 — **one OPEN BLOCKER (LIVE-1, data-loss class), green pass withheld**; majors MCP-1 / MCP-2 / SEC-K1 / I18N-K1 / PR-2 recommended before tag
+> Independent audit (Kimi L2): the historical 2026-07-30 snapshot is retained in §8; its live findings are reconciled and superseded by the final audit in §9
 
 ---
 
@@ -14,17 +14,19 @@
 
 - Version: v4.1.7 (in preparation)
 - Previous version: v4.1.6
-- Branch: `audit/v4.1.7-prerelease` → PR #533
-- Platform scope tested: Linux (targeted unit tests, CLI live smoke, aerorsync bench fixture, `i18n:validate`)
-- Full per-push suite (fmt / clippy / full cargo test matrix): not re-run as wall-clock; required green on every merge into `main`
+- Audit branches: `audit/v4.1.7-prerelease` → PR #533 (merged); `audit/v4.1.7-fixes` (final candidate)
+- Platform scope tested locally: Linux full mandatory gate; final all-platform CI remains required after merge
+- Full per-push suite: passed on the final code candidate on 2026-08-05
 
 Minimum completion criteria:
 
 - [x] Findings ledger complete (confirmed / deferred explicit)
 - [x] Ship-risk findings fixed on the audit branch
-- [ ] PR #533 merged to `main`
-- [ ] Full local gate re-run after merge
-- [ ] CHANGELOG Security line: **Pre-tag commit audit: PASS.**
+- [x] PR #533 merged to `main`
+- [x] Full local gate re-run on the final code candidate
+- [x] CHANGELOG Security line: **Pre-tag commit audit: PASS.**
+- [ ] PR #569 and the final audit fixes merged to `main`
+- [ ] Version bump and final all-platform CI green before tag
 
 ---
 
@@ -188,3 +190,55 @@ Lanes verified clean (samples): S3 STS redirect fix + tests; OAuth profile expor
 ### 8.5 Updated acceptance gate
 
 The §7 gate stands, plus: **item 0 — LIVE-1 resolved (or tag slips)**, and items 2–7 of §8.4 fixed or explicitly deferred by the owner as accepted debt with a tracker row (item 7 included: the three uncovered lanes must be completed or formally deferred, not silently skipped).
+
+---
+
+## 9) Final Pre-tag Audit (2026-08-05)
+
+### 9.1 Scope and method
+
+The final code candidate review covers `v4.1.6..b8054861a`: **333 commits, 236 non-merge commits, 342 changed files, 45,916 insertions, and 12,879 deletions**. Four adversarial lanes reviewed AeroRsync (55/55 assigned commits), frontend and UI regressions (99/99), CI, release, and dependencies (60/60), plus the remaining provider, sync, crypt, CLI, MCP, and i18n boundaries. Each confirmed release-risk finding was fixed on `audit/v4.1.7-fixes` and paired with targeted regression coverage before the full repository gate.
+
+The dependency candidate includes the exact two commits from PR #569 rather than a duplicate remediation: `rkyv 0.7.46` is removed from the graph and the JavaScript `plugin-log` package is aligned with the Rust crate. The final Dependabot refresh also found GHSA-fxqj-rqcc-2cmp in `postcss` 8.5.20 and GHSA-m65r-rprj-r5rg in `russh` 0.62.4; the candidate moves them to 8.5.25 and 0.62.5 respectively. `npm audit` reports zero vulnerabilities and the project-configured `cargo audit` is clean without adding an advisory ignore.
+
+### 9.2 Final findings ledger
+
+| Area | Confirmed risk | Resolution |
+| ---- | -------------- | ---------- |
+| AeroRsync | Unbounded peer-controlled xattr count, names, values, and retry buffering; download did not resolve out-of-band xattr data before finalization | Bounded at decode and buffering boundaries; transactional multi-frame OOB resolution; sender/receiver regression tests |
+| Frontend performance | Duplicate thumbnails mounted and read eagerly for every result; size-only cache keys could serve stale images; a reused component could carry viewport eligibility to a new cache key | Intersection-observer lazy loading, process-wide concurrency cap of four, cancellation, versioned cache keys, and eligibility bound to the current key |
+| Frontend regressions | Generic/demo providers could inherit an unrelated company identity; Trash range anchor survived sort and marquee lacked the owning scroller | Exact provider identity before protocol fallback; generic/demo tier bypass; anchor reset and scroller-owned marquee autoscroll |
+| Provider security | Swift could forward `X-Auth-Token` across redirects or a stale refreshed endpoint; Nextcloud trash listing left the username raw and href-derived IDs were double-encoded | Redirects disabled; storage endpoints reject downgrade/URL credentials and every token-bearing request is origin-bound; username and decoded trash IDs are encoded exactly once with coverage |
+| Crypt boundaries | View-only lock could disarm the raw-write guard; scope checks did not conservatively handle case-insensitive or backslash-backed paths | Capability remains armed after overlay removal; normalized fail-closed scope comparison with regression tests |
+| Filesystem and sync | Predictable shared-temp hash-drop staging had a symlink replacement window; concurrent atomic sync writes reused one staging sibling | Hash drops use an atomically created random owner-only process directory and 0600 files; sync uses unique `create_new` staging, durable flush, cleanup, and serialized publish |
+| Provider listing authority | ImageKit can store and serve an upload while its List API omits it; Compare could also span a reconnect and mix two provider sessions | Providers declare listing authority; ImageKit is non-authoritative; CLI/legacy/DAG deletes fail closed; GUI Compare pins connection generation and revalidates authority before constructing a plan |
+| MCP and CLI | Content-addressed speed-test uploads could report dedupe speed; disabled integrity checks still hashed every upload; OAuth/cloud connect output could show an empty host | Per-iteration unique payload, conditional integrity hashing, and profile-name fallback with tests. The #549 fail-closed existence guard remains intact |
+| Watchers and reporting | Generation changes could race the final watcher-slot write and stale callbacks could still emit; dedupe resource-cap skips were invisible | Request creation, stop, and installation share the slot mutex; callbacks verify generation before emission; skipped-file count reaches progress and result UI |
+| i18n | Static shell `lang="en"` was mistaken for a mounted locale and could override the saved locale before provider mount | Provider publishes an explicit mounted-language marker synchronously; pre-mount saved-locale regression test |
+| CI | Delta-sync job timeout was shorter than the combined legitimate step budgets | Job timeout raised from 40 to 110 minutes, above the 93-minute declared sequential budget plus setup and teardown |
+| Dependencies | `RUSTSEC-2026-0235` through `rkyv 0.7.46`; GHSA-fxqj-rqcc-2cmp through `postcss` 8.5.20; GHSA-m65r-rprj-r5rg through `russh` 0.62.4 | `rkyv` closed by PR #569; PostCSS and russh bumped to patched releases; no new audit suppression |
+
+### 9.3 Reconciliation of the historical §8 snapshot
+
+The §8 snapshot is evidence of the state on 2026-07-30, not the final release verdict. LIVE-1 was fixed by #536; MCP-1 and MCP-2 by #549; SEC-K1 by #548; I18N-K1 and I18N-K2 by `b13372f21`; PR-2 by the serialized configuration mutation helpers; SEC-K2, SEC-K6, SYNC-K3, and CI-4 by intervening main commits; and SEC-K3 through SEC-K5, MCP-3 through MCP-5, PR-3, SYNC-K1, SYNC-K2, and I18N-K5 by the final audit branch. The later tracker reconciliation also surfaced ImageKit's non-authoritative upstream listing; the final audit closes its local-data-loss path rather than leaving it as an untracked provider caveat. I18N-K4 is pre-existing locale-quality debt rather than a v4.1.7 regression. SYNC-K4 remains a noted multipart lifecycle design concern rather than a confirmed release regression.
+
+The two previously accepted deferred items remain explicit and unchanged:
+
+- **SEC-2 (MED):** a Sigstore verification error can still degrade to unavailable; a hard install gate requires the published-digest and product-disclosure flow.
+- **PROV-4 (LOW):** Swift recursive delete still requires pagination to cover trees beyond 10,000 objects.
+
+### 9.4 Verification and tag gate
+
+| Check | Final candidate result |
+| ----- | ---------------------- |
+| Frontend Vitest | 80 files, 718 passed |
+| TypeScript | Passed |
+| i18n validation | 46/46 non-English locales, 5,185 keys each, zero errors, warnings, or placeholders |
+| Clippy | All targets, warnings denied, passed |
+| Rust library | 3,453 passed, 0 failed, 19 ignored |
+| CLI | 502 passed, 0 failed |
+| Offline integration and doc tests | Passed |
+| `cargo audit` | 1,186 dependencies scanned, no vulnerability reported |
+| `npm audit` | Zero vulnerabilities |
+
+**Verdict: PRE-TAG COMMIT AUDIT PASS.** No confirmed release-blocking finding remains on the candidate branch. This is not authorization to tag: manifests still identify 4.1.6, PR #569 and the audit fixes must land on `main`, and the release workflow must complete its version bump and all-platform green gate before creating v4.1.7.

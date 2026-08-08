@@ -97,14 +97,9 @@ export const TrashTable: React.FC<TrashTableProps> = ({
     // Rubber band. The hook keys items by `data-file-name`, which here carries
     // the row id, so the set it produces is the same set the checkboxes use.
     //
-    // The element below is the full-height table wrapper, not the scroller: the
-    // scrolling ancestor belongs to each provider's dialog. Hit testing is
-    // unaffected, because an unclipped wrapper's bounding rect moves with the
-    // scroll and pointer-to-content coordinates stay consistent. What does not
-    // work is the hook's edge auto-scroll, which reads `scrollTop` from this
-    // element and always sees 0: dragging past the bottom edge selects what is
-    // visible and stops there instead of scrolling on. Selecting more means
-    // scrolling first, or holding Ctrl and dragging again to add.
+    // This wrapper is the scroller as well as the marquee coordinate space.
+    // Provider dialogs give it a bounded `h-full`; owning scrollTop here lets
+    // the shared hook auto-scroll while a rubber band crosses an edge.
     const noopSetSelected = React.useCallback(() => {}, []);
     const marquee = useMarqueeSelection({
         containerRef,
@@ -132,7 +127,7 @@ export const TrashTable: React.FC<TrashTableProps> = ({
     };
 
     return (
-        <div ref={containerRef} className="relative h-full" onMouseDown={marquee.onMouseDown}>
+        <div ref={containerRef} className="relative h-full min-h-0 overflow-y-auto" onMouseDown={marquee.onMouseDown}>
             <table className="w-full text-xs select-none">
                 <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                     <tr className="text-left text-gray-500 dark:text-gray-500">
@@ -141,7 +136,13 @@ export const TrashTable: React.FC<TrashTableProps> = ({
                             <th key={key} className={`px-2 py-1.5 ${className}`}>
                                 <button
                                     type="button"
-                                    onClick={() => setSort((cur) => nextTrashSort(cur, key))}
+                                    onClick={() => {
+                                        // The anchor is an index in the current
+                                        // order; a sort gives that index to a
+                                        // different row, so start a new range.
+                                        anchorRef.current = null;
+                                        setSort((cur) => nextTrashSort(cur, key));
+                                    }}
                                     className="inline-flex items-center hover:text-gray-700 dark:hover:text-gray-300"
                                     aria-label={t(labelKey) || fallback}
                                 >

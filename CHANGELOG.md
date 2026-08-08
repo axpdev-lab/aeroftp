@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.7] - Unreleased
+
+### Security
+- **Pre-tag commit audit: PASS.** The adversarial review covered all 333 code-candidate commits (236 non-merge) since v4.1.6 across AeroRsync, providers and core security boundaries, frontend and regressions, CI, release workflows, and dependencies. Release-blocking findings were fixed with regression coverage: bounded xattr wire state and out-of-band decoding, lazy and concurrency-limited thumbnails with cache-key-bound eligibility, fail-closed crypt/provider paths, redirect-token and Swift storage-origin containment, atomically private hash-drop staging, collision-safe atomic sync writes, non-authoritative provider listings and session swaps barred from authorising local deletes, single-encoded Nextcloud trash identifiers, serialized watcher generations, honest dedupe skip reporting, locale mount-state selection, and a CI backstop above its declared step budgets. `RUSTSEC-2026-0235` is closed by removing `rkyv 0.7.46`; `postcss` 8.5.25 and `russh` 0.62.5 close GHSA-fxqj-rqcc-2cmp and GHSA-m65r-rprj-r5rg. The mandatory local gate passed with 718 frontend tests, 3,453 Rust library tests, 502 CLI tests, offline integrations, Clippy with warnings denied, complete 46-locale validation, `npm audit` at zero, and `cargo audit` over 1,186 dependencies. Previously accepted debt remains explicit: SEC-2 (Sigstore hard-gate and published-digest product flow) and PROV-4 (Swift recursive-delete pagination beyond 10,000 objects). Version bump, all-platform CI on the final merge, and the tag remain separate release gates.
+
+---
+
 ## [4.1.6] - 2026-07-25
 
 ### AeroRsync Closes the Gap With rsync, a Stabilised DAG Transfer Engine, and MTP Portable Devices

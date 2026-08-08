@@ -287,6 +287,8 @@ pub struct DedupeProgress {
     pub files_processed: u64,
     pub bytes_processed: u64,
     pub files_total: u64,
+    /// Candidates deliberately omitted by the memory / total-I/O ceilings.
+    pub files_skipped: u64,
 }
 
 /// Find duplicate groups on a list of local file paths.
@@ -319,6 +321,7 @@ pub fn find_similar_local_with_progress(
     let files_total = paths.len() as u64;
     let mut files_processed: u64 = 0;
     let mut bytes_processed: u64 = 0;
+    let mut files_skipped: u64 = 0;
 
     match mode {
         SimilarityMode::Exact => {
@@ -351,6 +354,7 @@ pub fn find_similar_local_with_progress(
                         files_processed,
                         bytes_processed,
                         files_total,
+                        files_skipped,
                     });
                 }
             }
@@ -414,6 +418,7 @@ pub fn find_similar_local_with_progress(
                             files_processed,
                             bytes_processed,
                             files_total,
+                            files_skipped,
                         });
                         continue;
                     }
@@ -425,10 +430,12 @@ pub fn find_similar_local_with_progress(
                     || bytes_processed.saturating_add(sz) > MAX_TOTAL_SIGNATURE_BYTES
                 {
                     files_processed += 1;
+                    files_skipped += 1;
                     on_progress(DedupeProgress {
                         files_processed,
                         bytes_processed,
                         files_total,
+                        files_skipped,
                     });
                     continue;
                 }
@@ -443,6 +450,7 @@ pub fn find_similar_local_with_progress(
                             files_processed,
                             bytes_processed,
                             files_total,
+                            files_skipped,
                         });
                         continue;
                     }
@@ -453,6 +461,7 @@ pub fn find_similar_local_with_progress(
                     files_processed,
                     bytes_processed,
                     files_total,
+                    files_skipped,
                 });
                 let modality = detect_modality(p);
                 let path_str = p.to_string_lossy().to_string();
@@ -914,17 +923,24 @@ mod tests {
         let p1 = write_file(td.path(), "icon1.svg", svg1.as_bytes());
         let p2 = write_file(td.path(), "icon2.svg", svg2.as_bytes());
 
-        let groups = find_similar_local(
+        let mut last_progress = None;
+        let groups = find_similar_local_with_progress(
             &[huge, p1, p2],
             SimilarityMode::NonIdentical,
             Some(32),
             None,
+            &mut |progress| last_progress = Some(progress),
         );
         assert!(
             groups
                 .iter()
                 .any(|g| g.files.len() >= 2 && g.modality.as_deref() == Some("text")),
             "small similar files after an oversized head candidate must still group; got {groups:?}"
+        );
+        assert_eq!(
+            last_progress.expect("progress tick").files_skipped,
+            1,
+            "the UI must be told that the oversized candidate was not analyzed"
         );
     }
 

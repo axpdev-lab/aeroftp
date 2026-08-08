@@ -164,6 +164,11 @@ describe('every copy can be ticked (#347)', () => {
         expect(dialogRaw).not.toMatch(/signatureOf\(fileSize, null\)/);
     });
 
+    it('keeps resource-limit skips visible after the progress bar reaches 100%', () => {
+        expect(dialogRaw).toMatch(/files_skipped: number/);
+        expect(dialogRaw).toMatch(/t\('saveAll\.skipped', \{ count: progress!\.files_skipped \}\)/);
+    });
+
     it('writes the keep-policy ref from an effect, not during render', () => {
         const ref = dialogRaw.slice(dialogRaw.indexOf('const keepPolicyRef'));
         expect(ref.slice(0, 200)).toMatch(/useEffect\(\(\) => \{\s*\n?\s*keepPolicyRef\.current = keepPolicy;/);

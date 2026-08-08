@@ -19,13 +19,14 @@ describe('thumbnail cache (#347)', () => {
         // entry forever. A null key makes the caller fetch every time instead,
         // which is the previous behaviour and the safe one.
         expect(signatureOf(null, null)).toBeNull();
+        expect(signatureOf(1024, null)).toBeNull();
         expect(keyFor('local', '/a.png', null)).toBeNull();
         putThumbnail(null, 'data:image/png;base64,AAAA');
         expect(getThumbnail(null)).toBeUndefined();
         expect(thumbnailCacheStats().entries).toBe(0);
     });
 
-    it('treats the same path as a different file once size or mtime moves', () => {
+    it('treats the same path as a different file once its version moves', () => {
         const before = keyFor('local', '/a.png', signatureOf(1024, '2026-07-30T10:00:00Z'));
         const afterEdit = keyFor('local', '/a.png', signatureOf(2048, '2026-07-31T10:00:00Z'));
         const afterTouch = keyFor('local', '/a.png', signatureOf(1024, '2026-07-31T10:00:00Z'));

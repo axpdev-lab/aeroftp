@@ -1392,6 +1392,13 @@ pub enum FileListDecodeOutcome {
 /// `docs/dev/roadmap/APPENDIX-AERORSYNC/04-xattr-wire-evidence.md` §4.5.
 pub const MAX_FULL_DATUM: usize = 32;
 
+/// Wire-side copies of the filesystem policy ceilings. They live here so a
+/// hostile peer is rejected while the file list is still being decoded,
+/// before the streaming receiver can grow its retry buffer without bound.
+pub const MAX_XATTR_PAIRS: usize = 256;
+pub const MAX_XATTR_NAME_LEN: usize = 255;
+pub const MAX_XATTR_TOTAL_BYTES: usize = 1024 * 1024;
+
 /// Length of the digest rsync substitutes for an over-threshold value in
 /// the file-list entry. Measured to be **MD5** of the value
 /// (`06-xattr-oob-wire-evidence.md` §1), not merely assumed.
@@ -1667,6 +1674,14 @@ fn decode_xattr_blob(buf: &[u8]) -> Result<(Vec<XattrPair>, usize), RealWireErro
             available: buf.len().saturating_sub(cursor),
         });
     }
+    let count = count as usize;
+    if count > MAX_XATTR_PAIRS {
+        return Err(RealWireError::InvalidXattrField {
+            field: "count",
+            declared: count as i64,
+            available: buf.len().saturating_sub(cursor),
+        });
+    }
 
     // Deliberately no `Vec::with_capacity(count)`: `count` is peer-supplied
     // and a bogus large value would reserve memory before a single one of
@@ -1674,6 +1689,7 @@ fn decode_xattr_blob(buf: &[u8]) -> Result<(Vec<XattrPair>, usize), RealWireErro
     // handful of xattrs a real file carries.
     let mut pairs: Vec<XattrPair> = Vec::new();
 
+    let mut total_declared_bytes = 0usize;
     for _ in 0..count {
         let (name_len, consumed) = decode_varint(&buf[cursor..])?;
         cursor += consumed;
@@ -1699,6 +1715,27 @@ fn decode_xattr_blob(buf: &[u8]) -> Result<(Vec<XattrPair>, usize), RealWireErro
         }
         let name_len = name_len as usize;
         let datum_len = datum_len as usize;
+        if name_len - 1 > MAX_XATTR_NAME_LEN {
+            return Err(RealWireError::InvalidXattrField {
+                field: "name_len",
+                declared: name_len as i64,
+                available,
+            });
+        }
+        total_declared_bytes = total_declared_bytes.checked_add(datum_len).ok_or(
+            RealWireError::InvalidXattrField {
+                field: "total_datum_len",
+                declared: i64::MAX,
+                available,
+            },
+        )?;
+        if total_declared_bytes > MAX_XATTR_TOTAL_BYTES {
+            return Err(RealWireError::InvalidXattrField {
+                field: "total_datum_len",
+                declared: i64::try_from(total_declared_bytes).unwrap_or(i64::MAX),
+                available,
+            });
+        }
 
         // Above the threshold the entry does NOT carry the value: it
         // carries a 16-byte MD5 and the bytes follow in the out-of-band
@@ -7148,6 +7185,50 @@ mod tests {
                 Ok(other) => panic!("{label}: expected a typed error, decoded {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn xattr_wire_limits_reject_before_stream_buffer_growth() {
+        // Count is rejected before reserving or waiting for any records.
+        let mut too_many = encode_varint(0);
+        too_many.extend_from_slice(&encode_varint((MAX_XATTR_PAIRS + 1) as i32));
+        assert!(matches!(
+            decode_xattr_blob(&too_many),
+            Err(RealWireError::InvalidXattrField { field: "count", .. })
+        ));
+
+        // name_len includes the trailing NUL, hence the policy + 1 wire cap.
+        let mut long_name = encode_varint(0);
+        long_name.extend_from_slice(&encode_varint(1));
+        long_name.extend_from_slice(&encode_varint((MAX_XATTR_NAME_LEN + 2) as i32));
+        long_name.extend_from_slice(&encode_varint(0));
+        assert!(matches!(
+            decode_xattr_blob(&long_name),
+            Err(RealWireError::InvalidXattrField {
+                field: "name_len",
+                ..
+            })
+        ));
+
+        // Deferred values carry only a digest in the file list. Their declared
+        // sizes must still count toward the 1 MiB policy before the receiver
+        // waits for an arbitrarily large out-of-band section.
+        let half_plus = MAX_XATTR_TOTAL_BYTES / 2 + 1;
+        let mut oversized_total = encode_varint(0);
+        oversized_total.extend_from_slice(&encode_varint(2));
+        for name in [b"user.a\0".as_slice(), b"user.b\0".as_slice()] {
+            oversized_total.extend_from_slice(&encode_varint(name.len() as i32));
+            oversized_total.extend_from_slice(&encode_varint(half_plus as i32));
+            oversized_total.extend_from_slice(name);
+            oversized_total.extend_from_slice(&[0u8; XATTR_DIGEST_LEN]);
+        }
+        assert!(matches!(
+            decode_xattr_blob(&oversized_total),
+            Err(RealWireError::InvalidXattrField {
+                field: "total_datum_len",
+                ..
+            })
+        ));
     }
 
     #[test]

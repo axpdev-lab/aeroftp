@@ -5,9 +5,36 @@
  * ImageThumbnail - Lazy-loads image thumbnails for file grid view
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getThumbnail, keyFor, putThumbnail } from '../utils/thumbnailCache';
+
+const MAX_CONCURRENT_THUMBNAIL_READS = 4;
+interface ThumbnailJob {
+    cancelled: boolean;
+    run: () => Promise<void>;
+}
+const thumbnailQueue: ThumbnailJob[] = [];
+let activeThumbnailReads = 0;
+
+function pumpThumbnailQueue(): void {
+    while (activeThumbnailReads < MAX_CONCURRENT_THUMBNAIL_READS && thumbnailQueue.length > 0) {
+        const job = thumbnailQueue.shift()!;
+        if (job.cancelled) continue;
+        activeThumbnailReads += 1;
+        void job.run().finally(() => {
+            activeThumbnailReads -= 1;
+            pumpThumbnailQueue();
+        });
+    }
+}
+
+function scheduleThumbnailRead(run: () => Promise<void>): () => void {
+    const job: ThumbnailJob = { cancelled: false, run };
+    thumbnailQueue.push(job);
+    pumpThumbnailQueue();
+    return () => { job.cancelled = true; };
+}
 
 interface ImageThumbnailProps {
     path: string;
@@ -43,6 +70,34 @@ export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
     // instead of flashing the fallback icon and swapping a moment later.
     const [src, setSrc] = useState<string | null>(() => getThumbnail(cacheKey) ?? null);
     const [error, setError] = useState(false);
+    const placeholderRef = useRef<HTMLDivElement>(null);
+    const [eligibleKey, setEligibleKey] = useState<string | null>(null);
+
+    useEffect(() => {
+        setSrc(getThumbnail(cacheKey) ?? null);
+        setError(false);
+        setEligibleKey(null);
+    }, [cacheKey]);
+
+    // A duplicate scan can render thousands of image rows. Observe the cheap
+    // placeholder and do not enqueue an IPC read until the row approaches the
+    // viewport; the shared queue below then bounds the visible burst as well.
+    useEffect(() => {
+        if (src || error || eligibleKey === cacheKey) return;
+        const node = placeholderRef.current;
+        if (!node || typeof IntersectionObserver === 'undefined') {
+            setEligibleKey(cacheKey);
+            return;
+        }
+        const observer = new IntersectionObserver(([entry]) => {
+            if (entry.isIntersecting) {
+                setEligibleKey(cacheKey);
+                observer.disconnect();
+            }
+        }, { rootMargin: '160px' });
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [src, error, eligibleKey, cacheKey]);
 
     useEffect(() => {
         const cached = getThumbnail(cacheKey);
@@ -51,6 +106,7 @@ export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
             setError(false);
             return;
         }
+        if (eligibleKey !== cacheKey) return;
 
         let cancelled = false;
         const loadImage = async () => {
@@ -72,12 +128,15 @@ export const ImageThumbnail: React.FC<ImageThumbnailProps> = ({
                 if (!cancelled) setError(true);
             }
         };
-        loadImage();
-        return () => { cancelled = true; };
-    }, [path, name, isRemote, cacheKey]);
+        const cancelQueued = scheduleThumbnailRead(loadImage);
+        return () => {
+            cancelled = true;
+            cancelQueued();
+        };
+    }, [path, name, isRemote, cacheKey, eligibleKey]);
 
     if (error || !src) {
-        return <div className="file-grid-icon">{fallbackIcon}</div>;
+        return <div ref={placeholderRef} className="file-grid-icon">{fallbackIcon}</div>;
     }
     // `object-contain`: show the file whole. `cover` crops whatever does not fit
     // the square, which on a wide photo is both edges and on a screenshot is

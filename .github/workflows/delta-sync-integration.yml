@@ -66,8 +66,14 @@ jobs:
     # and the job cap is only a backstop. The arithmetic it has to cover:
     # ~1.6 min before apt, up to 10 for apt (two 5-minute attempts), up to ~22
     # for the cargo steps on a cold cache, ~1 for teardown and the cache save
-    # = ~35. 40 leaves margin and matches the windows-native job below.
-    timeout-minutes: 40
+    # = ~35 in the usual slow case. The independently bounded cache, apt,
+    # Docker and test steps can legitimately run longer in combination, so a
+    # 40-minute backstop could still cancel an individually healthy step and
+    # recreate the unattributed signal this layout is meant to prevent. The
+    # declared sequential step limits total 93 minutes before checkout and
+    # teardown, so 110 remains a finite backstop while leaving those named
+    # budgets in charge.
+    timeout-minutes: 110
 
     steps:
       - name: Checkout

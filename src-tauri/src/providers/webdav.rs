@@ -12,7 +12,7 @@
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use md5::{Digest as _, Md5};
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, CONTROLS};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use rand::Rng;
@@ -25,6 +25,31 @@ use super::{
     ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageProvider, UploadedPart,
     WebDavConfig,
 };
+
+/// Encode one untrusted Nextcloud trash identifier as exactly one URL segment.
+/// Dots are encoded too so an identifier equal to `..` cannot traverse out of
+/// the `trash` / `restore` collection after URL normalization.
+fn encode_nextcloud_trash_segment(value: &str) -> String {
+    const SEGMENT: &AsciiSet = &CONTROLS
+        .add(b' ')
+        .add(b'"')
+        .add(b'#')
+        .add(b'%')
+        .add(b'/')
+        .add(b'.')
+        .add(b'<')
+        .add(b'>')
+        .add(b'?')
+        .add(b'[')
+        .add(b'\\')
+        .add(b']')
+        .add(b'^')
+        .add(b'`')
+        .add(b'{')
+        .add(b'|')
+        .add(b'}');
+    utf8_percent_encode(value, SEGMENT).to_string()
+}
 
 /// A trash item from a Nextcloud trashbin PROPFIND response.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -1370,7 +1395,8 @@ impl WebDavProvider {
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
         let url = format!(
             "{}/remote.php/dav/trashbin/{}/trash/",
-            base, self.config.username
+            base,
+            encode_nextcloud_trash_segment(&self.config.username)
         );
 
         let propfind_body = r#"<?xml version="1.0" encoding="utf-8"?>
@@ -1477,11 +1503,12 @@ impl WebDavProvider {
                             in_response = false;
                             // Skip the collection itself (the trash/ container)
                             if !trash_filename.is_empty() {
-                                let id = href
-                                    .rsplit('/')
-                                    .find(|s| !s.is_empty())
-                                    .unwrap_or("")
-                                    .to_string();
+                                let encoded_id =
+                                    href.rsplit('/').find(|s| !s.is_empty()).unwrap_or("");
+                                let id = percent_decode_str(encoded_id)
+                                    .decode_utf8()
+                                    .map_err(|e| ProviderError::ParseError(e.to_string()))?
+                                    .into_owned();
                                 entries.push(NextcloudTrashEntry {
                                     id,
                                     name: trash_filename.trim().to_string(),
@@ -1554,13 +1581,12 @@ impl WebDavProvider {
         let base = self
             .nextcloud_base_url()
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
-        let from = format!(
-            "{}/remote.php/dav/trashbin/{}/trash/{}",
-            base, self.config.username, id
-        );
+        let username = encode_nextcloud_trash_segment(&self.config.username);
+        let id = encode_nextcloud_trash_segment(id);
+        let from = format!("{}/remote.php/dav/trashbin/{}/trash/{}", base, username, id);
         let dest = format!(
             "{}/remote.php/dav/trashbin/{}/restore/{}",
-            base, self.config.username, id
+            base, username, id
         );
 
         let resp = self
@@ -1591,7 +1617,9 @@ impl WebDavProvider {
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
         let url = format!(
             "{}/remote.php/dav/trashbin/{}/trash/{}",
-            base, self.config.username, id
+            base,
+            encode_nextcloud_trash_segment(&self.config.username),
+            encode_nextcloud_trash_segment(id)
         );
 
         let resp = self
@@ -1617,7 +1645,8 @@ impl WebDavProvider {
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
         let url = format!(
             "{}/remote.php/dav/trashbin/{}/trash",
-            base, self.config.username
+            base,
+            encode_nextcloud_trash_segment(&self.config.username)
         );
 
         let resp = self
@@ -4389,6 +4418,15 @@ mod tests {
     }
 
     #[test]
+    fn nextcloud_trash_segments_cannot_escape_their_collection() {
+        assert_eq!(
+            encode_nextcloud_trash_segment("../files/alice/secret"),
+            "%2E%2E%2Ffiles%2Falice%2Fsecret"
+        );
+        assert_eq!(encode_nextcloud_trash_segment("alice"), "alice");
+    }
+
+    #[test]
     fn router_hint_prefers_provider_id_over_bare_url() {
         let mut config = test_config("https://cloud.lab.example.test");
         config.provider_id = Some("nextcloud".to_string());
@@ -4646,6 +4684,11 @@ mod tests {
         let entries = provider.parse_trashbin_response(xml).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "a& &b.txt");
+        assert_eq!(entries[0].id, "a& &b.txt.d1700000000");
+        assert_eq!(
+            encode_nextcloud_trash_segment(&entries[0].id),
+            "a&%20&b%2Etxt%2Ed1700000000"
+        );
         assert_eq!(entries[0].original_path, "docs/a& &b.txt");
         assert_eq!(entries[0].deleted_at, 1700000000);
     }

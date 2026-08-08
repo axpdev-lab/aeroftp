@@ -55,6 +55,10 @@ describe('Add Service: grid and table share their controls (#347)', () => {
     it('applies the tier filter to the grid too, not only to the table', () => {
         // The filter used to live in the table, so the grid ignored it entirely.
         expect(panelRaw).toContain('companyTierInCategory(company, activeCategory)');
+        // Generic FTP/SFTP entry points and Rebex demos have no commercial
+        // tier. Protocol fallback must not assign them to the first company
+        // using that wire protocol and hide them under an unrelated price.
+        expect(panelRaw).toContain('if (item.isGeneric || item.demo) return true');
     });
 
     it('shows the custom/generic servers and the category banner in both views', () => {

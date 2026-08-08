@@ -296,7 +296,13 @@ export function DiscoverPanel({ onSelectProvider, query, onQueryChange }: Discov
         if (tierFilter !== 'all') {
             const wanted = tierFilter === 'freecard' ? 'free-card' : tierFilter;
             items = items.filter(item => {
-                const company = companyByKey.get(item.providerId || '') ?? companyByKey.get(item.protocol);
+                // Generic connection entry points and public demos are not a
+                // company's storage offer. Falling back by protocol assigned
+                // FTP/SFTP to whichever catalog company happened to be first,
+                // hiding those entry points under unrelated price filters.
+                if (item.isGeneric || item.demo) return true;
+                const company = companyByKey.get(item.providerId || item.id)
+                    ?? companyByKey.get(item.protocol);
                 if (!company) return true;
                 return companyTierInCategory(company, activeCategory) === wanted;
             });

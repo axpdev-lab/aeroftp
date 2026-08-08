@@ -219,7 +219,13 @@ impl ProviderState {
     /// Both sides go through `norm_anchor`, which resolves `..`, so a crafted
     /// `/outside/../vault/secret` cannot pose as out-of-scope.
     fn path_is_outside_crypt_scope(scope: &str, path: &str) -> bool {
-        let anchor = crate::crypt_overlay_provider::norm_anchor(scope);
+        // Provider paths are not uniformly cased or separated: Windows-backed
+        // remotes may return `\\`, and case-insensitive servers may change case.
+        // Fold both forms for this security boundary. False negatives merely
+        // keep a raw write blocked; false positives could inject plaintext.
+        let scope = scope.replace('\\', "/");
+        let path = path.replace('\\', "/");
+        let anchor = crate::crypt_overlay_provider::norm_anchor(&scope).to_ascii_lowercase();
         if anchor.is_empty() {
             // Whole-remote anchor: nothing is outside it.
             return false;
@@ -228,7 +234,7 @@ impl ProviderState {
             // Relative: resolves against the raw cwd, which may be inside.
             return false;
         }
-        let target = crate::crypt_overlay_provider::norm_anchor(path);
+        let target = crate::crypt_overlay_provider::norm_anchor(&path).to_ascii_lowercase();
         if target.is_empty() {
             // The remote root: an ancestor of the anchor, never a safe write target.
             return false;
@@ -1869,8 +1875,8 @@ pub async fn provider_clear_crypt_overlay(
 /// like a locked overlay, but KEEP the cached overlay keys so a following
 /// [`provider_rearm_cached_crypt_overlay`] can re-arm instantly without
 /// re-running the KDF. Backs the fast crypt toggle (off then on on the same
-/// connection). Mirrors the flag effect of a full clear (capability dropped so
-/// the raw view is honest) but never touches the key cache. Idempotent.
+/// connection). The crypt capability stays armed while the raw view is visible,
+/// so write guards continue to prevent plaintext injection. Idempotent.
 #[tauri::command]
 pub async fn provider_lock_crypt_overlay(state: State<'_, ProviderState>) -> Result<bool, String> {
     let removed = {
@@ -1878,7 +1884,9 @@ pub async fn provider_lock_crypt_overlay(state: State<'_, ProviderState>) -> Res
         crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard)
     };
     state.overlay_wrapped.store(false, Ordering::SeqCst);
-    state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    if removed {
+        state.active_crypt_overlay.store(true, Ordering::SeqCst);
+    }
     Ok(removed)
 }
 
@@ -6652,13 +6660,23 @@ pub async fn provider_compare_directories(
     // checker/list leases; legacy providers keep the per-directory lock path.
     let mut remote_files: HashMap<String, FileInfo> = HashMap::new();
 
-    // First check we're connected
-    {
+    // Pin both listing authority and connection identity. A reconnect during
+    // the scan must not let rows from two provider sessions become one
+    // deletion-capable Compare plan.
+    let compare_generation = {
         let provider_lock = state.provider.lock().await;
-        if provider_lock.is_none() {
-            return Err("Not connected to any provider".to_string());
+        let provider = provider_lock
+            .as_ref()
+            .ok_or_else(|| "Not connected to any provider".to_string())?;
+        if !provider.listing_is_authoritative() {
+            return Err(format!(
+                "{}: {} does not provide an authoritative listing. Refusing to build an actionable compare plan because a stored remote object may appear absent and a Mirror preset could delete its local copy.",
+                crate::SCAN_INCOMPLETE_MARKER,
+                provider.display_name(),
+            ));
         }
-    }
+        state.connection_generation.load(Ordering::SeqCst)
+    };
 
     // Pin the crypt overlay wrap state for the whole remote scan + normalize
     // pass. Sampling only after the scan (old behaviour) raced a badge toggle
@@ -6785,9 +6803,21 @@ pub async fn provider_compare_directories(
             // Lock provider only for this single list operation, then release
             let entries = {
                 let mut provider_lock = state.provider.lock().await;
+                if state.connection_generation.load(Ordering::SeqCst) != compare_generation {
+                    return Err(format!(
+                        "{}: provider session changed during Compare; retry the scan.",
+                        crate::SCAN_INCOMPLETE_MARKER
+                    ));
+                }
                 let provider = provider_lock
                     .as_mut()
                     .ok_or("Not connected to any provider")?;
+                if !provider.listing_is_authoritative() {
+                    return Err(format!(
+                        "{}: the current provider listing is not authoritative; refusing to build an actionable compare plan.",
+                        crate::SCAN_INCOMPLETE_MARKER
+                    ));
+                }
                 provider.list(&current_dir).await.map_err(|e| {
                     // CLAUDE-AV-B3-13: a directory that would not list leaves
                     // its files out of the compare, where they read as deleted.
@@ -6897,6 +6927,28 @@ pub async fn provider_compare_directories(
                     "bytes_found": remote_bytes_found,
                 }),
             );
+        }
+    }
+
+    // Clone-pool scans acquire and release provider leases internally, while
+    // legacy scans release the lock between directories. In both cases this
+    // final check makes a mid-scan swap discard every collected row before an
+    // actionable plan can be constructed.
+    {
+        let provider_lock = state.provider.lock().await;
+        let provider = provider_lock.as_ref().ok_or_else(|| {
+            format!(
+                "{}: provider disconnected during Compare; retry the scan.",
+                crate::SCAN_INCOMPLETE_MARKER
+            )
+        })?;
+        if state.connection_generation.load(Ordering::SeqCst) != compare_generation
+            || !provider.listing_is_authoritative()
+        {
+            return Err(format!(
+                "{}: provider session or listing authority changed during Compare; retry the scan.",
+                crate::SCAN_INCOMPLETE_MARKER
+            ));
         }
     }
 
@@ -13001,6 +13053,12 @@ mod tests {
         // Traversal cannot pose as outside: both sides resolve `..` first.
         assert!(!out("/Vault", "/Plain/../Vault/secret"));
         assert!(out("/Vault", "/Vault/../Plain/file"));
+
+        // Separator and case aliases must fail closed for Windows-backed and
+        // case-insensitive remotes.
+        assert!(!out("/Vault", "\\Vault\\secret"));
+        assert!(!out("/Vault", "/vault/secret"));
+        assert!(!out("/VAULT/Inner", "/vault"));
 
         // Whole-remote anchor owns everything.
         assert!(!out("", "/anything"));

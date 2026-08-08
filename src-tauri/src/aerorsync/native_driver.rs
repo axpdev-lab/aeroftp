@@ -60,10 +60,10 @@ use crate::aerorsync::real_wire::{
     decode_varint, decompress_zstd_literal_stream_boundaries, encode_client_preamble,
     encode_delta_stream, encode_file_list_entry, encode_file_list_terminator, encode_item_flags,
     encode_ndx, encode_sum_block, encode_sum_head, encode_summary_frame,
-    encode_xattr_datum_section, is_symlink_mode, ClientPreamble, DeltaOp, DeltaStreamReport,
-    FileListDecodeOptions, FileListDecodeOutcome, FileListEntry, MuxHeader, MuxPoll,
-    MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
-    MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
+    encode_xattr_datum_section, is_symlink_mode, resolve_xattr_datum_section, ClientPreamble,
+    DeltaOp, DeltaStreamReport, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry,
+    MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead,
+    SummaryFrame, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
 };
 use crate::aerorsync::remote_command::{RemoteCommandFlavor, RemoteCommandSpec};
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
@@ -1670,6 +1670,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let opts = self.build_flist_options(self.negotiated_file_checksum_len());
         let mut flist_buf: Vec<u8> = Vec::new();
         let mut entry_seen = false;
+        let mut waiting_for_more = false;
         loop {
             self.check_cancel("receive_file_list")?;
             // Try to decode as much of the file list as we can from the
@@ -1715,16 +1716,29 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     | Err(RealWireError::InvalidNameLen { .. })
                     | Err(RealWireError::InvalidAlgoListLen { .. }) => {
                         // Need more bytes: poll another Data frame below.
+                        waiting_for_more = true;
                     }
                     Err(other) => {
                         return Err(map_realwire_error(other, "file list entry"));
                     }
                 }
             }
+            if waiting_for_more && flist_buf.len() >= Self::FILE_LIST_BUFFER_MAX {
+                return Err(AerorsyncError::invalid_frame(format!(
+                    "file list exceeds the {} byte receive limit",
+                    Self::FILE_LIST_BUFFER_MAX
+                )));
+            }
             let payload = self.next_data_frame(bridge).await?;
             flist_buf.extend_from_slice(&payload);
         }
     }
+
+    /// A single-file list has only a small metadata envelope around its path,
+    /// checksum and xattrs. The xattr policy allows at most 1 MiB of declared
+    /// values; 2 MiB leaves ample framing/name headroom while preventing a peer
+    /// from extending a recoverable-truncation retry forever with 16 MiB frames.
+    const FILE_LIST_BUFFER_MAX: usize = 2 * 1024 * 1024;
 
     /// Max `MSG_DATA` payload that fits the rsync multiplexed 24-bit length
     /// field (16 MiB - 1). A single logical payload larger than this is split
@@ -2042,27 +2056,70 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // and `sender.c::send_files` which drains it via
         // `recv_xattr_request` before `receive_sums`.
         if self.negotiated_xattrs && iflags & ITEM_REPORT_XATTR != 0 {
-            loop {
-                self.check_cancel("read_signature_header xattr_request")?;
-                match decode_varint(&buf) {
-                    Ok((skip, consumed)) => {
-                        buf.drain(..consumed);
-                        if skip == 0 {
+            if self.session_role == Some(SessionRole::Receiver) {
+                // Download: sender.c places the actual out-of-band values here.
+                // Resolve them into the file-list entry before the filesystem
+                // layer sees it; leaving Deferred values until finalize makes
+                // every >32-byte attribute fail closed as "unresolved".
+                let original_pairs = self
+                    .file_list
+                    .first()
+                    .and_then(|entry| entry.xattrs.clone())
+                    .unwrap_or_default();
+                loop {
+                    self.check_cancel("read_signature_header xattr_datum_section")?;
+                    // Resolution mutates records as it goes. Retry from the
+                    // pristine decoded list so a later truncated record cannot
+                    // make an earlier resolved record look like a duplicate.
+                    let mut candidate = original_pairs.clone();
+                    match resolve_xattr_datum_section(&buf, &mut candidate) {
+                        Ok(consumed) => {
+                            buf.drain(..consumed);
+                            if let Some(entry) = self.file_list.first_mut() {
+                                entry.xattrs = Some(candidate);
+                            }
                             break;
                         }
-                        // Generator-side request carries only the skip
-                        // (no len/datum): those arrive later on the
-                        // sender response path.
-                        continue;
-                    }
-                    Err(RealWireError::TruncatedBuffer { .. }) => {
-                        let payload = self.next_data_frame(bridge).await?;
-                        buf.extend_from_slice(&payload);
-                    }
-                    Err(other) => {
-                        return Err(map_realwire_error(other, "signature xattr_request"));
+                        Err(RealWireError::TruncatedBuffer { .. }) => {
+                            if buf.len() >= Self::FILE_LIST_BUFFER_MAX {
+                                return Err(AerorsyncError::invalid_frame(format!(
+                                    "xattr datum section exceeds the {} byte receive limit",
+                                    Self::FILE_LIST_BUFFER_MAX
+                                )));
+                            }
+                            let payload = self.next_data_frame(bridge).await?;
+                            buf.extend_from_slice(&payload);
+                        }
+                        Err(other) => {
+                            return Err(map_realwire_error(other, "xattr datum section"));
+                        }
                     }
                 }
+            } else if self.session_role == Some(SessionRole::Sender) {
+                // Upload: generator-side request carries only skip varints (no
+                // len/datum); those values are emitted later by our sender.
+                loop {
+                    self.check_cancel("read_signature_header xattr_request")?;
+                    match decode_varint(&buf) {
+                        Ok((skip, consumed)) => {
+                            buf.drain(..consumed);
+                            if skip == 0 {
+                                break;
+                            }
+                        }
+                        Err(RealWireError::TruncatedBuffer { .. }) => {
+                            let payload = self.next_data_frame(bridge).await?;
+                            buf.extend_from_slice(&payload);
+                        }
+                        Err(other) => {
+                            return Err(map_realwire_error(other, "signature xattr_request"));
+                        }
+                    }
+                }
+            } else {
+                return Err(AerorsyncError::illegal_transition(
+                    "xattr signature section received before the session role was selected",
+                ));
             }
         }
         // 3. sum_head (16 bytes)
@@ -4315,6 +4372,61 @@ mod tests {
             Vec::<u8>::new(),
             "the iflags bit alone must not be enough"
         );
+    }
+
+    #[tokio::test]
+    async fn download_resolves_split_out_of_band_xattrs_before_sum_head() {
+        use crate::aerorsync::real_wire::{
+            encode_item_flags, encode_ndx, encode_sum_head, encode_xattr_datum_section,
+            xattr_value_digest, NdxState, XattrDatum, XattrPair,
+        };
+
+        let value = vec![b'Z'; 96];
+        let originals = vec![XattrPair::inline("user.large", value.clone())];
+        let deferred = vec![XattrPair {
+            name: "user.large".to_string(),
+            datum: XattrDatum::Deferred {
+                len: value.len(),
+                digest: xattr_value_digest(&value),
+            },
+        }];
+        let section = encode_xattr_datum_section(&originals);
+        let split = section.len() / 2;
+        let mut ndx_state = NdxState::new();
+        let iflags = A2_2_DOWNLOAD_IFLAGS | ITEM_REPORT_XATTR;
+        let head = SumHead {
+            count: 0,
+            block_length: 512,
+            checksum_length: 2,
+            remainder_length: 0,
+        };
+
+        let mut first = encode_ndx(A2_2_FIRST_FILE_NDX, &mut ndx_state);
+        first.extend_from_slice(&encode_item_flags(iflags));
+        first.extend_from_slice(&section[..split]);
+        let mut second = section[split..].to_vec();
+        second.extend_from_slice(&encode_sum_head(&head));
+        let mut inbound = mux_frame(MuxTag::Data, &first);
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &second));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let mut d = make_driver(transport);
+        let mut entry = sample_file_list_entry("download.bin");
+        entry.xattrs = Some(deferred);
+        d.file_list.push(entry);
+        d.session_role = Some(SessionRole::Receiver);
+        d.open_raw_stream_internal(
+            &RemoteCommandSpec::download("/remote/download.bin").with_xattrs(true),
+        )
+        .await
+        .unwrap();
+
+        let parsed = d
+            .read_signature_header(&mut CollectingSink::default())
+            .await
+            .expect("split datum section must resolve before sum_head");
+        assert!(matches!(parsed, SignatureHeader::Transfer { head: h, .. } if h == head));
+        assert_eq!(d.file_list[0].xattrs.as_ref(), Some(&originals));
     }
 
     #[tokio::test]
