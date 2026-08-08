@@ -5,10 +5,85 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.1.7] - Unreleased
+## [4.1.7] - 2026-08-08
 
-### Security
-- **Pre-tag commit audit: PASS.** The adversarial review covered all 333 code-candidate commits (236 non-merge) since v4.1.6 across AeroRsync, providers and core security boundaries, frontend and regressions, CI, release workflows, and dependencies. Release-blocking findings were fixed with regression coverage: bounded xattr wire state and out-of-band decoding, lazy and concurrency-limited thumbnails with cache-key-bound eligibility, fail-closed crypt/provider paths, redirect-token and Swift storage-origin containment, atomically private hash-drop staging, collision-safe atomic sync writes, non-authoritative provider listings and session swaps barred from authorising local deletes, single-encoded Nextcloud trash identifiers, serialized watcher generations, honest dedupe skip reporting, locale mount-state selection, and a CI backstop above its declared step budgets. `RUSTSEC-2026-0235` is closed by removing `rkyv 0.7.46`; `postcss` 8.5.25 and `russh` 0.62.5 close GHSA-fxqj-rqcc-2cmp and GHSA-m65r-rprj-r5rg. The mandatory local gate passed with 718 frontend tests, 3,453 Rust library tests, 502 CLI tests, offline integrations, Clippy with warnings denied, complete 46-locale validation, `npm audit` at zero, and `cargo audit` over 1,186 dependencies. Previously accepted debt remains explicit: SEC-2 (Sigstore hard-gate and published-digest product flow) and PROV-4 (Swift recursive-delete pagination beyond 10,000 objects). Version bump, all-platform CI on the final merge, and the tag remain separate release gates.
+### Summer Release: AeroRsync Extended Attributes, a Rebuilt Duplicate Finder, and Two Independent Pre-Tag Audits
+
+The release that goes looking for the bugs that do not announce themselves. AeroRsync gains extended attributes end to end against stock rsync, `-X` is on by default on Unix, and the file-list, out-of-band and oversized-datum paths that carry them are bounded against a hostile peer. The Find Duplicates dialog is rebuilt around the thing it was missing: the choice of which copy to keep, with real hashes, real distances (the fuzzy "distance" was a hash value, so any sort by similarity was meaningless), live scan progress, thumbnails and per-file sizes. Seventeen provider trash views become one sortable table. A hostile-name sweep across every writable provider profile found six defects, four of which could make `sync --delete` remove the user's own local files, and one XML entity bug that mangled any filename with `&` next to a space in every listing. On Linux, six destructive actions had been asking a confirmation nobody ever saw, because WebKitGTK does not implement `window.confirm`: on that platform an account could be deleted with no question asked. The Snap stopped shipping a payload its own base cannot load, a break that had gone out for roughly thirty releases, and the invariant is now proven before publishing rather than assumed. Two independent adversarial audits were run before this tag, the second reviewing all 333 code candidates since v4.1.6; both are recorded in the repository, findings and accepted debt included. 47 languages, with about 5,400 strings restored word by word after a mechanical pass had stripped their diacritics.
+
+#### Added
+- **AeroRsync preserves `user.*` extended attributes end to end**, verified against stock rsync 3.2.7, with `-X` enabled in production on Unix. The work landed in stages: the file-list extended-attribute block, the out-of-band path for attributes too large to fit in an entry, then reading and applying local `user.*` when a session opts in.
+- **Find Duplicates gives the choice of which copy to keep back to the user.** Any copy can be ticked, and a selection that would leave a group with no copy is confirmed by name rather than blocked. With it: per-file byte sizes, spread sorting, a 128-bit hash readout, a thumbnail on every row, and the modal scrollbar that a WebKitGTK workaround had been suppressing.
+- **Find Duplicates shows the hashes, sorts by similarity and takes a cutoff.** The Fuzzy cutoff had never reached the engine, so the per-type defaults were the only thing anyone could actually run.
+- **Copy and open buttons on every duplicate row.** The Copy glyph in that dialog was decorative, so comparing two candidates meant reading the path off the screen.
+- **Compare and Find Duplicates report files, folders, bytes, depth and elapsed time while they scan.** Compare needed no new backend: the events had been emitted since the recursive scan landed and nothing was listening.
+- **One sortable trash table for all seventeen providers**, with a Type column, aligned name header, single-line timestamps, Shift ranges, Ctrl adding and a rubber band, in a shared component instead of seventeen copies with no sorting at all.
+- **Calculate Size, Find Duplicates and Disk Usage run on the directory you are in**, from the empty space of the panel or from any breadcrumb segment including the collapsed ancestors, instead of only from a folder row one level up (@EhudKirsh, #347).
+- **My Servers says which providers encrypt on this device**, reading the same list as the Add Service badge, with a test holding both surfaces to it. MEGA S4 stays unbadged on purpose: it is S3 and the server holds the keys.
+- **Image previews on the remote panel**, plus a shared LRU thumbnail cache bounded in bytes and keyed by size and mtime, which changing directory no longer clears.
+- **The server-side trash is reachable from the CLI** (@EhudKirsh, #397).
+- **The Checksum tab says what a backend can hash before you click**, and hashing works inside the Overlays Path again (@EhudKirsh, #347).
+- **Blomp is a production provider** (40 GB free, OpenStack Swift), after its API turned out to work: the 403 that had it parked is only on the account listing, which the client never needs.
+- **The status bar describes the page you are on**, and 📜 Log joins ↑↓ Queue (@EhudKirsh, #347).
+
+#### Changed
+- **The build toolchain moved to TypeScript 7.** A release-note item rather than a lockfile detail, because `tsc` sits on the production build chain.
+- **The README provider logo grid is generated from the catalog**, so it cannot drift from the other two public tables or list a company twice (@EhudKirsh, #347).
+- **The company is called Drime, not Drime Cloud**, and the catalogue had it inverted as though the drive were a product under a parent. README, `docs/PROVIDERS.md` and `cli_catalog.json` are regenerated from the corrected entry (@EhudKirsh, #347).
+- **TAB.DIGITAL is capitalised on the documentation site too**, and the suggested profile name is a brand name rather than an internal slug (@EhudKirsh, #347).
+- **Discover no longer promises a perpetual free tier on three providers that only offer a trial.** AWS S3 and Azure Blob give 5 GB for 12 months, Alibaba OSS 1 to 3 months, and Blomp's free quota is corrected to 40 GB.
+- **One glyph and one order per connection method**, shared by the My Servers table and Quick Connect: inside the table, API and S3 had been drawing the same glyph, separated only by a colour no legend explains (@EhudKirsh, #347).
+- **The pricing filter on Add Service is a preference again**, not a per-visit choice (@EhudKirsh, #274).
+
+#### Fixed
+- **A filename with `&` next to a space was mangled in every listing**, so a GET of the displayed name returned 404 and `sync --delete` offered to delete the real local file. Seventeen XML readers now keep entity-adjacent fragments, re-proved live over MinIO and Nextcloud with zero `delete_local`.
+- **A hostile-name sweep across every writable provider profile found six defects**, four of which could make `sync --delete` remove real local files: Azure listed nested folders as empty, every strict S3 endpoint (AWS, B2, R2, Alibaba, Storj, Tencent, Oracle, MEGA) could not create a folder at all, FileLu WebDAV files would not download, and FileLu S3 returned double-encoded names. 36 providers now pass end to end.
+- **Six destructive actions asked a confirmation the user never saw.** WebKitGTK does not implement the script dialogs, so `window.confirm` returns without drawing and the caller proceeds as if the user had agreed: on Linux an account went with nothing asked. H18 of the v2.6.4 audit had regressed; it is a test now.
+- **The Find Duplicates delete confirmation could not be answered**: the second asker sat at the same z-index as the finder, under its click-swallowing backdrop. The app-wide confirm now sits one explicit scale above every modal tier.
+- **The fuzzy duplicate distance was a hash value, not a distance**, on the raster and text arms both, so a pair two bits apart could report billions.
+- **AeroSync stopped deleting the Plan and Sync settings on a tab switch.** The tabs render conditionally, so leaving one unmounted it and React dropped all fourteen state values; they now live in a store owned by the dialog (@EhudKirsh, #347).
+- **AeroSync could not export a template in any of its four formats**, and the titlebar would not drag from its right half (@EhudKirsh, #511, #514).
+- **`aeroftp-cli find` reported `status: ok` with zero matches** on a directory full of files whenever `--profile` was used: with a profile the positionals shift left, so the pattern arrived in `path` and the search ran on `path`'s own default. A silent wrong answer, not a visible failure.
+- **`aeroftp-cli connect` reported a plausible port and an empty username** instead of the real ones, because it rebuilt them by parsing the human-readable `server_info` text.
+- **The Tauri commands that block stopped doing it on the window's thread.** A synchronous `#[tauri::command]` runs on the GTK thread, so `list_subdirectories` walking a dead network mount froze the whole window; the scoping count was wrong too, 82 synchronous out of 853 rather than 38 (#517).
+- **Icons and Large Icons cropped every thumbnail to a square** instead of showing the image, and Large Icons looked up remote paths on the local disk (@EhudKirsh, #347).
+- **Provider logos work as user avatars and are no longer cropped** (@EhudKirsh, #550).
+- **A dropped profile lands on the blue line** instead of one row past it, a stale text selection no longer locks a row in place, and a drag under a protocol chip reorders the visible list rather than the wrong vault slots (@EhudKirsh, #453).
+- **Zoho WorkDrive moves a file or folder across directories again** (@EhudKirsh, #451).
+- **Jottacloud delete and Move to Trash work end to end**, confirmed against a live account, and a folder deleted on MEGAcmd goes to the Rubbish Bin like a file does (@EhudKirsh, #397).
+- **Nextcloud features are detected by asking the server**, not by how the profile URL was typed.
+- **An exported profile carries the OAuth app that refreshes its token** and the region that picks its data centre; a 4shared profile carries its own token and its own app.
+- **AeroSync Compare stopped reporting "no differences" over a folder that has them**, and Filen stopped dating every upload at the moment it was transferred (@EhudKirsh, #347).
+- **The file picker that did nothing now says why**, in all 68 places (#510).
+- **Add Service keeps the search term, the pricing filter and every section** when switching between grid and table.
+- **A NAS that is too old for zstd gets real delta sync again**: one predicate was asking the wrong question. We were also advertising four compressors while driving two, and ranking one we cannot drive above one we can.
+- **The Snap stopped shipping a payload its own base cannot load** (GLIBC_2.38 against a core22 base, out since v3.7.2), the Snap GUI paints again under strict confinement, and both invariants are now proven in CI, one by an ABI gate derived from the base snap itself and one by a captured frame (#460, #462).
+- **Linux builds ask EGL before switching WebKit's GPU compositor off**, instead of switching it off for everyone.
+- **A portable install can be deleted again**, because the vault files no longer lock out the user who owns them.
+- **The weekly Snap refresh no longer goes red for a tag that predates `graphics-core22`**: it skips with a job summary, and `force` cannot override that.
+- **Serbian ships fully in Cyrillic, and 26 locales got their stripped diacritics back**, about 5,400 strings restored word by word in sentence context after the mechanical pass that invented "partagé" was reverted and redone natively (#512, #513). A separate sweep found 32 phantom i18n keys, now translated in all 47 locales.
+- **Reading extended attributes no longer follows a symlink to its target**, which would have broken symlink uploads now that `-X` is live, and a batch transfer carries the extended-attribute policy of the transport that opened it instead of dropping it in silence.
+- **The intermittent `invalid rsync protocol version: 2015297409` failure is fixed**: the write path was discarding the server preamble.
+- **Public documentation stopped overstating and understating the same product.** The rsync comparison separates what AeroFTP does at another layer on purpose from what is genuinely not implemented, two parity-matrix claims that nothing was checking were removed, and the CLI guide no longer denies an rclone OAuth export that has shipped for eight providers.
+- **CI stopped blaming commits for infrastructure.** A slow Ubuntu mirror, a Docker Hub outage and a cold portal start each used to surface as a code failure or, worse, as a green exit; each now reports itself as what it is (#518, #521).
+
+#### Security
+- **Two independent adversarial pre-tag audits.** The first, recorded in the repository, withheld its green pass with one blocker and five majors; the second reviewed all 333 code candidates (236 non-merge) and 342 changed files since v4.1.6 across AeroRsync, providers, crypt and core security boundaries, frontend, CI, release workflows and dependencies, and returned **PASS** with every release-blocking finding fixed and covered by regression tests. Both verdicts, and the debt that was accepted rather than fixed, are in `docs/security-evidence/`. The gate behind that pass: 718 frontend tests, 3,453 Rust library tests, 502 CLI tests, Clippy on all targets with warnings denied, 46 of 46 non-English locales at 5,185 keys each with zero errors or placeholders, `npm audit` at zero and `cargo audit` clean over 1,186 dependencies.
+- **Peer-controlled AeroRsync state is bounded**: extended-attribute wire state, retry buffering and out-of-band datum resolution, plus a hostile peer can no longer land a setuid binary through the applied file mode.
+- **Tokens stay with the host that issued them.** The S3 client had no redirect policy and `x-amz-security-token` is not on reqwest's strip list, so an STS session token could be replayed to whatever host a redirect named; Swift refuses authenticated redirects outright and binds the token to the storage origin the authentication response returned, rejecting a bad scheme, URL-embedded credentials and an HTTPS to HTTP downgrade.
+- **An incomplete provider listing or a swapped provider session can no longer authorise a local delete** or an actionable compare plan, and atomic sync write staging is unique and durable under concurrent writers.
+- **The speed-test overwrite guard was itself fail-open**: `stat(path).is_ok()` read every error as "the path is free", so an expired token or a provider 5xx let the upload-then-delete sequence run on a real user file. It now proceeds only on an explicit not-found, refuses public web roots and their descendants, and no longer leaks a connected session when cancelled mid-setup.
+- **Crypt raw-write protection stays armed under a view-only lock** and fails closed on ambiguous path scope; the AeroCrypt modal no longer rebuilds the silent salt downgrade; hash-drop plaintext staging is created atomically in a random owner-only directory.
+- **AeroTools hardened across hostile imports, secret-bearing exports and remote probes**, and a traversal guard was restored to `server_copy`.
+- **Published release assets are immutable**, so re-running a tag build can no longer swap binaries under a manifest that already pinned their digests, and winget publishes both installers again.
+- **Advisories closed**: RUSTSEC-2026-0221 (`event-listener`), RUSTSEC-2026-0235 (`rkyv` 0.7.46, reached four levels down through `tauri-plugin-log`), three `russh` advisories `cargo audit` cannot see, GHSA-fxqj-rqcc-2cmp (`postcss`) and GHSA-m65r-rprj-r5rg (`russh` 0.62.5).
+- **Accepted and still open, stated rather than folded into the pass**: SEC-2, the Sigstore hard-gate and published-digest product flow; PROV-4, Swift recursive-delete pagination beyond 10,000 objects.
+
+#### Contributors
+
+Thanks to the people who shaped this release:
+
+[<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh)
 
 ---
 

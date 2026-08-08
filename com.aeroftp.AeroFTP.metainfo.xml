@@ -54,22 +54,26 @@
 
   <launchable type="desktop-id">AeroFTP.desktop</launchable>
 
-  <mimetypes>
-    <mimetype>application/x-aerovault</mimetype>
-  </mimetypes>
-
   <screenshots>
     <screenshot type="default">
-      <caption>AeroFTP main window showing dual-pane file browser</caption>
-      <image>https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/docs/screenshots/screenshot-1.png</image>
+      <caption>Dual-pane file manager with one tab per connection, local and remote side by side</caption>
+      <image>https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/screenshots/multi-tab-file-manager.png</image>
     </screenshot>
     <screenshot>
-      <caption>Connection screen with saved servers</caption>
-      <image>https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/docs/screenshots/screenshot-2.png</image>
+      <caption>Connection screen: protocols and cloud services on the left, saved servers on the right</caption>
+      <image>https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/screenshots/connection-screen-protocols.png</image>
     </screenshot>
     <screenshot>
-      <caption>AeroTools with code editor, terminal and AI assistant</caption>
-      <image>https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/docs/screenshots/screenshot-3.png</image>
+      <caption>Transfer queue and activity log during an upload</caption>
+      <image>https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/screenshots/sync-transfer-queue.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>AeroTools: code editor, terminal and the AeroAgent assistant over a remote project</caption>
+      <image>https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/screenshots/devtools-aeroagent.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Appearance settings with the Light, Dark, Tokyo Night and Cyber themes</caption>
+      <image>https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/screenshots/settings-themes.png</image>
     </screenshot>
   </screenshots>
 
@@ -84,6 +88,7 @@
 
   <provides>
     <binary>aeroftp</binary>
+    <mediatype>application/x-aerovault</mediatype>
   </provides>
 
   <languages>
@@ -137,6 +142,12 @@
   </languages>
 
   <releases>
+    <release version="4.1.7" date="2026-08-08">
+      <description>
+        <p>AeroRsync Extended Attributes, a Rebuilt Duplicate Finder, and Two Independent Pre-Tag Audits. AeroRsync now preserves user extended attributes end to end against stock rsync, with -X enabled in production on Unix and the file-list, out-of-band and oversized-datum paths bounded against a hostile peer. Find Duplicates is rebuilt around the choice it was missing, which copy to keep: any copy can be ticked, a selection that would empty a group is confirmed by name rather than blocked, and the dialog now shows real 128-bit hashes, per-file sizes, thumbnails and a working fuzzy cutoff. The fuzzy distance had been a hash value rather than a distance, so any sort by similarity was meaningless. Seventeen provider trash views become one sortable table with a Type column, Shift ranges, Ctrl adding and a rubber band. Compare and Find Duplicates report files, folders, bytes, depth and elapsed time while they scan, and Calculate Size, Find Duplicates and Disk Usage can be run on the directory you are in. Blomp joins as a production provider with 40 GB free over OpenStack Swift.</p>
+        <p>The release also closes the defects that do not announce themselves. A filename with an ampersand next to a space was mangled in every listing, so a fetch of the displayed name failed and sync with delete offered to remove the real local file; seventeen XML readers were corrected and re-proved live. A hostile-name sweep across every writable provider profile found six more defects, four of which could delete real local files, and 36 providers now pass end to end. On Linux six destructive actions had been asking a confirmation nobody ever saw, because WebKitGTK does not implement the script dialogs, so an account could go with nothing asked. The Snap stopped shipping a payload its own base cannot load, a break that had gone out for roughly thirty releases, and both that invariant and the GUI are now proven in CI before publishing. Two independent adversarial audits ran before this tag, the second covering all 333 code candidates since 4.1.6, and both verdicts are recorded in the repository together with the debt that was accepted rather than fixed. Translated into all 47 languages, with about 5,400 strings restored word by word after a mechanical pass had stripped their diacritics.</p>
+      </description>
+    </release>
     <release version="4.1.6" date="2026-07-25">
       <description>
         <p>AeroRsync Closes the Gap With rsync, a Stabilised DAG Transfer Engine, and MTP Portable Devices. AeroRsync gains the pieces that were the remaining distance to stock rsync: md4 and sha1 as first-class negotiated checksums in both roles, with the whole-file reconstruction now genuinely verified instead of a deliberate no-op; symlinks transferred end-to-end on unix, detected by lstat and never followed; and streaming download signatures that drop the whole-baseline read from the signature phase. The legacy parallel server stack retires, so production has exactly one path, the one tested byte-identical against a real rsync server. A new protocol arrives with it: portable devices over MTP and WPD, phones and cameras the OS never gives a drive letter, browsing and transferring through the same dual-panel fabric as every other provider, saved as real profiles keyed to a stable device fingerprint, with USB hotplug on Linux and Windows and a Connect that takes the MTP claim from the desktop file manager instead of failing because it holds it.</p>
