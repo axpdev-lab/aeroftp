@@ -410,8 +410,10 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         isCloudStorage: true,
         tooltip: t('protocol.pcloudTooltip'),
     },
-    // Blomp: hidden in production until storage proxy 403 is resolved (stable: false in registry)
-    ...(import.meta.env.DEV ? [{
+    // Blomp: the account (container) listing 403 is by design, and swift.rs falls
+    // back to the per-account container. Live-verified and `stable: true` in the
+    // registry, so it belongs in the production grid like any other provider.
+    {
         type: 'swift' as const,
         name: 'Blomp',
         icon: <BlompLogo size={18} />,
@@ -421,7 +423,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         color: 'text-purple-500',
         isCloudStorage: true,
         tooltip: t('protocol.blompTooltip'),
-    }] : []),
+    },
 ];
 
 // Temporary fallback for getProtocolInfo when called outside component (no t function available)
