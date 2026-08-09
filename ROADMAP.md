@@ -1,6 +1,6 @@
 # AeroFTP Roadmap
 
-> _Last updated: 2026-06-28_
+> _Last updated: 2026-08-09_
 
 > A transparent view of where AeroFTP has been, where it is today, and where it's headed.
 > This roadmap is updated continuously. Feature requests and feedback are welcome via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues).
@@ -54,6 +54,7 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 | ⚪ Horizon | Biometric unlock | exploring |
 | ⚪ Horizon | Per-protocol comparison page in docs | exploring |
 | ⚪ Horizon | Keyboard accessibility: Tab traversal | exploring |
+| ⚪ Horizon | CLI / CMD provider category (MEGAcmd today, Proton Drive next) | exploring |
 
 ### 🟢 Just Shipped
 
@@ -190,6 +191,8 @@ _Nothing actively in flight right now; the next items are queued under Up Next b
   Qualitative API vs WebDAV trade-offs, complementing Health Check and Speed Test.
 - **Keyboard accessibility: Tab forward unstuck**
   Enter and Space activation already shipped; Tab traversal still pending.
+- **CLI / CMD provider category**
+  A dedicated tab in Add Service for services reached through their vendor's own official CLI, with AeroFTP acting as the GUI on top. The pattern already ships for MEGA via MEGAcmd; the next candidate is Proton Drive, whose official CLI (MIT, released June 2026) is the only sanctioned way in while the Proton Drive SDK stays closed to third parties. Proposed by [@EhudKirsh](https://github.com/EhudKirsh) in [#573](https://github.com/axpdev-lab/aeroftp/discussions/573). Known limits to design around: no quota command and no transfer progress outside a TTY on the Proton CLI, one account per machine, and browser-only sign in.
 
 ---
 
@@ -206,6 +209,7 @@ _Nothing actively in flight right now; the next items are queued under Up Next b
 | **Uploadcare** | REST + Upload API | 🟢 Just Shipped (v3.7.2): media CDN, EU/GDPR |
 | **GitLab Tier 2-3** | REST API v4 | 🔵 Up Next: Tier 1 already shipped |
 | **Blomp** | OpenStack Swift | ⏸ Awaiting Blomp proxy fix (auth works, storage 403) |
+| **Proton Drive** | Official Proton Drive CLI | ⏸ Awaiting Proton: no third-party API exists, and the SDK excludes authentication and is closed to third parties until their cryptographic migration (Proton estimates end 2026 / early 2027). We will not reverse engineer the protocol, so the route we are evaluating is driving Proton's own official CLI, pending their confirmation |
 
 **Already supported via presets**: Quotaless (S3 + WebDAV), PixelUnion (self-hosted), Hetzner Storage Box (WebDAV/SFTP), Nextcloud / ownCloud (WebDAV auto-detect), **TAB.DIGITAL** (Nextcloud-as-a-Service, EU / GDPR, v3.7.4), **Felicloud** (Nextcloud-as-a-Service, OCS API), **Seafile** (`seafdav` endpoint), **CloudMe** (Digest auth auto-detected), **Jianguoyun** (China-based WebDAV), **Filen Desktop S3 / WebDAV bridges** (local ports 1700 / 1900), **MEGA S4 Object Storage** (S3-compatible, 4 EU/CA regions), **FileLu S5** (S3-compatible), **MinIO** (dedicated S3-compatible), **MEGAcmd** (anonymous WebDAV), **S3Drive** (path-style S3).
 
@@ -226,6 +230,8 @@ Carry-over community items still open after the v3.8.0 cut:
 - ~~`T-MANUAL-QUOTA`: optional manual total-storage cap per saved server for providers that do not expose `storage_info`.~~ Shipped in v3.8.0 as a TRUE override (`options.manualTotalBytes`, `--manual-total`) plus an explicit recursive used-storage scan.
 
 `T-EDITOR-DRAG-RUN` and `T-TOPBAR-3-CLUSTER` shipped in v3.7.2 (closed). Big-feature community items live in the COMMUNITY ROADMAP thread (`T-MULTI-USER`, `T-DUAL-PANEL-UNIFICATION`, `T-MOBILE-WINDOW`).
+
+Newer community item on the same track: `T-CLI-CMD-CATEGORY`, a dedicated CLI / CMD tab in Add Service grouping the services AeroFTP reaches through their vendor's official CLI, proposed by [@EhudKirsh](https://github.com/EhudKirsh) in [#573](https://github.com/axpdev-lab/aeroftp/discussions/573) while welcoming a new user who had asked for Proton Drive. It is now tracked in the On the Horizon lane above, and it is a good example of how a provider request turns into a design direction here.
 
 If you spot a bug, want a small feature, or want to nominate a provider for native integration, [open an issue](https://github.com/axpdev-lab/aeroftp/issues). Tier 1 quick wins are typically picked up within one or two releases.
 
