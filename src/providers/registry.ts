@@ -1665,7 +1665,9 @@ export const PROVIDERS: ProviderConfig[] = [
         category: 'webdav',
         icon: 'Cloud',
         color: '#0082C9',
-        stable: false, // Not tested yet
+        // Live-verified on two independent Nextcloud servers (self-hosted and
+        // Tab.digital): auto-detected DAV endpoint, quota, transfers, share links.
+        stable: true,
         fields: [
             {
                 ...COMMON_FIELDS.server,
