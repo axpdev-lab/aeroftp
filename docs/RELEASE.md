@@ -78,6 +78,23 @@ integration lanes too (optional, before a big release): bring the Docker fixture
 (`AEROFTP_MASTER_PASSWORD`, `AEROFTP_TEST_B2_*`), then re-run `npm run smoke`; those
 lanes flip from SKIP to PASS/FAIL.
 
+### Sync the winget fork (do this BEFORE the tag)
+
+```bash
+gh repo sync axpnet/winget-pkgs
+```
+
+`microsoft/winget-pkgs` takes hundreds of commits a day, so a fork that was current at the previous release is weeks behind by the next one. komac creates its branch from the upstream head; when the fork does not have that commit, GitHub answers with a **permissions** error that has nothing to do with permissions:
+
+```
+axpnet does not have the correct permissions to execute `CreateRef`
+failed to create branch axpnet.AeroFTP-X.Y.Z-<uuid>
+```
+
+Read that message literally and you will go rotate `WINGET_TOKEN`, which changes nothing. It cost three reruns and a regenerated token at v4.1.7 before the real cause was found in [winget-releaser#319](https://github.com/vedantmgoyal9/winget-releaser/issues/319), where the action's own maintainer answers it with "update your fork manually, then re-run". One `gh repo sync` fixed it on the first attempt.
+
+Two things that are *not* the cause, checked at v4.1.7 so nobody has to check them again: the fork was public, unarchived and carried `push`/`admin` for the account, and the classic PAT held the documented `public_repo` scope. Note that the action requires a **classic** PAT: fine-grained tokens authenticate and then fail exactly like a stale fork, which is what makes this error so easy to misread.
+
 ### Commit, Tag & Push
 
 ```bash
@@ -282,6 +299,7 @@ yay -Si aeroftp-bin   # Check version on AUR
 - **v2.1.0**: `snap/snapcraft.yaml` forgotten at `2.0.11` (path confusion with root)
 - **v2.2.3**: `public/splash.html` hardcoded version missed (Tauri IPC unavailable in splash)
 - **v2.6.10**: `aur/.SRCINFO` not updated alongside PKGBUILD
+- **v4.1.7**: the winget fork was two weeks stale, and `CreateRef` failed with a permissions message. Diagnosed as a token problem twice before the fork was checked. Syncing the fork is now a pre-tag step above
 - **v4.1.6 (caught pre-tag)**: `package-lock.json` was absent from this checklist and from the R10 gate, so the bump left it at the previous version. The local gate never runs `npm ci`, so it stayed green; CI would have failed on `npm ci` only after the tag was pushed. Both the checklist and R10 now cover it, along with `Cargo.lock` and `public/splash.html`
 
 ---
