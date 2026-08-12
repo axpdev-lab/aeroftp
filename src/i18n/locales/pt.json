@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Fornecido pelo servidor",
             "readOnly": "Somente leitura",
             "hidden": "Oculto",
+            "hiddenIsNameBased": "Neste sistema um ficheiro esta oculto pelo seu nome, nao por um atributo: mude o nome para comecar com um ponto.",
             "contains": "Contém",
             "foldersOnly": "Apenas pastas",
             "location": "Localização",

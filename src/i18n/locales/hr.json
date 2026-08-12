@@ -3361,6 +3361,7 @@
             "notAvailable": "Nije dostupno",
             "readOnly": "Samo za čitanje",
             "hidden": "Skriveno",
+            "hiddenIsNameBased": "Na ovom sustavu datoteka je skrivena zbog svog naziva, a ne zbog atributa: preimenujte je tako da pocinje tockom.",
             "contains": "Sadrži",
             "foldersOnly": "Samo mape",
             "location": "Lokacija",

@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Fourni par le serveur",
             "readOnly": "Lecture seule",
             "hidden": "Masqué",
+            "hiddenIsNameBased": "Sur ce systeme, un fichier est masque par son nom, pas par un attribut : renommez-le pour qu'il commence par un point.",
             "contains": "Contient",
             "foldersOnly": "Dossiers uniquement",
             "location": "Emplacement",

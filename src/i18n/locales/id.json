@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Disediakan oleh server",
             "readOnly": "Hanya baca",
             "hidden": "Tersembunyi",
+            "hiddenIsNameBased": "Di sistem ini berkas disembunyikan karena namanya, bukan karena atribut: ganti namanya agar diawali titik.",
             "contains": "Berisi",
             "foldersOnly": "Hanya folder",
             "location": "Lokasi",

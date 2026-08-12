@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Do máy chủ cung cấp",
             "readOnly": "Chỉ đọc",
             "hidden": "Ẩn",
+            "hiddenIsNameBased": "Tren he thong nay, mot tep bi an do ten cua no chu khong phai do thuoc tinh: hay doi ten de bat dau bang dau cham.",
             "contains": "Chứa",
             "foldersOnly": "Chỉ thư mục",
             "location": "Vị trí",

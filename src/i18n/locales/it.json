@@ -3757,6 +3757,7 @@
             "checksumServerOnly": "Fornito dal server",
             "readOnly": "Sola lettura",
             "hidden": "Nascosto",
+            "hiddenIsNameBased": "Su questo sistema un file e nascosto per via del suo nome, non di un attributo: rinominalo in modo che inizi con un punto.",
             "contains": "Contiene",
             "foldersOnly": "Solo cartelle",
             "location": "Percorso",

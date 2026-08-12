@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "由服务器提供",
             "readOnly": "只读",
             "hidden": "隐藏",
+            "hiddenIsNameBased": "在此系统中，文件是通过名称而非属性隐藏的：请将其重命名为以点开头。",
             "contains": "包含",
             "foldersOnly": "仅文件夹",
             "location": "位置",

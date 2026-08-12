@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Vom Server bereitgestellt",
             "readOnly": "Schreibgeschützt",
             "hidden": "Versteckt",
+            "hiddenIsNameBased": "Auf diesem System ist eine Datei durch ihren Namen versteckt, nicht durch ein Attribut: Benennen Sie sie so um, dass sie mit einem Punkt beginnt.",
             "contains": "Enthält",
             "foldersOnly": "Nur Ordner",
             "location": "Speicherort",

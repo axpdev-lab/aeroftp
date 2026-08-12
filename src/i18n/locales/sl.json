@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Zagotovljeno s strežnika",
             "readOnly": "Samo za branje",
             "hidden": "Skrito",
+            "hiddenIsNameBased": "V tem sistemu je datoteka skrita zaradi svojega imena, ne zaradi atributa: preimenujte jo tako, da se zacne s piko.",
             "contains": "Vsebuje",
             "foldersOnly": "Samo mape",
             "location": "Mesto",

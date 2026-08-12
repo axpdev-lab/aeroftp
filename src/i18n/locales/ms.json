@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Disediakan oleh pelayan",
             "readOnly": "Baca sahaja",
             "hidden": "Tersembunyi",
+            "hiddenIsNameBased": "Pada sistem ini fail disembunyikan kerana namanya, bukan kerana atribut: namakan semula supaya bermula dengan titik.",
             "contains": "Mengandungi",
             "foldersOnly": "Folder sahaja",
             "location": "Lokasi",

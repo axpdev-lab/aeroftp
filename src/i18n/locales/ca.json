@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Proporcionat pel servidor",
             "readOnly": "Només lectura",
             "hidden": "Ocult",
+            "hiddenIsNameBased": "En aquest sistema un fitxer esta ocult pel seu nom, no per un atribut: canvia-li el nom perque comenci amb un punt.",
             "contains": "Conté",
             "foldersOnly": "Només carpetes",
             "location": "Ubicació",

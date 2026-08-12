@@ -3361,6 +3361,7 @@
             "notAvailable": "Ez dago eskuragarri",
             "readOnly": "Irakurtzeko soilik",
             "hidden": "Ezkutatua",
+            "hiddenIsNameBased": "Sistema honetan fitxategi bat bere izenagatik dago ezkutatuta, ez atributu batengatik: aldatu izena puntu batekin has dadin.",
             "contains": "Edukia",
             "foldersOnly": "Karpetak soilik",
             "location": "Kokapena",

@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Ibinigay ng server",
             "readOnly": "Basahin lamang",
             "hidden": "Nakatago",
+            "hiddenIsNameBased": "Sa sistemang ito, nakatago ang isang file dahil sa pangalan nito, hindi dahil sa isang attribute: palitan ang pangalan para magsimula ito sa tuldok.",
             "contains": "Naglalaman ng",
             "foldersOnly": "Mga folder lamang",
             "location": "Lokasyon",

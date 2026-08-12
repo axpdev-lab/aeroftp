@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Darparwyd gan y gweinydd",
             "readOnly": "Darllen yn unig",
             "hidden": "Cudd",
+            "hiddenIsNameBased": "Ar y system hon mae ffeil yn guddiedig oherwydd ei henw, nid oherwydd priodoledd: ailenwch hi i ddechrau gyda dot.",
             "contains": "Yn cynnwys",
             "foldersOnly": "Ffolderi yn unig",
             "location": "Lleoliad",

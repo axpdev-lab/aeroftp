@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Veitt af þjóninum",
             "readOnly": "Skrifvarið",
             "hidden": "Falið",
+            "hiddenIsNameBased": "A thessu kerfi er skra falin vegna nafns sins, ekki vegna eiginleika: endurnefndu hana svo hun byrji a punkti.",
             "contains": "Inniheldur",
             "foldersOnly": "Aðeins möppur",
             "location": "Staðsetning",

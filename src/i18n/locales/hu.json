@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "A kiszolgáló biztosítja",
             "readOnly": "Csak olvasható",
             "hidden": "Rejtett",
+            "hiddenIsNameBased": "Ezen a rendszeren egy fajl a neve miatt rejtett, nem egy attributum miatt: nevezze at ugy, hogy ponttal kezdodjon.",
             "contains": "Tartalmaz",
             "foldersOnly": "Csak mappák",
             "location": "Hely",
