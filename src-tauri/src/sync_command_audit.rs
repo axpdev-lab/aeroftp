@@ -90,6 +90,13 @@ const MAIN_THREAD_ALLOWED: &[(&str, &str)] = &[
         "returns cfg!(feature = \"aerorsync\"), a compile-time constant.",
     ),
     (
+        "hidden_attribute_is_toggleable",
+        "returns cfg!(windows), a compile-time constant: whether \"hidden\" is a \
+         file attribute or a naming convention is a property of the platform \
+         this binary was built for, not of any file or of the moment it is \
+         asked.",
+    ),
+    (
         "provider_arm_crypt_capability",
         "two atomic stores on already-managed state.",
     ),
