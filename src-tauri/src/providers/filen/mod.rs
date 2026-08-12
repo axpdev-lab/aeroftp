@@ -278,6 +278,27 @@ struct UserInfoData {
     max_storage: u64,
 }
 
+/// `GET /v3/user/settings`, the only Filen endpoint that reports how much of
+/// the account is held by retained file versions (#347, Ehud 2026-08-01: the
+/// versioning slice of the quota bar was drawn for MEGA and for nobody else).
+/// `/v3/user/info` carries the totals but not this breakdown, so the quota read
+/// needs both.
+///
+/// Field names follow Filen's own SDK (`filen-sdk-ts`, `api/v3/user/settings`);
+/// the rest of that response (2FA state, login alerts) is deliberately not
+/// modelled here.
+#[derive(Debug, Deserialize)]
+struct UserSettingsResponse {
+    data: Option<UserSettingsData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UserSettingsData {
+    /// Bytes held by retained versions of files that still exist.
+    #[serde(rename = "versionedStorage")]
+    versioned_storage: u64,
+}
+
 /// Filen generic response
 #[derive(Debug, Deserialize)]
 struct GenericResponse {
@@ -411,6 +432,12 @@ pub struct FilenProvider {
     /// Test-only ingest base. `None` keeps production `INGEST`.
     #[cfg(test)]
     ingest_base_override: Option<String>,
+    /// Test-only: whether `storage_info` may consult the Filen CLI first.
+    /// Off under test so a quota assertion measures the REST path it targets
+    /// rather than whichever account a locally installed CLI happens to be
+    /// logged into. Production always consults it.
+    #[cfg(test)]
+    statfs_cli_enabled: bool,
 }
 
 /// M3: Maximum number of cached directory/file-key entries to prevent unbounded memory growth.
@@ -442,6 +469,20 @@ impl FilenProvider {
             gateway_base_override: None,
             #[cfg(test)]
             ingest_base_override: None,
+            #[cfg(test)]
+            statfs_cli_enabled: false,
+        }
+    }
+
+    /// Whether `storage_info` should try the Filen CLI before the REST quota.
+    fn statfs_cli_enabled(&self) -> bool {
+        #[cfg(test)]
+        {
+            self.statfs_cli_enabled
+        }
+        #[cfg(not(test))]
+        {
+            true
         }
     }
 
@@ -538,6 +579,8 @@ impl FilenProvider {
             gateway_base_override: self.gateway_base_override.clone(),
             #[cfg(test)]
             ingest_base_override: self.ingest_base_override.clone(),
+            #[cfg(test)]
+            statfs_cli_enabled: self.statfs_cli_enabled,
         }
     }
 
@@ -557,6 +600,30 @@ impl FilenProvider {
             self.file_key_cache.clear();
         }
         self.file_key_cache.insert(key, value);
+    }
+
+    /// Bytes held by retained file versions, or `None` when the account cannot
+    /// be asked (#347, Ehud 2026-08-01).
+    ///
+    /// Separate from the quota read because it is a separate endpoint and a
+    /// separate failure: the versioning slice is an extra the quota bar draws
+    /// when it is known, never a reason to report no quota at all. Every error
+    /// path collapses to `None`, which the bar renders as "no versions
+    /// segment", the same as a provider that does not report versions.
+    async fn versioned_storage_bytes(&self) -> Option<u64> {
+        let request = self
+            .client
+            .get(format!("{}/v3/user/settings", self.gateway_base()))
+            .header(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
+                    .ok()?,
+            )
+            .build()
+            .ok()?;
+
+        let resp: UserSettingsResponse = self.send_retry(request).await.ok()?.json().await.ok()?;
+        Some(resp.data?.versioned_storage)
     }
 
     /// Send a request with automatic retry on 429/5xx errors.
@@ -2342,13 +2409,20 @@ impl StorageProvider for FilenProvider {
         // any failure or implausible output falls through to the REST path
         // below. The CLI reports whatever account it is logged into, so this
         // is best-effort, never a hard dependency.
-        if let Ok((used, total)) = statfs::filen_statfs_query().await {
-            return Ok(StorageInfo {
-                total,
-                used,
-                free: total.saturating_sub(used),
-                versioning_bytes: None,
-            });
+        // No versioning breakdown on this path, on purpose: the CLI reports the
+        // account IT is logged into, which need not be the account this session
+        // authenticated as. Pairing its totals with version bytes read over
+        // REST from our own account would attribute one account's versions to
+        // another's quota, which is worse than showing nothing.
+        if self.statfs_cli_enabled() {
+            if let Ok((used, total)) = statfs::filen_statfs_query().await {
+                return Ok(StorageInfo {
+                    total,
+                    used,
+                    free: total.saturating_sub(used),
+                    versioning_bytes: None,
+                });
+            }
         }
 
         let request = self
@@ -2376,7 +2450,10 @@ impl StorageProvider for FilenProvider {
             total: data.max_storage,
             used: data.storage_used,
             free: data.max_storage.saturating_sub(data.storage_used),
-            versioning_bytes: None,
+            // Best-effort second read: a quota that arrived is worth more than
+            // a quota refused because the breakdown behind it was unavailable,
+            // so a failure here degrades to "unknown" rather than propagating.
+            versioning_bytes: self.versioned_storage_bytes().await,
         })
     }
 
@@ -4361,5 +4438,104 @@ mod tests {
         let decoded_legacy = FilenMultipartMeta::decode(legacy)
             .expect("a handle from before this field must still decode");
         assert_eq!(decoded_legacy.last_modified_ms, None);
+    }
+
+    /// Serves `/v3/user/info` plus, when `settings_body` is `Some`, the
+    /// `/v3/user/settings` read that carries the versioning breakdown. Returns
+    /// the storage_info the provider computes against it.
+    async fn storage_info_against(
+        settings: Option<(axum::http::StatusCode, serde_json::Value)>,
+    ) -> StorageInfo {
+        use axum::{routing::get, Router};
+
+        let mut app = Router::new().route(
+            "/v3/user/info",
+            get(|| async {
+                axum::Json(serde_json::json!({
+                    "status": true,
+                    "data": { "storageUsed": 4_000_000_000u64, "maxStorage": 10_000_000_000u64 }
+                }))
+            }),
+        );
+        if let Some((status, body)) = settings {
+            app = app.route(
+                "/v3/user/settings",
+                get(move || {
+                    let body = body.clone();
+                    async move { (status, axum::Json(body)) }
+                }),
+            );
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = FilenProvider::connected_for_test(demo_cfg());
+        provider.gateway_base_override = Some(format!("http://{addr}"));
+        let info = provider.storage_info().await.expect("quota must resolve");
+
+        server.abort();
+        info
+    }
+
+    /// Ehud, #347 (2026-08-01): the quota bar drew its versioning slice for
+    /// MEGA alone, because MEGA was the only provider whose `versioning_bytes`
+    /// was ever anything but a hardcoded `None`. Filen reports it on a second
+    /// endpoint, `/v3/user/settings`, so the quota read has to ask for it.
+    #[tokio::test]
+    async fn storage_info_reports_the_bytes_held_by_retained_versions() {
+        let info = storage_info_against(Some((
+            axum::http::StatusCode::OK,
+            serde_json::json!({
+                "status": true,
+                "data": { "versionedStorage": 1_500_000_000u64, "versionedFiles": 12 }
+            }),
+        )))
+        .await;
+
+        assert_eq!(info.used, 4_000_000_000);
+        assert_eq!(info.total, 10_000_000_000);
+        assert_eq!(
+            info.versioning_bytes,
+            Some(1_500_000_000),
+            "the versioning slice must survive the trip from /v3/user/settings"
+        );
+    }
+
+    /// An account with versioning off reports zero, which is knowledge, not
+    /// absence: it must not be reported as "this provider cannot say".
+    #[tokio::test]
+    async fn zero_retained_versions_is_reported_as_zero_not_unknown() {
+        let info = storage_info_against(Some((
+            axum::http::StatusCode::OK,
+            serde_json::json!({ "status": true, "data": { "versionedStorage": 0 } }),
+        )))
+        .await;
+
+        assert_eq!(info.versioning_bytes, Some(0));
+    }
+
+    /// The breakdown is an extra, never a reason to report no quota at all: a
+    /// refused or missing settings read has to leave the numbers the user
+    /// actually asked for intact.
+    #[tokio::test]
+    async fn a_failed_settings_read_costs_the_slice_not_the_quota() {
+        let refused = storage_info_against(Some((
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "status": false }),
+        )))
+        .await;
+        assert_eq!(refused.used, 4_000_000_000);
+        assert_eq!(refused.versioning_bytes, None);
+
+        let absent = storage_info_against(None).await;
+        assert_eq!(absent.used, 4_000_000_000);
+        assert_eq!(absent.total, 10_000_000_000);
+        assert_eq!(absent.versioning_bytes, None);
     }
 }
