@@ -43,6 +43,11 @@
 #           untrusted remote XML). Ignored the two IDs for the two remaining
 #           Tauri-transitive instances (winrt-notification 0.37.5, plist 0.39.4), which
 #           parse app-owned XML only, awaiting a Tauri stack bump.)
+# Reviewed: 2026-08-12 (RUSTSEC-2026-0257 + RUSTSEC-2026-0253 freshly published:
+#           BUMPED webbrowser 1.2.1 -> 1.2.2 and the upgradeable lru 0.18.0 -> 0.18.2.
+#           The remaining lru 0.7.8 is pinned by reed-solomon-erasure 6.0.0; its cache
+#           key is Vec<usize>, whose Drop cannot panic, so the advisory precondition is
+#           unreachable. Added the scoped, documented exception below.)
 
 [advisories]
 ignore = [
@@ -221,6 +226,27 @@ ignore = [
     # reed-solomon-novelpoly) or wait for reed-solomon-erasure to bump parking_lot.
     # Full evaluation: docs/security-evidence/REED-SOLOMON-ERASURE-EVALUATION-2026-06.md.
     "RUSTSEC-2024-0384",  # instant unmaintained (ECC wrapper via parking_lot 0.11)
+
+    # ----------------------------------------------------------------
+    # lru 0.7.8 pop panic-safety (transitive via reed-solomon-erasure 6.0.0)
+    # ----------------------------------------------------------------
+    # RUSTSEC-2026-0253. Older lru releases can leave a dangling list node only
+    # when ALL of these conditions hold: pop() removes a stored key whose Drop
+    # implementation panics, unwinding is enabled, and the panic is caught so a
+    # later cache operation can touch the damaged list. The upgradeable lru
+    # 0.18.0 instance was bumped to fixed 0.18.2; only this 0.7.8 instance remains:
+    #   lru 0.7.8 <- reed-solomon-erasure 6.0.0 <- aeroftp / aerovault
+    # reed-solomon-erasure fixes the cache key to Vec<usize>
+    # (`data_decode_matrix_cache` in core.rs). Vec<usize> has no user code and
+    # its Drop cannot panic, so the first advisory precondition is unreachable.
+    # AeroFTP cannot supply a custom key type to this private internal cache.
+    #
+    # No compatible patched 0.7.x release exists; the advisory marks only
+    # lru >= 0.18.2 patched, while reed-solomon-erasure 6.0.0 requires lru 0.7.
+    # Exit path: remove this ignore when reed-solomon-erasure updates its lru
+    # dependency, or when AeroFTP replaces that crate as already tracked by the
+    # Reed-Solomon evaluation cited above.
+    "RUSTSEC-2026-0253",  # lru 0.7.8; fixed non-panicking Vec<usize> cache key
 
     # ----------------------------------------------------------------
     # iroh 1.0 P2P stack - two transitive UNMAINTAINED advisories (peer-l0 normal dependency)
