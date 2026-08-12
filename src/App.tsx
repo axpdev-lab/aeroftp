@@ -1324,6 +1324,14 @@ const App: React.FC = () => {
   // #252: which Properties tab opens first. Set to 'permissions' when the user
   // picks the OpenDrive "Permissions..." entry; reset to 'general' otherwise.
   const [propertiesInitialTab, setPropertiesInitialTab] = useState<'general' | 'permissions' | 'checksum'>('general');
+  // Whether "hidden" is a file attribute here or just a naming convention
+  // (#347). Asked once: it is a property of the platform, not of the file.
+  const [hiddenAttributeToggleable, setHiddenAttributeToggleable] = useState(false);
+  useEffect(() => {
+    invoke<boolean>('hidden_attribute_is_toggleable')
+      .then(setHiddenAttributeToggleable)
+      .catch(() => setHiddenAttributeToggleable(false));
+  }, []);
   // What the connected backend can hash for the path in the open Properties
   // dialog. Fetched when the dialog opens on a remote file so the Checksum tab
   // can state up front which algorithms this backend has, instead of offering
@@ -15987,6 +15995,27 @@ const App: React.FC = () => {
             onPrivacyChange={propertiesDialog.isRemote && propertiesDialog.protocol === 'opendrive'
               ? (level) => applyOpenDrivePrivacyToPaths(level, [{ path: propertiesDialog.path, isDir: !!propertiesDialog.is_dir }])
               : undefined}
+            // Editable only for local files (Ehud #347): the read-only and
+            // hidden bits belong to this filesystem. A remote entry's flags
+            // come from the provider's own model and are not ours to set from
+            // here, so the tab stays a readout there.
+            onAttributeChange={propertiesDialog.isRemote ? undefined : async (attrs) => {
+              const fresh = await invoke<FileProperties>('set_local_file_attributes', {
+                path: propertiesDialog.path,
+                readOnly: attrs.readOnly,
+                hidden: attrs.hidden,
+              });
+              // Keep the dialog's own copy in step, so reopening the tab or
+              // switching tabs does not fall back to the pre-edit values.
+              setPropertiesDialog(prev => prev && prev.path === propertiesDialog.path
+                ? { ...prev, is_readonly: fresh.is_readonly, is_hidden: fresh.is_hidden, permissions_mode: fresh.permissions_mode ?? prev.permissions_mode }
+                : prev);
+              // The list shows a lock badge and honours hidden-file filtering,
+              // both of which just went stale.
+              void loadLocalFiles(currentLocalPathRef.current);
+              return fresh;
+            }}
+            canToggleHidden={hiddenAttributeToggleable}
           />
         )}
         {multiPropertiesDialog && (

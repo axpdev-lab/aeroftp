@@ -471,6 +471,33 @@ const privacyLevelMeta = (
     return { label: t('properties.privacyPrivate') || 'Private', description: t('properties.privacyPrivateDesc') || 'Only the account owner can access this item.', icon: <Lock size={16} /> };
 };
 
+/** A `PropertyRow` whose value is a checkbox the user can flip (#347): same row
+ *  geometry, so the Permissions tab does not change shape when a file happens
+ *  to be one the app can edit. */
+const AttributeToggle: React.FC<{
+    icon: React.ReactNode;
+    label: string;
+    checked: boolean;
+    busy: boolean;
+    disabled: boolean;
+    onChange: (next: boolean) => void;
+}> = ({ icon, label, checked, busy, disabled, onChange }) => (
+    <label className="flex items-start gap-3 py-2 border-b border-gray-100 dark:border-gray-700 last:border-0 cursor-pointer">
+        <div className="text-gray-400 mt-0.5">{busy ? <Loader2 size={16} className="animate-spin" /> : icon}</div>
+        <div className="flex-1 min-w-0">
+            <div className="text-xs text-gray-500 dark:text-gray-400">{label}</div>
+        </div>
+        <input
+            type="checkbox"
+            checked={checked}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-blue-600 disabled:cursor-not-allowed"
+            aria-label={label}
+        />
+    </label>
+);
+
 interface PropertiesDialogProps {
     file: FileProperties;
     onClose: () => void;
@@ -487,6 +514,16 @@ interface PropertiesDialogProps {
     /** OpenDrive (#252): when provided, the Permissions tab renders an editable
      *  privacy chooser (Private/Public/Hidden) that calls this to apply. */
     onPrivacyChange?: (level: 'public' | 'private' | 'hidden') => void | Promise<void>;
+    /** Local files (#347, Ehud 2026-08-03): when provided, read-only and hidden
+     *  become toggles instead of readouts, the way File Explorer has them.
+     *  Passing only the attribute that changed lets the other keep whatever the
+     *  filesystem says rather than being restated from a stale render.
+     *  Resolves with the properties re-read from disk. */
+    onAttributeChange?: (attrs: { readOnly?: boolean; hidden?: boolean }) => Promise<FileProperties>;
+    /** False where "hidden" is a naming convention rather than a file attribute
+     *  (every non-Windows platform), so the toggle is not offered at all
+     *  instead of being offered and then refused. */
+    canToggleHidden?: boolean;
 }
 
 export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
@@ -499,6 +536,8 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     folderSizeCalculating = false,
     initialTab,
     onPrivacyChange,
+    onAttributeChange,
+    canToggleHidden = false,
 }) => {
     const t = useTranslation();
     const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -508,6 +547,31 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
         (file.permissions || '').trim().toLowerCase() === 'hidden' ? 'hidden' : 'private'
     );
     const [applyingPrivacy, setApplyingPrivacy] = useState(false);
+    // The attributes shown by the toggles: seeded from the file the dialog was
+    // opened with, then replaced by what the backend re-read from disk after
+    // each change. A toggle that painted the requested value would report a
+    // refused change as done.
+    const [attrs, setAttrs] = useState<{ isReadonly?: boolean | null; isHidden?: boolean | null }>(
+        { isReadonly: file.is_readonly, isHidden: file.is_hidden }
+    );
+    const [pendingAttr, setPendingAttr] = useState<'readOnly' | 'hidden' | null>(null);
+    const [attrError, setAttrError] = useState<string | null>(null);
+
+    const toggleAttribute = async (which: 'readOnly' | 'hidden', next: boolean) => {
+        if (!onAttributeChange || pendingAttr) return;
+        setPendingAttr(which);
+        setAttrError(null);
+        try {
+            const fresh = await onAttributeChange({ [which]: next });
+            setAttrs({ isReadonly: fresh.is_readonly, isHidden: fresh.is_hidden });
+        } catch (e) {
+            // Left as it was: the checkbox reflects the disk, so a failure must
+            // not leave it showing a state the file never reached.
+            setAttrError(typeof e === 'string' ? e : (e as Error)?.message || String(e));
+        } finally {
+            setPendingAttr(null);
+        }
+    };
 
     // Hide scrollbars when dialog is open (WebKitGTK fix)
     useEffect(() => {
@@ -949,19 +1013,56 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                 </>
                             )}
 
-                            {file.is_readonly != null && (
-                                <PropertyRow
-                                    icon={<Lock size={16} />}
-                                    label={t('properties.readOnly')}
-                                    value={file.is_readonly ? t('common.yes') : t('common.no')}
-                                />
+                            {attrs.isReadonly != null && (
+                                onAttributeChange ? (
+                                    <AttributeToggle
+                                        icon={<Lock size={16} />}
+                                        label={t('properties.readOnly')}
+                                        checked={!!attrs.isReadonly}
+                                        busy={pendingAttr === 'readOnly'}
+                                        disabled={pendingAttr !== null}
+                                        onChange={(next) => void toggleAttribute('readOnly', next)}
+                                    />
+                                ) : (
+                                    <PropertyRow
+                                        icon={<Lock size={16} />}
+                                        label={t('properties.readOnly')}
+                                        value={attrs.isReadonly ? t('common.yes') : t('common.no')}
+                                    />
+                                )
                             )}
-                            {file.is_hidden != null && (
-                                <PropertyRow
-                                    icon={file.is_hidden ? <EyeOff size={16} /> : <Eye size={16} />}
-                                    label={t('properties.hidden')}
-                                    value={file.is_hidden ? t('common.yes') : t('common.no')}
-                                />
+                            {attrs.isHidden != null && (
+                                onAttributeChange && canToggleHidden ? (
+                                    <AttributeToggle
+                                        icon={attrs.isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        label={t('properties.hidden')}
+                                        checked={!!attrs.isHidden}
+                                        busy={pendingAttr === 'hidden'}
+                                        disabled={pendingAttr !== null}
+                                        onChange={(next) => void toggleAttribute('hidden', next)}
+                                    />
+                                ) : (
+                                    <>
+                                        <PropertyRow
+                                            icon={attrs.isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            label={t('properties.hidden')}
+                                            value={attrs.isHidden ? t('common.yes') : t('common.no')}
+                                        />
+                                        {/* Say why this one is not a toggle where the
+                                            other one is, instead of leaving it looking
+                                            like an oversight. */}
+                                        {onAttributeChange && !canToggleHidden && (
+                                            <div className="text-xs text-gray-500 dark:text-gray-400 pl-7 pb-2">
+                                                {t('properties.hiddenIsNameBased')}
+                                            </div>
+                                        )}
+                                    </>
+                                )
+                            )}
+                            {attrError && (
+                                <div className="text-xs text-red-600 dark:text-red-400 pl-7 pb-2">
+                                    {attrError}
+                                </div>
                             )}
 
                             {(file.owner || file.group) && (

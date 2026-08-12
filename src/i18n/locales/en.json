@@ -2674,6 +2674,7 @@
             "group": "Group",
             "hardLinks": "Hard Links",
             "hidden": "Hidden",
+            "hiddenIsNameBased": "On this system a file is hidden by its name, not by an attribute: rename it to start with a dot.",
             "inode": "Inode",
             "linkTarget": "Symlink Target",
             "local": "Local",
