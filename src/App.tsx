@@ -202,6 +202,7 @@ import {
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
+import { previewRouteFor } from './utils/previewRoute';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
@@ -212,7 +213,7 @@ import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
 import { WindowResizeEdges } from './components/WindowResizeEdges';
 import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
-import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
+import { UniversalPreview, PreviewFileData, isPreviewable as isMediaPreviewable } from './components/Preview';
 // GAP-1: legacy connected-remote sync engine, restored as a safety net
 // while the unified AeroSync modal absorbs delete/verify/journal/retry
 // (GAP-2..GAP-4). Reachable only via the Command Palette for now.
@@ -2796,11 +2797,11 @@ const App: React.FC = () => {
         if (selectedRemoteName) {
           const file = remoteFiles.find(f => f.name === selectedRemoteName);
           if (file && !file.is_dir) {
-            const category = getPreviewCategory(file.name);
-            if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
+            // Same rule as the double-click (Ehud, #347): Space is a "show me
+            // this file" gesture, so a .sh must land where a .txt lands rather
+            // than in a panel that may not be open.
+            if (previewRouteFor(file.name) === 'universal-preview') {
               openUniversalPreview(file, true, sortedRemoteFilesRef.current);
-            } else if (isPreviewable(file.name)) {
-              openDevToolsPreview(file, true);
             }
           }
         }
@@ -15259,11 +15260,10 @@ const App: React.FC = () => {
     } else {
       // Respect double-click action setting
       if (doubleClickAction === 'preview') {
-        const category = getPreviewCategory(file.name);
-        if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
+        // Preview first for everything the preview can render, source code
+        // included (Ehud, #347); the rule is shared with the other gestures.
+        if (previewRouteFor(file.name) === 'universal-preview') {
           await openUniversalPreview(file, true, sortedRemoteFilesRef.current);
-        } else if (isPreviewable(file.name)) {
-          openDevToolsPreview(file, true);
         }
         // If file is not previewable, do nothing on double-click
       } else {
@@ -15277,11 +15277,9 @@ const App: React.FC = () => {
     if (file.is_dir) {
       await changeLocalDirectory(file.path);
     } else if (doubleClickAction === 'preview') {
-      const category = getPreviewCategory(file.name);
-      if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
+      // Preview first for everything the preview can render (Ehud, #347).
+      if (previewRouteFor(file.name) === 'universal-preview') {
         openUniversalPreview(file, false, sortedLocalFilesRef.current);
-      } else if (isPreviewable(file.name)) {
-        openDevToolsPreview(file, false);
       }
     } else if (isConnected) {
       uploadFile(file.path, file.name, false);

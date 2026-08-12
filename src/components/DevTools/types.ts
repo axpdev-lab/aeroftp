@@ -165,3 +165,31 @@ export const isPreviewable = (filename: string): boolean => {
     ];
     return previewableExts.includes(ext) || knownFilenames.includes(baseName);
 };
+
+/** Which AeroTools columns are currently shown. */
+export interface PanelVisibility {
+    editor: boolean;
+    terminal: boolean;
+    chat: boolean;
+}
+
+/**
+ * The panel state after a file is handed to AeroTools from outside it: a
+ * double-click, "View source", or an OS file association.
+ *
+ * Loading a file into the editor without showing the editor is the defect Ehud
+ * reported on #347 (2026-08-06): with the Editor toggled off, a double-click
+ * created the tab behind a hidden column, so the app read as having ignored the
+ * gesture. A surface that receives a file has to be on screen to have received
+ * anything the user can see.
+ *
+ * Returns the same object when nothing changes, so the caller's `setState` does
+ * not schedule a pointless re-render.
+ */
+export function panelsWithIncomingFile(
+    prev: PanelVisibility,
+    hasIncomingFile: boolean,
+): PanelVisibility {
+    if (!hasIncomingFile || prev.editor) return prev;
+    return { ...prev, editor: true };
+}

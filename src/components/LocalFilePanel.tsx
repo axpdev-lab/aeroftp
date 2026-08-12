@@ -26,8 +26,7 @@ import type { AeroFileLocalColId, AeroFileLocalTableColumns } from '../hooks/use
 import { LargeIconsGrid } from './LargeIconsGrid';
 import { ImageThumbnail } from './ImageThumbnail';
 import { signatureOf } from '../utils/thumbnailCache';
-import { getPreviewCategory, isPreviewable as isMediaPreviewable } from './Preview';
-import { isPreviewable } from './DevTools';
+import { previewRouteFor } from '../utils/previewRoute';
 import { formatBytes, formatDate, isWindowsDriveRoot, parentLocalPath } from '../utils';
 
 import { LocalFile } from '../types';
@@ -423,11 +422,11 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
       // mirroring the right-click "Browse Archive" action.
       onOpenArchive(file);
     } else if (doubleClickAction === 'preview') {
-      const category = getPreviewCategory(file.name);
-      if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
+      // Preview first for everything the preview can render, source code
+      // included (Ehud, #347). The rule is shared with the other three
+      // gestures; see `previewRouteFor`.
+      if (previewRouteFor(file.name) === 'universal-preview') {
         onOpenUniversalPreview(file, false);
-      } else if (isPreviewable(file.name)) {
-        onOpenDevToolsPreview(file, false);
       }
     } else {
       if (isConnected) {
