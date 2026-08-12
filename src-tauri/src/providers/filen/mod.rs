@@ -2971,10 +2971,21 @@ impl StorageProvider for FilenProvider {
         // stream with no file behind it), in which case the commit stamps its
         // own time, which is the only thing left to stamp.
         let last_modified_ms = match local_source_path {
-            Some(p) => tokio::fs::metadata(p)
-                .await
-                .ok()
-                .map(|m| Self::source_last_modified_ms(Some(&m))),
+            Some(p) => match tokio::fs::metadata(p).await {
+                Ok(metadata) => Some(Self::source_last_modified_ms(Some(&metadata))),
+                Err(err) => {
+                    // A source we were handed but cannot stat is worth a line:
+                    // the upload still goes through, stamped with the commit
+                    // time instead of the file's own, and without this the
+                    // difference is invisible when someone later asks why the
+                    // mtime is wrong.
+                    filen_log(&format!(
+                        "begin_multipart_upload: failed to read source mtime for '{}': {}",
+                        p, err
+                    ));
+                    None
+                }
+            },
             None => None,
         };
 
