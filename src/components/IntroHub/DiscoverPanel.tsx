@@ -18,6 +18,7 @@ import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
 import { useDiscoverHealthCheck } from '../../hooks/useDiscoverHealthCheck';
 import { openUrl } from '../../utils/openUrl';
 import { middleClickOpen } from '../../utils/middleClick';
+import { methodIcon, type ConnectionMethod } from '../connectionMethodIcons';
 import { CatalogTable, loadTierFilter, persistTierFilter, TIER_FILTERS, type TierFilter } from './CatalogTable';
 import { PROVIDER_CATALOG, companyInCategory, companyTierInCategory, isDevOnlyProvider } from '../providerCatalog';
 
@@ -59,12 +60,18 @@ function resolveCompanyHealthUrl(c: CatalogCompany): string | undefined {
  *  filtered to the active tab (Ehud #274): only the relevant protocols show,
  *  and nothing shows in the cloud / media / developer tabs. Azure Blob is
  *  dropped here since it is a first-class Object Storage provider with its own
- *  row. */
-const CUSTOM_PROFILES: { labelKey: string; protocol: ProviderType; providerId?: string; categories: CatalogCategoryId[] }[] = [
-    { labelKey: 'introHub.list.customFtp', protocol: 'ftp', categories: ['protocols'] },
-    { labelKey: 'introHub.list.customSftp', protocol: 'sftp', categories: ['protocols'] },
-    { labelKey: 'introHub.list.customS3', protocol: 's3', providerId: 'custom-s3', categories: ['object-storage'] },
-    { labelKey: 'introHub.list.customWebdav', protocol: 'webdav', providerId: 'custom-webdav', categories: ['webdav'] },
+ *  row.
+ *
+ *  Listed in `PROTOCOL_BADGE_ORDER` (#347): the strip is one more place
+ *  the same methods are enumerated, so it follows the same WebDAV | FTP/FTPS
+ *  family | S3 sequence as the badges and the Quick Connect tabs. Each entry
+ *  carries its method glyph from the shared map instead of one generic Server
+ *  icon for all, which was the third collision reported on #347. */
+export const CUSTOM_PROFILES: { labelKey: string; protocol: ProviderType; method: ConnectionMethod; providerId?: string; categories: CatalogCategoryId[] }[] = [
+    { labelKey: 'introHub.list.customWebdav', protocol: 'webdav', method: 'WebDAV', providerId: 'custom-webdav', categories: ['webdav'] },
+    { labelKey: 'introHub.list.customSftp', protocol: 'sftp', method: 'SFTP', categories: ['protocols'] },
+    { labelKey: 'introHub.list.customFtp', protocol: 'ftp', method: 'FTP', categories: ['protocols'] },
+    { labelKey: 'introHub.list.customS3', protocol: 's3', method: 'S3', providerId: 'custom-s3', categories: ['object-storage'] },
 ];
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
@@ -704,7 +711,7 @@ export function DiscoverPanel({ onSelectProvider, query, onQueryChange }: Discov
                                         {...middleClickOpen(() => onSelectProvider(p.protocol, p.providerId, undefined, true))}
                                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-blue-300 dark:hover:border-blue-500/40 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
                                     >
-                                        <Server size={12} className="text-gray-400" />
+                                        <span className="text-gray-400">{methodIcon(p.method, { size: 12 })}</span>
                                         {t(p.labelKey)}
                                     </button>
                                 ))}

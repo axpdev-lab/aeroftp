@@ -20,13 +20,24 @@
  * The map below is the only place these are decided. Adding a surface means
  * importing it, not inventing a fourth opinion.
  *
- * On the two choices that had to change rather than merely be unified:
+ * The assignment follows the mapping agreed on #347, expressed in the app's
+ * existing icon mechanism (lucide components, plus the app's own S3 bucket
+ * mark — lucide ships no bucket glyph):
  *
- *   - A native API is `Braces`. It cannot keep `Database` (that is S3) or
- *     `Cloud` (that is OAuth), and `Key`/`KeyRound` reads as SFTP. Curly braces
- *     say "this provider's own JSON API" without borrowing anyone's meaning.
- *   - S3 keeps `Database`, the reading three of the four surfaces already had;
- *     Filen's `Layers` was the outlier.
+ *   - WebDAV keeps `Globe` (🌐), the reading every surface already had.
+ *   - S3 is the bucket mark (`S3BucketLogo`, the 🪣 of the request) — the same
+ *     glyph the Add Service table badges already drew. `Database` is freed for
+ *     Azure Blob, and Filen's `Layers` outlier is gone.
+ *   - FTP/FTPS and SFTP are the folder family (📁): `Folder` for plain FTP,
+ *     `FolderLock` for SFTP. FTPS aliases FTP deliberately (FTP over TLS is
+ *     still FTP), as Crypt aliases E2E.
+ *   - OAuth is `BadgeCheck` — a "this app was authorized" mark. It cannot keep
+ *     `Cloud`: that glyph still names the Azure / AeroCloud surfaces inside the
+ *     My Servers table, so OAuth needed a shape of its own.
+ *   - A native API is `Braces`. It cannot keep `Database` (freed for Blob) or
+ *     `Cloud` (the Azure/AeroCloud surface glyph), and `Key`/`KeyRound` reads
+ *     as credentials. Curly braces say "this provider's own JSON API" without
+ *     borrowing anyone's meaning.
  *
  * Colours stay per-surface: the table tints its glyphs to match its badge
  * palette, the Quick Connect tabs tint on the active state. Only the shape is
@@ -34,15 +45,17 @@
  */
 import * as React from 'react';
 import {
+    BadgeCheck,
+    Boxes,
     Braces,
-    Cloud,
     Database,
+    Folder,
+    FolderLock,
     Globe,
-    KeyRound,
-    Server,
     Shield,
-    type LucideIcon,
+    TerminalSquare,
 } from 'lucide-react';
+import { S3BucketLogo } from './ProviderLogos';
 
 /** The connection methods that get a glyph. Keys match the catalog badge labels. */
 export type ConnectionMethod =
@@ -54,19 +67,28 @@ export type ConnectionMethod =
     | 'FTPS'
     | 'SFTP'
     | 'E2E'
-    | 'Crypt';
+    | 'Crypt'
+    | 'Swift'
+    | 'Blob'
+    | 'MEGAcmd';
 
-/** The lucide component for a method, so each caller picks its own size/colour. */
-export const CONNECTION_METHOD_GLYPH: Record<ConnectionMethod, LucideIcon> = {
-    OAuth: Cloud,
+/** Any glyph component taking the logo/lucide `{size, className}` prop shape. */
+export type ConnectionMethodGlyph = React.ComponentType<{ size?: number; className?: string }>;
+
+/** The glyph component for a method, so each caller picks its own size/colour. */
+export const CONNECTION_METHOD_GLYPH: Record<ConnectionMethod, ConnectionMethodGlyph> = {
+    OAuth: BadgeCheck,
     API: Braces,
     WebDAV: Globe,
-    S3: Database,
-    FTP: Server,
-    FTPS: Server,
-    SFTP: KeyRound,
+    S3: S3BucketLogo,
+    FTP: Folder,
+    FTPS: Folder,
+    SFTP: FolderLock,
     E2E: Shield,
     Crypt: Shield,
+    Swift: Boxes,
+    Blob: Database,
+    MEGAcmd: TerminalSquare,
 };
 
 /**

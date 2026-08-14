@@ -291,6 +291,17 @@ export function IntroHub(props: IntroHubProps) {
         setActiveTab('my-servers');
     }, []);
 
+    // Drag-to-reorder the form tabs (#347, same gesture as the Active
+    // Sessions strip). The header works on the `FormTab` base type, so map the
+    // reordered ids back to the full `FormTabState` objects rather than
+    // trusting the array it hands back to carry the form state.
+    const handleReorderFormTabs = useCallback((reordered: FormTab[]) => {
+        setFormTabs(prev => {
+            const byId = new Map(prev.map(ft => [ft.id, ft]));
+            return reordered.map(ft => byId.get(ft.id)).filter((ft): ft is FormTabState => !!ft);
+        });
+    }, []);
+
     // Update form tab's connectionParams + derive dynamic tab label from server field.
     // When protocol changes (FTP↔SFTP switch), also update editingProfile so the
     // remounted ConnectionScreen initializes with the correct protocol.
@@ -404,6 +415,7 @@ export function IntroHub(props: IntroHubProps) {
                 formTabs={formTabs}
                 onCloseFormTab={handleCloseFormTab}
                 onCloseAllFormTabs={handleCloseAllFormTabs}
+                onReorderFormTabs={handleReorderFormTabs}
                 hasExistingSessions={hasExistingSessions}
                 sessionCount={sessionCount}
                 onSkipToFileManager={onSkipToFileManager}

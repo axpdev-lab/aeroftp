@@ -7,6 +7,7 @@ import { ProviderType } from '../../types';
 import { getAllProviders, getProvidersByCategory } from '../../providers';
 import type { ProviderConfig, ProviderCategory } from '../../providers/types';
 import { CatalogCategoryId } from '../../types/catalog';
+import type { ConnectionMethod } from '../connectionMethodIcons';
 
 export interface DiscoverCategory {
     id: CatalogCategoryId;
@@ -39,6 +40,27 @@ export interface DiscoverItem {
         password: string;
     };
 }
+
+/** Generic / custom server entry points shown below the Add Service views
+ *  (#274), each tagged with the catalog categories it belongs to so the
+ *  strip can be filtered to the active tab: only the relevant protocols show,
+ *  and nothing shows in the cloud / media / developer tabs. Azure Blob is
+ *  dropped here since it is a first-class Object Storage provider with its own
+ *  row.
+ *
+ *  Listed in `PROTOCOL_BADGE_ORDER` (#347): the strip is one more place
+ *  the same methods are enumerated, so it follows the same WebDAV | FTP/FTPS
+ *  family | S3 sequence as the badges and the Quick Connect tabs. Each entry
+ *  carries its method glyph from the shared `connectionMethodIcons` map rather
+ *  than one generic icon for all — the third collision reported on #347. The
+ *  data lives here, next to the other Discover sources, so the order is
+ *  testable without mounting the panel. */
+export const CUSTOM_PROFILES: { labelKey: string; protocol: ProviderType; method: ConnectionMethod; providerId?: string; categories: CatalogCategoryId[] }[] = [
+    { labelKey: 'introHub.list.customWebdav', protocol: 'webdav', method: 'WebDAV', providerId: 'custom-webdav', categories: ['webdav'] },
+    { labelKey: 'introHub.list.customSftp', protocol: 'sftp', method: 'SFTP', categories: ['protocols'] },
+    { labelKey: 'introHub.list.customFtp', protocol: 'ftp', method: 'FTP', categories: ['protocols'] },
+    { labelKey: 'introHub.list.customS3', protocol: 's3', method: 'S3', providerId: 'custom-s3', categories: ['object-storage'] },
+];
 
 /** Cloud services defined at protocol level (not in provider registry) */
 const CLOUD_SERVICES: DiscoverItem[] = [
