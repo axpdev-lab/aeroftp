@@ -447,9 +447,10 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
 /// `.aeroftp` export, which is about the vault and not about rclone.
 pub fn rclone_oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
     match protocol.to_lowercase().as_str() {
-        // rclone has no Zoho WorkDrive or 4shared backend, so neither profile is
-        // rclone-exportable even though both do have app credentials.
-        "zohoworkdrive" | "fourshared" => None,
+        // rclone has had a `zoho` backend for Zoho WorkDrive for years
+        // (`region`, `token`, `root_folder_id`). 4shared still has no rclone
+        // backend, so it stays gated even though it does have app credentials.
+        "fourshared" => None,
         other => oauth_client_cred_key(other),
     }
 }
@@ -643,6 +644,20 @@ pub fn inject_rclone_oauth_export_options(
             opts.insert("region".into(), Value::String(region));
         }
     }
+    // Zoho WorkDrive is region-split the same way: the OAuth token only
+    // validates against the data centre it was minted for, and rclone's
+    // `zoho` backend needs `region` (`com` / `eu` / `in` / …) on the remote.
+    // AeroFTP keeps it as the vault singleton `oauth_zohoworkdrive_region`.
+    if protocol == "zohoworkdrive" && !opts.contains_key("region") {
+        if let Some(region) = store
+            .get("oauth_zohoworkdrive_region")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+        {
+            opts.insert("region".into(), Value::String(region));
+        }
+    }
 }
 
 /// #128-D: for an rclone `filen` export, pull the per-profile Filen CLI API key
@@ -742,6 +757,165 @@ pub fn inject_rclone_onedrive_export_options(
     }
 }
 
+/// Inject Zoho WorkDrive fields rclone's `zoho` backend needs that do not
+/// travel with the OAuth token: `root_folder_id` (the workspace / team
+/// folder the profile is pinned to). The region is injected next to the
+/// token by [`inject_rclone_oauth_export_options`].
+///
+/// Sources, first non-empty wins: `options.root_folder_id` / `team_id` /
+/// `workspace_id` (any camel/snake spelling the profile may already carry),
+/// then `initial_path` when it is a Zoho id rather than a slash-path.
+pub fn inject_rclone_zoho_export_options(
+    options: &mut Option<Value>,
+    protocol: &str,
+    initial_path: Option<&str>,
+) {
+    if protocol != "zohoworkdrive" {
+        return;
+    }
+    if !matches!(options, Some(Value::Object(_))) {
+        *options = Some(Value::Object(serde_json::Map::new()));
+    }
+    let opts = options
+        .as_mut()
+        .and_then(|o| o.as_object_mut())
+        .expect("options object");
+    if opts
+        .get("root_folder_id")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let from_opts = [
+        "root_folder_id",
+        "rootFolderId",
+        "team_id",
+        "teamId",
+        "workspace_id",
+        "workspaceId",
+    ]
+    .iter()
+    .find_map(|k| {
+        opts.get(*k)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    });
+    let from_path = initial_path
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "/" && !s.contains('/'))
+        .map(str::to_string);
+    if let Some(id) = from_opts.or(from_path) {
+        opts.insert("root_folder_id".into(), Value::String(id));
+    }
+}
+
+/// Inject rclone-crypt overlay material so `export_rclone` can emit the
+/// second `[name]` `type = crypt` section. Two sources, same destination
+/// keys:
+///
+/// 1. An imported remote already carries `rcloneCryptEnabled` + password on
+///    `options` (set by `map_crypt_remote`). Leave those alone.
+/// 2. A GUI/CLI profile binds rclone-crypt via `aeroCryptOverlay` (kind +
+///    remoteScope + name-encryption flags) and stores the password/salt in
+///    the vault under `aerocrypt_overlay_pw_<id>` / `_salt_<id>`. Copy those
+///    onto `options` so the export arm stays options-only.
+///
+/// AeroCrypt (`kind != rclone-crypt`) is not an rclone `crypt` remote and is
+/// not exported here.
+pub fn inject_rclone_crypt_export_options(
+    options: &mut Option<Value>,
+    store: &CredentialStore,
+    id: &str,
+    overlay: Option<&Value>,
+) {
+    let already = options
+        .as_ref()
+        .and_then(|o| o.get("rcloneCryptEnabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let overlay_is_rclone = overlay
+        .and_then(|o| o.get("enabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+        && overlay.and_then(|o| o.get("kind")).and_then(|v| v.as_str()) == Some("rclone-crypt");
+    if !already && !overlay_is_rclone {
+        return;
+    }
+    if !matches!(options, Some(Value::Object(_))) {
+        *options = Some(Value::Object(serde_json::Map::new()));
+    }
+    let opts = options
+        .as_mut()
+        .and_then(|o| o.as_object_mut())
+        .expect("options object");
+    if !already {
+        opts.insert("rcloneCryptEnabled".into(), Value::Bool(true));
+        if let Some(ov) = overlay {
+            if let Some(scope) = ov.get("remoteScope").and_then(|v| v.as_str()) {
+                opts.insert(
+                    "rcloneCryptOverlayScope".into(),
+                    Value::String(scope.to_string()),
+                );
+            }
+            if let Some(mode) = ov.get("filenameEncryption").and_then(|v| v.as_str()) {
+                opts.insert(
+                    "rcloneCryptFilenameEncryption".into(),
+                    Value::String(mode.to_string()),
+                );
+            }
+            if let Some(dir) = ov.get("directoryNameEncryption").and_then(|v| v.as_bool()) {
+                opts.insert(
+                    "rcloneCryptDirectoryNameEncryption".into(),
+                    Value::Bool(dir),
+                );
+            }
+        }
+    }
+    if id.is_empty() {
+        return;
+    }
+    let has_pw = opts
+        .get("rcloneCryptPassword")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    if !has_pw {
+        if let Some(pw) = crate::user_partitions::resolve_active_credential(
+            store,
+            &format!("aerocrypt_overlay_pw_{}", id),
+        )
+        .ok()
+        .flatten()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        {
+            opts.insert("rcloneCryptPassword".into(), Value::String(pw));
+        }
+    }
+    let has_salt = opts
+        .get("rcloneCryptPassword2")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    if !has_salt {
+        if let Some(salt) = crate::user_partitions::resolve_active_credential(
+            store,
+            &format!("aerocrypt_overlay_salt_{}", id),
+        )
+        .ok()
+        .flatten()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        {
+            opts.insert("rcloneCryptPassword2".into(), Value::String(salt));
+        }
+    }
+}
+
 /// Export the GUI's selected profiles to a third-party config file.
 /// Profiles whose protocol the target tool cannot carry are filtered
 /// out and reported in `skipped` (the "filter by support" contract);
@@ -820,6 +994,14 @@ pub async fn export_bridge_config(
                         inject_rclone_oauth_export_options(&mut opts, st, &proto, &id);
                         inject_rclone_filen_export_options(&mut opts, st, &proto, &id);
                         inject_rclone_onedrive_export_options(&mut opts, st, &proto, &id);
+                        let initial_path = e.get("initialPath").and_then(|v| v.as_str());
+                        inject_rclone_zoho_export_options(&mut opts, &proto, initial_path);
+                        inject_rclone_crypt_export_options(
+                            &mut opts,
+                            st,
+                            &id,
+                            e.get("aeroCryptOverlay"),
+                        );
                         if let Some(o) = opts {
                             e["options"] = o;
                         }
@@ -952,7 +1134,7 @@ mod tests {
     }
 
     #[test]
-    fn zoho_has_app_credentials_to_export_but_is_not_an_rclone_remote() {
+    fn zoho_has_app_credentials_and_is_an_rclone_remote() {
         // The vault-facing map must carry Zoho: its app credentials are a
         // singleton the connect path reads, and leaving them behind made an
         // imported profile fail its first token refresh.
@@ -960,10 +1142,14 @@ mod tests {
             oauth_client_cred_key("zohoworkdrive"),
             Some("zohoworkdrive")
         );
-        // The rclone-facing map must not: there is no Zoho backend in rclone,
-        // and this predicate also gates "export this profile as a remote".
-        assert_eq!(rclone_oauth_client_cred_key("zohoworkdrive"), None);
-        // Every other provider answers the same on both maps.
+        // rclone has a `zoho` backend, so the rclone-facing map must agree:
+        // this predicate also gates "export this profile as a remote".
+        assert_eq!(
+            rclone_oauth_client_cred_key("zohoworkdrive"),
+            Some("zohoworkdrive")
+        );
+        // Every other rclone-exportable OAuth provider answers the same on
+        // both maps. 4shared is the remaining vault-only exception.
         for p in [
             "googledrive",
             "googlephotos",
@@ -972,6 +1158,7 @@ mod tests {
             "box",
             "pcloud",
             "yandexdisk",
+            "zohoworkdrive",
         ] {
             assert_eq!(
                 oauth_client_cred_key(p),
@@ -979,6 +1166,9 @@ mod tests {
                 "{p} must not diverge between the two maps"
             );
         }
+        // 4shared still has no rclone backend: vault-facing yes, rclone-facing no.
+        assert_eq!(oauth_client_cred_key("fourshared"), Some("fourshared"));
+        assert_eq!(rclone_oauth_client_cred_key("fourshared"), None);
         // Jottacloud has no OAuth app at all (personal login token).
         assert_eq!(oauth_client_cred_key("jottacloud"), None);
         assert_eq!(oauth_client_cred_key("ftp"), None);

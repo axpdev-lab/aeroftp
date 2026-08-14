@@ -262,12 +262,17 @@ mod tests {
 
         // The rclone-facing view is a strict subset: it drops the providers
         // rclone has no backend for, and must never add one of its own.
-        for proto in ["zohoworkdrive", "fourshared"] {
-            assert_eq!(
-                crate::bridge_commands::rclone_oauth_client_cred_key(proto),
-                None,
-                "rclone has no {proto} backend, so it must not be offered one"
-            );
-        }
+        // Zoho WorkDrive used to live here on a false premise (rclone has had
+        // a `zoho` backend for years); 4shared is the remaining exception.
+        assert_eq!(
+            crate::bridge_commands::rclone_oauth_client_cred_key("fourshared"),
+            None,
+            "rclone has no fourshared backend, so it must not be offered one"
+        );
+        assert_eq!(
+            crate::bridge_commands::rclone_oauth_client_cred_key("zohoworkdrive"),
+            Some("zohoworkdrive"),
+            "rclone's zoho backend must be offered for WorkDrive profiles"
+        );
     }
 }

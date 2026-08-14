@@ -34914,6 +34914,7 @@ struct ProfileExportScaffold {
     options: Option<serde_json::Value>,
     provider_id: Option<String>,
     initial_path: Option<String>,
+    overlay: Option<serde_json::Value>,
     secret: String,
 }
 
@@ -34977,6 +34978,7 @@ fn collect_export_scaffold(
             .get("initialPath")
             .and_then(|v| v.as_str())
             .map(str::to_string);
+        let overlay = entry.get("aeroCryptOverlay").cloned();
 
         // MUV-3: active user's partition with fallback to the legacy vault.
         let secret = if id.is_empty() {
@@ -35073,6 +35075,7 @@ fn collect_export_scaffold(
             options,
             provider_id,
             initial_path,
+            overlay,
             secret,
         });
     }
@@ -35123,8 +35126,8 @@ async fn cmd_export_rclone(
     // Single source of truth shared with the GUI bridge: the credential
     // backends (FTP/SFTP/WebDAV/S3/Filen/Mega/Azure/Swift/Koofr/OpenDrive/
     // Backblaze) plus the #128-D OAuth-token providers (Drive/Dropbox/
-    // OneDrive/Box/pCloud/Yandex), whose token + BYO client_id/secret are
-    // injected below. Jottacloud is appended CLI-only: its rclone export
+    // OneDrive/Box/pCloud/Yandex/Zoho), whose token + BYO client_id/secret
+    // are injected below. Jottacloud is appended CLI-only: its rclone export
     // rebuilds the persisted OIDC refresh token into a working token (verified
     // end-to-end against a live account; `collect_export_scaffold` loads the
     // refresh blob). The GUI bridge has no refresh-blob injection so it gates
@@ -35179,6 +35182,17 @@ async fn cmd_export_rclone(
                 &store,
                 &p.protocol,
                 &p.id,
+            );
+            ftp_client_gui_lib::bridge_commands::inject_rclone_zoho_export_options(
+                &mut options,
+                &p.protocol,
+                p.initial_path.as_deref(),
+            );
+            ftp_client_gui_lib::bridge_commands::inject_rclone_crypt_export_options(
+                &mut options,
+                &store,
+                &p.id,
+                p.overlay.as_ref(),
             );
             RcloneExportServer {
                 name: p.name.clone(),

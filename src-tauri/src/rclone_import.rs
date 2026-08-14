@@ -728,6 +728,37 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             jotta_refresh: None,
         }),
 
+        // ---- Zoho WorkDrive ----
+        // rclone's backend type is `zoho`. Region uses rclone's TLD slugs
+        // (`com`, `com.au`); AeroFTP stores `us` / `au`. Map them so a
+        // re-imported profile dials the same data centre it exported from.
+        "zoho" => {
+            let rclone_region = get_str("region").unwrap_or("com");
+            let region = zoho_region_from_rclone(rclone_region);
+            let mut options = serde_json::Map::new();
+            options.insert("region".into(), serde_json::Value::String(region));
+            if let Some(folder) = get_str("root_folder_id").filter(|s| !s.is_empty()) {
+                options.insert(
+                    "root_folder_id".into(),
+                    serde_json::Value::String(folder.to_string()),
+                );
+            }
+            Some(MappedProfile {
+                protocol: "zohoworkdrive".to_string(),
+                provider_id: Some("zoho-workdrive".to_string()),
+                host: "workdrive.zoho.com".to_string(),
+                port: 443,
+                username: name.to_string(),
+                password: None,
+                options: Some(serde_json::Value::Object(options)),
+                initial_path: get_str("root_folder_id")
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
+                oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
+                jotta_refresh: None,
+            })
+        }
+
         // ---- Koofr ----
         "koofr" => Some(MappedProfile {
             protocol: "koofr".to_string(),
@@ -809,6 +840,27 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
 
         // Unsupported rclone types: skip gracefully
         _ => None,
+    }
+}
+
+/// Map AeroFTP's Zoho region slug to rclone's `zoho` backend `region`.
+/// rclone documents `com`, `eu`, `in`, `jp`, `com.cn`, `com.au`.
+fn zoho_region_to_rclone(region: &str) -> String {
+    match region.trim().to_ascii_lowercase().as_str() {
+        "" | "us" | "com" => "com".into(),
+        "au" | "com.au" => "com.au".into(),
+        "cn" | "com.cn" => "com.cn".into(),
+        other => other.to_string(),
+    }
+}
+
+/// Inverse of [`zoho_region_to_rclone`]: rclone TLD -> AeroFTP slug.
+fn zoho_region_from_rclone(region: &str) -> String {
+    match region.trim().to_ascii_lowercase().as_str() {
+        "" | "com" | "us" => "us".into(),
+        "com.au" | "au" => "au".into(),
+        "com.cn" | "cn" => "cn".into(),
+        other => other.to_string(),
     }
 }
 
@@ -1261,6 +1313,127 @@ fn sanitize_export_server(server: &RcloneExportServer) -> RcloneExportServer {
         }
     }
     out
+}
+
+/// Derive rclone's `remote = <base>:<path>` for a crypt overlay.
+///
+/// Prefers an already-imported `rcloneCryptRemote` (`name:path` or a bare
+/// path) and rewrites the name half to this export's sanitized base, so a
+/// rename of the parent remote cannot leave the crypt remote pointing at a
+/// section that no longer exists. Falls back to the pinned overlay scope
+/// (`rcloneCryptOverlayScope` / a leading-slash path). Empty scope means
+/// the whole remote: `base:`.
+fn crypt_export_remote_target(base_name: &str, options: &serde_json::Value) -> String {
+    let from_imported = options
+        .get("rcloneCryptRemote")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let path = if let Some(existing) = from_imported {
+        if existing.contains(':') {
+            parse_crypt_remote_target(existing).1.unwrap_or_default()
+        } else {
+            existing.to_string()
+        }
+    } else {
+        options
+            .get("rcloneCryptOverlayScope")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let trimmed = path.trim().trim_start_matches('/').trim_end_matches('/');
+    if trimmed.is_empty() {
+        format!("{base_name}:")
+    } else {
+        format!("{base_name}:/{trimmed}")
+    }
+}
+
+fn crypt_section_name(base_name: &str, options: &serde_json::Value) -> String {
+    let requested = options
+        .get("rcloneCryptOverlayName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let name = if requested.trim().is_empty() {
+        format!("{base_name}-crypt")
+    } else {
+        sanitize_rclone_remote_name(requested)
+    };
+    if name.is_empty() || name == base_name {
+        format!("{base_name}-crypt")
+    } else {
+        name
+    }
+}
+
+/// Emit a sibling `[name]` `type = crypt` section when this profile carries
+/// an rclone-crypt overlay. Returns true when a section was written (counts
+/// as a second exported remote). Missing password: write the section with a
+/// guidance comment instead of a silently broken `password =` line.
+fn append_crypt_remote_section(
+    output: &mut String,
+    base_name: &str,
+    options: Option<&serde_json::Value>,
+) -> bool {
+    let opts = match options {
+        Some(o) if o.get("rcloneCryptEnabled").and_then(|v| v.as_bool()) == Some(true) => o,
+        _ => return false,
+    };
+    let section = crypt_section_name(base_name, opts);
+    output.push_str(&format!("[{}]\n", section));
+    output.push_str("type = crypt\n");
+    output.push_str(&format!(
+        "remote = {}\n",
+        ini_value(&crypt_export_remote_target(base_name, opts))
+    ));
+    if let Some(pw) = opts
+        .get("rcloneCryptPassword")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        output.push_str(&format!(
+            "password = {}\n",
+            obscure_password(pw).unwrap_or_default()
+        ));
+    } else {
+        output.push_str(
+            "# password required but unavailable: store the rclone-crypt\n\
+             # overlay password on this profile in AeroFTP and re-export,\n\
+             # or run `rclone config` on this remote and set `password`.\n",
+        );
+    }
+    if let Some(pw2) = opts
+        .get("rcloneCryptPassword2")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        output.push_str(&format!(
+            "password2 = {}\n",
+            obscure_password(pw2).unwrap_or_default()
+        ));
+    }
+    if let Some(mode) = opts
+        .get("rcloneCryptFilenameEncryption")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        output.push_str(&format!("filename_encryption = {}\n", ini_value(mode)));
+    }
+    if let Some(dir) = opts
+        .get("rcloneCryptDirectoryNameEncryption")
+        .and_then(|v| v.as_bool())
+    {
+        output.push_str(&format!(
+            "directory_name_encryption = {}\n",
+            if dir { "true" } else { "false" }
+        ));
+    }
+    output.push('\n');
+    true
 }
 
 pub fn export_rclone(
@@ -1843,6 +2016,30 @@ pub fn export_rclone(
                     ));
                 }
             }
+            "zohoworkdrive" => {
+                // rclone's backend type is `zoho`. Region uses TLD slugs
+                // (`com` for US / Global, `com.au` for Australia). AeroFTP
+                // stores `us` / `au` (and the other data-centre slugs that
+                // match rclone already). Map only the ones that diverge.
+                output.push_str("type = zoho\n");
+                let region = options
+                    .and_then(|o| o.get("region"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("us");
+                output.push_str(&format!(
+                    "region = {}\n",
+                    ini_value(&zoho_region_to_rclone(region))
+                ));
+                if let Some(folder) = options
+                    .and_then(|o| o.get("root_folder_id"))
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                {
+                    output.push_str(&format!("root_folder_id = {}\n", ini_value(folder)));
+                }
+                push_oauth_credentials(&mut output, options);
+            }
             "backblaze" => {
                 // AeroFTP's native Backblaze protocol maps to rclone's `b2`
                 // backend: `account` (the key ID) + `key` (the application key).
@@ -1867,6 +2064,13 @@ pub fn export_rclone(
 
         output.push('\n');
         exported += 1;
+
+        // Rclone Crypt is a second remote wrapping this one. The overlay
+        // path is always at or below the server's remote path, so
+        // `remote = <base>:<path>` is derived rather than guessed.
+        if append_crypt_remote_section(&mut output, &remote_name, options) {
+            exported += 1;
+        }
     }
 
     // Atomic write + secure permissions, through the same helper the other
@@ -2727,6 +2931,7 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
             ("box", "box"),
             ("pcloud", "pcloud"),
             ("yandexdisk", "yandex"),
+            ("zohoworkdrive", "zoho"),
         ];
         // The injected token is AeroFTP's StoredTokens shape (Unix expires_at).
         let stored_tokens = r#"{"access_token":"acc-123","refresh_token":"ref-456","expires_at":1893499200,"token_type":"Bearer","scopes":[]}"#;
@@ -2803,6 +3008,168 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
                 "{protocol}: client_secret must round-trip"
             );
         }
+    }
+
+    #[test]
+    fn test_zoho_region_maps_between_aeroftp_and_rclone() {
+        assert_eq!(zoho_region_to_rclone("us"), "com");
+        assert_eq!(zoho_region_to_rclone("au"), "com.au");
+        assert_eq!(zoho_region_to_rclone("cn"), "com.cn");
+        assert_eq!(zoho_region_to_rclone("eu"), "eu");
+        assert_eq!(zoho_region_from_rclone("com"), "us");
+        assert_eq!(zoho_region_from_rclone("com.au"), "au");
+        assert_eq!(zoho_region_from_rclone("eu"), "eu");
+    }
+
+    #[test]
+    fn test_export_rclone_zoho_emits_region_and_root_folder() {
+        let stored_tokens = r#"{"access_token":"acc-zoho","refresh_token":"ref-zoho","expires_at":1893499200,"token_type":"Zoho-oauthtoken","scopes":[]}"#;
+        let servers = vec![RcloneExportServer {
+            name: "zoho-eu".to_string(),
+            host: "workdrive.zoho.eu".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("zohoworkdrive".to_string()),
+            options: Some(serde_json::json!({
+                "region": "eu",
+                "root_folder_id": "4u28602177065ff22426787a6745dba8954eb",
+                "__aeroftp_oauth_token": stored_tokens,
+                "__aeroftp_oauth_client_id": "cid",
+                "__aeroftp_oauth_client_secret": "csec",
+            })),
+            provider_id: Some("zoho-workdrive".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-zoho.conf");
+        export_rclone(&servers, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(conf.contains("type = zoho"), "type:\n{conf}");
+        assert!(conf.contains("region = eu"), "region:\n{conf}");
+        assert!(
+            conf.contains("root_folder_id = 4u28602177065ff22426787a6745dba8954eb"),
+            "root_folder_id:\n{conf}"
+        );
+        assert!(
+            conf.contains("token = ") && conf.contains("acc-zoho"),
+            "token:\n{conf}"
+        );
+        assert!(
+            !conf.contains("__aeroftp_oauth"),
+            "private keys leaked:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_zoho_us_region_becomes_com() {
+        let servers = vec![RcloneExportServer {
+            name: "zoho-us".to_string(),
+            host: "workdrive.zoho.com".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("zohoworkdrive".to_string()),
+            options: Some(serde_json::json!({ "region": "us" })),
+            provider_id: Some("zoho-workdrive".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-zoho-us.conf");
+        export_rclone(&servers, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(
+            conf.contains("region = com"),
+            "us must map to rclone com:\n{conf}"
+        );
+        assert!(
+            !conf.contains("region = us"),
+            "must not emit AeroFTP slug:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_crypt_emits_second_section() {
+        let servers = vec![RcloneExportServer {
+            name: "My NAS".to_string(),
+            host: "192.168.1.10".to_string(),
+            port: 22,
+            username: "admin".to_string(),
+            protocol: Some("sftp".to_string()),
+            options: Some(serde_json::json!({
+                "rcloneCryptEnabled": true,
+                "rcloneCryptRemote": "mynas:/encrypted",
+                "rcloneCryptOverlayName": "vault",
+                "rcloneCryptPassword": "topsecret",
+                "rcloneCryptPassword2": "saltsecret",
+                "rcloneCryptFilenameEncryption": "standard",
+                "rcloneCryptDirectoryNameEncryption": true,
+            })),
+            provider_id: None,
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("My NAS".to_string(), "sftppass".to_string());
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-crypt.conf");
+        let n = export_rclone(&servers, &passwords, &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert_eq!(n, 2, "base + crypt remotes:\n{conf}");
+        assert!(conf.contains("[My NAS]"), "base section:\n{conf}");
+        assert!(conf.contains("type = sftp"), "base type:\n{conf}");
+        assert!(conf.contains("[vault]"), "crypt section name:\n{conf}");
+        assert!(conf.contains("type = crypt"), "crypt type:\n{conf}");
+        assert!(
+            conf.contains("remote = My NAS:/encrypted"),
+            "crypt remote rewritten to this export's base name:\n{conf}"
+        );
+        assert!(
+            conf.contains("password = ") && !conf.contains("password = topsecret"),
+            "crypt password must be obscured:\n{conf}"
+        );
+        assert!(
+            conf.contains("password2 = ") && !conf.contains("password2 = saltsecret"),
+            "crypt salt must be obscured:\n{conf}"
+        );
+        assert!(
+            conf.contains("filename_encryption = standard"),
+            "filename mode:\n{conf}"
+        );
+        assert!(
+            conf.contains("directory_name_encryption = true"),
+            "dir mode:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_crypt_scope_and_missing_password() {
+        let servers = vec![RcloneExportServer {
+            name: "drive".to_string(),
+            host: "www.googleapis.com".to_string(),
+            port: 443,
+            username: "me".to_string(),
+            protocol: Some("googledrive".to_string()),
+            options: Some(serde_json::json!({
+                "rcloneCryptEnabled": true,
+                "rcloneCryptOverlayScope": "/vault",
+            })),
+            provider_id: Some("googledrive".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-crypt-scope.conf");
+        export_rclone(&servers, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(
+            conf.contains("[drive-crypt]"),
+            "default crypt name:\n{conf}"
+        );
+        assert!(
+            conf.contains("remote = drive:/vault"),
+            "scope becomes remote path:\n{conf}"
+        );
+        assert!(
+            conf.contains("# password required but unavailable"),
+            "missing password must not emit a broken line:\n{conf}"
+        );
+        let has_pw_line = conf
+            .lines()
+            .any(|l| l.trim_start().starts_with("password ="));
+        assert!(!has_pw_line, "must not emit password =:\n{conf}");
     }
 
     /// #128-D: pCloud's rclone `hostname` must be a real API host, not the
