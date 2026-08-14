@@ -259,7 +259,7 @@ impl SwiftProvider {
         if primary.is_ok() {
             return primary;
         }
-        let primary_err = primary.err().expect("primary is Err after is_ok check");
+        let primary_err = primary.expect_err("primary is Err after is_ok check");
         debug!("Swift primary auth failed; trying fallback flow {secondary:?}");
         let fallback = match secondary {
             AuthVersion::V2 => self.auth_keystone_v2(&base).await,
