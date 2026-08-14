@@ -237,6 +237,24 @@ fn aeroftp_token_to_rclone(blob: &str) -> Option<String> {
     serde_json::to_string(&serde_json::Value::Object(out)).ok()
 }
 
+/// rclone's zoho backend sends `Authorization: <token_type> <access_token>`.
+/// Zoho's API accepts `Zoho-oauthtoken`, not `Bearer`. AeroFTP stores the
+/// latter (our connect path rewrites the header). Force the rclone type so
+/// an exported remote does not get F6016 "URL Rule is not configured".
+fn zoho_rclone_token_type(token_json: &str) -> String {
+    let mut value: serde_json::Value = match serde_json::from_str(token_json) {
+        Ok(v) => v,
+        Err(_) => return token_json.to_string(),
+    };
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert(
+            "token_type".into(),
+            serde_json::Value::String("Zoho-oauthtoken".into()),
+        );
+    }
+    serde_json::to_string(&value).unwrap_or_else(|_| token_json.to_string())
+}
+
 /// Append the rclone OAuth credential block for an OAuth-token backend.
 ///
 /// AeroFTP mints its OAuth tokens with the user's own (BYO) OAuth app, so
@@ -247,6 +265,14 @@ fn aeroftp_token_to_rclone(blob: &str) -> Option<String> {
 /// refreshable remote; otherwise we emit a guidance comment instead of a
 /// silently broken half-remote. Issue #128-D.
 fn push_oauth_credentials(output: &mut String, options: Option<&serde_json::Value>) {
+    push_oauth_credentials_inner(output, options, None);
+}
+
+fn push_oauth_credentials_inner(
+    output: &mut String,
+    options: Option<&serde_json::Value>,
+    force_token_type: Option<&str>,
+) {
     let get = |k: &str| {
         options
             .and_then(|o| o.get(k))
@@ -254,7 +280,12 @@ fn push_oauth_credentials(output: &mut String, options: Option<&serde_json::Valu
             .map(str::trim)
             .filter(|s| !s.is_empty())
     };
-    let token = get("__aeroftp_oauth_token").and_then(aeroftp_token_to_rclone);
+    let token = get("__aeroftp_oauth_token")
+        .and_then(aeroftp_token_to_rclone)
+        .map(|tok| match force_token_type {
+            Some("Zoho-oauthtoken") => zoho_rclone_token_type(&tok),
+            _ => tok,
+        });
     let client_id = get("__aeroftp_oauth_client_id");
     let client_secret = get("__aeroftp_oauth_client_secret");
     match (token, client_id, client_secret) {
@@ -2038,7 +2069,7 @@ pub fn export_rclone(
                 {
                     output.push_str(&format!("root_folder_id = {}\n", ini_value(folder)));
                 }
-                push_oauth_credentials(&mut output, options);
+                push_oauth_credentials_inner(&mut output, options, Some("Zoho-oauthtoken"));
             }
             "backblaze" => {
                 // AeroFTP's native Backblaze protocol maps to rclone's `b2`
@@ -3054,8 +3085,43 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
             "token:\n{conf}"
         );
         assert!(
+            conf.contains("Zoho-oauthtoken"),
+            "zoho token_type must be Zoho-oauthtoken:\n{conf}"
+        );
+        assert!(
             !conf.contains("__aeroftp_oauth"),
             "private keys leaked:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_zoho_rewrites_bearer_token_type() {
+        let stored_tokens = r#"{"access_token":"acc-zoho","refresh_token":"ref-zoho","expires_at":1893499200,"token_type":"Bearer","scopes":[]}"#;
+        let servers = vec![RcloneExportServer {
+            name: "zoho-bearer".to_string(),
+            host: "workdrive.zoho.eu".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("zohoworkdrive".to_string()),
+            options: Some(serde_json::json!({
+                "region": "eu",
+                "__aeroftp_oauth_token": stored_tokens,
+                "__aeroftp_oauth_client_id": "cid",
+                "__aeroftp_oauth_client_secret": "csec",
+            })),
+            provider_id: Some("zoho-workdrive".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-zoho-bearer.conf");
+        export_rclone(&servers, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(
+            conf.contains("Zoho-oauthtoken"),
+            "Bearer must be rewritten for rclone:\n{conf}"
+        );
+        assert!(
+            !conf.contains("\"token_type\":\"Bearer\""),
+            "must not leave Bearer in the rclone token:\n{conf}"
         );
     }
 

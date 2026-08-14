@@ -813,6 +813,58 @@ pub fn inject_rclone_zoho_export_options(
     }
 }
 
+/// Live-discover Zoho's privatespace id when the profile does not already
+/// carry `root_folder_id`. rclone cannot list a zoho remote without it.
+pub async fn ensure_zoho_rclone_root_folder(options: &mut Option<Value>, profile_id: &str) {
+    let needs = !options
+        .as_ref()
+        .and_then(|o| o.get("root_folder_id"))
+        .and_then(|v| v.as_str())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    if !needs || profile_id.is_empty() {
+        return;
+    }
+    let region = options
+        .as_ref()
+        .and_then(|o| o.get("region"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("us")
+        .to_string();
+    let client_id = options
+        .as_ref()
+        .and_then(|o| o.get("__aeroftp_oauth_client_id"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let client_secret = options
+        .as_ref()
+        .and_then(|o| o.get("__aeroftp_oauth_client_secret"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if client_id.is_empty() {
+        return;
+    }
+    let Some(root) =
+        crate::providers::zoho_workdrive::ZohoWorkdriveProvider::rclone_root_folder_id_for_export(
+            profile_id,
+            &client_id,
+            &client_secret,
+            &region,
+        )
+        .await
+    else {
+        return;
+    };
+    if !matches!(options, Some(Value::Object(_))) {
+        *options = Some(Value::Object(serde_json::Map::new()));
+    }
+    if let Some(opts) = options.as_mut().and_then(|o| o.as_object_mut()) {
+        opts.insert("root_folder_id".into(), Value::String(root));
+    }
+}
+
 /// Inject rclone-crypt overlay material so `export_rclone` can emit the
 /// second `[name]` `type = crypt` section. Two sources, same destination
 /// keys:
@@ -996,6 +1048,9 @@ pub async fn export_bridge_config(
                         inject_rclone_onedrive_export_options(&mut opts, st, &proto, &id);
                         let initial_path = e.get("initialPath").and_then(|v| v.as_str());
                         inject_rclone_zoho_export_options(&mut opts, &proto, initial_path);
+                        if proto == "zohoworkdrive" {
+                            ensure_zoho_rclone_root_folder(&mut opts, &id).await;
+                        }
                         inject_rclone_crypt_export_options(
                             &mut opts,
                             st,
