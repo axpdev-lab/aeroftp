@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Leveret af serveren",
             "readOnly": "Skrivebeskyttet",
             "hidden": "Skjult",
+            "hiddenIsNameBased": "Pa dette system er en fil skjult pa grund af sit navn, ikke pa grund af en attribut: omdob den, sa den starter med et punktum.",
             "contains": "Indeholder",
             "foldersOnly": "Kun mapper",
             "location": "Placering",

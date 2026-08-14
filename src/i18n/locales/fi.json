@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Palvelimen toimittama",
             "readOnly": "Vain luku",
             "hidden": "Piilotettu",
+            "hiddenIsNameBased": "Tassa jarjestelmassa tiedosto on piilotettu nimensa vuoksi, ei attribuutin vuoksi: nimea se uudelleen alkamaan pisteella.",
             "contains": "Sisältää",
             "foldersOnly": "Vain kansiot",
             "location": "Sijainti",

@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Dostarczone przez serwer",
             "readOnly": "Tylko do odczytu",
             "hidden": "Ukryty",
+            "hiddenIsNameBased": "W tym systemie plik jest ukryty ze wzgledu na swoja nazwe, a nie atrybut: zmien nazwe tak, aby zaczynala sie od kropki.",
             "contains": "Zawiera",
             "foldersOnly": "Tylko foldery",
             "location": "Lokalizacja",

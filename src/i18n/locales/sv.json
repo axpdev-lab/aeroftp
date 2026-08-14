@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Tillhandahålls av servern",
             "readOnly": "Skrivskyddad",
             "hidden": "Dold",
+            "hiddenIsNameBased": "I det har systemet ar en fil dold pa grund av sitt namn, inte pa grund av ett attribut: byt namn sa att det borjar med en punkt.",
             "contains": "Innehåller",
             "foldersOnly": "Endast mappar",
             "location": "Plats",

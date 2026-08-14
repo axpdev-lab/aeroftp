@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Code, Terminal, MessageSquare, X, Maximize2, Minimize2, Columns2, Columns3, LayoutList } from 'lucide-react';
-import { PreviewFile } from './types';
+import { PreviewFile, PanelVisibility, panelsWithIncomingFile } from './types';
 import { CodeEditor } from './CodeEditor';
 import { SSHTerminal, SshConnectionInfo } from './SSHTerminal';
 import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -56,12 +56,6 @@ interface DevToolsV2Props {
     onShowCyberTools?: () => void;
 }
 
-type PanelVisibility = {
-    editor: boolean;
-    terminal: boolean;
-    chat: boolean;
-};
-
 // Breakpoints for responsive layout (based on DevTools panel width)
 const BREAKPOINTS = {
     THREE_COLS: 900,   // Show 3 columns above 900px
@@ -103,10 +97,6 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     const [terminalDropActive, setTerminalDropActive] = useState(false);
     const [dropInfoToast, setDropInfoToast] = useState<string | null>(null);
     const dropInfoTimeoutRef = useRef<number | null>(null);
-
-    useEffect(() => {
-        setEditorFile(previewFile);
-    }, [previewFile]);
 
     const getPathFromDataTransfer = useCallback((dt: DataTransfer): string | null => {
         const single = dt.getData('application/x-aeroftp-local-path');
@@ -338,6 +328,18 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
         terminal: false,
         chat: false,
     });
+
+    // A file handed in from outside (double-click, "View source", the OS file
+    // association) must also make the Editor column visible. Setting only
+    // `editorFile` opened the tab behind a hidden panel, so with the Editor
+    // toggled off the app looked like it had ignored the action entirely: the
+    // file was there, one toggle away, with nothing on screen to say so
+    // (Ehud, #347, repro of 2026-08-06). `handleEditorDrop` already made this
+    // guarantee for its own path; every other caller now gets it too.
+    useEffect(() => {
+        setEditorFile(previewFile);
+        setPanels(prev => panelsWithIncomingFile(prev, !!previewFile));
+    }, [previewFile]);
 
     // Track container width for responsive layout
     useEffect(() => {

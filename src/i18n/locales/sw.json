@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Imetolewa na seva",
             "readOnly": "Kusoma tu",
             "hidden": "Iliyofichwa",
+            "hiddenIsNameBased": "Katika mfumo huu faili hufichwa kwa sababu ya jina lake, si kwa sababu ya sifa: badilisha jina lianze na nukta.",
             "contains": "Ina",
             "foldersOnly": "Folda pekee",
             "location": "Mahali",

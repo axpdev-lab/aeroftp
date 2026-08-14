@@ -20282,6 +20282,8 @@ pub fn run() {
             filesystem::list_unmounted_partitions,
             filesystem::mount_partition,
             filesystem::get_file_properties,
+            filesystem::set_local_file_attributes,
+            filesystem::hidden_attribute_is_toggleable,
             filesystem::calculate_folder_size,
             filesystem::delete_to_trash,
             filesystem::list_trash_items,

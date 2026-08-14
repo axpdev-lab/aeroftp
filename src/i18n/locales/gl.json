@@ -3361,6 +3361,7 @@
             "notAvailable": "Non dispoñible",
             "readOnly": "Só lectura",
             "hidden": "Oculto",
+            "hiddenIsNameBased": "Neste sistema un ficheiro esta agochado polo seu nome, non por un atributo: cambialle o nome para que comece cun punto.",
             "contains": "Contén",
             "foldersOnly": "Só cartafoles",
             "location": "Localización",

@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Pakub server",
             "readOnly": "Kirjutuskaitstud",
             "hidden": "Peidetud",
+            "hiddenIsNameBased": "Selles susteemis on fail peidetud oma nime tottu, mitte atribuudi tottu: nimeta see umber nii, et see algaks punktiga.",
             "contains": "Sisaldab",
             "foldersOnly": "Ainult kaustad",
             "location": "Asukoht",

@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Geleverd door de server",
             "readOnly": "Alleen-lezen",
             "hidden": "Verborgen",
+            "hiddenIsNameBased": "Op dit systeem is een bestand verborgen door zijn naam, niet door een attribuut: hernoem het zodat het met een punt begint.",
             "contains": "Bevat",
             "foldersOnly": "Alleen mappen",
             "location": "Locatie",

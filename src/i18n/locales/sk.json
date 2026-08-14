@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Poskytnuté serverom",
             "readOnly": "Len na čítanie",
             "hidden": "Skrytý",
+            "hiddenIsNameBased": "V tomto systeme je subor skryty vdaka svojmu nazvu, nie vdaka atributu: premenujte ho tak, aby zacinal bodkou.",
             "contains": "Obsahuje",
             "foldersOnly": "Iba priečinky",
             "location": "Umiestnenie",

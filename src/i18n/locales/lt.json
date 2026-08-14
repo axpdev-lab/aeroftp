@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Pateikta serverio",
             "readOnly": "Tik skaitymui",
             "hidden": "Paslėptas",
+            "hiddenIsNameBased": "Sioje sistemoje failas paslepiamas del savo pavadinimo, o ne del atributo: pervadinkite ji taip, kad prasidetu tasku.",
             "contains": "Talpina",
             "foldersOnly": "Tik aplankai",
             "location": "Vieta",

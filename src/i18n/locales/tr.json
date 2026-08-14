@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Sunucu tarafından sağlandı",
             "readOnly": "Salt okunur",
             "hidden": "Gizli",
+            "hiddenIsNameBased": "Bu sistemde bir dosya bir ozellik nedeniyle degil, adi nedeniyle gizlidir: adini nokta ile baslayacak sekilde degistirin.",
             "contains": "İçerir",
             "foldersOnly": "Yalnızca klasörler",
             "location": "Konum",

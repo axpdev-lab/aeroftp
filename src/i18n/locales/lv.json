@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Nodrošina serveris",
             "readOnly": "Tikai lasāms",
             "hidden": "Slēpts",
+            "hiddenIsNameBased": "Saja sistema fails ir pasleps sava nosaukuma del, nevis atributa del: parsauciet to ta, lai tas saktos ar punktu.",
             "contains": "Satur",
             "foldersOnly": "Tikai mapes",
             "location": "Atrašanās vieta",

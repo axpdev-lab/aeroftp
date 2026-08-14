@@ -10,6 +10,7 @@
 
 import { PreviewCategory } from '../types';
 import { formatBytes } from '../../../utils/formatters';
+import { getFileLanguage } from '../../DevTools/types';
 
 // File extension mappings
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif'];
@@ -71,6 +72,18 @@ export function getPreviewCategory(filename: string): PreviewCategory {
     if (TEXT_EXTENSIONS.includes(ext)) return 'text';
     if (CODE_EXTENSIONS.includes(ext)) return 'code';
     if (KNOWN_CODE_FILENAMES.has(baseName)) return 'code';
+
+    // Last resort: if the editor has a Monaco language for this name, the file
+    // is source code and the preview can render it as text. Two hand-kept lists
+    // of "what counts as text" drifted apart, which is how .tf, .sol, .proto and
+    // .pas ended up openable in the editor but not in the preview (Ehud, #347,
+    // 2026-08-06: "open all text-based files in preview"). The editor's language
+    // map is the richer of the two and is already maintained, so it is the one
+    // source consulted here rather than a copy of its keys.
+    //
+    // Only a real map hit counts: `getFileLanguage` falls back to 'text' for
+    // everything it does not know, so binaries keep landing on 'unknown'.
+    if (getFileLanguage(filename) !== 'text') return 'code';
 
     return 'unknown';
 }

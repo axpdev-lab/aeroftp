@@ -1242,7 +1242,8 @@ pub async fn mount_partition(device: String) -> Result<String, String> {
 // ─── Structs (AeroFile Phase B+C) ───────────────────────────────────────────
 
 /// Detailed file/directory properties including permissions, ownership, and symlink info.
-#[derive(Serialize, Clone)]
+// Debug so the attribute tests can report what they actually got back.
+#[derive(Serialize, Clone, Debug)]
 pub struct DetailedFileProperties {
     pub name: String,
     pub path: String,
@@ -1425,6 +1426,124 @@ pub async fn get_file_properties(path: String) -> Result<DetailedFileProperties,
         is_readonly,
         is_hidden,
     })
+}
+
+// ─── Command 5b: set_local_file_attributes ──────────────────────────────────
+
+/// Whether this platform can toggle "hidden" as an attribute of the file.
+///
+/// Windows stores it in the file's attribute word, so it flips in place. Unix
+/// has no such attribute: a dotfile is hidden because of its NAME, so the only
+/// way to "toggle" it is to rename the file, which can collide with an existing
+/// entry and changes the identity every link and bookmark refers to. That is a
+/// rename, and it belongs to the rename command where the user can see the new
+/// name before committing to it, not behind a checkbox labelled "hidden"
+/// (Ehud, #347, 2026-08-03).
+#[tauri::command]
+pub fn hidden_attribute_is_toggleable() -> bool {
+    cfg!(windows)
+}
+
+/// Sets the read-only and/or hidden attributes of a local file or directory.
+///
+/// `None` leaves an attribute untouched, so the caller flips one without having
+/// to restate the other and race a change made elsewhere in between.
+///
+/// Returns the properties re-read from disk rather than the values that were
+/// asked for: the dialog then shows what the filesystem actually holds, so an
+/// attribute the OS refused or silently normalised cannot be displayed as if it
+/// had been applied.
+#[tauri::command]
+pub async fn set_local_file_attributes(
+    path: String,
+    read_only: Option<bool>,
+    hidden: Option<bool>,
+) -> Result<DetailedFileProperties, String> {
+    validate_path(&path)?;
+
+    if read_only.is_none() && hidden.is_none() {
+        return get_file_properties(path).await;
+    }
+
+    if hidden.is_some() && !cfg!(windows) {
+        return Err(
+            "On this platform a file is hidden by its name, not by an attribute: rename it to start with a dot instead."
+                .to_string(),
+        );
+    }
+
+    let target = path.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let metadata = std::fs::symlink_metadata(&target)
+            .map_err(|_| "Failed to read file metadata".to_string())?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            use std::os::unix::fs::PermissionsExt;
+
+            if let Some(ro) = read_only {
+                // Only the owner write bit moves. `Permissions::set_readonly`
+                // would have been shorter and wrong in both directions: it
+                // clears every write bit going in, and on the way out it sets
+                // group and other write too, quietly widening a 0o600 file to
+                // 0o666. The getter reads the owner bit, so the setter writes
+                // exactly that bit and leaves the rest of the mode alone.
+                let mode = metadata.mode() & 0o7777;
+                let next = if ro { mode & !0o200 } else { mode | 0o200 };
+                if next != mode {
+                    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(next))
+                        .map_err(|e| format!("Failed to set permissions: {e}"))?;
+                }
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            use windows::core::HSTRING;
+            use windows::Win32::Storage::FileSystem::{
+                SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_READONLY,
+                FILE_FLAGS_AND_ATTRIBUTES,
+            };
+
+            let mut attrs = metadata.file_attributes();
+            let apply = |attrs: &mut u32, bit: u32, on: bool| {
+                if on {
+                    *attrs |= bit;
+                } else {
+                    *attrs &= !bit;
+                }
+            };
+            if let Some(ro) = read_only {
+                apply(&mut attrs, FILE_ATTRIBUTE_READONLY.0, ro);
+            }
+            if let Some(h) = hidden {
+                apply(&mut attrs, FILE_ATTRIBUTE_HIDDEN.0, h);
+            }
+            if attrs != metadata.file_attributes() {
+                unsafe {
+                    SetFileAttributesW(
+                        &HSTRING::from(target.as_str()),
+                        FILE_FLAGS_AND_ATTRIBUTES(attrs),
+                    )
+                }
+                .map_err(|e| format!("Failed to set file attributes: {e}"))?;
+            }
+        }
+
+        #[cfg(not(any(unix, windows)))]
+        {
+            let _ = metadata;
+            return Err("Setting file attributes is not supported on this platform".to_string());
+        }
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Failed to set file attributes: {e}"))??;
+
+    get_file_properties(path).await
 }
 
 // ─── Command 6: calculate_folder_size ───────────────────────────────────────
@@ -2667,5 +2786,81 @@ mod main_thread_tests {
         );
         #[cfg(not(target_os = "linux"))]
         let _ = second;
+    }
+
+    /// Ehud, #347 (2026-08-03): Properties showed read-only and hidden but
+    /// could not change them, unlike File Explorer.
+    ///
+    /// The trap this pins is the shortcut that was NOT taken.
+    /// `std::fs::Permissions::set_readonly(false)` is the obvious call and it
+    /// sets group and other write as well, so clearing the flag on a private
+    /// 0o600 file would hand it to every account on the machine. Only the owner
+    /// write bit may move, in either direction, and the rest of the mode has to
+    /// come back untouched.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn clearing_read_only_does_not_widen_the_other_write_bits() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("secret.txt");
+        std::fs::write(&file, b"x").expect("write");
+        // Deliberately private, and deliberately not 0o644: a mode the naive
+        // implementation would destroy.
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).expect("chmod");
+        let path = file.to_string_lossy().to_string();
+
+        let marked = set_local_file_attributes(path.clone(), Some(true), None)
+            .await
+            .expect("marking read-only must succeed");
+        assert_eq!(marked.is_readonly, Some(true));
+        let mode = std::fs::metadata(&file).expect("stat").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o400, "only the owner write bit may be cleared");
+
+        let restored = set_local_file_attributes(path, Some(false), None)
+            .await
+            .expect("clearing read-only must succeed");
+        assert_eq!(restored.is_readonly, Some(false));
+        let mode = std::fs::metadata(&file).expect("stat").permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "clearing read-only must restore the owner bit and nothing else: {mode:o}"
+        );
+    }
+
+    /// On Unix "hidden" is the leading dot in the NAME, so honouring the toggle
+    /// would mean renaming the file behind a checkbox. The command refuses and
+    /// says why, and the capability probe tells the dialog not to offer it, so
+    /// the refusal is something the user never has to walk into.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn hidden_is_refused_where_it_is_a_name_rather_than_an_attribute() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("visible.txt");
+        std::fs::write(&file, b"x").expect("write");
+
+        let err = set_local_file_attributes(file.to_string_lossy().to_string(), None, Some(true))
+            .await
+            .expect_err("a rename must not happen behind a hidden checkbox");
+        assert!(
+            err.contains("rename"),
+            "the refusal must point at the rename that would be needed: {err}"
+        );
+        assert!(file.exists(), "the file must not have been renamed");
+        assert!(!hidden_attribute_is_toggleable());
+    }
+
+    /// Asking for nothing changes nothing, and still answers with the current
+    /// truth: the dialog uses the same call to refresh after an edit elsewhere.
+    #[tokio::test]
+    async fn a_request_with_no_attributes_is_a_plain_read() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("untouched.txt");
+        std::fs::write(&file, b"hello").expect("write");
+
+        let props = set_local_file_attributes(file.to_string_lossy().to_string(), None, None)
+            .await
+            .expect("a no-op must still read");
+        assert_eq!(props.size, 5);
     }
 }

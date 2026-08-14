@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Poskytnuto serverem",
             "readOnly": "Jen pro čtení",
             "hidden": "Skrytý",
+            "hiddenIsNameBased": "V tomto systemu je soubor skryty diky svemu nazvu, nikoli diky atributu: prejmenujte jej tak, aby zacinal teckou.",
             "contains": "Obsahuje",
             "foldersOnly": "Pouze složky",
             "location": "Umístění",

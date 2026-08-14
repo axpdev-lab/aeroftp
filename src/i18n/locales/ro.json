@@ -3361,6 +3361,7 @@
             "checksumServerOnly": "Furnizat de server",
             "readOnly": "Doar citire",
             "hidden": "Ascuns",
+            "hiddenIsNameBased": "Pe acest sistem un fisier este ascuns din cauza numelui sau, nu a unui atribut: redenumeste-l astfel incat sa inceapa cu un punct.",
             "contains": "Conține",
             "foldersOnly": "Doar foldere",
             "location": "Locație",

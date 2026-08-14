@@ -3326,6 +3326,7 @@
             "checksumServerOnly": "サーバーから提供",
             "readOnly": "読み取り専用",
             "hidden": "非表示",
+            "hiddenIsNameBased": "このシステムでは、ファイルは属性ではなく名前によって隠されます。先頭がドットになるように名前を変更してください。",
             "contains": "内容",
             "foldersOnly": "フォルダーのみ",
             "location": "場所",
