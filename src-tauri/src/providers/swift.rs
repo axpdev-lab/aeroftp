@@ -1634,15 +1634,16 @@ mod tests {
         assert!(p
             .validate_storage_endpoint("https://user:pw@objects.example.net/v1/AUTH_a")
             .is_err());
-        assert!(p.validate_storage_endpoint("ftp://objects.example.net/v1/AUTH_a").is_err());
+        assert!(p
+            .validate_storage_endpoint("ftp://objects.example.net/v1/AUTH_a")
+            .is_err());
         assert!(p.validate_storage_endpoint("not-a-url").is_err());
     }
 
     #[test]
     fn prefer_swift_auth_error_masks_tempauth_404_behind_keystone() {
-        let tempauth_404 = || {
-            ProviderError::AuthenticationFailed("TempAuth failed: HTTP 404 Not Found".into())
-        };
+        let tempauth_404 =
+            || ProviderError::AuthenticationFailed("TempAuth failed: HTTP 404 Not Found".into());
         let invalid = || ProviderError::AuthenticationFailed("Invalid credentials".into());
         match SwiftProvider::prefer_swift_auth_error(tempauth_404(), invalid()) {
             ProviderError::AuthenticationFailed(msg) => assert_eq!(msg, "Invalid credentials"),
