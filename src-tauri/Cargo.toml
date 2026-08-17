@@ -169,7 +169,7 @@ jsonwebtoken = { version = "10.4", default-features = false, features = ["aws_lc
 # T7 convergence: the app consumes the crate's AEROVAULT3 core (aerovault::v3);
 # the vault_v3_* handlers are thin wrappers over it (see src/aerovault_v3.rs).
 aerovault = "0.6.3"                                                    # M7: converged AEROVAULT3 core + standalone/AeroSync EC engine (published on crates.io)
-aes-gcm-siv = "0.11"                                                   # AeroVault v3 AEAD content encryption
+aes-gcm-siv = "0.12"                                                   # AeroVault v3 AEAD content encryption
 # Keep on 0.10.1 until aerovault publishes a release that accepts
 # chacha20poly1305 0.11; aerovault 0.6.3 depends on 0.10.
 chacha20poly1305 = "=0.10.1"                                           # ChaCha20-Poly1305 (used by CryptoLab in cyber_tools)

@@ -51,7 +51,7 @@ dependencies = [
  "aerovault",
  "aes 0.8.4",
  "aes-gcm 0.10.3",
- "aes-gcm-siv",
+ "aes-gcm-siv 0.12.0",
  "aes-kw",
  "aes-siv",
  "anyhow",
@@ -208,7 +208,7 @@ version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "690cffc2e8812e7c31d24017428f3c4164077374ad4fce4cae77f0df660596e3"
 dependencies = [
- "aes-gcm-siv",
+ "aes-gcm-siv 0.11.1",
  "aes-kw",
  "aes-siv",
  "argon2 0.5.3",
@@ -297,6 +297,20 @@ dependencies = [
  "polyval 0.6.2",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "aes-gcm-siv"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f437e5b075722bda3f54039e95d60d1c142f140e6c45b718e4f9fca3e5a1514"
+dependencies = [
+ "aead 0.6.1",
+ "aes 0.9.1",
+ "cipher 0.5.2",
+ "ctr 0.10.1",
+ "polyval 0.7.1",
+ "subtle",
 ]
 
 [[package]]
@@ -10704,7 +10718,7 @@ dependencies = [
  "serde_with",
  "swift-rs",
  "thiserror 2.0.19",
- "toml 0.9.12+spec-1.1.0",
+ "toml 1.1.3+spec-1.1.0",
  "url",
  "urlpattern",
  "uuid",
