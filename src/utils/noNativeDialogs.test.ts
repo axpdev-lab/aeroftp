@@ -87,6 +87,9 @@ describe('native browser dialogs', () => {
         // is reachable while a Tauri event storm re-renders the panel behind.
         const overlay = sources['../components/common/ConfirmOverlay.tsx'];
         expect(overlay).toMatch(/onCancelRef\.current\(\)/);
+        // And the ref is written from an effect, never during render: a render
+        // that React discards would otherwise publish its callback anyway.
+        expect(overlay).toMatch(/useEffect\(\(\) => \{\s*onCancelRef\.current = onCancel;\s*\}\);/);
         // Anchored on the effect's own closing dependency array rather than on a
         // fixed window: the effect grew when the focus trap landed, and a window
         // that no longer reached the end would have failed on a correct file.

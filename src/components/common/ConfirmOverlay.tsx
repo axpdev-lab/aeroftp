@@ -51,7 +51,14 @@ export const ConfirmOverlay: React.FC<ConfirmOverlayProps> = ({
     // pull focus back to Cancel each time. That is reachable: CloudPanel
     // re-renders on Tauri cloud events, which can fire while the question is up.
     const onCancelRef = React.useRef(onCancel);
-    onCancelRef.current = onCancel;
+    // Written in an effect, not during render. Rendering must be pure: React may
+    // render a component without committing it, and under StrictMode does so
+    // deliberately, so a render-time write can publish a callback belonging to a
+    // tree that was thrown away. An effect with no dependency array runs after
+    // every commit, which keeps it just as current.
+    React.useEffect(() => {
+        onCancelRef.current = onCancel;
+    });
 
     const boxRef = React.useRef<HTMLDivElement>(null);
 
