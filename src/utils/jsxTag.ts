@@ -17,15 +17,64 @@
  *   element's, so the match is the outer tag's name attached to the inner tag's
  *   props, and an assertion about either one is answered by the other.
  *
- * These read the element's own span, tracking brace depth and string literals, so
- * a nested element inside a prop cannot end the tag that contains it.
+ * These read the element's own span with one lexer, tracking string and template
+ * literals as well as brace depth, so neither a nested element inside a prop nor
+ * a delimiter inside a literal can end the tag that contains it.
  */
 
-/** Blank comment bodies, keeping every offset so indices still line up. */
+/** Where the scanner is: ordinary code, inside a literal, or inside a comment. */
+type Mode = 'code' | 'line-comment' | 'block-comment' | '"' | "'" | '`';
+
+/**
+ * True when the character at `i` is escaped, i.e. preceded by an odd number of
+ * backslashes.
+ *
+ * `source[i - 1] !== '\\'` is the tempting version and it is wrong on an even
+ * run: in `"C:\\"` the final quote closes the string, because the two
+ * backslashes escape each other. This codebase is full of Windows paths, so that
+ * is not a hypothetical.
+ */
+function isEscaped(source: string, i: number): boolean {
+    let run = 0;
+    for (let k = i - 1; k >= 0 && source[k] === '\\'; k--) run++;
+    return run % 2 === 1;
+}
+
+/**
+ * Blank out comment bodies, keeping every offset so indices still line up.
+ *
+ * String-aware on purpose: a regex that hunts for `//` finds it inside
+ * `'https://…'` and inside any literal that happens to contain one, and then
+ * blanks the rest of the line, silently deleting the code an assertion was about.
+ * Guarding the URL case alone (`[^:]//`) covers the common example and none of
+ * the others.
+ */
 export function withoutComments(source: string): string {
-    return source
-        .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-        .replace(/(^|[^:])\/\/[^\n]*/g, (m, lead) => lead + ' '.repeat(m.length - lead.length));
+    const out = source.split('');
+    let mode: Mode = 'code';
+    for (let i = 0; i < source.length; i++) {
+        const c = source[i];
+        const next = source[i + 1];
+        switch (mode) {
+            case 'code':
+                if (c === '/' && next === '/') { mode = 'line-comment'; out[i] = ' '; }
+                else if (c === '/' && next === '*') { mode = 'block-comment'; out[i] = ' '; }
+                else if (c === '"' || c === "'" || c === '`') mode = c;
+                break;
+            case 'line-comment':
+                if (c === '\n') mode = 'code';
+                else out[i] = ' ';
+                break;
+            case 'block-comment':
+                if (c === '*' && next === '/') { out[i] = ' '; out[i + 1] = ' '; i++; mode = 'code'; }
+                else if (c !== '\n') out[i] = ' ';
+                break;
+            default:
+                if (c === mode && !isEscaped(source, i)) mode = 'code';
+                break;
+        }
+    }
+    return out.join('');
 }
 
 /**
@@ -36,11 +85,11 @@ export function withoutComments(source: string): string {
  */
 export function jsxTagAt(source: string, at: number): string | null {
     let depth = 0;
-    let quote: string | null = null;
+    let quote: '"' | "'" | '`' | null = null;
     for (let i = at; i < source.length; i++) {
         const c = source[i];
         if (quote) {
-            if (c === quote && source[i - 1] !== '\\') quote = null;
+            if (c === quote && !isEscaped(source, i)) quote = null;
             continue;
         }
         if (c === '"' || c === "'" || c === '`') { quote = c; continue; }
