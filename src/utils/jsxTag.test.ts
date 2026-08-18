@@ -42,6 +42,35 @@ describe('withoutComments', () => {
         expect(withoutComments(odd)).toContain('still in the string');
     });
 
+    it('treats a template interpolation as the code it is', () => {
+        // `${...}` is not literal text: a comment in there is a real comment,
+        // and staying in template mode across it leaves the comment standing,
+        // which is the false positive a comment-stripping scan exists to stop.
+        const src = 'const a = `x ${ y /* drop me */ } z`; const after = 1;\n';
+        const out = withoutComments(src);
+        expect(out, 'the comment inside the interpolation').not.toContain('drop me');
+        expect(out, 'the literal text around it survives').toContain('x $');
+        expect(out).toContain('z`');
+        expect(out).toContain('const after = 1;');
+        expect(out.length).toBe(src.length);
+    });
+
+    it('does not let a brace inside an interpolation close it early', () => {
+        // An object literal or a block inside `${}` has braces of its own.
+        const src = 'const a = `${ f({ k: 1 }) } // not a comment`; const b = 2;\n';
+        const out = withoutComments(src);
+        expect(out, 'still inside the template after the object literal').toContain('// not a comment');
+        expect(out).toContain('const b = 2;');
+    });
+
+    it('handles a template nested inside an interpolation', () => {
+        const src = 'const a = `${ `inner ${ q } // deep` } // outer`; const c = 3;\n';
+        const out = withoutComments(src);
+        expect(out, 'both // are literal text, not comments').toContain('// deep');
+        expect(out).toContain('// outer');
+        expect(out).toContain('const c = 3;');
+    });
+
     it('blanks real comments of both kinds', () => {
         const src = 'a; /* block\nspanning */ b; // line\nc;';
         const out = withoutComments(src);
