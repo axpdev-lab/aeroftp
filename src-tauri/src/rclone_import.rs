@@ -782,9 +782,10 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
                 username: name.to_string(),
                 password: None,
                 options: Some(serde_json::Value::Object(options)),
-                initial_path: get_str("root_folder_id")
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string()),
+                // rclone's root_folder_id is a workspace/privatespace id, not
+                // an AeroFTP path. Putting it in initial_path made `ls /<id>`
+                // fail after a re-import. The id lives only on options.
+                initial_path: None,
                 oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
                 jotta_refresh: None,
             })
@@ -3147,6 +3148,44 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
         assert!(
             !conf.contains("region = us"),
             "must not emit AeroFTP slug:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_import_rclone_zoho_keeps_root_folder_off_the_path() {
+        let conf = "\
+[MyZohoWD]
+type = zoho
+region = eu
+root_folder_id = fmip966f979e195e64ec78e6846976861eed5
+token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_token\":\"ref\",\"expiry\":\"2030-01-01T00:00:00Z\"}
+";
+        let path = tmp_write(conf, "aeroftp-test-import-zoho.conf");
+        let result = import_rclone(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        let zoho = result
+            .servers
+            .iter()
+            .find(|s| s.protocol.as_deref() == Some("zohoworkdrive"))
+            .expect("zoho server present");
+        assert!(
+            zoho.initial_path.is_none(),
+            "root_folder_id must not become initial_path: {:?}",
+            zoho.initial_path
+        );
+        assert_eq!(
+            zoho.options
+                .as_ref()
+                .and_then(|o| o.get("root_folder_id"))
+                .and_then(|v| v.as_str()),
+            Some("fmip966f979e195e64ec78e6846976861eed5")
+        );
+        assert_eq!(
+            zoho.options
+                .as_ref()
+                .and_then(|o| o.get("region"))
+                .and_then(|v| v.as_str()),
+            Some("eu")
         );
     }
 
