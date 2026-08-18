@@ -953,7 +953,7 @@ export const PROVIDERS: ProviderConfig[] = [
         category: 's3',
         icon: 'Cloud',
         color: '#C74634',
-        stable: false,
+        stable: true,
         fields: [
             { ...COMMON_FIELDS.accessKeyId, label: 'Access Key', helpText: 'Identity → Users → Customer Secret Keys → Access Key' },
             { ...COMMON_FIELDS.secretAccessKey, label: 'Secret Key', helpText: 'Identity → Users → Customer Secret Keys → Secret Key' },
@@ -1665,7 +1665,9 @@ export const PROVIDERS: ProviderConfig[] = [
         category: 'webdav',
         icon: 'Cloud',
         color: '#0082C9',
-        stable: false, // Not tested yet
+        // Live-verified on two independent Nextcloud servers (self-hosted and
+        // Tab.digital): auto-detected DAV endpoint, quota, transfers, share links.
+        stable: true,
         fields: [
             {
                 ...COMMON_FIELDS.server,
