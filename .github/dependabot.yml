@@ -78,13 +78,27 @@ updates:
       # which depends on num-bigint-dig 0.8. Unblock when rsa 0.10 stable.
       - dependency-name: "num-bigint-dig"
         versions: [">=0.9.0"]
-      # aes 0.9 is a breaking RustCrypto block-cipher bump. aes-gcm 0.10,
-      # aes-kw 0.2, aes-siv 0.7 and aes-gcm-siv 0.11 (AeroVault v3) all
-      # still depend on aes 0.8; taking aes 0.9 directly forks the cipher
-      # crate and breaks the AEAD wrappers. Unblock when aes-gcm/aes-kw/
-      # aes-siv/aes-gcm-siv ship releases built on aes 0.9.
+      # aes 0.9 is a breaking RustCrypto block-cipher bump. Direct
+      # `aes-gcm-siv` 0.11, `aes-kw` 0.2, `aes-siv` 0.7 and
+      # `chacha20poly1305` 0.10 (AeroVault v3 / aerocrypt) still depend
+      # on aes 0.8 / aead 0.5; taking aes 0.9 (or any one wrapper) in
+      # isolation forks the trait crates. russh already pulls aes 0.9 as
+      # a *separate* copy — that is fine; a direct bump is not.
+      # Upstream now has aes-gcm 0.11 / aes-kw 0.3 / aes-siv 0.8 /
+      # aes-gcm-siv 0.12 / chacha20poly1305 0.11 on aes 0.9, but
+      # aerovault 0.6.3 still requires the 0.11/0.2/0.7/0.10 line and
+      # aerocrypt still uses `aead::{Aead, Payload}`. Unblock the
+      # wrappers together when aerovault ships a matching release.
       - dependency-name: "aes"
         versions: [">=0.9.0"]
+      - dependency-name: "aes-gcm-siv"
+        versions: [">=0.12.0"]
+      - dependency-name: "aes-kw"
+        versions: [">=0.3.0"]
+      - dependency-name: "aes-siv"
+        versions: [">=0.8.0"]
+      - dependency-name: "chacha20poly1305"
+        versions: [">=0.11.0"]
 
   # npm dependencies
   - package-ecosystem: "npm"
