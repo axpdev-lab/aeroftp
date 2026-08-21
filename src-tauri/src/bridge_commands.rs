@@ -757,14 +757,33 @@ pub fn inject_rclone_onedrive_export_options(
     }
 }
 
+/// A Zoho folder/workspace id stored as `initialPath`. AeroFTP persists
+/// those with a leading slash (`/fmip…`); rclone's `root_folder_id` does
+/// not. One leading slash is stripped, then any remaining `/` means this
+/// is a real path, not an id.
+fn zoho_folder_id_from_initial_path(initial_path: Option<&str>) -> Option<String> {
+    let s = initial_path?.trim();
+    if s.is_empty() || s == "/" {
+        return None;
+    }
+    let s = s.strip_prefix('/').unwrap_or(s);
+    if s.is_empty() || s.contains('/') {
+        None
+    } else {
+        Some(s.to_string())
+    }
+}
+
 /// Inject Zoho WorkDrive fields rclone's `zoho` backend needs that do not
-/// travel with the OAuth token: `root_folder_id` (the workspace / team
-/// folder the profile is pinned to). The region is injected next to the
-/// token by [`inject_rclone_oauth_export_options`].
+/// travel with the OAuth token: `root_folder_id` (the workspace /
+/// privatespace the profile is pinned to). The region is injected next to
+/// the token by [`inject_rclone_oauth_export_options`].
 ///
-/// Sources, first non-empty wins: `options.root_folder_id` / `team_id` /
-/// `workspace_id` (any camel/snake spelling the profile may already carry),
-/// then `initial_path` when it is a Zoho id rather than a slash-path.
+/// Sources, first non-empty wins: `options.root_folder_id` /
+/// `privatespace_id` / `workspace_id` (camel or snake), then `initial_path`
+/// when it is a Zoho id rather than a slash-path. Team ids are not folder
+/// ids: rclone lists `GET /files/{root}/files`, and a team id reproduces
+/// F6016, so they are never copied here.
 pub fn inject_rclone_zoho_export_options(
     options: &mut Option<Value>,
     protocol: &str,
@@ -791,8 +810,8 @@ pub fn inject_rclone_zoho_export_options(
     let from_opts = [
         "root_folder_id",
         "rootFolderId",
-        "team_id",
-        "teamId",
+        "privatespace_id",
+        "privatespaceId",
         "workspace_id",
         "workspaceId",
     ]
@@ -804,11 +823,7 @@ pub fn inject_rclone_zoho_export_options(
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     });
-    let from_path = initial_path
-        .map(str::trim)
-        .filter(|s| !s.is_empty() && *s != "/" && !s.contains('/'))
-        .map(str::to_string);
-    if let Some(id) = from_opts.or(from_path) {
+    if let Some(id) = from_opts.or_else(|| zoho_folder_id_from_initial_path(initial_path)) {
         opts.insert("root_folder_id".into(), Value::String(id));
     }
 }
@@ -846,16 +861,27 @@ pub async fn ensure_zoho_rclone_root_folder(options: &mut Option<Value>, profile
     if client_id.is_empty() {
         return;
     }
-    let Some(root) =
+    // The provider client used for file transfer allows a 1800s read
+    // timeout. Discovery is a handful of JSON calls; without a bound, a
+    // stuck Zoho API stalls the entire export (CLI and GUI share this
+    // helper) for every Zoho profile. 45s covers four sequential round
+    // trips on a slow link without approaching transfer-scale waits.
+    let discovery =
         crate::providers::zoho_workdrive::ZohoWorkdriveProvider::rclone_root_folder_id_for_export(
             profile_id,
             &client_id,
             &client_secret,
             &region,
-        )
-        .await
-    else {
-        return;
+        );
+    let root = match tokio::time::timeout(std::time::Duration::from_secs(45), discovery).await {
+        Ok(Some(root)) => root,
+        Ok(None) => return,
+        Err(_) => {
+            log::warn!(
+                "rclone export: Zoho root_folder_id discovery timed out for profile {profile_id}"
+            );
+            return;
+        }
     };
     if !matches!(options, Some(Value::Object(_))) {
         *options = Some(Value::Object(serde_json::Map::new()));
@@ -1227,6 +1253,76 @@ mod tests {
         // Jottacloud has no OAuth app at all (personal login token).
         assert_eq!(oauth_client_cred_key("jottacloud"), None);
         assert_eq!(oauth_client_cred_key("ftp"), None);
+    }
+
+    #[test]
+    fn zoho_folder_id_from_initial_path_strips_one_leading_slash() {
+        assert_eq!(
+            zoho_folder_id_from_initial_path(Some("/fmip966f979e195e64ec78e6846976861eed5"))
+                .as_deref(),
+            Some("fmip966f979e195e64ec78e6846976861eed5")
+        );
+        assert_eq!(
+            zoho_folder_id_from_initial_path(Some("fmip966f979e195e64ec78e6846976861eed5"))
+                .as_deref(),
+            Some("fmip966f979e195e64ec78e6846976861eed5")
+        );
+        assert_eq!(zoho_folder_id_from_initial_path(Some("/")), None);
+        assert_eq!(zoho_folder_id_from_initial_path(Some("")), None);
+        assert_eq!(zoho_folder_id_from_initial_path(None), None);
+        // A real path, not a folder id.
+        assert_eq!(
+            zoho_folder_id_from_initial_path(Some("/My Folders/docs")),
+            None
+        );
+        assert_eq!(
+            zoho_folder_id_from_initial_path(Some("My Folders/docs")),
+            None
+        );
+    }
+
+    #[test]
+    fn inject_zoho_export_uses_slash_prefixed_path_and_ignores_team_id() {
+        let mut opts = Some(serde_json::json!({
+            "team_id": "team-not-a-folder",
+            "teamId": "team-camel-not-a-folder",
+        }));
+        inject_rclone_zoho_export_options(
+            &mut opts,
+            "zohoworkdrive",
+            Some("/fmip966f979e195e64ec78e6846976861eed5"),
+        );
+        assert_eq!(
+            opts.as_ref()
+                .and_then(|o| o.get("root_folder_id"))
+                .and_then(|v| v.as_str()),
+            Some("fmip966f979e195e64ec78e6846976861eed5"),
+            "leading-slash initialPath is the pinned folder id: {opts:?}"
+        );
+
+        let mut opts = Some(serde_json::json!({
+            "team_id": "team-not-a-folder",
+            "workspace_id": "ws-is-a-folder",
+        }));
+        inject_rclone_zoho_export_options(&mut opts, "zohoworkdrive", None);
+        assert_eq!(
+            opts.as_ref()
+                .and_then(|o| o.get("root_folder_id"))
+                .and_then(|v| v.as_str()),
+            Some("ws-is-a-folder"),
+            "workspace id is a valid rclone root, team id is not: {opts:?}"
+        );
+
+        let mut opts = Some(serde_json::json!({ "team_id": "team-only" }));
+        inject_rclone_zoho_export_options(&mut opts, "zohoworkdrive", None);
+        assert!(
+            opts.as_ref()
+                .and_then(|o| o.get("root_folder_id"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(true),
+            "team id must not become root_folder_id: {opts:?}"
+        );
     }
 
     fn server_count(v: &Value) -> usize {

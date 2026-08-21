@@ -876,13 +876,22 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
 }
 
 /// Map AeroFTP's Zoho region slug to rclone's `zoho` backend `region`.
-/// rclone documents `com`, `eu`, `in`, `jp`, `com.cn`, `com.au`.
-fn zoho_region_to_rclone(region: &str) -> String {
+///
+/// rclone interpolates the value as the TLD in `https://accounts.zoho.{region}`
+/// (see `setupRegion` in rclone's zoho backend). Documented examples are
+/// `com` / `eu` / `in` / `jp` / `com.cn` / `com.au`. `uk`, `sa`, and `ae`
+/// fit the same template and are real Zoho data centres, so they are
+/// emitted. Canada lives at `zohocloud.ca`, which that template cannot
+/// express: return `None` rather than a host rclone will never reach.
+/// Unknown slugs are also `None` so we never write `region = garbage`.
+fn zoho_region_to_rclone(region: &str) -> Option<String> {
     match region.trim().to_ascii_lowercase().as_str() {
-        "" | "us" | "com" => "com".into(),
-        "au" | "com.au" => "com.au".into(),
-        "cn" | "com.cn" => "com.cn".into(),
-        other => other.to_string(),
+        "" | "us" | "com" => Some("com".into()),
+        "au" | "com.au" => Some("com.au".into()),
+        "cn" | "com.cn" => Some("com.cn".into()),
+        "eu" | "in" | "jp" | "uk" | "sa" | "ae" => Some(region.trim().to_ascii_lowercase()),
+        // `ca` / `zohocloud.ca`: rclone would build accounts.zoho.ca.
+        _ => None,
     }
 }
 
@@ -1382,6 +1391,43 @@ fn crypt_export_remote_target(base_name: &str, options: &serde_json::Value) -> S
     }
 }
 
+/// rclone's s3 backend has no `bucket` key. A pinned bucket is exported as
+/// an `alias` remote `<base>-<bucket>` whose path is `<base>:<bucket>`, so
+/// keys stay bucket-relative (the way AeroFTP writes them). A crypt overlay
+/// on that profile must wrap the alias, not the raw s3 remote: wrapping
+/// `minio:/vault` makes rclone look for a bucket named `vault`.
+fn s3_pinned_bucket(options: Option<&serde_json::Value>) -> Option<&str> {
+    options
+        .and_then(|o| o.get("bucket"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+}
+
+fn s3_bucket_alias_name(remote_name: &str, bucket: &str) -> Option<String> {
+    let alias = sanitize_rclone_remote_name(&format!("{remote_name}-{bucket}"));
+    if alias.is_empty() || alias == remote_name {
+        None
+    } else {
+        Some(alias)
+    }
+}
+
+fn crypt_export_base_name(
+    proto: &str,
+    remote_name: &str,
+    options: Option<&serde_json::Value>,
+) -> String {
+    if proto == "s3" {
+        if let Some(bucket) = s3_pinned_bucket(options) {
+            if let Some(alias) = s3_bucket_alias_name(remote_name, bucket) {
+                return alias;
+            }
+        }
+    }
+    remote_name.to_string()
+}
+
 fn crypt_section_name(base_name: &str, options: &serde_json::Value) -> String {
     let requested = options
         .get("rcloneCryptOverlayName")
@@ -1511,6 +1557,25 @@ pub fn export_rclone(
             ));
         }
 
+        // rclone's zoho backend interpolates `region` as the TLD in
+        // accounts.zoho.{region}. Skip profiles whose AeroFTP slug cannot
+        // be expressed that way (Canada's zohocloud.ca, unknown garbage)
+        // rather than writing a remote rclone will never reach.
+        if proto == "zohoworkdrive" {
+            let region = options
+                .and_then(|o| o.get("region"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("us");
+            if zoho_region_to_rclone(region).is_none() {
+                output.push_str(&format!(
+                    "# skipped Zoho profile '{}': rclone's zoho backend cannot address region '{}'\n\n",
+                    remote_name,
+                    region.replace(['\n', '\r'], " ")
+                ));
+                continue;
+            }
+        }
+
         output.push_str(&format!("[{}]\n", remote_name));
 
         match proto {
@@ -1630,10 +1695,8 @@ pub fn export_rclone(
                     {
                         endpoint_from_opts = Some(endpoint.to_string());
                     }
-                    if let Some(b) = opts.get("bucket").and_then(|v| v.as_str()) {
-                        if !b.trim().is_empty() {
-                            pinned_bucket = Some(b.trim().to_string());
-                        }
+                    if let Some(b) = s3_pinned_bucket(options) {
+                        pinned_bucket = Some(b.to_string());
                     }
                     // verify_cert is stored as a bool by the GUI but may arrive
                     // as the string "false" through normalization; honour both.
@@ -1707,9 +1770,7 @@ pub fn export_rclone(
                 // alias addresses objects bucket-relative, identical to how
                 // the AeroFTP S3 client writes keys (drop-in for crypt/sync).
                 if let Some(bucket) = pinned_bucket {
-                    let alias_name =
-                        sanitize_rclone_remote_name(&format!("{}-{}", remote_name, bucket));
-                    if !alias_name.is_empty() && alias_name != remote_name {
+                    if let Some(alias_name) = s3_bucket_alias_name(&remote_name, &bucket) {
                         output.push_str(&format!(
                             "\n# Bucket-relative view of '{}' (bucket '{}').\n\
                              # AeroFTP writes keys at bucket root; address them\n\
@@ -2052,16 +2113,16 @@ pub fn export_rclone(
                 // rclone's backend type is `zoho`. Region uses TLD slugs
                 // (`com` for US / Global, `com.au` for Australia). AeroFTP
                 // stores `us` / `au` (and the other data-centre slugs that
-                // match rclone already). Map only the ones that diverge.
+                // match rclone already). Unmappable regions were skipped
+                // before the section header; unwrap is then a mapped TLD.
                 output.push_str("type = zoho\n");
                 let region = options
                     .and_then(|o| o.get("region"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("us");
-                output.push_str(&format!(
-                    "region = {}\n",
-                    ini_value(&zoho_region_to_rclone(region))
-                ));
+                let rclone_region =
+                    zoho_region_to_rclone(region).expect("zohoworkdrive region preflighted");
+                output.push_str(&format!("region = {}\n", ini_value(&rclone_region)));
                 if let Some(folder) = options
                     .and_then(|o| o.get("root_folder_id"))
                     .and_then(|v| v.as_str())
@@ -2100,7 +2161,8 @@ pub fn export_rclone(
         // Rclone Crypt is a second remote wrapping this one. The overlay
         // path is always at or below the server's remote path, so
         // `remote = <base>:<path>` is derived rather than guessed.
-        if append_crypt_remote_section(&mut output, &remote_name, options) {
+        let crypt_base = crypt_export_base_name(proto, &remote_name, options);
+        if append_crypt_remote_section(&mut output, &crypt_base, options) {
             exported += 1;
         }
     }
@@ -3044,10 +3106,15 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
 
     #[test]
     fn test_zoho_region_maps_between_aeroftp_and_rclone() {
-        assert_eq!(zoho_region_to_rclone("us"), "com");
-        assert_eq!(zoho_region_to_rclone("au"), "com.au");
-        assert_eq!(zoho_region_to_rclone("cn"), "com.cn");
-        assert_eq!(zoho_region_to_rclone("eu"), "eu");
+        assert_eq!(zoho_region_to_rclone("us").as_deref(), Some("com"));
+        assert_eq!(zoho_region_to_rclone("au").as_deref(), Some("com.au"));
+        assert_eq!(zoho_region_to_rclone("cn").as_deref(), Some("com.cn"));
+        assert_eq!(zoho_region_to_rclone("eu").as_deref(), Some("eu"));
+        assert_eq!(zoho_region_to_rclone("uk").as_deref(), Some("uk"));
+        assert_eq!(zoho_region_to_rclone("sa").as_deref(), Some("sa"));
+        assert_eq!(zoho_region_to_rclone("ae").as_deref(), Some("ae"));
+        assert_eq!(zoho_region_to_rclone("ca"), None);
+        assert_eq!(zoho_region_to_rclone("not-a-dc"), None);
         assert_eq!(zoho_region_from_rclone("com"), "us");
         assert_eq!(zoho_region_from_rclone("com.au"), "au");
         assert_eq!(zoho_region_from_rclone("eu"), "eu");
@@ -3148,6 +3215,35 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
         assert!(
             !conf.contains("region = us"),
             "must not emit AeroFTP slug:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_zoho_skips_region_rclone_cannot_address() {
+        let servers = vec![RcloneExportServer {
+            name: "zoho-ca".to_string(),
+            host: "workdrive.zohocloud.ca".to_string(),
+            port: 443,
+            username: "me@example.com".to_string(),
+            protocol: Some("zohoworkdrive".to_string()),
+            options: Some(serde_json::json!({ "region": "ca" })),
+            provider_id: Some("zoho-workdrive".to_string()),
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-zoho-ca.conf");
+        let n = export_rclone(&servers, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert_eq!(
+            n, 0,
+            "unusable zoho remote must not count as exported:\n{conf}"
+        );
+        assert!(
+            !conf.contains("[zoho-ca]"),
+            "must not emit a section rclone cannot reach:\n{conf}"
+        );
+        assert!(
+            conf.contains("skipped Zoho profile 'zoho-ca'"),
+            "skip must be explained:\n{conf}"
         );
     }
 
@@ -3275,6 +3371,45 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             .lines()
             .any(|l| l.trim_start().starts_with("password ="));
         assert!(!has_pw_line, "must not emit password =:\n{conf}");
+    }
+
+    #[test]
+    fn test_export_rclone_s3_crypt_wraps_bucket_alias() {
+        let servers = vec![RcloneExportServer {
+            name: "minio".to_string(),
+            host: "s3.lab.example.test".to_string(),
+            port: 443,
+            username: "AKIAEXAMPLE".to_string(),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({
+                "region": "us-east-1",
+                "endpoint": "https://s3.lab.example.test",
+                "bucket": "aeroftp-test",
+                "rcloneCryptEnabled": true,
+                "rcloneCryptOverlayScope": "/vault",
+                "rcloneCryptPassword": "topsecret",
+            })),
+            provider_id: Some("minio".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("minio".to_string(), "s3secret".to_string());
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-s3-crypt-alias.conf");
+        let n = export_rclone(&servers, &passwords, &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read");
+        std::fs::remove_file(&tmp).ok();
+        assert!(n >= 2, "s3 + alias + crypt: {n}\n{conf}");
+        assert!(
+            conf.contains("[minio-aeroftp-test]"),
+            "bucket alias:\n{conf}"
+        );
+        assert!(
+            conf.contains("remote = minio-aeroftp-test:/vault"),
+            "crypt must wrap the bucket alias, not minio:/vault:\n{conf}"
+        );
+        assert!(
+            !conf.contains("remote = minio:/vault"),
+            "must not point crypt at a bucket named vault:\n{conf}"
+        );
     }
 
     /// #128-D: pCloud's rclone `hostname` must be a real API host, not the
