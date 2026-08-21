@@ -85,12 +85,17 @@ updates:
       # isolation forks the trait crates. russh already pulls aes 0.9 as
       # a *separate* copy — that is fine; a direct bump is not.
       # Upstream now has aes-gcm 0.11 / aes-kw 0.3 / aes-siv 0.8 /
-      # aes-gcm-siv 0.12 / chacha20poly1305 0.11 on aes 0.9, but
-      # aerovault 0.6.3 still requires the 0.11/0.2/0.7/0.10 line and
-      # aerocrypt still uses `aead::{Aead, Payload}`. Unblock the
-      # wrappers together when aerovault ships a matching release.
+      # aes-gcm-siv 0.12 on aes 0.9. chacha20poly1305 0.11 is the same
+      # aead 0.6 cohort (chacha20 0.10 / cipher 0.5 / poly1305 0.9), not
+      # an aes 0.9 crate. aerovault 0.6.3 still requires the
+      # 0.11/0.2/0.7/0.10 line, noq-proto still needs aes-gcm =0.10.3,
+      # and aerocrypt still uses `aead::{Aead, Payload}`. Unblock the
+      # wrappers together when aerovault (and noq-proto for aes-gcm)
+      # ship matching releases.
       - dependency-name: "aes"
         versions: [">=0.9.0"]
+      - dependency-name: "aes-gcm"
+        versions: [">=0.11.0"]
       - dependency-name: "aes-gcm-siv"
         versions: [">=0.12.0"]
       - dependency-name: "aes-kw"
