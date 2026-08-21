@@ -2177,6 +2177,48 @@ mod tests {
     }
 
     #[test]
+    fn webdav_provider_executor_snapshot_exposes_clone_pool_ceiling() {
+        // Issue #591: vanilla WebDAV must resolve to HttpClonePool so GUI
+        // folder downloads honour max_concurrent instead of LockedSingle.
+        use crate::providers::webdav::WebDavProvider;
+        use crate::providers::{StorageProvider, WebDavConfig};
+
+        let provider = WebDavProvider::new(WebDavConfig {
+            url: "https://dav.example.com/".to_string(),
+            username: "user".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+            provider_id: None,
+            verify_cert: true,
+            anonymous: false,
+        })
+        .expect("webdav provider");
+
+        let advertised = provider.transfer_capabilities();
+        let can_clone = provider.clone_for_transfer().is_ok();
+        assert!(can_clone, "WebDAV clone_for_transfer must succeed offline");
+        let caps = compose_runtime_transfer_capabilities(
+            &advertised,
+            provider.transfer_executor_kind(),
+            can_clone,
+        );
+        assert_eq!(caps.file_parallel, Capability::Supported);
+        assert_eq!(caps.session_pool, Capability::Supported);
+        assert_eq!(caps.max_file_slots, Some(8));
+
+        let model = resolve_session_model(
+            ProviderType::WebDav,
+            &caps,
+            provider.transfer_executor_kind(),
+            can_clone,
+            provider.transfer_executor_max_sessions(),
+            8,
+        );
+        assert!(model.is_clone_pool());
+        assert_eq!(model.max_leases(), 8);
+    }
+
+    #[test]
     fn azure_provider_executor_snapshot_exposes_clone_pool_ceiling() {
         use crate::providers::azure::AzureProvider;
         use crate::providers::{AzureConfig, StorageProvider};
@@ -2256,10 +2298,11 @@ mod tests {
     }
 
     #[test]
-    fn nextcloud_clone_alone_does_not_activate_file_parallel_without_pool_kind() {
-        // Residual: WebDAV/Nextcloud can clone for single-file multipart parts
-        // but intentionally keeps LockedSingle transfer_executor_kind, so
-        // batch file-level parallel stays off (activation is S3/B2/Azure).
+    fn clone_alone_does_not_activate_file_parallel_without_pool_kind() {
+        // Composer gate: a successful clone_for_transfer probe is not enough
+        // when the declared executor kind is LockedSingle. WebDAV now
+        // advertises HttpClonePool (issue #591); this still locks providers
+        // that clone for parts but keep a single-lease batch executor.
         let advertised = TransferCapabilities {
             file_parallel: Capability::Unsupported,
             session_pool: Capability::Unsupported,

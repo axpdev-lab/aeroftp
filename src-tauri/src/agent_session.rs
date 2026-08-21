@@ -653,6 +653,9 @@ fn static_http_clone_pool_slots(provider_type: ProviderType) -> Option<(u16, u16
         // DAG-P1-05D: native Filen multipart part workers, ceiling 4;
         // list remains locked-single. Crypto/auth via Arc snapshot.
         ProviderType::Filen => Some((4, 1)),
+        // Issue #591: vanilla WebDAV GET/PUT of distinct files is clone-safe
+        // (HttpClonePool, ceiling 8). List stays locked-single.
+        ProviderType::WebDav => Some((8, 1)),
         // DAG-P1-05C: pCloud deliberately stays off this registry because live
         // concurrent upload_write returns result 2068, so executor remains
         // LockedSingle (hints may still advertise multipart_max_parallel=2).
@@ -1334,6 +1337,32 @@ mod tests {
         assert_eq!(
             caps.list_parallel,
             crate::transfer_dag::Capability::Unsupported
+        );
+    }
+
+    #[test]
+    fn webdav_protocol_defaults_advertise_clone_pool_ceiling_8() {
+        // Issue #591: file-level WebDAV GET/PUT is HttpClonePool; list stays
+        // locked. Multipart remains Nextcloud-only (vanilla threshold 0).
+        let caps = transfer_capabilities_for_protocol("webdav").expect("webdav");
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.session_pool,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_file_slots, Some(8));
+        assert_eq!(
+            caps.list_parallel,
+            crate::transfer_dag::Capability::Unsupported
+        );
+        // Checker ceiling stays the from_provider_hints default (list is not pooled).
+        assert_eq!(caps.max_checker_slots, Some(4));
+        assert_eq!(
+            caps.server_side_copy,
+            crate::transfer_dag::Capability::Supported
         );
     }
 

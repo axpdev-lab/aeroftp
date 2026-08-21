@@ -6137,7 +6137,7 @@ const App: React.FC = () => {
     onTransferComplete: handleQuotaAfterTransfer,
     maxChannels: (connectionParams.protocol && isFtpProtocol(connectionParams.protocol as ProviderType))
       ? TRANSFER_SPEED_PRESETS[sessionTransferSpeedPreset].channels
-      : 1,
+      : maxConcurrentTransfers,
   });
 
   // AeroFile toggle: shared between StatusBar, IntroHub header, and View > AeroFile menu
@@ -6446,11 +6446,14 @@ const App: React.FC = () => {
   const effectiveTransferSpeedPreset: TransferSpeedPreset = supportsFtpTransferPresets
     ? sessionTransferSpeedPreset
     : 'base';
+  // FTP uses the Safe/Balanced/Max channel presets. Every other protocol
+  // (SFTP, WebDAV, S3, …) honours the Settings concurrent-transfers knob;
+  // LockedSingle backends still clamp to 1 in resolve_provider_transfer_runtime.
+  // Issue #591: the previous `: 1` fallback forced WebDAV (and other HTTP
+  // clone-pool providers) to a single file even when the user set 8.
   const effectiveMaxConcurrentTransfers = supportsFtpTransferPresets
     ? TRANSFER_SPEED_PRESETS[effectiveTransferSpeedPreset].channels
-    : supportsSftpTransferPresets
-      ? maxConcurrentTransfers
-      : 1;
+    : maxConcurrentTransfers;
   const sftpPresetDefinition = getSftpDownloadPresetDefinition(sftpDownloadPreset);
   const effectiveTransferSpeedLabel = supportsSftpTransferPresets
     ? `${t(sftpPresetDefinition.labelKey)} ${sftpPresetDefinition.connections}x`

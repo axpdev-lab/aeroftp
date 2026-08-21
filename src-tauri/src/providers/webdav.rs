@@ -19,11 +19,13 @@ use rand::Rng;
 use reqwest::{Client, Method, StatusCode};
 use secrecy::ExposeSecret;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 use super::{
-    sanitize_api_error, MultipartHandle, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageProvider, UploadedPart,
-    WebDavConfig,
+    sanitize_api_error, MultipartHandle, ProviderError, ProviderTransferExecutorKind, ProviderType,
+    RemoteEntry, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageProvider,
+    UploadedPart, WebDavConfig,
 };
 
 /// Encode one untrusted Nextcloud trash identifier as exactly one URL segment.
@@ -77,7 +79,9 @@ struct DigestState {
     nonce: String,
     qop: String,
     opaque: Option<String>,
-    nc: u32,
+    /// Shared across `clone_for_transfer` workers so concurrent requests never
+    /// reuse the same `nc` against one nonce (RFC 2617).
+    nc: Arc<AtomicU32>,
 }
 
 impl DigestState {
@@ -89,7 +93,7 @@ impl DigestState {
             nonce: Self::extract_param(s, "nonce")?,
             qop: Self::extract_param(s, "qop").unwrap_or_default(),
             opaque: Self::extract_param(s, "opaque"),
-            nc: 0,
+            nc: Arc::new(AtomicU32::new(0)),
         })
     }
 
@@ -113,9 +117,10 @@ impl DigestState {
     }
 
     /// Generate the `Authorization: Digest ...` header value
-    fn authorization(&mut self, method: &str, uri: &str, username: &str, password: &str) -> String {
-        self.nc += 1;
-        let nc_str = format!("{:08x}", self.nc);
+    fn authorization(&self, method: &str, uri: &str, username: &str, password: &str) -> String {
+        // First request is nc=1, matching the previous `self.nc += 1` start.
+        let nc = self.nc.fetch_add(1, Ordering::Relaxed) + 1;
+        let nc_str = format!("{:08x}", nc);
         let cnonce = Self::generate_cnonce();
 
         let ha1 = md5_hex(&format!("{}:{}:{}", username, self.realm, password));
@@ -309,6 +314,10 @@ pub struct WebDavProvider {
 
 /// Provider-specific hard cap on concurrent Range streams (mirrors S3's 16).
 const WEBDAV_MULTI_THREAD_MAX_STREAMS: usize = 16;
+/// File-level clone-pool ceiling. Matches the GUI/CLI `MAX_MAX_CONCURRENT`
+/// knob (issue #591): independent WebDAV GET/PUT of distinct files is safe
+/// on a cloned `reqwest::Client`.
+const WEBDAV_TRANSFER_MAX_SESSIONS: u16 = 8;
 
 impl WebDavProvider {
     /// Create a new WebDAV provider with the given configuration
@@ -692,7 +701,7 @@ impl WebDavProvider {
             return builder;
         }
 
-        if let Some(ref mut state) = self.digest_auth {
+        if let Some(ref state) = self.digest_auth {
             let uri_path = extract_uri_path(&url);
             tracing::debug!(
                 "[WebDAV] Digest request: {} {} (uri={})",
@@ -1076,7 +1085,7 @@ impl WebDavProvider {
         if self.config.anonymous {
             return builder;
         }
-        if let Some(ref mut state) = self.digest_auth {
+        if let Some(ref state) = self.digest_auth {
             let uri_path = extract_uri_path(url);
             let auth = state.authorization(
                 method.as_str(),
@@ -4122,27 +4131,25 @@ impl StorageProvider for WebDavProvider {
         }
     }
 
-    /// Mint an independent worker for concurrent Nextcloud chunked-upload parts.
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        ProviderTransferExecutorKind::HttpClonePool
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        WEBDAV_TRANSFER_MAX_SESSIONS
+    }
+
+    /// Mint an independent worker for file-level parallelism and Nextcloud
+    /// chunked-upload parts.
     ///
-    /// Nextcloud chunked v2 uploads each chunk as an independent `PUT` to a
-    /// distinct `/uploads/<user>/<uuid>/<n>` path under one shared session
-    /// folder, finalised by a single `MOVE`. Those PUTs carry no ordering
-    /// constraint, so a cloned worker (independent reqwest client, same
-    /// credentials and session uuid carried in the handle) can upload parts in
-    /// parallel safely. This is what turns the serial-chunk upload regression
-    /// into a fan-out win (audit CHUNK-01 follow-up). Vanilla WebDAV has no
-    /// chunked multipart, so it stays un-cloneable and single-stream. NOTE:
-    /// this intentionally does NOT override `transfer_executor_kind()`, so the
-    /// batch/folder executor selection is unchanged; only the single-file
-    /// multipart part path consults `clone_for_transfer()`.
+    /// Distinct-file GET/PUT on vanilla WebDAV (SFTPGo, nginx DAV, Apache
+    /// mod_dav, Koofr, …) has no session lock, so a cloned provider sharing
+    /// the `reqwest::Client` is the same HttpClonePool model as S3/Azure
+    /// (issue #591). Nextcloud chunked v2 still uses this clone for
+    /// unordered part PUTs. Digest `nc` is an `Arc<AtomicU32>` so clones
+    /// never reuse a nonce count.
     fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
-        if self.is_nextcloud_for_dav() {
-            Ok(Box::new(self.clone()))
-        } else {
-            Err(ProviderError::NotSupported(
-                "clone_for_transfer (vanilla WebDAV has no parallel multipart)".to_string(),
-            ))
-        }
+        Ok(Box::new(self.clone()))
     }
 
     fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
@@ -5433,5 +5440,77 @@ mod tests {
         assert_eq!(provider.build_url("/"), url);
         assert_eq!(provider.build_url("/sample.png"), url);
         assert_eq!(provider.build_url("/anything-else"), url);
+    }
+
+    /// Issue #591 — vanilla WebDAV (SFTPGo, nginx DAV, Apache) must advertise
+    /// an HttpClonePool so folder downloads honour the user's concurrency knob
+    /// instead of staying LockedSingle.
+    #[test]
+    fn vanilla_webdav_advertises_http_clone_pool_file_parallel() {
+        let p = WebDavProvider::new(test_config("https://dav.example.com/")).expect("provider");
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        assert_eq!(
+            p.transfer_executor_max_sessions(),
+            WEBDAV_TRANSFER_MAX_SESSIONS
+        );
+        assert!(p.clone_for_transfer().is_ok());
+        let caps = p.transfer_capabilities();
+        assert_eq!(
+            caps.file_parallel,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.session_pool,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(caps.max_file_slots, Some(WEBDAV_TRANSFER_MAX_SESSIONS));
+        // List stays locked: this promotion is file-transfer only.
+        assert_eq!(
+            caps.list_parallel,
+            crate::transfer_dag::Capability::Unsupported
+        );
+    }
+
+    /// Issue #591 — Nextcloud still clones for chunked-v2 parts, and now also
+    /// for file-level batch parallelism.
+    #[test]
+    fn nextcloud_clone_pool_covers_file_parallel_and_multipart() {
+        let mut cfg = test_config("https://cloud.example.com/remote.php/dav/files/alice/");
+        cfg.provider_id = Some("nextcloud".to_string());
+        let p = WebDavProvider::new(cfg).expect("provider");
+        assert!(p.is_nextcloud_for_dav());
+        assert!(p.clone_for_transfer().is_ok());
+        assert_eq!(
+            p.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+        );
+        assert_eq!(p.transfer_capabilities().max_file_slots, Some(8));
+    }
+
+    /// Issue #591 — cloned Digest workers share one `nc` counter so two
+    /// concurrent Authorization headers never carry the same nonce count.
+    #[test]
+    fn digest_nc_is_shared_across_clones() {
+        let a = DigestState::parse(r#"Digest realm="r", nonce="n", qop="auth""#)
+            .expect("parse digest challenge");
+        let b = a.clone();
+        let h1 = a.authorization("GET", "/a", "u", "p");
+        let h2 = b.authorization("GET", "/b", "u", "p");
+        let nc_of = |h: &str| {
+            h.split("nc=")
+                .nth(1)
+                .and_then(|s| s.split([',', ' ']).next())
+                .unwrap_or("")
+                .to_string()
+        };
+        let nc1 = nc_of(&h1);
+        let nc2 = nc_of(&h2);
+        assert_ne!(nc1, nc2, "cloned workers must not reuse nc");
+        let mut seen = [nc1.as_str(), nc2.as_str()];
+        seen.sort();
+        assert_eq!(seen, ["00000001", "00000002"]);
     }
 }
