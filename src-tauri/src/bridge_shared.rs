@@ -478,9 +478,10 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
         // accounts authenticated by a stored password / access key (Filen, MEGA,
         // Azure, Swift, Koofr, OpenDrive, Backblaze B2) on top of the standard
         // ftp/sftp/s3/webdav set (issue #128). #128-D adds the OAuth-token
-        // providers (Drive/Dropbox/OneDrive/Box/pCloud/Yandex): their export
-        // arms now emit the rclone `token` blob plus the BYO client_id/secret
-        // that minted it, so rclone can refresh and the remote is usable.
+        // providers (Drive/Dropbox/OneDrive/Box/pCloud/Yandex/Zoho): their
+        // export arms now emit the rclone `token` blob plus the BYO
+        // client_id/secret that minted it, so rclone can refresh and the
+        // remote is usable. Zoho also carries `region` and `root_folder_id`.
         // Jottacloud is intentionally NOT here: it exports via a dedicated path
         // that rebuilds its persisted OIDC refresh token into a working rclone
         // token, which only the CLI (`cmd_export_rclone`/`collect_export_scaffold`)
@@ -505,6 +506,7 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
             "box",
             "pcloud",
             "yandexdisk",
+            "zohoworkdrive",
         ],
         "winscp" => &["ftp", "ftps", "sftp", "webdav", "s3"],
         "filezilla" => &["ftp", "ftps", "sftp", "s3"],

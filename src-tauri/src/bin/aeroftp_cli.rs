@@ -34914,6 +34914,7 @@ struct ProfileExportScaffold {
     options: Option<serde_json::Value>,
     provider_id: Option<String>,
     initial_path: Option<String>,
+    overlay: Option<serde_json::Value>,
     secret: String,
 }
 
@@ -34977,6 +34978,7 @@ fn collect_export_scaffold(
             .get("initialPath")
             .and_then(|v| v.as_str())
             .map(str::to_string);
+        let overlay = entry.get("aeroCryptOverlay").cloned();
 
         // MUV-3: active user's partition with fallback to the legacy vault.
         let secret = if id.is_empty() {
@@ -35073,6 +35075,7 @@ fn collect_export_scaffold(
             options,
             provider_id,
             initial_path,
+            overlay,
             secret,
         });
     }
@@ -35123,8 +35126,8 @@ async fn cmd_export_rclone(
     // Single source of truth shared with the GUI bridge: the credential
     // backends (FTP/SFTP/WebDAV/S3/Filen/Mega/Azure/Swift/Koofr/OpenDrive/
     // Backblaze) plus the #128-D OAuth-token providers (Drive/Dropbox/
-    // OneDrive/Box/pCloud/Yandex), whose token + BYO client_id/secret are
-    // injected below. Jottacloud is appended CLI-only: its rclone export
+    // OneDrive/Box/pCloud/Yandex/Zoho), whose token + BYO client_id/secret
+    // are injected below. Jottacloud is appended CLI-only: its rclone export
     // rebuilds the persisted OIDC refresh token into a working token (verified
     // end-to-end against a live account; `collect_export_scaffold` loads the
     // refresh blob). The GUI bridge has no refresh-blob injection so it gates
@@ -35149,48 +35152,58 @@ async fn cmd_export_rclone(
         return 4;
     }
 
-    let exportable: Vec<RcloneExportServer> = collected
-        .profiles
-        .iter()
-        .map(|p| {
-            // #128-D: inject the vaulted OAuth token + BYO client_id/secret so
-            // OAuth remotes export usable (refreshable) from the CLI too, using
-            // the exact same helper the GUI bridge calls.
-            let mut options = p.options.clone();
-            ftp_client_gui_lib::bridge_commands::inject_rclone_oauth_export_options(
+    let mut exportable: Vec<RcloneExportServer> = Vec::with_capacity(collected.profiles.len());
+    for p in &collected.profiles {
+        // #128-D: inject the vaulted OAuth token + BYO client_id/secret so
+        // OAuth remotes export usable (refreshable) from the CLI too, using
+        // the exact same helper the GUI bridge calls.
+        let mut options = p.options.clone();
+        ftp_client_gui_lib::bridge_commands::inject_rclone_oauth_export_options(
+            &mut options,
+            &store,
+            &p.protocol,
+            &p.id,
+        );
+        ftp_client_gui_lib::bridge_commands::inject_rclone_filen_export_options(
+            &mut options,
+            &store,
+            &p.protocol,
+            &p.id,
+        );
+        ftp_client_gui_lib::bridge_commands::inject_rclone_onedrive_export_options(
+            &mut options,
+            &store,
+            &p.protocol,
+            &p.id,
+        );
+        ftp_client_gui_lib::bridge_commands::inject_rclone_zoho_export_options(
+            &mut options,
+            &p.protocol,
+            p.initial_path.as_deref(),
+        );
+        if p.protocol == "zohoworkdrive" {
+            ftp_client_gui_lib::bridge_commands::ensure_zoho_rclone_root_folder(
                 &mut options,
-                &store,
-                &p.protocol,
                 &p.id,
-            );
-            // #128-D: same for the vaulted Filen CLI API key (issue #230), which
-            // rclone's `filen` backend requires and cannot derive from the
-            // password.
-            ftp_client_gui_lib::bridge_commands::inject_rclone_filen_export_options(
-                &mut options,
-                &store,
-                &p.protocol,
-                &p.id,
-            );
-            // #128-D: and the vaulted OneDrive Graph drive_id/drive_type, which
-            // rclone's `onedrive` backend needs and AeroFTP captures at connect.
-            ftp_client_gui_lib::bridge_commands::inject_rclone_onedrive_export_options(
-                &mut options,
-                &store,
-                &p.protocol,
-                &p.id,
-            );
-            RcloneExportServer {
-                name: p.name.clone(),
-                host: p.host.clone(),
-                port: p.port,
-                username: p.username.clone(),
-                protocol: Some(p.protocol.clone()),
-                options,
-                provider_id: p.provider_id.clone(),
-            }
-        })
-        .collect();
+            )
+            .await;
+        }
+        ftp_client_gui_lib::bridge_commands::inject_rclone_crypt_export_options(
+            &mut options,
+            &store,
+            &p.id,
+            p.overlay.as_ref(),
+        );
+        exportable.push(RcloneExportServer {
+            name: p.name.clone(),
+            host: p.host.clone(),
+            port: p.port,
+            username: p.username.clone(),
+            protocol: Some(p.protocol.clone()),
+            options,
+            provider_id: p.provider_id.clone(),
+        });
+    }
 
     let target_path = match output {
         Some(p) => std::path::PathBuf::from(p),

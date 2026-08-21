@@ -589,6 +589,36 @@ impl ZohoWorkdriveProvider {
         self
     }
 
+    /// Discover the privatespace (My Folders) id rclone needs as
+    /// `root_folder_id`. Without it rclone lists `GET /files//files` and Zoho
+    /// answers F6016. Uses the same team/privatespace walk as `connect`.
+    pub async fn rclone_root_folder_id_for_export(
+        profile_id: &str,
+        client_id: &str,
+        client_secret: &str,
+        region: &str,
+    ) -> Option<String> {
+        if profile_id.is_empty() {
+            return None;
+        }
+        let mut provider = Self::new(ZohoWorkdriveConfig::new(client_id, client_secret, region))
+            .with_profile_id(profile_id);
+        if provider.discover_team().await.is_err() {
+            return None;
+        }
+        provider
+            .privatespace_id
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                let id = provider.current_folder_id.trim();
+                if id.is_empty() {
+                    None
+                } else {
+                    Some(id.to_string())
+                }
+            })
+    }
+
     /// Get OAuth config for token operations
     fn oauth_config(&self) -> OAuthConfig {
         OAuthConfig::zoho(
