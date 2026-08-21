@@ -7,7 +7,9 @@
 //! Blomp-specific behaviour (black-box verified against a live account,
 //! 2026-07-28):
 //!   - Auth is Keystone v2 with `tenantName = "storage"`; the object-store
-//!     endpoint resolves to `swiftproxy.acs.ai.net:8080`.
+//!     endpoint resolves to `http://swiftproxy.acs.ai.net:8080` (cleartext
+//!     HTTP on 8080 — HTTPS is not offered on that port). The catalog is
+//!     still trusted because Keystone itself is reached over HTTPS.
 //!   - The account (container-list) operation `GET {storage_url}?format=json`
 //!     is **forbidden at the proxy** — HTTP 403 for every request and every
 //!     User-Agent, not a spurious/transient failure. This is what made Blomp
@@ -170,12 +172,20 @@ impl SwiftProvider {
     // ─── Auth ──────────────────────────────────────────────────
 
     /// Swift deliberately permits Identity and Object Storage to use different
-    /// hosts, so same-origin with `auth_url` is not a valid requirement (Blomp
-    /// is one concrete example). The TLS-authenticated auth response is the
-    /// protocol trust boundary. Still reject malformed endpoints, embedded
-    /// credentials, and HTTPS-to-HTTP downgrade before retaining a token.
+    /// hosts *and* schemes, so same-origin with `auth_url` is not a valid
+    /// requirement. Blomp is the concrete production case: Keystone is
+    /// `https://authenticate.blomp.com` while the object-store publicURL is
+    /// `http://swiftproxy.acs.ai.net:8080/...` (no TLS on that port).
+    ///
+    /// The trust boundary is the TLS-authenticated Keystone/TempAuth response
+    /// that *named* this endpoint — not a same-scheme check. Reject only
+    /// malformed endpoints and URL-embedded credentials; still bind every
+    /// subsequent token-bearing request to this origin via
+    /// `validate_request_target` and refuse authenticated redirects.
     fn validate_storage_endpoint(&self, candidate: &str) -> Result<String, ProviderError> {
-        let auth = reqwest::Url::parse(&self.config.auth_url).map_err(|e| {
+        // Parse auth_url for side-effect validation only (malformed config
+        // should fail closed even when the catalog endpoint looks fine).
+        let _auth = reqwest::Url::parse(&self.config.auth_url).map_err(|e| {
             ProviderError::AuthenticationFailed(format!("Invalid Swift auth URL: {e}"))
         })?;
         let endpoint = reqwest::Url::parse(candidate).map_err(|e| {
@@ -191,11 +201,14 @@ impl SwiftProvider {
                 "Swift storage endpoint must not contain URL credentials".into(),
             ));
         }
-        if auth.scheme() == "https" && endpoint.scheme() != "https" {
-            return Err(ProviderError::AuthenticationFailed(
-                "Swift storage endpoint attempted to downgrade an HTTPS authentication session"
-                    .into(),
-            ));
+        if endpoint.scheme() == "http" {
+            // OpenStack publicURL catalogs routinely advertise cleartext HTTP
+            // for object-store (Blomp, many private clouds). Token will travel
+            // in cleartext to that origin — expected for those deployments.
+            debug!(
+                "Swift storage endpoint is HTTP (catalog-issued): {}",
+                endpoint.host_str().unwrap_or("?")
+            );
         }
         Ok(candidate.trim_end_matches('/').to_string())
     }
@@ -246,41 +259,99 @@ impl SwiftProvider {
         if primary.is_ok() {
             return primary;
         }
-        let primary_err = primary;
+        let primary_err = primary.expect_err("primary is Err after is_ok check");
         debug!("Swift primary auth failed; trying fallback flow {secondary:?}");
         let fallback = match secondary {
             AuthVersion::V2 => self.auth_keystone_v2(&base).await,
             AuthVersion::V1 => self.auth_tempauth_v1(&base).await,
         };
-        // On double failure, surface the error from the *detected* flow — it is
-        // the more relevant diagnostic for a correctly-detected endpoint.
-        fallback.or(primary_err)
+        match fallback {
+            Ok(()) => Ok(()),
+            Err(fallback_err) => Err(Self::prefer_swift_auth_error(primary_err, fallback_err)),
+        }
+    }
+
+    /// Choose which of two failed auth flows to surface.
+    ///
+    /// TempAuth `/auth/v1.0` returns HTTP 404 on Keystone-only deployments
+    /// (Blomp). If the probe guessed V1 first, that 404 used to mask the real
+    /// Keystone diagnostic ("Invalid credentials", catalog problems, …). Prefer
+    /// any non-TempAuth-404 error; only keep the 404 when both sides are 404.
+    fn prefer_swift_auth_error(primary: ProviderError, fallback: ProviderError) -> ProviderError {
+        let is_tempauth_404 = |e: &ProviderError| match e {
+            ProviderError::AuthenticationFailed(msg) => {
+                msg.contains("TempAuth failed: HTTP 404")
+                    || msg.contains("TempAuth failed: HTTP 404 Not Found")
+            }
+            _ => false,
+        };
+        if is_tempauth_404(&primary) && !is_tempauth_404(&fallback) {
+            fallback
+        } else if is_tempauth_404(&fallback) && !is_tempauth_404(&primary) {
+            primary
+        } else {
+            // Detected-flow error is the better default when both are real.
+            primary
+        }
     }
 
     /// Detect auth version from the root version document.
     ///
-    /// Keystone endpoints advertise `v2.0` / `v3` in the root JSON; legacy
-    /// TempAuth (Rackspace-style) does not. On any probe failure we default to
-    /// Keystone v2 — the modern norm and what Blomp serves — because
-    /// `authenticate()` self-heals to TempAuth v1 if that guess is wrong.
+    /// Keystone endpoints advertise `v2.0` / `v3` in the root JSON (and often
+    /// answer HTTP 300 Multiple Choices); legacy TempAuth (Rackspace-style)
+    /// does not. On any probe failure we default to Keystone v2 — the modern
+    /// norm and what Blomp serves — because `authenticate()` self-heals to
+    /// TempAuth v1 if that guess is wrong.
     async fn detect_auth_version(&self, base: &str) -> AuthVersion {
-        if let Ok(resp) = self
+        // Known Blomp/AIN Keystone hosts never speak TempAuth; skip the probe
+        // so a transient HTML interstitial cannot push us down the V1 path.
+        if let Ok(url) = reqwest::Url::parse(base) {
+            if let Some(host) = url.host_str() {
+                let host = host.to_ascii_lowercase();
+                if host == "authenticate.blomp.com"
+                    || host == "authenticate.ain.net"
+                    || host.ends_with(".blomp.com")
+                {
+                    return AuthVersion::V2;
+                }
+            }
+        }
+
+        match self
             .client
             .get(base)
             .timeout(AUTH_REQUEST_TIMEOUT)
             .send()
             .await
         {
-            if let Ok(text) = resp.text().await {
-                if text.contains("v2.0") || text.contains("v3") {
+            Ok(resp) => {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                debug!(
+                    "Swift auth probe: status={} body_len={}",
+                    status.as_u16(),
+                    text.len()
+                );
+                if text.contains("v2.0")
+                    || text.contains("v3")
+                    || text.contains("\"versions\"")
+                    || status.as_u16() == 300
+                {
                     return AuthVersion::V2;
                 }
-                // A reachable root that names neither → assume legacy TempAuth.
-                return AuthVersion::V1;
+                if text.is_empty() {
+                    // Empty body: do not assume TempAuth (that path 404s on
+                    // Keystone and used to poison the user-facing error).
+                    return AuthVersion::V2;
+                }
+                // Reachable root that names neither Keystone version → TempAuth.
+                AuthVersion::V1
+            }
+            Err(e) => {
+                debug!("Swift auth probe failed: {e}");
+                AuthVersion::V2
             }
         }
-        // Unreachable/undecodable probe: prefer Keystone v2, self-heal covers V1.
-        AuthVersion::V2
     }
 
     /// TempAuth v1: GET {base}/auth/v1.0 with X-Auth-User + X-Auth-Key
@@ -1543,19 +1614,52 @@ mod tests {
     }
 
     #[test]
-    fn storage_endpoint_allows_catalog_host_but_rejects_downgrade_and_credentials() {
+    fn storage_endpoint_allows_catalog_http_and_rejects_credentials() {
         let p = test_provider();
         assert_eq!(
             p.validate_storage_endpoint("https://objects.example.net/v1/AUTH_a/")
                 .unwrap(),
             "https://objects.example.net/v1/AUTH_a"
         );
-        assert!(p
-            .validate_storage_endpoint("http://objects.example.net/v1/AUTH_a")
-            .is_err());
+        // OpenStack catalogs (Blomp included) routinely advertise cleartext
+        // HTTP publicURLs for object-store; the Keystone TLS session is the
+        // trust boundary, not same-scheme with the auth URL.
+        assert_eq!(
+            p.validate_storage_endpoint(
+                "http://swiftproxy.acs.ai.net:8080/v1/AUTH_8b989f118e624ca6957e102775583f6f"
+            )
+            .unwrap(),
+            "http://swiftproxy.acs.ai.net:8080/v1/AUTH_8b989f118e624ca6957e102775583f6f"
+        );
         assert!(p
             .validate_storage_endpoint("https://user:pw@objects.example.net/v1/AUTH_a")
             .is_err());
+        assert!(p
+            .validate_storage_endpoint("ftp://objects.example.net/v1/AUTH_a")
+            .is_err());
+        assert!(p.validate_storage_endpoint("not-a-url").is_err());
+    }
+
+    #[test]
+    fn prefer_swift_auth_error_masks_tempauth_404_behind_keystone() {
+        let tempauth_404 =
+            || ProviderError::AuthenticationFailed("TempAuth failed: HTTP 404 Not Found".into());
+        let invalid = || ProviderError::AuthenticationFailed("Invalid credentials".into());
+        match SwiftProvider::prefer_swift_auth_error(tempauth_404(), invalid()) {
+            ProviderError::AuthenticationFailed(msg) => assert_eq!(msg, "Invalid credentials"),
+            other => panic!("unexpected {other:?}"),
+        }
+        match SwiftProvider::prefer_swift_auth_error(invalid(), tempauth_404()) {
+            ProviderError::AuthenticationFailed(msg) => assert_eq!(msg, "Invalid credentials"),
+            other => panic!("unexpected {other:?}"),
+        }
+        // Both 404 → keep primary
+        match SwiftProvider::prefer_swift_auth_error(tempauth_404(), tempauth_404()) {
+            ProviderError::AuthenticationFailed(msg) => {
+                assert!(msg.contains("TempAuth failed: HTTP 404"));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
     }
 
     #[test]
@@ -1572,5 +1676,25 @@ mod tests {
         assert!(p
             .validate_request_target("https://other.example.net/v1/AUTH_a/container/file")
             .is_err());
+    }
+
+    // Live smoke (ignored): confirms Blomp host forces Keystone and accepts HTTP storage URL shape.
+    #[tokio::test]
+    #[ignore = "network; requires BLOMP_USER + BLOMP_PASS"]
+    async fn live_blomp_keystone_accepts_http_storage_url() {
+        let user = std::env::var("BLOMP_USER").expect("BLOMP_USER");
+        let pass = std::env::var("BLOMP_PASS").expect("BLOMP_PASS");
+        let mut p = SwiftProvider::new(SwiftConfig {
+            auth_url: "https://authenticate.blomp.com".into(),
+            username: user,
+            password: SecretString::from(pass),
+            verify_cert: true,
+        });
+        p.authenticate().await.expect("blomp auth");
+        let url = p.storage_url().unwrap();
+        assert!(
+            url.starts_with("http://swiftproxy.acs.ai.net:8080/"),
+            "got {url}"
+        );
     }
 }
