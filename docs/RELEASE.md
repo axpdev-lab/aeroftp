@@ -134,14 +134,22 @@ sha256sum /tmp/AeroFTP.deb
 ### 3. Verify before pushing
 
 ```bash
-# Both sources must resolve, or the package fails to build for every user
-for u in ".deb" ".deb.sigstore.json"; do
-  curl -sL -o /dev/null -w "%{http_code}\n" \
-    "https://github.com/axpdev-lab/aeroftp/releases/download/vX.Y.Z/AeroFTP_X.Y.Z_amd64${u}"
-done
+# From this repo, pointed at the AUR checkout. Add --offline to skip the URL check.
+.github/scripts/aur-preflight.sh /path/to/aeroftp-bin
 ```
 
-The cosign identity in `prepare()` pins `refs/tags/vX.Y.Z`, so it re-pins per release; confirm the bundle's certificate really carries that tag before publishing.
+It refuses the push when the `PKGBUILD` does not parse, when `.SRCINFO` disagrees with it, when `sha256sums[0]` is not a real digest, when a `source =` line was left on the previous version, or when either release URL does not answer 200.
+
+> **Install it as the pre-push hook of the AUR checkout**, once per machine, so a bad package cannot leave even in a hurry:
+>
+> ```bash
+> ln -sf /path/to/aeroftp/.github/scripts/aur-preflight.sh \
+>        /path/to/aeroftp-bin/.git/hooks/pre-push
+> ```
+
+The check earns its place: **v3.5.2 shipped a `PKGBUILD` whose `sha256sums` array was closed after its first element**, so the file could not be sourced and `makepkg` aborted before downloading anything. Nobody could install `aeroftp-bin` for about 23 hours, until v3.5.3 replaced it, and the report came from a user rather than from us. The AUR runs no CI of any kind: what is pushed is what every user gets, on their next `yay -S`, with no gate in between. `bash -n` costs nothing and catches exactly that class of break.
+
+The cosign identity in `prepare()` pins `refs/tags/vX.Y.Z`, so it re-pins per release; confirm the bundle's certificate really carries that tag before publishing. The preflight does not check the signature, only that the artifacts exist: `cosign verify-blob` runs at build time in `prepare()`.
 
 ### 4. Push to AUR
 
