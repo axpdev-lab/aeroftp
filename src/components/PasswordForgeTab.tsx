@@ -116,8 +116,8 @@ export const PasswordForgeTab: React.FC = () => {
                 <div className="space-y-4">
                     <div>
                         <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">{t('cyberTools.pwdPresets')}</label>
-                        <div className="grid grid-cols-3 gap-1.5">
-                            {(['balanced', 'maximum', 'compatible'] as const).map(preset => (
+                        <div className="grid grid-cols-2 gap-1.5">
+                            {(['balanced', 'maximum'] as const).map(preset => (
                                 <button key={preset} type="button" onClick={() => applyPreset(preset)} className={`rounded-md border px-2 py-2 text-xs font-medium transition-all ${activePreset === preset ? 'border-cyan-500 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300' : 'border-gray-200 text-gray-600 hover:border-cyan-300 dark:border-gray-700 dark:text-gray-300'}`}>
                                     {t(`cyberTools.pwdPreset${preset[0].toUpperCase()}${preset.slice(1)}`)}
                                 </button>

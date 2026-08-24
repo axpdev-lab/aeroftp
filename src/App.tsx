@@ -465,7 +465,7 @@ import { useTranslation } from './i18n';
 
 // Components
 import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, ChecksumCapability, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
-import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } from './components/Transfer/TransferToastContainer';
+import { TransferToastContainer, dispatchTransferToast, toggleTransferToast } from './components/Transfer/TransferToastContainer';
 import { runExtractWithToast } from './utils/extractToast';
 import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
@@ -10638,6 +10638,7 @@ const App: React.FC = () => {
     // Bump the compare token: any recursive scan still in flight from a
     // previous open is now stale and will discard its own result.
     const mySeq = ++aeroSyncCompareSeqRef.current;
+    const scanProgressId = `aerosync-${Date.now()}-${mySeq}`;
 
     const toCompareEntry = (item: { name: string; is_dir: boolean; size: number | null; modified: string | null }): CompareInputEntry => {
       const mtimeMs = (() => {
@@ -10669,6 +10670,7 @@ const App: React.FC = () => {
             ? null
             : compareEntries(localFiles.map(toCompareEntry), localFiles2.map(toCompareEntry)),
           compareLoading: canRecurse,
+          scanProgressId: canRecurse ? scanProgressId : undefined,
           leftLabel: leftPath || 'Local',
           rightLabel: rightPath || currentLocalPath || 'Local (right)',
           pairKind: 'local-local',
@@ -10697,6 +10699,7 @@ const App: React.FC = () => {
                 ],
                 direction: 'bidirectional',
               },
+              progressId: scanProgressId,
             });
             // Both sides are local: local_info = left, remote_info = right.
             resolved = adaptFileComparisons(comparisons, true);
@@ -10778,6 +10781,7 @@ const App: React.FC = () => {
         context: {
           compareResult: null,
           compareLoading: true,
+          scanProgressId,
           leftLabel: leftLocal ? (currentLocalPath || 'Local') : remoteLabel,
           rightLabel: leftLocal ? remoteLabel : (currentLocalPath || 'Local'),
           pairKind: leftLocal ? 'local-remote' : 'remote-local',
@@ -10813,6 +10817,7 @@ const App: React.FC = () => {
               ],
               direction: 'bidirectional',
             },
+            progressId: scanProgressId,
           };
           const comparisons = await invoke<FileComparison[]>(
             isProviderConn ? 'provider_compare_directories' : 'compare_directories',
@@ -19008,7 +19013,7 @@ const App: React.FC = () => {
             transferQueueCount={transferQueue.items.length}
             onToggleTransferQueue={transferQueue.toggle}
             transferToastActive={hasActiveTransfer || transferQueue.hasActiveTransfers}
-            onReopenTransferToast={reopenTransferToast}
+            onReopenTransferToast={toggleTransferToast}
             showActivityLog={showActivityLog}
             activityLogCount={activityLogFilteredCount}
             onToggleActivityLog={() => setShowActivityLog(!showActivityLog)}

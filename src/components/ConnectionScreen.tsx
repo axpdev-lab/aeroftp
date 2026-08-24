@@ -6535,15 +6535,24 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         )}
                                         <div>
                                             {renderUsernameLabel()}
+                                            <div className="relative">
                                                 <input
                                                     type="text"
                                                     value={connectionParams.username}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, username: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className={`w-full px-4 py-2.5 ${isFilenDesktopBridge ? 'pr-12' : ''} bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm`}
                                                     placeholder={getUsernamePlaceholder()}
                                                     maxLength={isFilenDesktopBridge ? FILEN_BRIDGE_MAX_LENGTH : undefined}
                                                     aria-invalid={!!filenBridgeCredentialIssue}
                                                 />
+                                                {isFilenDesktopBridge && (
+                                                    <InlinePasswordGenerator
+                                                        preset="compatible"
+                                                        onGenerated={(value) => onConnectionParamsChange({ ...connectionParams, username: value })}
+                                                        className="absolute right-3 top-1/2 -translate-y-1/2"
+                                                    />
+                                                )}
+                                            </div>
                                         </div>
                                         {/* Password: not applicable to an AeroShare friend (peer carries
                                             no password; the binding rides in options.peer*). */}

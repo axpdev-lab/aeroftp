@@ -16,10 +16,13 @@
 //     losing what is already selected, and a rubber-band drag selects an area.
 
 import * as React from 'react';
-import { CheckSquare, File, Folder, Square, ChevronUp, ChevronDown } from 'lucide-react';
+import { CheckSquare, File, Folder, Square, ChevronUp, ChevronDown, Settings2 } from 'lucide-react';
 import { formatSize, formatDate } from '../../utils/formatters';
 import { useMarqueeSelection } from '../../hooks/useMarqueeSelection';
 import { useTranslation } from '../../i18n';
+import { useTableColumns, type TableColumnDef, type TableColAlign } from '../../hooks/useTableColumns';
+import { TableColumnsManager } from '../ui/TableColumnsManager';
+import { TableColResizer } from '../ui/TableColResizer';
 import {
     nextTrashSort,
     selectionAfterRowClick,
@@ -58,21 +61,22 @@ interface TrashTableProps {
     showTypeColumn?: boolean;
 }
 
-const HEADERS: { key: TrashSortKey; labelKey: string; fallback: string; className: string }[] = [
+const TRASH_COLUMNS: TableColumnDef<TrashSortKey>[] = [
     // settings.columnType is the file-list column header of the same name,
     // already translated everywhere; no 47th copy of the word "Type".
-    { key: 'type', labelKey: 'settings.columnType', fallback: 'Type', className: 'w-10' },
-    { key: 'name', labelKey: 'common.name', fallback: 'Name', className: '' },
-    { key: 'size', labelKey: 'common.size', fallback: 'Size', className: 'w-20 text-right' },
-    {
-        key: 'deletedAt',
-        labelKey: 'contextMenu.trashDeletedDate',
-        fallback: 'Deleted',
-        // Wide enough for a full date and time on one line, and never wrapped:
-        // the Name column gives up the width, which it has to spare.
-        className: 'w-48 whitespace-nowrap',
-    },
+    { id: 'type', labelKey: 'settings.columnType', sortable: true, defaultVisible: true, defaultWidth: 64, minWidth: 48, defaultAlign: 'center' },
+    { id: 'name', labelKey: 'common.name', sortable: true, defaultVisible: true, defaultWidth: 300, minWidth: 120, defaultAlign: 'left' },
+    { id: 'size', labelKey: 'common.size', sortable: true, defaultVisible: true, defaultWidth: 100, minWidth: 72, defaultAlign: 'right' },
+    { id: 'deletedAt', labelKey: 'contextMenu.trashDeletedDate', sortable: true, defaultVisible: true, defaultWidth: 190, minWidth: 130, defaultAlign: 'left' },
 ];
+
+const alignClass = (align: TableColAlign): string => align === 'right'
+    ? 'text-right'
+    : align === 'center' ? 'text-center' : 'text-left';
+
+const justifyClass = (align: TableColAlign): string => align === 'right'
+    ? 'justify-end'
+    : align === 'center' ? 'justify-center' : 'justify-start';
 
 const NO_SELECTION: Set<string> = new Set();
 
@@ -88,11 +92,38 @@ export const TrashTable: React.FC<TrashTableProps> = ({
     const t = useTranslation();
     const selectable = !!setSelected;
     const selection = selected ?? NO_SELECTION;
-    const [sort, setSort] = React.useState<TrashSort | null>(null);
     const anchorRef = React.useRef<number | null>(null);
     const containerRef = React.useRef<HTMLDivElement | null>(null);
+    const managerRef = React.useRef<HTMLDivElement | null>(null);
+    const [showManager, setShowManager] = React.useState(false);
+    const columns = useTableColumns({ columns: TRASH_COLUMNS, storageKey: 'trash_table' });
+    const visibleColumns = React.useMemo(
+        () => columns.orderedVisibleColumns.filter((column) => showTypeColumn || column.id !== 'type'),
+        [columns.orderedVisibleColumns, showTypeColumn],
+    );
+    const [liveWidths, setLiveWidths] = React.useState(columns.config.widths);
+    React.useEffect(() => setLiveWidths(columns.config.widths), [columns.config.widths]);
+    const sort: TrashSort | null = columns.config.sort
+        ? { key: columns.config.sort.colId, direction: columns.config.sort.dir }
+        : null;
 
     const ordered = React.useMemo(() => sortTrashRows(rows, sort), [rows, sort]);
+
+    React.useEffect(() => {
+        if (!showManager) return;
+        const closeOutside = (event: MouseEvent) => {
+            if (!managerRef.current?.contains(event.target as Node)) setShowManager(false);
+        };
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setShowManager(false);
+        };
+        document.addEventListener('mousedown', closeOutside);
+        document.addEventListener('keydown', closeOnEscape);
+        return () => {
+            document.removeEventListener('mousedown', closeOutside);
+            document.removeEventListener('keydown', closeOnEscape);
+        };
+    }, [showManager]);
 
     // Rubber band. The hook keys items by `data-file-name`, which here carries
     // the row id, so the set it produces is the same set the checkboxes use.
@@ -126,14 +157,45 @@ export const TrashTable: React.FC<TrashTableProps> = ({
             : <ChevronDown size={11} className="inline-block ml-0.5 -mt-px" />;
     };
 
+    const renderCoreCell = (row: TrashRow, key: TrashSortKey) => {
+        switch (key) {
+            case 'type':
+                return row.isDir
+                    ? <Folder size={13} className="inline-block text-yellow-500" />
+                    : <File size={13} className="inline-block text-gray-500 dark:text-gray-500" />;
+            case 'name':
+                return <span className="block truncate text-gray-900 dark:text-gray-100">{row.name}</span>;
+            case 'size':
+                return <span className="tabular-nums text-gray-600 dark:text-gray-400">{row.isDir || row.size == null ? '-' : formatSize(row.size)}</span>;
+            case 'deletedAt':
+                return <span className="whitespace-nowrap tabular-nums text-gray-500 dark:text-gray-500">{row.deletedAtLabel ?? (row.deletedAt ? formatDate(row.deletedAt) : '-')}</span>;
+            default:
+                return null;
+        }
+    };
+
+    const tableMinWidth = (selectable ? 32 : 0)
+        + visibleColumns.reduce((sum, column) => sum + liveWidths[column.id], 0)
+        + extraColumns.length * 120
+        + 40;
+
     return (
-        <div ref={containerRef} className="relative h-full min-h-0 overflow-y-auto" onMouseDown={marquee.onMouseDown}>
-            <table className="w-full text-xs select-none">
+        <div ref={containerRef} className="relative h-full min-h-0 overflow-auto" onMouseDown={marquee.onMouseDown}>
+            <table className="w-full table-fixed text-xs select-none" style={{ minWidth: `${tableMinWidth}px` }}>
+                <colgroup>
+                    {selectable && <col style={{ width: '32px' }} />}
+                    {visibleColumns.map((column) => <col key={column.id} style={{ width: `${liveWidths[column.id]}px` }} />)}
+                    {extraColumns.map((column) => <col key={column.key} />)}
+                    <col style={{ width: '40px' }} />
+                </colgroup>
                 <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                     <tr className="text-left text-gray-500 dark:text-gray-500">
                         {selectable && <th className="w-8 px-2 py-1.5" />}
-                        {HEADERS.filter((h) => showTypeColumn || h.key !== 'type').map(({ key, labelKey, fallback, className }) => (
-                            <th key={key} className={`px-2 py-1.5 ${className}`}>
+                        {visibleColumns.map((column) => {
+                            const key = column.id;
+                            const alignment = columns.resolveAlign(key);
+                            return (
+                            <th key={key} className={`relative px-2 py-1.5 whitespace-nowrap ${alignClass(alignment)}`}>
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -141,21 +203,56 @@ export const TrashTable: React.FC<TrashTableProps> = ({
                                         // order; a sort gives that index to a
                                         // different row, so start a new range.
                                         anchorRef.current = null;
-                                        setSort((cur) => nextTrashSort(cur, key));
+                                        const next = nextTrashSort(sort, key);
+                                        columns.setSort(next ? { colId: next.key, dir: next.direction } : null);
                                     }}
-                                    className="inline-flex items-center hover:text-gray-700 dark:hover:text-gray-300"
-                                    aria-label={t(labelKey) || fallback}
+                                    className={`flex w-full items-center hover:text-gray-700 dark:hover:text-gray-300 ${justifyClass(alignment)}`}
+                                    aria-label={t(column.labelKey)}
                                 >
-                                    {t(labelKey) || fallback}
+                                    {t(column.labelKey)}
                                     {sortIndicator(key)}
                                 </button>
+                                <TableColResizer
+                                    currentWidth={liveWidths[key]}
+                                    minWidth={column.minWidth}
+                                    onResize={(width) => setLiveWidths((current) => ({ ...current, [key]: width }))}
+                                    onResizeEnd={(width) => columns.setWidth(key, width)}
+                                    title={t('table.dragToResize')}
+                                />
                             </th>
-                        ))}
+                            );
+                        })}
                         {extraColumns.map((col) => (
                             <th key={col.key} className={`px-2 py-1.5 ${col.className ?? ''}`}>
                                 {col.header}
                             </th>
                         ))}
+                        <th className="px-1 py-1.5 text-right">
+                            <div ref={managerRef} className="relative inline-block">
+                                <button
+                                    type="button"
+                                    onClick={(event) => { event.stopPropagation(); setShowManager((value) => !value); }}
+                                    className="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                                    title={t('table.manageColumns')}
+                                    aria-label={t('table.manageColumns')}
+                                >
+                                    <Settings2 size={13} />
+                                </button>
+                                {showManager && (
+                                    <TableColumnsManager
+                                        columns={TRASH_COLUMNS}
+                                        visibility={columns.config.visibility}
+                                        orderedAllColumns={columns.orderedAllColumns}
+                                        onSetVisible={columns.setVisible}
+                                        onSetOrder={columns.setOrder}
+                                        onReset={() => { columns.reset(); setShowManager(false); }}
+                                        onClose={() => setShowManager(false)}
+                                        resolveAlign={columns.resolveAlign}
+                                        onSetAlign={columns.setAlign}
+                                    />
+                                )}
+                            </div>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -181,32 +278,17 @@ export const TrashTable: React.FC<TrashTableProps> = ({
                                         )}
                                     </td>
                                 )}
-                                {showTypeColumn && (
-                                    <td className="px-2 py-1.5 text-center">
-                                        {row.isDir ? (
-                                            <Folder size={13} className="inline-block text-yellow-500" />
-                                        ) : (
-                                            <File size={13} className="inline-block text-gray-500 dark:text-gray-500" />
-                                        )}
+                                {visibleColumns.map((column) => (
+                                    <td key={column.id} className={`px-2 py-1.5 ${alignClass(columns.resolveAlign(column.id))}`}>
+                                        {renderCoreCell(row, column.id)}
                                     </td>
-                                )}
-                                <td className="px-2 py-1.5">
-                                    <span className="block truncate text-gray-900 dark:text-gray-100">{row.name}</span>
-                                </td>
-                                <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-400 tabular-nums">
-                                    {/* Null is not zero: a folder, an S3 delete marker and a
-                                        FileLu row have no size to show, and sortTrashRows
-                                        already treats them that way. */}
-                                    {row.isDir || row.size == null ? '-' : formatSize(row.size)}
-                                </td>
-                                <td className="px-2 py-1.5 whitespace-nowrap text-gray-500 dark:text-gray-500 tabular-nums">
-                                    {row.deletedAtLabel ?? (row.deletedAt ? formatDate(row.deletedAt) : '-')}
-                                </td>
+                                ))}
                                 {extraColumns.map((col) => (
                                     <td key={col.key} className={`px-2 py-1.5 ${col.className ?? ''}`}>
                                         {col.render(row)}
                                     </td>
                                 ))}
+                                <td />
                             </tr>
                         );
                     })}

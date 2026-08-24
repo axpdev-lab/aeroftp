@@ -6437,6 +6437,8 @@ pub async fn provider_remove_permission(
 /// unchanged.
 struct ScanProgressEmitter {
     app: AppHandle,
+    progress_id: Option<String>,
+    base_count: usize,
 }
 
 impl crate::transfer_dag::DagObserver for ScanProgressEmitter {
@@ -6444,7 +6446,8 @@ impl crate::transfer_dag::DagObserver for ScanProgressEmitter {
         let _ = self.app.emit(
             "sync_scan_progress",
             serde_json::json!({
-                "phase": "remote", "files_found": scanned,
+                "phase": "remote", "files_found": self.base_count + scanned,
+                "progress_id": self.progress_id.as_deref(),
             }),
         );
     }
@@ -6604,6 +6607,7 @@ pub async fn provider_compare_directories(
     crypt_vault_id: Option<String>,
     crypt_kind: Option<String>,
     options: Option<crate::sync::CompareOptions>,
+    progress_id: Option<String>,
 ) -> Result<Vec<crate::sync::FileComparison>, String> {
     use crate::sync::{
         build_comparison_results_with_index, load_sync_index, should_exclude, FileInfo,
@@ -6638,6 +6642,7 @@ pub async fn provider_compare_directories(
         "sync_scan_progress",
         serde_json::json!({
             "phase": "local", "files_found": 0,
+            "progress_id": progress_id,
         }),
     );
 
@@ -6651,6 +6656,7 @@ pub async fn provider_compare_directories(
         options.compare_checksum,
         Some(&state.cancel_flag),
         Some(&app),
+        progress_id.as_deref(),
     )
     .await
     .map_err(|e| format!("Failed to scan local directory: {}", e))?;
@@ -6664,6 +6670,7 @@ pub async fn provider_compare_directories(
         "sync_scan_progress",
         serde_json::json!({
             "phase": "remote", "files_found": local_files.len(),
+            "progress_id": progress_id,
         }),
     );
 
@@ -6712,7 +6719,11 @@ pub async fn provider_compare_directories(
             disable_recursive_fastpath: crypt_compare_active,
             ..Default::default()
         };
-        let scan_observer = ScanProgressEmitter { app: app.clone() };
+        let scan_observer = ScanProgressEmitter {
+            app: app.clone(),
+            progress_id: progress_id.clone(),
+            base_count: local_files.len(),
+        };
         let (remote_entries, remote_scan) = scan_remote_tree_with_provider_lock_checked(
             state.provider.clone(),
             &remote_path,
@@ -6794,6 +6805,7 @@ pub async fn provider_compare_directories(
                 "phase": "remote",
                 "files_found": local_files.len() + remote_files.len(),
                 "bytes_found": remote_files.values().map(|f| f.size).sum::<u64>(),
+                "progress_id": progress_id,
             }),
         );
     } else {
@@ -6936,6 +6948,7 @@ pub async fn provider_compare_directories(
                     "files_found": local_files.len() + remote_files.len(),
                     "dirs_found": remote_dirs_found,
                     "bytes_found": remote_bytes_found,
+                    "progress_id": progress_id,
                 }),
             );
         }
@@ -7044,6 +7057,7 @@ pub async fn provider_compare_directories(
         serde_json::json!({
             "phase": "comparing",
             "files_found": local_files.len() + remote_files.len(),
+            "progress_id": progress_id,
         }),
     );
 

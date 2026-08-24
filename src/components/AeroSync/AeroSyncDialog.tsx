@@ -23,6 +23,7 @@ import { MultiPathEditor } from '../Sync/MultiPathEditor';
 import { RollbackDialog } from '../Sync/RollbackDialog';
 import { useTransferCapabilities } from '../Sync/useTransferCapabilities';
 import { TabStateStoreContext, createTabStateStore } from './tabStateStore';
+import { buildAeroSyncTabStatePatch, type ImportedSyncSettings } from '../../utils/syncTemplateApply';
 import type { AeroSyncDialogProps, AeroSyncTab } from './types';
 
 const TAB_ORDER: AeroSyncTab[] = ['compare', 'plan', 'sync'];
@@ -71,6 +72,14 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     // a side effect in a place where side effects belong. A first-ever open sees
     // a fresh store anyway.
     const tabState = React.useRef(createTabStateStore()).current;
+    const applyImportedSettings = React.useCallback((settings: ImportedSyncSettings) => {
+        const patch = buildAeroSyncTabStatePatch(settings, context.pairKind);
+        Object.entries(patch).forEach(([key, value]) => tabState.set(key, value));
+        setShowTemplates(false);
+        // Plan summarizes the imported direction/preset. Sync is populated in
+        // the same store and shows the imported paths when the user opens it.
+        setActiveTab('plan');
+    }, [context.pairKind, tabState]);
     React.useEffect(() => {
         if (!isOpen) tabState.reset();
     }, [isOpen, tabState]);
@@ -254,6 +263,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         <CompareTabContent
                             result={context.compareResult}
                             loading={context.compareLoading}
+                            scanProgressId={context.scanProgressId}
                             leftLabel={context.leftLabel}
                             rightLabel={context.rightLabel}
                             pairKind={context.pairKind}
@@ -298,6 +308,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         remotePath={remotePath}
                         serverProfileName={serverProfileName}
                         excludePatterns={excludePatterns}
+                        onApplyImport={applyImportedSettings}
                     />
                     <MultiPathEditor
                         isOpen={showMultiPath}

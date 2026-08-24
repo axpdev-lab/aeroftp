@@ -11735,6 +11735,7 @@ async fn compare_directories(
     local_path: String,
     remote_path: String,
     options: Option<CompareOptions>,
+    progress_id: Option<String>,
 ) -> Result<Vec<FileComparison>, String> {
     let mut options = options.unwrap_or_default();
     sync::apply_error_correction_excludes(&mut options);
@@ -11761,6 +11762,7 @@ async fn compare_directories(
         serde_json::json!({
             "phase": "local",
             "files_found": 0,
+            "progress_id": progress_id,
         }),
     );
 
@@ -11774,6 +11776,7 @@ async fn compare_directories(
         options.compare_checksum,
         Some(&state.cancel_flag),
         Some(&app),
+        progress_id.as_deref(),
     );
 
     let remote_future = async {
@@ -11782,10 +11785,10 @@ async fn compare_directories(
             &app,
             &mut ftp_manager,
             &remote_path,
-            &remote_path,
             &options.exclude_patterns,
             0,
             Some(&state.cancel_flag),
+            progress_id.as_deref(),
         )
         .await
     };
@@ -11812,6 +11815,7 @@ async fn compare_directories(
         serde_json::json!({
             "phase": "comparing",
             "files_found": local_files.len() + remote_files.len(),
+            "progress_id": progress_id,
         }),
     );
 
@@ -11846,6 +11850,7 @@ async fn compare_local_directories(
     left_path: String,
     right_path: String,
     options: Option<CompareOptions>,
+    progress_id: Option<String>,
 ) -> Result<Vec<FileComparison>, String> {
     let mut options = options.unwrap_or_default();
     sync::apply_error_correction_excludes(&mut options);
@@ -11864,7 +11869,7 @@ async fn compare_local_directories(
 
     let _ = app.emit(
         "sync_scan_progress",
-        serde_json::json!({ "phase": "local", "files_found": 0 }),
+        serde_json::json!({ "phase": "local", "files_found": 0, "progress_id": progress_id }),
     );
 
     // Both sides are filesystem scans; run them concurrently.
@@ -11875,6 +11880,7 @@ async fn compare_local_directories(
         options.compare_checksum,
         Some(&state.cancel_flag),
         Some(&app),
+        progress_id.as_deref(),
     );
     let right_future = get_local_files_recursive_checked(
         &right_path,
@@ -11883,6 +11889,7 @@ async fn compare_local_directories(
         options.compare_checksum,
         Some(&state.cancel_flag),
         Some(&app),
+        progress_id.as_deref(),
     );
 
     let (left_result, right_result) = tokio::join!(left_future, right_future);
@@ -11901,6 +11908,7 @@ async fn compare_local_directories(
         serde_json::json!({
             "phase": "comparing",
             "files_found": left_files.len() + right_files.len(),
+            "progress_id": progress_id,
         }),
     );
 
@@ -12029,6 +12037,7 @@ pub async fn get_local_files_recursive_with_progress(
         compare_checksum,
         cancel_flag,
         app,
+        None,
     )
     .await
     .map(|(files, _)| files)
@@ -12048,6 +12057,7 @@ pub async fn get_local_files_recursive_checked(
     compare_checksum: bool,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
     app: Option<&AppHandle>,
+    progress_id: Option<&str>,
 ) -> Result<
     (
         HashMap<String, FileInfo>,
@@ -12106,7 +12116,7 @@ pub async fn get_local_files_recursive_checked(
             {
                 let _ = handle.emit(
                     "sync_scan_progress",
-                    local_scan_progress_payload(count, dirs_found, bytes_found),
+                    local_scan_progress_payload_scoped(count, dirs_found, bytes_found, progress_id),
                 );
                 last_progress_emit = now;
                 last_progress_count = count;
@@ -12229,7 +12239,7 @@ pub async fn get_local_files_recursive_checked(
     if let Some(handle) = app {
         let _ = handle.emit(
             "sync_scan_progress",
-            local_scan_progress_payload(files.len(), dirs_found, bytes_found),
+            local_scan_progress_payload_scoped(files.len(), dirs_found, bytes_found, progress_id),
         );
     }
 
@@ -12244,11 +12254,21 @@ pub fn local_scan_progress_payload(
     dirs_found: usize,
     bytes_found: u64,
 ) -> serde_json::Value {
+    local_scan_progress_payload_scoped(files_found, dirs_found, bytes_found, None)
+}
+
+fn local_scan_progress_payload_scoped(
+    files_found: usize,
+    dirs_found: usize,
+    bytes_found: u64,
+    progress_id: Option<&str>,
+) -> serde_json::Value {
     serde_json::json!({
         "phase": "local",
         "files_found": files_found,
         "dirs_found": dirs_found,
         "bytes_found": bytes_found,
+        "progress_id": progress_id,
     })
 }
 
@@ -12451,10 +12471,10 @@ async fn get_remote_files_recursive_with_progress(
     app: &AppHandle,
     ftp_manager: &mut ftp::FtpManager,
     base_path: &str,
-    _current_path: &str,
     exclude_patterns: &[String],
     local_count: usize,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
+    progress_id: Option<&str>,
 ) -> Result<
     (
         HashMap<String, FileInfo>,
@@ -12585,6 +12605,7 @@ async fn get_remote_files_recursive_with_progress(
                 "files_found": local_count + files.len(),
                 "dirs_found": remote_dirs_found,
                 "bytes_found": remote_bytes_found,
+                "progress_id": progress_id,
             }),
         );
     }
@@ -22085,7 +22106,7 @@ mod scan_completeness_gate_tests {
         HashMap<String, FileInfo>,
         crate::sync_core::ScanCompleteness,
     ) {
-        get_local_files_recursive_checked(root, root, &[], false, None, None)
+        get_local_files_recursive_checked(root, root, &[], false, None, None, None)
             .await
             .expect("walk should not hard-error")
     }
@@ -22152,6 +22173,7 @@ mod scan_completeness_gate_tests {
             &[],
             false,
             Some(&cancel),
+            None,
             None,
         )
         .await

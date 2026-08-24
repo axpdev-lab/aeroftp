@@ -49,6 +49,7 @@ import {
     rankOutcomes,
     singleResultAsOutcome,
     SPEEDTEST_SIZES,
+    speedTestServerName,
     supportsSpeedTest,
 } from '../utils/speedTest';
 import { ServerProfile } from '../types';
@@ -364,14 +365,14 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                     const testId = genTestId();
                     compareTestIdsRef.current.set(testId, {
                         serverId: server.id,
-                        serverName: server.name || server.host,
+                        serverName: speedTestServerName(server),
                         protocol: server.protocol || 'ftp',
                     });
                     return {
                         connection,
                         size_bytes: effectiveSize,
                         remote_dir: server.initialPath || '/',
-                        server_name: server.name || server.host,
+                        server_name: speedTestServerName(server),
                         test_id: testId,
                         expert_confirmed: sizeRequiresConfirm && expertConfirmed,
                         verify_integrity: verifyIntegrity,

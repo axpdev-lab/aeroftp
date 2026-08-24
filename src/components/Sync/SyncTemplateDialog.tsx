@@ -24,6 +24,12 @@ import {
 } from '../../types';
 import { useTranslation } from '../../i18n';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import {
+    settingsFromAerosyncScript,
+    settingsFromLegacyScript,
+    settingsFromTemplate,
+    type ImportedSyncSettings,
+} from '../../utils/syncTemplateApply';
 
 interface SyncTemplateDialogProps {
     isOpen: boolean;
@@ -38,6 +44,8 @@ interface SyncTemplateDialogProps {
      */
     serverProfileName: string;
     excludePatterns: string[];
+    /** Apply imported values to the live AeroSync Plan + Sync tab controls. */
+    onApplyImport: (settings: ImportedSyncSettings) => void;
 }
 
 type ExportFormat = 'aerosync' | 'aeroftp-script' | 'bash' | 'pwsh';
@@ -57,6 +65,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     remotePath,
     serverProfileName,
     excludePatterns,
+    onApplyImport,
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
@@ -592,6 +601,14 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                             {importPreview.exclude_patterns.length > 0 && (
                                 <div><strong>Excludes:</strong> {importPreview.exclude_patterns.join(', ')}</div>
                             )}
+                            <div className="pt-2">
+                                <button
+                                    className="px-3 py-1.5 rounded-lg bg-purple-500 text-white text-xs font-medium hover:bg-purple-600"
+                                    onClick={() => onApplyImport(settingsFromTemplate(importPreview))}
+                                >
+                                    {t('common.apply')}
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -652,9 +669,15 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                                     ))}
                                 </ul>
                             )}
-                            <div className="pt-2">
+                            <div className="flex gap-2 pt-2">
                                 <button
-                                    className="px-3 py-1.5 rounded-lg bg-purple-500 text-white text-xs font-medium hover:bg-purple-600 disabled:opacity-50"
+                                    className="px-3 py-1.5 rounded-lg bg-purple-500 text-white text-xs font-medium hover:bg-purple-600"
+                                    onClick={() => onApplyImport(settingsFromAerosyncScript(importedAerosyncScript))}
+                                >
+                                    {t('common.apply')}
+                                </button>
+                                <button
+                                    className="px-3 py-1.5 rounded-lg border border-purple-500 text-purple-500 text-xs font-medium hover:bg-purple-500/10 disabled:opacity-50"
                                     onClick={applyImportedAerosyncScript}
                                     disabled={applying}
                                 >
@@ -686,6 +709,14 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                             {importedScript.retries != null && (
                                 <div><strong>Retries:</strong> {importedScript.retries}{importedScript.retries_sleep ? ` × ${importedScript.retries_sleep}` : ''}</div>
                             )}
+                            <div className="pt-2">
+                                <button
+                                    className="px-3 py-1.5 rounded-lg bg-purple-500 text-white text-xs font-medium hover:bg-purple-600"
+                                    onClick={() => onApplyImport(settingsFromLegacyScript(importedScript))}
+                                >
+                                    {t('common.apply')}
+                                </button>
+                            </div>
                         </div>
                     )}
 

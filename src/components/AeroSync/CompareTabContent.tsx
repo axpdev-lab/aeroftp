@@ -35,6 +35,7 @@ interface CompareTabContentProps {
     result: CompareResult | null;
     /** GAP-5: true while the recursive connected-remote scan is running. */
     loading?: boolean;
+    scanProgressId?: string;
     leftLabel: string;
     rightLabel: string;
     pairKind?: string | null;
@@ -217,6 +218,7 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, bytes, i
 export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     result,
     loading,
+    scanProgressId,
     leftLabel,
     rightLabel,
     pairKind,
@@ -227,7 +229,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
 }) => {
     const t = useTranslation();
     // Live counters for the scan the spinner below used to hide entirely.
-    const { totals: scanTotals, elapsedMs: scanElapsedMs } = useScanProgress(!!loading && !result);
+    const { totals: scanTotals, elapsedMs: scanElapsedMs } = useScanProgress(!!loading && !result, scanProgressId);
 
     // Hooks must run unconditionally: the recursive connected-remote scan
     // (GAP-5) flips `result` from null to a value while this component stays
