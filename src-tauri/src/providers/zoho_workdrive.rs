@@ -552,6 +552,31 @@ pub struct ZohoWorkdriveProvider {
     profile_id: String,
 }
 
+/// Pick rclone's `root_folder_id` from a completed `discover_team`.
+///
+/// rclone lists `GET /files/{root}/files`. The privatespace (My Folders)
+/// id is that root. `discover_team`'s last fallback stores the *team* id
+/// in `current_folder_id`; using it reproduces F6016, the failure this
+/// helper exists to prevent. A `current_folder_id` that is not the team
+/// id is a real folder and is kept.
+fn rclone_root_folder_id_from_discovery(
+    privatespace_id: Option<&str>,
+    current_folder_id: &str,
+    team_id: Option<&str>,
+) -> Option<String> {
+    if let Some(id) = privatespace_id.map(str::trim).filter(|s| !s.is_empty()) {
+        return Some(id.to_string());
+    }
+    let current = current_folder_id.trim();
+    if current.is_empty() {
+        return None;
+    }
+    if team_id.map(str::trim) == Some(current) {
+        return None;
+    }
+    Some(current.to_string())
+}
+
 impl ZohoWorkdriveProvider {
     pub fn new(config: ZohoWorkdriveConfig) -> Self {
         // Build HTTP client with default Accept header required by Zoho JSON:API
@@ -606,17 +631,11 @@ impl ZohoWorkdriveProvider {
         if provider.discover_team().await.is_err() {
             return None;
         }
-        provider
-            .privatespace_id
-            .filter(|s| !s.is_empty())
-            .or_else(|| {
-                let id = provider.current_folder_id.trim();
-                if id.is_empty() {
-                    None
-                } else {
-                    Some(id.to_string())
-                }
-            })
+        rclone_root_folder_id_from_discovery(
+            provider.privatespace_id.as_deref(),
+            &provider.current_folder_id,
+            provider.team_id.as_deref(),
+        )
     }
 
     /// Get OAuth config for token operations
@@ -3699,6 +3718,37 @@ mod tests {
         );
         assert_eq!(parse_privatespace_id(""), None);
         assert_eq!(parse_privatespace_id("not json"), None);
+    }
+
+    #[test]
+    fn rclone_root_folder_id_from_discovery_rejects_team_id_fallback() {
+        assert_eq!(
+            rclone_root_folder_id_from_discovery(
+                Some("fmip966f979e195e64ec78e6846976861eed5"),
+                "team-id",
+                Some("team-id"),
+            )
+            .as_deref(),
+            Some("fmip966f979e195e64ec78e6846976861eed5")
+        );
+        assert_eq!(
+            rclone_root_folder_id_from_discovery(None, "team-id", Some("team-id")),
+            None,
+            "team id is not a folder id"
+        );
+        assert_eq!(
+            rclone_root_folder_id_from_discovery(None, "  ", Some("team-id")),
+            None
+        );
+        assert_eq!(
+            rclone_root_folder_id_from_discovery(None, "folder-not-team", Some("team-id"))
+                .as_deref(),
+            Some("folder-not-team")
+        );
+        assert_eq!(
+            rclone_root_folder_id_from_discovery(Some(""), "", None),
+            None
+        );
     }
 
     #[test]
