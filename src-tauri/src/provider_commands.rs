@@ -6465,10 +6465,12 @@ impl crate::transfer_dag::DagObserver for ScanProgressEmitter {
 ///   UUID they hand back.
 ///
 /// Looking only in the maps therefore failed for every provider-overlay session,
-/// which is the whole of the Overlays Path (#347). The cache is consulted first
-/// because it is the same key material the file panel is displaying with, so
-/// Compare and the panel cannot disagree; the maps stay as the fallback so the
-/// vault-browser path keeps working unchanged.
+/// which is the whole of the Overlays Path (#347). For a provider-overlay
+/// sentinel the cache is consulted first because it is the same key material the
+/// file panel is displaying with, so Compare and the panel cannot disagree. A
+/// real vault UUID always goes to the standalone maps instead: an explicitly
+/// named vault must never be shadowed by an unrelated cached overlay of the same
+/// kind (tracker #575 row 11 (a)).
 async fn resolve_compare_overlay_keys(
     kind: Option<&str>,
     vault_id: &str,
@@ -6478,12 +6480,21 @@ async fn resolve_compare_overlay_keys(
 ) -> Result<crate::crypt_overlay_provider::OverlayKeys, String> {
     use crate::crypt_overlay_provider::OverlayKeys;
 
-    // 1. This connection's armed overlay, if its kind is the one asked for. A
-    //    kind mismatch falls through rather than decrypting with the wrong
-    //    scheme, which would drop every row and read as "no differences".
-    if let Some((keys, _scope, cached_kind)) = state.cached_overlay_for_rearm() {
-        if Some(cached_kind.as_str()) == kind {
-            return Ok(keys);
+    // 1. This connection's armed overlay may answer only for the synthetic
+    //    sentinel emitted by the provider-overlay path. A real standalone vault
+    //    UUID must fall through to the maps even when the cached kind matches.
+    if let Some(kind) = kind {
+        let sentinel_prefix = format!("provider-overlay:{kind}:");
+        let is_provider_overlay_sentinel = vault_id
+            .strip_prefix(&sentinel_prefix)
+            .is_some_and(|owner| !owner.is_empty());
+
+        if is_provider_overlay_sentinel {
+            if let Some((keys, _scope, cached_kind)) = state.cached_overlay_for_rearm() {
+                if cached_kind == kind {
+                    return Ok(keys);
+                }
+            }
         }
     }
 
@@ -12882,6 +12893,59 @@ mod tests {
         .await
         .expect("the vault-browser unlock path must keep resolving");
         assert_eq!(resolved.kind_str(), "rclone-crypt");
+    }
+
+    /// Tracker #575 row 11 (a): a real vault UUID is an explicit selection.
+    /// Even if this connection has cached provider-overlay keys of the same
+    /// kind, those keys must not shadow the selected standalone vault and
+    /// normalize the listing with the wrong material. Without this pin the
+    /// cache-first consult looks redundant and the next pass removes it.
+    #[tokio::test]
+    async fn compare_real_vault_uuid_outranks_same_kind_overlay_cache() {
+        let state = ProviderState::new();
+        let rclone_state = crate::rclone_crypt::RcloneCryptState::default();
+        let aerocrypt_state = crate::aerocrypt_provider::AeroCryptState::default();
+        state.store_overlay_key_cache(
+            compare_test_keys(),
+            "/Vault".to_string(),
+            "rclone-crypt".to_string(),
+        );
+
+        let vault_id = "11111111-2222-3333-4444-555555555555";
+        let (name_key, data_key, name_tweak) =
+            derive_keys_with_tweak("standalone-pass", "standalone-salt").unwrap();
+        let expected_name_key = name_key;
+        rclone_state.vaults.lock().await.insert(
+            vault_id.to_string(),
+            RcloneCryptKeys {
+                name_key,
+                data_key,
+                name_tweak,
+                filename_encryption: FilenameEncryption::Standard,
+                off_suffix: String::new(),
+                directory_name_encryption: true,
+            },
+        );
+
+        let resolved = resolve_compare_overlay_keys(
+            Some("rclone-crypt"),
+            vault_id,
+            &state,
+            &rclone_state,
+            &aerocrypt_state,
+        )
+        .await
+        .expect("an explicitly named standalone vault must resolve from its map");
+
+        match &resolved {
+            crate::crypt_overlay_provider::OverlayKeys::Rclone(keys) => {
+                assert_eq!(
+                    keys.name_key, expected_name_key,
+                    "cache keys of the same kind must not shadow a real vault UUID"
+                );
+            }
+            _ => panic!("expected rclone-crypt keys"),
+        }
     }
 
     /// Why the wrapped branch must skip normalization entirely: the compare scan
