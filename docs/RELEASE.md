@@ -138,14 +138,16 @@ sha256sum /tmp/AeroFTP.deb
 .github/scripts/aur-preflight.sh /path/to/aeroftp-bin
 ```
 
-It refuses the push when the `PKGBUILD` does not parse, when `.SRCINFO` disagrees with it, when `sha256sums[0]` is not a real digest, when a `source =` line was left on the previous version, or when either release URL does not answer 200.
+It refuses the push when the `PKGBUILD` does not parse, when `.SRCINFO` disagrees with it on any value (sources and checksums compared one by one, expanded, not just the scalar fields), when `sha256sums[0]` is not a full 64 hex digest, when a source was left on the previous version, or when a release URL does not answer 200. Off Arch it evaluates the `PKGBUILD` the way `makepkg` does, so `${pkgver}` inside a URL is compared expanded.
 
 > **Install it as the pre-push hook of the AUR checkout**, once per machine, so a bad package cannot leave even in a hurry:
 >
 > ```bash
-> ln -sf /path/to/aeroftp/.github/scripts/aur-preflight.sh \
->        /path/to/aeroftp-bin/.git/hooks/pre-push
+> ln -s /path/to/aeroftp/.github/scripts/aur-preflight.sh \
+>       /path/to/aeroftp-bin/.git/hooks/pre-push
 > ```
+>
+> `ln -s` and not `ln -sf`: if a `pre-push` hook is already there it may be doing something else, and the command should refuse rather than replace it silently. Inspect it and chain the two by hand in that case.
 
 The check earns its place: **v3.5.2 shipped a `PKGBUILD` whose `sha256sums` array was closed after its first element**, so the file could not be sourced and `makepkg` aborted before downloading anything. Nobody could install `aeroftp-bin` for about 23 hours, until v3.5.3 replaced it, and the report came from a user rather than from us. The AUR runs no CI of any kind: what is pushed is what every user gets, on their next `yay -S`, with no gate in between. `bash -n` costs nothing and catches exactly that class of break.
 
