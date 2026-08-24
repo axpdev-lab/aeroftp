@@ -10,7 +10,7 @@ import {
 } from './passwordForge';
 
 describe('passwordForge', () => {
-    it('defines a compatible 32 preset that satisfies the Filen bridge restrictions', () => {
+    it('keeps the internal Filen bridge generator at the longest accepted length', () => {
         const preset = PASSWORD_PRESETS.compatible;
         expect(preset.length).toBe(FILEN_BRIDGE_MAX_LENGTH);
         expect([...preset.customCharacters].some(char => FILEN_BRIDGE_REJECTED_CHARACTERS.includes(char))).toBe(false);

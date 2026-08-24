@@ -23,6 +23,23 @@ export function supportsSpeedTest(server: ServerProfile): boolean {
     return (SPEEDTEST_SUPPORTED_PROTOCOLS as readonly string[]).includes(server.protocol || 'ftp');
 }
 
+/**
+ * Keep provider-supplied default profile names stable across connection modes.
+ * Custom profile labels remain untouched: only the historical pCloud defaults
+ * are canonicalized, so OAuth and WebDAV compare as the same service (#368).
+ */
+export function speedTestServerName(server: ServerProfile): string {
+    const fallback = server.name || server.host || '?';
+    const isPcloud = server.protocol === 'pcloud' || server.providerId?.startsWith('pcloud-');
+    if (!isPcloud) return fallback;
+    const normalized = fallback.trim().toLowerCase();
+    return normalized === 'pcloud'
+        || normalized === 'pcloud drive'
+        || normalized === 'pcloud drive (webdav)'
+        ? 'pCloud Drive'
+        : fallback;
+}
+
 export function formatBytes(bytes: number): string {
     if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
     if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MB`;

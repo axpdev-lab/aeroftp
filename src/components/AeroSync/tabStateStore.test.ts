@@ -51,4 +51,14 @@ describe('createTabStateStore', () => {
     expect(store.get('plan.source', '')).toBe('/plan');
     expect(store.get('sync.source', '')).toBe('/sync');
   });
+
+  it('notifies a mounted tab when a dialog-level import writes its key', () => {
+    const store = createTabStateStore();
+    const seen: unknown[] = [];
+    const unsubscribe = store.subscribe('plan.preset', value => seen.push(value));
+    store.set('plan.preset', 'bisync');
+    unsubscribe();
+    store.set('plan.preset', 'mirror');
+    expect(seen).toEqual(['bisync']);
+  });
 });

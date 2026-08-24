@@ -19,6 +19,7 @@ import { MinimizedTransferIndicator, ProgressCard, TransferToastState } from './
 
 /** Custom event name for transfer progress updates */
 export const TRANSFER_TOAST_EVENT = 'transfer-toast-update';
+export const TRANSFER_TOAST_TOGGLE_EVENT = 'transfer-toast-toggle';
 let latestTransferToastState: TransferToastState | null = null;
 let activeTransferToastId: string | null = null;
 let dismissedTransferToastId: string | null = null;
@@ -52,6 +53,13 @@ export function reopenTransferToast(): void {
     if (!latestTransferToastState) return;
     dismissedTransferToastId = null;
     window.dispatchEvent(new CustomEvent(TRANSFER_TOAST_EVENT, { detail: latestTransferToastState }));
+}
+
+/** Toggle the compact/full AeroProgress surface for the active transfer. */
+export function toggleTransferToast(): void {
+    if (!latestTransferToastState) return;
+    dismissedTransferToastId = null;
+    window.dispatchEvent(new CustomEvent(TRANSFER_TOAST_TOGGLE_EVENT));
 }
 
 interface TransferToastContainerProps {
@@ -90,6 +98,17 @@ export const TransferToastContainer: React.FC<TransferToastContainerProps> = ({ 
         };
         window.addEventListener(TRANSFER_TOAST_EVENT, handler);
         return () => window.removeEventListener(TRANSFER_TOAST_EVENT, handler);
+    }, []);
+
+    // The status-bar Progress chip is the peer of the Queue chip: repeated
+    // clicks collapse and restore its own window instead of being a one-way
+    // "reopen" action (#364).
+    useEffect(() => {
+        const toggle = () => {
+            if (latestTransferToastState) setMinimized((value) => !value);
+        };
+        window.addEventListener(TRANSFER_TOAST_TOGGLE_EVENT, toggle);
+        return () => window.removeEventListener(TRANSFER_TOAST_TOGGLE_EVENT, toggle);
     }, []);
 
     // Stuck detection: auto-close if no updates for 30 seconds

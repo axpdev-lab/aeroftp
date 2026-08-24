@@ -230,10 +230,46 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
         // #364: anchor bottom-LEFT (was centered) so this card never overlaps
         // the bottom-right Transfer Queue panel (fixed bottom-12 right-6 w-[33rem]).
         <div
-            className={`fixed bottom-12 left-6 z-40 rounded-lg border px-4 py-3 w-[30rem] max-w-[calc(100vw-2rem)] text-xs ${styles.container}`}
+            className={`fixed bottom-12 left-6 z-40 overflow-hidden rounded-lg border w-[30rem] max-w-[calc(100vw-2rem)] text-xs ${styles.container}`}
             style={{ isolation: 'isolate', contain: 'layout paint' }}
         >
-            <div className="flex items-start gap-3">
+            <div
+                className="flex cursor-pointer items-center justify-between gap-3 border-b border-gray-200 bg-gray-100 px-3 py-2 dark:border-gray-700 dark:bg-gray-800"
+                onClick={onMinimize}
+                title={t('ui.minimize')}
+            >
+                <span className={`min-w-0 truncate font-semibold ${styles.title}`} title={summary.path || summary.filename}>
+                    {t('transfer.progress')} · {displayName}
+                </span>
+                <div className="flex shrink-0 items-center gap-0.5" onClick={(event) => event.stopPropagation()}>
+                    <span className={`mr-1 text-base font-semibold tabular-nums ${styles.title}`}>
+                        {isIndeterminate ? '...' : `${headerPct}%`}
+                    </span>
+                    {onOpenPanel && (
+                        <button onClick={onOpenPanel} className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`} title={t('transfer.queue')} aria-label={t('transfer.queue')}>
+                            <Maximize2 size={13} />
+                        </button>
+                    )}
+                    {isTransferring ? (
+                        <span className={`p-1 ${styles.subtitle}`} title={t('ui.locked')}>
+                            <Lock size={13} />
+                        </span>
+                    ) : (
+                        <button onClick={onCancel} className={`p-1 rounded-full transition-colors ${styles.cancel}`} title={t('ui.dismiss')}>
+                            <X size={14} />
+                        </button>
+                    )}
+                    <button
+                        onClick={onMinimize}
+                        className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`}
+                        title={t('ui.minimize')}
+                        aria-label={t('ui.minimize')}
+                    >
+                        <Minus size={14} />
+                    </button>
+                </div>
+            </div>
+            <div className="flex items-start gap-3 px-4 py-3">
                 <div className={`mt-0.5 rounded-lg p-2 ${styles.panel} ${isUpload && !isFolderTransfer ? 'animate-pulse' : ''}`}>
                     {isFolderTransfer
                         ? <Folder size={18} className={isUpload ? 'text-cyan-400' : 'text-orange-400'} />
@@ -254,38 +290,6 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
                                     <span className={`rounded-md px-1.5 py-0.5 ${styles.badgeMuted}`}>{summary.transferred}/{summary.total} files</span>
                                 )}
                             </div>
-                        </div>
-                        <div className="flex items-center gap-0.5 shrink-0">
-                            <span className={`text-base font-semibold tabular-nums mr-1 ${styles.title}`}>
-                                {isIndeterminate ? '...' : `${headerPct}%`}
-                            </span>
-                            {onOpenPanel && (
-                                <button onClick={onOpenPanel} className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`} title={t('transfer.queue')} aria-label={t('transfer.queue')}>
-                                    <Maximize2 size={13} />
-                                </button>
-                            )}
-                            {/* Locked during transfer (no full dismiss until 100%):
-                                only minimize is allowed, so an in-flight transfer
-                                can never be lost. The close button returns at 100%. */}
-                            {isTransferring ? (
-                                <span className={`p-1 ${styles.subtitle}`} title={t('ui.locked')}>
-                                    <Lock size={13} />
-                                </span>
-                            ) : (
-                                <button onClick={onCancel} className={`p-1 rounded-full transition-colors ${styles.cancel}`} title={t('ui.dismiss')}>
-                                    <X size={14} />
-                                </button>
-                            )}
-                            {/* Last in the row: the top-right corner is Minimize in
-                                both transfer windows, so the two read the same (#364). */}
-                            <button
-                                onClick={onMinimize}
-                                className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`}
-                                title={t('ui.minimize')}
-                                aria-label={t('ui.minimize')}
-                            >
-                                <Minus size={14} />
-                            </button>
                         </div>
                     </div>
 
@@ -503,4 +507,3 @@ function getToastStyles(theme: string) {
             };
     }
 }
-

@@ -1484,6 +1484,22 @@ mod tests {
     }
 
     #[test]
+    fn golden_rclone_174_standard_filenames_with_omitted_password2() {
+        // Generated with rclone v1.74.3 and an omitted/empty password2. This is
+        // the exact #600 setup: rclone substitutes its public default salt;
+        // AeroFTP must do the same or every name fails with PKCS#7 padding.
+        let (name_key, _, name_tweak) = derive_keys_with_tweak("triage-password-600", "").unwrap();
+        assert_eq!(
+            encrypt_name(&name_key, &name_tweak, "folder").unwrap(),
+            "785v69hnpanb9p84bhrlki9lp0"
+        );
+        assert_eq!(
+            encrypt_name(&name_key, &name_tweak, "file.txt").unwrap(),
+            "h5p2oibs3erqnaspobsargglqs"
+        );
+    }
+
+    #[test]
     fn name_decrypt_rejects_invalid_base32() {
         let key = [0u8; 32];
         let iv = [0u8; 16];

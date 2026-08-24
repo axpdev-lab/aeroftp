@@ -780,6 +780,13 @@ export function MyServersPanel({
         }
     }, [dragIdx]);
 
+    // Visible list for the native drag handlers (filteredServers is declared
+    // later). The source is also pinned by id: React can re-render this table
+    // during a drag when health/quota data arrives, and a render-time index can
+    // then identify a different row (#453).
+    const visibleListRef = useRef<ServerProfile[]>([]);
+    const dragServerIdRef = useRef<string | null>(null);
+
     // Drag handlers used to be higher-order functions (`(idx) => (e) => ...`),
     // which produced a fresh closure per card per render and silently
     // defeated the `React.memo()` on `ServerCard` and `MyServersTableRow`.
@@ -787,9 +794,15 @@ export function MyServersPanel({
     // a stable reference and the children rebind to their own row index
     // internally via `useCallback`. See issue #221.
     const handleDragStart = useCallback((idx: number, e: React.DragEvent) => {
+        const sourceId = visibleListRef.current[idx]?.id;
+        if (!sourceId) {
+            e.preventDefault();
+            return;
+        }
+        dragServerIdRef.current = sourceId;
         setDragIdx(idx);
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', idx.toString());
+        e.dataTransfer.setData('text/plain', sourceId);
     }, []);
 
     const handleDragEnter = useCallback((idx: number, e: React.DragEvent) => {
@@ -806,15 +819,15 @@ export function MyServersPanel({
         setOverIdx(idx);
     }, [maybeAutoScrollWhileDrag]);
 
-    // Visible list for the drop handler (filteredServers is declared later).
-    // Ref keeps the callback stable and avoids a temporal dead zone on the memo.
-    const visibleListRef = useRef<ServerProfile[]>([]);
-
     const handleDrop = useCallback((idx: number, e: React.DragEvent) => {
         e.preventDefault();
-        if (dragIdx === null) { setDragIdx(null); setOverIdx(null); return; }
         const visible = visibleListRef.current;
-        if (visible.length === 0) { setDragIdx(null); setOverIdx(null); return; }
+        if (visible.length === 0) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
+        let transferredId = '';
+        try { transferredId = e.dataTransfer.getData('text/plain'); } catch { /* WebKit fallback below */ }
+        const sourceId = dragServerIdRef.current || transferredId;
+        const fromVisible = visible.findIndex((server) => server.id === sourceId);
+        if (fromVisible < 0) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
 
         // Drop ON a row inherits that row's visible index. Top/bottom sentinels
         // pin the ends of the visible list (append uses length as "after last").
@@ -823,21 +836,24 @@ export function MyServersPanel({
             : idx === DRAG_SENTINEL_BOTTOM
                 ? visible.length
                 : idx;
-        if (dragIdx === rawTarget) { setDragIdx(null); setOverIdx(null); return; }
+        if (fromVisible === rawTarget) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
 
-        const updated = reorderVisibleInFull(servers, visible, dragIdx, rawTarget);
+        const updated = reorderVisibleInFull(servers, visible, fromVisible, rawTarget);
         if (updated.every((s, i) => s.id === servers[i]?.id)) {
+            dragServerIdRef.current = null;
             setDragIdx(null);
             setOverIdx(null);
             return;
         }
         setServers(updated);
         storeSavedServerProfiles(updated).catch(() => {});
+        dragServerIdRef.current = null;
         setDragIdx(null);
         setOverIdx(null);
-    }, [dragIdx, servers]);
+    }, [servers]);
 
     const handleDragEnd = useCallback(() => {
+        dragServerIdRef.current = null;
         setDragIdx(null);
         setOverIdx(null);
     }, []);

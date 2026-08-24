@@ -20,20 +20,32 @@ export interface TabStateStore {
   get<T>(key: string, fallback: T): T;
   set(key: string, value: unknown): void;
   has(key: string): boolean;
+  subscribe(key: string, listener: (value: unknown) => void): () => void;
   reset(): void;
 }
 
 export const createTabStateStore = (): TabStateStore => {
   const values = new Map<string, unknown>();
+  const listeners = new Map<string, Set<(value: unknown) => void>>();
   return {
     get<T>(key: string, fallback: T): T {
       return values.has(key) ? (values.get(key) as T) : fallback;
     },
     set(key: string, value: unknown): void {
       values.set(key, value);
+      listeners.get(key)?.forEach((listener) => listener(value));
     },
     has(key: string): boolean {
       return values.has(key);
+    },
+    subscribe(key: string, listener: (value: unknown) => void): () => void {
+      const keyListeners = listeners.get(key) ?? new Set<(value: unknown) => void>();
+      keyListeners.add(listener);
+      listeners.set(key, keyListeners);
+      return () => {
+        keyListeners.delete(listener);
+        if (keyListeners.size === 0) listeners.delete(key);
+      };
     },
     reset(): void {
       values.clear();
@@ -59,13 +71,27 @@ export function useStickyState<T>(
     const fallback = typeof initial === 'function' ? (initial as () => T)() : initial;
     return store ? store.get<T>(key, fallback) : fallback;
   });
+  const valueRef = React.useRef(value);
+  React.useEffect(() => { valueRef.current = value; }, [value]);
+
+  // Imports and other dialog-level actions write the store while a tab may be
+  // mounted. Subscribe so its visible controls change immediately rather than
+  // only after an unmount/remount cycle (#514).
+  React.useEffect(() => {
+    if (!store) return;
+    return store.subscribe(key, (next) => {
+      valueRef.current = next as T;
+      setValue(next as T);
+    });
+  }, [store, key]);
 
   const set = React.useCallback<React.Dispatch<React.SetStateAction<T>>>((next) => {
-    setValue((prev) => {
-      const resolved = typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
-      store?.set(key, resolved);
-      return resolved;
-    });
+    const resolved = typeof next === 'function'
+      ? (next as (p: T) => T)(valueRef.current)
+      : next;
+    valueRef.current = resolved;
+    setValue(resolved);
+    store?.set(key, resolved);
   }, [store, key]);
 
   return [value, set];

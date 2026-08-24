@@ -16,6 +16,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 /** One `sync_scan_progress` tick. `dirs_found`/`bytes_found` are absent from
  *  the DAG-observer emitter, which only knows how many entries it has seen. */
 export interface ScanProgressEvent {
+    progress_id?: string;
     phase: 'local' | 'remote' | 'comparing';
     files_found?: number;
     dirs_found?: number;
@@ -82,7 +83,7 @@ export function scanProgressTotals(state: ScanProgressState): ScanProgressSide {
  * Subscribe while `active`, and keep a clock running alongside. Returns the
  * folded state, the totals, and how long the scan has been going.
  */
-export function useScanProgress(active: boolean) {
+export function useScanProgress(active: boolean, progressId?: string) {
     const [state, setState] = useState<ScanProgressState>(EMPTY_SCAN_PROGRESS);
     const [elapsedMs, setElapsedMs] = useState(0);
     const startedAt = useRef<number>(0);
@@ -96,6 +97,7 @@ export function useScanProgress(active: boolean) {
         let unlisten: UnlistenFn | null = null;
         let cancelled = false;
         listen<ScanProgressEvent>('sync_scan_progress', (e) => {
+            if (progressId && e.payload.progress_id !== progressId) return;
             setState((prev) => reduceScanProgress(prev, e.payload));
         }).then((fn) => {
             if (cancelled) fn();
@@ -108,7 +110,7 @@ export function useScanProgress(active: boolean) {
             if (unlisten) unlisten();
             clearInterval(clock);
         };
-    }, [active]);
+    }, [active, progressId]);
 
     return { progress: state, totals: scanProgressTotals(state), elapsedMs };
 }

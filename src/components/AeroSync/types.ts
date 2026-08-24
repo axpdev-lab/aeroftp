@@ -77,6 +77,8 @@ export interface AeroSyncContext {
      * render a scanning placeholder instead of the empty-state hint.
      */
     compareLoading?: boolean;
+    /** Identity of the backend compare whose global progress events belong to this dialog. */
+    scanProgressId?: string;
     /**
      * GAP-6: an interrupted connected-remote sync journal for this path
      * pair, if one exists. When set, the dialog surfaces a resume banner.

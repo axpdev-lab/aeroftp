@@ -1834,6 +1834,7 @@ pub struct DuplicateGroup {
 /// the total is not yet knowable.
 #[derive(Serialize, Clone)]
 pub struct DuplicateScanProgress {
+    pub scan_id: String,
     pub phase: String,
     pub files_scanned: u64,
     pub dirs_scanned: u64,
@@ -1864,6 +1865,9 @@ pub async fn find_duplicate_files(
     // <=10, text <=3, other <=100). Exposed because the right threshold is a
     // judgement about the user's own library, not a constant (discussion #347).
     distance: Option<u32>,
+    // Frontend-generated operation identity. Progress events are global Tauri
+    // events, so without this two overlapping scans interleave their counters.
+    scan_id: Option<String>,
 ) -> Result<Vec<DuplicateGroup>, String> {
     validate_path(&path)?;
 
@@ -1873,6 +1877,7 @@ pub async fn find_duplicate_files(
     }
 
     let min = min_size.unwrap_or(1);
+    let scan_id = scan_id.unwrap_or_default();
 
     let is_non_identical = mode
         .as_deref()
@@ -1924,6 +1929,7 @@ pub async fn find_duplicate_files(
             let _ = app.emit(
                 "duplicate-scan-progress",
                 DuplicateScanProgress {
+                    scan_id: scan_id.clone(),
                     phase: "walk".to_string(),
                     files_scanned: scan_count,
                     dirs_scanned,
@@ -1953,6 +1959,7 @@ pub async fn find_duplicate_files(
             let _ = app.emit(
                 "duplicate-scan-progress",
                 DuplicateScanProgress {
+                    scan_id: scan_id.clone(),
                     phase: "analyze".to_string(),
                     files_scanned,
                     dirs_scanned,

@@ -31,6 +31,7 @@ const isPreviewableImage = (name: string): boolean => PREVIEWABLE_IMAGE.test(nam
 
 /** Payload of the backend's `duplicate-scan-progress` event (filesystem.rs). */
 interface DuplicateScanProgress {
+  scan_id: string;
   phase: 'walk' | 'analyze';
   files_scanned: number;
   dirs_scanned: number;
@@ -234,6 +235,8 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   // to those dependencies would turn a dropdown into a full filesystem walk.
   // The ref gives Retry the policy in force now without that.
   const keepPolicyRef = useRef(keepPolicy);
+  const scanSequenceRef = useRef(0);
+  const activeScanIdRef = useRef<string | null>(null);
   useEffect(() => {
     keepPolicyRef.current = keepPolicy;
   }, [keepPolicy]);
@@ -246,6 +249,8 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
 
   // Scan for duplicates when the dialog opens
   const scan = useCallback(async () => {
+    const scanId = `duplicate-${Date.now()}-${++scanSequenceRef.current}`;
+    activeScanIdRef.current = scanId;
     setIsScanning(true);
     setError(null);
     setGroups([]);
@@ -259,7 +264,9 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
         mode: mode,
         // Only meaningful for the fuzzy engine; null keeps its per-modality defaults.
         distance: mode === 'non-identical' ? appliedThreshold : null,
+        scanId,
       });
+      if (activeScanIdRef.current !== scanId) return;
       setGroups(result);
 
       if (mode === 'exact') {
@@ -273,9 +280,10 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
         setSelectedPaths(new Set());
       }
     } catch (err) {
+      if (activeScanIdRef.current !== scanId) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setIsScanning(false);
+      if (activeScanIdRef.current === scanId) setIsScanning(false);
     }
   }, [scanPath, mode, appliedThreshold]);
 
@@ -283,6 +291,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     if (isOpen) {
       scan();
     } else {
+      activeScanIdRef.current = null;
       // Reset state when dialog closes
       setGroups([]);
       setSelectedPaths(new Set());
@@ -301,6 +310,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
     listen<DuplicateScanProgress>('duplicate-scan-progress', (e) => {
+      if (e.payload.scan_id !== activeScanIdRef.current) return;
       setProgress(e.payload);
     }).then((fn) => {
       if (cancelled) fn();
