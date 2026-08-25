@@ -25,8 +25,19 @@
  *   - A native API is `Braces`. It cannot keep `Database` (that is S3) or
  *     `Cloud` (that is OAuth), and `Key`/`KeyRound` reads as SFTP. Curly braces
  *     say "this provider's own JSON API" without borrowing anyone's meaning.
+ *     Ehud confirmed `{ }` on 11 Aug (#347).
  *   - S3 keeps `Database`, the reading three of the four surfaces already had;
- *     Filen's `Layers` was the outlier.
+ *     Filen's `Layers` was the outlier. Ehud's later bucket suggestion is
+ *     noted, not applied: remapping S3 would change a shipped #567 shape.
+ *
+ * CatalogTable still kept a private map for three catalog labels the shared
+ * map did not know, so those join here without touching the #567 assignments:
+ *
+ *   - Swift is `Boxes` (the leftover CatalogTable pick).
+ *   - MEGAcmd is `TerminalSquare` (`>_` in a square, Ehud 11 Aug).
+ *   - Blob cannot reuse `Database` (that is S3; unique-shape fails with
+ *     "Blob draws the same glyph as S3"). Azure Blob is organised in
+ *     containers, so it draws lucide `Container`.
  *
  * Colours stay per-surface: the table tints its glyphs to match its badge
  * palette, the Quick Connect tabs tint on the active state. Only the shape is
@@ -34,13 +45,16 @@
  */
 import * as React from 'react';
 import {
+    Boxes,
     Braces,
     Cloud,
+    Container,
     Database,
     Globe,
     KeyRound,
     Server,
     Shield,
+    TerminalSquare,
     type LucideIcon,
 } from 'lucide-react';
 
@@ -54,7 +68,10 @@ export type ConnectionMethod =
     | 'FTPS'
     | 'SFTP'
     | 'E2E'
-    | 'Crypt';
+    | 'Crypt'
+    | 'Swift'
+    | 'Blob'
+    | 'MEGAcmd';
 
 /** The lucide component for a method, so each caller picks its own size/colour. */
 export const CONNECTION_METHOD_GLYPH: Record<ConnectionMethod, LucideIcon> = {
@@ -67,6 +84,9 @@ export const CONNECTION_METHOD_GLYPH: Record<ConnectionMethod, LucideIcon> = {
     SFTP: KeyRound,
     E2E: Shield,
     Crypt: Shield,
+    Swift: Boxes,
+    Blob: Container,
+    MEGAcmd: TerminalSquare,
 };
 
 /**

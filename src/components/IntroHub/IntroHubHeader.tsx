@@ -5,6 +5,7 @@ import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { useTranslation } from '../../i18n';
 import { middleClickClose } from '../../utils/middleClick';
+import { reorderInheritingIndex } from '../../utils/reorderByIndex';
 import type { ServerProfile, ProviderType } from '../../types';
 
 export type IntroHubTab = 'my-servers' | 'discover';
@@ -24,6 +25,9 @@ interface IntroHubHeaderProps {
     formTabs: FormTab[];
     onCloseFormTab: (tabId: string) => void;
     onCloseAllFormTabs?: () => void;
+    /** Drag-to-reorder the form tabs (Ehud #347). Called with the reordered
+     *  array after a drop. When omitted the tabs are not draggable. */
+    onReorderFormTabs?: (tabs: FormTab[]) => void;
     hasExistingSessions?: boolean;
     /** Number of open session tabs, shown as a count chip inside the
      *  "Active Sessions" button. Issue #128-C. */
@@ -58,6 +62,7 @@ export function IntroHubHeader({
     formTabs,
     onCloseFormTab,
     onCloseAllFormTabs,
+    onReorderFormTabs,
     hasExistingSessions,
     sessionCount = 0,
     onSkipToFileManager,
@@ -72,6 +77,44 @@ export function IntroHubHeader({
     const t = useTranslation();
     const [ctxMenu, setCtxMenu] = React.useState<{ x: number; y: number; tabId: string } | null>(null);
     const ctxMenuRef = React.useRef<HTMLDivElement | null>(null);
+
+    // HTML5 DnD for form tabs (Ehud #347): inherit-slot reorder, same helper
+    // as My Servers (#453). Disabled unless the parent passed a callback and
+    // there is more than one tab to move.
+    const [dragIdx, setDragIdx] = React.useState<number | null>(null);
+    const [overIdx, setOverIdx] = React.useState<number | null>(null);
+    const dragNodeRef = React.useRef<HTMLDivElement | null>(null);
+    const canReorder = !!onReorderFormTabs && formTabs.length > 1;
+
+    const handleTabDragStart = (e: React.DragEvent<HTMLDivElement>, idx: number) => {
+        setDragIdx(idx);
+        dragNodeRef.current = e.currentTarget;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('application/x-introhub-form-tab', String(idx));
+        requestAnimationFrame(() => {
+            if (dragNodeRef.current) dragNodeRef.current.style.opacity = '0.4';
+        });
+    };
+
+    const handleTabDragOver = (e: React.DragEvent<HTMLDivElement>, idx: number) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (dragIdx === null || idx === dragIdx) return;
+        setOverIdx(idx);
+    };
+
+    const handleTabDrop = (e: React.DragEvent<HTMLDivElement>, idx: number) => {
+        e.preventDefault();
+        if (dragIdx === null || dragIdx === idx || !onReorderFormTabs) return;
+        onReorderFormTabs(reorderInheritingIndex(formTabs, dragIdx, idx));
+    };
+
+    const handleTabDragEnd = () => {
+        if (dragNodeRef.current) dragNodeRef.current.style.opacity = '1';
+        dragNodeRef.current = null;
+        setDragIdx(null);
+        setOverIdx(null);
+    };
 
     // Close context menu on outside click (same pattern as SessionTabs)
     React.useEffect(() => {
@@ -115,13 +158,20 @@ export function IntroHubHeader({
             {formTabs.length > 0 && (
                 <>
                     <div className="w-px h-5 bg-gray-300 dark:bg-gray-600 mx-1 shrink-0" />
-                    {formTabs.map((ft) => (
+                    {formTabs.map((ft, idx) => (
                         <div
                             key={ft.id}
+                            draggable={canReorder}
+                            onDragStart={canReorder ? (e) => handleTabDragStart(e, idx) : undefined}
+                            onDragOver={canReorder ? (e) => handleTabDragOver(e, idx) : undefined}
+                            onDrop={canReorder ? (e) => handleTabDrop(e, idx) : undefined}
+                            onDragEnd={canReorder ? handleTabDragEnd : undefined}
                             className={`group flex items-center gap-1.5 pl-2.5 pr-1.5 py-1.5 rounded-lg text-sm transition-all min-w-0 cursor-pointer ${
                                 activeTab === ft.id
                                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)]'
                                     : 'text-gray-500 dark:text-gray-400 border border-transparent hover:bg-gray-100 dark:hover:bg-gray-700/50 hover:border-gray-200 dark:hover:border-gray-600/50 hover:shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_1px_3px_rgba(0,0,0,0.3)]'
+                            } ${dragIdx === idx ? 'scale-95' : ''} ${
+                                overIdx === idx && dragIdx !== null && dragIdx !== idx ? 'border-l-2 border-blue-500' : ''
                             }`}
                             onClick={() => onTabChange(ft.id)}
                             // Middle click closes the tab (Ehud #274), on the ✖ and

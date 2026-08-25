@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { ConnectionParams, ServerProfile } from '../../types';
 import { IntroHubHeader, FormTab } from './IntroHubHeader';
+import { applyFormTabReorder } from './formTabReorder';
 import { MyServersPanel } from './MyServersPanel';
 import { DiscoverPanel } from './DiscoverPanel';
 import { PortableIsolationBanner } from './PortableIsolationBanner';
@@ -291,6 +292,13 @@ export function IntroHub(props: IntroHubProps) {
         setActiveTab('my-servers');
     }, []);
 
+    // Drag-to-reorder form tabs (Ehud #347). The header's FormTab type does
+    // not carry connectionParams, so map the reordered ids back onto the
+    // current FormTabState objects.
+    const handleReorderFormTabs = useCallback((reordered: FormTab[]) => {
+        setFormTabs(prev => applyFormTabReorder(prev, reordered));
+    }, []);
+
     // Update form tab's connectionParams + derive dynamic tab label from server field.
     // When protocol changes (FTP↔SFTP switch), also update editingProfile so the
     // remounted ConnectionScreen initializes with the correct protocol.
@@ -404,6 +412,7 @@ export function IntroHub(props: IntroHubProps) {
                 formTabs={formTabs}
                 onCloseFormTab={handleCloseFormTab}
                 onCloseAllFormTabs={handleCloseAllFormTabs}
+                onReorderFormTabs={handleReorderFormTabs}
                 hasExistingSessions={hasExistingSessions}
                 sessionCount={sessionCount}
                 onSkipToFileManager={onSkipToFileManager}
