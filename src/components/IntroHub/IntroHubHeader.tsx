@@ -106,7 +106,19 @@ export function IntroHubHeader({
     const handleTabDrop = (e: React.DragEvent<HTMLDivElement>, idx: number) => {
         e.preventDefault();
         if (dragIdx === null || dragIdx === idx || !onReorderFormTabs) return;
-        onReorderFormTabs(reorderInheritingIndex(formTabs, dragIdx, idx));
+        const from = dragIdx;
+        // Drop the drag state BEFORE handing the new order to the parent. These
+        // indices address the array as it was, and `handleTabDragEnd`, which is
+        // what used to clear them, only runs after the parent has re-rendered:
+        // in between, one frame paints the reordered tabs with the old indices,
+        // so the dimming and the drop marker land on the wrong tab. The dragged
+        // node's opacity goes back with them, because after the reorder that
+        // DOM node may well be carrying a different tab.
+        setDragIdx(null);
+        setOverIdx(null);
+        if (dragNodeRef.current) dragNodeRef.current.style.opacity = '1';
+        dragNodeRef.current = null;
+        onReorderFormTabs(reorderInheritingIndex(formTabs, from, idx));
     };
 
     const handleTabDragEnd = () => {

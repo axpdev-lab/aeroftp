@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Hifadhi kama preset",
             "aerosyncScriptAppliedToast": "Preset iliyoingizwa imehifadhiwa. Fungua AeroSync kuitumia.",
             "compressionHint": "Hubana data wakati wa uhamishaji ili kuuharakisha; haihifadhi faili zilizobanwa mahali pa kufikia. Auto huruka miundo ambayo tayari imebanwa (zip, jpg, mp4 na kadhalika).",
-            "canaryDryRun": "Hakuna kinachohamishwa: hii inaonyesha kihakikisho cha kile ambacho ulandanishaji kamili ungefanya, kilichokokotolewa kutoka kwa sampuli. Ni mlinganisho wa GUI wa amri aeroftp-cli sync --dry-run (na --dry-run ya rclone)."
+            "canaryDryRun": "Hakuna kinachohamishwa: hii inaonyesha kihakikisho cha kile ambacho ulandanishaji kamili ungefanya, kilichokokotolewa kutoka kwa sampuli. Ni mlinganisho wa GUI wa amri aeroftp-cli sync --dry-run (na --dry-run ya rclone).",
+            "templateImportPathPairs": "Idadi ya jozi za njia zinazoweza kutumika katika kiolezo hiki: {count}. AeroFTP hutumia moja tu haswa, kwa hivyo hakuna kilichoingizwa. Hariri kiolezo kibaki na jozi moja, kisha ukilete tena."
         },
         "ui": {
             "syncing": "Inasawazisha...",

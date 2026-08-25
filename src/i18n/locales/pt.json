@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Guardar como preset",
             "aerosyncScriptAppliedToast": "Preset importado guardado. Abre o AeroSync para o utilizar.",
             "compressionHint": "Comprime os dados durante a transmissão para acelerar a transferência; não armazena ficheiros comprimidos no destino. Auto ignora formatos que já estão comprimidos (zip, jpg, mp4 e semelhantes).",
-            "canaryDryRun": "Nada é transferido: isto mostra uma prévia do que uma sincronização completa faria, calculada a partir da amostra. É o equivalente gráfico do comando aeroftp-cli sync --dry-run (e do --dry-run do rclone)."
+            "canaryDryRun": "Nada é transferido: isto mostra uma prévia do que uma sincronização completa faria, calculada a partir da amostra. É o equivalente gráfico do comando aeroftp-cli sync --dry-run (e do --dry-run do rclone).",
+            "templateImportPathPairs": "Número de pares de caminhos utilizáveis neste modelo: {count}. O AeroFTP aplica exatamente um, pelo que não foi importado nada. Edite o modelo para ficar apenas um par e importe-o novamente."
         },
         "ui": {
             "syncing": "Sincronizando...",

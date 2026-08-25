@@ -11,6 +11,7 @@ import { formatBytes, formatSpeed, formatETA } from '../../utils/formatters';
 import { useTheme, getEffectiveTheme } from '../../hooks/useTheme';
 import { useTranslation } from '../../i18n';
 import { TransferProgressBar } from '../TransferProgressBar';
+import { isTransferComplete } from './transferCompletion';
 
 /**
  * Truncate a path smartly: always show the last 2 segments with ellipsis prefix.
@@ -211,20 +212,25 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     // Lock the card while a transfer is in flight (owner request): no full
     // dismiss until 100%, only minimize-to-chip, so the user never loses track
     // of an active transfer. Unlocks (shows the close button) at completion.
-    const isTransferring = headerPct < 100;
+    // Completion is asked of the raw percentage, never of `headerPct`: that one
+    // is rounded for display, so at 99.6 it reads 100 and would unlock a live
+    // transfer onto a close button that calls `onCancel`.
+    const isComplete = isTransferComplete(summary.percentage, lanes);
+    const isTransferring = !isComplete;
     const displayName = summary.path ? truncatePath(summary.path) : summary.filename;
     const transferModeLabel = isUpload ? 'UPLOAD' : 'DOWNLOAD';
     const transferStateLabel = isFolderTransfer ? 'BATCH' : (isIndeterminate ? 'STREAM' : 'LIVE');
     const hasGraph = !!transfer.speedHistory && transfer.speedHistory.length > 1;
 
     // Auto-dismiss safety: once the summary is complete AND no lane is still
-    // active, collapse after 3s (mirrors the legacy toast's behaviour).
+    // active, collapse after 3s (mirrors the legacy toast's behaviour). Same
+    // predicate as the lock above, so the card cannot contradict itself.
     useEffect(() => {
-        if (summary.percentage >= 100 && lanes.every((l) => l.state !== 'active')) {
+        if (isComplete) {
             const timer = setTimeout(() => onCancel(), 3000);
             return () => clearTimeout(timer);
         }
-    }, [summary.percentage, lanes, onCancel]);
+    }, [isComplete, onCancel]);
 
     return (
         // #364: anchor bottom-LEFT (was centered) so this card never overlaps
@@ -358,14 +364,18 @@ export const MinimizedTransferIndicator: React.FC<MinimizedTransferIndicatorProp
     const pct = Number.isFinite(summary.percentage)
         ? Math.max(0, Math.min(100, Math.round(summary.percentage)))
         : 0;
+    // `pct` is for the label only. Completion asks the raw percentage and the
+    // lanes, exactly like the full card: driving the timer off the rounded
+    // value dismissed the chip by itself, three seconds into a 99.6% transfer.
+    const isComplete = isTransferComplete(summary.percentage, transfer.lanes ?? []);
 
     // Auto-dismiss safety: 100% for 3s collapses the chip
     useEffect(() => {
-        if (pct >= 100) {
+        if (isComplete) {
             const timer = setTimeout(() => onCancel(), 3000);
             return () => clearTimeout(timer);
         }
-    }, [pct, onCancel]);
+    }, [isComplete, onCancel]);
 
     return (
         <div
@@ -401,9 +411,9 @@ export const MinimizedTransferIndicator: React.FC<MinimizedTransferIndicatorProp
                         ? '...'
                         : `${pct}%`}
             </span>
-            {/* Locked until 100%: no dismiss while transferring (click the chip
-                to reopen the full card instead). */}
-            {pct < 100 ? (
+            {/* Locked until completion: no dismiss while transferring (click the
+                chip to reopen the full card instead). */}
+            {!isComplete ? (
                 <span className={`shrink-0 p-0.5 ${styles.subtitle}`} title={t('ui.locked')}>
                     <Lock size={11} />
                 </span>

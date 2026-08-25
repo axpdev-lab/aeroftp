@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Uložit jako preset",
             "aerosyncScriptAppliedToast": "Importovaný preset uložen. Otevřete AeroSync pro jeho použití.",
             "compressionHint": "Komprimuje data během přenosu pro jeho zrychlení; v cíli neukládá komprimované soubory. Auto přeskakuje formáty, které jsou již komprimované (zip, jpg, mp4 a podobné).",
-            "canaryDryRun": "Nic se nepřenáší: zobrazí náhled toho, co by udělala úplná synchronizace, vypočtený ze vzorku. Je to grafický protějšek příkazu aeroftp-cli sync --dry-run (a --dry-run nástroje rclone)."
+            "canaryDryRun": "Nic se nepřenáší: zobrazí náhled toho, co by udělala úplná synchronizace, vypočtený ze vzorku. Je to grafický protějšek příkazu aeroftp-cli sync --dry-run (a --dry-run nástroje rclone).",
+            "templateImportPathPairs": "Počet použitelných dvojic cest v této šabloně: {count}. AeroFTP použije právě jednu, takže se nic neimportovalo. Ponechte v šabloně jedinou dvojici a importujte ji znovu."
         },
         "ui": {
             "syncing": "Synchronizace...",

@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Cadw fel preset",
             "aerosyncScriptAppliedToast": "Preset wedi'i fewnforio wedi'i gadw. Agorwch AeroSync i'w ddefnyddio.",
             "compressionHint": "Yn cywasgu data wrth ei drosglwyddo i gyflymu'r trosglwyddiad; nid yw'n storio ffeiliau wedi'u cywasgu yn y cyrchfan. Mae Auto yn hepgor fformatau sydd eisoes wedi'u cywasgu (zip, jpg, mp4 a rhai tebyg).",
-            "canaryDryRun": "Ni throsglwyddir dim: mae hyn yn rhagolwg o'r hyn y byddai cydweddu llawn yn ei wneud, wedi'i gyfrifo o'r sampl. Dyma gyfwerth GUI y gorchymyn aeroftp-cli sync --dry-run (a --dry-run rclone)."
+            "canaryDryRun": "Ni throsglwyddir dim: mae hyn yn rhagolwg o'r hyn y byddai cydweddu llawn yn ei wneud, wedi'i gyfrifo o'r sampl. Dyma gyfwerth GUI y gorchymyn aeroftp-cli sync --dry-run (a --dry-run rclone).",
+            "templateImportPathPairs": "Mae'r templed hwn yn diffinio {count} pâr llwybr defnyddiadwy. Dim ond un yn union y mae AeroFTP yn ei gymhwyso, felly ni fewnforiwyd dim. Golygwch y templed i gadw un pâr, ac yna ei fewnforio eto."
         },
         "ui": {
             "syncing": "Yn cysoni...",

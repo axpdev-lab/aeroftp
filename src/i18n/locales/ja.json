@@ -2166,7 +2166,8 @@
             "aerosyncScriptApplyButton": "preset として保存",
             "aerosyncScriptAppliedToast": "インポートした preset を保存しました。AeroSync を開いて使用してください。",
             "compressionHint": "転送を高速化するため通信中にデータを圧縮します。圧縮ファイルが転送先に保存されることはありません。Auto はすでに圧縮された形式（zip、jpg、mp4 など）をスキップします。",
-            "canaryDryRun": "何も転送されません。これはサンプルから計算した、完全同期で行われる内容のプレビューです。CLI コマンド aeroftp-cli sync --dry-run（および rclone の --dry-run）の GUI 版です。"
+            "canaryDryRun": "何も転送されません。これはサンプルから計算した、完全同期で行われる内容のプレビューです。CLI コマンド aeroftp-cli sync --dry-run（および rclone の --dry-run）の GUI 版です。",
+            "templateImportPathPairs": "このテンプレートには使用可能なパスペアが {count} 件定義されています。AeroFTP が適用するのはちょうど 1 件だけなので、何もインポートされませんでした。テンプレートを編集してパスペアを 1 件だけにしてから、もう一度インポートしてください。"
         },
         "ui": {
             "syncing": "同期中...",

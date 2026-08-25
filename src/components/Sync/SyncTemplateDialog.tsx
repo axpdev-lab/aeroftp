@@ -604,7 +604,24 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                             <div className="pt-2">
                                 <button
                                     className="px-3 py-1.5 rounded-lg bg-purple-500 text-white text-xs font-medium hover:bg-purple-600"
-                                    onClick={() => onApplyImport(settingsFromTemplate(importPreview))}
+                                    onClick={() => {
+                                        // A template holds a list of path pairs
+                                        // and a tab holds one. Refuse rather
+                                        // than apply the first and drop the
+                                        // rest, or apply empty paths: the
+                                        // operator has to know which it is, so
+                                        // the message carries the number.
+                                        const imported = settingsFromTemplate(importPreview);
+                                        if (!imported.ok) {
+                                            setResult({
+                                                success: false,
+                                                message: t('syncPanel.templateImportPathPairs', { count: imported.usablePairs }),
+                                            });
+                                            return;
+                                        }
+                                        setResult(null);
+                                        onApplyImport(imported.settings);
+                                    }}
                                 >
                                     {t('common.apply')}
                                 </button>

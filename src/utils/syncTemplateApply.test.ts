@@ -62,7 +62,10 @@ describe('AeroSync template import application', () => {
             exclude_patterns: ['cache/**', '*.part'],
             schedule: null,
         };
-        const patch = buildAeroSyncTabStatePatch(settingsFromTemplate(template), 'local-remote');
+        const imported = settingsFromTemplate(template);
+        expect(imported.ok).toBe(true);
+        if (!imported.ok) return;
+        const patch = buildAeroSyncTabStatePatch(imported.settings, 'local-remote');
         expect(patch).toMatchObject({
             'sync.source': '/local',
             'sync.destination': '/remote',
@@ -96,5 +99,64 @@ describe('AeroSync template import application', () => {
             'plan.preset': 'bisync',
             'plan.direction': 'left-to-right',
         });
+    });
+});
+
+describe('a template that does not carry exactly one path pair (C-10)', () => {
+    const template = (pairs: { local: string; remote: string }[]): SyncTemplate => ({
+        schema_version: 1,
+        name: 'Pull',
+        description: '',
+        created_by: 'test',
+        path_patterns: pairs,
+        profile: {
+            direction: 'remote_to_local',
+            compare_timestamp: false,
+            compare_size: true,
+            compare_checksum: false,
+            delete_orphans: false,
+            parallel_streams: 3,
+            compression_mode: 'auto',
+        },
+        exclude_patterns: [],
+        schedule: null,
+    });
+
+    it('refuses two pairs instead of applying the first and dropping the rest', () => {
+        const imported = settingsFromTemplate(template([
+            { local: '/a', remote: '/ra' },
+            { local: '/b', remote: '/rb' },
+        ]));
+        expect(imported.ok).toBe(false);
+        if (imported.ok) return;
+        // The number is what the operator acts on, so it is part of the result
+        // rather than only of the message.
+        expect(imported.usablePairs).toBe(2);
+    });
+
+    it('refuses an empty list instead of applying empty paths', () => {
+        // `path_patterns[0]` behind an optional chain produced two empty
+        // strings, which read downstream as a sync from the filesystem root.
+        const imported = settingsFromTemplate(template([]));
+        expect(imported.ok).toBe(false);
+        if (imported.ok) return;
+        expect(imported.usablePairs).toBe(0);
+    });
+
+    it('counts a pair with a blank side as no pair at all', () => {
+        for (const pair of [{ local: '', remote: '/r' }, { local: '/l', remote: '   ' }]) {
+            const imported = settingsFromTemplate(template([pair]));
+            expect(imported.ok, JSON.stringify(pair)).toBe(false);
+            if (imported.ok) continue;
+            expect(imported.usablePairs).toBe(0);
+        }
+    });
+
+    it('applies the one pair it does carry', () => {
+        const imported = settingsFromTemplate(template([{ local: '/l', remote: '/r' }]));
+        expect(imported.ok).toBe(true);
+        if (!imported.ok) return;
+        expect(imported.settings.localPath).toBe('/l');
+        expect(imported.settings.remotePath).toBe('/r');
     });
 });

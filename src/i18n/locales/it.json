@@ -2395,7 +2395,8 @@
             "aerosyncScriptFromWrapper": "(da wrapper)",
             "aerosyncScriptUnmappedFields": "Campi metadata non riconosciuti",
             "aerosyncScriptApplyButton": "Salva come preset",
-            "aerosyncScriptAppliedToast": "Preset importato salvato. Apri AeroSync per usarlo."
+            "aerosyncScriptAppliedToast": "Preset importato salvato. Apri AeroSync per usarlo.",
+            "templateImportPathPairs": "Questo template definisce {count} coppie di percorsi utilizzabili. AeroFTP ne applica esattamente una, quindi non è stato importato nulla. Modifica il template lasciando una sola coppia, poi importalo di nuovo."
         },
         "ui": {
             "syncing": "Sincronizzazione...",

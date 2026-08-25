@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Tallenna presetinä",
             "aerosyncScriptAppliedToast": "Tuotu preset tallennettu. Avaa AeroSync käyttääksesi sitä.",
             "compressionHint": "Pakkaa tiedot siirron aikana siirron nopeuttamiseksi; se ei tallenna pakattuja tiedostoja kohteeseen. Auto ohittaa muodot, jotka on jo pakattu (zip, jpg, mp4 ja vastaavat).",
-            "canaryDryRun": "Mitään ei siirretä: tämä esikatselee, mitä täysi synkronointi tekisi, laskettuna otoksesta. Se on CLI-komennon aeroftp-cli sync --dry-run (ja rclonen --dry-run) graafinen vastine."
+            "canaryDryRun": "Mitään ei siirretä: tämä esikatselee, mitä täysi synkronointi tekisi, laskettuna otoksesta. Se on CLI-komennon aeroftp-cli sync --dry-run (ja rclonen --dry-run) graafinen vastine.",
+            "templateImportPathPairs": "Käyttökelpoisia polkupareja tässä mallissa: {count}. AeroFTP käyttää tasan yhtä, joten mitään ei tuotu. Muokkaa mallia niin, että siihen jää yksi polkupari, ja tuo se uudelleen."
         },
         "ui": {
             "syncing": "Synkronoidaan...",

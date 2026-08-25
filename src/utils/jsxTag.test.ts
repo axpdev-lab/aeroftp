@@ -71,6 +71,45 @@ describe('withoutComments', () => {
         expect(out).toContain('const c = 3;');
     });
 
+    it('does not read the slashes inside a regex literal as a comment', () => {
+        // `/https?:\\/\\//` ends in two adjacent slashes. Without a regex state
+        // the scan called them a `//` and blanked the rest of the line, so every
+        // span that ran past such a regex came back truncated and the pins
+        // reading it asserted about text that was no longer there.
+        const src = 'const re = /https?:\\/\\//; const after = 1;\n';
+        const out = withoutComments(src);
+        expect(out, 'code after a regex ending in two slashes').toContain('const after = 1;');
+        expect(out.length).toBe(src.length);
+    });
+
+    it('does not end a regex on a slash inside a character class', () => {
+        const src = 'const re = /[/]x/; const after = 2; // gone\nconst tail = 3;\n';
+        const out = withoutComments(src);
+        expect(out).toContain('const after = 2;');
+        expect(out).not.toContain('gone');
+        expect(out).toContain('const tail = 3;');
+    });
+
+    it('still reads division as division', () => {
+        // The reverse mistake costs more than the one it fixes: calling a
+        // division a regex hides real code up to the next slash.
+        const src = 'const r = total / count; // note\nconst x = (a) / 2; const y = 1;\n';
+        const out = withoutComments(src);
+        expect(out).not.toContain('note');
+        expect(out).toContain('const y = 1;');
+    });
+
+    it('keeps JSX slashes out of it', () => {
+        // `/>` closes an element and `</` opens a closing tag; reading either as
+        // a regex start swallows everything up to the next slash in the file.
+        const src = '<Row label="x" /><Wrap>{value}</Wrap> // note\nconst after = 4;\n';
+        const out = withoutComments(src);
+        expect(out).toContain('<Row label="x" />');
+        expect(out).toContain('</Wrap>');
+        expect(out).not.toContain('note');
+        expect(out).toContain('const after = 4;');
+    });
+
     it('blanks real comments of both kinds', () => {
         const src = 'a; /* block\nspanning */ b; // line\nc;';
         const out = withoutComments(src);
@@ -137,6 +176,30 @@ describe('jsxTagAt / jsxTagContaining', () => {
         const tag = jsxTagAt(src, 0)!;
         expect(tag).toContain('label="x"');
         expect(tag.endsWith('/>')).toBe(true);
+    });
+
+    it('reads a tag whose prop holds a regex', () => {
+        const src = '<Row match={/a\\/\\//} label="x" />';
+        const tag = jsxTagAt(src, 0)!;
+        expect(tag, "the outer tag's own last prop").toContain('label="x"');
+        expect(tag.endsWith('/>')).toBe(true);
+    });
+
+    it('takes the tag name literally instead of as a pattern', () => {
+        // A JSX member expression is a legal name. Interpolated unescaped, the
+        // `.` matches any character, so `Menu.Item` also answers for `MenuXItem`
+        // and the assertion is served by the wrong element.
+        const src = '<MenuXItem a={1} /><Menu.Item b={2} />';
+        const tags = jsxTags(src, 'Menu.Item');
+        expect(tags).toHaveLength(1);
+        expect(tags[0]).toContain('b={2}');
+        expect(jsxTagContaining(src, 'Menu.Item', 'b={2}')).toContain('b={2}');
+        expect(jsxTagContaining(src, 'Menu.Item', 'a={1}')).toBeNull();
+    });
+
+    it('does not throw on a name carrying regex metacharacters', () => {
+        expect(() => jsxTags('<Row a={1} />', 'Item[0]')).not.toThrow();
+        expect(jsxTags('<Row a={1} />', 'Item[0]')).toEqual([]);
     });
 
     it('returns null for a tag that never closes', () => {

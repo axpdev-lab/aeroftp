@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Salvează ca preset",
             "aerosyncScriptAppliedToast": "Preset importat salvat. Deschide AeroSync pentru a-l folosi.",
             "compressionHint": "Comprimă datele în timpul transferului pentru a-l accelera; nu stochează fișiere comprimate la destinație. Auto omite formatele deja comprimate (zip, jpg, mp4 și altele similare).",
-            "canaryDryRun": "Nu se transferă nimic: aceasta previzualizează ce ar face o sincronizare completă, calculată din eșantion. Este echivalentul grafic al comenzii aeroftp-cli sync --dry-run (și al --dry-run din rclone)."
+            "canaryDryRun": "Nu se transferă nimic: aceasta previzualizează ce ar face o sincronizare completă, calculată din eșantion. Este echivalentul grafic al comenzii aeroftp-cli sync --dry-run (și al --dry-run din rclone).",
+            "templateImportPathPairs": "Numărul de perechi de căi utilizabile din acest șablon: {count}. AeroFTP aplică exact una, așa că nu s-a importat nimic. Editează șablonul astfel încât să rămână o singură pereche, apoi importă-l din nou."
         },
         "ui": {
             "syncing": "Se sincronizează...",

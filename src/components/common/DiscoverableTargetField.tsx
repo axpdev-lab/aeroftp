@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import React, { useEffect, useId, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 
@@ -61,24 +61,45 @@ export const DiscoverableTargetField: React.FC<DiscoverableTargetFieldProps> = (
     const [error, setError] = useState('');
     const [hasFetched, setHasFetched] = useState(false);
 
+    // Which set of credentials the results on screen belong to. Bumped on every
+    // reset, and captured by each discovery so a reply that lands after the
+    // credentials changed can be recognised as belonging to the old account.
+    const epoch = useRef(0);
+
     useEffect(() => {
+        epoch.current++;
         setTargets([]);
         setError('');
         setHasFetched(false);
+        // Any request still in flight now belongs to the previous credentials
+        // and will be dropped when it lands, so its spinner is released here
+        // rather than by the reply, which no longer speaks for this form.
+        setLoading(false);
     }, [resetKey]);
 
     const discover = async () => {
+        const requested = epoch.current;
         setLoading(true);
         setError('');
         try {
             const discovered = await onDiscover();
+            // A request is in flight for as long as the network takes, and the
+            // user can edit the credentials meanwhile. Without this check the
+            // late reply repopulated the list with the previous account's
+            // targets, and a single result was written straight into the field
+            // by the auto-select below: the form then held one account's
+            // credentials pointing at another account's bucket.
+            if (requested !== epoch.current) return;
             setTargets(discovered);
             setHasFetched(true);
             if (discovered.length === 1) onChange(discovered[0].value);
         } catch (reason) {
+            if (requested !== epoch.current) return;
             setError(reason instanceof Error ? reason.message : String(reason));
         } finally {
-            setLoading(false);
+            // The spinner belongs to the request that is current now: a stale
+            // reply must not stop the spinner of the one that replaced it.
+            if (requested === epoch.current) setLoading(false);
         }
     };
 
@@ -117,7 +138,7 @@ export const DiscoverableTargetField: React.FC<DiscoverableTargetFieldProps> = (
                 <datalist id={listId}>
                     {targets.map((target) => (
                         <option key={target.value} value={target.value}>
-                            {target.label === target.value ? target.value : `${target.label} — ${target.value}`}
+                            {target.label === target.value ? target.value : `${target.label} (${target.value})`}
                         </option>
                     ))}
                 </datalist>

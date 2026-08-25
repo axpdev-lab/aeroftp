@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Shrani kot preset",
             "aerosyncScriptAppliedToast": "Uvozeni preset shranjen. Odpri AeroSync za uporabo.",
             "compressionHint": "Stiska podatke med prenosom, da ga pospeši; na cilju ne shranjuje stisnjenih datotek. Auto preskoči formate, ki so že stisnjeni (zip, jpg, mp4 in podobni).",
-            "canaryDryRun": "Nič se ne prenese: to prikaže predogled tega, kar bi naredila polna sinhronizacija, izračunan iz vzorca. To je grafični ustreznik ukaza aeroftp-cli sync --dry-run (in --dry-run orodja rclone)."
+            "canaryDryRun": "Nič se ne prenese: to prikaže predogled tega, kar bi naredila polna sinhronizacija, izračunan iz vzorca. To je grafični ustreznik ukaza aeroftp-cli sync --dry-run (in --dry-run orodja rclone).",
+            "templateImportPathPairs": "Število uporabnih parov poti v tej predlogi: {count}. AeroFTP uporabi natanko enega, zato ni bilo uvoženo nič. Uredite predlogo tako, da ostane en sam par, in jo znova uvozite."
         },
         "ui": {
             "syncing": "Sinhronizacija...",

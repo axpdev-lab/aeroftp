@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Salvesta presetina",
             "aerosyncScriptAppliedToast": "Imporditud preset salvestatud. Ava AeroSync selle kasutamiseks.",
             "compressionHint": "Tihendab andmeid edastamise ajal, et kiirendada ülekannet; sihtkohta ei salvestata tihendatud faile. Auto jätab vahele juba tihendatud vormingud (zip, jpg, mp4 ja sarnased).",
-            "canaryDryRun": "Midagi ei edastata: see näitab eelvaadet, mida täielik sünkroonimine teeks, arvutatuna valimi põhjal. See on käsu aeroftp-cli sync --dry-run (ja rclone'i --dry-run) graafilise liidese vaste."
+            "canaryDryRun": "Midagi ei edastata: see näitab eelvaadet, mida täielik sünkroonimine teeks, arvutatuna valimi põhjal. See on käsu aeroftp-cli sync --dry-run (ja rclone'i --dry-run) graafilise liidese vaste.",
+            "templateImportPathPairs": "Kasutatavaid teepaare selles mallis: {count}. AeroFTP rakendab täpselt ühe, seega ei imporditud midagi. Muuda malli nii, et alles jääb üks teepaar, ja impordi see uuesti."
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",

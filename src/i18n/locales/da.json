@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Gem som preset",
             "aerosyncScriptAppliedToast": "Importeret preset gemt. Åbn AeroSync for at bruge det.",
             "compressionHint": "Komprimerer data under overførslen for at gøre den hurtigere; den gemmer ikke komprimerede filer på destinationen. Auto springer formater over, der allerede er komprimerede (zip, jpg, mp4 og lignende).",
-            "canaryDryRun": "Intet overføres: dette viser, hvad en fuld synkronisering ville gøre, beregnet ud fra stikprøven. Det er GUI-modstykket til CLI-kommandoen aeroftp-cli sync --dry-run (og rclones --dry-run)."
+            "canaryDryRun": "Intet overføres: dette viser, hvad en fuld synkronisering ville gøre, beregnet ud fra stikprøven. Det er GUI-modstykket til CLI-kommandoen aeroftp-cli sync --dry-run (og rclones --dry-run).",
+            "templateImportPathPairs": "Antal brugbare stipar i denne skabelon: {count}. AeroFTP anvender præcis ét, så intet blev importeret. Redigér skabelonen, så der kun er ét stipar, og importér den igen."
         },
         "ui": {
             "syncing": "Synkroniserer...",

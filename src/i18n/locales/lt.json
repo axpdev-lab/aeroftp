@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Išsaugoti kaip preset",
             "aerosyncScriptAppliedToast": "Importuotas preset išsaugotas. Atidarykite AeroSync, kad jį naudotumėte.",
             "compressionHint": "Suspaudžia duomenis perdavimo metu, kad transferis būtų greitesnis; suspaustų failų paskirties vietoje nesaugo. Auto praleidžia jau suspaustus formatus (zip, jpg, mp4 ir panašius).",
-            "canaryDryRun": "Niekas neperkeliama: tai parodo, ką darytų visas sinchronizavimas, apskaičiuota iš imties. Tai komandos aeroftp-cli sync --dry-run (ir rclone --dry-run) grafinis atitikmuo."
+            "canaryDryRun": "Niekas neperkeliama: tai parodo, ką darytų visas sinchronizavimas, apskaičiuota iš imties. Tai komandos aeroftp-cli sync --dry-run (ir rclone --dry-run) grafinis atitikmuo.",
+            "templateImportPathPairs": "Naudotinų kelių porų šiame šablone: {count}. AeroFTP taiko lygiai vieną, todėl nieko neimportuota. Pataisykite šabloną taip, kad liktų viena pora, ir importuokite jį dar kartą."
         },
         "ui": {
             "syncing": "Sinchronizuojama...",

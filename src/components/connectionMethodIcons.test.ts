@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { Boxes, Braces, Cloud, Container, Database, KeyRound, Server, TerminalSquare } from 'lucide-react';
 import { CONNECTION_METHOD_GLYPH, methodIcon } from './connectionMethodIcons';
+import { PROVIDER_CATALOG } from './providerCatalog';
 import modeGroupsRaw from './providerModeGroups.tsx?raw';
 import myServersRaw from './IntroHub/MyServersTable.tsx?raw';
 import catalogTableRaw from './IntroHub/CatalogTable.tsx?raw';
@@ -65,6 +66,29 @@ describe('one glyph per connection method (#347)', () => {
         // drifts again.
         expect(catalogTableRaw).toContain('methodIcon(');
         expect(catalogTableRaw).not.toContain('PROTOCOL_GLYPHS');
+    });
+
+    it('draws a glyph for every badge the catalog actually ships', () => {
+        // CatalogTable's private Record<CatalogProtocol, ReactNode> map made a
+        // protocol without a shape a compile error; unifying on methodIcon
+        // removed that, and methodIcon returns null for an unknown key, so the
+        // badge would ship with a hole instead of failing. CatalogTable now
+        // carries the check at the type level; this is the runtime half, over
+        // the labels really present in the catalog rather than over the enum.
+        for (const company of PROVIDER_CATALOG) {
+            for (const protocol of company.protocols) {
+                expect(
+                    methodIcon(protocol.label, { size: 11 }),
+                    `${company.company} badge ${protocol.label} has no glyph`,
+                ).not.toBeNull();
+            }
+        }
+    });
+
+    it('keeps the compile-time glyph check in CatalogTable', () => {
+        // Deleting the alias silently restores the hole the runtime test above
+        // can only catch once a protocol has already been added to the catalog.
+        expect(catalogTableRaw).toContain('EveryCatalogProtocolHasAGlyph');
     });
 
     it('keeps the shipped #567 shapes', () => {

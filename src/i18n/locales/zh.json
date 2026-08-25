@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "另存为 preset",
             "aerosyncScriptAppliedToast": "已保存导入的 preset。打开 AeroSync 即可使用。",
             "compressionHint": "在传输过程中压缩数据以加快传输速度；不会在目标位置存储压缩文件。Auto 会跳过已压缩的格式（zip、jpg、mp4 等）。",
-            "canaryDryRun": "不会传输任何内容：这会根据样本预览完整同步将执行的操作。它是 CLI 命令 aeroftp-cli sync --dry-run（以及 rclone 的 --dry-run）的图形界面对应功能。"
+            "canaryDryRun": "不会传输任何内容：这会根据样本预览完整同步将执行的操作。它是 CLI 命令 aeroftp-cli sync --dry-run（以及 rclone 的 --dry-run）的图形界面对应功能。",
+            "templateImportPathPairs": "此模板定义了 {count} 个可用的路径对。AeroFTP 只应用其中一个，因此未导入任何内容。请编辑模板，只保留一个路径对，然后重新导入。"
         },
         "ui": {
             "syncing": "正在同步...",

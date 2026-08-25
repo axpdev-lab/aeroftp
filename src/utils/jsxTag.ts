@@ -41,6 +41,48 @@ function isEscaped(source: string, i: number): boolean {
     return run % 2 === 1;
 }
 
+/** Word characters, for reading the identifier that precedes a `/`. */
+const WORD = /[A-Za-z0-9_$]/;
+
+/**
+ * Keywords after which a `/` opens a regex rather than dividing. `return /x/`
+ * is a regex; `total / count` is division, and so is anything after a plain
+ * identifier.
+ */
+const REGEX_AFTER_KEYWORD = new Set([
+    'await', 'case', 'delete', 'do', 'else', 'in', 'instanceof', 'new',
+    'of', 'return', 'throw', 'typeof', 'void', 'yield',
+]);
+
+/**
+ * Whether the `/` at `i` opens a regex literal, by the usual lexer heuristic:
+ * it does unless the previous meaningful character could end an expression.
+ *
+ * The ambiguous cases are decided towards division on purpose. Calling a
+ * division a regex swallows real code up to the next `/` and hides it from the
+ * scan; calling a regex a division only leaves this file where it already was.
+ */
+function opensRegex(source: string, i: number): boolean {
+    // Two shapes that are JSX, not regexes, and would each swallow the rest of
+    // the file up to the next `/`: the `/>` that closes an element, and the `</`
+    // that opens a closing tag. `/>/` and `</` are legal regex starts in plain
+    // JS, but this lexer exists to read TSX, where those readings never win.
+    if (source[i + 1] === '>') return false;
+    if (source[i - 1] === '<') return false;
+    let k = i - 1;
+    while (k >= 0 && /\s/.test(source[k])) k--;
+    if (k < 0) return true;
+    const previous = source[k];
+    if (WORD.test(previous)) {
+        let start = k;
+        while (start >= 0 && WORD.test(source[start])) start--;
+        return REGEX_AFTER_KEYWORD.has(source.slice(start + 1, k + 1));
+    }
+    // `)`, `]` and `}` end an expression or a block, `.` a member access:
+    // a `/` after any of them is division.
+    return !')]}.'.includes(previous);
+}
+
 /**
  * Classify every character of the source once.
  *
@@ -50,6 +92,12 @@ function isEscaped(source: string, i: number): boolean {
  * the text, which is the false positive a comment-stripping scan exists to
  * prevent. So the state is a stack: a template can hold an interpolation, and an
  * interpolation can hold another template, to any depth.
+ *
+ * A regex literal is its own state for the same reason. `/https?:\/\//` ends in
+ * two adjacent slashes, so without one this scan read them as the start of a
+ * line comment and blanked the rest of the line: every tag span that ran past
+ * such a regex was truncated, and the pins that read those spans passed on
+ * text that no longer contained what they were asserting about.
  */
 export function classify(source: string): Uint8Array {
     const out = new Uint8Array(source.length);
@@ -57,7 +105,9 @@ export function classify(source: string): Uint8Array {
     // the brace depth reached so far, so that object literals and blocks inside
     // the interpolation do not close it early.
     const stack: ({ kind: 'template' } | { kind: 'interp'; depth: number })[] = [];
-    let mode: 'code' | 'line' | 'block' | '"' | "'" | 'template' = 'code';
+    let mode: 'code' | 'line' | 'block' | '"' | "'" | 'template' | 'regex' = 'code';
+    // Inside a regex, a `/` in a character class does not close the literal.
+    let inCharClass = false;
 
     for (let i = 0; i < source.length; i++) {
         const c = source[i];
@@ -77,6 +127,21 @@ export function classify(source: string): Uint8Array {
                 out[i] = Ctx.Literal;
                 if (c === mode && !isEscaped(source, i)) mode = 'code';
                 continue;
+            case 'regex':
+                out[i] = Ctx.Literal;
+                if (c === '\n') {
+                    // An unterminated regex is malformed input, not a reason to
+                    // swallow the rest of the file: a literal never spans lines.
+                    out[i] = Ctx.Code;
+                    mode = 'code';
+                    inCharClass = false;
+                    continue;
+                }
+                if (isEscaped(source, i)) continue;
+                if (c === '[') inCharClass = true;
+                else if (c === ']') inCharClass = false;
+                else if (c === '/' && !inCharClass) mode = 'code';
+                continue;
             case 'template':
                 if (c === '$' && next === '{' && !isEscaped(source, i)) {
                     out[i] = Ctx.Literal;      // the `$` is still template text
@@ -88,17 +153,25 @@ export function classify(source: string): Uint8Array {
                     continue;
                 }
                 out[i] = Ctx.Literal;
-                if (c === '`' && !isEscaped(source, i)) {
-                    // Closing this template. If it was opened inside an
-                    // interpolation, that interpolation is still running.
-                    const outer = stack[stack.length - 1];
-                    mode = outer && outer.kind === 'interp' ? 'code' : 'code';
-                }
+                // Closing this template hands control back to code either way:
+                // to the interpolation that is still running if the template was
+                // opened inside one, or to the surrounding code if it was not.
+                // The frame that says which is already on the stack and is
+                // popped by the `}` that closes the interpolation.
+                if (c === '`' && !isEscaped(source, i)) mode = 'code';
                 continue;
             default: {
                 const top = stack[stack.length - 1];
+                // Comments first: a regex can start with neither `/` (empty) nor
+                // `*` (nothing to repeat), so these two never steal one.
                 if (c === '/' && next === '/') { mode = 'line'; out[i] = Ctx.Comment; continue; }
                 if (c === '/' && next === '*') { mode = 'block'; out[i] = Ctx.Comment; continue; }
+                if (c === '/' && opensRegex(source, i)) {
+                    out[i] = Ctx.Literal;
+                    mode = 'regex';
+                    inCharClass = false;
+                    continue;
+                }
                 if (c === '"' || c === "'") { out[i] = Ctx.Literal; mode = c; continue; }
                 if (c === '`') { out[i] = Ctx.Literal; mode = 'template'; continue; }
                 if (top && top.kind === 'interp') {
@@ -161,12 +234,25 @@ export function jsxTagAt(source: string, at: number, ctx = classify(source)): st
     return null;
 }
 
+/**
+ * Escape a tag name for literal use inside a `RegExp`.
+ *
+ * The name is usually a bare identifier, which is why the missing escape went
+ * unnoticed, but a JSX member expression is a legal tag name: `<Menu.Item …>`
+ * searched unescaped matches `MenuXItem` too, and a name carrying `[` or `(`
+ * builds a pattern that throws or, worse, quietly matches the wrong element and
+ * answers an assertion with someone else's props.
+ */
+function escapeRegExp(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** Every `<Name …>` tag in the source, in order. Comments are not stripped here:
  *  the caller decides, since some assertions are about comments. */
 export function jsxTags(source: string, name: string): string[] {
     const ctx = classify(source);
     const out: string[] = [];
-    const open = new RegExp(`<${name}(?![A-Za-z0-9_])`, 'g');
+    const open = new RegExp(`<${escapeRegExp(name)}(?![A-Za-z0-9_])`, 'g');
     for (const m of source.matchAll(open)) {
         const start = m.index ?? 0;
         if (ctx[start] !== Ctx.Code) continue;
@@ -186,7 +272,7 @@ export function jsxTagContaining(source: string, name: string, needle: string): 
     const idx = source.indexOf(needle);
     if (idx === -1) return null;
     const ctx = classify(source);
-    const open = new RegExp(`<${name}(?![A-Za-z0-9_])`, 'g');
+    const open = new RegExp(`<${escapeRegExp(name)}(?![A-Za-z0-9_])`, 'g');
     let found: string | null = null;
     for (const m of source.matchAll(open)) {
         const start = m.index ?? 0;

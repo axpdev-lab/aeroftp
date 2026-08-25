@@ -26,11 +26,36 @@ export interface ImportedSyncSettings {
 
 export type AeroSyncTabStatePatch = Record<string, unknown>;
 
-export function settingsFromTemplate(template: SyncTemplate): ImportedSyncSettings {
-    const paths = template.path_patterns[0];
-    return {
-        localPath: paths?.local || '',
-        remotePath: paths?.remote || '',
+/**
+ * Either the settings a template applies, or a refusal carrying the number of
+ * usable path pairs it declares, which is what the operator has to act on.
+ */
+export type TemplateImportResult =
+    | { ok: true; settings: ImportedSyncSettings }
+    | { ok: false; usablePairs: number };
+
+/**
+ * Read the one local/remote pair a template applies, or refuse.
+ *
+ * `path_patterns` is a list, and an AeroSync tab holds exactly one pair. This
+ * used to read `path_patterns[0]` behind an optional chain, which had two
+ * silent outcomes: a template with two pairs applied the first and dropped the
+ * second with no indication, and a template with none applied two empty paths,
+ * which then read as a sync from the filesystem root. Both are worse than not
+ * importing, because the operator believes the template was applied.
+ *
+ * A pair with a blank side counts as unusable rather than as a pair: it leads
+ * to the same empty path by a different route.
+ */
+export function settingsFromTemplate(template: SyncTemplate): TemplateImportResult {
+    const usable = (template.path_patterns ?? []).filter(
+        (pair) => pair && pair.local?.trim() && pair.remote?.trim(),
+    );
+    if (usable.length !== 1) return { ok: false, usablePairs: usable.length };
+    const paths = usable[0];
+    const settings: ImportedSyncSettings = {
+        localPath: paths.local,
+        remotePath: paths.remote,
         direction: template.profile.direction,
         deleteOrphans: template.profile.delete_orphans,
         excludePatterns: template.exclude_patterns,
@@ -42,6 +67,7 @@ export function settingsFromTemplate(template: SyncTemplate): ImportedSyncSettin
                 ? 'size_and_mtime'
                 : 'size_only',
     };
+    return { ok: true, settings };
 }
 
 export function settingsFromLegacyScript(script: SyncScriptMeta): ImportedSyncSettings {

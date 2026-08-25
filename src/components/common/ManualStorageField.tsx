@@ -58,7 +58,20 @@ export const ManualStorageField: React.FC<ManualStorageFieldProps> = ({
 
     useEffect(() => {
         const current = manualStorageBytes(amount, unit);
-        if (current === valueBytes || (!current && !valueBytes)) return;
+        // Resync the inputs only when the incoming value really differs.
+        //
+        // The guard used to carry a second clause, `(!current && !valueBytes)`,
+        // which is both redundant and wrong on one side. Redundant because
+        // `current === valueBytes` already covers undefined on both sides.
+        // Wrong because `!valueBytes` is also true for 0, so a quota arriving
+        // as 0 bytes from the outside was read as "nothing set" and left the
+        // inputs showing the previous, larger value.
+        //
+        // For the record, because an audit flagged the `!current` half too and
+        // it should not be reopened: that half did not hold.
+        // `manualStorageBytes` rejects anything <= 0 and returns undefined, so
+        // `current` can never be 0 and never conflated a real 0 with unset.
+        if (current === valueBytes) return;
         const next = manualStorageInput(valueBytes);
         setAmount(next.amount);
         setUnit(next.unit);

@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Gorde preset gisa",
             "aerosyncScriptAppliedToast": "Inportatutako preset-a gordeta. Ireki AeroSync erabiltzeko.",
             "compressionHint": "Datuak transferentzian zehar konprimitzen ditu, transferentzia bizkortzeko; ez ditu fitxategi konprimituak helmugan gordetzen. Auto aukerak dagoeneko konprimituta dauden formatuak saltatzen ditu (zip, jpg, mp4 eta antzekoak).",
-            "canaryDryRun": "Ez da ezer transferitzen: sinkronizazio osoak zer egingo lukeen aurreikusten du, laginetik kalkulatuta. aeroftp-cli sync --dry-run komandoaren (eta rclone-ren --dry-run) interfaze grafikoaren baliokidea da."
+            "canaryDryRun": "Ez da ezer transferitzen: sinkronizazio osoak zer egingo lukeen aurreikusten du, laginetik kalkulatuta. aeroftp-cli sync --dry-run komandoaren (eta rclone-ren --dry-run) interfaze grafikoaren baliokidea da.",
+            "templateImportPathPairs": "Txantiloi honek {count} bide-bikote erabilgarri definitzen ditu. AeroFTPk bat bakarra aplikatzen du, beraz ez da ezer inportatu. Editatu txantiloia bikote bakarra uzteko, eta inportatu berriro."
         },
         "ui": {
             "syncing": "Sinkronizatzen...",

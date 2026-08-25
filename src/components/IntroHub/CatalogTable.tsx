@@ -15,7 +15,7 @@ import { Search, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe, Extern
 import { ProviderType } from '../../types';
 import { CatalogCategoryId } from '../../types/catalog';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
-import { methodIcon } from '../connectionMethodIcons';
+import { methodIcon, type ConnectionMethod } from '../connectionMethodIcons';
 import { CountryFlag } from '../CountryFlag';
 import { useTranslation } from '../../i18n';
 import { middleClickOpen } from '../../utils/middleClick';
@@ -25,6 +25,7 @@ import type { HealthStatus } from '../../hooks/useProviderHealth';
 import {
     CatalogCompany,
     CatalogProtocolRef,
+    type CatalogProtocol,
     totalFreeStorageGb,
     freeProtocols,
     paidProtocols,
@@ -103,6 +104,24 @@ function HealthDot({ status, enabled }: { status: HealthStatus; enabled: boolean
         />
     );
 }
+
+/**
+ * Compile-time guarantee that every catalog badge label has a glyph.
+ *
+ * This table used to keep its own `Record<CatalogProtocol, ReactNode>` map, and
+ * that map is what turned a new member of the enum into a compilation error
+ * until someone chose its shape. Unifying on the shared `methodIcon` (#347)
+ * deleted the map and the guarantee with it: `methodIcon` accepts a plain
+ * string and returns null for anything it does not know, so a protocol added to
+ * the catalog would ship a badge with a silent hole where the icon belongs.
+ *
+ * The check is restored here at the type level rather than by reintroducing a
+ * second map, which is what drifted in the first place. Add a member to
+ * `CatalogProtocol` that `CONNECTION_METHOD_GLYPH` has no key for and the
+ * `Exclude` below stops being `never`, so this alias fails to compile.
+ */
+type AssertNever<T extends never> = T;
+type EveryCatalogProtocolHasAGlyph = AssertNever<Exclude<CatalogProtocol, ConnectionMethod>>;
 
 // Per-connection-method glyph (issue #270, Ehud): a tiny inline icon before
 // the badge label so an S3 object-storage bucket reads differently from a

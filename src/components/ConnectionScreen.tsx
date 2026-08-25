@@ -30,7 +30,8 @@ import { TotpCodeInput } from './TotpCodeInput';
 import { StoredTotpSecretDisclosure } from './StoredTotpSecretDisclosure';
 import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
 import { ManualStorageField } from './common/ManualStorageField';
-import { DiscoverableTargetField, discoveryResetKey, type ConnectionTarget } from './common/DiscoverableTargetField';
+import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
+import { discoveryRequestParams, discoveryRequestResetKey, type DiscoveryProtocol } from './common/discoveryRequest';
 import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader, resolveModeSwitchCredentials } from './providerModeGroups';
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
@@ -513,30 +514,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // detect attached devices, pick one, store deviceFingerprint + default paths.
     const isMtp = protocol === 'mtp';
 
-    const discoverConnectionTargets = (targetProtocol: 's3' | 'backblaze' | 'kdrive') => {
-        const options = connectionParams.options || {};
-        return invoke<ConnectionTarget[]>('provider_discover_targets', {
-            params: {
-                protocol: targetProtocol,
-                providerId: connectionParams.providerId,
-                server: connectionParams.server,
-                port: connectionParams.port,
-                username: targetProtocol === 'kdrive' ? 'api-token' : connectionParams.username,
-                password: connectionParams.password,
-                bucket: options.bucket,
-                region: options.region,
-                endpoint: options.endpoint,
-                path_style: options.pathStyle,
-                session_token: options.sessionToken,
-                role_arn: options.roleArn,
-                role_external_id: options.roleExternalId,
-                role_session_name: options.roleSessionName,
-                role_duration_seconds: options.roleDurationSeconds,
-                role_mfa_serial: options.roleMfaSerial,
-                role_mfa_token_code: options.roleMfaTokenCode,
-            },
+    const discoverConnectionTargets = (targetProtocol: DiscoveryProtocol) =>
+        invoke<ConnectionTarget[]>('provider_discover_targets', {
+            params: discoveryRequestParams(targetProtocol, connectionParams),
         });
-    };
 
     // Connections are always saved (the legacy "Save this connection" checkbox
     // was removed: the user can still delete a profile from the list afterwards).
@@ -5255,7 +5236,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             }}
                                             onDiscover={() => discoverConnectionTargets('kdrive')}
                                             canDiscover={!!connectionParams.password}
-                                            resetKey={discoveryResetKey(connectionParams.password)}
+                                            resetKey={discoveryRequestResetKey('kdrive', connectionParams)}
                                             placeholder="1234567"
                                             inputMode="numeric"
                                             maxLength={10}
@@ -5739,7 +5720,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 })}
                                                 onDiscover={() => discoverConnectionTargets('backblaze')}
                                                 canDiscover={!!connectionParams.username && !!connectionParams.password}
-                                                resetKey={discoveryResetKey(connectionParams.username, connectionParams.password)}
+                                                resetKey={discoveryRequestResetKey('backblaze', connectionParams)}
                                                 placeholder="my-b2-bucket"
                                                 helpText="Exact bucket name, case sensitive."
                                                 required
@@ -6648,7 +6629,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             onPresetUnlock={(field) => setPresetUnlocked(prev => ({ ...prev, [field]: true }))}
                                             discoverS3Targets={() => discoverConnectionTargets('s3')}
                                             canDiscoverS3Targets={!!connectionParams.username && !!connectionParams.password}
-                                            s3DiscoveryResetKey={discoveryResetKey(connectionParams.username, connectionParams.password, connectionParams.options?.endpoint)}
+                                            s3DiscoveryResetKey={discoveryRequestResetKey('s3', connectionParams)}
                                         />
                                         {/* Advanced Options: hidden server/port for preset WebDAV, hidden endpoint for preset S3 */}
                                         {(() => {

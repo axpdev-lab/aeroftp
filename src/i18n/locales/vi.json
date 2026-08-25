@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Lưu làm preset",
             "aerosyncScriptAppliedToast": "Đã lưu preset được nhập. Mở AeroSync để sử dụng.",
             "compressionHint": "Nén dữ liệu trong quá trình truyền để tăng tốc độ truyền; không lưu trữ các tệp đã nén tại đích. Auto bỏ qua các định dạng đã được nén sẵn (zip, jpg, mp4 và tương tự).",
-            "canaryDryRun": "Không có gì được chuyển: thao tác này xem trước những gì một đồng bộ đầy đủ sẽ làm, được tính từ mẫu. Đây là phiên bản GUI tương đương của lệnh aeroftp-cli sync --dry-run (và --dry-run của rclone)."
+            "canaryDryRun": "Không có gì được chuyển: thao tác này xem trước những gì một đồng bộ đầy đủ sẽ làm, được tính từ mẫu. Đây là phiên bản GUI tương đương của lệnh aeroftp-cli sync --dry-run (và --dry-run của rclone).",
+            "templateImportPathPairs": "Mẫu này định nghĩa {count} cặp đường dẫn dùng được. AeroFTP chỉ áp dụng đúng một cặp, nên không có gì được nhập. Hãy sửa mẫu để chỉ còn một cặp, rồi nhập lại."
         },
         "ui": {
             "syncing": "Đang đồng bộ...",

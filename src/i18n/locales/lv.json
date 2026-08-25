@@ -2201,7 +2201,8 @@
             "aerosyncScriptApplyButton": "Saglabāt kā preset",
             "aerosyncScriptAppliedToast": "Importētais preset saglabāts. Atveriet AeroSync, lai to izmantotu.",
             "compressionHint": "Saspiež datus pārsūtīšanas laikā, lai paātrinātu pārsūtīšanu; tā nesaglabā saspiestus failus galamērķī. Auto izlaiž formātus, kas jau ir saspiesti (zip, jpg, mp4 un līdzīgus).",
-            "canaryDryRun": "Nekas netiek pārsūtīts: tas parāda priekšskatījumu tam, ko darītu pilna sinhronizācija, aprēķinātu no izlases. Tas ir komandas aeroftp-cli sync --dry-run (un rclone --dry-run) grafiskais ekvivalents."
+            "canaryDryRun": "Nekas netiek pārsūtīts: tas parāda priekšskatījumu tam, ko darītu pilna sinhronizācija, aprēķinātu no izlases. Tas ir komandas aeroftp-cli sync --dry-run (un rclone --dry-run) grafiskais ekvivalents.",
+            "templateImportPathPairs": "Izmantojamo ceļu pāru skaits šajā veidnē: {count}. AeroFTP izmanto tieši vienu, tāpēc nekas netika importēts. Rediģējiet veidni tā, lai paliktu viens pāris, un importējiet to vēlreiz."
         },
         "ui": {
             "syncing": "Sinhronizē...",
