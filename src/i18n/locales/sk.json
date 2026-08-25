@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB zadarmo, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Cloudové úložisko v EÚ založené na Nextcloud s 10GB zadarmo, v súlade s GDPR",
             "blompDesc": "Blomp (40 GB cloudového úložiska zadarmo)",
-            "blompTooltip": "Blomp - 40GB cloudového úložiska zadarmo poháňané OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB bezplatného cloudového úložiska postaveného na OpenStack Swift. Jeho koncový bod úložiska neponúka HTTPS, takže súbory aj prístupový token putujú nešifrované.",
             "swiftDesc": "OpenStack Swift objektové úložisko",
             "swiftTooltip": "OpenStack Swift - kompatibilné s Blomp, OVH, Rackspace cloudovým úložiskom",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

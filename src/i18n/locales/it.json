@@ -585,7 +585,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 GB gratuiti, basato su Nextcloud, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: team cloud indipendente EU dal 2018, Nextcloud-as-a-service con 8GB gratuiti, GDPR-compliant, sottodomini regionali (fie.nl, fie.de, ...)",
             "blompDesc": "Blomp (40 GB di archiviazione cloud gratuita)",
-            "blompTooltip": "Blomp - 40GB di archiviazione cloud gratuita alimentata da OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB di spazio cloud gratuito basato su OpenStack Swift. Il suo endpoint di archiviazione non offre HTTPS, quindi i file e il token di accesso viaggiano in chiaro.",
             "swiftDesc": "OpenStack Swift archiviazione oggetti",
             "swiftTooltip": "OpenStack Swift - compatibile con Blomp, OVH, Rackspace archiviazione cloud",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

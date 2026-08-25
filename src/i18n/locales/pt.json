@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB grátis, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Armazenamento em nuvem da UE baseado em Nextcloud com 10GB grátis, compatível com GDPR",
             "blompDesc": "Blomp (40 GB de armazenamento em nuvem grátis)",
-            "blompTooltip": "Blomp - 40GB de armazenamento em nuvem grátis alimentado por OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB de armazenamento na nuvem gratuito assente em OpenStack Swift. O seu ponto de extremidade de armazenamento não oferece HTTPS, pelo que os ficheiros e o token de acesso viajam sem cifra.",
             "swiftDesc": "OpenStack Swift armazenamento de objetos",
             "swiftTooltip": "OpenStack Swift - compatível com Blomp, OVH, Rackspace armazenamento em nuvem",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

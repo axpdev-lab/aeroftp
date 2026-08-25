@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB gratis, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Nextcloud-baserad EU-molnlagring med 10GB gratis, GDPR-kompatibel",
             "blompDesc": "Blomp (40 GB gratis molnlagring)",
-            "blompTooltip": "Blomp - 40GB gratis molnlagring drivet av OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB gratis molnlagring som bygger på OpenStack Swift. Lagringsslutpunkten erbjuder inte HTTPS, så filer och åtkomsttoken skickas okrypterade.",
             "swiftDesc": "OpenStack Swift objektlagring",
             "swiftTooltip": "OpenStack Swift - kompatibel med Blomp, OVH, Rackspace molnlagring",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

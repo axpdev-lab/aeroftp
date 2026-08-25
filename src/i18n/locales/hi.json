@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB मुफ़्त, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Nextcloud-आधारित EU क्लाउड स्टोरेज 10GB मुफ़्त, GDPR अनुपालित",
             "blompDesc": "Blomp (40 GB मुफ़्त क्लाउड स्टोरेज)",
-            "blompTooltip": "Blomp - 40GB मुफ़्त क्लाउड स्टोरेज OpenStack Swift द्वारा संचालित",
+            "blompTooltip": "Blomp - OpenStack Swift पर आधारित 40GB मुफ़्त क्लाउड स्टोरेज। इसका स्टोरेज एंडपॉइंट HTTPS नहीं देता, इसलिए फ़ाइलें और एक्सेस टोकन बिना एन्क्रिप्शन के जाते हैं।",
             "swiftDesc": "OpenStack Swift ऑब्जेक्ट स्टोरेज",
             "swiftTooltip": "OpenStack Swift - Blomp, OVH, Rackspace क्लाउड स्टोरेज के साथ संगत",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

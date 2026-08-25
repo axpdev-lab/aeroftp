@@ -788,6 +788,10 @@ pub struct ProviderConnectionParams {
     pub tls_mode: Option<String>,
     /// FTP/FTPS: Accept invalid/self-signed certificates
     pub verify_cert: Option<bool>,
+    /// Swift only. Accept a catalog-issued cleartext object-store endpoint after
+    /// an HTTPS Keystone session. Absent or false means the downgrade guard is
+    /// armed, which is the default for every profile that does not ask for it.
+    pub allow_cleartext_storage: Option<bool>,
     /// Filen: Optional TOTP 2FA code
     pub two_factor_code: Option<String>,
     /// Filen/MEGA/Internxt: Optional persisted base32 TOTP secret. When set,
@@ -1180,6 +1184,16 @@ impl ProviderConnectionParams {
                     extra.insert("branch".to_string(), branch.clone());
                 }
             }
+        }
+
+        // Swift: a catalog may point object storage at a cleartext host. The
+        // provider fails closed on that downgrade, so the profile has to say
+        // explicitly that it accepts it (the Blomp preset does; see swift.rs).
+        if provider_type == ProviderType::Swift && self.allow_cleartext_storage == Some(true) {
+            extra.insert(
+                "allow_cleartext_storage_endpoint".to_string(),
+                "true".to_string(),
+            );
         }
 
         // GitLab: accept_invalid_certs for self-hosted instances
@@ -13198,6 +13212,41 @@ mod tests {
         );
     }
 
+    /// The Swift downgrade guard is only honest if the opt-in cannot be set by
+    /// accident: absent must mean armed. This pins the whole path from the GUI
+    /// flag to the key `SwiftConfig::from_provider_config` actually reads, so a
+    /// rename on either side fails here instead of silently disarming the guard
+    /// for every Swift profile, which is how v4.1.8 got into this state.
+    #[test]
+    fn swift_cleartext_opt_in_reaches_the_provider_only_when_asked() {
+        let mut params = s3_params(None);
+        params.protocol = "swift".to_string();
+        params.server = "https://authenticate.blomp.com".to_string();
+
+        // Absent: armed.
+        let config = params.to_provider_config().expect("config");
+        assert!(!config
+            .extra
+            .contains_key("allow_cleartext_storage_endpoint"));
+        let swift =
+            crate::providers::swift::SwiftConfig::from_provider_config(&config).expect("swift");
+        assert!(!swift.allow_cleartext_storage_endpoint);
+
+        // Explicitly false: still armed.
+        params.allow_cleartext_storage = Some(false);
+        let config = params.to_provider_config().expect("config");
+        let swift =
+            crate::providers::swift::SwiftConfig::from_provider_config(&config).expect("swift");
+        assert!(!swift.allow_cleartext_storage_endpoint);
+
+        // Explicitly true: the profile has accepted it.
+        params.allow_cleartext_storage = Some(true);
+        let config = params.to_provider_config().expect("config");
+        let swift =
+            crate::providers::swift::SwiftConfig::from_provider_config(&config).expect("swift");
+        assert!(swift.allow_cleartext_storage_endpoint);
+    }
+
     fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {
         ProviderConnectionParams {
             protocol: "s3".to_string(),
@@ -13231,6 +13280,7 @@ mod tests {
             timeout: None,
             tls_mode: None,
             verify_cert: None,
+            allow_cleartext_storage: None,
             two_factor_code: None,
             totp_secret: None,
             filen_api_key: None,

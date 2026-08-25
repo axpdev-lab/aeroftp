@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB gratis, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Nextcloud-gebaseerde EU-cloudopslag met 10GB gratis, GDPR-conform",
             "blompDesc": "Blomp (40 GB gratis cloudopslag)",
-            "blompTooltip": "Blomp - 40GB gratis cloudopslag aangedreven door OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB gratis cloudopslag op basis van OpenStack Swift. Het opslageindpunt biedt geen HTTPS, dus bestanden en toegangstoken gaan onversleuteld over de lijn.",
             "swiftDesc": "OpenStack Swift objectopslag",
             "swiftTooltip": "OpenStack Swift - compatibel met Blomp, OVH, Rackspace cloudopslag",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 ГБ безкоштовно, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Хмарне сховище в ЄС на базі Nextcloud з 10ГБ безкоштовно, сумісне з GDPR",
             "blompDesc": "Blomp (40 ГБ безкоштовного хмарного сховища)",
-            "blompTooltip": "Blomp - 40ГБ безкоштовного хмарного сховища на базі OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB безкоштовного хмарного сховища на основі OpenStack Swift. Його кінцева точка сховища не пропонує HTTPS, тому файли та токен доступу передаються незашифрованими.",
             "swiftDesc": "OpenStack Swift об'єктне сховище",
             "swiftTooltip": "OpenStack Swift - сумісне з Blomp, OVH, Rackspace хмарним сховищем",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB 무료, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Nextcloud 기반 EU 클라우드 스토리지 10GB 무료, GDPR 준수",
             "blompDesc": "Blomp (40 GB 무료 클라우드 스토리지)",
-            "blompTooltip": "Blomp - OpenStack Swift 기반 40GB 무료 클라우드 스토리지",
+            "blompTooltip": "Blomp - OpenStack Swift 기반의 40GB 무료 클라우드 저장소입니다. 저장소 엔드포인트가 HTTPS를 제공하지 않으므로 파일과 액세스 토큰이 암호화되지 않은 상태로 전송됩니다.",
             "swiftDesc": "OpenStack Swift 오브젝트 스토리지",
             "swiftTooltip": "OpenStack Swift - Blomp, OVH, Rackspace 클라우드 스토리지와 호환",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB bezmaksas, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Nextcloud balstīta ES mākoņkrātuve ar 10GB bezmaksas, GDPR saderīga",
             "blompDesc": "Blomp (40 GB bezmaksas mākoņkrātuve)",
-            "blompTooltip": "Blomp - 40GB bezmaksas mākoņkrātuve, ko nodrošina OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB bezmaksas mākoņkrātuve, kas darbojas uz OpenStack Swift. Tās krātuves galapunkts nepiedāvā HTTPS, tāpēc faili un piekļuves pilnvara tiek pārsūtīti nešifrēti.",
             "swiftDesc": "OpenStack Swift objektu krātuve",
             "swiftTooltip": "OpenStack Swift - saderīga ar Blomp, OVH, Rackspace mākoņkrātuvi",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

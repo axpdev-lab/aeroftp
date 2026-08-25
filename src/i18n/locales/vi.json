@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB miễn phí, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Lưu trữ đám mây EU dựa trên Nextcloud với 10GB miễn phí, tuân thủ GDPR",
             "blompDesc": "Blomp (40 GB lưu trữ đám mây miễn phí)",
-            "blompTooltip": "Blomp - 40GB lưu trữ đám mây miễn phí được cung cấp bởi OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB lưu trữ đám mây miễn phí chạy trên OpenStack Swift. Điểm cuối lưu trữ của nó không hỗ trợ HTTPS, nên tệp và mã truy cập được truyền mà không mã hóa.",
             "swiftDesc": "OpenStack Swift lưu trữ đối tượng",
             "swiftTooltip": "OpenStack Swift - tương thích với Blomp, OVH, Rackspace lưu trữ đám mây",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

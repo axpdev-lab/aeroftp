@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB libre, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Nextcloud-based na EU cloud storage na may 10GB libre, GDPR compliant",
             "blompDesc": "Blomp (40 GB libreng cloud storage)",
-            "blompTooltip": "Blomp - 40GB libreng cloud storage na pinapatakbo ng OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB na libreng cloud storage na pinapagana ng OpenStack Swift. Walang HTTPS ang storage endpoint nito, kaya hindi naka-encrypt ang mga file at access token habang ipinapadala.",
             "swiftDesc": "OpenStack Swift object storage",
             "swiftTooltip": "OpenStack Swift - katugma sa Blomp, OVH, Rackspace cloud storage",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB tasuta, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Nextcloud-põhine EL-i pilvemälu 10GB tasuta, GDPR-ühilduv",
             "blompDesc": "Blomp (40 GB tasuta pilvemälu)",
-            "blompTooltip": "Blomp - 40GB tasuta pilvemälu, töötab OpenStack Swift baasil",
+            "blompTooltip": "Blomp - 40GB tasuta pilvesalvestust OpenStack Swifti baasil. Selle salvestusruumi lõpp-punkt ei paku HTTPS-i, seega liiguvad failid ja juurdepääsutoken krüptimata.",
             "swiftDesc": "OpenStack Swift objektimälu",
             "swiftTooltip": "OpenStack Swift - ühilduv Blomp, OVH, Rackspace pilvemäluga",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

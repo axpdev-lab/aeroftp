@@ -6735,6 +6735,7 @@ const App: React.FC = () => {
         ? effectiveParams.options?.webdavScheme
         : effectiveParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
       verify_cert: effectiveParams.options?.verifyCert !== undefined ? effectiveParams.options.verifyCert : true,
+      allow_cleartext_storage: effectiveParams.options?.allowCleartextStorage === true,
       two_factor_code: effectiveParams.options?.two_factor_code || null,
       totp_secret: effectiveParams.options?.totp_secret || null,
       filen_api_key: filenApiKey,
@@ -8657,6 +8658,7 @@ const App: React.FC = () => {
             timeout: cloudServer.options?.timeout || 30,
             tls_mode: cloudServer.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
             verify_cert: cloudServer.options?.verifyCert !== undefined ? cloudServer.options.verifyCert : true,
+            allow_cleartext_storage: cloudServer.options?.allowCleartextStorage === true,
             two_factor_code: cloudServer.options?.two_factor_code || null,
             totp_secret: cloudServer.options?.totp_secret || null,
             filen_api_key: cloudFilenApiKey,

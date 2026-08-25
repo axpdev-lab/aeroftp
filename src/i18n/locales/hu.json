@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB ingyenes, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Nextcloud-alapú EU felhőtárhely 10GB ingyen, GDPR-kompatibilis",
             "blompDesc": "Blomp (40 GB ingyenes felhőtárhely)",
-            "blompTooltip": "Blomp - 40GB ingyenes felhőtárhely OpenStack Swift alapon",
+            "blompTooltip": "Blomp - 40GB ingyenes felhőtárhely OpenStack Swift alapon. A tárolási végpont nem kínál HTTPS-t, így a fájlok és a hozzáférési token titkosítatlanul utaznak.",
             "swiftDesc": "OpenStack Swift objektumtárhely",
             "swiftTooltip": "OpenStack Swift - kompatibilis a Blomp, OVH, Rackspace felhőtárhellyel",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

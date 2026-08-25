@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB бесплатно, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Складиштење у облаку у ЕУ засновано на Nextcloud са 10GB бесплатно, усклађено са GDPR",
             "blompDesc": "Blomp (40 GB бесплатног складиштења у облаку)",
-            "blompTooltip": "Blomp - 40GB бесплатног складиштења у облаку покретано од стране OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB бесплатног складишта у облаку заснованог на OpenStack Swift. Његова крајња тачка складишта не нуди HTTPS, па датотеке и токен за приступ путују нешифровани.",
             "swiftDesc": "OpenStack Swift складиштење објеката",
             "swiftTooltip": "OpenStack Swift - компатибилно са Blomp, OVH, Rackspace складиштењем у облаку",
             "megaS4Desc": "MEGA S3-компатибилно објектно складиште (4 региона)",

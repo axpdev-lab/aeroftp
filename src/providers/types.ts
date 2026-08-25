@@ -128,6 +128,12 @@ export interface ProviderConfig {
         /** Pre-set verify-cert flag for local-loopback HTTPS bridges that
          *  use self-signed certs (Filen Desktop S3 over HTTPS). */
         verifyCert?: boolean;
+        /** Swift only. Accept a catalog-issued cleartext object-store endpoint
+         *  after an HTTPS Keystone session. Off everywhere by default: the
+         *  storage endpoint carries the bearer token, so a downgrade leaks the
+         *  whole account to anyone on the path. Blomp sets it because its
+         *  object store genuinely offers no TLS on port 8080. */
+        allowCleartextStorage?: boolean;
     };
 
     /** API endpoints for provider-specific features */

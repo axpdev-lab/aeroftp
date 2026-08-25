@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB nemokamai, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Nextcloud pagrįsta ES debesų saugykla su 10GB nemokamai, atitinkanti GDPR",
             "blompDesc": "Blomp (40 GB nemokamos debesų saugyklos)",
-            "blompTooltip": "Blomp - 40GB nemokamos debesų saugyklos, veikiančios OpenStack Swift pagrindu",
+            "blompTooltip": "Blomp - 40GB nemokamos debesų saugyklos, veikiančios OpenStack Swift pagrindu. Jos saugyklos galinis taškas nesiūlo HTTPS, todėl failai ir prieigos raktas keliauja nešifruoti.",
             "swiftDesc": "OpenStack Swift objektų saugykla",
             "swiftTooltip": "OpenStack Swift - suderinama su Blomp, OVH, Rackspace debesų saugykla",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

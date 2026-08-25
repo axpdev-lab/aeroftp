@@ -1776,7 +1776,7 @@
             "felicloudDesc": "Felicloud (10 GB անվճար, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Nextcloud-ի վրա EU ամպային պահոց 10GB անվճար, GDPR համապատասխան",
             "blompDesc": "Blomp (40 GB անվճար ամպային պահոց)",
-            "blompTooltip": "Blomp - 40GB անվճար ամպային պահոց OpenStack Swift-ի վրա",
+            "blompTooltip": "Blomp - 40GB անվճար ամպային պահոց OpenStack Swift-ի հիման վրա։ Դրա պահոցի վերջնակետը HTTPS չի առաջարկում, ուստի ֆայլերը և մուտքի նշանը փոխանցվում են չգաղտնագրված։",
             "swiftDesc": "OpenStack Swift օբյեկտային պահոց",
             "swiftTooltip": "OpenStack Swift - համատեղ Blomp, OVH, Rackspace ամպային պահոցի հետ",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

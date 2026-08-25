@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB am ddim, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Storfa cwmwl yr UE yn seiliedig ar Nextcloud gyda 10GB am ddim, yn cydymffurfio â GDPR",
             "blompDesc": "Blomp (40 GB o storfa cwmwl am ddim)",
-            "blompTooltip": "Blomp - 40GB o storfa cwmwl am ddim wedi'i bweru gan OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB o storfa cwmwl am ddim wedi'i phweru gan OpenStack Swift. Nid yw ei bwynt terfyn storio yn cynnig HTTPS, felly mae ffeiliau a'r tocyn mynediad yn teithio heb eu hamgryptio.",
             "swiftDesc": "OpenStack Swift storfa gwrthrychau",
             "swiftTooltip": "OpenStack Swift - yn gydnaws â Blomp, OVH, Rackspace storfa cwmwl",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

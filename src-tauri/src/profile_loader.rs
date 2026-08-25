@@ -29,6 +29,11 @@ pub fn normalize_profile_option_key(key: &str) -> &str {
         // ignore the user's explicit HTTP/HTTPS pick.
         "webdavScheme" => "tls_mode",
         "verifyCert" => "verify_cert",
+        // Swift: the GUI stores `options.allowCleartextStorage`; the provider
+        // reads `allow_cleartext_storage_endpoint`. Without this line a saved
+        // profile loaded outside the GUI keeps the camelCase key, the provider
+        // sees nothing and fails closed, so a working profile stops connecting.
+        "allowCleartextStorage" => "allow_cleartext_storage_endpoint",
         "pathStyle" => "path_style",
         "accountName" => "account_name",
         "accessKey" => "access_key",
@@ -84,6 +89,15 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
             crate::providers::mega_df::PROVIDER_ID_META_KEY.to_string(),
             provider_id.to_string(),
         );
+        // The preset id travels under two spellings: the meta key above, and the
+        // plain `provider_id` that `to_provider_config` writes for the GUI path
+        // and that providers read directly (swift.rs uses it to know a preset
+        // whose object store has no TLS). Write both here, once, so a surface
+        // that materialises a profile without going through a form (the MCP
+        // pool, a scheduler, a benchmark) is not silently missing the plain one
+        // and does not have to remember. The surfaces that break are always the
+        // ones that carry a profile but no form.
+        extra.insert("provider_id".to_string(), provider_id.to_string());
     }
 
     if let Some(opts) = profile.get("options").and_then(|v| v.as_object()) {
@@ -291,6 +305,10 @@ mod tests {
     #[test]
     fn normalize_known_camel_case_keys() {
         assert_eq!(normalize_profile_option_key("tlsMode"), "tls_mode");
+        assert_eq!(
+            normalize_profile_option_key("allowCleartextStorage"),
+            "allow_cleartext_storage_endpoint"
+        );
         assert_eq!(normalize_profile_option_key("webdavScheme"), "tls_mode");
         assert_eq!(normalize_profile_option_key("verifyCert"), "verify_cert");
         assert_eq!(normalize_profile_option_key("pathStyle"), "path_style");
@@ -480,5 +498,50 @@ mod tests {
             extra.get("role_duration_seconds").map(String::as_str),
             Some("7200")
         );
+    }
+}
+
+#[cfg(test)]
+mod provider_id_reach_tests {
+    use super::apply_profile_options;
+    use std::collections::HashMap;
+
+    /// The MCP pool, a scheduler and a benchmark all build `extra` from a saved
+    /// profile with no connection form in the picture, so anything the GUI adds
+    /// on the side is missing there. The preset id is one of those things, and
+    /// Swift now depends on it to know that a provider's object store has no
+    /// TLS. Pin that `apply_profile_options` alone is enough.
+    #[test]
+    fn a_profile_with_no_form_still_carries_the_preset_id_both_ways() {
+        let profile = serde_json::json!({
+            "providerId": "blomp",
+            "options": {}
+        });
+        let mut extra: HashMap<String, String> = HashMap::new();
+        apply_profile_options(&mut extra, &profile);
+
+        assert_eq!(extra.get("provider_id").map(String::as_str), Some("blomp"));
+        assert_eq!(
+            extra
+                .get(crate::providers::mega_df::PROVIDER_ID_META_KEY)
+                .map(String::as_str),
+            Some("blomp")
+        );
+
+        // And that is exactly what Swift needs to keep a saved Blomp profile
+        // working over a surface that never sees the GUI.
+        let config = crate::providers::ProviderConfig {
+            name: "Blomp".to_string(),
+            provider_type: crate::providers::ProviderType::Swift,
+            host: "https://authenticate.blomp.com".to_string(),
+            port: None,
+            username: Some("user".to_string()),
+            password: Some("pw".to_string()),
+            initial_path: None,
+            extra,
+        };
+        let swift = crate::providers::swift::SwiftConfig::from_provider_config(&config)
+            .expect("swift config");
+        assert!(swift.allow_cleartext_storage_endpoint);
     }
 }

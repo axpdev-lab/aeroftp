@@ -2735,7 +2735,7 @@
             "sourceforgeDesc": "SourceForge File Release System",
             "sourceforgeTooltip": "Upload releases to SourceForge via SFTP",
             "blompDesc": "Blomp (40 GB free cloud storage)",
-            "blompTooltip": "Blomp - 40GB free cloud storage powered by OpenStack Swift",
+            "blompTooltip": "Blomp - 40GB free cloud storage powered by OpenStack Swift. Its storage endpoint offers no HTTPS, so files and access token travel unencrypted.",
             "boxDesc": "Box (10 GB free)",
             "boxTooltip": "Box - 10GB free storage, OAuth2 authentication",
             "browseKeyFile": "Browse for key file",

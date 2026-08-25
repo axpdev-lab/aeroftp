@@ -354,6 +354,11 @@ export interface ProviderOptions {
   // FTP/FTPS-specific
   tlsMode?: FtpTlsMode; // TLS encryption mode
   verifyCert?: boolean; // Verify server certificate (default: true)
+  /** Swift only. Accept a catalog-issued cleartext object-store endpoint after
+   *  an HTTPS Keystone session. Undefined or false keeps the downgrade guard
+   *  armed: the storage endpoint carries the bearer token, so a silent
+   *  downgrade exposes the whole account. Only the Blomp preset sets it. */
+  allowCleartextStorage?: boolean;
 
   // WebDAV-specific scheme override.
   // "auto" (default): port 443 -> https, port 80 -> http, localhost / RFC1918

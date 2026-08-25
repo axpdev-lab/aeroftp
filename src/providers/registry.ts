@@ -1835,6 +1835,11 @@ export const PROVIDERS: ProviderConfig[] = [
         defaults: {
             server: 'https://authenticate.blomp.com',
             port: 443,
+            // Blomp's Keystone is HTTPS but its object store is cleartext on
+            // port 8080, which offers no TLS at all. That is this deployment,
+            // not a reason to disarm the downgrade guard for every Swift
+            // account, so the exception lives on the profile that needs it.
+            allowCleartextStorage: true,
         },
         features: {
             shareLink: false,

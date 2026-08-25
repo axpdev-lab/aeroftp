@@ -50,6 +50,25 @@ pub struct SwiftConfig {
     pub username: String,
     pub password: SecretString,
     pub verify_cert: bool,
+    /// Per-profile opt-in to a cleartext object-store endpoint.
+    ///
+    /// Swift lets the catalog point object storage at a different host AND a
+    /// different scheme, and some deployments (Blomp publishes
+    /// `http://swiftproxy.acs.ai.net:8080`) offer no TLS there at all. That is a
+    /// real deployment, and it is not a reason to let every Swift account
+    /// downgrade in silence: the storage endpoint carries `X-Auth-Token`, which
+    /// is a bearer credential for the whole account. So the guard fails closed
+    /// and the user opts in on the one profile that needs it, exactly as
+    /// `verify_cert` already works on this same struct.
+    pub allow_cleartext_storage_endpoint: bool,
+}
+
+/// Presets whose object store genuinely offers no HTTPS, verified against the
+/// live service rather than assumed. Keep this list to deployments someone has
+/// actually connected to: it is a statement of fact about a service, and every
+/// entry costs the confidentiality of that provider's traffic.
+fn preset_publishes_cleartext_storage(provider_id: &str) -> bool {
+    matches!(provider_id, "blomp")
 }
 
 impl SwiftConfig {
@@ -68,6 +87,28 @@ impl SwiftConfig {
                 .get("verify_cert")
                 .map(|v| v != "false")
                 .unwrap_or(true),
+            // Two ways in, and the preset is the one that matters in practice.
+            //
+            // A per-profile flag covers the private OpenStack deployments whose
+            // catalog publishes cleartext object storage. But a Blomp profile is
+            // not expressing a preference: its object store has no TLS on 8080
+            // as a fact about the service, so the preset declares it and every
+            // Blomp profile keeps working, including the ones saved before this
+            // build, and including the CLI, MCP, benchmark and AeroCloud paths
+            // that never see the GUI form.
+            //
+            // This keys on the preset the USER picked, not on the hostname the
+            // catalog returned. Trusting a returned hostname would let the thing
+            // being validated choose its own exemption; the preset cannot.
+            allow_cleartext_storage_endpoint: config
+                .extra
+                .get("allow_cleartext_storage_endpoint")
+                .is_some_and(|v| v == "true")
+                || config
+                    .extra
+                    .get("provider_id")
+                    .map(String::as_str)
+                    .is_some_and(preset_publishes_cleartext_storage),
         })
     }
 }
@@ -172,20 +213,23 @@ impl SwiftProvider {
     // ─── Auth ──────────────────────────────────────────────────
 
     /// Swift deliberately permits Identity and Object Storage to use different
-    /// hosts *and* schemes, so same-origin with `auth_url` is not a valid
+    /// hosts *and* schemes, so plain same-origin with `auth_url` is not a valid
     /// requirement. Blomp is the concrete production case: Keystone is
     /// `https://authenticate.blomp.com` while the object-store publicURL is
     /// `http://swiftproxy.acs.ai.net:8080/...` (no TLS on that port).
     ///
-    /// The trust boundary is the TLS-authenticated Keystone/TempAuth response
-    /// that *named* this endpoint — not a same-scheme check. Reject only
-    /// malformed endpoints and URL-embedded credentials; still bind every
-    /// subsequent token-bearing request to this origin via
-    /// `validate_request_target` and refuse authenticated redirects.
+    /// The TLS-authenticated Keystone/TempAuth response that *named* this
+    /// endpoint establishes that the endpoint is AUTHENTIC. It does not make the
+    /// connection to it CONFIDENTIAL, and those are different questions: an
+    /// authentic endpoint reached over cleartext still hands `X-Auth-Token` and
+    /// every object byte to any passive observer on the path. So a downgrade
+    /// from an HTTPS auth session fails closed, and the deployments that really
+    /// do publish cleartext object storage opt in per profile.
+    ///
+    /// Every token-bearing request stays bound to this origin through
+    /// `validate_request_target`, and authenticated redirects are refused.
     fn validate_storage_endpoint(&self, candidate: &str) -> Result<String, ProviderError> {
-        // Parse auth_url for side-effect validation only (malformed config
-        // should fail closed even when the catalog endpoint looks fine).
-        let _auth = reqwest::Url::parse(&self.config.auth_url).map_err(|e| {
+        let auth = reqwest::Url::parse(&self.config.auth_url).map_err(|e| {
             ProviderError::AuthenticationFailed(format!("Invalid Swift auth URL: {e}"))
         })?;
         let endpoint = reqwest::Url::parse(candidate).map_err(|e| {
@@ -201,12 +245,22 @@ impl SwiftProvider {
                 "Swift storage endpoint must not contain URL credentials".into(),
             ));
         }
-        if endpoint.scheme() == "http" {
-            // OpenStack publicURL catalogs routinely advertise cleartext HTTP
-            // for object-store (Blomp, many private clouds). Token will travel
-            // in cleartext to that origin — expected for those deployments.
-            debug!(
-                "Swift storage endpoint is HTTP (catalog-issued): {}",
+        if auth.scheme() == "https" && endpoint.scheme() != "https" {
+            if !self.config.allow_cleartext_storage_endpoint {
+                // Do not name a control the app does not have. v4.1.7 refused
+                // this case outright and said nothing useful; say what happened
+                // and why, and leave it at that until the per-profile switch has
+                // a real home in the connection form.
+                return Err(ProviderError::AuthenticationFailed(format!(
+                    "This Swift catalog serves object storage from {} over plain HTTP, \
+                     while authentication used HTTPS. The access token and every file \
+                     would cross the network unencrypted, so the connection was refused.",
+                    endpoint.host_str().unwrap_or("?")
+                )));
+            }
+            warn!(
+                "[SWIFT] object-store endpoint {} is CLEARTEXT HTTP: token and payload are \
+                 unencrypted (opted in on this profile)",
                 endpoint.host_str().unwrap_or("?")
             );
         }
@@ -1575,6 +1629,20 @@ mod tests {
             username: "user".to_string(),
             password: SecretString::from("pw".to_string()),
             verify_cert: true,
+            // The shipping default: the downgrade guard is armed.
+            allow_cleartext_storage_endpoint: false,
+        })
+    }
+
+    /// A profile that has explicitly accepted a cleartext object-store endpoint,
+    /// which is what the Blomp preset ships with.
+    fn cleartext_opted_in_provider() -> SwiftProvider {
+        SwiftProvider::new(SwiftConfig {
+            auth_url: "https://authenticate.blomp.com".to_string(),
+            username: "user".to_string(),
+            password: SecretString::from("pw".to_string()),
+            verify_cert: true,
+            allow_cleartext_storage_endpoint: true,
         })
     }
 
@@ -1614,22 +1682,12 @@ mod tests {
     }
 
     #[test]
-    fn storage_endpoint_allows_catalog_http_and_rejects_credentials() {
+    fn storage_endpoint_rejects_credentials_and_malformed_urls() {
         let p = test_provider();
         assert_eq!(
             p.validate_storage_endpoint("https://objects.example.net/v1/AUTH_a/")
                 .unwrap(),
             "https://objects.example.net/v1/AUTH_a"
-        );
-        // OpenStack catalogs (Blomp included) routinely advertise cleartext
-        // HTTP publicURLs for object-store; the Keystone TLS session is the
-        // trust boundary, not same-scheme with the auth URL.
-        assert_eq!(
-            p.validate_storage_endpoint(
-                "http://swiftproxy.acs.ai.net:8080/v1/AUTH_8b989f118e624ca6957e102775583f6f"
-            )
-            .unwrap(),
-            "http://swiftproxy.acs.ai.net:8080/v1/AUTH_8b989f118e624ca6957e102775583f6f"
         );
         assert!(p
             .validate_storage_endpoint("https://user:pw@objects.example.net/v1/AUTH_a")
@@ -1638,6 +1696,115 @@ mod tests {
             .validate_storage_endpoint("ftp://objects.example.net/v1/AUTH_a")
             .is_err());
         assert!(p.validate_storage_endpoint("not-a-url").is_err());
+    }
+
+    /// An HTTPS-authenticated session must not silently continue over cleartext.
+    /// The catalog naming the endpoint proves it is authentic, not that the path
+    /// to it is private, and the endpoint carries `X-Auth-Token`, which is a
+    /// bearer credential for the whole account. v4.1.7 refused this; v4.1.8
+    /// briefly accepted it for every Swift account, which is what this pins.
+    #[test]
+    fn an_https_session_refuses_a_cleartext_storage_endpoint_by_default() {
+        let p = test_provider();
+        let err = p
+            .validate_storage_endpoint("http://objects.example.net/v1/AUTH_a")
+            .expect_err("a downgrade must fail closed");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("plain HTTP") && msg.contains("unencrypted"),
+            "the refusal has to say what is at stake, got: {msg}"
+        );
+        // A refusal must not send the user looking for a switch that is not in
+        // the UI. The per-profile opt-in exists in the config, but nothing in
+        // the connection form sets it yet, so the message does not promise it.
+        assert!(
+            !msg.contains("Enable") && !msg.contains("checkbox"),
+            "the message must not name a control that does not exist: {msg}"
+        );
+    }
+
+    /// The one deployment that motivated the change still works, because the
+    /// profile opts in rather than because the guard was removed for everyone.
+    /// Blomp's Keystone is HTTPS while its object store is cleartext on 8080.
+    #[test]
+    fn an_opted_in_profile_still_accepts_its_cleartext_endpoint() {
+        let p = cleartext_opted_in_provider();
+        assert_eq!(
+            p.validate_storage_endpoint(
+                "http://swiftproxy.acs.ai.net:8080/v1/AUTH_8b989f118e624ca6957e102775583f6f"
+            )
+            .unwrap(),
+            "http://swiftproxy.acs.ai.net:8080/v1/AUTH_8b989f118e624ca6957e102775583f6f"
+        );
+        // Opting in relaxes the scheme, and nothing else.
+        assert!(p
+            .validate_storage_endpoint("http://user:pw@swiftproxy.acs.ai.net:8080/v1/AUTH_a")
+            .is_err());
+    }
+
+    /// The regression this nearly shipped with: arming the guard broke every
+    /// Blomp profile that already existed, because nothing backfills a new
+    /// per-profile flag onto profiles saved before the flag existed, and the
+    /// CLI, MCP, benchmark and AeroCloud paths never see the GUI form that
+    /// would have set it. The preset declaration is what makes those work, so
+    /// this pins a profile carrying only `provider_id`, which is what a saved
+    /// Blomp profile actually carries.
+    #[test]
+    fn a_saved_blomp_profile_keeps_working_without_any_stored_flag() {
+        use std::collections::HashMap;
+        let mut extra = HashMap::new();
+        extra.insert("provider_id".to_string(), "blomp".to_string());
+        let config = super::super::ProviderConfig {
+            name: "Blomp".to_string(),
+            provider_type: ProviderType::Swift,
+            host: "https://authenticate.blomp.com".to_string(),
+            port: None,
+            username: Some("user".to_string()),
+            password: Some("pw".to_string()),
+            initial_path: None,
+            extra,
+        };
+        let swift = SwiftConfig::from_provider_config(&config).expect("swift config");
+        assert!(
+            swift.allow_cleartext_storage_endpoint,
+            "the Blomp preset has to carry its own exemption"
+        );
+
+        // And it is the preset, not Swift in general: another Swift profile with
+        // no flag stays armed.
+        let mut other = HashMap::new();
+        other.insert("provider_id".to_string(), "custom-swift".to_string());
+        let config = super::super::ProviderConfig {
+            name: "Private cloud".to_string(),
+            provider_type: ProviderType::Swift,
+            host: "https://keystone.example.com".to_string(),
+            port: None,
+            username: Some("user".to_string()),
+            password: Some("pw".to_string()),
+            initial_path: None,
+            extra: other,
+        };
+        let swift = SwiftConfig::from_provider_config(&config).expect("swift config");
+        assert!(!swift.allow_cleartext_storage_endpoint);
+    }
+
+    /// A cleartext Keystone was never an HTTPS session to begin with, so there is
+    /// no downgrade to refuse: the guard must not start rejecting plain-HTTP
+    /// deployments that were consistent all along.
+    #[test]
+    fn a_cleartext_auth_session_is_not_a_downgrade() {
+        let p = SwiftProvider::new(SwiftConfig {
+            auth_url: "http://keystone.internal:5000/v3".to_string(),
+            username: "user".to_string(),
+            password: SecretString::from("pw".to_string()),
+            verify_cert: true,
+            allow_cleartext_storage_endpoint: false,
+        });
+        assert_eq!(
+            p.validate_storage_endpoint("http://objects.internal/v1/AUTH_a")
+                .unwrap(),
+            "http://objects.internal/v1/AUTH_a"
+        );
     }
 
     #[test]
@@ -1689,6 +1856,9 @@ mod tests {
             username: user,
             password: SecretString::from(pass),
             verify_cert: true,
+            // Blomp's catalog publishes cleartext object storage, so the preset
+            // opts in; without this the downgrade guard refuses the endpoint.
+            allow_cleartext_storage_endpoint: true,
         });
         p.authenticate().await.expect("blomp auth");
         let url = p.storage_url().unwrap();

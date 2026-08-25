@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB უფასო, EU/GDPR)",
             "felicloudTooltip": "Felicloud - Nextcloud-ზე დაფუძნებული EU ღრუბლოვანი საცავი 10GB უფასო, GDPR თავსებადი",
             "blompDesc": "Blomp (40 GB უფასო ღრუბლოვანი საცავი)",
-            "blompTooltip": "Blomp - 40GB უფასო ღრუბლოვანი საცავი OpenStack Swift-ის ბაზაზე",
+            "blompTooltip": "Blomp - 40GB უფასო ღრუბლოვანი საცავი OpenStack Swift-ის საფუძველზე. მისი საცავის ბოლოწერტილი HTTPS-ს არ სთავაზობს, ამიტომ ფაილები და წვდომის ტოკენი დაუშიფრავად გადაიცემა.",
             "swiftDesc": "OpenStack Swift ობიექტური საცავი",
             "swiftTooltip": "OpenStack Swift - თავსებადია Blomp, OVH, Rackspace ღრუბლოვან საცავთან",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

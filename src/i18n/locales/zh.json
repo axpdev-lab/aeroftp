@@ -1783,7 +1783,7 @@
             "felicloudDesc": "Felicloud (10 GB免费, EU/GDPR)",
             "felicloudTooltip": "Felicloud - 基于Nextcloud的欧盟云存储，10GB免费，符合GDPR",
             "blompDesc": "Blomp (40 GB免费云存储)",
-            "blompTooltip": "Blomp - 由OpenStack Swift驱动的40GB免费云存储",
+            "blompTooltip": "Blomp - 基于 OpenStack Swift 的 40GB 免费云存储。其存储端点不提供 HTTPS，因此文件和访问令牌以明文传输。",
             "swiftDesc": "OpenStack Swift对象存储",
             "swiftTooltip": "OpenStack Swift - 兼容Blomp、OVH、Rackspace云存储",
             "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",

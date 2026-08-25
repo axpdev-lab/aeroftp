@@ -2587,6 +2587,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 webdavScheme: provider.defaults?.webdavScheme,
                                 bucket: provider.defaults?.bucket,
                                 verifyCert: provider.defaults?.verifyCert,
+                                allowCleartextStorage: provider.defaults?.allowCleartextStorage,
                             },
                         });
                         return;
@@ -2657,6 +2658,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         bucket: provider.defaults?.bucket,
                         // Local HTTPS bridges (Filen Desktop S3) use self-signed certs
                         verifyCert: provider.defaults?.verifyCert,
+                        // Swift catalogs that publish a cleartext object store (Blomp)
+                        allowCleartextStorage: provider.defaults?.allowCleartextStorage,
                     },
                 });
                 onQuickConnectDirsChange({
