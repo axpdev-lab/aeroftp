@@ -138,7 +138,7 @@ sha256sum /tmp/AeroFTP.deb
 .github/scripts/aur-preflight.sh /path/to/aeroftp-bin
 ```
 
-It refuses the push when the `PKGBUILD` does not parse, when `.SRCINFO` disagrees with it on any value (sources and checksums compared one by one, expanded, not just the scalar fields), when `sha256sums[0]` is not a full 64 hex digest, when a source was left on the previous version, or when a release URL does not answer 200. Off Arch it evaluates the `PKGBUILD` the way `makepkg` does, so `${pkgver}` inside a URL is compared expanded.
+It refuses the push when the `PKGBUILD` does not parse, when `.SRCINFO` disagrees with it on any value (sources and checksums compared one by one, expanded, not just the scalar fields), when `sha256sums[0]` is not a full 64 hex digest, when a source was left on the previous version, or when a release URL does not answer 200. Off Arch it evaluates the `PKGBUILD` so that `${pkgver}` inside a URL is compared expanded, slicing out the top level assignments first rather than sourcing the file: a preflight reads as "only checks" and must not run a package's code.
 
 > **Install it as the pre-push hook of the AUR checkout**, once per machine, so a bad package cannot leave even in a hurry:
 >

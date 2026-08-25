@@ -52,6 +52,16 @@ fi
 fail=0
 note() { echo "aur-preflight: $*" >&2; fail=1; }
 
+# Name the missing tool rather than failing later with a message that sends the
+# reader into the PKGBUILD. curl is handled separately, further down, because
+# --offline is a legitimate way to do without it.
+for _tool in awk sed mktemp env; do
+    command -v "$_tool" >/dev/null 2>&1 || {
+        echo "aur-preflight: $_tool is required and not on PATH" >&2
+        exit 2
+    }
+done
+
 # mktemp can fail (full or read-only TMPDIR). Bail out rather than carry an empty
 # path into the trap below.
 tmp=$(mktemp -d) || { echo "aur-preflight: cannot create a temporary directory" >&2; exit 2; }
@@ -66,16 +76,37 @@ if ! bash -n PKGBUILD 2>"$tmp/syntax"; then
     exit 1
 fi
 
-# Read the PKGBUILD the way makepkg does, in a subshell, so that ${pkgver} inside
-# a source URL is compared expanded rather than as source text. Only top-level
-# assignments run; prepare()/package() are defined, never called.
-if ! bash --noprofile --norc -c '
+# ${pkgver} inside a source URL has to be compared expanded, not as source text,
+# so the values have to be evaluated rather than read with sed. Sourcing the whole
+# PKGBUILD would do it, and is what makepkg does at build time, but a preflight
+# script reads as "only checks" and must not run someone's package: a top level
+# `rm -rf ~` in a PKGBUILD you are inspecting would fire here. So slice out the
+# top level assignments first, functions and commands left behind, and evaluate
+# only those, in a subshell with an empty environment.
+awk '
+    # Continuation lines of a multi-line array, until the parentheses balance.
+    depth > 0 {
+        print
+        depth += gsub(/\(/, "(")
+        depth -= gsub(/\)/, ")")
+        next
+    }
+    # A top level assignment: name= at column zero. Anything indented belongs to a
+    # function body, and a command never matches this.
+    /^[A-Za-z_][A-Za-z0-9_]*=/ {
+        print
+        depth = gsub(/\(/, "(") - gsub(/\)/, ")")
+        next
+    }
+' PKGBUILD > "$tmp/assignments"
+
+if ! env -i "$(command -v bash)" --noprofile --norc -c '
         set -u
-        # shellcheck disable=SC1091
-        . ./PKGBUILD >/dev/null 2>&1 || exit 1
+        # shellcheck disable=SC1090
+        . "$1" >/dev/null 2>&1 || exit 1
         declare -p pkgname pkgver pkgrel pkgdesc source sha256sums 2>/dev/null
-    ' > "$tmp/vars" 2>/dev/null || [ ! -s "$tmp/vars" ]; then
-    note "PKGBUILD parses but does not evaluate, or declares none of pkgname/pkgver/source"
+    ' _ "$tmp/assignments" > "$tmp/vars" 2>/dev/null || [ ! -s "$tmp/vars" ]; then
+    note "PKGBUILD does not evaluate, or declares none of pkgname/pkgver/source/sha256sums"
     echo "aur-preflight: FAILED" >&2
     exit 1
 fi
@@ -138,10 +169,13 @@ fi
 
 # 4. Both source lines are expanded in .SRCINFO, so a hand edit can update one and
 #    miss the other, and a URL that hardcodes a version ignores the bump entirely.
+# Compare the URL alone: a "aeroftp-bin-${pkgver}.deb::" rename prefix always
+# carries the version, so checking the whole entry would pass while the download
+# URL behind it still points at the previous release.
 for s in "${source[@]}" "${srcinfo_sources[@]}"; do
-    case "$s" in
+    case "${s#*::}" in
         *"$pkgver"*) ;;
-        *) note "source does not carry pkgver ${pkgver}: ${s}" ;;
+        *) note "source URL does not carry pkgver ${pkgver}: ${s}" ;;
     esac
 done
 
