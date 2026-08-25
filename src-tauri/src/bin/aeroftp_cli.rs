@@ -58653,14 +58653,64 @@ fn inventory_namespace(name: &str) -> &'static str {
     }
 }
 
+/// Split a command name into comparable tokens: lowercase, split on `_`/`-`, and
+/// drop protocol/provider names and generic filler that carry no capability
+/// meaning. Used only for the structural name-overlap diff, never for dispatch.
+fn inventory_name_tokens(name: &str) -> std::collections::BTreeSet<String> {
+    const STOP: &[&str] = &[
+        "ftp", "ftps", "sftp", "s3", "webdav", "azure", "swift", "http", "get", "set", "is",
+        "remote", "local", "file", "files", "cmd",
+    ];
+    name.split(['_', '-'])
+        .map(|p| p.to_ascii_lowercase())
+        .filter(|p| !p.is_empty() && !STOP.contains(&p.as_str()))
+        .collect()
+}
+
 /// Build the authoritative command/tool inventory document from the in-code
-/// registries: the clap command table, `mcp::tools::tool_definitions`, and the
-/// CLI agent-tool set. Purely local; no vault, no network.
+/// registries: the clap command table, `mcp::tools::tool_definitions`, the CLI
+/// agent-tool set, and the build-time-generated Tauri (GUI) command list.
+/// Purely local; no vault, no network.
 fn build_inventory_doc() -> serde_json::Value {
     use serde_json::json;
     let subs = collect_cli_subcommands();
     let mcp = ftp_client_gui_lib::mcp::tools::tool_definitions();
     let agent = cli_tool_definitions();
+    let tauri = ftp_client_gui_lib::command_registry::TAURI_COMMANDS;
+
+    // Structural name-overlap between the GUI command surface and the
+    // command-line surfaces (CLI + MCP + agent). This is a NAME diff, not a
+    // semantic one: a Tauri command counts as matched when its token set is a
+    // subset (either direction) of some command-line command's token set. It is
+    // deliberately crude, and its two outputs are bounds, not a gap count:
+    //  - name_matched is a LOWER bound on real coverage (differently-named
+    //    equivalents are missed), and
+    //  - name_unmatched is an UPPER bound for triage, dominated by GUI, OS
+    //    integration and internal commands with no command-line meaning.
+    // Curating which unmatched entries are genuine parity gaps stays manual.
+    let surface_tokens: Vec<std::collections::BTreeSet<String>> = subs
+        .iter()
+        .map(|(n, _)| n.as_str())
+        .chain(mcp.iter().map(|t| t.name))
+        .chain(agent.iter().map(|t| t.name.as_str()))
+        .map(inventory_name_tokens)
+        .filter(|t| !t.is_empty())
+        .collect();
+    let mut name_matched: Vec<&str> = Vec::new();
+    let mut name_unmatched: Vec<&str> = Vec::new();
+    for &name in tauri {
+        let t = inventory_name_tokens(name);
+        // A command with no distinctive tokens is plumbing, not a capability.
+        let matched = t.is_empty()
+            || surface_tokens
+                .iter()
+                .any(|s| t.is_subset(s) || s.is_subset(&t));
+        if matched {
+            name_matched.push(name);
+        } else {
+            name_unmatched.push(name);
+        }
+    }
 
     let (mut ns_aeroftp, mut ns_remote, mut ns_server, mut ns_other) =
         (0usize, 0usize, 0usize, 0usize);
@@ -58694,7 +58744,8 @@ fn build_inventory_doc() -> serde_json::Value {
                 "server_": ns_server,
                 "other": ns_other
             },
-            "agent_tools": agent.len()
+            "agent_tools": agent.len(),
+            "tauri_commands": tauri.len()
         },
         "cli": {
             "count": subs.len(),
@@ -58702,6 +58753,24 @@ fn build_inventory_doc() -> serde_json::Value {
                 .iter()
                 .map(|(n, a)| json!({ "name": n, "about": a }))
                 .collect::<Vec<_>>()
+        },
+        "tauri": {
+            "count": tauri.len(),
+            "commands": tauri
+        },
+        "parity": {
+            "note": "Name-based structural diff, not a semantic one. \
+                     `name_matched` are Tauri commands whose token set matches a \
+                     CLI/MCP/agent command (a LOWER bound on real coverage, since \
+                     differently-named equivalents are missed). `name_unmatched` \
+                     is the remainder: an UPPER bound for manual triage, \
+                     dominated by GUI, OS-integration and internal commands with \
+                     no command-line meaning, plus real capabilities named \
+                     differently. Neither figure is a capability-gap count; \
+                     curating genuine gaps stays manual (tracker #9).",
+            "name_matched_count": name_matched.len(),
+            "name_unmatched_count": name_unmatched.len(),
+            "name_unmatched": name_unmatched
         },
         "mcp": {
             "count": mcp.len(),
@@ -58746,7 +58815,19 @@ fn inventory_markdown(doc: &serde_json::Value) -> String {
         "| MCP aliases (remote_/server_) | {} |\n",
         c["mcp_tools_aliases"]
     ));
-    s.push_str(&format!("| Agent tools | {} |\n\n", c["agent_tools"]));
+    s.push_str(&format!("| Agent tools | {} |\n", c["agent_tools"]));
+    s.push_str(&format!(
+        "| Tauri (GUI) commands | {} |\n\n",
+        c["tauri_commands"]
+    ));
+
+    let p = &doc["parity"];
+    s.push_str(&format!(
+        "Name-overlap diff (structural, not semantic): {} of {} GUI commands \
+         match a CLI/MCP/agent name; {} are unmatched, an upper bound for manual \
+         triage (mostly GUI/OS/internal commands, see the inventory `parity` note).\n\n",
+        p["name_matched_count"], c["tauri_commands"], p["name_unmatched_count"]
+    ));
 
     s.push_str("## CLI subcommands\n\n");
     if let Some(arr) = doc["cli"]["subcommands"].as_array() {
@@ -58871,6 +58952,29 @@ mod inventory_tests {
                 assert_eq!(
                     c["agent_tools"].as_u64().unwrap(),
                     doc["agent"]["tools"].as_array().unwrap().len() as u64
+                );
+
+                // Tauri command list length matches its count, and the parity
+                // partition (gui-only + worklist) covers every command exactly
+                // once with nothing dropped or double-counted.
+                let tauri_total = c["tauri_commands"].as_u64().unwrap();
+                assert_eq!(
+                    tauri_total,
+                    doc["tauri"]["commands"].as_array().unwrap().len() as u64,
+                    "Tauri command list length must match the count"
+                );
+                assert!(tauri_total > 500, "the generated Tauri surface looks empty");
+                let p = &doc["parity"];
+                assert_eq!(
+                    p["name_matched_count"].as_u64().unwrap()
+                        + p["name_unmatched_count"].as_u64().unwrap(),
+                    tauri_total,
+                    "matched + unmatched must partition the Tauri command total"
+                );
+                assert_eq!(
+                    p["name_unmatched_count"].as_u64().unwrap(),
+                    p["name_unmatched"].as_array().unwrap().len() as u64,
+                    "unmatched length must match its count"
                 );
             })
             .expect("spawn inventory consistency test")

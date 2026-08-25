@@ -55,6 +55,15 @@ pub mod ai_stream;
 mod ai_tools;
 pub mod app_events;
 mod archive_browse;
+
+/// Registered Tauri (GUI) command names, generated at build time from the
+/// `tauri::generate_handler!` block in this file. Consumed by `aeroftp-cli
+/// inventory` to diff the GUI command surface against CLI subcommands and MCP
+/// tools, so a capability that exists in the engine and GUI but is missing from
+/// the command-line surfaces is measurable in one pass.
+pub mod command_registry {
+    include!(concat!(env!("OUT_DIR"), "/tauri_commands.rs"));
+}
 pub mod archive_progress;
 pub mod aws_credentials_import;
 pub mod bridge_commands;
