@@ -240,6 +240,98 @@ impl KDriveProvider {
         )
     }
 
+    /// Enumerate the kDrive accounts accessible to this bearer token. The
+    /// provider data plane needs a drive id in every URL, so discovery must use
+    /// the account-level `/2/drive` endpoint before constructing those URLs.
+    /// Infomaniak requires `account_id`, sourced from the authenticated profile
+    /// rather than guessed or requested from the user.
+    pub async fn discover_drives(&self) -> Result<Vec<(String, String)>, ProviderError> {
+        let profile_response = self
+            .get_with_retry(&format!("{API_BASE}/2/profile"))
+            .await?;
+        let profile_status = profile_response.status();
+        let profile_body = profile_response.bytes().await.map_err(|e| {
+            ProviderError::NetworkError(format!("Profile discovery read failed: {e}"))
+        })?;
+        if !profile_status.is_success() {
+            return Err(Self::discovery_http_error(
+                profile_status,
+                &profile_body,
+                "Could not read the Infomaniak account profile",
+            ));
+        }
+        let profile: serde_json::Value = serde_json::from_slice(&profile_body).map_err(|e| {
+            ProviderError::ServerError(format!("Profile discovery response parse failed: {e}"))
+        })?;
+        let account_id = Self::profile_account_id(&profile).ok_or_else(|| {
+            ProviderError::ServerError(
+                "Infomaniak profile did not return a current account id".to_string(),
+            )
+        })?;
+
+        let response = self
+            .get_with_retry(&format!("{API_BASE}/2/drive?account_id={account_id}"))
+            .await?;
+        let status = response.status();
+        let body = response.bytes().await.map_err(|e| {
+            ProviderError::NetworkError(format!("Drive discovery read failed: {e}"))
+        })?;
+        if !status.is_success() {
+            return Err(Self::discovery_http_error(
+                status,
+                &body,
+                "Could not list accessible kDrive accounts",
+            ));
+        }
+        let parsed: ApiResponse<Vec<DriveInfo>> = serde_json::from_slice(&body).map_err(|e| {
+            ProviderError::ServerError(format!("Accessible drives response parse failed: {e}"))
+        })?;
+        let mut drives: Vec<(String, String)> = parsed
+            .data
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|drive| {
+                let id = drive.id?;
+                let id = id.to_string();
+                let label = drive
+                    .name
+                    .filter(|name| !name.trim().is_empty())
+                    .unwrap_or_else(|| id.clone());
+                Some((id, label))
+            })
+            .collect();
+        drives.sort_by_key(|drive| drive.1.to_lowercase());
+        drives.dedup_by(|left, right| left.0 == right.0);
+        Ok(drives)
+    }
+
+    fn profile_account_id(profile: &serde_json::Value) -> Option<i64> {
+        profile
+            .pointer("/data/preferences/account/current_account_id")
+            .and_then(|value| {
+                value
+                    .as_i64()
+                    .or_else(|| value.as_str().and_then(|text| text.parse::<i64>().ok()))
+            })
+    }
+
+    fn discovery_http_error(
+        status: reqwest::StatusCode,
+        body: &[u8],
+        context: &str,
+    ) -> ProviderError {
+        let text = String::from_utf8_lossy(body);
+        let message = format!("{context} ({status}): {}", sanitize_api_error(&text));
+        if matches!(
+            status,
+            reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+        ) {
+            ProviderError::AuthenticationFailed(message)
+        } else {
+            ProviderError::ServerError(message)
+        }
+    }
+
     /// KD-004: Send a GET request with automatic retry on 429/5xx
     async fn get_with_retry(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
         let request = self
@@ -1860,6 +1952,18 @@ impl KDriveProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drive_discovery_reads_numeric_or_string_current_account_id() {
+        let numeric = serde_json::json!({
+            "data": { "preferences": { "account": { "current_account_id": 45665 } } }
+        });
+        let string = serde_json::json!({
+            "data": { "preferences": { "account": { "current_account_id": "45665" } } }
+        });
+        assert_eq!(KDriveProvider::profile_account_id(&numeric), Some(45665));
+        assert_eq!(KDriveProvider::profile_account_id(&string), Some(45665));
+    }
 
     fn test_provider() -> KDriveProvider {
         let config = KDriveConfig {

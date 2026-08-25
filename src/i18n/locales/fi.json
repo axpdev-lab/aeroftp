@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Liitä Filen CLI -profiilisi API-avain ohittaaksesi 2FA-koodin joka uudelleenyhdistämisellä. Tilin salasana vaaditaan edelleen: se purkaa tiedostojesi salauksen päästä päähän. Tallennuksen jälkeen avain säilytetään salattuna holvissa eikä sitä näytetä enää tässä (kuten 2FA-salaisuuttasi); AeroFTP käyttää sitä automaattisesti uudelleen. Jätä muokattaessa tyhjäksi säilyttääksesi tallennetun avaimen.",
             "manualTotalStorage": "Tallennustila yhteensä (manuaalinen)",
             "manualTotalStoragePlaceholder": "esim. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Valinnainen. Paketti- tai tilirajan arvo taustajärjestelmille, joilla ei ole quota API:a (FTP, S3, WebDAV) tai jotka raportoivat vain käytetyn tilan (Backblaze B2). Palveluntarjoajan oma kokonaisarvo on aina ensisijainen.",
+            "manualTotalStorageHint": "Valinnainen. Anna tilauksen/tilin numeerinen raja ja valitse sen yksikkö. Käytetään vain, jos palveluntarjoajalla ei ole kokonaiskiintiön APIa; palveluntarjoajan oma kokonaismäärä on aina etusijalla.",
             "autoScanUsedOnConnect": "Laske käytetty tallennustila yhdistettäessä",
             "autoScanUsedOnConnectHint": "Vain taustajärjestelmille, joilla ei ole käytetyn tilan API:a (FTP, S3, WebDAV). Oletuksena pois käytöstä: suuri puu (esim. verkkoprojekti) käydään läpi rekursiivisesti, mikä voi olla hidasta. Käytä muutoin StatusBar-toimintoa tarpeen mukaan.",
             "saveAsNewProfile": "Tallenna uudeksi profiiliksi",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Valitse laite...",
             "mtpSelectPlaceholderEmpty": "Ei vielä laitteita – napsauta Tunnista",
             "mtpNotAttachedTitle": "Laitetta ei ole yhdistetty",
-            "mtpNotAttached": "Kytke laite ja ota tiedostonsiirtotila käyttöön, yritä sitten uudelleen."
+            "mtpNotAttached": "Kytke laite ja ota tiedostonsiirtotila käyttöön, yritä sitten uudelleen.",
+            "discovery": {
+                "fetch": "Hae",
+                "fetching": "Haetaan...",
+                "refresh": "Päivitä",
+                "none": "Kohteita ei palautettu. Voit silti antaa kohteen manuaalisesti.",
+                "found": "Löytyi {count} käytettävissä olevaa kohdetta. Hae kirjoittamalla tai valitse yksi."
+            }
         },
         "browser": {
             "remote": "Etä",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Salaustyyppi ja salasana asetetaan kerran, eikä niitä voi muuttaa myöhemmin: jo salatut tiedostot muuttuisivat lukukelvottomiksi.",
             "lockedNote": "Salaustyyppi ja tunnistetiedot on lukittu: tämä peite sisältää jo salattua dataa.",
             "addToExistingWarn": "Kun otat peittokuvan käyttöön olemassa olevassa profiilissa: kaikki tässä etäkohteessa jo olevat pelkkätekstitiedostot pysyvät salaamattomina ja näkyvät salaamattomana sekoituksena. Käytä tyhjää etäkohdetta.",
-            "scopeHint": "Yllä määritetyt etä- ja paikalliset polut määrittävät salatun alueen (jätä Etä tyhjäksi salataksesi koko juuren).",
+            "scopeHint": "Peittokuvien polku määrittää salatun alueen. Etäpolku valitsee vain selaamisen aloituskohdan; paikallinen polku ei koskaan muuta salausta.",
             "overlaysPathLockedNote": "Peittojen polku on lukittu: se on salauksen ankkuri eikä sitä voi muuttaa, kun peitto on sidottu.",
             "remotePathMustReachOverlay": "Etäpolun on oltava peittojen polku ({path}) tai jokin sen yläkansioista, muuten salattu kansio jää tämän istunnon ulkopuolelle.",
             "overlaysSection": "Kääreet / Overlayt",

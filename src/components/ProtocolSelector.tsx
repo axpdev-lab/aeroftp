@@ -30,6 +30,7 @@ import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint } from '../providers';
 import { CopyLinkButton } from './common/CopyLinkButton';
+import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
 import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
 
 // Google Drive, Google Photos, Dropbox and OneDrive used to be redrawn here as
@@ -704,6 +705,9 @@ interface ProtocolFieldsProps {
     isEditing?: boolean;  // Hide help links when editing existing server
     presetUnlocked?: Record<string, boolean>;  // Which preset fields are unlocked for editing
     onPresetUnlock?: (field: string) => void;  // Callback to unlock a preset field
+    discoverS3Targets?: () => Promise<ConnectionTarget[]>;
+    canDiscoverS3Targets?: boolean;
+    s3DiscoveryResetKey?: string;
 }
 
 export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
@@ -716,6 +720,9 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     isEditing = false,
     presetUnlocked = {},
     onPresetUnlock,
+    discoverS3Targets,
+    canDiscoverS3Targets = false,
+    s3DiscoveryResetKey,
 }) => {
     const t = useTranslation();
     const providerConfig = selectedProviderId ? getProviderById(selectedProviderId) : null;
@@ -899,23 +906,18 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     {providerConfig ? `${providerConfig.name}: ${t('protocol.s3Config')}` : t('protocol.s3Config')}
                 </div>
                 {!hasFixedBucket && (
-                    <div>
-                        <label className="block text-sm font-medium mb-1.5">
-                            {bucketField?.label || t('protocol.bucketNameRequired')}
-                        </label>
-                        <input
-                            type="text"
-                            value={options.bucket || ''}
-                            onChange={(e) => onChange({ ...options, bucket: e.target.value })}
-                            disabled={disabled}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                            placeholder={bucketField?.placeholder || t('protocol.bucketPlaceholder')}
-                            required
-                        />
-                        {!isEditing && bucketField?.helpText && (
-                            <p className="text-xs text-gray-500 mt-1">{bucketField.helpText}</p>
-                        )}
-                    </div>
+                    <DiscoverableTargetField
+                        label={bucketField?.label || t('protocol.bucketNameRequired')}
+                        value={options.bucket || ''}
+                        onChange={(bucket) => onChange({ ...options, bucket })}
+                        onDiscover={discoverS3Targets || (async () => [])}
+                        canDiscover={canDiscoverS3Targets && !!discoverS3Targets}
+                        disabled={disabled}
+                        placeholder={bucketField?.placeholder || t('protocol.bucketPlaceholder')}
+                        helpText={!isEditing ? bucketField?.helpText : undefined}
+                        required
+                        resetKey={s3DiscoveryResetKey}
+                    />
                 )}
 
                 {/* Session token for AWS STS temporary credentials (AssumeRole / SSO),

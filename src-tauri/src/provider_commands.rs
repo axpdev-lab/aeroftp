@@ -1317,6 +1317,90 @@ impl ProviderConnectionParams {
     }
 }
 
+/// Account-level target returned before a bucket/drive has been selected.
+/// `value` is the stable provider identifier; `label` is the human-readable
+/// account name when the service supplies one.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionTarget {
+    pub value: String,
+    pub label: String,
+}
+
+/// Discover the buckets or drives visible to the credentials currently typed
+/// into Quick Connect. Discovery is deliberately explicit (the UI calls this
+/// only after a button press) and does not mutate the active provider session.
+#[tauri::command]
+pub async fn provider_discover_targets(
+    mut params: ProviderConnectionParams,
+) -> Result<Vec<ConnectionTarget>, String> {
+    let protocol = params.protocol.to_ascii_lowercase();
+    if !matches!(
+        protocol.as_str(),
+        "s3" | "b2" | "backblaze" | "backblazeb2" | "kdrive"
+    ) {
+        return Err(format!(
+            "Target discovery is not supported for {}",
+            params.protocol
+        ));
+    }
+    if params.username.trim().is_empty() || params.password.trim().is_empty() {
+        return Err("Credentials are required before target discovery".to_string());
+    }
+
+    // Provider configuration validates the same credential/endpoint contract
+    // as a real connection. The placeholder is never sent as a data-plane
+    // target: each discovery method uses its account/service-root endpoint.
+    params.bucket = Some("__aeroftp_discovery__".to_string());
+    let config = params.to_provider_config()?;
+    let mut targets: Vec<ConnectionTarget> = match config.provider_type {
+        ProviderType::S3 => {
+            let s3_config = crate::providers::S3Config::from_provider_config(&config)
+                .map_err(|error| error.to_string())?;
+            crate::providers::S3Provider::new(s3_config)
+                .map_err(|error| error.to_string())?
+                .discover_buckets()
+                .await
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .map(|bucket| ConnectionTarget {
+                    label: bucket.clone(),
+                    value: bucket,
+                })
+                .collect()
+        }
+        ProviderType::Backblaze => {
+            let b2_config = crate::providers::b2::B2Config::from_provider_config(&config)
+                .map_err(|error| error.to_string())?;
+            crate::providers::B2Provider::new(b2_config)
+                .discover_buckets()
+                .await
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .map(|bucket| ConnectionTarget {
+                    label: bucket.clone(),
+                    value: bucket,
+                })
+                .collect()
+        }
+        ProviderType::KDrive => {
+            let kdrive_config = crate::providers::KDriveConfig::from_provider_config(&config)
+                .map_err(|error| error.to_string())?;
+            crate::providers::KDriveProvider::new(kdrive_config)
+                .discover_drives()
+                .await
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .map(|(value, label)| ConnectionTarget { value, label })
+                .collect()
+        }
+        _ => unreachable!("protocol guard and provider mapping must agree"),
+    };
+    targets.sort_by_key(|target| target.label.to_lowercase());
+    targets.dedup_by(|left, right| left.value == right.value);
+    Ok(targets)
+}
+
 #[derive(Serialize)]
 pub struct ProviderListResponse {
     pub files: Vec<RemoteEntry>,
@@ -5351,6 +5435,29 @@ fn default_region() -> String {
     "us".to_string()
 }
 
+/// Canonical callback endpoint for every OAuth provider. Stable ports make
+/// developer-console configuration deterministic and keep the UI display and
+/// the listener implementation on one source of truth.
+fn oauth_callback_endpoint(provider: &str) -> Result<(&'static str, u16), String> {
+    match provider.to_ascii_lowercase().as_str() {
+        "google_drive" | "googledrive" | "google" => Ok(("127.0.0.1", 18514)),
+        "googlephotos" | "google_photos" => Ok(("127.0.0.1", 18515)),
+        "dropbox" => Ok(("127.0.0.1", 17548)),
+        "onedrive" | "microsoft" => Ok(("localhost", 27154)),
+        "box" => Ok(("127.0.0.1", 9484)),
+        "pcloud" => Ok(("localhost", 17384)),
+        "zoho" | "zoho_workdrive" | "zohoworkdrive" => Ok(("127.0.0.1", 18765)),
+        "yandexdisk" | "yandex_disk" | "yandex" => Ok(("localhost", 19847)),
+        other => Err(format!("Unknown OAuth2 provider: {other}")),
+    }
+}
+
+#[tauri::command]
+pub async fn oauth2_redirect_uri(provider: String) -> Result<String, String> {
+    let (host, port) = oauth_callback_endpoint(&provider)?;
+    Ok(format!("http://{host}:{port}/callback"))
+}
+
 /// OAuth2 flow state
 #[derive(Debug, Clone, Serialize)]
 pub struct OAuthFlowStarted {
@@ -5367,23 +5474,34 @@ pub async fn oauth2_start_auth(params: OAuthConnectionParams) -> Result<OAuthFlo
     use crate::providers::{OAuth2Manager, OAuthConfig};
 
     info!("Starting OAuth2 flow for {}", params.provider);
+    let (_, port) = oauth_callback_endpoint(&params.provider)?;
 
     let config = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
-            OAuthConfig::google(&params.client_id, &params.client_secret)
+            OAuthConfig::google_with_port(&params.client_id, &params.client_secret, port)
         }
         "googlephotos" | "google_photos" => {
-            OAuthConfig::google_photos(&params.client_id, &params.client_secret)
+            OAuthConfig::google_photos_with_port(&params.client_id, &params.client_secret, port)
         }
-        "dropbox" => OAuthConfig::dropbox(&params.client_id, &params.client_secret),
-        "onedrive" | "microsoft" => OAuthConfig::onedrive(&params.client_id, &params.client_secret),
-        "box" => OAuthConfig::box_cloud(&params.client_id, &params.client_secret),
-        "pcloud" => OAuthConfig::pcloud(&params.client_id, &params.client_secret, &params.region),
-        "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
-            OAuthConfig::zoho(&params.client_id, &params.client_secret, &params.region)
+        "dropbox" => OAuthConfig::dropbox_with_port(&params.client_id, &params.client_secret, port),
+        "onedrive" | "microsoft" => {
+            OAuthConfig::onedrive_with_port(&params.client_id, &params.client_secret, port)
         }
+        "box" => OAuthConfig::box_cloud_with_port(&params.client_id, &params.client_secret, port),
+        "pcloud" => OAuthConfig::pcloud_with_port(
+            &params.client_id,
+            &params.client_secret,
+            port,
+            &params.region,
+        ),
+        "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthConfig::zoho_with_port(
+            &params.client_id,
+            &params.client_secret,
+            port,
+            &params.region,
+        ),
         "yandexdisk" | "yandex_disk" | "yandex" => {
-            OAuthConfig::yandex_disk(&params.client_id, &params.client_secret)
+            OAuthConfig::yandex_disk_with_port(&params.client_id, &params.client_secret, port)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     }
@@ -5413,23 +5531,34 @@ pub async fn oauth2_complete_auth(
     use crate::providers::{OAuth2Manager, OAuthConfig};
 
     info!("Completing OAuth2 flow for {}", params.provider);
+    let (_, port) = oauth_callback_endpoint(&params.provider)?;
 
     let config = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
-            OAuthConfig::google(&params.client_id, &params.client_secret)
+            OAuthConfig::google_with_port(&params.client_id, &params.client_secret, port)
         }
         "googlephotos" | "google_photos" => {
-            OAuthConfig::google_photos(&params.client_id, &params.client_secret)
+            OAuthConfig::google_photos_with_port(&params.client_id, &params.client_secret, port)
         }
-        "dropbox" => OAuthConfig::dropbox(&params.client_id, &params.client_secret),
-        "onedrive" | "microsoft" => OAuthConfig::onedrive(&params.client_id, &params.client_secret),
-        "box" => OAuthConfig::box_cloud(&params.client_id, &params.client_secret),
-        "pcloud" => OAuthConfig::pcloud(&params.client_id, &params.client_secret, &params.region),
-        "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
-            OAuthConfig::zoho(&params.client_id, &params.client_secret, &params.region)
+        "dropbox" => OAuthConfig::dropbox_with_port(&params.client_id, &params.client_secret, port),
+        "onedrive" | "microsoft" => {
+            OAuthConfig::onedrive_with_port(&params.client_id, &params.client_secret, port)
         }
+        "box" => OAuthConfig::box_cloud_with_port(&params.client_id, &params.client_secret, port),
+        "pcloud" => OAuthConfig::pcloud_with_port(
+            &params.client_id,
+            &params.client_secret,
+            port,
+            &params.region,
+        ),
+        "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthConfig::zoho_with_port(
+            &params.client_id,
+            &params.client_secret,
+            port,
+            &params.region,
+        ),
         "yandexdisk" | "yandex_disk" | "yandex" => {
-            OAuthConfig::yandex_disk(&params.client_id, &params.client_secret)
+            OAuthConfig::yandex_disk_with_port(&params.client_id, &params.client_secret, port)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     }
@@ -5598,7 +5727,7 @@ pub async fn oauth2_full_auth(
     params: OAuthConnectionParams,
 ) -> Result<String, String> {
     use crate::providers::{
-        oauth2::{bind_callback_listener, bind_callback_listener_on_port, wait_for_callback},
+        oauth2::{bind_callback_listener_on_port, wait_for_callback},
         OAuth2Manager, OAuthConfig,
     };
 
@@ -5616,24 +5745,10 @@ pub async fn oauth2_full_auth(
         .as_deref()
         .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
 
-    // Some providers require exact redirect_uri matching, so use a fixed port
-    let fixed_port: u16 = match params.provider.to_lowercase().as_str() {
-        "box" => 9484,
-        "dropbox" => 17548,
-        "onedrive" | "microsoft" => 27154,
-        "pcloud" => 17384,
-        "zoho" | "zoho_workdrive" | "zohoworkdrive" => 18765,
-        "yandexdisk" | "yandex_disk" | "yandex" => 19847,
-        _ => 0,
-    };
-
-    // Bind callback listener (fixed port for Box, ephemeral for others)
-    let (listener, port) = if fixed_port > 0 {
-        bind_callback_listener_on_port(fixed_port).await
-    } else {
-        bind_callback_listener().await
-    }
-    .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
+    let (_, port) = oauth_callback_endpoint(&params.provider)?;
+    let (listener, port) = bind_callback_listener_on_port(port)
+        .await
+        .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
 
     let config = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
@@ -5669,7 +5784,7 @@ pub async fn oauth2_full_auth(
     // Create manager ONCE and keep it for the entire flow
     let manager = OAuth2Manager::new();
 
-    // Generate auth URL with the dynamic port in redirect_uri
+    // Generate an auth URL with the same stable callback URI shown by the UI.
     let (auth_url, expected_state) = manager
         .start_auth_flow(&config)
         .await
@@ -12612,11 +12727,11 @@ mod tests {
     use super::{
         decrypt_rel_aerocrypt, decrypt_rel_rclone, drain_in_flight_transfers,
         normalize_aerocrypt_remote_files_for_compare, normalize_rclone_remote_files_for_compare,
-        normalize_remote_files_for_compare, rclone_decrypted_size, remote_matches_repo,
-        resolve_compare_overlay_keys, run_cancellable_connect, run_cancellable_listing,
-        sanitize_remote_filename, verify_path_containment, ConnectTokenGuard,
-        ConnectionCancelRegistry, ListingCancelState, ProviderConnectionParams, ProviderState,
-        TransferOperationGuard, CONNECT_CANCELLED, LISTING_CANCELLED,
+        normalize_remote_files_for_compare, oauth_callback_endpoint, rclone_decrypted_size,
+        remote_matches_repo, resolve_compare_overlay_keys, run_cancellable_connect,
+        run_cancellable_listing, sanitize_remote_filename, verify_path_containment,
+        ConnectTokenGuard, ConnectionCancelRegistry, ListingCancelState, ProviderConnectionParams,
+        ProviderState, TransferOperationGuard, CONNECT_CANCELLED, LISTING_CANCELLED,
     };
     use crate::rclone_crypt::{
         derive_keys, derive_keys_with_tweak, encrypt_file_content, encrypt_name,
@@ -12627,6 +12742,40 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn oauth_callback_endpoints_are_stable_and_provider_specific() {
+        assert_eq!(
+            oauth_callback_endpoint("google_drive").unwrap(),
+            ("127.0.0.1", 18514)
+        );
+        assert_eq!(
+            oauth_callback_endpoint("googlephotos").unwrap(),
+            ("127.0.0.1", 18515)
+        );
+        assert_eq!(
+            oauth_callback_endpoint("dropbox").unwrap(),
+            ("127.0.0.1", 17548)
+        );
+        assert_eq!(
+            oauth_callback_endpoint("onedrive").unwrap(),
+            ("localhost", 27154)
+        );
+        assert_eq!(oauth_callback_endpoint("box").unwrap(), ("127.0.0.1", 9484));
+        assert_eq!(
+            oauth_callback_endpoint("pcloud").unwrap(),
+            ("localhost", 17384)
+        );
+        assert_eq!(
+            oauth_callback_endpoint("zoho_workdrive").unwrap(),
+            ("127.0.0.1", 18765)
+        );
+        assert_eq!(
+            oauth_callback_endpoint("yandexdisk").unwrap(),
+            ("localhost", 19847)
+        );
+        assert!(oauth_callback_endpoint("unknown").is_err());
+    }
 
     // The two guards that stop a hostile server from steering a download out of
     // the chosen folder. They were unpinned until now: the protection was real

@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Zalijepite API ključ iz svog Filen CLI profila kako biste preskočili 2FA kod pri svakom ponovnom povezivanju. Lozinka računa i dalje je potrebna: ona dešifrira vaše datoteke od kraja do kraja. Nakon spremanja, ključ se pohranjuje šifriran u trezoru i više se ovdje ne prikazuje (poput vaše 2FA tajne); AeroFTP ga automatski ponovno koristi. Pri uređivanju ostavite prazno da biste zadržali spremljeni ključ.",
             "manualTotalStorage": "Ukupna pohrana (ručno)",
             "manualTotalStoragePlaceholder": "npr. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Neobavezno. Ograničenje plana ili računa za pozadinske sustave bez quota API-ja (FTP, S3, WebDAV) ili one koji prijavljuju samo iskorišteni prostor (Backblaze B2). Vlastiti ukupni iznos pružatelja uvijek ima prednost.",
+            "manualTotalStorageHint": "Neobavezno. Unesite brojčano ograničenje plana/računa i odaberite njegovu jedinicu. Koristi se samo kada pružatelj nema API za ukupnu kvotu; vlastiti ukupni iznos pružatelja uvijek ima prednost.",
             "autoScanUsedOnConnect": "Izračunaj iskorištenu pohranu pri povezivanju",
             "autoScanUsedOnConnectHint": "Samo za pozadinske sustave bez API-ja za iskorišteni prostor (FTP, S3, WebDAV). Prema zadanim postavkama isključeno: veliko stablo (npr. web projekt) prolazi se rekurzivno, što može biti sporo. U protivnom koristite radnju StatusBar po potrebi.",
             "saveAsNewProfile": "Spremi kao novi profil",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Odaberite uređaj...",
             "mtpSelectPlaceholderEmpty": "Još nema uređaja – kliknite Otkrij",
             "mtpNotAttachedTitle": "Uređaj nije povezan",
-            "mtpNotAttached": "Priključite uređaj i omogućite način prijenosa datoteka, zatim pokušajte ponovno."
+            "mtpNotAttached": "Priključite uređaj i omogućite način prijenosa datoteka, zatim pokušajte ponovno.",
+            "discovery": {
+                "fetch": "Dohvati",
+                "fetching": "Dohvaćanje...",
+                "refresh": "Osvježi",
+                "none": "Nije vraćeno nijedno odredište. I dalje ga možete unijeti ručno.",
+                "found": "Pronađeno je {count} dostupnih odredišta. Upišite za pretraživanje ili odaberite jedno."
+            }
         },
         "browser": {
             "remote": "Udaljeno",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Vrsta enkripcije i lozinka postavljaju se jednom i ne mogu se kasnije mijenjati: već šifrirane datoteke postale bi nečitljive.",
             "lockedNote": "Vrsta enkripcije i vjerodajnice su zaključane: ovaj sloj već sadrži šifrirane podatke.",
             "addToExistingWarn": "Omogućavanjem sloja na postojećem profilu: sve datoteke u običnom tekstu koje već postoje na ovom udaljenom mjestu ostaju nešifrirane i prikazat će se kao nedešifrabilna mješavina. Upotrijebite prazno udaljeno mjesto.",
-            "scopeHint": "Gore navedene udaljena i lokalna putanja definiraju šifrirani opseg (ostavite Udaljenu praznom za šifriranje cijelog korijena).",
+            "scopeHint": "Putanja slojeva određuje šifrirani opseg. Udaljena putanja samo bira gdje pregledavanje počinje; lokalna putanja nikada ne mijenja šifriranje.",
             "overlaysPathLockedNote": "Putanja prekrivača je zaključana: ona je sidro šifriranja i ne može se promijeniti nakon što je prekrivač povezan.",
             "remotePathMustReachOverlay": "Udaljena putanja mora biti putanja prekrivača ({path}) ili jedna od njezinih nadređenih mapa, inače šifrirana mapa ostaje izvan ove sesije.",
             "overlaysSection": "Omotači / Overlayi",

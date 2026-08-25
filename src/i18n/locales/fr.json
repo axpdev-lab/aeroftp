@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Collez la clé API de votre profil Filen CLI pour ignorer le code 2FA à chaque reconnexion. Le mot de passe du compte reste requis : il déchiffre vos fichiers de bout en bout. Une fois enregistrée, la clé est stockée chiffrée dans le coffre et n'est plus affichée ici (comme votre secret 2FA) ; AeroFTP la réutilise automatiquement. Lors de la modification, laissez vide pour conserver la clé enregistrée.",
             "manualTotalStorage": "Stockage total (manuel)",
             "manualTotalStoragePlaceholder": "ex. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Facultatif. Limite du forfait ou du compte pour les backends sans quota API (FTP, S3, WebDAV) ou qui ne signalent que l'espace utilisé (Backblaze B2). Le total propre du fournisseur a toujours priorité.",
+            "manualTotalStorageHint": "Facultatif. Saisissez une limite numérique pour l'offre ou le compte et choisissez son unité. Utilisé uniquement lorsque le fournisseur ne propose aucune API de quota total ; le total du fournisseur reste toujours prioritaire.",
             "autoScanUsedOnConnect": "Calculer le stockage utilisé à la connexion",
             "autoScanUsedOnConnectHint": "Uniquement pour les backends sans API d'espace utilisé (FTP, S3, WebDAV). Désactivé par défaut : une grande arborescence (ex. un projet web) est parcourue récursivement, ce qui peut être lent. Sinon, utilisez l'action de la StatusBar à la demande.",
             "saveAsNewProfile": "Enregistrer comme nouveau profil",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Sélectionnez un appareil...",
             "mtpSelectPlaceholderEmpty": "Aucun appareil pour l'instant — cliquez sur Détecter",
             "mtpNotAttachedTitle": "Appareil non connecté",
-            "mtpNotAttached": "Branchez l'appareil et activez le mode Transfert de fichiers, puis réessayez."
+            "mtpNotAttached": "Branchez l'appareil et activez le mode Transfert de fichiers, puis réessayez.",
+            "discovery": {
+                "fetch": "Récupérer",
+                "fetching": "Récupération...",
+                "refresh": "Actualiser",
+                "none": "Aucune cible n'a été renvoyée. Vous pouvez toujours en saisir une manuellement.",
+                "found": "{count} cibles accessibles trouvées. Saisissez du texte pour rechercher ou sélectionnez-en une."
+            }
         },
         "browser": {
             "remote": "Distant",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Le type de chiffrement et le mot de passe se définissent une seule fois et ne peuvent pas être modifiés ensuite : les fichiers déjà chiffrés deviendraient illisibles.",
             "lockedNote": "Le type de chiffrement et les identifiants sont verrouillés : cette surcouche contient déjà des données chiffrées.",
             "addToExistingWarn": "En activant une surcouche sur un profil existant : les fichiers en clair déjà présents sur ce distant restent non chiffrés et apparaîtront comme un mélange indéchiffrable. Utilisez un distant vide.",
-            "scopeHint": "Les chemins distant et local indiqués ci-dessus définissent la portée chiffrée (laissez le chemin distant vide pour chiffrer toute la racine).",
+            "scopeHint": "Le chemin des superpositions définit l'étendue chiffrée. Le chemin distant choisit uniquement le point de départ de la navigation ; le chemin local ne modifie jamais le chiffrement.",
             "overlaysPathLockedNote": "Le chemin des superpositions est verrouillé : il constitue l'ancre de chiffrement et ne peut plus changer une fois la superposition liée.",
             "remotePathMustReachOverlay": "Le chemin distant doit être le chemin des superpositions ({path}) ou l'un de ses dossiers parents, sinon le dossier chiffré se retrouve hors de cette session.",
             "overlaysSection": "Enveloppes / Overlays",

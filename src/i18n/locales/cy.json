@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Gludwch yr allwedd API o'ch proffil Filen CLI i hepgor y cod 2FA bob tro y byddwch yn ailgysylltu. Mae angen cyfrinair y cyfrif o hyd: mae'n dadgryptio'ch ffeiliau o ben i ben. Ar ôl ei chadw, mae'r allwedd yn cael ei storio wedi'i hamgryptio yn y gell ac ni chaiff ei dangos yma eto (fel eich cyfrinach 2FA); mae AeroFTP yn ei hailddefnyddio'n awtomatig. Wrth olygu, gadewch yn wag i gadw'r allwedd a gadwyd.",
             "manualTotalStorage": "Cyfanswm storfa (â llaw)",
             "manualTotalStoragePlaceholder": "e.e. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Dewisol. Cap cynllun neu gyfrif ar gyfer ôl-bennau heb quota API (FTP, S3, WebDAV) neu rai sy'n adrodd am ofod a ddefnyddiwyd yn unig (Backblaze B2). Mae cyfanswm y darparwr ei hun bob amser yn cael blaenoriaeth.",
+            "manualTotalStorageHint": "Dewisol. Rhowch derfyn rhifiadol y cynllun/cyfrif a dewiswch ei uned. Defnyddir hwn dim ond pan nad oes gan y darparwr API cwota cyfan; cyfanswm y darparwr ei hun sydd bob amser yn cael blaenoriaeth.",
             "autoScanUsedOnConnect": "Cyfrifo'r storfa a ddefnyddiwyd wrth gysylltu",
             "autoScanUsedOnConnectHint": "Ar gyfer ôl-bennau heb API gofod a ddefnyddiwyd yn unig (FTP, S3, WebDAV). I ffwrdd yn ddiofyn: cerddir trwy goeden fawr (e.e. prosiect gwe) yn ailadroddus, a all fod yn araf. Fel arall, defnyddiwch weithred y StatusBar yn ôl y galw.",
             "saveAsNewProfile": "Cadw fel proffil newydd",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Dewiswch ddyfais...",
             "mtpSelectPlaceholderEmpty": "Dim dyfeisiau eto — cliciwch Canfod",
             "mtpNotAttachedTitle": "Nid yw'r ddyfais wedi'i chysylltu",
-            "mtpNotAttached": "Cysylltwch y ddyfais a galluogwch y modd Trosglwyddo Ffeiliau, yna rhowch gynnig arni eto."
+            "mtpNotAttached": "Cysylltwch y ddyfais a galluogwch y modd Trosglwyddo Ffeiliau, yna rhowch gynnig arni eto.",
+            "discovery": {
+                "fetch": "Nôl",
+                "fetching": "Wrthi'n nôl...",
+                "refresh": "Adnewyddu",
+                "none": "Ni ddychwelwyd unrhyw dargedau. Gallwch barhau i roi un â llaw.",
+                "found": "Wedi canfod {count} o dargedau hygyrch. Teipiwch i chwilio neu dewiswch un."
+            }
         },
         "browser": {
             "remote": "Pell",
@@ -5345,7 +5352,7 @@
             "immutableWarn": "Mae'r math o amgryptio a'r cyfrinair yn cael eu gosod unwaith ac ni ellir eu newid yn ddiweddarach: byddai'r ffeiliau sydd eisoes wedi'u hamgryptio yn dod yn annarllenadwy.",
             "lockedNote": "Mae'r math o amgryptio a'r manylion wedi'u cloi: mae'r troshaen hon eisoes yn dal data wedi'i amgryptio.",
             "addToExistingWarn": "Wrth alluogi troshaen ar broffil presennol: bydd unrhyw ffeiliau testun plaen sydd eisoes ar y pell hwn yn aros heb eu hamgryptio ac yn ymddangos fel cymysgedd na ellir ei ddatgryptio. Defnyddiwch bell gwag.",
-            "scopeHint": "Mae'r llwybrau Pell a Lleol uchod yn diffinio'r cwmpas wedi'i amgryptio (gadewch Pell yn wag i amgryptio'r gwreiddyn cyfan).",
+            "scopeHint": "Mae Llwybr y Troshaenau yn diffinio'r cwmpas wedi'i amgryptio. Dim ond dewis man cychwyn pori mae'r Llwybr Pell; nid yw'r Llwybr Lleol byth yn newid yr amgryptio.",
             "overlaysPathLockedNote": "Mae Llwybr y Troshaenau wedi'i gloi: dyma angor yr amgryptio ac ni ellir ei newid ar ôl rhwymo'r troshaen.",
             "remotePathMustReachOverlay": "Rhaid i'r llwybr pell fod yn Llwybr y Troshaenau ({path}) neu'n un o'i ffolderi uwch, neu bydd y ffolder wedi'i hamgryptio y tu allan i'r sesiwn hon.",
             "overlaysSection": "Amlenni / Troshaenau",

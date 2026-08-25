@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Tempel kunci API dari profil Filen CLI Anda untuk melewati kode 2FA setiap kali menyambung kembali. Kata sandi akun tetap diperlukan: ia mendekripsi file Anda secara end-to-end. Setelah disimpan, kunci disimpan terenkripsi di brankas dan tidak ditampilkan lagi di sini (seperti rahasia 2FA Anda); AeroFTP menggunakannya kembali secara otomatis. Saat mengedit, biarkan kosong untuk mempertahankan kunci yang tersimpan.",
             "manualTotalStorage": "Total penyimpanan (manual)",
             "manualTotalStoragePlaceholder": "mis. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Opsional. Batas paket atau akun untuk backend tanpa API kuota (FTP, S3, WebDAV) atau yang hanya melaporkan ruang terpakai (Backblaze B2). Total milik penyedia selalu diutamakan.",
+            "manualTotalStorageHint": "Opsional. Masukkan batas numerik paket/akun dan pilih satuannya. Hanya digunakan jika penyedia tidak memiliki API kuota total; total milik penyedia selalu diprioritaskan.",
             "autoScanUsedOnConnect": "Hitung penyimpanan terpakai saat terhubung",
             "autoScanUsedOnConnectHint": "Hanya untuk backend tanpa API ruang terpakai (FTP, S3, WebDAV). Nonaktif secara bawaan: pohon yang besar (mis. proyek web) ditelusuri secara rekursif, yang bisa lambat. Jika tidak, gunakan tindakan StatusBar sesuai kebutuhan.",
             "saveAsNewProfile": "Simpan sebagai profil baru",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Pilih perangkat...",
             "mtpSelectPlaceholderEmpty": "Belum ada perangkat — klik Deteksi",
             "mtpNotAttachedTitle": "Perangkat tidak terhubung",
-            "mtpNotAttached": "Colokkan perangkat dan aktifkan mode Transfer File, lalu coba lagi."
+            "mtpNotAttached": "Colokkan perangkat dan aktifkan mode Transfer File, lalu coba lagi.",
+            "discovery": {
+                "fetch": "Ambil",
+                "fetching": "Mengambil...",
+                "refresh": "Segarkan",
+                "none": "Tidak ada target yang dikembalikan. Anda masih dapat memasukkannya secara manual.",
+                "found": "Ditemukan {count} target yang dapat diakses. Ketik untuk mencari atau pilih salah satu."
+            }
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Jenis enkripsi dan kata sandi diatur sekali dan tidak dapat diubah nanti: berkas yang sudah dienkripsi akan menjadi tidak terbaca.",
             "lockedNote": "Jenis enkripsi dan kredensial terkunci: lapisan ini sudah berisi data terenkripsi.",
             "addToExistingWarn": "Mengaktifkan overlay pada profil yang sudah ada: berkas teks biasa yang sudah ada di remote ini tetap tidak terenkripsi dan akan tampil sebagai campuran yang tidak dapat didekripsi. Gunakan remote kosong.",
-            "scopeHint": "Jalur Jarak Jauh dan Lokal di atas menentukan cakupan terenkripsi (biarkan Jarak Jauh kosong untuk mengenkripsi seluruh root).",
+            "scopeHint": "Jalur Overlay menentukan cakupan terenkripsi. Jalur Jarak Jauh hanya memilih tempat penelusuran dimulai; Jalur Lokal tidak pernah mengubah enkripsi.",
             "overlaysPathLockedNote": "Jalur Overlay terkunci: jalur ini adalah jangkar enkripsi dan tidak dapat diubah setelah overlay terikat.",
             "remotePathMustReachOverlay": "Jalur jarak jauh harus berupa Jalur Overlay ({path}) atau salah satu folder induknya, jika tidak folder terenkripsi akan berada di luar sesi ini.",
             "overlaysSection": "Pembungkus / Overlay",

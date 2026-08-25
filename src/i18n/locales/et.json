@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Kleepige oma Filen CLI profiili API-võti, et jätta iga taasühendamisel 2FA-kood vahele. Konto parool on endiselt vajalik: see dekrüpteerib teie failid otsast otsani. Pärast salvestamist hoitakse võtit hoidlas krüpteeritult ja seda siin enam ei kuvata (nagu teie 2FA saladust); AeroFTP kasutab seda automaatselt uuesti. Redigeerimisel jätke salvestatud võtme säilitamiseks tühjaks.",
             "manualTotalStorage": "Salvestusruum kokku (käsitsi)",
             "manualTotalStoragePlaceholder": "nt 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Valikuline. Paketi või konto piir backendide jaoks, millel pole quota API-t (FTP, S3, WebDAV) või mis raporteerivad ainult kasutatud ruumi (Backblaze B2). Teenusepakkuja enda kogusumma on alati ülimuslik.",
+            "manualTotalStorageHint": "Valikuline. Sisestage paketi/konto arvuline piirang ja valige selle ühik. Kasutatakse ainult siis, kui teenusepakkujal puudub kogukvoodi API; teenusepakkuja enda kogumaht on alati ülimuslik.",
             "autoScanUsedOnConnect": "Arvuta kasutatud salvestusruum ühendumisel",
             "autoScanUsedOnConnectHint": "Ainult backendide jaoks, millel pole kasutatud ruumi API-t (FTP, S3, WebDAV). Vaikimisi väljas: suurt puud (nt veebiprojekt) läbitakse rekursiivselt, mis võib olla aeglane. Vastasel juhul kasutage vajadusel StatusBar toimingut.",
             "saveAsNewProfile": "Salvesta uue profiilina",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Vali seade...",
             "mtpSelectPlaceholderEmpty": "Veel pole seadmeid – klõpsa Tuvasta",
             "mtpNotAttachedTitle": "Seade pole ühendatud",
-            "mtpNotAttached": "Ühenda seade ja luba failiedastusrežiim, seejärel proovi uuesti."
+            "mtpNotAttached": "Ühenda seade ja luba failiedastusrežiim, seejärel proovi uuesti.",
+            "discovery": {
+                "fetch": "Too",
+                "fetching": "Toomine...",
+                "refresh": "Värskenda",
+                "none": "Ühtegi sihtkohta ei tagastatud. Saate siiski ühe käsitsi sisestada.",
+                "found": "Leiti {count} juurdepääsetavat sihtkohta. Otsimiseks kirjutage või valige üks."
+            }
         },
         "browser": {
             "remote": "Kaugserver",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Krüptimise tüüp ja parool määratakse üks kord ega ole hiljem muudetavad: juba krüpteeritud failid muutuksid loetamatuks.",
             "lockedNote": "Krüptimise tüüp ja mandaadid on lukus: see kiht sisaldab juba krüpteeritud andmeid.",
             "addToExistingWarn": "Ülekatte lubamine olemasoleval profiilil: kõik selles kaugkohas juba olevad lihttekstifailid jäävad krüptimata ja kuvatakse dekrüptimatu seguna. Kasuta tühja kaugkohta.",
-            "scopeHint": "Ülal määratud kaug- ja kohalikud teed määravad krüptitud ulatuse (jäta Kaug tühjaks, et krüptida kogu juur).",
+            "scopeHint": "Ülekatete tee määrab krüptitud ulatuse. Kaugtee valib ainult sirvimise alguskoha; kohalik tee ei muuda kunagi krüptimist.",
             "overlaysPathLockedNote": "Ülekatete tee on lukustatud: see on krüptimise ankur ja seda ei saa pärast ülekatte sidumist muuta.",
             "remotePathMustReachOverlay": "Kaugtee peab olema ülekatete tee ({path}) või mõni selle ülemkaust, muidu jääb krüptitud kaust sellest seansist välja.",
             "overlaysSection": "Ümbrised / Overlay'd",

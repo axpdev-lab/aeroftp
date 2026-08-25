@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Itsatsi zure Filen CLI profileko API gakoa berriz konektatzean 2FA kodea saltatzeko. Kontuaren pasahitza beharrezkoa da oraindik: zure fitxategiak muturretik muturrera deszifratzen ditu. Behin gordeta, gakoa kutxan zifratuta gordetzen da eta ez da hemen berriz erakusten (zure 2FA sekretua bezala); AeroFTP-k automatikoki berrerabiltzen du. Editatzean, utzi hutsik gordetako gakoa mantentzeko.",
             "manualTotalStorage": "Biltegiratze osoa (eskuz)",
             "manualTotalStoragePlaceholder": "adib. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Aukerakoa. Plan edo kontuaren muga quota API-rik ez duten backend-entzat (FTP, S3, WebDAV) edo erabilitako espazioa soilik jakinarazten dutenentzat (Backblaze B2). Hornitzailearen guztizkoak beti du lehentasuna.",
+            "manualTotalStorageHint": "Aukerakoa. Sartu planaren/kontuaren zenbakizko muga eta aukeratu unitatea. Hornitzaileak guztizko kuotaren APIrik ez duenean soilik erabiltzen da; hornitzailearen guztizkoak beti du lehentasuna.",
             "autoScanUsedOnConnect": "Kalkulatu erabilitako biltegiratzea konektatzean",
             "autoScanUsedOnConnectHint": "Erabilitako espazioaren API-rik ez duten backend-entzat soilik (FTP, S3, WebDAV). Lehenetsita desaktibatuta: zuhaitz handi bat (adib. web proiektu bat) modu errekurtsiboan zeharkatzen da, eta hori motela izan daiteke. Bestela, erabili StatusBar ekintza behar denean.",
             "saveAsNewProfile": "Gorde profil berri gisa",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Hautatu gailu bat...",
             "mtpSelectPlaceholderEmpty": "Oraindik gailurik ez — egin klik Detektatu-n",
             "mtpNotAttachedTitle": "Gailua ez dago konektatuta",
-            "mtpNotAttached": "Konektatu gailua eta gaitu fitxategi-transferentzia modua, eta saiatu berriro."
+            "mtpNotAttached": "Konektatu gailua eta gaitu fitxategi-transferentzia modua, eta saiatu berriro.",
+            "discovery": {
+                "fetch": "Eskuratu",
+                "fetching": "Eskuratzen...",
+                "refresh": "Freskatu",
+                "none": "Ez da helbururik itzuli. Hala ere, bat eskuz sar dezakezu.",
+                "found": "{count} helburu erabilgarri aurkitu dira. Idatzi bilatzeko edo hautatu bat."
+            }
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -5345,7 +5352,7 @@
             "immutableWarn": "Zifratze mota eta pasahitza behin ezartzen dira eta ezin dira gero aldatu: dagoeneko zifratutako fitxategiak irakurtezin bihurtuko lirateke.",
             "lockedNote": "Zifratze mota eta kredentzialak blokeatuta daude: geruza honek dagoeneko zifratutako datuak ditu.",
             "addToExistingWarn": "Lehendik dagoen profil batean gainjartzea gaitzean: urruneko honetan dauden testu lауneko fitxategiak zifratu gabe geratzen dira eta deszifratu ezin den nahaste gisa agertuko dira. Erabili urruneko huts bat.",
-            "scopeHint": "Goian adierazitako Urruneko eta Tokiko bideek zifratutako esparrua zehazten dute (utzi Urrunekoa hutsik erro osoa zifratzeko).",
+            "scopeHint": "Gainjartzeen bideak zifratutako esparrua definitzen du. Urruneko bideak arakatzea non hasten den soilik aukeratzen du; tokiko bideak ez du inoiz zifratzea aldatzen.",
             "overlaysPathLockedNote": "Gainjarrien bidea blokeatuta dago: enkriptatzearen aingura da eta ezin da aldatu gainjarpena lotu ondoren.",
             "remotePathMustReachOverlay": "Urruneko bideak gainjarrien bidea ({path}) edo haren goragoko karpetaren bat izan behar du; bestela, enkriptatutako karpeta saio honetatik kanpo geratzen da.",
             "overlaysSection": "Bilgarriak / Overlay-ak",

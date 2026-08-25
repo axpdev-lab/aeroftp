@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Illessze be a Filen CLI profilja API-kulcsát, hogy minden újracsatlakozáskor kihagyja a 2FA kódot. A fiók jelszava továbbra is szükséges: ez fejti vissza a fájljait végpontok között. Mentés után a kulcs titkosítva tárolódik a széfben, és itt többé nem jelenik meg (mint a 2FA titka); az AeroFTP automatikusan újra felhasználja. Szerkesztéskor hagyja üresen a mentett kulcs megtartásához.",
             "manualTotalStorage": "Teljes tárhely (kézi)",
             "manualTotalStoragePlaceholder": "pl. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Választható. Csomag- vagy fiókkorlát olyan háttérrendszerekhez, amelyeknek nincs kvóta API-ja (FTP, S3, WebDAV), vagy csak a használt helyet jelentik (Backblaze B2). A szolgáltató saját összértéke mindig elsőbbséget élvez.",
+            "manualTotalStorageHint": "Nem kötelező. Adja meg a csomag/fiók számszerű korlátját, és válassza ki a mértékegységét. Csak akkor használatos, ha a szolgáltatónak nincs teljes kvótát lekérő API-ja; mindig a szolgáltató saját teljes értéke élvez elsőbbséget.",
             "autoScanUsedOnConnect": "Használt tárhely kiszámítása csatlakozáskor",
             "autoScanUsedOnConnectHint": "Csak olyan háttérrendszerekhez, amelyeknek nincs használthely-API-juk (FTP, S3, WebDAV). Alapértelmezés szerint kikapcsolva: egy nagy fát (pl. egy webprojektet) rekurzívan bejár, ami lassú lehet. Egyébként használd a StatusBar műveletét igény szerint.",
             "saveAsNewProfile": "Mentés új profilként",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Válasszon egy eszközt...",
             "mtpSelectPlaceholderEmpty": "Még nincs eszköz – kattintson az Észlelésre",
             "mtpNotAttachedTitle": "Az eszköz nincs csatlakoztatva",
-            "mtpNotAttached": "Csatlakoztassa az eszközt, engedélyezze a fájlátviteli módot, majd próbálja újra."
+            "mtpNotAttached": "Csatlakoztassa az eszközt, engedélyezze a fájlátviteli módot, majd próbálja újra.",
+            "discovery": {
+                "fetch": "Lekérés",
+                "fetching": "Lekérés...",
+                "refresh": "Frissítés",
+                "none": "A rendszer nem adott vissza célokat. Továbbra is megadhat egyet kézzel.",
+                "found": "{count} elérhető cél található. Gépeljen a kereséshez, vagy válasszon egyet."
+            }
         },
         "browser": {
             "remote": "Távoli",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "A titkosítás típusa és a jelszó egyszer állítható be, később nem módosítható: a már titkosított fájlok olvashatatlanná válnának.",
             "lockedNote": "A titkosítás típusa és a hitelesítő adatok zárolva vannak: ez a réteg már titkosított adatokat tartalmaz.",
             "addToExistingWarn": "Fedvény engedélyezése meglévő profilon: a távoli helyen már meglévő nyílt szöveges fájlok titkosítatlanok maradnak, és visszafejthetetlen keverékként jelennek meg. Használjon üres távoli helyet.",
-            "scopeHint": "A fent megadott távoli és helyi útvonalak határozzák meg a titkosított hatókört (hagyja üresen a Távolit a teljes gyökér titkosításához).",
+            "scopeHint": "Az átfedések útvonala határozza meg a titkosított hatókört. A távoli útvonal csak a böngészés kezdőpontját választja ki; a helyi útvonal soha nem módosítja a titkosítást.",
             "overlaysPathLockedNote": "A fedvények útvonala zárolva van: ez a titkosítás horgonya, és a fedvény összekapcsolása után nem módosítható.",
             "remotePathMustReachOverlay": "A távoli útvonalnak a fedvények útvonalának ({path}) vagy annak valamelyik szülőmappájának kell lennie, különben a titkosított mappa kívül esik ezen a munkameneten.",
             "overlaysSection": "Burkolók / Overlay-ek",

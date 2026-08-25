@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Lipiți cheia API din profilul dvs. Filen CLI pentru a sări peste codul 2FA la fiecare reconectare. Parola contului este în continuare necesară: decriptează fișierele dvs. cap la cap. După salvare, cheia este stocată criptat în seif și nu mai este afișată aici (la fel ca secretul 2FA); AeroFTP o reutilizează automat. La editare, lăsați gol pentru a păstra cheia salvată.",
             "manualTotalStorage": "Spațiu total (manual)",
             "manualTotalStoragePlaceholder": "ex.: 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Opțional. Limita planului/contului pentru backend-uri fără API de cotă (FTP, S3, WebDAV) sau care raportează doar spațiul folosit (Backblaze B2). Totalul raportat de furnizor are întotdeauna prioritate.",
+            "manualTotalStorageHint": "Opțional. Introduceți o limită numerică pentru plan/cont și alegeți unitatea. Se utilizează doar când furnizorul nu are un API pentru cota totală; totalul furnizorului are întotdeauna prioritate.",
             "autoScanUsedOnConnect": "Calculează spațiul folosit la conectare",
             "autoScanUsedOnConnectHint": "Doar pentru backend-uri fără API de spațiu folosit (FTP, S3, WebDAV). Dezactivat implicit: un arbore mare (ex.: un proiect web) este parcurs recursiv, ceea ce poate fi lent. În caz contrar, folosește acțiunea din StatusBar la cerere.",
             "saveAsNewProfile": "Salvează ca profil nou",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Selectează un dispozitiv...",
             "mtpSelectPlaceholderEmpty": "Încă niciun dispozitiv — apasă pe Detectează",
             "mtpNotAttachedTitle": "Dispozitiv neconectat",
-            "mtpNotAttached": "Conectează dispozitivul și activează modul Transfer de fișiere, apoi încearcă din nou."
+            "mtpNotAttached": "Conectează dispozitivul și activează modul Transfer de fișiere, apoi încearcă din nou.",
+            "discovery": {
+                "fetch": "Preia",
+                "fetching": "Se preia...",
+                "refresh": "Reîmprospătează",
+                "none": "Nu a fost returnată nicio destinație. Puteți introduce una manual.",
+                "found": "S-au găsit {count} destinații accesibile. Tastați pentru a căuta sau selectați una."
+            }
         },
         "browser": {
             "remote": "La distanță",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Tipul de criptare și parola se setează o singură dată și nu pot fi schimbate ulterior: fișierele deja criptate ar deveni ilizibile.",
             "lockedNote": "Tipul de criptare și credențialele sunt blocate: acest strat conține deja date criptate.",
             "addToExistingWarn": "La activarea unei suprapuneri pe un profil existent: orice fișiere în text simplu deja prezente pe această locație la distanță rămân necriptate și vor apărea ca un amestec indescifrabil. Folosiți o locație la distanță goală.",
-            "scopeHint": "Căile la distanță și locală indicate mai sus definesc domeniul criptat (lăsați câmpul La distanță gol pentru a cripta întreaga rădăcină).",
+            "scopeHint": "Calea suprapunerilor definește domeniul criptat. Calea la distanță alege doar locul de unde începe navigarea; calea locală nu modifică niciodată criptarea.",
             "overlaysPathLockedNote": "Calea suprapunerilor este blocată: este ancora criptării și nu mai poate fi modificată după ce suprapunerea a fost asociată.",
             "remotePathMustReachOverlay": "Calea la distanță trebuie să fie calea suprapunerilor ({path}) sau unul dintre folderele sale superioare, altfel folderul criptat rămâne în afara acestei sesiuni.",
             "overlaysSection": "Învelișuri / Overlay-uri",

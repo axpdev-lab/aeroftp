@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "I-paste ang API key mula sa iyong Filen CLI profile upang laktawan ang 2FA code sa bawat muling pagkonekta. Kailangan pa rin ang password ng account: dinidekrypt nito ang iyong mga file nang end-to-end. Kapag na-save na, ang susi ay iniimbak nang naka-encrypt sa vault at hindi na muling ipinapakita rito (tulad ng iyong 2FA secret); awtomatikong ginagamit itong muli ng AeroFTP. Kapag nag-eedit, iwanang blangko upang panatilihin ang naka-save na susi.",
             "manualTotalStorage": "Kabuuang storage (manu-mano)",
             "manualTotalStoragePlaceholder": "hal. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Opsyonal. Limitasyon ng plan o account para sa mga backend na walang quota API (FTP, S3, WebDAV) o nag-uulat lamang ng nagamit na espasyo (Backblaze B2). Ang sariling kabuuan ng provider ang palaging mauuna.",
+            "manualTotalStorageHint": "Opsyonal. Maglagay ng numerong limitasyon ng plan/account at piliin ang unit nito. Ginagamit lang kapag walang API para sa kabuuang quota ang provider; palaging inuuna ang sariling kabuuan ng provider.",
             "autoScanUsedOnConnect": "Kalkulahin ang nagamit na storage kapag kumonekta",
             "autoScanUsedOnConnectHint": "Para lamang sa mga backend na walang API ng nagamit na espasyo (FTP, S3, WebDAV). Naka-off bilang default: ang malaking tree (hal. isang web project) ay nire-recurse nang paulit-ulit, na maaaring mabagal. Kung hindi, gamitin ang aksyon sa StatusBar kapag kailangan.",
             "saveAsNewProfile": "I-save bilang bagong profile",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Pumili ng device...",
             "mtpSelectPlaceholderEmpty": "Wala pang device — i-click ang Tuklasin",
             "mtpNotAttachedTitle": "Hindi nakakonekta ang device",
-            "mtpNotAttached": "Isaksak ang device at i-enable ang File Transfer mode, pagkatapos ay subukan muli."
+            "mtpNotAttached": "Isaksak ang device at i-enable ang File Transfer mode, pagkatapos ay subukan muli.",
+            "discovery": {
+                "fetch": "Kunin",
+                "fetching": "Kinukuha...",
+                "refresh": "I-refresh",
+                "none": "Walang ibinalik na target. Maaari ka pa ring maglagay ng isa nang manu-mano.",
+                "found": "Nakahanap ng {count} naa-access na target. Mag-type para maghanap o pumili ng isa."
+            }
         },
         "browser": {
             "remote": "Remote",
@@ -5345,7 +5352,7 @@
             "immutableWarn": "Ang uri ng pag-encrypt at password ay itinatakda nang isang beses at hindi na mababago: ang mga naka-encrypt nang file ay magiging hindi nababasa.",
             "lockedNote": "Naka-lock ang uri ng pag-encrypt at mga kredensyal: naglalaman na ng naka-encrypt na data ang overlay na ito.",
             "addToExistingWarn": "Kapag nag-enable ng overlay sa isang umiiral na profile: anumang plaintext na file na nasa remote na ito ay mananatiling hindi naka-encrypt at lalabas bilang halong hindi ma-decrypt. Gumamit ng walang lamang remote.",
-            "scopeHint": "Tinutukoy ng mga Remote at Local na path sa itaas ang naka-encrypt na saklaw (iwanang walang laman ang Remote para i-encrypt ang buong root).",
+            "scopeHint": "Tinutukoy ng Path ng mga Overlay ang naka-encrypt na saklaw. Pinipili lang ng Remote Path kung saan magsisimula ang pag-browse; hindi kailanman binabago ng Local Path ang encryption.",
             "overlaysPathLockedNote": "Naka-lock ang Landas ng Overlay: ito ang angkla ng pag-encrypt at hindi na mababago kapag naitali na ang overlay.",
             "remotePathMustReachOverlay": "Ang remote path ay dapat na ang Landas ng Overlay ({path}) o isa sa mga magulang na folder nito, kung hindi ay mapupunta ang naka-encrypt na folder sa labas ng session na ito.",
             "overlaysSection": "Mga Wrapper / Overlay",

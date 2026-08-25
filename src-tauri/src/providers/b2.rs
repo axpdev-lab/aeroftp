@@ -423,12 +423,15 @@ impl B2Provider {
         Ok(())
     }
 
-    async fn resolve_bucket_id(&mut self) -> Result<(), ProviderError> {
+    async fn fetch_buckets(
+        &self,
+        bucket_name: Option<&str>,
+    ) -> Result<Vec<B2Bucket>, ProviderError> {
         let url = format!("{}/b2api/v4/b2_list_buckets", self.api_url);
-        let body = serde_json::json!({
-            "accountId": self.account_id,
-            "bucketName": self.config.bucket,
-        });
+        let mut body = serde_json::json!({ "accountId": self.account_id });
+        if let Some(name) = bucket_name {
+            body["bucketName"] = serde_json::Value::String(name.to_string());
+        }
         let req = self
             .client
             .post(&url)
@@ -449,18 +452,41 @@ impl B2Provider {
             .json()
             .await
             .map_err(|e| ProviderError::ServerError(format!("list_buckets parse: {}", e)))?;
-        let target = parsed
-            .buckets
+        Ok(parsed.buckets)
+    }
+
+    async fn resolve_bucket_id(&mut self) -> Result<(), ProviderError> {
+        let bucket_name = self.config.bucket.clone();
+        let target = self
+            .fetch_buckets(Some(&bucket_name))
+            .await?
             .into_iter()
-            .find(|b| b.bucket_name == self.config.bucket)
+            .find(|b| b.bucket_name == bucket_name)
             .ok_or_else(|| {
                 ProviderError::NotFound(format!(
                     "bucket '{}' not found or not accessible",
-                    self.config.bucket
+                    bucket_name
                 ))
             })?;
         self.bucket_id = target.bucket_id;
         Ok(())
+    }
+
+    /// Authenticate once and enumerate every bucket this application key may
+    /// access. Bucket-restricted keys naturally return their one allowed
+    /// bucket; the manual field remains available when the key lacks the
+    /// `listBuckets` capability altogether (#369).
+    pub async fn discover_buckets(&mut self) -> Result<Vec<String>, ProviderError> {
+        self.authorize().await?;
+        let mut names: Vec<String> = self
+            .fetch_buckets(None)
+            .await?
+            .into_iter()
+            .map(|bucket| bucket.bucket_name)
+            .collect();
+        names.sort();
+        names.dedup();
+        Ok(names)
     }
 
     fn resolved_path(&self, path: &str) -> String {

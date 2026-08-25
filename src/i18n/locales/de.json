@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Fügen Sie den API-Schlüssel aus Ihrem Filen-CLI-Profil ein, um den 2FA-Code bei jeder erneuten Verbindung zu überspringen. Das Kontopasswort ist weiterhin erforderlich: Es entschlüsselt Ihre Dateien Ende-zu-Ende. Nach dem Speichern wird der Schlüssel verschlüsselt im Tresor abgelegt und hier nicht mehr angezeigt (wie Ihr 2FA-Geheimnis); AeroFTP verwendet ihn automatisch wieder. Lassen Sie das Feld beim Bearbeiten leer, um den gespeicherten Schlüssel beizubehalten.",
             "manualTotalStorage": "Gesamtspeicher (manuell)",
             "manualTotalStoragePlaceholder": "z. B. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Optional. Tarif- oder Kontolimit für Backends ohne quota API (FTP, S3, WebDAV) oder die nur den belegten Speicher melden (Backblaze B2). Der vom Anbieter gemeldete Gesamtwert hat immer Vorrang.",
+            "manualTotalStorageHint": "Optional. Geben Sie ein numerisches Limit für Tarif/Konto ein und wählen Sie die Einheit. Wird nur verwendet, wenn der Anbieter keine API für das Gesamtkontingent hat; der eigene Gesamtwert des Anbieters hat immer Vorrang.",
             "autoScanUsedOnConnect": "Belegten Speicher beim Verbinden berechnen",
             "autoScanUsedOnConnectHint": "Nur für Backends ohne API für belegten Speicher (FTP, S3, WebDAV). Standardmäßig deaktiviert: ein großer Baum (z. B. ein Webprojekt) wird rekursiv durchlaufen, was langsam sein kann. Verwenden Sie andernfalls die StatusBar-Aktion bei Bedarf.",
             "saveAsNewProfile": "Als neues Profil speichern",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Gerät auswählen...",
             "mtpSelectPlaceholderEmpty": "Noch keine Geräte – auf Erkennen klicken",
             "mtpNotAttachedTitle": "Gerät nicht verbunden",
-            "mtpNotAttached": "Schließe das Gerät an und aktiviere den Dateiübertragungsmodus, versuche es dann erneut."
+            "mtpNotAttached": "Schließe das Gerät an und aktiviere den Dateiübertragungsmodus, versuche es dann erneut.",
+            "discovery": {
+                "fetch": "Abrufen",
+                "fetching": "Wird abgerufen...",
+                "refresh": "Aktualisieren",
+                "none": "Es wurden keine Ziele zurückgegeben. Sie können weiterhin eines manuell eingeben.",
+                "found": "{count} erreichbare Ziele gefunden. Tippen Sie zum Suchen oder wählen Sie eines aus."
+            }
         },
         "browser": {
             "remote": "Remote",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Verschlüsselungstyp und Passwort werden einmalig festgelegt und können später nicht geändert werden: die bereits verschlüsselten Dateien würden unlesbar.",
             "lockedNote": "Verschlüsselungstyp und Zugangsdaten sind gesperrt: dieses Overlay enthält bereits verschlüsselte Daten.",
             "addToExistingWarn": "Beim Aktivieren eines Overlays für ein vorhandenes Profil: bereits auf diesem Remote vorhandene Klartextdateien bleiben unverschlüsselt und erscheinen als nicht entschlüsselbare Mischung. Verwenden Sie ein leeres Remote.",
-            "scopeHint": "Die oben angegebenen Remote- und lokalen Pfade legen den verschlüsselten Bereich fest (Remote leer lassen, um das gesamte Stammverzeichnis zu verschlüsseln).",
+            "scopeHint": "Der Overlays-Pfad legt den verschlüsselten Bereich fest. Der Remote-Pfad bestimmt nur, wo das Durchsuchen beginnt; der lokale Pfad ändert niemals die Verschlüsselung.",
             "overlaysPathLockedNote": "Der Overlay-Pfad ist gesperrt: Er ist der Verschlüsselungsanker und kann nach dem Binden des Overlays nicht mehr geändert werden.",
             "remotePathMustReachOverlay": "Der Remote-Pfad muss der Overlay-Pfad ({path}) oder einer seiner übergeordneten Ordner sein, sonst liegt der verschlüsselte Ordner außerhalb dieser Sitzung.",
             "overlaysSection": "Wrapper / Overlays",

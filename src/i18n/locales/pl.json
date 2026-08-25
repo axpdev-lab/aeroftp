@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Wklej klucz API ze swojego profilu Filen CLI, aby pomijać kod 2FA przy każdym ponownym połączeniu. Hasło konta jest nadal wymagane: odszyfrowuje ono Twoje pliki od końca do końca. Po zapisaniu klucz jest przechowywany zaszyfrowany w sejfie i nie jest już tutaj wyświetlany (podobnie jak sekret 2FA); AeroFTP używa go automatycznie ponownie. Podczas edycji pozostaw puste, aby zachować zapisany klucz.",
             "manualTotalStorage": "Łączna pojemność (ręcznie)",
             "manualTotalStoragePlaceholder": "np. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Opcjonalne. Limit planu lub konta dla backendów bez API limitu (FTP, S3, WebDAV) lub zgłaszających tylko zajęte miejsce (Backblaze B2). Całkowita pojemność podana przez dostawcę zawsze ma pierwszeństwo.",
+            "manualTotalStorageHint": "Opcjonalne. Wprowadź liczbowy limit planu/konta i wybierz jego jednostkę. Używany tylko wtedy, gdy dostawca nie oferuje API łącznego limitu; łączna wartość dostawcy zawsze ma pierwszeństwo.",
             "autoScanUsedOnConnect": "Oblicz zajęte miejsce przy łączeniu",
             "autoScanUsedOnConnectHint": "Tylko dla backendów bez API zajętego miejsca (FTP, S3, WebDAV). Domyślnie wyłączone: duże drzewo (np. projekt webowy) jest przeszukiwane rekurencyjnie, co może być wolne. W przeciwnym razie użyj akcji w pasku StatusBar na żądanie.",
             "saveAsNewProfile": "Zapisz jako nowy profil",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Wybierz urządzenie...",
             "mtpSelectPlaceholderEmpty": "Brak urządzeń — kliknij Wykryj",
             "mtpNotAttachedTitle": "Urządzenie nie jest połączone",
-            "mtpNotAttached": "Podłącz urządzenie i włącz tryb przesyłania plików, a następnie spróbuj ponownie."
+            "mtpNotAttached": "Podłącz urządzenie i włącz tryb przesyłania plików, a następnie spróbuj ponownie.",
+            "discovery": {
+                "fetch": "Pobierz",
+                "fetching": "Pobieranie...",
+                "refresh": "Odśwież",
+                "none": "Nie zwrócono żadnych miejsc docelowych. Nadal możesz wprowadzić je ręcznie.",
+                "found": "Znaleziono {count} dostępnych miejsc docelowych. Zacznij pisać, aby wyszukać, lub wybierz jedno."
+            }
         },
         "browser": {
             "remote": "Zdalny",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Typ szyfrowania i hasło ustawia się raz i nie można ich później zmienić: już zaszyfrowane pliki stałyby się nieczytelne.",
             "lockedNote": "Typ szyfrowania i poświadczenia są zablokowane: ta nakładka zawiera już zaszyfrowane dane.",
             "addToExistingWarn": "Włączenie nakładki w istniejącym profilu: wszelkie pliki tekstem jawnym już obecne w tym zdalnym miejscu pozostają niezaszyfrowane i pojawią się jako nieodszyfrowalna mieszanka. Użyj pustego zdalnego miejsca.",
-            "scopeHint": "Powyższe ścieżki zdalna i lokalna definiują zaszyfrowany zakres (pozostaw Zdalną pustą, aby zaszyfrować cały katalog główny).",
+            "scopeHint": "Ścieżka nakładek określa zaszyfrowany zakres. Ścieżka zdalna wybiera tylko miejsce rozpoczęcia przeglądania; ścieżka lokalna nigdy nie zmienia szyfrowania.",
             "overlaysPathLockedNote": "Ścieżka nakładek jest zablokowana: stanowi kotwicę szyfrowania i nie można jej zmienić po powiązaniu nakładki.",
             "remotePathMustReachOverlay": "Ścieżka zdalna musi być ścieżką nakładek ({path}) lub jednym z jej folderów nadrzędnych, w przeciwnym razie zaszyfrowany folder znajdzie się poza tą sesją.",
             "overlaysSection": "Otoczki / Nakładki",

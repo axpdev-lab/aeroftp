@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Bandika ufunguo wa API kutoka kwa wasifu wako wa Filen CLI ili kuruka msimbo wa 2FA kila unapounganisha tena. Nenosiri la akaunti bado linahitajika: hufungua faili zako kwa siri kutoka mwanzo hadi mwisho. Mara baada ya kuhifadhiwa, ufunguo huhifadhiwa ukiwa umesimbwa kwenye chumba cha hazina na hauonyeshwi tena hapa (kama siri yako ya 2FA); AeroFTP huutumia tena kiotomatiki. Unapohariri, acha tupu ili kuhifadhi ufunguo uliohifadhiwa.",
             "manualTotalStorage": "Hifadhi jumla (mwenyewe)",
             "manualTotalStoragePlaceholder": "mf. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Si lazima. Kikomo cha mpango au akaunti kwa backend zisizo na API ya kiwango (FTP, S3, WebDAV) au zinazoripoti tu nafasi iliyotumika (Backblaze B2). Jumla ya mtoa huduma daima inapewa kipaumbele.",
+            "manualTotalStorageHint": "Si lazima. Weka kikomo cha namba cha mpango/akaunti na uchague kipimo chake. Hutumika tu wakati mtoa huduma hana API ya mgao wa jumla; jumla ya mtoa huduma mwenyewe hupewa kipaumbele kila wakati.",
             "autoScanUsedOnConnect": "Kokotoa hifadhi iliyotumika unapounganisha",
             "autoScanUsedOnConnectHint": "Kwa backend zisizo na API ya nafasi iliyotumika tu (FTP, S3, WebDAV). Imezimwa kwa chaguo-msingi: mti mkubwa (mf. mradi wa wavuti) hupitiwa kwa kujirudia, jambo ambalo linaweza kuwa polepole. Vinginevyo tumia kitendo cha StatusBar unapohitaji.",
             "saveAsNewProfile": "Hifadhi kama wasifu mpya",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Chagua kifaa...",
             "mtpSelectPlaceholderEmpty": "Bado hakuna vifaa — bofya Tambua",
             "mtpNotAttachedTitle": "Kifaa hakijaunganishwa",
-            "mtpNotAttached": "Chomeka kifaa na uwashe hali ya Uhamishaji Faili, kisha ujaribu tena."
+            "mtpNotAttached": "Chomeka kifaa na uwashe hali ya Uhamishaji Faili, kisha ujaribu tena.",
+            "discovery": {
+                "fetch": "Leta",
+                "fetching": "Inaleta...",
+                "refresh": "Onyesha upya",
+                "none": "Hakuna maeneo lengwa yaliyorejeshwa. Bado unaweza kuingiza moja mwenyewe.",
+                "found": "Maeneo lengwa {count} yanayofikika yamepatikana. Andika ili kutafuta au uchague moja."
+            }
         },
         "browser": {
             "remote": "Mbali",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Aina ya usimbaji na nenosiri huwekwa mara moja na haviwezi kubadilishwa baadaye: faili zilizosimbwa tayari zingekuwa hazisomeki.",
             "lockedNote": "Aina ya usimbaji na stakabadhi zimefungwa: safu hii tayari ina data iliyosimbwa.",
             "addToExistingWarn": "Kuwezesha tabaka kwenye wasifu uliopo: faili zozote za maandishi wazi zilizopo tayari kwenye seva hii za mbali zinabaki bila kusimbwa na zitaonekana kama mchanganyiko usioweza kusimbuliwa. Tumia seva ya mbali tupu.",
-            "scopeHint": "Njia za Mbali na za Karibu hapo juu hufafanua wigo uliosimbwa (acha Mbali wazi ili kusimba mzizi mzima).",
+            "scopeHint": "Njia ya Tabaka Bainifu huweka wigo uliosimbwa. Njia ya Mbali huchagua tu mahali pa kuanzia kuvinjari; Njia ya Karibu haibadilishi usimbaji kamwe.",
             "overlaysPathLockedNote": "Njia ya Vifuniko imefungwa: ndiyo nanga ya usimbaji fiche na haiwezi kubadilishwa baada ya kifuniko kuunganishwa.",
             "remotePathMustReachOverlay": "Njia ya mbali lazima iwe Njia ya Vifuniko ({path}) au mojawapo ya folda zake za juu, vinginevyo folda iliyosimbwa fiche itakuwa nje ya kipindi hiki.",
             "overlaysSection": "Vifuniko / Overlays",

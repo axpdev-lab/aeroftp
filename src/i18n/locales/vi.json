@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Dán khóa API từ hồ sơ Filen CLI của bạn để bỏ qua mã 2FA mỗi lần kết nối lại. Vẫn cần mật khẩu tài khoản: nó giải mã các tệp của bạn từ đầu đến cuối. Sau khi lưu, khóa được lưu trữ mã hóa trong kho và không hiển thị lại ở đây (giống như bí mật 2FA của bạn); AeroFTP tự động sử dụng lại. Khi chỉnh sửa, để trống để giữ khóa đã lưu.",
             "manualTotalStorage": "Tổng dung lượng (thủ công)",
             "manualTotalStoragePlaceholder": "vd. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Tùy chọn. Giới hạn gói hoặc tài khoản cho các backend không có API hạn ngạch (FTP, S3, WebDAV) hoặc chỉ báo cáo dung lượng đã dùng (Backblaze B2). Tổng dung lượng do nhà cung cấp báo luôn được ưu tiên.",
+            "manualTotalStorageHint": "Không bắt buộc. Nhập giới hạn bằng số của gói/tài khoản và chọn đơn vị. Chỉ được dùng khi nhà cung cấp không có API hạn mức tổng; tổng dung lượng của nhà cung cấp luôn được ưu tiên.",
             "autoScanUsedOnConnect": "Tính dung lượng đã dùng khi kết nối",
             "autoScanUsedOnConnectHint": "Chỉ dành cho các backend không có API dung lượng đã dùng (FTP, S3, WebDAV). Mặc định tắt: một cây lớn (vd. một dự án web) được duyệt đệ quy, có thể chậm. Nếu không, hãy dùng tác vụ trên StatusBar khi cần.",
             "saveAsNewProfile": "Lưu thành hồ sơ mới",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Chọn một thiết bị...",
             "mtpSelectPlaceholderEmpty": "Chưa có thiết bị nào — nhấp Phát hiện",
             "mtpNotAttachedTitle": "Thiết bị chưa được kết nối",
-            "mtpNotAttached": "Cắm thiết bị và bật chế độ Truyền tệp, sau đó thử lại."
+            "mtpNotAttached": "Cắm thiết bị và bật chế độ Truyền tệp, sau đó thử lại.",
+            "discovery": {
+                "fetch": "Lấy",
+                "fetching": "Đang lấy...",
+                "refresh": "Làm mới",
+                "none": "Không có đích nào được trả về. Bạn vẫn có thể nhập thủ công một đích.",
+                "found": "Đã tìm thấy {count} đích có thể truy cập. Nhập để tìm kiếm hoặc chọn một đích."
+            }
         },
         "browser": {
             "remote": "Từ xa",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Loại mã hóa và mật khẩu được đặt một lần và không thể thay đổi sau đó: các tệp đã mã hóa sẽ không thể đọc được.",
             "lockedNote": "Loại mã hóa và thông tin đăng nhập đã bị khóa: lớp phủ này đã chứa dữ liệu mã hóa.",
             "addToExistingWarn": "Khi bật lớp phủ trên một hồ sơ hiện có: mọi tập tin văn bản thuần đã có trên máy từ xa này vẫn không được mã hóa và sẽ hiển thị như một hỗn hợp không thể giải mã. Hãy dùng một máy từ xa trống.",
-            "scopeHint": "Các đường dẫn Từ xa và Cục bộ ở trên xác định phạm vi mã hóa (để trống Từ xa để mã hóa toàn bộ thư mục gốc).",
+            "scopeHint": "Đường dẫn lớp phủ xác định phạm vi được mã hóa. Đường dẫn từ xa chỉ chọn nơi bắt đầu duyệt; đường dẫn cục bộ không bao giờ thay đổi mã hóa.",
             "overlaysPathLockedNote": "Đường dẫn Overlay đã bị khóa: đây là mỏ neo mã hóa và không thể thay đổi sau khi overlay được liên kết.",
             "remotePathMustReachOverlay": "Đường dẫn từ xa phải là Đường dẫn Overlay ({path}) hoặc một trong các thư mục cha của nó, nếu không thư mục đã mã hóa sẽ nằm ngoài phiên này.",
             "overlaysSection": "Lớp bọc / Overlay",

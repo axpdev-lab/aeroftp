@@ -1143,6 +1143,86 @@ impl S3Provider {
         Ok(response)
     }
 
+    /// List every bucket visible to the supplied account before a bucket has
+    /// been selected. This is the service-root `ListBuckets` operation, not a
+    /// bucket-root listing: it deliberately bypasses `build_url`, whose job is
+    /// to inject the configured bucket into every data-plane request (#369).
+    pub async fn discover_buckets(&self) -> Result<Vec<String>, ProviderError> {
+        use sha2::{Digest, Sha256};
+
+        self.ensure_fresh_credentials().await?;
+        let url = format!("{}/", self.endpoint().trim_end_matches('/'));
+        let payload_hash = hex::encode(Sha256::digest(b""));
+        let mut headers = HashMap::new();
+        let authorization = self.sign_request("GET", &url, &mut headers, &payload_hash)?;
+        let mut request = self.client.get(&url);
+        for (key, value) in &headers {
+            request = request.header(key, value);
+        }
+        let request = request
+            .header("Authorization", authorization)
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("ListBuckets build failed: {e}")))?;
+        let response =
+            super::send_with_retry(&self.client, request, &super::HttpRetryConfig::default())
+                .await
+                .map_err(|e| ProviderError::NetworkError(format!("ListBuckets failed: {e}")))?;
+        let status = response.status();
+        let body = response.text().await.map_err(|e| {
+            ProviderError::NetworkError(format!("ListBuckets response read failed: {e}"))
+        })?;
+        if !status.is_success() {
+            let message = format_s3_error("ListBuckets failed", status, &body, None);
+            return if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                Err(ProviderError::AuthenticationFailed(message))
+            } else {
+                Err(ProviderError::ServerError(message))
+            };
+        }
+        Self::parse_bucket_names(&body)
+    }
+
+    fn parse_bucket_names(xml: &str) -> Result<Vec<String>, ProviderError> {
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let mut in_bucket = false;
+        let mut in_name = false;
+        let mut buckets = Vec::new();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(event)) => match event.name().as_ref() {
+                    b"Bucket" => in_bucket = true,
+                    b"Name" if in_bucket => in_name = true,
+                    _ => {}
+                },
+                Ok(Event::End(event)) => match event.name().as_ref() {
+                    b"Name" => in_name = false,
+                    b"Bucket" => in_bucket = false,
+                    _ => {}
+                },
+                Ok(Event::Text(text)) if in_bucket && in_name => {
+                    let value = String::from_utf8_lossy(text.as_ref()).trim().to_string();
+                    if !value.is_empty() {
+                        buckets.push(value);
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(error) => {
+                    return Err(ProviderError::ServerError(format!(
+                        "ListBuckets XML parse failed: {error}"
+                    )))
+                }
+                _ => {}
+            }
+            buf.clear();
+        }
+        buckets.sort();
+        buckets.dedup();
+        Ok(buckets)
+    }
+
     /// Parse S3 ListObjectsV2 XML response using quick-xml (M-11/M-12)
     fn parse_list_response(
         &self,
@@ -5696,6 +5776,22 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_buckets_parser_ignores_owner_name_and_sorts_targets() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+            <ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+              <Owner><ID>abc</ID><DisplayName>account-name</DisplayName></Owner>
+              <Buckets>
+                <Bucket><Name>zeta</Name><CreationDate>2026-01-01T00:00:00Z</CreationDate></Bucket>
+                <Bucket><Name>alpha</Name><CreationDate>2026-01-02T00:00:00Z</CreationDate></Bucket>
+              </Buckets>
+            </ListAllMyBucketsResult>"#;
+        assert_eq!(
+            S3Provider::parse_bucket_names(xml).unwrap(),
+            vec!["alpha", "zeta"]
+        );
+    }
 
     #[test]
     fn is_s3_directory_content_type_matches_dir_marker_conventions() {

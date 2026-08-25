@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Indsæt API-nøglen fra din Filen CLI-profil for at springe 2FA-koden over ved hver gentilslutning. Kontoadgangskoden er stadig påkrævet: den dekrypterer dine filer end-to-end. Når nøglen er gemt, opbevares den krypteret i boksen og vises ikke længere her (ligesom din 2FA-hemmelighed); AeroFTP genbruger den automatisk. Lad feltet være tomt ved redigering for at beholde den gemte nøgle.",
             "manualTotalStorage": "Samlet lagerplads (manuelt)",
             "manualTotalStoragePlaceholder": "f.eks. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Valgfrit. Plan- eller kontogrænse for backends uden quota API (FTP, S3, WebDAV) eller som kun rapporterer brugt plads (Backblaze B2). Udbyderens eget samlede tal har altid forrang.",
+            "manualTotalStorageHint": "Valgfrit. Angiv en numerisk grænse for abonnementet/kontoen, og vælg enhed. Bruges kun, når udbyderen ikke har en API til samlet kvote; udbyderens eget total har altid forrang.",
             "autoScanUsedOnConnect": "Beregn brugt lagerplads ved forbindelse",
             "autoScanUsedOnConnectHint": "Kun for backends uden API for brugt plads (FTP, S3, WebDAV). Slået fra som standard: et stort træ (f.eks. et webprojekt) gennemløbes rekursivt, hvilket kan være langsomt. Brug ellers StatusBar-handlingen efter behov.",
             "saveAsNewProfile": "Gem som ny profil",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Vælg en enhed...",
             "mtpSelectPlaceholderEmpty": "Ingen enheder endnu – klik på Registrer",
             "mtpNotAttachedTitle": "Enheden er ikke tilsluttet",
-            "mtpNotAttached": "Tilslut enheden, og aktivér filoverførselstilstand, og prøv derefter igen."
+            "mtpNotAttached": "Tilslut enheden, og aktivér filoverførselstilstand, og prøv derefter igen.",
+            "discovery": {
+                "fetch": "Hent",
+                "fetching": "Henter...",
+                "refresh": "Opdater",
+                "none": "Der blev ikke returneret nogen mål. Du kan stadig indtaste et manuelt.",
+                "found": "Fandt {count} tilgængelige mål. Skriv for at søge, eller vælg et."
+            }
         },
         "browser": {
             "remote": "Ekstern",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Krypteringstype og adgangskode angives én gang og kan ikke ændres senere: de allerede krypterede filer ville blive ulæselige.",
             "lockedNote": "Krypteringstype og legitimationsoplysninger er låst: dette overlay indeholder allerede krypterede data.",
             "addToExistingWarn": "Når du aktiverer et overlay på en eksisterende profil: alle klartekstfiler, der allerede findes på denne fjernplacering, forbliver ukrypterede og vises som en ikke-dekrypterbar blanding. Brug en tom fjernplacering.",
-            "scopeHint": "De eksterne og lokale stier ovenfor definerer det krypterede omfang (lad Ekstern stå tom for at kryptere hele roden).",
+            "scopeHint": "Overlejringsstien definerer det krypterede område. Fjernstien vælger kun, hvor gennemgangen starter; den lokale sti ændrer aldrig krypteringen.",
             "overlaysPathLockedNote": "Overlay-stien er låst: den er krypteringens anker og kan ikke ændres, når overlayet først er bundet.",
             "remotePathMustReachOverlay": "Fjernstien skal være overlay-stien ({path}) eller en af dens overordnede mapper, ellers ligger den krypterede mappe uden for denne session.",
             "overlaysSection": "Wrappers / Overlays",
