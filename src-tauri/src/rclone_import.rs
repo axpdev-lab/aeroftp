@@ -11,7 +11,7 @@
 //! from rclone's reversible obfuscation to proper authenticated encryption.
 
 use crate::profile_export::ServerProfileExport;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 // ============ rclone obscure: AES-256-CTR with published key ============
@@ -1413,52 +1413,83 @@ fn s3_bucket_alias_name(remote_name: &str, bucket: &str) -> Option<String> {
     }
 }
 
-fn crypt_export_base_name(
-    proto: &str,
-    remote_name: &str,
-    options: Option<&serde_json::Value>,
-) -> String {
-    if proto == "s3" {
-        if let Some(bucket) = s3_pinned_bucket(options) {
-            if let Some(alias) = s3_bucket_alias_name(remote_name, bucket) {
-                return alias;
-            }
-        }
-    }
-    remote_name.to_string()
+/// What resolving a crypt section's name produced.
+enum CryptName {
+    /// A free name: the default `<base>-crypt`, possibly suffixed.
+    Free(String),
+    /// A name the operator wrote by hand that is already taken. Renaming it
+    /// would silently point their `rclone sync <name>:` at something else, so
+    /// the overlay is refused instead.
+    Taken(String),
 }
 
-fn crypt_section_name(base_name: &str, options: &serde_json::Value) -> String {
-    let requested = options
-        .get("rcloneCryptOverlayName")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let name = if requested.trim().is_empty() {
-        format!("{base_name}-crypt")
-    } else {
-        sanitize_rclone_remote_name(requested)
-    };
-    if name.is_empty() || name == base_name {
-        format!("{base_name}-crypt")
-    } else {
-        name
+/// Resolve the name of the crypt section wrapping `base_name`.
+///
+/// The name the operator chose is used as written or not at all. A default
+/// name is this exporter's invention and may be suffixed to get out of the way,
+/// which is what the old code could not do: it checked one collision
+/// (`name == base_name`) and fell back to `<base>-crypt`, exactly the form that
+/// collides with a real profile called `<base>-crypt`. rclone merges duplicate
+/// sections key by key, last one wins, so the crypt remote the operator
+/// believed they had exported was not there and a sync to that name wrote in
+/// the clear.
+fn crypt_section_name(
+    base_name: &str,
+    options: &serde_json::Value,
+    names: &mut RcloneNamespace,
+) -> CryptName {
+    let requested = sanitize_rclone_remote_name(
+        options
+            .get("rcloneCryptOverlayName")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+    );
+    if !requested.is_empty() && requested != base_name {
+        return if names.claim_exact(&requested) {
+            CryptName::Free(requested)
+        } else {
+            CryptName::Taken(requested)
+        };
     }
+    match names.claim_generated(&format!("{base_name}-crypt")) {
+        Some(name) => CryptName::Free(name),
+        None => CryptName::Taken(format!("{base_name}-crypt")),
+    }
+}
+
+/// The outcome of trying to emit a profile's crypt overlay.
+enum CryptSection {
+    /// A section was written; it counts as a second exported remote.
+    Written,
+    /// This profile carries no rclone-crypt overlay.
+    None,
+    /// The overlay was not written, with the reason to report.
+    Refused(String),
 }
 
 /// Emit a sibling `[name]` `type = crypt` section when this profile carries
-/// an rclone-crypt overlay. Returns true when a section was written (counts
-/// as a second exported remote). Missing password: write the section with a
+/// an rclone-crypt overlay. Missing password: write the section with a
 /// guidance comment instead of a silently broken `password =` line.
 fn append_crypt_remote_section(
     output: &mut String,
     base_name: &str,
     options: Option<&serde_json::Value>,
-) -> bool {
+    names: &mut RcloneNamespace,
+) -> CryptSection {
     let opts = match options {
         Some(o) if o.get("rcloneCryptEnabled").and_then(|v| v.as_bool()) == Some(true) => o,
-        _ => return false,
+        _ => return CryptSection::None,
     };
-    let section = crypt_section_name(base_name, opts);
+    let section = match crypt_section_name(base_name, opts, names) {
+        CryptName::Free(name) => name,
+        CryptName::Taken(name) => {
+            return CryptSection::Refused(format!(
+                "the crypt remote name '{name}' is already used by another remote in this file, \
+                 and renaming it would point an existing `rclone sync {name}:` somewhere else. \
+                 Rename one of the two in AeroFTP and export again"
+            ));
+        }
+    };
     output.push_str(&format!("[{}]\n", section));
     output.push_str("type = crypt\n");
     output.push_str(&format!(
@@ -1511,14 +1542,127 @@ fn append_crypt_remote_section(
         ));
     }
     output.push('\n');
-    true
+    CryptSection::Written
+}
+
+/// A profile, or a profile's crypt overlay, that the export refused to write.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct RcloneExportSkip {
+    /// The AeroFTP profile name, as the operator knows it.
+    pub name: String,
+    pub reason: String,
+}
+
+/// What an export produced: the remotes written, and what was left out.
+///
+/// A bare count could not tell "nothing to export" from "everything was
+/// refused". An export of only Zoho profiles whose region rclone cannot
+/// address returned `Ok(0)`, and the CLI printed a success envelope and exited
+/// 0, while the adjacent empty-selection case exits 4: the same outcome for the
+/// operator, opposite contracts for anything scripted on top.
+#[derive(Debug, Clone, Default)]
+pub struct RcloneExportOutcome {
+    /// Sections written that rclone will load as usable remotes. A crypt
+    /// overlay counts as its own remote, because it is one.
+    pub exported: usize,
+    pub skipped: Vec<RcloneExportSkip>,
+}
+
+impl RcloneExportOutcome {
+    fn skip(&mut self, name: &str, reason: &str) {
+        self.skipped.push(RcloneExportSkip {
+            name: name.to_string(),
+            reason: reason.to_string(),
+        });
+    }
+}
+
+/// Highest suffix tried when a name is taken. Reached only by a file with
+/// hundreds of profiles sanitizing to one name; refusing beats looping.
+const MAX_NAME_SUFFIX: usize = 999;
+
+/// The section names of one exported file.
+///
+/// rclone merges duplicate sections key by key with the last one winning, so a
+/// name emitted twice does not produce two remotes: it produces one, made of
+/// both. That is how a crypt overlay could vanish into the S3 remote named
+/// after it. Two spaces of names feed the same file, the profiles' own and the
+/// ones this exporter invents (`<base>-<bucket>` aliases, `<base>-crypt`
+/// overlays), and the sanitizer maps distinct profile names onto the same
+/// output as well, so uniqueness has to be owned in one place for the whole
+/// file rather than checked one collision at a time.
+struct RcloneNamespace {
+    /// Every profile's own sanitized name, known before the first section is
+    /// written so a generated name cannot take one a later profile still needs.
+    reserved: HashSet<String>,
+    /// Names actually written so far.
+    used: HashSet<String>,
+}
+
+impl RcloneNamespace {
+    fn new(servers: &[RcloneExportServer]) -> Self {
+        let reserved = servers
+            .iter()
+            .map(|s| sanitize_rclone_remote_name(&s.name))
+            .filter(|n| !n.is_empty())
+            .collect();
+        Self {
+            reserved,
+            used: HashSet::new(),
+        }
+    }
+
+    /// A profile's own name. It yields only to a section already written, never
+    /// to a name this exporter invented.
+    fn claim_profile(&mut self, base: &str) -> Option<String> {
+        self.claim(base, false)
+    }
+
+    /// A name this exporter invents. It also steps aside for every profile
+    /// name, including profiles whose section has not been written yet.
+    fn claim_generated(&mut self, base: &str) -> Option<String> {
+        self.claim(base, true)
+    }
+
+    /// A name the operator wrote by hand: taken exactly, or not at all.
+    fn claim_exact(&mut self, name: &str) -> bool {
+        if self.used.contains(name) || self.reserved.contains(name) {
+            return false;
+        }
+        self.used.insert(name.to_string());
+        true
+    }
+
+    /// Give a name back. Used when a profile turns out to write no section, so
+    /// it cannot push a later profile onto a suffix for nothing.
+    fn release(&mut self, name: &str) {
+        self.used.remove(name);
+    }
+
+    fn claim(&mut self, base: &str, avoid_reserved: bool) -> Option<String> {
+        let free = |me: &Self, candidate: &str| {
+            !me.used.contains(candidate) && !(avoid_reserved && me.reserved.contains(candidate))
+        };
+        if free(self, base) {
+            self.used.insert(base.to_string());
+            return Some(base.to_string());
+        }
+        for suffix in 2..=MAX_NAME_SUFFIX {
+            let candidate = format!("{base}-{suffix}");
+            if free(self, &candidate) {
+                self.used.insert(candidate.clone());
+                return Some(candidate);
+            }
+        }
+        None
+    }
 }
 
 pub fn export_rclone(
     servers: &[RcloneExportServer],
     passwords: &HashMap<String, String>,
     file_path: &Path,
-) -> Result<usize, String> {
+) -> Result<RcloneExportOutcome, String> {
     let mut output = String::new();
     output.push_str("# Generated by AeroFTP - https://aeroftp.app\n");
     output.push_str(&format!(
@@ -1526,7 +1670,10 @@ pub fn export_rclone(
         chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
     ));
 
-    let mut exported = 0;
+    let mut outcome = RcloneExportOutcome::default();
+    // Owns the section names of the whole file, real profile names reserved up
+    // front so a generated one cannot take a name a later profile still needs.
+    let mut names = RcloneNamespace::new(servers);
 
     for server in servers {
         // INI value safety: clean every free-text field before it is written so
@@ -1541,20 +1688,13 @@ pub fn export_rclone(
         // safety: rclone refuses names outside `^[\w.+@ -]+$`, so profiles
         // like "axpbuntu-remote (admin)" previously produced a config
         // rclone could not load at all.
-        let remote_name = sanitize_rclone_remote_name(&server.name);
-        if remote_name.is_empty() {
-            continue;
-        }
-        if remote_name != server.name {
-            tracing::warn!(
-                "[rclone export] profile '{}' renamed to '{}' to satisfy rclone remote-name rules",
-                server.name,
-                remote_name
+        let sanitized = sanitize_rclone_remote_name(&server.name);
+        if sanitized.is_empty() {
+            outcome.skip(
+                &server.name,
+                "profile name has no characters rclone accepts in a remote name",
             );
-            output.push_str(&format!(
-                "# renamed from AeroFTP profile \"{}\" (rclone remote-name rules)\n",
-                server.name.replace(['\n', '\r'], " ")
-            ));
+            continue;
         }
 
         // rclone's zoho backend interpolates `region` as the TLD in
@@ -1567,50 +1707,98 @@ pub fn export_rclone(
                 .and_then(|v| v.as_str())
                 .unwrap_or("us");
             if zoho_region_to_rclone(region).is_none() {
-                output.push_str(&format!(
-                    "# skipped Zoho profile '{}': rclone's zoho backend cannot address region '{}'\n\n",
-                    remote_name,
+                let reason = format!(
+                    "rclone's zoho backend cannot address region '{}'",
                     region.replace(['\n', '\r'], " ")
+                );
+                output.push_str(&format!(
+                    "# skipped Zoho profile '{}': {}\n\n",
+                    sanitized, reason
                 ));
+                outcome.skip(&server.name, &reason);
+                continue;
+            }
+            // rclone's zoho backend cannot list a remote without the
+            // privatespace id: it answers F6016 "URL Rule is not configured".
+            // The id is normally discovered live before the export, but that
+            // discovery returns silently on failed auth, on no network and on
+            // timeout, so a profile can reach here without one. Writing the
+            // section anyway produces a remote that lists nothing and reports
+            // itself as exported, which is worse than not writing it.
+            let has_root = options
+                .and_then(|o| o.get("root_folder_id"))
+                .and_then(|v| v.as_str())
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            if !has_root {
+                let reason = "Zoho root_folder_id is unknown (discovery unavailable): \
+                              rclone would answer F6016 on every listing. Connect the \
+                              profile in AeroFTP once, then export again."
+                    .to_string();
+                output.push_str(&format!(
+                    "# skipped Zoho profile '{}': {}\n\n",
+                    sanitized, reason
+                ));
+                outcome.skip(&server.name, &reason);
                 continue;
             }
         }
 
-        output.push_str(&format!("[{}]\n", remote_name));
+        // The name this section will carry. A real profile name yields only to
+        // a section already written, never to a name this exporter invented.
+        let remote_name = match names.claim_profile(&sanitized) {
+            Some(name) => name,
+            None => {
+                outcome.skip(&server.name, "no free rclone remote name for this profile");
+                continue;
+            }
+        };
+
+        // The body is built before anything is written, so there is no order of
+        // statements in which a `[section]` header can reach the file without
+        // the `type =` line that gives it a backend: rclone loads such a section
+        // as a remote with no backend at all.
+        let mut body = String::new();
+        // Sections this profile emits after its own (the S3 bucket alias).
+        let mut trailing = String::new();
+        // What a crypt overlay on this profile must wrap. The S3 arm points it
+        // at the bucket alias, since wrapping the raw s3 remote makes rclone
+        // look for a bucket named after the overlay path.
+        let mut crypt_base = remote_name.clone();
 
         match proto {
             "ftp" => {
-                output.push_str("type = ftp\n");
-                output.push_str(&format!("host = {}\n", server.host));
-                output.push_str(&format!("port = {}\n", server.port));
-                output.push_str(&format!("user = {}\n", server.username));
+                body.push_str("type = ftp\n");
+                body.push_str(&format!("host = {}\n", server.host));
+                body.push_str(&format!("port = {}\n", server.port));
+                body.push_str(&format!("user = {}\n", server.username));
                 if let Some(pw) = password {
-                    output.push_str(&format!(
+                    body.push_str(&format!(
                         "pass = {}\n",
                         obscure_password(pw).unwrap_or_default()
                     ));
                 }
             }
             "ftps" => {
-                output.push_str("type = ftp\n");
-                output.push_str(&format!("host = {}\n", server.host));
-                output.push_str(&format!("port = {}\n", server.port));
-                output.push_str(&format!("user = {}\n", server.username));
-                output.push_str("explicit_tls = true\n");
+                body.push_str("type = ftp\n");
+                body.push_str(&format!("host = {}\n", server.host));
+                body.push_str(&format!("port = {}\n", server.port));
+                body.push_str(&format!("user = {}\n", server.username));
+                body.push_str("explicit_tls = true\n");
                 if let Some(pw) = password {
-                    output.push_str(&format!(
+                    body.push_str(&format!(
                         "pass = {}\n",
                         obscure_password(pw).unwrap_or_default()
                     ));
                 }
             }
             "sftp" => {
-                output.push_str("type = sftp\n");
-                output.push_str(&format!("host = {}\n", server.host));
-                output.push_str(&format!("port = {}\n", server.port));
-                output.push_str(&format!("user = {}\n", server.username));
+                body.push_str("type = sftp\n");
+                body.push_str(&format!("host = {}\n", server.host));
+                body.push_str(&format!("port = {}\n", server.port));
+                body.push_str(&format!("user = {}\n", server.username));
                 if let Some(pw) = password.filter(|p| !p.is_empty()) {
-                    output.push_str(&format!(
+                    body.push_str(&format!(
                         "pass = {}\n",
                         obscure_password(pw).unwrap_or_default()
                     ));
@@ -1629,7 +1817,7 @@ pub fn export_rclone(
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
                     {
-                        output.push_str(&format!("key_file = {}\n", key_file));
+                        body.push_str(&format!("key_file = {}\n", key_file));
                     }
                     if let Some(key_pass) = opts
                         .get("key_passphrase")
@@ -1637,7 +1825,7 @@ pub fn export_rclone(
                         .filter(|s| !s.is_empty())
                     {
                         // rclone requires key_file_pass obscured, like `pass`.
-                        output.push_str(&format!(
+                        body.push_str(&format!(
                             "key_file_pass = {}\n",
                             obscure_password(key_pass).unwrap_or_default()
                         ));
@@ -1645,7 +1833,7 @@ pub fn export_rclone(
                 }
             }
             "s3" => {
-                output.push_str("type = s3\n");
+                body.push_str("type = s3\n");
                 let provider_id = server.provider_id.as_deref().unwrap_or("custom-s3");
                 // rclone S3 backend providers: see `rclone help backend s3`.
                 // Names are case-sensitive; "Other" forces the generic
@@ -1669,8 +1857,8 @@ pub fn export_rclone(
                     "google-cloud-storage" => "GCS",
                     _ => "Other",
                 };
-                output.push_str(&format!("provider = {}\n", rclone_provider));
-                output.push_str(&format!("access_key_id = {}\n", server.username));
+                body.push_str(&format!("provider = {}\n", rclone_provider));
+                body.push_str(&format!("access_key_id = {}\n", server.username));
                 if let Some(pw) = password {
                     // S3 `secret_access_key` is NOT a `IsPassword: true`
                     // field in rclone's backend definition: it must be
@@ -1678,14 +1866,14 @@ pub fn export_rclone(
                     // `AWS4-HMAC-SHA256` signature mismatch on every
                     // request because rclone hashes the obscured string
                     // verbatim instead of reversing it first.
-                    output.push_str(&format!("secret_access_key = {}\n", ini_value(pw)));
+                    body.push_str(&format!("secret_access_key = {}\n", ini_value(pw)));
                 }
                 let mut pinned_bucket: Option<String> = None;
                 let mut endpoint_from_opts: Option<String> = None;
                 let mut verify_cert_off = false;
                 if let Some(opts) = options {
                     if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
-                        output.push_str(&format!("region = {}\n", region));
+                        body.push_str(&format!("region = {}\n", region));
                     }
                     if let Some(endpoint) = opts
                         .get("endpoint")
@@ -1748,7 +1936,7 @@ pub fn export_rclone(
                         } else {
                             format!("https://{}", endpoint)
                         };
-                    output.push_str(&format!("endpoint = {}\n", endpoint));
+                    body.push_str(&format!("endpoint = {}\n", endpoint));
 
                     // Local self-signed bridges (Filen Desktop S3 at
                     // https://127.0.0.1:1800) present a certificate without IP
@@ -1756,7 +1944,7 @@ pub fn export_rclone(
                     // accepts invalid certs on loopback. Honour an explicit
                     // verify_cert=false from the profile too.
                     if verify_cert_off || endpoint_is_loopback(&endpoint) {
-                        output.push_str("no_check_certificate = true\n");
+                        body.push_str("no_check_certificate = true\n");
                     }
                 }
 
@@ -1770,21 +1958,45 @@ pub fn export_rclone(
                 // alias addresses objects bucket-relative, identical to how
                 // the AeroFTP S3 client writes keys (drop-in for crypt/sync).
                 if let Some(bucket) = pinned_bucket {
-                    if let Some(alias_name) = s3_bucket_alias_name(&remote_name, &bucket) {
-                        output.push_str(&format!(
-                            "\n# Bucket-relative view of '{}' (bucket '{}').\n\
-                             # AeroFTP writes keys at bucket root; address them\n\
-                             # as `{}:` or wrap a crypt remote with `remote = {}:`.\n",
-                            remote_name, bucket, alias_name, alias_name
-                        ));
-                        output.push_str(&format!("[{}]\n", alias_name));
-                        output.push_str("type = alias\n");
-                        output.push_str(&format!("remote = {}:{}\n", remote_name, bucket));
+                    if let Some(desired) = s3_bucket_alias_name(&remote_name, &bucket) {
+                        // The alias name is invented by this exporter, so it
+                        // yields to every real profile name, including one
+                        // whose section has not been written yet.
+                        match names.claim_generated(&desired) {
+                            Some(alias_name) => {
+                                if alias_name != desired {
+                                    trailing.push_str(&format!(
+                                        "\n# renamed from '{}': that name is taken by another remote\n",
+                                        desired
+                                    ));
+                                }
+                                trailing.push_str(&format!(
+                                    "\n# Bucket-relative view of '{}' (bucket '{}').\n\
+                                     # AeroFTP writes keys at bucket root; address them\n\
+                                     # as `{}:` or wrap a crypt remote with `remote = {}:`.\n",
+                                    remote_name, bucket, alias_name, alias_name
+                                ));
+                                trailing.push_str(&format!("[{}]\n", alias_name));
+                                trailing.push_str("type = alias\n");
+                                trailing
+                                    .push_str(&format!("remote = {}:{}\n", remote_name, bucket));
+                                // A crypt overlay must wrap the alias, not the
+                                // raw s3 remote, and it must wrap the name that
+                                // was actually written.
+                                crypt_base = alias_name;
+                            }
+                            None => {
+                                trailing.push_str(&format!(
+                                    "\n# bucket alias for '{}' omitted: no free remote name near '{}'\n",
+                                    remote_name, desired
+                                ));
+                            }
+                        }
                     }
                 }
             }
             "webdav" => {
-                output.push_str("type = webdav\n");
+                body.push_str("type = webdav\n");
                 // Nextcloud-derived presets (TAB.DIGITAL, FeliCloud, generic
                 // Nextcloud) speak the same WebDAV dialect as upstream
                 // Nextcloud. Mapping them to vendor=nextcloud lets rclone
@@ -1845,26 +2057,26 @@ pub fn export_rclone(
                 } else {
                     url
                 };
-                output.push_str(&format!("url = {}\n", url));
-                output.push_str(&format!("vendor = {}\n", vendor));
-                output.push_str(&format!("user = {}\n", server.username));
+                body.push_str(&format!("url = {}\n", url));
+                body.push_str(&format!("vendor = {}\n", vendor));
+                body.push_str(&format!("user = {}\n", server.username));
                 if let Some(pw) = password {
-                    output.push_str(&format!(
+                    body.push_str(&format!(
                         "pass = {}\n",
                         obscure_password(pw).unwrap_or_default()
                     ));
                 }
             }
             "googledrive" => {
-                output.push_str("type = drive\n");
-                push_oauth_credentials(&mut output, options);
+                body.push_str("type = drive\n");
+                push_oauth_credentials(&mut body, options);
             }
             "dropbox" => {
-                output.push_str("type = dropbox\n");
-                push_oauth_credentials(&mut output, options);
+                body.push_str("type = dropbox\n");
+                push_oauth_credentials(&mut body, options);
             }
             "onedrive" => {
-                output.push_str("type = onedrive\n");
+                body.push_str("type = onedrive\n");
                 // rclone's `onedrive` backend needs `drive_id` + `drive_type`
                 // (it fails at use with "unable to get drive_id and drive_type"),
                 // even though the schema does not mark them Required. AeroFTP runs
@@ -1880,7 +2092,7 @@ pub fn export_rclone(
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
                     {
-                        output.push_str(&format!("region = {}\n", region));
+                        body.push_str(&format!("region = {}\n", region));
                     }
                     if let Some(drive_id) = opts
                         .get("drive_id")
@@ -1888,7 +2100,7 @@ pub fn export_rclone(
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
                     {
-                        output.push_str(&format!("drive_id = {}\n", drive_id));
+                        body.push_str(&format!("drive_id = {}\n", drive_id));
                     }
                     if let Some(drive_type) = opts
                         .get("drive_type")
@@ -1896,16 +2108,16 @@ pub fn export_rclone(
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
                     {
-                        output.push_str(&format!("drive_type = {}\n", drive_type));
+                        body.push_str(&format!("drive_type = {}\n", drive_type));
                     }
                 }
-                push_oauth_credentials(&mut output, options);
+                push_oauth_credentials(&mut body, options);
             }
             "mega" => {
-                output.push_str("type = mega\n");
-                output.push_str(&format!("user = {}\n", server.username));
+                body.push_str("type = mega\n");
+                body.push_str(&format!("user = {}\n", server.username));
                 if let Some(pw) = password {
-                    output.push_str(&format!(
+                    body.push_str(&format!(
                         "pass = {}\n",
                         obscure_password(pw).unwrap_or_default()
                     ));
@@ -1923,10 +2135,10 @@ pub fn export_rclone(
                 // present we emit a usable remote; when it is absent we emit a
                 // commented scaffold telling the user to add the api_key rather
                 // than a broken `type = filen` block.
-                output.push_str("type = filen\n");
-                output.push_str(&format!("email = {}\n", server.username));
+                body.push_str("type = filen\n");
+                body.push_str(&format!("email = {}\n", server.username));
                 if let Some(pw) = password.filter(|p| !p.is_empty()) {
-                    output.push_str(&format!(
+                    body.push_str(&format!(
                         "password = {}\n",
                         obscure_password(pw).unwrap_or_default()
                     ));
@@ -1939,7 +2151,7 @@ pub fn export_rclone(
                 if let Some(api_key) = api_key {
                     // The api_key is an rclone `IsPassword` field, so it is
                     // emitted obscured like `password`.
-                    output.push_str(&format!(
+                    body.push_str(&format!(
                         "api_key = {}\n",
                         obscure_password(api_key).unwrap_or_default()
                     ));
@@ -1948,7 +2160,7 @@ pub fn export_rclone(
                     // and cannot derive it from the password, so the remote is
                     // incomplete. Emit a guidance comment (mirroring the OAuth
                     // "reconnect" path) instead of a silently broken remote.
-                    output.push_str(
+                    body.push_str(
                         "# api_key required but unavailable: rclone's filen backend\n\
                          # cannot derive it from your password. Get one with the Filen\n\
                          # CLI `export-api-key` command, obscure it (`rclone obscure`),\n\
@@ -1958,11 +2170,11 @@ pub fn export_rclone(
                 }
             }
             "box" => {
-                output.push_str("type = box\n");
-                push_oauth_credentials(&mut output, options);
+                body.push_str("type = box\n");
+                push_oauth_credentials(&mut body, options);
             }
             "pcloud" => {
-                output.push_str("type = pcloud\n");
+                body.push_str("type = pcloud\n");
                 // rclone's pcloud `hostname` must be a real API host:
                 // api.pcloud.com (US, the default) or eapi.pcloud.com (EU).
                 // AeroFTP stores the region in options.region ("us"/"eu") or, on
@@ -1979,29 +2191,29 @@ pub fn export_rclone(
                         h.contains("eu") || h.contains("eapi")
                     });
                 if is_eu {
-                    output.push_str("hostname = eapi.pcloud.com\n");
+                    body.push_str("hostname = eapi.pcloud.com\n");
                 }
-                push_oauth_credentials(&mut output, options);
+                push_oauth_credentials(&mut body, options);
             }
             "azure" => {
-                output.push_str("type = azureblob\n");
-                output.push_str(&format!("account = {}\n", server.username));
+                body.push_str("type = azureblob\n");
+                body.push_str(&format!("account = {}\n", server.username));
                 if let Some(pw) = password {
                     // Azure Blob `key` is the storage account access key
                     // (base64). rclone's azureblob backend does NOT mark
                     // this field as `IsPassword: true`, so it must be
                     // emitted plain (same reasoning as S3 secret_access_key).
-                    output.push_str(&format!("key = {}\n", ini_value(pw)));
+                    body.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
                 if let Some(opts) = options {
                     if let Some(container) = opts.get("bucket").and_then(|v| v.as_str()) {
-                        output.push_str(&format!("container = {}\n", container));
+                        body.push_str(&format!("container = {}\n", container));
                     }
                 }
             }
             "swift" => {
-                output.push_str("type = swift\n");
-                output.push_str(&format!("user = {}\n", server.username));
+                body.push_str("type = swift\n");
+                body.push_str(&format!("user = {}\n", server.username));
                 if let Some(pw) = password {
                     // Swift `key` is the API key / OS_PASSWORD. rclone's swift
                     // backend does NOT mark this field as `IsPassword: true`, so
@@ -2009,42 +2221,42 @@ pub fn export_rclone(
                     // reasoning as S3 secret_access_key and Azure key). Emitting
                     // an obscured value makes rclone send the obscured string as
                     // the password, which fails authentication.
-                    output.push_str(&format!("key = {}\n", ini_value(pw)));
+                    body.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
                 if let Some(opts) = options {
                     if let Some(endpoint) = opts.get("endpoint").and_then(|v| v.as_str()) {
-                        output.push_str(&format!("auth = {}\n", endpoint));
+                        body.push_str(&format!("auth = {}\n", endpoint));
                     }
                     if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
-                        output.push_str(&format!("region = {}\n", region));
+                        body.push_str(&format!("region = {}\n", region));
                     }
                     if let Some(tenant) = opts.get("tenant").and_then(|v| v.as_str()) {
-                        output.push_str(&format!("tenant = {}\n", tenant));
+                        body.push_str(&format!("tenant = {}\n", tenant));
                     }
                     if let Some(container) = opts.get("bucket").and_then(|v| v.as_str()) {
-                        output.push_str(&format!("container = {}\n", container));
+                        body.push_str(&format!("container = {}\n", container));
                     }
                 }
             }
             "yandexdisk" => {
                 // rclone's backend type is `yandex` (not `yandexdisk`); the old
                 // value produced a config rclone refused to load.
-                output.push_str("type = yandex\n");
-                push_oauth_credentials(&mut output, options);
+                body.push_str("type = yandex\n");
+                push_oauth_credentials(&mut body, options);
             }
             "koofr" => {
-                output.push_str("type = koofr\n");
-                output.push_str(&format!("endpoint = https://{}\n", server.host));
-                output.push_str(&format!("user = {}\n", server.username));
+                body.push_str("type = koofr\n");
+                body.push_str(&format!("endpoint = https://{}\n", server.host));
+                body.push_str(&format!("user = {}\n", server.username));
                 if let Some(pw) = password {
-                    output.push_str(&format!(
+                    body.push_str(&format!(
                         "password = {}\n",
                         obscure_password(pw).unwrap_or_default()
                     ));
                 }
             }
             "jottacloud" => {
-                output.push_str("type = jottacloud\n");
+                body.push_str("type = jottacloud\n");
                 // The password slot carries the Jotta OIDC refresh blob
                 // (`{refresh_token, token_endpoint, username}`), the same shape
                 // AeroFTP persists under `jottacloud_refresh_<id>`. rclone
@@ -2069,7 +2281,7 @@ pub fn export_rclone(
                             .filter(|s| !s.is_empty())
                             .unwrap_or(&server.username);
                         if !user.is_empty() {
-                            output.push_str(&format!("user = {}\n", ini_value(user)));
+                            body.push_str(&format!("user = {}\n", ini_value(user)));
                         }
                         if !refresh.is_empty() {
                             // rclone's jottacloud backend expects a full
@@ -2086,24 +2298,24 @@ pub fn export_rclone(
                                 "refresh_token": refresh,
                                 "expiry": "2000-01-01T00:00:00Z",
                             });
-                            output.push_str(&format!("token = {}\n", token));
+                            body.push_str(&format!("token = {}\n", token));
                         }
                         if !endpoint.is_empty() {
-                            output.push_str(&format!("token_endpoint = {}\n", ini_value(endpoint)));
+                            body.push_str(&format!("token_endpoint = {}\n", ini_value(endpoint)));
                         }
                         // rclone refuses a jottacloud remote without a known
                         // config schema version ("outdated config - please
                         // reconfigure this backend"). Version 1 is the current
                         // schema for the standard auth flow.
-                        output.push_str("configVersion = 1\n");
+                        body.push_str("configVersion = 1\n");
                     }
                 }
             }
             "opendrive" => {
-                output.push_str("type = opendrive\n");
-                output.push_str(&format!("username = {}\n", server.username));
+                body.push_str("type = opendrive\n");
+                body.push_str(&format!("username = {}\n", server.username));
                 if let Some(pw) = password {
-                    output.push_str(&format!(
+                    body.push_str(&format!(
                         "password = {}\n",
                         obscure_password(pw).unwrap_or_default()
                     ));
@@ -2115,23 +2327,23 @@ pub fn export_rclone(
                 // stores `us` / `au` (and the other data-centre slugs that
                 // match rclone already). Unmappable regions were skipped
                 // before the section header; unwrap is then a mapped TLD.
-                output.push_str("type = zoho\n");
+                body.push_str("type = zoho\n");
                 let region = options
                     .and_then(|o| o.get("region"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("us");
                 let rclone_region =
                     zoho_region_to_rclone(region).expect("zohoworkdrive region preflighted");
-                output.push_str(&format!("region = {}\n", ini_value(&rclone_region)));
+                body.push_str(&format!("region = {}\n", ini_value(&rclone_region)));
                 if let Some(folder) = options
                     .and_then(|o| o.get("root_folder_id"))
                     .and_then(|v| v.as_str())
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
                 {
-                    output.push_str(&format!("root_folder_id = {}\n", ini_value(folder)));
+                    body.push_str(&format!("root_folder_id = {}\n", ini_value(folder)));
                 }
-                push_oauth_credentials_inner(&mut output, options, Some("Zoho-oauthtoken"));
+                push_oauth_credentials_inner(&mut body, options, Some("Zoho-oauthtoken"));
             }
             "backblaze" => {
                 // AeroFTP's native Backblaze protocol maps to rclone's `b2`
@@ -2140,30 +2352,59 @@ pub fn export_rclone(
                 // (same as S3 secret_access_key / Swift key). The bucket is part
                 // of the remote path in rclone (`remote:bucket`), not a config
                 // key, so it is intentionally not emitted here.
-                output.push_str("type = b2\n");
-                output.push_str(&format!("account = {}\n", server.username));
+                body.push_str("type = b2\n");
+                body.push_str(&format!("account = {}\n", server.username));
                 if let Some(pw) = password.filter(|p| !p.is_empty()) {
                     // F-01: strip CR/LF like the other plain-secret sinks
                     // (s3 secret_access_key, azure/swift key) so a crafted
                     // application key can't forge a second [section].
-                    output.push_str(&format!("key = {}\n", ini_value(pw)));
+                    body.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
             }
             // Protocols without rclone equivalent: skip
             _ => {
+                // Nothing was written, so the name goes back: a profile that
+                // produced no section must not push a later one to a suffix.
+                names.release(&remote_name);
+                outcome.skip(
+                    &server.name,
+                    &format!("protocol '{}' has no rclone backend", proto),
+                );
                 continue;
             }
         }
 
+        // Header and body together, never one without the other.
+        if remote_name != server.name {
+            tracing::warn!(
+                "[rclone export] profile '{}' exported as '{}' to satisfy rclone remote-name rules",
+                server.name,
+                remote_name
+            );
+            output.push_str(&format!(
+                "# renamed from AeroFTP profile \"{}\" (rclone remote-name rules)\n",
+                server.name.replace(['\n', '\r'], " ")
+            ));
+        }
+        output.push_str(&format!("[{}]\n", remote_name));
+        output.push_str(&body);
+        output.push_str(&trailing);
         output.push('\n');
-        exported += 1;
+        outcome.exported += 1;
 
         // Rclone Crypt is a second remote wrapping this one. The overlay
         // path is always at or below the server's remote path, so
         // `remote = <base>:<path>` is derived rather than guessed.
-        let crypt_base = crypt_export_base_name(proto, &remote_name, options);
-        if append_crypt_remote_section(&mut output, &crypt_base, options) {
-            exported += 1;
+        match append_crypt_remote_section(&mut output, &crypt_base, options, &mut names) {
+            CryptSection::Written => outcome.exported += 1,
+            CryptSection::None => {}
+            CryptSection::Refused(reason) => {
+                output.push_str(&format!(
+                    "# crypt overlay for '{}' not written: {}\n\n",
+                    crypt_base, reason
+                ));
+                outcome.skip(&server.name, &reason);
+            }
         }
     }
 
@@ -2174,7 +2415,7 @@ pub fn export_rclone(
     crate::bridge_shared::atomic_write_600(file_path, output.as_bytes())
         .map_err(|e| format!("Write rclone.conf: {}", e))?;
 
-    Ok(exported)
+    Ok(outcome)
 }
 
 #[cfg(test)]
@@ -2186,6 +2427,292 @@ mod tests {
         let path = std::env::temp_dir().join(name);
         std::fs::write(&path, conf).expect("write temp conf");
         path
+    }
+
+    /// Minimal exportable profile, so the namespace tests read as the case
+    /// they are about instead of as a wall of struct fields.
+    fn export_server(
+        name: &str,
+        protocol: &str,
+        options: Option<serde_json::Value>,
+    ) -> RcloneExportServer {
+        RcloneExportServer {
+            name: name.to_string(),
+            host: "host.example".to_string(),
+            port: 21,
+            username: "user".to_string(),
+            protocol: Some(protocol.to_string()),
+            options,
+            provider_id: None,
+        }
+    }
+
+    fn export_to_string(
+        servers: &[RcloneExportServer],
+        tag: &str,
+    ) -> (RcloneExportOutcome, String) {
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp-test-export-{}-{}.conf",
+            tag,
+            std::process::id()
+        ));
+        let outcome = export_rclone(servers, &HashMap::new(), &tmp).expect("export");
+        let conf = std::fs::read_to_string(&tmp).expect("read export");
+        std::fs::remove_file(&tmp).ok();
+        (outcome, conf)
+    }
+
+    /// C-05. A crypt overlay names its section `<base>-crypt`, and nothing
+    /// stopped that from being the name of a real profile. rclone does not
+    /// reject a duplicate section: it merges the two key by key, last one
+    /// wins, so the crypt remote the operator believed they exported is not
+    /// there and `rclone sync` to that name writes in the clear. Reproduced on
+    /// rclone 1.74.0.
+    #[test]
+    fn export_rclone_never_writes_one_section_name_twice() {
+        let servers = vec![
+            export_server(
+                "minio",
+                "ftp",
+                Some(serde_json::json!({
+                    "rcloneCryptEnabled": true,
+                    "rcloneCryptPassword": "topsecret",
+                })),
+            ),
+            export_server("minio-crypt", "ftp", None),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "dup-names");
+
+        assert_eq!(
+            conf.matches("[minio-crypt]\n").count(),
+            1,
+            "exactly one section may carry a given name:\n{conf}"
+        );
+        // The real profile keeps the name it was given. The generated overlay
+        // is the one that moves, because it is this exporter's invention.
+        let crypt_at = conf
+            .find("[minio-crypt-2]")
+            .unwrap_or_else(|| panic!("the overlay must take a free name:\n{conf}"));
+        assert!(
+            conf[crypt_at..].starts_with("[minio-crypt-2]\ntype = crypt"),
+            "the renamed section is the crypt one:\n{conf}"
+        );
+        assert!(
+            conf.contains("[minio-crypt]\ntype = ftp"),
+            "the real profile keeps its own name:\n{conf}"
+        );
+        assert_eq!(outcome.exported, 3, "base + overlay + second profile");
+    }
+
+    /// C-05, second half. A name the operator wrote by hand is not renamed
+    /// behind their back: an `rclone sync vault:` they already have would
+    /// silently start addressing something else.
+    #[test]
+    fn export_rclone_refuses_an_explicit_crypt_name_that_is_taken() {
+        let servers = vec![
+            export_server(
+                "nas",
+                "ftp",
+                Some(serde_json::json!({
+                    "rcloneCryptEnabled": true,
+                    "rcloneCryptOverlayName": "vault",
+                    "rcloneCryptPassword": "topsecret",
+                })),
+            ),
+            export_server("vault", "ftp", None),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "explicit-crypt");
+
+        assert_eq!(conf.matches("[vault]\n").count(), 1, "one [vault]:\n{conf}");
+        assert!(
+            conf.contains("[vault]\ntype = ftp"),
+            "[vault] is the real profile, not the overlay:\n{conf}"
+        );
+        assert!(
+            !conf.contains("type = crypt"),
+            "the overlay is refused, not renamed:\n{conf}"
+        );
+        assert!(
+            !conf.contains("[vault-2]"),
+            "an operator-chosen name is never suffixed:\n{conf}"
+        );
+        assert_eq!(outcome.exported, 2, "the two base remotes only");
+        assert!(
+            outcome.skipped.iter().any(|s| s.name == "nas"),
+            "the refusal is reported, not silent: {:?}",
+            outcome.skipped
+        );
+    }
+
+    /// C-05, third half: the collision exists without crypt at all. The
+    /// sanitizer maps every character outside rclone's set to `-` and collapses
+    /// runs, so two different profile names can arrive at one remote name.
+    #[test]
+    fn export_rclone_separates_profiles_the_sanitizer_maps_together() {
+        let servers = vec![
+            export_server("nas(one)", "ftp", None),
+            export_server("nas:one:", "ftp", None),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "sanitizer-collision");
+
+        assert_eq!(outcome.exported, 2, "both profiles are written:\n{conf}");
+        assert_eq!(
+            conf.matches("[nas-one]\n").count(),
+            1,
+            "the first keeps the sanitized name:\n{conf}"
+        );
+        assert!(
+            conf.contains("[nas-one-2]"),
+            "the second gets a free one:\n{conf}"
+        );
+    }
+
+    /// C-05, fourth: a generated name must not take a real profile's name even
+    /// when that profile is written later in the file.
+    #[test]
+    fn export_rclone_reserves_profile_names_before_generated_ones() {
+        let servers = vec![
+            export_server(
+                "data",
+                "s3",
+                Some(serde_json::json!({ "bucket": "backup" })),
+            ),
+            export_server("data-backup", "ftp", None),
+        ];
+        let (_outcome, conf) = export_to_string(&servers, "reserved-first");
+
+        assert_eq!(
+            conf.matches("[data-backup]\n").count(),
+            1,
+            "one section with that name:\n{conf}"
+        );
+        assert!(
+            conf.contains("[data-backup]\ntype = ftp"),
+            "the real profile owns it even though the alias came first:\n{conf}"
+        );
+        assert!(
+            conf.contains("[data-backup-2]\ntype = alias"),
+            "the bucket alias steps aside:\n{conf}"
+        );
+    }
+
+    /// C-13. rclone's zoho backend answers F6016 on every listing without the
+    /// privatespace id. Discovery fills it in before the export, but returns
+    /// silently on failed auth, on no network and on timeout, so a profile can
+    /// reach the writer without one. Exporting it anyway reports a remote that
+    /// lists nothing.
+    #[test]
+    fn export_rclone_skips_a_zoho_without_its_root_folder() {
+        let servers = vec![export_server(
+            "zoho",
+            "zohoworkdrive",
+            Some(serde_json::json!({ "region": "us" })),
+        )];
+        let (outcome, conf) = export_to_string(&servers, "zoho-no-root");
+
+        assert_eq!(outcome.exported, 0, "nothing usable was written:\n{conf}");
+        assert!(!conf.contains("type = zoho"), "no remote emitted:\n{conf}");
+        assert_eq!(outcome.skipped.len(), 1, "{:?}", outcome.skipped);
+        assert!(
+            outcome.skipped[0].reason.contains("root_folder_id"),
+            "the reason names what is missing: {:?}",
+            outcome.skipped[0]
+        );
+    }
+
+    #[test]
+    fn export_rclone_keeps_a_zoho_that_has_its_root_folder() {
+        let servers = vec![export_server(
+            "zoho",
+            "zohoworkdrive",
+            Some(serde_json::json!({ "region": "us", "root_folder_id": "abc123" })),
+        )];
+        let (outcome, conf) = export_to_string(&servers, "zoho-with-root");
+
+        assert_eq!(outcome.exported, 1, "{conf}");
+        assert!(conf.contains("root_folder_id = abc123"), "{conf}");
+        assert!(outcome.skipped.is_empty(), "{:?}", outcome.skipped);
+    }
+
+    /// L-10. An export where everything is refused used to be indistinguishable
+    /// from a successful one: `Ok(0)` and a success envelope, while the
+    /// adjacent "nothing selected" case exits 4.
+    #[test]
+    fn export_rclone_reports_what_it_left_out_when_it_wrote_nothing() {
+        let servers = vec![export_server(
+            "zoho-ca",
+            "zohoworkdrive",
+            Some(serde_json::json!({ "region": "ca", "root_folder_id": "abc123" })),
+        )];
+        let (outcome, _conf) = export_to_string(&servers, "zoho-region");
+
+        assert_eq!(outcome.exported, 0);
+        assert_eq!(outcome.skipped.len(), 1, "{:?}", outcome.skipped);
+        assert_eq!(outcome.skipped[0].name, "zoho-ca");
+        assert!(
+            outcome.skipped[0].reason.contains("region"),
+            "{:?}",
+            outcome.skipped[0]
+        );
+    }
+
+    /// L-11. The `[name]` header used to be written before the match that
+    /// decides whether the protocol has an rclone backend, so the fall-through
+    /// arm would have left a section with no `type =`, which rclone loads as a
+    /// remote with no backend. Unreachable today only because both callers
+    /// pre-filter, in a different file: this walks that gate and holds the
+    /// writer to it, so the two cannot drift apart in silence.
+    #[test]
+    fn every_gated_protocol_writes_a_section_with_a_backend() {
+        for proto in crate::bridge_shared::bridge_supported_protocols("rclone") {
+            // Zoho needs both, or it is skipped for the reasons above.
+            let options = if *proto == "zohoworkdrive" {
+                Some(serde_json::json!({ "region": "us", "root_folder_id": "abc123" }))
+            } else {
+                None
+            };
+            let servers = vec![export_server("remote", proto, options)];
+            let (outcome, conf) = export_to_string(&servers, &format!("gate-{proto}"));
+
+            assert_eq!(
+                outcome.exported, 1,
+                "protocol '{proto}' is exportable per the gate but wrote nothing:\n{conf}"
+            );
+            let section = conf
+                .find("[remote]\n")
+                .unwrap_or_else(|| panic!("protocol '{proto}' wrote no section:\n{conf}"));
+            assert!(
+                conf[section..].starts_with("[remote]\ntype = "),
+                "protocol '{proto}' wrote a section with no backend:\n{conf}"
+            );
+        }
+    }
+
+    /// L-11, the other direction: a protocol the writer has no arm for must
+    /// leave nothing behind at all, not a header waiting for a `type =`.
+    #[test]
+    fn a_protocol_without_an_rclone_backend_writes_no_section() {
+        let servers = vec![
+            export_server("peer-drive", "peer", None),
+            export_server("peer-drive", "ftp", None),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "no-backend");
+
+        assert_eq!(outcome.exported, 1, "only the ftp profile:\n{conf}");
+        assert_eq!(
+            conf.matches("[peer-drive]\n").count(),
+            1,
+            "no orphan header, and the name is free for the ftp profile:\n{conf}"
+        );
+        assert!(
+            conf.contains("[peer-drive]\ntype = ftp"),
+            "the released name went to the profile that could use it:\n{conf}"
+        );
+        assert!(
+            outcome.skipped.iter().any(|s| s.reason.contains("peer")),
+            "{:?}",
+            outcome.skipped
+        );
     }
 
     /// CLAUDE-AV-B9-02: an uncapped parse let a single 10 MB config declare
@@ -2574,7 +3101,9 @@ user = t
         passwords.insert("my-s3".to_string(), "s3secret".to_string());
 
         let tmp = std::env::temp_dir().join("aeroftp-test-export-rclone.conf");
-        let exported = export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let exported = export_rclone(&servers, &passwords, &tmp)
+            .expect("should export")
+            .exported;
         assert_eq!(exported, 2);
 
         // Verify the exported file can be re-imported
@@ -2620,7 +3149,9 @@ user = t
         );
 
         let tmp = std::env::temp_dir().join("aeroftp-test-export-rclone-jotta.conf");
-        let exported = export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let exported = export_rclone(&servers, &passwords, &tmp)
+            .expect("should export")
+            .exported;
         assert_eq!(exported, 1);
         let content = std::fs::read_to_string(&tmp).expect("read export");
         std::fs::remove_file(&tmp).ok();
@@ -3040,6 +3571,11 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
                     "__aeroftp_oauth_token": stored_tokens,
                     "__aeroftp_oauth_client_id": "client-id-xyz",
                     "__aeroftp_oauth_client_secret": "client-secret-xyz",
+                    // Only zoho reads these two; the others ignore them. Zoho
+                    // is skipped without a root_folder_id, and this table is
+                    // about the backend type each protocol writes.
+                    "region": "us",
+                    "root_folder_id": "space-1",
                 })),
                 provider_id: Some(protocol.to_string()),
             }];
@@ -3173,6 +3709,10 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
             protocol: Some("zohoworkdrive".to_string()),
             options: Some(serde_json::json!({
                 "region": "eu",
+                // rclone cannot list a zoho remote without the privatespace id,
+                // so the writer refuses a profile that has none: this fixture
+                // is about the token type, and needs a profile that gets written.
+                "root_folder_id": "space-1",
                 "__aeroftp_oauth_token": stored_tokens,
                 "__aeroftp_oauth_client_id": "cid",
                 "__aeroftp_oauth_client_secret": "csec",
@@ -3201,7 +3741,9 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
             port: 443,
             username: "me@example.com".to_string(),
             protocol: Some("zohoworkdrive".to_string()),
-            options: Some(serde_json::json!({ "region": "us" })),
+            // Same reason as above: without a root_folder_id the profile is
+            // skipped, and this test is about the region slug.
+            options: Some(serde_json::json!({ "region": "us", "root_folder_id": "space-1" })),
             provider_id: Some("zoho-workdrive".to_string()),
         }];
         let tmp = std::env::temp_dir().join("aeroftp-test-export-zoho-us.conf");
@@ -3230,7 +3772,9 @@ api_key = 4BVmu-SCRQai2-0-hucKgbeyzH6-uqexma-skpRs4Kk
             provider_id: Some("zoho-workdrive".to_string()),
         }];
         let tmp = std::env::temp_dir().join("aeroftp-test-export-zoho-ca.conf");
-        let n = export_rclone(&servers, &HashMap::new(), &tmp).expect("export");
+        let n = export_rclone(&servers, &HashMap::new(), &tmp)
+            .expect("export")
+            .exported;
         let conf = std::fs::read_to_string(&tmp).expect("read");
         std::fs::remove_file(&tmp).ok();
         assert_eq!(
@@ -3307,7 +3851,9 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         let mut passwords = HashMap::new();
         passwords.insert("My NAS".to_string(), "sftppass".to_string());
         let tmp = std::env::temp_dir().join("aeroftp-test-export-crypt.conf");
-        let n = export_rclone(&servers, &passwords, &tmp).expect("export");
+        let n = export_rclone(&servers, &passwords, &tmp)
+            .expect("export")
+            .exported;
         let conf = std::fs::read_to_string(&tmp).expect("read");
         std::fs::remove_file(&tmp).ok();
         assert_eq!(n, 2, "base + crypt remotes:\n{conf}");
@@ -3394,7 +3940,9 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         let mut passwords = HashMap::new();
         passwords.insert("minio".to_string(), "s3secret".to_string());
         let tmp = std::env::temp_dir().join("aeroftp-test-export-s3-crypt-alias.conf");
-        let n = export_rclone(&servers, &passwords, &tmp).expect("export");
+        let n = export_rclone(&servers, &passwords, &tmp)
+            .expect("export")
+            .exported;
         let conf = std::fs::read_to_string(&tmp).expect("read");
         std::fs::remove_file(&tmp).ok();
         assert!(n >= 2, "s3 + alias + crypt: {n}\n{conf}");

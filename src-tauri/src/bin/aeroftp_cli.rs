@@ -35248,8 +35248,33 @@ async fn cmd_export_rclone(
     };
 
     match export_rclone(&exportable, &collected.passwords, &target_path) {
-        Ok(count) => {
-            emit_export_success(json, "rclone.conf", count, &target_path, &collected.skipped);
+        Ok(outcome) => {
+            // Two lists of refusals reach the operator as one: the profiles
+            // this command filtered out, and the ones the exporter itself
+            // could not write (an unaddressable Zoho region, a Zoho whose
+            // root folder is unknown, a crypt name already taken).
+            let mut skipped = collected.skipped.clone();
+            skipped.extend(
+                outcome
+                    .skipped
+                    .iter()
+                    .map(|s| (s.name.clone(), s.reason.clone())),
+            );
+            if outcome.exported == 0 {
+                // Nothing usable was written. This used to print a success
+                // envelope and exit 0, while the adjacent "nothing selected"
+                // case exits 4: identical outcome for the operator, opposite
+                // contract for anything scripted on top of it.
+                emit_empty_export(json, format, &skipped);
+                return 4;
+            }
+            emit_export_success(
+                json,
+                "rclone.conf",
+                outcome.exported,
+                &target_path,
+                &skipped,
+            );
             0
         }
         Err(e) => {

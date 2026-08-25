@@ -1027,6 +1027,29 @@ pub async fn export_bridge_config(
         serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {e}"))?;
     let store = CredentialStore::from_cache();
 
+    // What an exporter reports back. Most only count the remotes they wrote;
+    // rclone also names the profiles it refused, so the caller can show them
+    // beside the ones the protocol filter dropped instead of counting a remote
+    // that was never written.
+    trait ExportReport {
+        fn into_export_parts(self) -> (usize, Vec<Value>);
+    }
+    impl ExportReport for usize {
+        fn into_export_parts(self) -> (usize, Vec<Value>) {
+            (self, Vec::new())
+        }
+    }
+    impl ExportReport for rclone_import::RcloneExportOutcome {
+        fn into_export_parts(self) -> (usize, Vec<Value>) {
+            let refused = self
+                .skipped
+                .into_iter()
+                .map(|s| json!({ "name": s.name, "reason": s.reason }))
+                .collect();
+            (self.exported, refused)
+        }
+    }
+
     // Each arm builds the typed Vec for that source, filtering by the
     // supported-protocol set and resolving `server_<id>` secrets.
     macro_rules! run_export {
@@ -1138,7 +1161,14 @@ pub async fn export_bridge_config(
                 }));
             }
             let total = typed.len();
-            let exported = $f(&typed, &passwords, path).map_err(|e| e.to_string())?;
+            // Two kinds of "skipped" reach the same list: the protocol filter
+            // above, and the exporter itself refusing a profile it cannot write
+            // (an unaddressable Zoho region, a crypt name already taken). The
+            // second used to be invisible here and counted as exported.
+            let (exported, refused) = $f(&typed, &passwords, path)
+                .map_err(|e| e.to_string())?
+                .into_export_parts();
+            skipped.extend(refused);
             json!({
                 "exported": exported,
                 "total": total,
