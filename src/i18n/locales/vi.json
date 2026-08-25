@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Dán khóa API từ hồ sơ Filen CLI của bạn để bỏ qua mã 2FA mỗi lần kết nối lại. Vẫn cần mật khẩu tài khoản: nó giải mã các tệp của bạn từ đầu đến cuối. Sau khi lưu, khóa được lưu trữ mã hóa trong kho và không hiển thị lại ở đây (giống như bí mật 2FA của bạn); AeroFTP tự động sử dụng lại. Khi chỉnh sửa, để trống để giữ khóa đã lưu.",
             "manualTotalStorage": "Tổng dung lượng (thủ công)",
             "manualTotalStoragePlaceholder": "vd. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Không bắt buộc. Nhập giới hạn bằng số của gói/tài khoản và chọn đơn vị. Chỉ được dùng khi nhà cung cấp không có API hạn mức tổng; tổng dung lượng của nhà cung cấp luôn được ưu tiên.",
+            "manualTotalStorageHint": "Tùy chọn. Nhập giới hạn dạng số của gói hoặc tài khoản và chọn đơn vị. Chỉ dùng khi nhà cung cấp không có API tổng dung lượng; tổng dung lượng do nhà cung cấp báo luôn được ưu tiên.",
             "autoScanUsedOnConnect": "Tính dung lượng đã dùng khi kết nối",
             "autoScanUsedOnConnectHint": "Chỉ dành cho các backend không có API dung lượng đã dùng (FTP, S3, WebDAV). Mặc định tắt: một cây lớn (vd. một dự án web) được duyệt đệ quy, có thể chậm. Nếu không, hãy dùng tác vụ trên StatusBar khi cần.",
             "saveAsNewProfile": "Lưu thành hồ sơ mới",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Đường dẫn từ xa mặc định (ví dụ: / hoặc DCIM)",
             "mtpSaveRequiresDevice": "Phát hiện và chọn một thiết bị để bật Lưu.",
             "mtpSelectPlaceholder": "Chọn một thiết bị...",
-            "mtpSelectPlaceholderEmpty": "Chưa có thiết bị nào — nhấp Phát hiện",
+            "mtpSelectPlaceholderEmpty": "Chưa có thiết bị nào, nhấp Phát hiện",
             "mtpNotAttachedTitle": "Thiết bị chưa được kết nối",
             "mtpNotAttached": "Cắm thiết bị và bật chế độ Truyền tệp, sau đó thử lại.",
             "discovery": {
                 "fetch": "Lấy",
                 "fetching": "Đang lấy...",
                 "refresh": "Làm mới",
-                "none": "Không có đích nào được trả về. Bạn vẫn có thể nhập thủ công một đích.",
-                "found": "Đã tìm thấy {count} đích có thể truy cập. Nhập để tìm kiếm hoặc chọn một đích."
+                "none": "Không có đích nào được trả về. Bạn vẫn có thể nhập thủ công.",
+                "found": "Đã tìm thấy {count} đích có thể truy cập. Nhập để tìm kiếm hoặc chọn một mục."
             }
         },
         "browser": {
@@ -1771,7 +1771,7 @@
             "koofrDesc": "Koofr Cloud (10 GB miễn phí)",
             "koofrTooltip": "Koofr - dịch vụ lưu trữ đám mây Slovenia tập trung vào quyền riêng tư với 10 GB miễn phí, cũng có thể truy cập qua WebDAV",
             "yandexdiskDesc": "Yandex Disk (5 GB miễn phí)",
-            "yandexdiskTooltip": "Yandex Disk – lưu trữ đám mây của Nga với 5 GB miễn phí, xác thực bằng token OAuth2",
+            "yandexdiskTooltip": "Yandex Disk - lưu trữ đám mây của Nga với 5 GB miễn phí, xác thực bằng token OAuth2",
             "opendriveDesc": "OpenDrive Cloud (5 GB miễn phí)",
             "opendriveTooltip": "OpenDrive - 5 GB lưu trữ đám mây miễn phí, xác thực bằng tên người dùng và mật khẩu",
             "opendriveAuthHelp": "OpenDrive sử dụng đăng nhập trực tiếp bằng tên người dùng và mật khẩu trên dev.opendrive.com. Không cần khóa ứng dụng.",
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Do máy chủ cung cấp",
             "readOnly": "Chỉ đọc",
             "hidden": "Ẩn",
-            "hiddenIsNameBased": "Tren he thong nay, mot tep bi an do ten cua no chu khong phai do thuoc tinh: hay doi ten de bat dau bang dau cham.",
+            "hiddenIsNameBased": "Trên hệ thống này, một tệp bị ẩn do tên của nó chứ không phải do thuộc tính: hãy đổi tên để bắt đầu bằng dấu chấm.",
             "contains": "Chứa",
             "foldersOnly": "Chỉ thư mục",
             "location": "Vị trí",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Nhị phân",
             "hashOutputLength": "Độ dài đầu ra BLAKE3 (byte)",
-            "hashOutputLengthHint": "1–1024 · mặc định 32",
+            "hashOutputLengthHint": "1-1024 · mặc định 32",
             "hashDropHint": "Thả tệp vào thẻ này để tính hash"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Điểm đánh dấu từ xa (.aerocrypt.tsv) bị thiếu và đã được dựng lại từ kho khóa cục bộ. Đừng xóa nó lần nữa trừ khi bạn chuyển sang chế độ không tiêu đề (headerless): xóa lần thứ hai cộng với mất kho khóa sẽ khóa bạn ở ngoài vĩnh viễn.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Loại mã hóa và mật khẩu được đặt một lần và không thể thay đổi sau đó: các tệp đã mã hóa sẽ không thể đọc được.",
             "lockedNote": "Loại mã hóa và thông tin đăng nhập đã bị khóa: lớp phủ này đã chứa dữ liệu mã hóa.",
             "addToExistingWarn": "Khi bật lớp phủ trên một hồ sơ hiện có: mọi tập tin văn bản thuần đã có trên máy từ xa này vẫn không được mã hóa và sẽ hiển thị như một hỗn hợp không thể giải mã. Hãy dùng một máy từ xa trống.",
-            "scopeHint": "Đường dẫn lớp phủ xác định phạm vi được mã hóa. Đường dẫn từ xa chỉ chọn nơi bắt đầu duyệt; đường dẫn cục bộ không bao giờ thay đổi mã hóa.",
+            "scopeHint": "Đường dẫn Overlay xác định phạm vi được mã hóa. Đường dẫn từ xa chỉ chọn nơi bắt đầu duyệt; Đường dẫn cục bộ không bao giờ thay đổi việc mã hóa.",
             "overlaysPathLockedNote": "Đường dẫn Overlay đã bị khóa: đây là mỏ neo mã hóa và không thể thay đổi sau khi overlay được liên kết.",
             "remotePathMustReachOverlay": "Đường dẫn từ xa phải là Đường dẫn Overlay ({path}) hoặc một trong các thư mục cha của nó, nếu không thư mục đã mã hóa sẽ nằm ngoài phiên này.",
             "overlaysSection": "Lớp bọc / Overlay",

@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Fügen Sie den API-Schlüssel aus Ihrem Filen-CLI-Profil ein, um den 2FA-Code bei jeder erneuten Verbindung zu überspringen. Das Kontopasswort ist weiterhin erforderlich: Es entschlüsselt Ihre Dateien Ende-zu-Ende. Nach dem Speichern wird der Schlüssel verschlüsselt im Tresor abgelegt und hier nicht mehr angezeigt (wie Ihr 2FA-Geheimnis); AeroFTP verwendet ihn automatisch wieder. Lassen Sie das Feld beim Bearbeiten leer, um den gespeicherten Schlüssel beizubehalten.",
             "manualTotalStorage": "Gesamtspeicher (manuell)",
             "manualTotalStoragePlaceholder": "z. B. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Optional. Geben Sie ein numerisches Limit für Tarif/Konto ein und wählen Sie die Einheit. Wird nur verwendet, wenn der Anbieter keine API für das Gesamtkontingent hat; der eigene Gesamtwert des Anbieters hat immer Vorrang.",
+            "manualTotalStorageHint": "Optional. Geben Sie das zahlenmäßige Limit des Tarifs oder Kontos ein und wählen Sie die Einheit. Wird nur verwendet, wenn der Anbieter keine API für das Gesamtkontingent hat; der vom Anbieter gemeldete Gesamtwert hat immer Vorrang.",
             "autoScanUsedOnConnect": "Belegten Speicher beim Verbinden berechnen",
             "autoScanUsedOnConnectHint": "Nur für Backends ohne API für belegten Speicher (FTP, S3, WebDAV). Standardmäßig deaktiviert: ein großer Baum (z. B. ein Webprojekt) wird rekursiv durchlaufen, was langsam sein kann. Verwenden Sie andernfalls die StatusBar-Aktion bei Bedarf.",
             "saveAsNewProfile": "Als neues Profil speichern",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Standard-Remote-Pfad (z. B. / oder DCIM)",
             "mtpSaveRequiresDevice": "Erkenne und wähle ein Gerät aus, um Speichern zu aktivieren.",
             "mtpSelectPlaceholder": "Gerät auswählen...",
-            "mtpSelectPlaceholderEmpty": "Noch keine Geräte – auf Erkennen klicken",
+            "mtpSelectPlaceholderEmpty": "Noch keine Geräte, auf Erkennen klicken",
             "mtpNotAttachedTitle": "Gerät nicht verbunden",
-            "mtpNotAttached": "Schließe das Gerät an und aktiviere den Dateiübertragungsmodus, versuche es dann erneut.",
+            "mtpNotAttached": "Schließen Sie das Gerät an, aktivieren Sie den Dateiübertragungsmodus und versuchen Sie es erneut.",
             "discovery": {
                 "fetch": "Abrufen",
                 "fetching": "Wird abgerufen...",
                 "refresh": "Aktualisieren",
-                "none": "Es wurden keine Ziele zurückgegeben. Sie können weiterhin eines manuell eingeben.",
-                "found": "{count} erreichbare Ziele gefunden. Tippen Sie zum Suchen oder wählen Sie eines aus."
+                "none": "Es wurden keine Ziele zurückgegeben. Sie können trotzdem eines manuell eingeben.",
+                "found": "{count} erreichbare Ziele gefunden. Tippen Sie, um zu suchen, oder wählen Sie eines aus."
             }
         },
         "browser": {
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binär",
             "hashOutputLength": "BLAKE3-Ausgabelänge (Bytes)",
-            "hashOutputLengthHint": "1–1024 · Standard 32",
+            "hashOutputLengthHint": "1-1024 · Standard 32",
             "hashDropHint": "Datei auf diesen Tab ziehen, um sie zu hashen"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Abweichung: Dieses Kit/Marker passt nicht zur Keystore-Config des aktiven Profils.",
             "verifyKitKind": "Erkannter Eingabetyp: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Der Remote-Marker (.aerocrypt.tsv) fehlte und wurde aus dem lokalen Schlüsselspeicher neu erstellt. Löschen Sie ihn nicht erneut, es sei denn, Sie wechseln in den Headerless-Modus: ein zweites Löschen zusammen mit dem Verlust des Schlüsselspeichers sperrt Sie dauerhaft aus.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Verschlüsselungstyp und Passwort werden einmalig festgelegt und können später nicht geändert werden: die bereits verschlüsselten Dateien würden unlesbar.",
             "lockedNote": "Verschlüsselungstyp und Zugangsdaten sind gesperrt: dieses Overlay enthält bereits verschlüsselte Daten.",
             "addToExistingWarn": "Beim Aktivieren eines Overlays für ein vorhandenes Profil: bereits auf diesem Remote vorhandene Klartextdateien bleiben unverschlüsselt und erscheinen als nicht entschlüsselbare Mischung. Verwenden Sie ein leeres Remote.",
-            "scopeHint": "Der Overlays-Pfad legt den verschlüsselten Bereich fest. Der Remote-Pfad bestimmt nur, wo das Durchsuchen beginnt; der lokale Pfad ändert niemals die Verschlüsselung.",
+            "scopeHint": "Der Overlay-Pfad legt den verschlüsselten Bereich fest. Der Remote-Pfad bestimmt nur, wo das Durchsuchen beginnt; der lokale Pfad ändert die Verschlüsselung nie.",
             "overlaysPathLockedNote": "Der Overlay-Pfad ist gesperrt: Er ist der Verschlüsselungsanker und kann nach dem Binden des Overlays nicht mehr geändert werden.",
             "remotePathMustReachOverlay": "Der Remote-Pfad muss der Overlay-Pfad ({path}) oder einer seiner übergeordneten Ordner sein, sonst liegt der verschlüsselte Ordner außerhalb dieser Sitzung.",
             "overlaysSection": "Wrapper / Overlays",

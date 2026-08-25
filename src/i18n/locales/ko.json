@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "재연결할 때마다 2FA 코드를 건너뛰려면 Filen CLI 프로필의 API 키를 붙여넣으세요. 계정 비밀번호는 여전히 필요합니다: 파일을 종단 간 복호화합니다. 저장하면 키는 볼트에 암호화되어 저장되며 여기에 다시 표시되지 않습니다(2FA 비밀과 동일). AeroFTP가 자동으로 재사용합니다. 편집 시 저장된 키를 유지하려면 비워 두세요.",
             "manualTotalStorage": "전체 저장 용량 (수동)",
             "manualTotalStoragePlaceholder": "예: 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "선택 사항입니다. 요금제/계정의 숫자 제한을 입력하고 단위를 선택하세요. 제공업체에 총 할당량 API가 없을 때만 사용되며, 제공업체가 제공하는 총량이 항상 우선합니다.",
+            "manualTotalStorageHint": "선택 사항입니다. 요금제나 계정의 최대 용량을 숫자로 입력하고 단위를 선택하세요. 공급자가 전체 할당량 API를 제공하지 않을 때만 사용되며, 공급자가 보고한 전체 용량이 항상 우선합니다.",
             "autoScanUsedOnConnect": "연결 시 사용 용량 계산",
             "autoScanUsedOnConnectHint": "사용 용량 API가 없는 백엔드(FTP, S3, WebDAV)에만 해당됩니다. 기본적으로 꺼져 있습니다: 큰 트리(예: 웹 프로젝트)를 재귀적으로 탐색하므로 느릴 수 있습니다. 그 외에는 필요할 때 StatusBar 작업을 사용하세요.",
             "saveAsNewProfile": "새 프로필로 저장",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "기본 원격 경로(예: / 또는 DCIM)",
             "mtpSaveRequiresDevice": "저장을 사용하려면 장치를 감지하고 선택하세요.",
             "mtpSelectPlaceholder": "장치 선택...",
-            "mtpSelectPlaceholderEmpty": "아직 장치가 없습니다 — 감지를 클릭하세요",
+            "mtpSelectPlaceholderEmpty": "아직 장치가 없습니다. 감지를 클릭하세요",
             "mtpNotAttachedTitle": "장치가 연결되지 않았습니다",
-            "mtpNotAttached": "장치를 연결하고 파일 전송 모드를 활성화한 다음 다시 시도하세요.",
+            "mtpNotAttached": "기기를 연결하고 파일 전송 모드를 활성화한 다음 다시 시도하세요.",
             "discovery": {
                 "fetch": "가져오기",
                 "fetching": "가져오는 중...",
                 "refresh": "새로 고침",
                 "none": "반환된 대상이 없습니다. 직접 입력할 수도 있습니다.",
-                "found": "접근 가능한 대상 {count}개를 찾았습니다. 검색어를 입력하거나 하나를 선택하세요."
+                "found": "접근 가능한 대상 {count}개를 찾았습니다. 입력하여 검색하거나 하나를 선택하세요."
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "서버에서 제공됨",
             "readOnly": "읽기 전용",
             "hidden": "숨김",
-            "hiddenIsNameBased": "이 시스템에서 파일은 속성이 아니라 이름 때문에 숨겨집니다. 점으로 시작하도록 이름을 바꾸세요.",
+            "hiddenIsNameBased": "이 시스템에서는 파일이 속성이 아니라 이름으로 숨겨집니다. 이름을 점으로 시작하도록 변경하세요.",
             "contains": "포함",
             "foldersOnly": "폴더만",
             "location": "위치",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "이진",
             "hashOutputLength": "BLAKE3 출력 길이(바이트)",
-            "hashOutputLengthHint": "1–1024 · 기본값 32",
+            "hashOutputLengthHint": "1-1024 · 기본값 32",
             "hashDropHint": "이 탭에 파일을 끌어다 놓으면 해시를 계산합니다"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "불일치: 이 키트/마커가 활성 프로필 키스토어 설정과 일치하지 않습니다.",
             "verifyKitKind": "감지된 입력: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "원격 마커 (.aerocrypt.tsv)가 없어서 로컬 키스토어에서 다시 만들었습니다. 헤더리스(headerless) 모드로 전환하는 경우가 아니라면 다시 삭제하지 마세요. 두 번째 삭제와 키스토어 분실이 겹치면 영구적으로 열 수 없게 됩니다.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "암호화 유형과 비밀번호는 한 번만 설정되며 이후 변경할 수 없습니다. 이미 암호화된 파일은 읽을 수 없게 됩니다.",
             "lockedNote": "암호화 유형과 자격 증명이 잠겨 있습니다. 이 오버레이에는 이미 암호화된 데이터가 있습니다.",
             "addToExistingWarn": "기존 프로필에 오버레이를 활성화하면, 이 원격에 이미 있는 일반 텍스트 파일은 암호화되지 않은 채로 남아 복호화할 수 없는 혼합 상태로 표시됩니다. 빈 원격을 사용하세요.",
-            "scopeHint": "오버레이 경로는 암호화 범위를 정의합니다. 원격 경로는 탐색 시작 위치만 선택하며, 로컬 경로는 암호화를 변경하지 않습니다.",
+            "scopeHint": "오버레이 경로가 암호화 범위를 정합니다. 원격 경로는 탐색이 시작되는 위치만 정하며, 로컬 경로는 암호화를 바꾸지 않습니다.",
             "overlaysPathLockedNote": "오버레이 경로가 잠겨 있습니다. 암호화의 기준점이므로 오버레이가 연결된 뒤에는 변경할 수 없습니다.",
             "remotePathMustReachOverlay": "원격 경로는 오버레이 경로({path}) 또는 그 상위 폴더여야 합니다. 그렇지 않으면 암호화된 폴더가 이 세션 범위를 벗어납니다.",
             "overlaysSection": "래퍼 / 오버레이",

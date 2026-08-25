@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Pegue a clave API do seu perfil de Filen CLI para omitir o código 2FA en cada reconexión. O contrasinal da conta segue sendo necesario: descifra os seus ficheiros de extremo a extremo. Unha vez gardada, a clave almacénase cifrada no cofre e xa non se mostra aquí (como o seu segredo 2FA); AeroFTP reutilízaa automaticamente. Ao editar, deixe en branco para conservar a clave gardada.",
             "manualTotalStorage": "Almacenamento total (manual)",
             "manualTotalStoragePlaceholder": "p. ex. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Opcional. Introduza un límite numérico do plan ou da conta e escolla a súa unidade. Só se usa cando o provedor non ten unha API de cota total; o total propio do provedor sempre ten prioridade.",
+            "manualTotalStorageHint": "Opcional. Introduce o límite numérico do plan ou da conta e escolle a súa unidade. Só se usa cando o provedor non ten API de cota total; o total do propio provedor ten sempre prioridade.",
             "autoScanUsedOnConnect": "Calcular o almacenamento usado ao conectar",
             "autoScanUsedOnConnectHint": "Só para backends sen API de espazo usado (FTP, S3, WebDAV). Desactivado por defecto: unha árbore grande (p. ex. un proxecto web) percórrese de forma recursiva, o que pode ser lento. En caso contrario, use a acción da StatusBar cando o precise.",
             "saveAsNewProfile": "Gardar como novo perfil",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Ruta remota predeterminada (p. ex. / ou DCIM)",
             "mtpSaveRequiresDevice": "Detecta e selecciona un dispositivo para activar Gardar.",
             "mtpSelectPlaceholder": "Selecciona un dispositivo...",
-            "mtpSelectPlaceholderEmpty": "Aínda non hai dispositivos — fai clic en Detectar",
+            "mtpSelectPlaceholderEmpty": "Aínda non hai dispositivos, fai clic en Detectar",
             "mtpNotAttachedTitle": "Dispositivo non conectado",
-            "mtpNotAttached": "Conecta o dispositivo e activa o modo de transferencia de ficheiros, despois téntao de novo.",
+            "mtpNotAttached": "Conecta o dispositivo, activa o modo de transferencia de ficheiros e téntao de novo.",
             "discovery": {
                 "fetch": "Obter",
                 "fetching": "Obtendo...",
                 "refresh": "Actualizar",
-                "none": "Non se devolveu ningún destino. Aínda pode introducir un manualmente.",
-                "found": "Atopáronse {count} destinos accesibles. Escriba para buscar ou seleccione un."
+                "none": "Non se devolveu ningún destino. Aínda así podes introducir un manualmente.",
+                "found": "Atopáronse {count} destinos accesibles. Escribe para buscar ou selecciona un."
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "notAvailable": "Non dispoñible",
             "readOnly": "Só lectura",
             "hidden": "Oculto",
-            "hiddenIsNameBased": "Neste sistema un ficheiro esta agochado polo seu nome, non por un atributo: cambialle o nome para que comece cun punto.",
+            "hiddenIsNameBased": "Neste sistema un ficheiro está agochado polo seu nome, non por un atributo: renoméao para que comece cun punto.",
             "contains": "Contén",
             "foldersOnly": "Só cartafoles",
             "location": "Localización",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binario",
             "hashOutputLength": "Lonxitude de saída BLAKE3 (bytes)",
-            "hashOutputLengthHint": "1–1024 · predeterminado 32",
+            "hashOutputLengthHint": "1-1024 · predeterminado 32",
             "hashDropHint": "Solta un ficheiro nesta lapela para calcular o seu hash"
         },
         "dialog": {
@@ -5285,7 +5285,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "O marcador remoto (.aerocrypt.tsv) faltaba e reconstruíuse a partir do almacén de chaves local. Non o borres outra vez a menos que cambies ao modo sen cabeceira (headerless): borralo dúas veces e perder o almacén de chaves déixate fóra para sempre.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5353,7 +5353,7 @@
             "immutableWarn": "O tipo de cifrado e o contrasinal defínense unha soa vez e non se poden cambiar despois: os ficheiros xa cifrados quedarían ilexibles.",
             "lockedNote": "O tipo de cifrado e as credenciais están bloqueados: esta capa xa contén datos cifrados.",
             "addToExistingWarn": "Ao activar unha superposición nun perfil existente: os ficheiros en texto plano que xa haxa neste remoto quedan sen cifrar e amosaranse como unha mestura indescifrable. Usa un remoto baleiro.",
-            "scopeHint": "A ruta das superposicións define o ámbito cifrado. A ruta remota só escolle onde comeza a exploración; a ruta local nunca cambia o cifrado.",
+            "scopeHint": "A Ruta de superposicións define o ámbito cifrado. A Ruta Remota só escolle onde comeza a navegación; a Ruta Local nunca cambia o cifrado.",
             "overlaysPathLockedNote": "A ruta de superposicións está bloqueada: é a áncora do cifrado e non se pode cambiar unha vez vinculada a superposición.",
             "remotePathMustReachOverlay": "A ruta remota debe ser a ruta de superposicións ({path}) ou unha das súas carpetas superiores; en caso contrario, o cartafol cifrado queda fóra desta sesión.",
             "overlaysSection": "Envoltorios / Overlays",

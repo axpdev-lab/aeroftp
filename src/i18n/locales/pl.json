@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Wklej klucz API ze swojego profilu Filen CLI, aby pomijać kod 2FA przy każdym ponownym połączeniu. Hasło konta jest nadal wymagane: odszyfrowuje ono Twoje pliki od końca do końca. Po zapisaniu klucz jest przechowywany zaszyfrowany w sejfie i nie jest już tutaj wyświetlany (podobnie jak sekret 2FA); AeroFTP używa go automatycznie ponownie. Podczas edycji pozostaw puste, aby zachować zapisany klucz.",
             "manualTotalStorage": "Łączna pojemność (ręcznie)",
             "manualTotalStoragePlaceholder": "np. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Opcjonalne. Wprowadź liczbowy limit planu/konta i wybierz jego jednostkę. Używany tylko wtedy, gdy dostawca nie oferuje API łącznego limitu; łączna wartość dostawcy zawsze ma pierwszeństwo.",
+            "manualTotalStorageHint": "Opcjonalne. Podaj liczbowy limit planu lub konta i wybierz jednostkę. Używane tylko wtedy, gdy dostawca nie udostępnia API całkowitego limitu; wartość podana przez dostawcę zawsze ma pierwszeństwo.",
             "autoScanUsedOnConnect": "Oblicz zajęte miejsce przy łączeniu",
             "autoScanUsedOnConnectHint": "Tylko dla backendów bez API zajętego miejsca (FTP, S3, WebDAV). Domyślnie wyłączone: duże drzewo (np. projekt webowy) jest przeszukiwane rekurencyjnie, co może być wolne. W przeciwnym razie użyj akcji w pasku StatusBar na żądanie.",
             "saveAsNewProfile": "Zapisz jako nowy profil",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Domyślna ścieżka zdalna (np. / lub DCIM)",
             "mtpSaveRequiresDevice": "Wykryj i wybierz urządzenie, aby włączyć Zapisz.",
             "mtpSelectPlaceholder": "Wybierz urządzenie...",
-            "mtpSelectPlaceholderEmpty": "Brak urządzeń — kliknij Wykryj",
+            "mtpSelectPlaceholderEmpty": "Brak urządzeń, kliknij Wykryj",
             "mtpNotAttachedTitle": "Urządzenie nie jest połączone",
-            "mtpNotAttached": "Podłącz urządzenie i włącz tryb przesyłania plików, a następnie spróbuj ponownie.",
+            "mtpNotAttached": "Podłącz urządzenie, włącz tryb przesyłania plików i spróbuj ponownie.",
             "discovery": {
                 "fetch": "Pobierz",
                 "fetching": "Pobieranie...",
                 "refresh": "Odśwież",
-                "none": "Nie zwrócono żadnych miejsc docelowych. Nadal możesz wprowadzić je ręcznie.",
-                "found": "Znaleziono {count} dostępnych miejsc docelowych. Zacznij pisać, aby wyszukać, lub wybierz jedno."
+                "none": "Nie zwrócono żadnych celów. Nadal możesz wpisać jeden ręcznie.",
+                "found": "Znaleziono {count} dostępnych celów. Pisz, aby wyszukać, lub wybierz jeden."
             }
         },
         "browser": {
@@ -1771,7 +1771,7 @@
             "koofrDesc": "Koofr Cloud (10 GB bezpłatnie)",
             "koofrTooltip": "Koofr - słoweńska chmura skupiona na prywatności z 10 GB bezpłatnie, dostępna również przez WebDAV",
             "yandexdiskDesc": "Yandex Disk (5 GB za darmo)",
-            "yandexdiskTooltip": "Yandex Disk – rosyjski magazyn w chmurze z 5 GB za darmo, uwierzytelnianie tokenem OAuth2",
+            "yandexdiskTooltip": "Yandex Disk - rosyjski magazyn w chmurze z 5 GB za darmo, uwierzytelnianie tokenem OAuth2",
             "opendriveDesc": "OpenDrive Cloud (5 GB za darmo)",
             "opendriveTooltip": "OpenDrive - 5 GB darmowej przestrzeni w chmurze, uwierzytelnianie nazwą użytkownika i hasłem",
             "opendriveAuthHelp": "OpenDrive używa bezpośredniego logowania nazwą użytkownika i hasłem na dev.opendrive.com. Klucz aplikacji nie jest wymagany.",
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Dostarczone przez serwer",
             "readOnly": "Tylko do odczytu",
             "hidden": "Ukryty",
-            "hiddenIsNameBased": "W tym systemie plik jest ukryty ze wzgledu na swoja nazwe, a nie atrybut: zmien nazwe tak, aby zaczynala sie od kropki.",
+            "hiddenIsNameBased": "W tym systemie plik jest ukryty ze względu na swoją nazwę, a nie atrybut: zmień nazwę tak, aby zaczynała się kropką.",
             "contains": "Zawiera",
             "foldersOnly": "Tylko foldery",
             "location": "Lokalizacja",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binarny",
             "hashOutputLength": "Długość wyjścia BLAKE3 (bajty)",
-            "hashOutputLengthHint": "1–1024 · domyślnie 32",
+            "hashOutputLengthHint": "1-1024 · domyślnie 32",
             "hashDropHint": "Upuść plik na tę kartę, aby obliczyć jego hash"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Niezgodność: ten kit/marker nie pasuje do konfiguracji keystore aktywnego profilu.",
             "verifyKitKind": "Wykryty typ: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Zdalny znacznik (.aerocrypt.tsv) był nieobecny i został odtworzony z lokalnego magazynu kluczy. Nie usuwaj go ponownie, chyba że przechodzisz na tryb bez nagłówka (headerless): drugie usunięcie wraz z utratą magazynu kluczy blokuje dostęp na zawsze.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Typ szyfrowania i hasło ustawia się raz i nie można ich później zmienić: już zaszyfrowane pliki stałyby się nieczytelne.",
             "lockedNote": "Typ szyfrowania i poświadczenia są zablokowane: ta nakładka zawiera już zaszyfrowane dane.",
             "addToExistingWarn": "Włączenie nakładki w istniejącym profilu: wszelkie pliki tekstem jawnym już obecne w tym zdalnym miejscu pozostają niezaszyfrowane i pojawią się jako nieodszyfrowalna mieszanka. Użyj pustego zdalnego miejsca.",
-            "scopeHint": "Ścieżka nakładek określa zaszyfrowany zakres. Ścieżka zdalna wybiera tylko miejsce rozpoczęcia przeglądania; ścieżka lokalna nigdy nie zmienia szyfrowania.",
+            "scopeHint": "Ścieżka nakładek wyznacza zaszyfrowany zakres. Ścieżka zdalna wybiera tylko miejsce rozpoczęcia przeglądania; ścieżka lokalna nigdy nie zmienia szyfrowania.",
             "overlaysPathLockedNote": "Ścieżka nakładek jest zablokowana: stanowi kotwicę szyfrowania i nie można jej zmienić po powiązaniu nakładki.",
             "remotePathMustReachOverlay": "Ścieżka zdalna musi być ścieżką nakładek ({path}) lub jednym z jej folderów nadrzędnych, w przeciwnym razie zaszyfrowany folder znajdzie się poza tą sesją.",
             "overlaysSection": "Otoczki / Nakładki",

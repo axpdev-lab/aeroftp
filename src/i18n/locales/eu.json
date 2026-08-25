@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Itsatsi zure Filen CLI profileko API gakoa berriz konektatzean 2FA kodea saltatzeko. Kontuaren pasahitza beharrezkoa da oraindik: zure fitxategiak muturretik muturrera deszifratzen ditu. Behin gordeta, gakoa kutxan zifratuta gordetzen da eta ez da hemen berriz erakusten (zure 2FA sekretua bezala); AeroFTP-k automatikoki berrerabiltzen du. Editatzean, utzi hutsik gordetako gakoa mantentzeko.",
             "manualTotalStorage": "Biltegiratze osoa (eskuz)",
             "manualTotalStoragePlaceholder": "adib. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Aukerakoa. Sartu planaren/kontuaren zenbakizko muga eta aukeratu unitatea. Hornitzaileak guztizko kuotaren APIrik ez duenean soilik erabiltzen da; hornitzailearen guztizkoak beti du lehentasuna.",
+            "manualTotalStorageHint": "Aukerakoa. Sartu planaren edo kontuaren muga zenbakizkoa eta hautatu unitatea. Hornitzaileak kuota osoaren APIrik ez duenean bakarrik erabiltzen da; hornitzailearen guztizkoak beti du lehentasuna.",
             "autoScanUsedOnConnect": "Kalkulatu erabilitako biltegiratzea konektatzean",
             "autoScanUsedOnConnectHint": "Erabilitako espazioaren API-rik ez duten backend-entzat soilik (FTP, S3, WebDAV). Lehenetsita desaktibatuta: zuhaitz handi bat (adib. web proiektu bat) modu errekurtsiboan zeharkatzen da, eta hori motela izan daiteke. Bestela, erabili StatusBar ekintza behar denean.",
             "saveAsNewProfile": "Gorde profil berri gisa",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Urruneko bide lehenetsia (adib. / edo DCIM)",
             "mtpSaveRequiresDevice": "Detektatu eta hautatu gailu bat Gorde gaitzeko.",
             "mtpSelectPlaceholder": "Hautatu gailu bat...",
-            "mtpSelectPlaceholderEmpty": "Oraindik gailurik ez — egin klik Detektatu-n",
+            "mtpSelectPlaceholderEmpty": "Oraindik gailurik ez, egin klik Detektatu-n",
             "mtpNotAttachedTitle": "Gailua ez dago konektatuta",
-            "mtpNotAttached": "Konektatu gailua eta gaitu fitxategi-transferentzia modua, eta saiatu berriro.",
+            "mtpNotAttached": "Konektatu gailua, gaitu fitxategi-transferentzia modua eta saiatu berriro.",
             "discovery": {
                 "fetch": "Eskuratu",
                 "fetching": "Eskuratzen...",
                 "refresh": "Freskatu",
-                "none": "Ez da helbururik itzuli. Hala ere, bat eskuz sar dezakezu.",
-                "found": "{count} helburu erabilgarri aurkitu dira. Idatzi bilatzeko edo hautatu bat."
+                "none": "Ez da helbururik itzuli. Hala ere, eskuz sar dezakezu bat.",
+                "found": "{count} helburu eskuragarri aurkitu dira. Idatzi bilatzeko edo hautatu bat."
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "notAvailable": "Ez dago eskuragarri",
             "readOnly": "Irakurtzeko soilik",
             "hidden": "Ezkutatua",
-            "hiddenIsNameBased": "Sistema honetan fitxategi bat bere izenagatik dago ezkutatuta, ez atributu batengatik: aldatu izena puntu batekin has dadin.",
+            "hiddenIsNameBased": "Sistema honetan fitxategi bat bere izenagatik dago ezkutatuta, ez atributu batengatik: aldatu izena puntu batez has dadin.",
             "contains": "Edukia",
             "foldersOnly": "Karpetak soilik",
             "location": "Kokapena",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Bitarra",
             "hashOutputLength": "BLAKE3 irteeraren luzera (byte)",
-            "hashOutputLengthHint": "1–1024 · lehenetsia 32",
+            "hashOutputLengthHint": "1-1024 · lehenetsia 32",
             "hashDropHint": "Jaregin fitxategi bat fitxa honetan hash-a kalkulatzeko"
         },
         "dialog": {
@@ -5285,7 +5285,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Urruneko markatzailea (.aerocrypt.tsv) falta zen eta tokiko gako biltegitik berreraiki da. Ez ezabatu berriro goibururik gabeko (headerless) modura aldatzen ez bazara: bigarren aldiz ezabatzeak eta gako biltegia galtzeak betiko uzten zaitu kanpoan.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5353,7 +5353,7 @@
             "immutableWarn": "Zifratze mota eta pasahitza behin ezartzen dira eta ezin dira gero aldatu: dagoeneko zifratutako fitxategiak irakurtezin bihurtuko lirateke.",
             "lockedNote": "Zifratze mota eta kredentzialak blokeatuta daude: geruza honek dagoeneko zifratutako datuak ditu.",
             "addToExistingWarn": "Lehendik dagoen profil batean gainjartzea gaitzean: urruneko honetan dauden testu lауneko fitxategiak zifratu gabe geratzen dira eta deszifratu ezin den nahaste gisa agertuko dira. Erabili urruneko huts bat.",
-            "scopeHint": "Gainjartzeen bideak zifratutako esparrua definitzen du. Urruneko bideak arakatzea non hasten den soilik aukeratzen du; tokiko bideak ez du inoiz zifratzea aldatzen.",
+            "scopeHint": "Gainjarrien bideak zehazten du zifratutako esparrua. Urruneko Bideak nabigazioa non hasten den soilik aukeratzen du; Bide Lokalak ez du inoiz zifratzea aldatzen.",
             "overlaysPathLockedNote": "Gainjarrien bidea blokeatuta dago: enkriptatzearen aingura da eta ezin da aldatu gainjarpena lotu ondoren.",
             "remotePathMustReachOverlay": "Urruneko bideak gainjarrien bidea ({path}) edo haren goragoko karpetaren bat izan behar du; bestela, enkriptatutako karpeta saio honetatik kanpo geratzen da.",
             "overlaysSection": "Bilgarriak / Overlay-ak",

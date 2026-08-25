@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Bandika ufunguo wa API kutoka kwa wasifu wako wa Filen CLI ili kuruka msimbo wa 2FA kila unapounganisha tena. Nenosiri la akaunti bado linahitajika: hufungua faili zako kwa siri kutoka mwanzo hadi mwisho. Mara baada ya kuhifadhiwa, ufunguo huhifadhiwa ukiwa umesimbwa kwenye chumba cha hazina na hauonyeshwi tena hapa (kama siri yako ya 2FA); AeroFTP huutumia tena kiotomatiki. Unapohariri, acha tupu ili kuhifadhi ufunguo uliohifadhiwa.",
             "manualTotalStorage": "Hifadhi jumla (mwenyewe)",
             "manualTotalStoragePlaceholder": "mf. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Si lazima. Weka kikomo cha namba cha mpango/akaunti na uchague kipimo chake. Hutumika tu wakati mtoa huduma hana API ya mgao wa jumla; jumla ya mtoa huduma mwenyewe hupewa kipaumbele kila wakati.",
+            "manualTotalStorageHint": "Si lazima. Weka kikomo cha nambari cha mpango au akaunti na uchague kipimo chake. Hutumika tu wakati mtoa huduma hana API ya kiasi jumla; jumla ya mtoa huduma mwenyewe daima hupewa kipaumbele.",
             "autoScanUsedOnConnect": "Kokotoa hifadhi iliyotumika unapounganisha",
             "autoScanUsedOnConnectHint": "Kwa backend zisizo na API ya nafasi iliyotumika tu (FTP, S3, WebDAV). Imezimwa kwa chaguo-msingi: mti mkubwa (mf. mradi wa wavuti) hupitiwa kwa kujirudia, jambo ambalo linaweza kuwa polepole. Vinginevyo tumia kitendo cha StatusBar unapohitaji.",
             "saveAsNewProfile": "Hifadhi kama wasifu mpya",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Njia chaguo-msingi ya mbali (mf. / au DCIM)",
             "mtpSaveRequiresDevice": "Tambua na uchague kifaa ili kuwasha Hifadhi.",
             "mtpSelectPlaceholder": "Chagua kifaa...",
-            "mtpSelectPlaceholderEmpty": "Bado hakuna vifaa — bofya Tambua",
+            "mtpSelectPlaceholderEmpty": "Bado hakuna vifaa, bofya Tambua",
             "mtpNotAttachedTitle": "Kifaa hakijaunganishwa",
-            "mtpNotAttached": "Chomeka kifaa na uwashe hali ya Uhamishaji Faili, kisha ujaribu tena.",
+            "mtpNotAttached": "Chomeka kifaa, washa hali ya Uhamishaji Faili, kisha ujaribu tena.",
             "discovery": {
                 "fetch": "Leta",
                 "fetching": "Inaleta...",
                 "refresh": "Onyesha upya",
-                "none": "Hakuna maeneo lengwa yaliyorejeshwa. Bado unaweza kuingiza moja mwenyewe.",
-                "found": "Maeneo lengwa {count} yanayofikika yamepatikana. Andika ili kutafuta au uchague moja."
+                "none": "Hakuna shabaha zilizorudishwa. Bado unaweza kuiandika mwenyewe.",
+                "found": "Zimepatikana shabaha {count} zinazofikika. Andika ili kutafuta au chagua moja."
             }
         },
         "browser": {
@@ -1771,7 +1771,7 @@
             "koofrDesc": "Koofr Cloud (10 GB bure)",
             "koofrTooltip": "Koofr - mtandao wa Slovenia unaozingatia faragha na 10 GB bure, pia unaweza kufikia kupitia WebDAV",
             "yandexdiskDesc": "Yandex Disk (5 GB bure)",
-            "yandexdiskTooltip": "Yandex Disk – hifadhi ya wingu ya Kirusi na 5 GB bure, uthibitishaji wa tokeni ya OAuth2",
+            "yandexdiskTooltip": "Yandex Disk - hifadhi ya wingu ya Kirusi na 5 GB bure, uthibitishaji wa tokeni ya OAuth2",
             "opendriveDesc": "OpenDrive Cloud (GB 5 bure)",
             "opendriveTooltip": "OpenDrive - GB 5 za hifadhi ya wingu bure, uthibitishaji kwa jina la mtumiaji na nenosiri",
             "opendriveAuthHelp": "OpenDrive hutumia kuingia moja kwa moja kwa jina la mtumiaji na nenosiri kwenye dev.opendrive.com. Ufunguo wa programu hauhitajiki.",
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Imetolewa na seva",
             "readOnly": "Kusoma tu",
             "hidden": "Iliyofichwa",
-            "hiddenIsNameBased": "Katika mfumo huu faili hufichwa kwa sababu ya jina lake, si kwa sababu ya sifa: badilisha jina lianze na nukta.",
+            "hiddenIsNameBased": "Katika mfumo huu faili hufichwa kutokana na jina lake, si kutokana na sifa: lipe jina jipya lianzalo na nukta.",
             "contains": "Ina",
             "foldersOnly": "Folda pekee",
             "location": "Mahali",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binari",
             "hashOutputLength": "Urefu wa matokeo ya BLAKE3 (baiti)",
-            "hashOutputLengthHint": "1–1024 · chaguomsingi 32",
+            "hashOutputLengthHint": "1-1024 · chaguomsingi 32",
             "hashDropHint": "Dondosha faili kwenye kichupo hiki ili kukokotoa hash yake"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Alama ya mbali (.aerocrypt.tsv) haikuwepo na imejengwa upya kutoka kwa hifadhi ya funguo ya ndani. Usiifute tena isipokuwa unabadili hadi hali isiyo na kichwa (headerless): kufuta mara ya pili pamoja na kupoteza hifadhi ya funguo kunakufunga nje kabisa.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Aina ya usimbaji na nenosiri huwekwa mara moja na haviwezi kubadilishwa baadaye: faili zilizosimbwa tayari zingekuwa hazisomeki.",
             "lockedNote": "Aina ya usimbaji na stakabadhi zimefungwa: safu hii tayari ina data iliyosimbwa.",
             "addToExistingWarn": "Kuwezesha tabaka kwenye wasifu uliopo: faili zozote za maandishi wazi zilizopo tayari kwenye seva hii za mbali zinabaki bila kusimbwa na zitaonekana kama mchanganyiko usioweza kusimbuliwa. Tumia seva ya mbali tupu.",
-            "scopeHint": "Njia ya Tabaka Bainifu huweka wigo uliosimbwa. Njia ya Mbali huchagua tu mahali pa kuanzia kuvinjari; Njia ya Karibu haibadilishi usimbaji kamwe.",
+            "scopeHint": "Njia ya Vifuniko huamua wigo uliosimbwa. Njia ya Mbali huchagua tu mahali kuvinjari kunapoanzia; Njia ya Ndani haibadilishi usimbaji kamwe.",
             "overlaysPathLockedNote": "Njia ya Vifuniko imefungwa: ndiyo nanga ya usimbaji fiche na haiwezi kubadilishwa baada ya kifuniko kuunganishwa.",
             "remotePathMustReachOverlay": "Njia ya mbali lazima iwe Njia ya Vifuniko ({path}) au mojawapo ya folda zake za juu, vinginevyo folda iliyosimbwa fiche itakuwa nje ya kipindi hiki.",
             "overlaysSection": "Vifuniko / Overlays",

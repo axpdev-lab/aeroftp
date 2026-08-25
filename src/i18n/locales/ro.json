@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Lipiți cheia API din profilul dvs. Filen CLI pentru a sări peste codul 2FA la fiecare reconectare. Parola contului este în continuare necesară: decriptează fișierele dvs. cap la cap. După salvare, cheia este stocată criptat în seif și nu mai este afișată aici (la fel ca secretul 2FA); AeroFTP o reutilizează automat. La editare, lăsați gol pentru a păstra cheia salvată.",
             "manualTotalStorage": "Spațiu total (manual)",
             "manualTotalStoragePlaceholder": "ex.: 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Opțional. Introduceți o limită numerică pentru plan/cont și alegeți unitatea. Se utilizează doar când furnizorul nu are un API pentru cota totală; totalul furnizorului are întotdeauna prioritate.",
+            "manualTotalStorageHint": "Opțional. Introdu limita numerică a planului sau a contului și alege unitatea. Se folosește doar când furnizorul nu are un API pentru cota totală; totalul raportat de furnizor are întotdeauna prioritate.",
             "autoScanUsedOnConnect": "Calculează spațiul folosit la conectare",
             "autoScanUsedOnConnectHint": "Doar pentru backend-uri fără API de spațiu folosit (FTP, S3, WebDAV). Dezactivat implicit: un arbore mare (ex.: un proiect web) este parcurs recursiv, ceea ce poate fi lent. În caz contrar, folosește acțiunea din StatusBar la cerere.",
             "saveAsNewProfile": "Salvează ca profil nou",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Cale la distanță implicită (de ex. / sau DCIM)",
             "mtpSaveRequiresDevice": "Detectează și selectează un dispozitiv pentru a activa Salvare.",
             "mtpSelectPlaceholder": "Selectează un dispozitiv...",
-            "mtpSelectPlaceholderEmpty": "Încă niciun dispozitiv — apasă pe Detectează",
+            "mtpSelectPlaceholderEmpty": "Încă niciun dispozitiv, apasă pe Detectează",
             "mtpNotAttachedTitle": "Dispozitiv neconectat",
-            "mtpNotAttached": "Conectează dispozitivul și activează modul Transfer de fișiere, apoi încearcă din nou.",
+            "mtpNotAttached": "Conectează dispozitivul, activează modul Transfer de fișiere, apoi încearcă din nou.",
             "discovery": {
                 "fetch": "Preia",
                 "fetching": "Se preia...",
                 "refresh": "Reîmprospătează",
-                "none": "Nu a fost returnată nicio destinație. Puteți introduce una manual.",
-                "found": "S-au găsit {count} destinații accesibile. Tastați pentru a căuta sau selectați una."
+                "none": "Nu au fost returnate ținte. Poți totuși să introduci una manual.",
+                "found": "S-au găsit {count} ținte accesibile. Scrie pentru a căuta sau selectează una."
             }
         },
         "browser": {
@@ -1771,7 +1771,7 @@
             "koofrDesc": "Koofr Cloud (10 GB gratuit)",
             "koofrTooltip": "Koofr - cloud sloveni axat pe confidențialitate cu 10 GB gratuit, accesibil și prin WebDAV",
             "yandexdiskDesc": "Yandex Disk (5 GB gratuit)",
-            "yandexdiskTooltip": "Yandex Disk – stocare în cloud rusesc cu 5 GB gratuit, autentificare prin token OAuth2",
+            "yandexdiskTooltip": "Yandex Disk - stocare în cloud rusesc cu 5 GB gratuit, autentificare prin token OAuth2",
             "opendriveDesc": "OpenDrive Cloud (5 GB gratuit)",
             "opendriveTooltip": "OpenDrive - 5 GB stocare gratuită în cloud, autentificare cu nume de utilizator și parolă",
             "opendriveAuthHelp": "OpenDrive folosește autentificarea directă cu nume de utilizator și parolă pe dev.opendrive.com. Nu este necesară o cheie de aplicație.",
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Furnizat de server",
             "readOnly": "Doar citire",
             "hidden": "Ascuns",
-            "hiddenIsNameBased": "Pe acest sistem un fisier este ascuns din cauza numelui sau, nu a unui atribut: redenumeste-l astfel incat sa inceapa cu un punct.",
+            "hiddenIsNameBased": "Pe acest sistem un fișier este ascuns datorită numelui său, nu unui atribut: redenumește-l astfel încât să înceapă cu un punct.",
             "contains": "Conține",
             "foldersOnly": "Doar foldere",
             "location": "Locație",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binar",
             "hashOutputLength": "Lungimea ieșirii BLAKE3 (octeți)",
-            "hashOutputLengthHint": "1–1024 · implicit 32",
+            "hashOutputLengthHint": "1-1024 · implicit 32",
             "hashDropHint": "Plasați un fișier pe această filă pentru a-i calcula hash-ul"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Marcatorul de la distanță (.aerocrypt.tsv) lipsea și a fost reconstruit din depozitul local de chei. Nu îl șterge din nou decât dacă treci la modul fără antet (headerless): o a doua ștergere împreună cu pierderea depozitului de chei te blochează definitiv.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Tipul de criptare și parola se setează o singură dată și nu pot fi schimbate ulterior: fișierele deja criptate ar deveni ilizibile.",
             "lockedNote": "Tipul de criptare și credențialele sunt blocate: acest strat conține deja date criptate.",
             "addToExistingWarn": "La activarea unei suprapuneri pe un profil existent: orice fișiere în text simplu deja prezente pe această locație la distanță rămân necriptate și vor apărea ca un amestec indescifrabil. Folosiți o locație la distanță goală.",
-            "scopeHint": "Calea suprapunerilor definește domeniul criptat. Calea la distanță alege doar locul de unde începe navigarea; calea locală nu modifică niciodată criptarea.",
+            "scopeHint": "Calea suprapunerilor definește domeniul criptat. Calea la distanță alege doar de unde începe navigarea; calea locală nu schimbă niciodată criptarea.",
             "overlaysPathLockedNote": "Calea suprapunerilor este blocată: este ancora criptării și nu mai poate fi modificată după ce suprapunerea a fost asociată.",
             "remotePathMustReachOverlay": "Calea la distanță trebuie să fie calea suprapunerilor ({path}) sau unul dintre folderele sale superioare, altfel folderul criptat rămâne în afara acestei sesiuni.",
             "overlaysSection": "Învelișuri / Overlay-uri",

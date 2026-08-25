@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Տեղադրեք ձեր Filen CLI պրոֆիլի API բանալին՝ ամեն վերամիացման ժամանակ 2FA կոդը բաց թողնելու համար: Հաշվի գաղտնաբառը դեռ պահանջվում է. այն վերծանում է ձեր ֆայլերը ծայրից ծայր: Պահպանելուց հետո բանալին պահվում է գաղտնագրված պահոցում և այլևս չի ցուցադրվում այստեղ (ինչպես ձեր 2FA գաղտնիքը). AeroFTP-ն ավտոմատ կերպով կրկին օգտագործում է այն: Խմբագրելիս թողեք դատարկ՝ պահպանված բանալին պահելու համար:",
             "manualTotalStorage": "Ընդհանուր հիշողություն (ձեռքով)",
             "manualTotalStoragePlaceholder": "օր. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Ընտրովի է։ Մուտքագրեք պլանի/հաշվի թվային սահմանաչափը և ընտրեք դրա միավորը։ Օգտագործվում է միայն այն դեպքում, երբ մատակարարը չունի ընդհանուր քվոտայի API. մատակարարի սեփական ընդհանուր արժեքը միշտ գերակայում է։",
+            "manualTotalStorageHint": "Ըստ ցանկության։ Մուտքագրեք սակագնի կամ հաշվի թվային սահմանաչափը և ընտրեք չափման միավորը։ Օգտագործվում է միայն այն դեպքում, երբ մատակարարը չունի ընդհանուր քվոտայի API. մատակարարի սեփական ընդհանուր ցուցանիշը միշտ առաջնահերթ է։",
             "autoScanUsedOnConnect": "Հաշվել օգտագործված տարածքը միացման ժամանակ",
             "autoScanUsedOnConnectHint": "Միայն այն հետնամասերի համար, որոնք չունեն օգտագործված տարածքի API (FTP, S3, WebDAV). Կանխավ անջատված է. մեծ ծառը (օր. վեբ նախագիծ) անցվում է ռեկուրսիվ կերպով, ինչը կարող է դանդաղ լինել. Հակառակ դեպքում օգտագործեք StatusBar-ի գործողությունը ըստ անհրաժեշտության.",
             "saveAsNewProfile": "Պահպանել որպես նոր պրոֆիլ",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Հեռավոր լռելյայն ուղի (օր․ / կամ DCIM)",
             "mtpSaveRequiresDevice": "Հայտնաբերեք և ընտրեք սարք՝ Պահպանելը միացնելու համար։",
             "mtpSelectPlaceholder": "Ընտրեք սարք...",
-            "mtpSelectPlaceholderEmpty": "Դեռ սարքեր չկան — սեղմեք Հայտնաբերել",
+            "mtpSelectPlaceholderEmpty": "Դեռ սարքեր չկան, սեղմեք Հայտնաբերել",
             "mtpNotAttachedTitle": "Սարքը միացված չէ",
-            "mtpNotAttached": "Միացրեք սարքը և միացրեք Ֆայլերի փոխանցման ռեժիմը, ապա նորից փորձեք։",
+            "mtpNotAttached": "Միացրեք սարքը, միացրեք Ֆայլերի փոխանցման ռեժիմը և կրկին փորձեք։",
             "discovery": {
                 "fetch": "Ստանալ",
                 "fetching": "Ստացվում է...",
                 "refresh": "Թարմացնել",
-                "none": "Ոչ մի թիրախ չի վերադարձվել։ Կարող եք այն մուտքագրել ձեռքով։",
-                "found": "Գտնվել է {count} հասանելի թիրախ։ Որոնելու համար մուտքագրեք կամ ընտրեք մեկը։"
+                "none": "Ոչ մի թիրախ չի վերադարձվել։ Այնուամենայնիվ կարող եք ձեռքով մուտքագրել մեկը։",
+                "found": "Գտնվել է {count} հասանելի թիրախ։ Որոնելու համար մուտքագրեք տեքստ կամ ընտրեք մեկը։"
             }
         },
         "browser": {
@@ -3361,7 +3361,7 @@
             "notAvailable": "Հասանելի չէ",
             "readOnly": "Միայն կարդալու",
             "hidden": "Թաքնված",
-            "hiddenIsNameBased": "Այս համակարգում ֆայլը թաքնված է իր անվան, ոչ թե հատկանիշի պատճառով. վերանվանեք այն, որպեսզի սկսվի կետով:",
+            "hiddenIsNameBased": "Այս համակարգում ֆայլը թաքնված է իր անվան, ոչ թե հատկանիշի պատճառով. վերանվանեք այն այնպես, որ սկսվի կետով։",
             "contains": "Պարունակում է",
             "foldersOnly": "Միայն թղթապանակներ",
             "location": "Գտնվելու վայր",
@@ -3997,7 +3997,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Երկուական",
             "hashOutputLength": "BLAKE3 ելքի երկարություն (բայթ)",
-            "hashOutputLengthHint": "1–1024 · լռելյայն 32",
+            "hashOutputLengthHint": "1-1024 · լռելյայն 32",
             "hashDropHint": "Գցեք ֆայլն այս ներդիրի վրա՝ հեշը հաշվարկելու համար"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Հեռակա նշիչը (.aerocrypt.tsv) բացակայում էր և վերականգնվեց տեղական բանալիների պահոցից։ Կրկին մի ջնջեք այն, եթե չեք անցնում առանց վերնագրի (headerless) ռեժիմին. երկրորդ ջնջումը բանալիների պահոցի կորստի հետ միասին ընդմիշտ փակում է մուտքը։",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Գաղտնագրման տեսակը և գաղտնաբառը սահմանվում են մեկ անգամ և հետագայում հնարավոր չէ փոխել. արդեն գաղտնագրված ֆայլերը կդառնան անընթեռնելի։",
             "lockedNote": "Գաղտնագրման տեսակը և մուտքի տվյալները կողպված են. այս շերտն արդեն պարունակում է գաղտնագրված տվյալներ։",
             "addToExistingWarn": "Ծածկույթ միացնելը գոյություն ունեցող պրոֆիլում. այս հեռավորության վրա արդեն առկա ցանկացած պարզ տեքստով ֆայլ մնում է չգաղտնագրված և կցուցադրվի որպես չվերծանվող խառնուրդ։ Օգտագործեք դատարկ հեռավորություն։",
-            "scopeHint": "Վերադիրների ուղին սահմանում է գաղտնագրված տիրույթը։ Հեռակա ուղին միայն ընտրում է զննարկման մեկնարկի վայրը, իսկ տեղային ուղին երբեք չի փոխում գաղտնագրումը։",
+            "scopeHint": "Շերտերի ուղին սահմանում է գաղտնագրված շրջանակը։ Հեռակա ուղին ընտրում է միայն այն, թե որտեղից է սկսվում դիտարկումը. Տեղական ուղին երբեք չի փոխում գաղտնագրումը։",
             "overlaysPathLockedNote": "Շերտերի ուղին կողպված է. այն գաղտնագրման խարիսխն է և չի կարող փոխվել շերտը կապելուց հետո։",
             "remotePathMustReachOverlay": "Հեռակա ուղին պետք է լինի շերտերի ուղին ({path}) կամ նրա ծնող պանակներից մեկը, հակառակ դեպքում գաղտնագրված պանակը կմնա այս աշխատաշրջանից դուրս։",
             "overlaysSection": "Փաթաթաններ / Overlay-ներ",

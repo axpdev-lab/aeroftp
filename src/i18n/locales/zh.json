@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "粘贴来自 Filen CLI 配置文件的 API 密钥，以便每次重新连接时跳过 2FA 代码。仍需要账户密码：它会端到端解密您的文件。保存后，密钥将加密存储在保险库中，并且不会再在此处显示（与您的 2FA 密钥相同）；AeroFTP 会自动重复使用它。编辑时留空以保留已保存的密钥。",
             "manualTotalStorage": "总存储空间（手动）",
             "manualTotalStoragePlaceholder": "例如 10 GB、500 GB、2 TB",
-            "manualTotalStorageHint": "可选。输入套餐/账户的数值上限并选择单位。仅当提供商没有总配额 API 时使用；始终优先采用提供商自己的总容量。",
+            "manualTotalStorageHint": "可选。输入套餐或账户的容量上限数值并选择单位。仅在提供商没有总配额 API 时使用；提供商自身报告的总量始终优先。",
             "autoScanUsedOnConnect": "连接时计算已用存储",
             "autoScanUsedOnConnectHint": "仅适用于没有已用空间 API 的后端（FTP、S3、WebDAV）。默认关闭：大型目录树（例如一个网站项目）会被递归遍历，可能较慢。否则请按需使用 StatusBar 中的操作。",
             "saveAsNewProfile": "另存为新配置",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "默认远程路径（例如 / 或 DCIM）",
             "mtpSaveRequiresDevice": "检测并选择设备以启用“保存”。",
             "mtpSelectPlaceholder": "选择设备...",
-            "mtpSelectPlaceholderEmpty": "尚无设备 — 点击“检测”",
+            "mtpSelectPlaceholderEmpty": "尚无设备，点击“检测”",
             "mtpNotAttachedTitle": "设备未连接",
             "mtpNotAttached": "请接入设备并启用文件传输模式，然后重试。",
             "discovery": {
                 "fetch": "获取",
                 "fetching": "正在获取...",
                 "refresh": "刷新",
-                "none": "未返回任何目标。您仍可手动输入一个目标。",
-                "found": "找到 {count} 个可访问目标。输入内容以搜索，或选择一个目标。"
+                "none": "未返回任何目标。你仍可以手动输入一个。",
+                "found": "找到 {count} 个可访问的目标。输入以搜索，或选择其中一个。"
             }
         },
         "browser": {
@@ -1771,7 +1771,7 @@
             "koofrDesc": "Koofr Cloud（10 GB 免费）",
             "koofrTooltip": "Koofr - 斯洛文尼亚隐私导向云存储，10 GB 免费，也可通过 WebDAV 访问",
             "yandexdiskDesc": "Yandex Disk（5 GB 免费）",
-            "yandexdiskTooltip": "Yandex Disk – 俄罗斯云存储服务，提供 5 GB 免费空间，使用 OAuth2 令牌认证",
+            "yandexdiskTooltip": "Yandex Disk - 俄罗斯云存储服务，提供 5 GB 免费空间，使用 OAuth2 令牌认证",
             "opendriveDesc": "OpenDrive Cloud（5 GB 免费）",
             "opendriveTooltip": "OpenDrive - 5 GB 免费云存储，用户名和密码身份验证",
             "opendriveAuthHelp": "OpenDrive 在 dev.opendrive.com 上使用用户名和密码直接登录。无需应用密钥。",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "二进制",
             "hashOutputLength": "BLAKE3 输出长度（字节）",
-            "hashOutputLengthHint": "1–1024 · 默认 32",
+            "hashOutputLengthHint": "1-1024 · 默认 32",
             "hashDropHint": "将文件拖放到此标签页以计算哈希"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "不匹配：此恢复包/标记与活动配置文件密钥库配置不一致。",
             "verifyKitKind": "检测到的输入：{kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "远程标记 (.aerocrypt.tsv) 缺失，已从本地密钥库重建。除非切换到无头 (headerless) 模式，否则不要再次删除它：第二次删除加上密钥库丢失将使你永远无法打开。",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "加密类型和密码仅设置一次，之后无法更改：已加密的文件将无法读取。",
             "lockedNote": "加密类型和凭据已锁定：此叠加层已包含加密数据。",
             "addToExistingWarn": "在现有配置上启用叠加层：此远程上已有的任何明文文件仍未加密，并会显示为无法解密的混合内容。请使用空的远程。",
-            "scopeHint": "叠加层路径用于定义加密范围。远程路径仅决定从何处开始浏览；本地路径绝不会改变加密范围。",
+            "scopeHint": "叠加层路径决定加密范围。远程路径只决定浏览的起点；本地路径不会改变加密。",
             "overlaysPathLockedNote": "叠加层路径已锁定：它是加密锚点，叠加层绑定后便无法更改。",
             "remotePathMustReachOverlay": "远程路径必须是叠加层路径（{path}）或其上级文件夹，否则加密文件夹将不在本会话范围内。",
             "overlaysSection": "封装 / 叠加层",

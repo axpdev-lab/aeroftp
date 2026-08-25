@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Enganxeu la clau API del vostre perfil de Filen CLI per ometre el codi 2FA a cada reconnexió. La contrasenya del compte encara és necessària: desxifra els vostres fitxers d'extrem a extrem. Un cop desada, la clau es desa xifrada al cofre i ja no es torna a mostrar aquí (com el secret 2FA); AeroFTP la reutilitza automàticament. En editar, deixeu-ho en blanc per conservar la clau desada.",
             "manualTotalStorage": "Emmagatzematge total (manual)",
             "manualTotalStoragePlaceholder": "p. ex. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Opcional. Introduïu un límit numèric del pla o compte i trieu-ne la unitat. Només s'utilitza quan el proveïdor no disposa d'una API de quota total; el total del proveïdor sempre té prioritat.",
+            "manualTotalStorageHint": "Opcional. Introdueix el límit numèric del pla o del compte i tria'n la unitat. Només s'utilitza quan el proveïdor no té API de quota total; el total del propi proveïdor sempre té prioritat.",
             "autoScanUsedOnConnect": "Calcular l'emmagatzematge utilitzat en connectar",
             "autoScanUsedOnConnectHint": "Només per a backends sense API d'espai utilitzat (FTP, S3, WebDAV). Desactivat per defecte: un arbre gran (p. ex. un projecte web) es recorre recursivament, cosa que pot ser lenta. Si no, useu l'acció de la StatusBar quan calgui.",
             "saveAsNewProfile": "Desa com a perfil nou",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Camí remot per defecte (p. ex. / o DCIM)",
             "mtpSaveRequiresDevice": "Detecta i selecciona un dispositiu per habilitar Desa.",
             "mtpSelectPlaceholder": "Selecciona un dispositiu...",
-            "mtpSelectPlaceholderEmpty": "Encara no hi ha dispositius — fes clic a Detecta",
+            "mtpSelectPlaceholderEmpty": "Encara no hi ha dispositius, fes clic a Detecta",
             "mtpNotAttachedTitle": "Dispositiu no connectat",
-            "mtpNotAttached": "Connecta el dispositiu i activa el mode de transferència de fitxers, després torna-ho a provar.",
+            "mtpNotAttached": "Connecta el dispositiu, activa el mode de transferència de fitxers i torna-ho a provar.",
             "discovery": {
                 "fetch": "Obtén",
                 "fetching": "S'està obtenint...",
                 "refresh": "Actualitza",
-                "none": "No s'ha retornat cap destinació. Encara en podeu introduir una manualment.",
-                "found": "S'han trobat {count} destinacions accessibles. Escriviu per cercar-ne una o seleccionar-la."
+                "none": "No s'ha retornat cap destinació. Tot i així, en pots introduir una manualment.",
+                "found": "S'han trobat {count} destinacions accessibles. Escriu per cercar o selecciona'n una."
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Proporcionat pel servidor",
             "readOnly": "Només lectura",
             "hidden": "Ocult",
-            "hiddenIsNameBased": "En aquest sistema un fitxer esta ocult pel seu nom, no per un atribut: canvia-li el nom perque comenci amb un punt.",
+            "hiddenIsNameBased": "En aquest sistema un fitxer està ocult pel seu nom, no per un atribut: canvia-li el nom perquè comenci amb un punt.",
             "contains": "Conté",
             "foldersOnly": "Només carpetes",
             "location": "Ubicació",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binari",
             "hashOutputLength": "Longitud de sortida BLAKE3 (bytes)",
-            "hashOutputLengthHint": "1–1024 · per defecte 32",
+            "hashOutputLengthHint": "1-1024 · per defecte 32",
             "hashDropHint": "Deixa anar un fitxer en aquesta pestanya per calcular-ne el hash"
         },
         "dialog": {
@@ -5285,7 +5285,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "El marcador remot (.aerocrypt.tsv) faltava i s'ha reconstruït a partir del magatzem de claus local. No el tornis a esborrar tret que passis al mode sense capçalera (headerless): esborrar-lo dues vegades i perdre el magatzem de claus et deixa fora per sempre.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5353,7 +5353,7 @@
             "immutableWarn": "El tipus de xifratge i la contrasenya es defineixen una sola vegada i no es poden canviar després: els fitxers ja xifrats es tornarien illegibles.",
             "lockedNote": "El tipus de xifratge i les credencials estan bloquejats: aquesta capa ja conté dades xifrades.",
             "addToExistingWarn": "En activar una superposició en un perfil existent: els fitxers en text pla que ja hi hagi en aquest remot resten sense xifrar i es mostraran com una barreja indesxifrable. Fes servir un remot buit.",
-            "scopeHint": "El camí de superposicions defineix l'àmbit xifrat. El camí remot només tria on comença la navegació; el camí local no modifica mai el xifratge.",
+            "scopeHint": "La Ruta de superposicions defineix l'abast xifrat. La Ruta remota només tria on comença la navegació; la Ruta local no canvia mai el xifratge.",
             "overlaysPathLockedNote": "La ruta de superposicions està bloquejada: és l'ancoratge del xifratge i no es pot canviar un cop la superposició està vinculada.",
             "remotePathMustReachOverlay": "La ruta remota ha de ser la ruta de superposicions ({path}) o una de les seves carpetes superiors; altrament, la carpeta xifrada queda fora d'aquesta sessió.",
             "overlaysSection": "Embolcalls / Overlays",

@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Klistra in API-nyckeln från din Filen CLI-profil för att hoppa över 2FA-koden vid varje återanslutning. Kontolösenordet krävs fortfarande: det dekrypterar dina filer från början till slut. När den är sparad lagras nyckeln krypterad i valvet och visas inte längre här (precis som din 2FA-hemlighet); AeroFTP återanvänder den automatiskt. Lämna tomt vid redigering för att behålla den sparade nyckeln.",
             "manualTotalStorage": "Total lagring (manuell)",
             "manualTotalStoragePlaceholder": "t.ex. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Valfritt. Ange en numerisk gräns för abonnemanget/kontot och välj enhet. Används endast när leverantören saknar ett API för total kvot; leverantörens egen totalsumma har alltid företräde.",
+            "manualTotalStorageHint": "Valfritt. Ange en numerisk gräns för abonnemanget eller kontot och välj enhet. Används bara när leverantören saknar API för total kvot; leverantörens egen totalsiffra har alltid företräde.",
             "autoScanUsedOnConnect": "Beräkna använd lagring vid anslutning",
             "autoScanUsedOnConnectHint": "Endast för backends utan API för använt utrymme (FTP, S3, WebDAV). Av som standard: ett stort träd (t.ex. ett webbprojekt) gås igenom rekursivt, vilket kan vara långsamt. Använd annars StatusBar-åtgärden vid behov.",
             "saveAsNewProfile": "Spara som ny profil",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Standardsökväg för fjärr (t.ex. / eller DCIM)",
             "mtpSaveRequiresDevice": "Upptäck och välj en enhet för att aktivera Spara.",
             "mtpSelectPlaceholder": "Välj en enhet...",
-            "mtpSelectPlaceholderEmpty": "Inga enheter ännu – klicka på Upptäck",
+            "mtpSelectPlaceholderEmpty": "Inga enheter ännu, klicka på Upptäck",
             "mtpNotAttachedTitle": "Enheten är inte ansluten",
-            "mtpNotAttached": "Anslut enheten och aktivera filöverföringsläge, försök sedan igen.",
+            "mtpNotAttached": "Anslut enheten, aktivera filöverföringsläge och försök igen.",
             "discovery": {
                 "fetch": "Hämta",
                 "fetching": "Hämtar...",
                 "refresh": "Uppdatera",
-                "none": "Inga mål returnerades. Du kan fortfarande ange ett manuellt.",
-                "found": "Hittade {count} tillgängliga mål. Skriv för att söka eller välj ett."
+                "none": "Inga mål returnerades. Du kan ändå ange ett manuellt.",
+                "found": "Hittade {count} åtkomliga mål. Skriv för att söka eller välj ett."
             }
         },
         "browser": {
@@ -1771,7 +1771,7 @@
             "koofrDesc": "Koofr Cloud (10 GB gratis)",
             "koofrTooltip": "Koofr - slovenisk molntjänst fokuserad på integritet med 10 GB gratis, även tillgänglig via WebDAV",
             "yandexdiskDesc": "Yandex Disk (5 GB gratis)",
-            "yandexdiskTooltip": "Yandex Disk – ryskt molnlagring med 5 GB gratis, autentisering via OAuth2-token",
+            "yandexdiskTooltip": "Yandex Disk - ryskt molnlagring med 5 GB gratis, autentisering via OAuth2-token",
             "opendriveDesc": "OpenDrive Cloud (5 GB gratis)",
             "opendriveTooltip": "OpenDrive - 5 GB gratis molnlagring, autentisering med användarnamn och lösenord",
             "opendriveAuthHelp": "OpenDrive använder direkt inloggning med användarnamn och lösenord på dev.opendrive.com. Ingen appnyckel krävs.",
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Tillhandahålls av servern",
             "readOnly": "Skrivskyddad",
             "hidden": "Dold",
-            "hiddenIsNameBased": "I det har systemet ar en fil dold pa grund av sitt namn, inte pa grund av ett attribut: byt namn sa att det borjar med en punkt.",
+            "hiddenIsNameBased": "På det här systemet är en fil dold på grund av sitt namn, inte på grund av ett attribut: byt namn på den så att den börjar med en punkt.",
             "contains": "Innehåller",
             "foldersOnly": "Endast mappar",
             "location": "Plats",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binär",
             "hashOutputLength": "BLAKE3-utdatalängd (byte)",
-            "hashOutputLengthHint": "1–1024 · standard 32",
+            "hashOutputLengthHint": "1-1024 · standard 32",
             "hashDropHint": "Släpp en fil på den här fliken för att hasha den"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Avvikelse: detta kit/marker matchar inte den aktiva profilens keystore-konfiguration.",
             "verifyKitKind": "Upptäckt indata: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Fjärrmarkören (.aerocrypt.tsv) saknades och byggdes om från det lokala nyckellagret. Ta inte bort den igen om du inte byter till headerless: en andra borttagning tillsammans med förlorat nyckellager stänger ute dig för gott.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Krypteringstyp och lösenord anges en gång och kan inte ändras senare: de redan krypterade filerna skulle bli oläsliga.",
             "lockedNote": "Krypteringstyp och autentiseringsuppgifter är låsta: detta överlägg innehåller redan krypterad data.",
             "addToExistingWarn": "När du aktiverar ett överlägg på en befintlig profil: alla klartextfiler som redan finns på denna fjärrplats förblir okrypterade och visas som en odekrypterbar blandning. Använd en tom fjärrplats.",
-            "scopeHint": "Överlagringssökvägen definierar det krypterade omfånget. Fjärrsökvägen väljer bara var bläddringen börjar; den lokala sökvägen ändrar aldrig krypteringen.",
+            "scopeHint": "Överläggssökvägen definierar det krypterade området. Fjärrsökvägen väljer bara var bläddringen börjar; den lokala sökvägen ändrar aldrig krypteringen.",
             "overlaysPathLockedNote": "Överläggssökvägen är låst: den är krypteringens ankare och kan inte ändras när överlägget väl har bundits.",
             "remotePathMustReachOverlay": "Fjärrsökvägen måste vara överläggssökvägen ({path}) eller någon av dess överordnade mappar, annars hamnar den krypterade mappen utanför den här sessionen.",
             "overlaysSection": "Omslag / Overlays",

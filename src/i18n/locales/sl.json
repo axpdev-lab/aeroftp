@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Prilepite API ključ iz svojega profila Filen CLI, da pri vsaki ponovni povezavi preskočite kodo 2FA. Geslo računa je še vedno potrebno: dešifrira vaše datoteke od konca do konca. Ko je shranjen, je ključ shranjen šifriran v trezorju in tukaj ni več prikazan (tako kot vaša skrivnost 2FA); AeroFTP ga samodejno znova uporabi. Pri urejanju pustite prazno, da obdržite shranjeni ključ.",
             "manualTotalStorage": "Skupna shramba (ročno)",
             "manualTotalStoragePlaceholder": "npr. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Izbirno. Vnesite številsko omejitev paketa/računa in izberite njeno enoto. Uporabi se le, če ponudnik nima API-ja za skupno kvoto; skupna vrednost ponudnika ima vedno prednost.",
+            "manualTotalStorageHint": "Neobvezno. Vnesite številsko omejitev paketa ali računa in izberite enoto. Uporabi se le, kadar ponudnik nima API-ja za skupno kvoto; ponudnikova lastna skupna vrednost ima vedno prednost.",
             "autoScanUsedOnConnect": "Izračunaj porabljeno shrambo ob povezavi",
             "autoScanUsedOnConnectHint": "Samo za zaledja brez API-ja za porabljen prostor (FTP, S3, WebDAV). Privzeto izklopljeno: veliko drevo (npr. spletni projekt) se rekurzivno prehodi, kar je lahko počasno. Sicer uporabite dejanje v StatusBar po potrebi.",
             "saveAsNewProfile": "Shrani kot nov profil",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Privzeta oddaljena pot (npr. / ali DCIM)",
             "mtpSaveRequiresDevice": "Zaznajte in izberite napravo, da omogočite Shrani.",
             "mtpSelectPlaceholder": "Izberite napravo...",
-            "mtpSelectPlaceholderEmpty": "Še ni naprav – kliknite Zaznaj",
+            "mtpSelectPlaceholderEmpty": "Še ni naprav, kliknite Zaznaj",
             "mtpNotAttachedTitle": "Naprava ni povezana",
-            "mtpNotAttached": "Priključite napravo in omogočite način prenosa datotek, nato poskusite znova.",
+            "mtpNotAttached": "Priključite napravo, omogočite način prenosa datotek in poskusite znova.",
             "discovery": {
                 "fetch": "Pridobi",
                 "fetching": "Pridobivanje...",
                 "refresh": "Osveži",
-                "none": "Vrnjena ni bila nobena ciljna lokacija. Še vedno jo lahko vnesete ročno.",
-                "found": "Najdenih je {count} dostopnih ciljnih lokacij. Vnesite besedilo za iskanje ali izberite eno."
+                "none": "Vrnjen ni bil noben cilj. Kljub temu ga lahko vnesete ročno.",
+                "found": "Najdenih je {count} dosegljivih ciljev. Tipkajte za iskanje ali izberite enega."
             }
         },
         "browser": {
@@ -1771,7 +1771,7 @@
             "koofrDesc": "Koofr Cloud (10 GB brezplačno)",
             "koofrTooltip": "Koofr - slovenski oblak osredotočen na varnost podatkov s 10 GB brezplačno, dostopen tudi prek WebDAV",
             "yandexdiskDesc": "Yandex Disk (5 GB brezplačno)",
-            "yandexdiskTooltip": "Yandex Disk – rusko oblačno shranjevanje s 5 GB brezplačno, avtentikacija z žetonom OAuth2",
+            "yandexdiskTooltip": "Yandex Disk - rusko oblačno shranjevanje s 5 GB brezplačno, avtentikacija z žetonom OAuth2",
             "opendriveDesc": "OpenDrive Cloud (5 GB brezplačno)",
             "opendriveTooltip": "OpenDrive - 5 GB brezplačnega prostora v oblaku, preverjanje z uporabniškim imenom in geslom",
             "opendriveAuthHelp": "OpenDrive uporablja neposredno prijavo z uporabniškim imenom in geslom na dev.opendrive.com. Ključ aplikacije ni potreben.",
@@ -2703,7 +2703,7 @@
                 "title": "Časovna omejitev pretakanja",
                 "description": "Največji čas čakanja na pretočni odgovor pred iztekom.",
                 "seconds": "sekund",
-                "hint": "Povečajte to vrednost pri uporabi razširjenih proračunov razmišljanja (50K+ žetonov). Razpon: 30–600 sekund."
+                "hint": "Povečajte to vrednost pri uporabi razširjenih proračunov razmišljanja (50K+ žetonov). Razpon: 30-600 sekund."
             },
             "analyzeThisImage": "Analiziraj to sliko",
             "error": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Zagotovljeno s strežnika",
             "readOnly": "Samo za branje",
             "hidden": "Skrito",
-            "hiddenIsNameBased": "V tem sistemu je datoteka skrita zaradi svojega imena, ne zaradi atributa: preimenujte jo tako, da se zacne s piko.",
+            "hiddenIsNameBased": "V tem sistemu je datoteka skrita zaradi svojega imena in ne zaradi atributa: preimenujte jo tako, da se začne s piko.",
             "contains": "Vsebuje",
             "foldersOnly": "Samo mape",
             "location": "Mesto",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Dvojiško",
             "hashOutputLength": "Dolžina izhoda BLAKE3 (bajti)",
-            "hashOutputLengthHint": "1–1024 · privzeto 32",
+            "hashOutputLengthHint": "1-1024 · privzeto 32",
             "hashDropHint": "Spustite datoteko na ta zavihek za izračun zgoščene vrednosti"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Oddaljeni označevalnik (.aerocrypt.tsv) je manjkal in je bil obnovljen iz lokalne shrambe ključev. Ne izbrišite ga znova, razen če preklopite na način brez glave (headerless): drugi izbris skupaj z izgubo shrambe ključev vas trajno zaklene.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Vrsta šifriranja in geslo se nastavita enkrat in ju pozneje ni mogoče spremeniti: že šifrirane datoteke bi postale neberljive.",
             "lockedNote": "Vrsta šifriranja in poverilnice so zaklenjene: ta plast že vsebuje šifrirane podatke.",
             "addToExistingWarn": "Ob omogočanju prekrivanja na obstoječem profilu: vse datoteke z navadnim besedilom, ki so že na tem oddaljenem mestu, ostanejo nešifrirane in se prikažejo kot nedešifrirljiva mešanica. Uporabite prazno oddaljeno mesto.",
-            "scopeHint": "Pot prekrivnih plasti določa šifrirani obseg. Oddaljena pot izbere le mesto začetka brskanja; lokalna pot nikoli ne spremeni šifriranja.",
+            "scopeHint": "Pot prekrivkov določa šifrirani obseg. Oddaljena pot izbere le, kje se začne brskanje; lokalna pot šifriranja nikoli ne spremeni.",
             "overlaysPathLockedNote": "Pot prekrivkov je zaklenjena: je sidro šifriranja in je po povezavi prekrivka ni več mogoče spremeniti.",
             "remotePathMustReachOverlay": "Oddaljena pot mora biti pot prekrivkov ({path}) ali ena od njenih nadrejenih map, sicer šifrirana mapa ostane zunaj te seje.",
             "overlaysSection": "Ovoji / Prekrivi",

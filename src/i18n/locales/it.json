@@ -396,7 +396,7 @@
             "filenApiKeyHelp": "Incolla la chiave API dal tuo profilo Filen CLI per saltare il codice 2FA a ogni riconnessione. La password dell'account resta comunque necessaria: decifra i tuoi file end-to-end. Una volta salvata, la chiave è memorizzata cifrata nel vault e non viene più mostrata qui (come il segreto 2FA); AeroFTP la riutilizza automaticamente. In modifica, lascia vuoto per mantenere la chiave salvata.",
             "manualTotalStorage": "Spazio totale (manuale)",
             "manualTotalStoragePlaceholder": "es. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Facoltativo. Inserisci un limite numerico del piano/account e scegli l'unità. Viene usato solo quando il provider non dispone di un'API per la quota totale; il totale del provider ha sempre la precedenza.",
+            "manualTotalStorageHint": "Facoltativo. Inserisci il limite numerico del piano o dell'account e scegli l'unità. Serve solo quando il provider non espone un'API per la quota totale; il totale dichiarato dal provider ha sempre la precedenza.",
             "autoScanUsedOnConnect": "Calcola lo spazio usato alla connessione",
             "autoScanUsedOnConnectHint": "Solo per i backend senza API per lo spazio usato (FTP, S3, WebDAV). Disattivato per impostazione predefinita: un albero di grandi dimensioni (es. un progetto web) viene percorso ricorsivamente, operazione che può essere lenta. In alternativa usa l'azione nella StatusBar quando serve.",
             "persistModeCredentials": "Ricorda le credenziali per ogni protocollo di questo account",
@@ -428,15 +428,15 @@
             "mtpRemotePathPlaceholder": "Percorso remoto predefinito (es. / o DCIM)",
             "mtpSaveRequiresDevice": "Rileva e seleziona un dispositivo per abilitare Salva.",
             "mtpSelectPlaceholder": "Seleziona un dispositivo...",
-            "mtpSelectPlaceholderEmpty": "Ancora nessun dispositivo — fai clic su Rileva",
+            "mtpSelectPlaceholderEmpty": "Ancora nessun dispositivo, fai clic su Rileva",
             "mtpNotAttachedTitle": "Dispositivo non connesso",
-            "mtpNotAttached": "Collega il dispositivo e attiva la modalità Trasferimento file, poi riprova.",
+            "mtpNotAttached": "Collega il dispositivo, attiva la modalità Trasferimento file e riprova.",
             "discovery": {
                 "fetch": "Recupera",
                 "fetching": "Recupero...",
                 "refresh": "Aggiorna",
-                "none": "Non è stata restituita alcuna destinazione. Puoi comunque inserirne una manualmente.",
-                "found": "Trovate {count} destinazioni accessibili. Digita per cercare o selezionane una."
+                "none": "Nessuna destinazione restituita. Puoi comunque inserirne una a mano.",
+                "found": "Trovate {count} destinazioni raggiungibili. Digita per cercare oppure selezionane una."
             }
         },
         "twoFactor": {
@@ -3179,7 +3179,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binario",
             "hashOutputLength": "Lunghezza output BLAKE3 (byte)",
-            "hashOutputLengthHint": "1–1024 · predefinito 32",
+            "hashOutputLengthHint": "1-1024 · predefinito 32",
             "hashDropHint": "Trascina un file su questa scheda per calcolarne l'hash"
         },
         "vault": {
@@ -3484,7 +3484,7 @@
             "verifyKitMismatch": "Disallineamento: questo kit/marker non coincide con la config del keystore del profilo attivo.",
             "verifyKitKind": "Input rilevato: {kind}",
             "markerMissingRestoredTitle": "Rete di sicurezza AeroCrypt ripristinata",
-            "markerMissingRestoredBody": "Il marker remoto (.aerocrypt.tsv) mancava ed è stato ricostruito dal keystore locale. Non cancellarlo di nuovo a meno di passare a headerless: una seconda cancellazione più la perdita del keystore è un lockout permanente.",
+            "markerMissingRestoredBody": "Il marker remoto (.aerocrypt.tsv) mancava ed è stato ricostruito dal keystore locale. Non cancellarlo di nuovo a meno di passare alla modalità headerless: una seconda cancellazione più la perdita del keystore è un lockout permanente.",
             "markerMissingRestoreFailedTitle": "Marker AeroCrypt ancora assente",
             "markerMissingRestoreFailedBody": "Sbloccato dal keystore locale, ma la rete di sicurezza remota non è stata ripristinata: {error}",
             "kitNotCachedYet": "Nessun recovery kit in cache per questo profilo. Collega una volta così la configurazione pubblica viene salvata in locale (accade automaticamente al connect), poi riapri il kit. Non è un errore.",
@@ -3764,7 +3764,7 @@
             "checksumServerOnly": "Fornito dal server",
             "readOnly": "Sola lettura",
             "hidden": "Nascosto",
-            "hiddenIsNameBased": "Su questo sistema un file e nascosto per via del suo nome, non di un attributo: rinominalo in modo che inizi con un punto.",
+            "hiddenIsNameBased": "Su questo sistema un file è nascosto per via del nome, non di un attributo: rinominalo in modo che inizi con un punto.",
             "contains": "Contiene",
             "foldersOnly": "Solo cartelle",
             "location": "Percorso",
@@ -5348,7 +5348,7 @@
             "immutableWarn": "Tipo di cifratura e password si impostano una sola volta e non sono modificabili in seguito: i file già cifrati diventerebbero illeggibili.",
             "lockedNote": "Tipo di cifratura e credenziali bloccati: questo overlay contiene già dati cifrati.",
             "addToExistingWarn": "Stai attivando un overlay su un profilo esistente: gli eventuali file in chiaro già presenti su questo remoto restano non cifrati e appariranno come un insieme indecifrabile. Usa un remoto vuoto.",
-            "scopeHint": "Il percorso degli overlay definisce l'ambito crittografato. Il percorso remoto sceglie solo da dove inizia la navigazione; il percorso locale non modifica mai la crittografia.",
+            "scopeHint": "Il Percorso overlay definisce l'ambito cifrato. Il Percorso Remoto sceglie solo da dove parte la navigazione; il Percorso Locale non cambia mai la cifratura.",
             "overlaysPathLockedNote": "Il percorso overlay è bloccato: è l'ancora di cifratura e non può più cambiare una volta associato l'overlay.",
             "remotePathMustReachOverlay": "Il percorso remoto deve essere il percorso overlay ({path}) o una delle sue cartelle superiori, altrimenti la cartella cifrata resta fuori da questa sessione.",
             "keyfileLabel": "File chiave (opzionale)",

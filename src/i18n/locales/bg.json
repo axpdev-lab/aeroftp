@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Поставете API ключа от вашия профил във Filen CLI, за да пропускате 2FA кода при всяко повторно свързване. Паролата на акаунта все пак е необходима: тя дешифрира файловете ви от край до край. След запазване ключът се съхранява криптиран в трезора и не се показва повече тук (както и 2FA тайната); AeroFTP го използва автоматично. При редактиране оставете празно, за да запазите съхранения ключ.",
             "manualTotalStorage": "Общо хранилище (ръчно)",
             "manualTotalStoragePlaceholder": "напр. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "По избор. Въведете числов лимит за план/акаунт и изберете мерна единица. Използва се само когато доставчикът няма API за общата квота; собствената обща стойност на доставчика винаги е с предимство.",
+            "manualTotalStorageHint": "По избор. Въведете числов лимит на плана или акаунта и изберете мерната единица. Използва се само когато доставчикът няма API за общата квота; собствената стойност на доставчика винаги има предимство.",
             "autoScanUsedOnConnect": "Изчисляване на използваното хранилище при свързване",
             "autoScanUsedOnConnectHint": "Само за бекенди без API за използвано пространство (FTP, S3, WebDAV). Изключено по подразбиране: голямо дърво (напр. уеб проект) се обхожда рекурсивно, което може да е бавно. В противен случай използвайте действието в StatusBar при поискване.",
             "saveAsNewProfile": "Запази като нов профил",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Отдалечен път по подразбиране (напр. / или DCIM)",
             "mtpSaveRequiresDevice": "Открийте и изберете устройство, за да активирате Запазване.",
             "mtpSelectPlaceholder": "Изберете устройство...",
-            "mtpSelectPlaceholderEmpty": "Все още няма устройства — щракнете върху Откриване",
+            "mtpSelectPlaceholderEmpty": "Все още няма устройства, щракнете върху Откриване",
             "mtpNotAttachedTitle": "Устройството не е свързано",
-            "mtpNotAttached": "Свържете устройството и включете режим на прехвърляне на файлове, след което опитайте отново.",
+            "mtpNotAttached": "Свържете устройството, включете режима за прехвърляне на файлове и опитайте отново.",
             "discovery": {
                 "fetch": "Извличане",
                 "fetching": "Извличане...",
                 "refresh": "Обновяване",
-                "none": "Не бяха върнати цели. Все пак можете да въведете такава ръчно.",
-                "found": "Намерени са {count} достъпни цели. Въведете текст за търсене или изберете една."
+                "none": "Не бяха върнати цели. Все пак можете да въведете една ръчно.",
+                "found": "Намерени са {count} достъпни цели. Пишете, за да търсите, или изберете една."
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Предоставено от сървъра",
             "readOnly": "Само за четене",
             "hidden": "Скрит",
-            "hiddenIsNameBased": "В тази система файлът е скрит заради името си, а не заради атрибут: преименувайте го да започва с точка.",
+            "hiddenIsNameBased": "В тази система файлът е скрит заради името си, а не заради атрибут: преименувайте го така, че да започва с точка.",
             "contains": "Съдържа",
             "foldersOnly": "Само папки",
             "location": "Местоположение",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Двоично",
             "hashOutputLength": "Дължина на BLAKE3 изхода (байтове)",
-            "hashOutputLengthHint": "1–1024 · по подразбиране 32",
+            "hashOutputLengthHint": "1-1024 · по подразбиране 32",
             "hashDropHint": "Пуснете файл върху този раздел, за да го хеширате"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Отдалеченият маркер (.aerocrypt.tsv) липсваше и беше възстановен от локалното хранилище на ключове. Не го изтривайте отново, освен ако не преминете към режим без заглавка (headerless): второ изтриване плюс загуба на хранилището означава окончателно заключване.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Типът на шифроване и паролата се задават еднократно и не могат да се променят по-късно: вече шифрованите файлове биха станали нечетими.",
             "lockedNote": "Типът на шифроване и идентификационните данни са заключени: този слой вече съдържа шифровани данни.",
             "addToExistingWarn": "Активиране на наслагване върху съществуващ профил: всички файлове в обикновен текст, които вече са на този отдалечен сървър, остават нешифровани и ще изглеждат като недешифруема смес. Използвайте празен отдалечен сървър.",
-            "scopeHint": "Пътят на наслагванията определя шифрования обхват. Отдалеченият път избира само откъде започва преглеждането; локалният път никога не променя шифроването.",
+            "scopeHint": "Пътят на слоевете определя шифрования обхват. Отдалеченият път само избира откъде започва разглеждането; локалният път никога не променя шифроването.",
             "overlaysPathLockedNote": "Пътят на слоевете е заключен: той е котвата на шифроването и не може да се променя, след като слоят е обвързан.",
             "remotePathMustReachOverlay": "Отдалеченият път трябва да бъде пътят на слоевете ({path}) или някоя от родителските му папки, в противен случай шифрованата папка остава извън тази сесия.",
             "overlaysSection": "Обвивки / Overlay-и",

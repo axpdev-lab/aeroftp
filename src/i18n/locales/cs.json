@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Vložte API klíč ze svého profilu Filen CLI, abyste při každém opětovném připojení přeskočili 2FA kód. Heslo k účtu je stále vyžadováno: dešifruje vaše soubory end-to-end. Po uložení je klíč uložen šifrovaně v trezoru a zde se již znovu nezobrazuje (stejně jako 2FA tajemství); AeroFTP jej automaticky znovu použije. Při úpravě ponechte prázdné pro zachování uloženého klíče.",
             "manualTotalStorage": "Celkové úložiště (ručně)",
             "manualTotalStoragePlaceholder": "např. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Volitelné. Zadejte číselný limit tarifu/účtu a zvolte jeho jednotku. Použije se pouze tehdy, když poskytovatel nemá API pro celkovou kvótu; vlastní celková hodnota poskytovatele má vždy přednost.",
+            "manualTotalStorageHint": "Volitelné. Zadejte číselný limit tarifu nebo účtu a zvolte jeho jednotku. Použije se jen tehdy, když poskytovatel nemá API pro celkovou kvótu; vlastní údaj poskytovatele má vždy přednost.",
             "autoScanUsedOnConnect": "Vypočítat využité úložiště při připojení",
             "autoScanUsedOnConnectHint": "Pouze pro backendy bez API pro využité místo (FTP, S3, WebDAV). Ve výchozím nastavení vypnuto: velký strom (např. webový projekt) se prochází rekurzivně, což může být pomalé. Jinak použijte akci v StatusBar podle potřeby.",
             "saveAsNewProfile": "Uložit jako nový profil",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Výchozí vzdálená cesta (např. / nebo DCIM)",
             "mtpSaveRequiresDevice": "Zjistěte a vyberte zařízení pro povolení Uložit.",
             "mtpSelectPlaceholder": "Vyberte zařízení...",
-            "mtpSelectPlaceholderEmpty": "Zatím žádná zařízení – klikněte na Zjistit",
+            "mtpSelectPlaceholderEmpty": "Zatím žádná zařízení, klikněte na Zjistit",
             "mtpNotAttachedTitle": "Zařízení není připojeno",
-            "mtpNotAttached": "Připojte zařízení a zapněte režim přenosu souborů, poté to zkuste znovu.",
+            "mtpNotAttached": "Připojte zařízení, zapněte režim přenosu souborů a zkuste to znovu.",
             "discovery": {
                 "fetch": "Načíst",
                 "fetching": "Načítání...",
                 "refresh": "Obnovit",
-                "none": "Nebyly vráceny žádné cíle. Stále můžete některý zadat ručně.",
-                "found": "Nalezeno {count} dostupných cílů. Pište pro vyhledání nebo některý vyberte."
+                "none": "Nebyly vráceny žádné cíle. Přesto můžete jeden zadat ručně.",
+                "found": "Nalezeno {count} dostupných cílů. Hledejte psaním nebo některý vyberte."
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Poskytnuto serverem",
             "readOnly": "Jen pro čtení",
             "hidden": "Skrytý",
-            "hiddenIsNameBased": "V tomto systemu je soubor skryty diky svemu nazvu, nikoli diky atributu: prejmenujte jej tak, aby zacinal teckou.",
+            "hiddenIsNameBased": "V tomto systému je soubor skrytý díky svému názvu, ne kvůli atributu: přejmenujte ho tak, aby začínal tečkou.",
             "contains": "Obsahuje",
             "foldersOnly": "Pouze složky",
             "location": "Umístění",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binární",
             "hashOutputLength": "Délka výstupu BLAKE3 (bajty)",
-            "hashOutputLengthHint": "1–1024 · výchozí 32",
+            "hashOutputLengthHint": "1-1024 · výchozí 32",
             "hashDropHint": "Přetáhněte sem soubor a vypočítá se jeho hash"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Vzdálený marker (.aerocrypt.tsv) chyběl a byl obnoven z místního úložiště klíčů. Nemažte jej znovu, pokud nepřejdete na režim bez hlavičky (headerless): druhé smazání spolu se ztrátou úložiště klíčů znamená trvalé uzamčení.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Typ šifrování a heslo se nastavují jednou a později je nelze změnit: již zašifrované soubory by se staly nečitelnými.",
             "lockedNote": "Typ šifrování a přihlašovací údaje jsou uzamčeny: tato vrstva již obsahuje zašifrovaná data.",
             "addToExistingWarn": "Zapnutím překryvné vrstvy u stávajícího profilu: jakékoli soubory v prostém textu, které už na tomto vzdáleném úložišti jsou, zůstanou nešifrované a zobrazí se jako nečitelná směs. Použijte prázdné vzdálené úložiště.",
-            "scopeHint": "Cesta překryvů určuje šifrovaný rozsah. Vzdálená cesta pouze určuje, kde začne procházení; místní cesta šifrování nikdy nemění.",
+            "scopeHint": "Cesta překryvů určuje šifrovaný rozsah. Vzdálená cesta jen volí, kde začíná procházení; lokální cesta šifrování nikdy nemění.",
             "overlaysPathLockedNote": "Cesta překryvů je uzamčena: je kotvou šifrování a po navázání překryvu ji nelze změnit.",
             "remotePathMustReachOverlay": "Vzdálená cesta musí být cesta překryvů ({path}) nebo některá z jejích nadřazených složek, jinak zůstane šifrovaná složka mimo tuto relaci.",
             "overlaysSection": "Obaly / Overlaye",

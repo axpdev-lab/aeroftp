@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "再接続のたびに2FAコードをスキップするには、Filen CLIプロファイルのAPIキーを貼り付けてください。アカウントのパスワードは引き続き必要です：ファイルをエンドツーエンドで復号します。保存後、キーは暗号化されてボールトに保存され、ここには二度と表示されません（2FAシークレットと同様）。AeroFTPが自動的に再利用します。編集時は、保存済みのキーを保持するには空欄のままにしてください。",
             "manualTotalStorage": "合計ストレージ (手動)",
             "manualTotalStoragePlaceholder": "例: 10 GB、500 GB、2 TB",
-            "manualTotalStorageHint": "任意。プランまたはアカウントの上限を数値で入力し、単位を選択します。プロバイダーに総クォータAPIがない場合にのみ使用され、プロバイダー側の総容量が常に優先されます。",
+            "manualTotalStorageHint": "任意です。プランまたはアカウントの上限を数値で入力し、単位を選択してください。プロバイダーに総容量の API がない場合にのみ使用されます。プロバイダー自身の総容量が常に優先されます。",
             "autoScanUsedOnConnect": "接続時に使用ストレージを計算する",
             "autoScanUsedOnConnectHint": "使用容量 API がないバックエンド (FTP、S3、WebDAV) のみ。既定ではオフです: 大きなツリー (例: Web プロジェクト) を再帰的にたどるため、処理が遅くなる場合があります。それ以外の場合は必要に応じて StatusBar の操作を使用してください。",
             "saveAsNewProfile": "新しいプロファイルとして保存",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "既定のリモートパス（例：/ または DCIM）",
             "mtpSaveRequiresDevice": "保存を有効にするには、デバイスを検出して選択してください。",
             "mtpSelectPlaceholder": "デバイスを選択...",
-            "mtpSelectPlaceholderEmpty": "デバイスがまだありません — 検出をクリック",
+            "mtpSelectPlaceholderEmpty": "デバイスがまだありません。検出をクリック",
             "mtpNotAttachedTitle": "デバイスが接続されていません",
             "mtpNotAttached": "デバイスを接続してファイル転送モードを有効にしてから、もう一度お試しください。",
             "discovery": {
                 "fetch": "取得",
                 "fetching": "取得中...",
                 "refresh": "更新",
-                "none": "対象が返されませんでした。手動で入力することもできます。",
-                "found": "アクセス可能な対象が{count}件見つかりました。入力して検索するか、1つ選択してください。"
+                "none": "ターゲットは返されませんでした。手動で入力することもできます。",
+                "found": "アクセス可能なターゲットが {count} 件見つかりました。入力して検索するか、1 つ選択してください。"
             }
         },
         "browser": {
@@ -3969,7 +3969,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "バイナリ",
             "hashOutputLength": "BLAKE3出力長（バイト）",
-            "hashOutputLengthHint": "1–1024 · 既定 32",
+            "hashOutputLengthHint": "1-1024 · 既定 32",
             "hashDropHint": "このタブにファイルをドロップするとハッシュを計算します"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "不一致: このキット/マーカーはアクティブプロファイルのキーストア設定と一致しません。",
             "verifyKitKind": "検出された入力: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "リモートマーカー (.aerocrypt.tsv) が見つからなかったため、ローカルのキーストアから再作成しました。ヘッダーレス (headerless) モードに切り替える場合を除き、再び削除しないでください。二度目の削除とキーストアの紛失が重なると、二度と開けなくなります。",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "暗号化の種類とパスワードは一度だけ設定でき、後から変更できません。すでに暗号化されたファイルは読み取れなくなります。",
             "lockedNote": "暗号化の種類と認証情報はロックされています。このオーバーレイにはすでに暗号化されたデータがあります。",
             "addToExistingWarn": "既存のプロファイルでオーバーレイを有効にすると、このリモートに既にある平文ファイルは暗号化されないまま残り、復号できない混在状態として表示されます。空のリモートを使用してください。",
-            "scopeHint": "オーバーレイパスは暗号化範囲を定義します。リモートパスは閲覧の開始位置だけを指定し、ローカルパスが暗号化を変更することはありません。",
+            "scopeHint": "オーバーレイパスが暗号化の範囲を決めます。リモートパスは閲覧の開始位置を選ぶだけで、ローカルパスが暗号化を変えることはありません。",
             "overlaysPathLockedNote": "オーバーレイパスはロックされています。暗号化のアンカーであり、オーバーレイを紐付けた後は変更できません。",
             "remotePathMustReachOverlay": "リモートパスはオーバーレイパス（{path}）またはその上位フォルダーである必要があります。そうでない場合、暗号化フォルダーはこのセッションの範囲外になります。",
             "overlaysSection": "ラッパー / オーバーレイ",

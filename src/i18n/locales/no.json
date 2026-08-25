@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Lim inn API-nøkkelen fra Filen CLI-profilen din for å hoppe over 2FA-koden ved hver gjentilkobling. Kontopassordet kreves fortsatt: det dekrypterer filene dine ende-til-ende. Når den er lagret, oppbevares nøkkelen kryptert i hvelvet og vises ikke lenger her (som 2FA-hemmeligheten din); AeroFTP gjenbruker den automatisk. La feltet stå tomt ved redigering for å beholde den lagrede nøkkelen.",
             "manualTotalStorage": "Total lagring (manuell)",
             "manualTotalStoragePlaceholder": "f.eks. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Valgfritt. Angi en numerisk grense for abonnementet/kontoen, og velg enhet. Brukes bare når leverandøren ikke har et API for totalkvote; leverandørens egen total har alltid forrang.",
+            "manualTotalStorageHint": "Valgfritt. Angi en tallgrense for abonnementet eller kontoen, og velg enheten. Brukes bare når leverandøren ikke har et API for total kvote; leverandørens eget totaltall har alltid forrang.",
             "autoScanUsedOnConnect": "Beregn brukt lagring ved tilkobling",
             "autoScanUsedOnConnectHint": "Kun for bakgrunnssystemer uten API for brukt plass (FTP, S3, WebDAV). Av som standard: et stort tre (f.eks. et webprosjekt) gjennomgås rekursivt, noe som kan være tregt. Ellers bruk StatusBar-handlingen ved behov.",
             "saveAsNewProfile": "Lagre som ny profil",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Standard ekstern bane (f.eks. / eller DCIM)",
             "mtpSaveRequiresDevice": "Oppdag og velg en enhet for å aktivere Lagre.",
             "mtpSelectPlaceholder": "Velg en enhet...",
-            "mtpSelectPlaceholderEmpty": "Ingen enheter ennå – klikk på Oppdag",
+            "mtpSelectPlaceholderEmpty": "Ingen enheter ennå, klikk på Oppdag",
             "mtpNotAttachedTitle": "Enheten er ikke tilkoblet",
-            "mtpNotAttached": "Koble til enheten og aktiver filoverføringsmodus, og prøv på nytt.",
+            "mtpNotAttached": "Koble til enheten, aktiver filoverføringsmodus og prøv igjen.",
             "discovery": {
                 "fetch": "Hent",
                 "fetching": "Henter...",
                 "refresh": "Oppdater",
-                "none": "Ingen mål ble returnert. Du kan fortsatt angi et manuelt.",
-                "found": "Fant {count} tilgjengelige mål. Skriv for å søke, eller velg et."
+                "none": "Ingen mål ble returnert. Du kan likevel skrive inn ett manuelt.",
+                "found": "Fant {count} tilgjengelige mål. Skriv for å søke, eller velg ett."
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Levert av serveren",
             "readOnly": "Skrivebeskyttet",
             "hidden": "Skjult",
-            "hiddenIsNameBased": "Pa dette systemet er en fil skjult pa grunn av navnet, ikke pa grunn av et attributt: gi den nytt navn slik at det starter med punktum.",
+            "hiddenIsNameBased": "På dette systemet er en fil skjult på grunn av navnet, ikke på grunn av et attributt: gi den nytt navn slik at det starter med punktum.",
             "contains": "Inneholder",
             "foldersOnly": "Bare mapper",
             "location": "Plassering",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binær",
             "hashOutputLength": "BLAKE3-utdatalengde (byte)",
-            "hashOutputLengthHint": "1–1024 · standard 32",
+            "hashOutputLengthHint": "1-1024 · standard 32",
             "hashDropHint": "Slipp en fil på denne fanen for å hashe den"
         },
         "dialog": {
@@ -5285,7 +5285,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Fjernmarkøren (.aerocrypt.tsv) manglet og ble bygget opp igjen fra det lokale nøkkellageret. Ikke slett den igjen med mindre du bytter til headerless: å slette den to ganger og miste nøkkellageret stenger deg ute for godt.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5353,7 +5353,7 @@
             "immutableWarn": "Krypteringstype og passord angis én gang og kan ikke endres senere: de allerede krypterte filene ville blitt uleselige.",
             "lockedNote": "Krypteringstype og legitimasjon er låst: dette overlegget inneholder allerede krypterte data.",
             "addToExistingWarn": "Når du aktiverer et overlegg på en eksisterende profil: alle klartekstfiler som allerede finnes på denne eksterne plasseringen forblir ukryptert og vises som en blanding som ikke kan dekrypteres. Bruk en tom ekstern plassering.",
-            "scopeHint": "Overleggsbanen definerer det krypterte området. Ekstern bane velger bare hvor gjennomlesingen starter; lokal bane endrer aldri krypteringen.",
+            "scopeHint": "Overlegg-stien definerer det krypterte området. Ekstern sti velger bare hvor navigeringen starter; lokal sti endrer aldri krypteringen.",
             "overlaysPathLockedNote": "Overlegg-stien er låst: den er krypteringsankeret og kan ikke endres når overlegget først er bundet.",
             "remotePathMustReachOverlay": "Den eksterne stien må være overlegg-stien ({path}) eller en av dens overordnede mapper, ellers havner den krypterte mappen utenfor denne økten.",
             "overlaysSection": "Innpakninger / Overlays",

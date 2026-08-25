@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "បិទភ្ជាប់សោ API ពីប្រវត្តិរូប Filen CLI របស់អ្នកដើម្បីរំលងលេខកូដ 2FA រាល់ពេលភ្ជាប់ឡើងវិញ។ ពាក្យសម្ងាត់គណនីនៅតែត្រូវការ៖ វាឌិគ្រីបឯកសាររបស់អ្នកពីចុងដល់ចុង។ នៅពេលរក្សាទុករួច សោត្រូវបានរក្សាទុកដោយបានអ៊ិនគ្រីបនៅក្នុងហិបនិរភ័យ ហើយមិនត្រូវបានបង្ហាញនៅទីនេះម្តងទៀតទេ (ដូចជាសម្ងាត់ 2FA របស់អ្នក)។ AeroFTP ប្រើវាឡើងវិញដោយស្វ័យប្រវត្តិ។ ពេលកែសម្រួល ទុកវាឱ្យនៅទទេដើម្បីរក្សាសោដែលបានរក្សាទុក។",
             "manualTotalStorage": "ឧបករណ៍ផ្ទុកសរុប (ដោយដៃ)",
             "manualTotalStoragePlaceholder": "ឧ. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "ជាជម្រើស។ បញ្ចូលដែនកំណត់ជាលេខរបស់គម្រោង/គណនី ហើយជ្រើសរើសឯកតារបស់វា។ ប្រើតែនៅពេលអ្នកផ្តល់សេវាមិនមាន API សម្រាប់កូតាសរុបប៉ុណ្ណោះ។ ចំនួនសរុបរបស់អ្នកផ្តល់សេវាផ្ទាល់តែងតែមានអាទិភាព។",
+            "manualTotalStorageHint": "ជាជម្រើស។ បញ្ចូលកម្រិតជាលេខរបស់គម្រោង ឬគណនី ហើយជ្រើសរើសឯកតារបស់វា។ ប្រើតែពេលអ្នកផ្ដល់សេវាគ្មាន API កូតាសរុប។ ចំនួនសរុបរបស់អ្នកផ្ដល់សេវាតែងតែមានអាទិភាព។",
             "autoScanUsedOnConnect": "គណនាទំហំផ្ទុកដែលប្រើនៅពេលភ្ជាប់",
             "autoScanUsedOnConnectHint": "សម្រាប់តែ backend ដែលគ្មាន API ទំហំដែលប្រើ (FTP, S3, WebDAV)។ បិទតាមលំនាំដើម៖ មែកធាងធំ (ឧ. គម្រោងវេប) ត្រូវបានឆ្លងកាត់ដោយ recursive ដែលអាចយឺត។ បើមិនដូច្នេះទេ សូមប្រើសកម្មភាព StatusBar តាមតម្រូវការ។",
             "saveAsNewProfile": "រក្សាទុកជាប្រវត្តិរូបថ្មី",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "ផ្លូវពីចម្ងាយលំនាំដើម (ឧ. / ឬ DCIM)",
             "mtpSaveRequiresDevice": "រកឃើញ និងជ្រើសរើសឧបករណ៍ដើម្បីបើករក្សាទុក។",
             "mtpSelectPlaceholder": "ជ្រើសរើសឧបករណ៍...",
-            "mtpSelectPlaceholderEmpty": "មិនទាន់មានឧបករណ៍ទេ — ចុចរកឃើញ",
+            "mtpSelectPlaceholderEmpty": "មិនទាន់មានឧបករណ៍ទេ ចុចរកឃើញ",
             "mtpNotAttachedTitle": "ឧបករណ៍មិនត្រូវបានភ្ជាប់ទេ",
-            "mtpNotAttached": "ដោតឧបករណ៍ ហើយបើកមុខងារផ្ទេរឯកសារ បន្ទាប់មកព្យាយាមម្តងទៀត។",
+            "mtpNotAttached": "ដោតឧបករណ៍ បើកមុខងារផ្ទេរឯកសារ បន្ទាប់មកព្យាយាមម្ដងទៀត។",
             "discovery": {
                 "fetch": "ទាញយក",
                 "fetching": "កំពុងទាញយក...",
                 "refresh": "ផ្ទុកឡើងវិញ",
-                "none": "មិនមានគោលដៅត្រូវបានត្រឡប់មកវិញទេ។ អ្នកនៅតែអាចបញ្ចូលមួយដោយដៃ។",
-                "found": "បានរកឃើញគោលដៅដែលអាចចូលប្រើបានចំនួន {count}។ វាយដើម្បីស្វែងរក ឬជ្រើសរើសមួយ។"
+                "none": "គ្មានគោលដៅត្រូវបានបញ្ជូនមកទេ។ អ្នកនៅតែអាចបញ្ចូលមួយដោយដៃបាន។",
+                "found": "រកឃើញគោលដៅដែលអាចចូលបាន {count}។ វាយបញ្ចូលដើម្បីស្វែងរក ឬជ្រើសរើសមួយ។"
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "ផ្តល់ដោយម៉ាស៊ីនមេ",
             "readOnly": "អានតែប៉ុណ្ណោះ",
             "hidden": "លាក់",
-            "hiddenIsNameBased": "នៅលើប្រព័ន្ធនេះ ឯកសារត្រូវបានលាក់ដោយសារឈ្មោះរបស់វា មិនមែនដោយសារគុណលក្ខណៈទេ៖ សូមប្តូរឈ្មោះឱ្យចាប់ផ្តើមដោយសញ្ញាចុច។",
+            "hiddenIsNameBased": "នៅលើប្រព័ន្ធនេះ ឯកសារត្រូវបានលាក់ដោយសារឈ្មោះរបស់វា មិនមែនដោយសារគុណលក្ខណៈទេ៖ សូមប្ដូរឈ្មោះឱ្យចាប់ផ្ដើមដោយសញ្ញាចុច។",
             "contains": "មានផ្ទុក",
             "foldersOnly": "តែថតប៉ុណ្ណោះ",
             "location": "ទីតាំង",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "គោលពីរ",
             "hashOutputLength": "ប្រវែងលទ្ធផល BLAKE3 (បៃ)",
-            "hashOutputLengthHint": "1–1024 · លំនាំដើម 32",
+            "hashOutputLengthHint": "1-1024 · លំនាំដើម 32",
             "hashDropHint": "ទម្លាក់ឯកសារលើផ្ទាំងនេះដើម្បីគណនា hash"
         },
         "dialog": {
@@ -5285,7 +5285,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "សញ្ញាសម្គាល់ពីចម្ងាយ (.aerocrypt.tsv) បាត់ ហើយត្រូវបានស្ដារឡើងវិញពីឃ្លាំងសោមូលដ្ឋាន។ សូមកុំលុបវាម្ដងទៀត លុះត្រាតែអ្នកប្ដូរទៅរបៀបគ្មានក្បាល (headerless)៖ ការលុបលើកទីពីរ បូករួមនឹងការបាត់ឃ្លាំងសោ នឹងចាក់សោអ្នកជារៀងរហូត។",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5353,7 +5353,7 @@
             "immutableWarn": "ប្រភេទការអ៊ិនគ្រីប និងពាក្យសម្ងាត់ត្រូវបានកំណត់តែម្តង ហើយមិនអាចផ្លាស់ប្តូរនៅពេលក្រោយបានទេ៖ ឯកសារដែលបានអ៊ិនគ្រីបរួចនឹងមិនអាចអានបាន។",
             "lockedNote": "ប្រភេទការអ៊ិនគ្រីប និងព័ត៌មានសម្គាល់ខ្លួនត្រូវបានចាក់សោ៖ ស្រទាប់នេះមានទិន្នន័យអ៊ិនគ្រីបរួចហើយ។",
             "addToExistingWarn": "ការបើកការត្រួតលើនៅលើ profile ដែលមានស្រាប់៖ ឯកសារអត្ថបទធម្មតាណាមួយដែលមានរួចហើយនៅលើ remote នេះនៅតែមិនបានអ៊ិនគ្រីប ហើយនឹងបង្ហាញជាល្បាយដែលមិនអាចឌិគ្រីបបាន។ សូមប្រើ remote ទទេ។",
-            "scopeHint": "ផ្លូវស្រទាប់ត្រួតគ្នាកំណត់វិសាលភាពដែលបានអ៊ិនគ្រីប។ ផ្លូវពីចម្ងាយគ្រាន់តែជ្រើសរើសកន្លែងចាប់ផ្តើមរុករកប៉ុណ្ណោះ។ ផ្លូវមូលដ្ឋានមិនដែលផ្លាស់ប្តូរការអ៊ិនគ្រីបទេ។",
+            "scopeHint": "ផ្លូវ Overlay កំណត់វិសាលភាពដែលបានអ៊ិនគ្រីប។ ផ្លូវពីចម្ងាយគ្រាន់តែជ្រើសរើសកន្លែងចាប់ផ្ដើមរុករក។ ផ្លូវមូលដ្ឋានមិនផ្លាស់ប្ដូរការអ៊ិនគ្រីបឡើយ។",
             "overlaysPathLockedNote": "ផ្លូវ Overlay ត្រូវបានចាក់សោ៖ វាជាយុថ្កានៃការអ៊ិនគ្រីប ហើយមិនអាចផ្លាស់ប្ដូរបានទេ បន្ទាប់ពី overlay ត្រូវបានភ្ជាប់។",
             "remotePathMustReachOverlay": "ផ្លូវពីចម្ងាយត្រូវតែជាផ្លូវ Overlay ({path}) ឬថតមេណាមួយរបស់វា បើមិនដូច្នេះទេ ថតដែលបានអ៊ិនគ្រីបនឹងនៅក្រៅវគ្គនេះ។",
             "overlaysSection": "កម្រាល / Overlay",

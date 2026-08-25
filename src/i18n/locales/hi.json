@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "हर बार पुनः कनेक्ट होने पर 2FA कोड छोड़ने के लिए अपने Filen CLI प्रोफ़ाइल से API कुंजी चिपकाएं। खाते का पासवर्ड अब भी आवश्यक है: यह आपकी फ़ाइलों को एंड-टू-एंड डिक्रिप्ट करता है। सहेजे जाने के बाद, कुंजी वॉल्ट में एन्क्रिप्ट करके रखी जाती है और यहां फिर से नहीं दिखाई जाती (आपके 2FA सीक्रेट की तरह); AeroFTP इसका स्वचालित रूप से पुनः उपयोग करता है। संपादन करते समय सहेजी गई कुंजी रखने के लिए खाली छोड़ें।",
             "manualTotalStorage": "कुल भंडारण (मैनुअल)",
             "manualTotalStoragePlaceholder": "उदा. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "वैकल्पिक। प्लान/खाते की संख्यात्मक सीमा दर्ज करें और उसकी इकाई चुनें। इसका उपयोग केवल तभी होता है जब प्रदाता के पास कुल कोटा API न हो; प्रदाता का अपना कुल मान हमेशा प्राथमिकता लेता है।",
+            "manualTotalStorageHint": "वैकल्पिक। प्लान या खाते की संख्यात्मक सीमा दर्ज करें और उसकी इकाई चुनें। इसका उपयोग केवल तब होता है जब प्रदाता के पास कुल कोटा API न हो; प्रदाता का अपना कुल मान हमेशा प्राथमिकता पाता है।",
             "autoScanUsedOnConnect": "कनेक्ट करते समय उपयोग किया गया भंडारण गणना करें",
             "autoScanUsedOnConnectHint": "केवल उन बैकएंड के लिए जिनमें उपयोग-स्थान API नहीं है (FTP, S3, WebDAV)। डिफ़ॉल्ट रूप से बंद: एक बड़ा ट्री (उदा. एक वेब प्रोजेक्ट) पुनरावर्ती रूप से स्कैन किया जाता है, जो धीमा हो सकता है। अन्यथा आवश्यकता पड़ने पर StatusBar क्रिया का उपयोग करें।",
             "saveAsNewProfile": "नए प्रोफ़ाइल के रूप में सहेजें",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "डिफ़ॉल्ट रिमोट पथ (उदा. / या DCIM)",
             "mtpSaveRequiresDevice": "सहेजें सक्षम करने के लिए डिवाइस पहचानें और चुनें।",
             "mtpSelectPlaceholder": "एक डिवाइस चुनें...",
-            "mtpSelectPlaceholderEmpty": "अभी तक कोई डिवाइस नहीं — पहचानें पर क्लिक करें",
+            "mtpSelectPlaceholderEmpty": "अभी तक कोई डिवाइस नहीं, पहचानें पर क्लिक करें",
             "mtpNotAttachedTitle": "डिवाइस कनेक्ट नहीं है",
-            "mtpNotAttached": "डिवाइस प्लग इन करें और फ़ाइल स्थानांतरण मोड सक्षम करें, फिर पुनः प्रयास करें।",
+            "mtpNotAttached": "डिवाइस प्लग इन करें, फ़ाइल स्थानांतरण मोड सक्षम करें, फिर दोबारा कोशिश करें।",
             "discovery": {
                 "fetch": "प्राप्त करें",
                 "fetching": "प्राप्त किया जा रहा है...",
                 "refresh": "रीफ़्रेश करें",
-                "none": "कोई लक्ष्य नहीं मिला। आप अब भी इसे मैन्युअल रूप से दर्ज कर सकते हैं।",
-                "found": "{count} सुलभ लक्ष्य मिले। खोजने के लिए लिखें या कोई एक चुनें।"
+                "none": "कोई लक्ष्य वापस नहीं आया। आप फिर भी एक मैन्युअल रूप से दर्ज कर सकते हैं।",
+                "found": "{count} सुलभ लक्ष्य मिले। खोजने के लिए टाइप करें या कोई एक चुनें।"
             }
         },
         "browser": {
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "बाइनरी",
             "hashOutputLength": "BLAKE3 आउटपुट लंबाई (बाइट)",
-            "hashOutputLengthHint": "1–1024 · डिफ़ॉल्ट 32",
+            "hashOutputLengthHint": "1-1024 · डिफ़ॉल्ट 32",
             "hashDropHint": "हैश करने के लिए इस टैब पर फ़ाइल छोड़ें"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "रिमोट मार्कर (.aerocrypt.tsv) मौजूद नहीं था और उसे स्थानीय कीस्टोर से दोबारा बनाया गया। जब तक आप हेडरलेस मोड पर न जाएं, इसे दोबारा न हटाएं: दूसरी बार हटाना और कीस्टोर खो देना आपको हमेशा के लिए बाहर कर देता है।",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "एन्क्रिप्शन प्रकार और पासवर्ड एक बार सेट होते हैं और बाद में बदले नहीं जा सकते: पहले से एन्क्रिप्ट की गई फ़ाइलें अपठनीय हो जाएंगी।",
             "lockedNote": "एन्क्रिप्शन प्रकार और क्रेडेंशियल लॉक हैं: इस ओवरले में पहले से एन्क्रिप्ट किया गया डेटा है।",
             "addToExistingWarn": "किसी मौजूदा प्रोफ़ाइल पर ओवरले सक्षम करने पर: इस रिमोट पर पहले से मौजूद कोई भी सादा-पाठ फ़ाइल बिना एन्क्रिप्शन के रहती है और एक अपठनीय मिश्रण के रूप में दिखेगी। एक खाली रिमोट का उपयोग करें।",
-            "scopeHint": "ओवरले पथ एन्क्रिप्ट किया गया दायरा तय करता है। रिमोट पथ केवल यह चुनता है कि ब्राउज़िंग कहाँ से शुरू हो; लोकल पथ एन्क्रिप्शन को कभी नहीं बदलता।",
+            "scopeHint": "ओवरले पथ एन्क्रिप्टेड दायरा तय करता है। रिमोट पथ केवल यह चुनता है कि ब्राउज़िंग कहाँ से शुरू हो; स्थानीय पथ एन्क्रिप्शन कभी नहीं बदलता।",
             "overlaysPathLockedNote": "ओवरले पथ लॉक है: यह एन्क्रिप्शन का आधार है और ओवरले जुड़ जाने के बाद इसे बदला नहीं जा सकता।",
             "remotePathMustReachOverlay": "रिमोट पथ ओवरले पथ ({path}) या उसका कोई मूल फ़ोल्डर होना चाहिए, अन्यथा एन्क्रिप्टेड फ़ोल्डर इस सत्र से बाहर रह जाएगा।",
             "overlaysSection": "रैपर / ओवरले",

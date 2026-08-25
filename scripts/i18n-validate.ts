@@ -241,6 +241,32 @@ async function validate(): Promise<void> {
             });
         }
 
+        // 6a. No em-dash or en-dash anywhere in a locale value.
+        //
+        // CLAUDE.md bans both characters. They were nonetheless shipping in 187
+        // places across all 47 files: a rule that is only checked by hand is a
+        // rule that ships violations, and the one sweep that found them counted
+        // U+2014 only, because that is the character the rule names first.
+        //
+        // Ban them by CODEPOINT, not by a punctuation class. Three legitimate
+        // non-ASCII punctuation marks are in use and must survive: U+00B7 middle
+        // dot in `cyberTools.hashOutputLengthHint`, the CJK full-width comma,
+        // and the Armenian full stop.
+        const BANNED_DASHES = /[\u2014\u2013]/u;
+        const dashed: string[] = [];
+        for (const key of translationKeys) {
+            const val = getNestedValue(data.translations, key);
+            if (typeof val === 'string' && BANNED_DASHES.test(val)) {
+                dashed.push(key);
+            }
+        }
+        if (dashed.length > 0) {
+            issues.push({
+                severity: 'error',
+                message: `${dashed.length} value(s) contain an em-dash or en-dash (use a comma, colon or parentheses): ${dashed.slice(0, 5).join(', ')}${dashed.length > 5 ? ` (+${dashed.length - 5} more)` : ''}`
+            });
+        }
+
         // 6b. Labels the UI composes a value onto must not end in the
         // separator the UI itself supplies. `DefaultSaltDisclosure` renders the label, then the
         // pre-image string, then a colon of its own, so a label that already

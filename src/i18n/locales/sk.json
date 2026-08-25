@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Vložte API kľúč zo svojho profilu Filen CLI, aby ste pri každom opätovnom pripojení preskočili 2FA kód. Heslo k účtu je stále potrebné: dešifruje vaše súbory end-to-end. Po uložení sa kľúč uchováva šifrovaný v trezore a tu sa už znova nezobrazuje (rovnako ako vaše 2FA tajomstvo); AeroFTP ho automaticky znova použije. Pri úprave ponechajte prázdne, aby ste zachovali uložený kľúč.",
             "manualTotalStorage": "Celkové úložisko (ručne)",
             "manualTotalStoragePlaceholder": "napr. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Voliteľné. Zadajte číselný limit programu/konta a vyberte jeho jednotku. Používa sa iba vtedy, keď poskytovateľ nemá API pre celkovú kvótu; vlastná celková hodnota poskytovateľa má vždy prednosť.",
+            "manualTotalStorageHint": "Voliteľné. Zadajte číselný limit programu alebo účtu a vyberte jednotku. Používa sa len vtedy, keď poskytovateľ nemá API pre celkovú kvótu; vlastný celkový údaj poskytovateľa má vždy prednosť.",
             "autoScanUsedOnConnect": "Vypočítať využité úložisko pri pripojení",
             "autoScanUsedOnConnectHint": "Len pre backendy bez API využitého miesta (FTP, S3, WebDAV). Predvolene vypnuté: veľký strom (napr. webový projekt) sa prechádza rekurzívne, čo môže byť pomalé. Inak použite akciu v StatusBar na požiadanie.",
             "saveAsNewProfile": "Uložiť ako nový profil",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Predvolená vzdialená cesta (napr. / alebo DCIM)",
             "mtpSaveRequiresDevice": "Zistite a vyberte zariadenie na povolenie Uložiť.",
             "mtpSelectPlaceholder": "Vyberte zariadenie...",
-            "mtpSelectPlaceholderEmpty": "Zatiaľ žiadne zariadenia – kliknite na Zistiť",
+            "mtpSelectPlaceholderEmpty": "Zatiaľ žiadne zariadenia, kliknite na Zistiť",
             "mtpNotAttachedTitle": "Zariadenie nie je pripojené",
-            "mtpNotAttached": "Pripojte zariadenie a zapnite režim prenosu súborov, potom to skúste znova.",
+            "mtpNotAttached": "Pripojte zariadenie, zapnite režim prenosu súborov a skúste to znova.",
             "discovery": {
                 "fetch": "Načítať",
                 "fetching": "Načítava sa...",
                 "refresh": "Obnoviť",
-                "none": "Neboli vrátené žiadne ciele. Stále môžete niektorý zadať ručne.",
-                "found": "Našlo sa {count} dostupných cieľov. Píšte pre vyhľadávanie alebo niektorý vyberte."
+                "none": "Neboli vrátené žiadne ciele. Napriek tomu môžete jeden zadať ručne.",
+                "found": "Nájdených {count} dostupných cieľov. Píšte na vyhľadávanie alebo niektorý vyberte."
             }
         },
         "browser": {
@@ -1771,7 +1771,7 @@
             "koofrDesc": "Koofr Cloud (10 GB zadarmo)",
             "koofrTooltip": "Koofr - slovenský cloud zameraný na ochranu súkromia s 10 GB zadarmo, dostupný aj cez WebDAV",
             "yandexdiskDesc": "Yandex Disk (5 GB zadarmo)",
-            "yandexdiskTooltip": "Yandex Disk – ruské cloudové úložisko s 5 GB zadarmo, autentifikácia cez token OAuth2",
+            "yandexdiskTooltip": "Yandex Disk - ruské cloudové úložisko s 5 GB zadarmo, autentifikácia cez token OAuth2",
             "opendriveDesc": "OpenDrive Cloud (5 GB zadarmo)",
             "opendriveTooltip": "OpenDrive - 5 GB bezplatného cloudového úložiska, overenie menom používateľa a heslom",
             "opendriveAuthHelp": "OpenDrive používa priame prihlásenie menom používateľa a heslom na dev.opendrive.com. Kľúč aplikácie nie je potrebný.",
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Poskytnuté serverom",
             "readOnly": "Len na čítanie",
             "hidden": "Skrytý",
-            "hiddenIsNameBased": "V tomto systeme je subor skryty vdaka svojmu nazvu, nie vdaka atributu: premenujte ho tak, aby zacinal bodkou.",
+            "hiddenIsNameBased": "V tomto systéme je súbor skrytý pre svoj názov, nie pre atribút: premenujte ho tak, aby začínal bodkou.",
             "contains": "Obsahuje",
             "foldersOnly": "Iba priečinky",
             "location": "Umiestnenie",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binárne",
             "hashOutputLength": "Dĺžka výstupu BLAKE3 (bajty)",
-            "hashOutputLengthHint": "1–1024 · predvolené 32",
+            "hashOutputLengthHint": "1-1024 · predvolené 32",
             "hashDropHint": "Presuňte sem súbor a vypočíta sa jeho hash"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Vzdialený marker (.aerocrypt.tsv) chýbal a bol obnovený z lokálneho úložiska kľúčov. Nemažte ho znova, pokiaľ neprejdete na režim bez hlavičky (headerless): druhé zmazanie spolu so stratou úložiska kľúčov vás natrvalo uzamkne.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Typ šifrovania a heslo sa nastavujú raz a neskôr ich nemožno zmeniť: už zašifrované súbory by sa stali nečitateľnými.",
             "lockedNote": "Typ šifrovania a prihlasovacie údaje sú uzamknuté: táto vrstva už obsahuje zašifrované údaje.",
             "addToExistingWarn": "Zapnutím prekrytia pre existujúci profil: akékoľvek súbory v čistom texte, ktoré sú už na tomto vzdialenom úložisku, zostanú nešifrované a zobrazia sa ako nedešifrovateľná zmes. Použite prázdne vzdialené úložisko.",
-            "scopeHint": "Cesta prekrytí určuje šifrovaný rozsah. Vzdialená cesta iba určuje, kde sa začne prehľadávanie; lokálna cesta nikdy nemení šifrovanie.",
+            "scopeHint": "Cesta prekrytí určuje šifrovaný rozsah. Vzdialená cesta iba vyberá, kde sa začína prehliadanie; lokálna cesta šifrovanie nikdy nemení.",
             "overlaysPathLockedNote": "Cesta prekrytí je uzamknutá: je kotvou šifrovania a po naviazaní prekrytia ju nemožno zmeniť.",
             "remotePathMustReachOverlay": "Vzdialená cesta musí byť cesta prekrytí ({path}) alebo niektorý z jej nadradených priečinkov, inak zostane šifrovaný priečinok mimo tejto relácie.",
             "overlaysSection": "Obaly / Overlaye",

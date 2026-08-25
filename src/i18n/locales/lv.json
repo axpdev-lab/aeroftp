@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Ielīmējiet API atslēgu no sava Filen CLI profila, lai izlaistu 2FA kodu katrā atkārtotā savienojumā. Konta parole joprojām ir nepieciešama: tā atšifrē jūsu failus pilnībā. Pēc saglabāšanas atslēga tiek glabāta šifrēta glabātavā un šeit vairs netiek rādīta (tāpat kā jūsu 2FA noslēpums); AeroFTP to automātiski izmanto atkārtoti. Rediģējot atstājiet tukšu, lai saglabātu saglabāto atslēgu.",
             "manualTotalStorage": "Kopējā krātuve (manuāli)",
             "manualTotalStoragePlaceholder": "piem. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Neobligāti. Ievadiet plāna/konta skaitlisko ierobežojumu un izvēlieties tā mērvienību. Izmanto tikai tad, ja pakalpojumu sniedzējam nav kopējās kvotas API; pakalpojumu sniedzēja norādītajam kopapjomam vienmēr ir priekšroka.",
+            "manualTotalStorageHint": "Neobligāti. Ievadiet plāna vai konta skaitlisko ierobežojumu un izvēlieties mērvienību. Tiek izmantots tikai tad, ja pakalpojumu sniedzējam nav kopējās kvotas API; paša sniedzēja norādītais kopapjoms vienmēr ir noteicošais.",
             "autoScanUsedOnConnect": "Aprēķināt izmantoto krātuvi, izveidojot savienojumu",
             "autoScanUsedOnConnectHint": "Tikai aizmugursistēmām bez izmantotās vietas API (FTP, S3, WebDAV). Pēc noklusējuma izslēgts: liels koks (piem. tīmekļa projekts) tiek apstaigāts rekursīvi, kas var būt lēni. Pretējā gadījumā izmantojiet StatusBar darbību pēc pieprasījuma.",
             "saveAsNewProfile": "Saglabāt kā jaunu profilu",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Noklusējuma attālais ceļš (piem., / vai DCIM)",
             "mtpSaveRequiresDevice": "Nosakiet un atlasiet ierīci, lai iespējotu Saglabāt.",
             "mtpSelectPlaceholder": "Atlasiet ierīci...",
-            "mtpSelectPlaceholderEmpty": "Vēl nav ierīču — noklikšķiniet uz Noteikt",
+            "mtpSelectPlaceholderEmpty": "Vēl nav ierīču, noklikšķiniet uz Noteikt",
             "mtpNotAttachedTitle": "Ierīce nav pievienota",
-            "mtpNotAttached": "Pievienojiet ierīci un iespējojiet failu pārsūtīšanas režīmu, pēc tam mēģiniet vēlreiz.",
+            "mtpNotAttached": "Pievienojiet ierīci, iespējojiet failu pārsūtīšanas režīmu un mēģiniet vēlreiz.",
             "discovery": {
                 "fetch": "Iegūt",
                 "fetching": "Iegūst...",
                 "refresh": "Atsvaidzināt",
-                "none": "Netika atgriezts neviens mērķis. Joprojām varat to ievadīt manuāli.",
-                "found": "Atrasti {count} pieejami mērķi. Rakstiet, lai meklētu, vai atlasiet vienu."
+                "none": "Netika atgriezts neviens mērķis. Jūs tomēr varat to ievadīt manuāli.",
+                "found": "Atrasti {count} pieejami mērķi. Rakstiet, lai meklētu, vai izvēlieties vienu."
             }
         },
         "browser": {
@@ -1005,7 +1005,7 @@
             "detailedCards": "Detalizētas servera kartes",
             "detailedCardsDesc": "Rādīt kešatmiņā saglabātās krātuves lietojuma joslu kartēs Mani serveri.",
             "favoriteHeart": "Sirsniņa izlasei",
-            "favoriteHeartDesc": "Iecienītāko serveru atzīmēšanai izmantojiet sarkanu sirsniņu zvaigznītes vietā — My Servers un CLI.",
+            "favoriteHeartDesc": "Iecienītāko serveru atzīmēšanai izmantojiet sarkanu sirsniņu zvaigznītes vietā, My Servers un CLI.",
             "storageThresholds": "Krātuves lietojuma krāsas",
             "storageThresholdsDesc": "Kad % kolonna Manos serveros kļūst dzeltenbrūna un sarkana. Noklusējums 80% / 95% - virs kvotas (>100%) vienmēr sarkans, zem 5% pelēks.",
             "storageWarn": "Brīdinājuma slieksnis (dzeltenbrūns)",
@@ -1324,9 +1324,9 @@
             "aerocloudTitle": "AeroCloud - Sinhronizācija",
             "activityLog": "Darbību žurnāls",
             "log": "Žurnāls",
-            "aerofileTitle": "AeroFile – Lokāls failu pārvaldnieks",
+            "aerofileTitle": "AeroFile - Lokāls failu pārvaldnieks",
             "aerofile": "AeroFile",
-            "aeroagentTitle": "AeroAgent – AI asistents",
+            "aeroagentTitle": "AeroAgent - AI asistents",
             "aeroagent": "AeroAgent",
             "insecureConnection": "Nedrošs savienojums",
             "insecureConnectionTitle": "Sertifikātu pārbaude ir atspējota",
@@ -2703,7 +2703,7 @@
                 "title": "Straumes noildže",
                 "description": "Maksimālais laiks straumes atbildes gaidīšanai pirms noildžes.",
                 "seconds": "sekundes",
-                "hint": "Palielinājiet šo vērtību, lietojot paplašinātus domāšanas budžetus (50K+ marķieru). Diapazons: 30–600 sekundes."
+                "hint": "Palielinājiet šo vērtību, lietojot paplašinātus domāšanas budžetus (50K+ marķieru). Diapazons: 30-600 sekundes."
             },
             "analyzeThisImage": "Analizēt šo attēlu",
             "error": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Nodrošina serveris",
             "readOnly": "Tikai lasāms",
             "hidden": "Slēpts",
-            "hiddenIsNameBased": "Saja sistema fails ir pasleps sava nosaukuma del, nevis atributa del: parsauciet to ta, lai tas saktos ar punktu.",
+            "hiddenIsNameBased": "Šajā sistēmā fails ir paslēpts sava nosaukuma, nevis atribūta dēļ: pārdēvējiet to tā, lai tas sāktos ar punktu.",
             "contains": "Satur",
             "foldersOnly": "Tikai mapes",
             "location": "Atrašanās vieta",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binārs",
             "hashOutputLength": "BLAKE3 izvades garums (baiti)",
-            "hashOutputLengthHint": "1–1024 · noklusējums 32",
+            "hashOutputLengthHint": "1-1024 · noklusējums 32",
             "hashDropHint": "Nometiet failu šajā cilnē, lai aprēķinātu tā jaucējkodu"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Attālais marķieris (.aerocrypt.tsv) trūka un tika atjaunots no lokālās atslēgu krātuves. Nedzēsiet to atkārtoti, ja vien nepārejat uz režīmu bez galvenes (headerless): otrā dzēšana kopā ar atslēgu krātuves zaudēšanu jūs izslēdz neatgriezeniski.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Šifrēšanas veids un parole tiek iestatīti vienreiz, un tos vēlāk nevar mainīt: jau šifrētie faili kļūtu nelasāmi.",
             "lockedNote": "Šifrēšanas veids un akreditācijas dati ir bloķēti: šis slānis jau satur šifrētus datus.",
             "addToExistingWarn": "Iespējojot pārklājumu esošā profilā: visi vienkārša teksta faili, kas jau ir šajā attālinātajā vietā, paliek nešifrēti un tiks rādīti kā neatšifrējams sajaukums. Izmantojiet tukšu attālināto vietu.",
-            "scopeHint": "Pārklājumu ceļš nosaka šifrēto tvērumu. Attālais ceļš tikai izvēlas pārlūkošanas sākuma vietu; lokālais ceļš nekad nemaina šifrēšanu.",
+            "scopeHint": "Pārklājumu ceļš nosaka šifrēto tvērumu. Attālais ceļš tikai izvēlas, kur sākas pārlūkošana; lokālais ceļš nekad nemaina šifrēšanu.",
             "overlaysPathLockedNote": "Pārklājumu ceļš ir bloķēts: tas ir šifrēšanas enkurs, un pēc pārklājuma piesaistīšanas to vairs nevar mainīt.",
             "remotePathMustReachOverlay": "Attālajam ceļam jābūt pārklājumu ceļam ({path}) vai kādai no tā vecākmapēm, citādi šifrētā mape paliks ārpus šīs sesijas.",
             "overlaysSection": "Apvalki / Pārklājumi",

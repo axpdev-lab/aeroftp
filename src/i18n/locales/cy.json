@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Gludwch yr allwedd API o'ch proffil Filen CLI i hepgor y cod 2FA bob tro y byddwch yn ailgysylltu. Mae angen cyfrinair y cyfrif o hyd: mae'n dadgryptio'ch ffeiliau o ben i ben. Ar ôl ei chadw, mae'r allwedd yn cael ei storio wedi'i hamgryptio yn y gell ac ni chaiff ei dangos yma eto (fel eich cyfrinach 2FA); mae AeroFTP yn ei hailddefnyddio'n awtomatig. Wrth olygu, gadewch yn wag i gadw'r allwedd a gadwyd.",
             "manualTotalStorage": "Cyfanswm storfa (â llaw)",
             "manualTotalStoragePlaceholder": "e.e. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Dewisol. Rhowch derfyn rhifiadol y cynllun/cyfrif a dewiswch ei uned. Defnyddir hwn dim ond pan nad oes gan y darparwr API cwota cyfan; cyfanswm y darparwr ei hun sydd bob amser yn cael blaenoriaeth.",
+            "manualTotalStorageHint": "Dewisol. Rhowch derfyn rhifol y cynllun neu'r cyfrif a dewiswch ei uned. Fe'i defnyddir dim ond pan nad oes gan y darparwr API cwota cyfan; mae cyfanswm y darparwr ei hun bob amser yn cael blaenoriaeth.",
             "autoScanUsedOnConnect": "Cyfrifo'r storfa a ddefnyddiwyd wrth gysylltu",
             "autoScanUsedOnConnectHint": "Ar gyfer ôl-bennau heb API gofod a ddefnyddiwyd yn unig (FTP, S3, WebDAV). I ffwrdd yn ddiofyn: cerddir trwy goeden fawr (e.e. prosiect gwe) yn ailadroddus, a all fod yn araf. Fel arall, defnyddiwch weithred y StatusBar yn ôl y galw.",
             "saveAsNewProfile": "Cadw fel proffil newydd",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Llwybr pell rhagosodedig (e.e. / neu DCIM)",
             "mtpSaveRequiresDevice": "Canfyddwch a dewiswch ddyfais i alluogi Cadw.",
             "mtpSelectPlaceholder": "Dewiswch ddyfais...",
-            "mtpSelectPlaceholderEmpty": "Dim dyfeisiau eto — cliciwch Canfod",
+            "mtpSelectPlaceholderEmpty": "Dim dyfeisiau eto, cliciwch Canfod",
             "mtpNotAttachedTitle": "Nid yw'r ddyfais wedi'i chysylltu",
-            "mtpNotAttached": "Cysylltwch y ddyfais a galluogwch y modd Trosglwyddo Ffeiliau, yna rhowch gynnig arni eto.",
+            "mtpNotAttached": "Cysylltwch y ddyfais, galluogwch y modd Trosglwyddo Ffeiliau, ac yna rhowch gynnig arall arni.",
             "discovery": {
                 "fetch": "Nôl",
                 "fetching": "Wrthi'n nôl...",
                 "refresh": "Adnewyddu",
-                "none": "Ni ddychwelwyd unrhyw dargedau. Gallwch barhau i roi un â llaw.",
-                "found": "Wedi canfod {count} o dargedau hygyrch. Teipiwch i chwilio neu dewiswch un."
+                "none": "Ni ddychwelwyd unrhyw dargedau. Gallwch nodi un â llaw o hyd.",
+                "found": "Cafwyd hyd i {count} targed hygyrch. Teipiwch i chwilio neu dewiswch un."
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Darparwyd gan y gweinydd",
             "readOnly": "Darllen yn unig",
             "hidden": "Cudd",
-            "hiddenIsNameBased": "Ar y system hon mae ffeil yn guddiedig oherwydd ei henw, nid oherwydd priodoledd: ailenwch hi i ddechrau gyda dot.",
+            "hiddenIsNameBased": "Ar y system hon mae ffeil yn guddiedig oherwydd ei henw, nid oherwydd priodoledd: ailenwch hi fel ei bod yn dechrau â dot.",
             "contains": "Yn cynnwys",
             "foldersOnly": "Ffolderi yn unig",
             "location": "Lleoliad",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Deuaidd",
             "hashOutputLength": "Hyd allbwn BLAKE3 (beitiau)",
-            "hashOutputLengthHint": "1–1024 · rhagosodedig 32",
+            "hashOutputLengthHint": "1-1024 · rhagosodedig 32",
             "hashDropHint": "Gollyngwch ffeil ar y tab hwn i gyfrifo ei hash"
         },
         "dialog": {
@@ -5285,7 +5285,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Roedd y marciwr pell (.aerocrypt.tsv) ar goll ac fe'i hailadeiladwyd o'r storfa allweddi leol. Peidiwch â'i ddileu eto oni bai eich bod yn newid i'r modd heb bennawd (headerless): ei ddileu ddwywaith a cholli'r storfa allweddi sy'n eich cloi allan yn barhaol.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5353,7 +5353,7 @@
             "immutableWarn": "Mae'r math o amgryptio a'r cyfrinair yn cael eu gosod unwaith ac ni ellir eu newid yn ddiweddarach: byddai'r ffeiliau sydd eisoes wedi'u hamgryptio yn dod yn annarllenadwy.",
             "lockedNote": "Mae'r math o amgryptio a'r manylion wedi'u cloi: mae'r troshaen hon eisoes yn dal data wedi'i amgryptio.",
             "addToExistingWarn": "Wrth alluogi troshaen ar broffil presennol: bydd unrhyw ffeiliau testun plaen sydd eisoes ar y pell hwn yn aros heb eu hamgryptio ac yn ymddangos fel cymysgedd na ellir ei ddatgryptio. Defnyddiwch bell gwag.",
-            "scopeHint": "Mae Llwybr y Troshaenau yn diffinio'r cwmpas wedi'i amgryptio. Dim ond dewis man cychwyn pori mae'r Llwybr Pell; nid yw'r Llwybr Lleol byth yn newid yr amgryptio.",
+            "scopeHint": "Mae Llwybr y Troshaenau yn diffinio'r cwmpas wedi'i amgryptio. Dim ond dewis lle mae pori'n dechrau y mae'r Llwybr Pell; nid yw'r Llwybr Lleol byth yn newid yr amgryptio.",
             "overlaysPathLockedNote": "Mae Llwybr y Troshaenau wedi'i gloi: dyma angor yr amgryptio ac ni ellir ei newid ar ôl rhwymo'r troshaen.",
             "remotePathMustReachOverlay": "Rhaid i'r llwybr pell fod yn Llwybr y Troshaenau ({path}) neu'n un o'i ffolderi uwch, neu bydd y ffolder wedi'i hamgryptio y tu allan i'r sesiwn hon.",
             "overlaysSection": "Amlenni / Troshaenau",

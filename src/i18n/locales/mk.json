@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Залепете го API клучот од вашиот Filen CLI профил за да го прескокнете 2FA кодот при секое повторно поврзување. Лозинката на сметката сè уште е потребна: таа ги дешифрира вашите датотеки од крај до крај. Откако ќе се зачува, клучот се чува шифриран во трезорот и повеќе не се прикажува овде (како вашата 2FA тајна); AeroFTP автоматски го користи повторно. При уредување оставете празно за да го задржите зачуваниот клуч.",
             "manualTotalStorage": "Вкупен простор (рачно)",
             "manualTotalStoragePlaceholder": "пр. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Незадолжително. Внесете бројчено ограничување за планот/сметката и изберете ја единицата. Се користи само кога давателот нема API за вкупна квота; сопствената вкупна вредност на давателот секогаш има предност.",
+            "manualTotalStorageHint": "Изборно. Внесете бројчано ограничување на планот или сметката и изберете ја единицата. Се користи само кога давателот нема API за вкупната квота; вкупната вредност од самиот давател секогаш има предност.",
             "autoScanUsedOnConnect": "Пресметај искористен простор при поврзување",
             "autoScanUsedOnConnectHint": "Само за заднини без API за искористен простор (FTP, S3, WebDAV). Стандардно исклучено: големо стебло (пр. веб проект) се обиколува рекурзивно, што може да биде бавно. Во спротивно, користете го дејството во StatusBar по потреба.",
             "saveAsNewProfile": "Зачувај како нов профил",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Стандардна далечинска патека (на пр. / или DCIM)",
             "mtpSaveRequiresDevice": "Откријте и изберете уред за да овозможите Зачувај.",
             "mtpSelectPlaceholder": "Изберете уред...",
-            "mtpSelectPlaceholderEmpty": "Сè уште нема уреди — кликнете на Откриј",
+            "mtpSelectPlaceholderEmpty": "Сè уште нема уреди, кликнете на Откриј",
             "mtpNotAttachedTitle": "Уредот не е поврзан",
-            "mtpNotAttached": "Приклучете го уредот и овозможете режим на пренос на датотеки, потоа обидете се повторно.",
+            "mtpNotAttached": "Приклучете го уредот, овозможете режим на пренос на датотеки и обидете се повторно.",
             "discovery": {
                 "fetch": "Преземи",
                 "fetching": "Преземање...",
                 "refresh": "Освежи",
-                "none": "Не беа вратени цели. Сепак може рачно да внесете една.",
-                "found": "Најдени се {count} достапни цели. Пишувајте за пребарување или изберете една."
+                "none": "Не се вратени цели. Сепак можете да внесете една рачно.",
+                "found": "Пронајдени се {count} достапни цели. Пишувајте за да пребарувате или изберете една."
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Обезбедено од серверот",
             "readOnly": "Само за читање",
             "hidden": "Скриено",
-            "hiddenIsNameBased": "На овој систем датотеката е скриена поради своето име, а не поради атрибут: преименувајте ја за да започнува со точка.",
+            "hiddenIsNameBased": "На овој систем датотеката е скриена поради своето име, а не поради атрибут: преименувајте ја така што ќе започнува со точка.",
             "contains": "Содржи",
             "foldersOnly": "Само папки",
             "location": "Локација",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Бинарно",
             "hashOutputLength": "Должина на BLAKE3 излезот (бајти)",
-            "hashOutputLengthHint": "1–1024 · стандардно 32",
+            "hashOutputLengthHint": "1-1024 · стандардно 32",
             "hashDropHint": "Пуштете датотека на ова јазиче за да се пресмета хешот"
         },
         "dialog": {
@@ -5285,7 +5285,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Далечинскиот маркер (.aerocrypt.tsv) недостасуваше и беше обновен од локалното складиште на клучеви. Не бришете го повторно освен ако не преминете во режим без заглавие (headerless): второ бришење заедно со губење на складиштето на клучеви ве заклучува трајно.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5353,7 +5353,7 @@
             "immutableWarn": "Типот на шифрирање и лозинката се поставуваат еднаш и не можат подоцна да се менуваат: веќе шифрираните датотеки би станале нечитливи.",
             "lockedNote": "Типот на шифрирање и податоците за најава се заклучени: овој слој веќе содржи шифрирани податоци.",
             "addToExistingWarn": "Овозможувањето на преклоп врз постоечки профил: сите датотеки во обичен текст што веќе се на ова далечинско место остануваат нешифрирани и ќе се прикажат како недешифрираива мешавина. Користете празно далечинско место.",
-            "scopeHint": "Патеката за преклопувања го дефинира шифрираниот опсег. Далечинската патека само избира каде започнува прегледувањето; локалната патека никогаш не го менува шифрирањето.",
+            "scopeHint": "Патеката на прекривки го определува шифрираниот опсег. Далечинската патека само избира каде почнува прелистувањето; локалната патека никогаш не го менува шифрирањето.",
             "overlaysPathLockedNote": "Патеката на прекривките е заклучена: таа е основата на шифрирањето и не може да се смени откако прекривката ќе се поврзе.",
             "remotePathMustReachOverlay": "Далечинската патека мора да биде патеката на прекривките ({path}) или некоја од нејзините надредени папки, инаку шифрираната папка останува надвор од оваа сесија.",
             "overlaysSection": "Обвивки / Overlay-и",

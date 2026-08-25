@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "প্রতিবার পুনঃসংযোগে 2FA কোড এড়াতে আপনার Filen CLI প্রোফাইল থেকে API কী পেস্ট করুন। অ্যাকাউন্টের পাসওয়ার্ড এখনও প্রয়োজন: এটি আপনার ফাইলগুলি এন্ড-টু-এন্ড ডিক্রিপ্ট করে। একবার সংরক্ষণ করা হলে, কী ভল্টে এনক্রিপ্ট করে রাখা হয় এবং এখানে আর দেখানো হয় না (আপনার 2FA সিক্রেটের মতো); AeroFTP এটি স্বয়ংক্রিয়ভাবে পুনরায় ব্যবহার করে। সম্পাদনার সময় সংরক্ষিত কী রাখতে ফাঁকা রাখুন।",
             "manualTotalStorage": "মোট স্টোরেজ (ম্যানুয়াল)",
             "manualTotalStoragePlaceholder": "যেমন 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "ঐচ্ছিক। প্ল্যান/অ্যাকাউন্টের সংখ্যাসূচক সীমা লিখে একক বেছে নিন। কেবল তখনই ব্যবহার করা হয় যখন প্রদানকারীর মোট কোটার API নেই; প্রদানকারীর নিজস্ব মোট মান সবসময় অগ্রাধিকার পায়।",
+            "manualTotalStorageHint": "ঐচ্ছিক। প্ল্যান বা অ্যাকাউন্টের সংখ্যাসূচক সীমা লিখুন এবং তার একক বেছে নিন। এটি কেবল তখনই ব্যবহৃত হয় যখন প্রদানকারীর মোট কোটার API থাকে না; প্রদানকারীর নিজস্ব মোট মান সবসময় অগ্রাধিকার পায়।",
             "autoScanUsedOnConnect": "সংযোগের সময় ব্যবহৃত স্টোরেজ গণনা করুন",
             "autoScanUsedOnConnectHint": "শুধুমাত্র ব্যবহৃত-স্থান API নেই এমন ব্যাকএন্ডের (FTP, S3, WebDAV) জন্য। ডিফল্টভাবে বন্ধ: একটি বড় ট্রি (যেমন একটি ওয়েব প্রকল্প) রিকার্সিভভাবে স্ক্যান করা হয়, যা ধীর হতে পারে। অন্যথায় প্রয়োজনে StatusBar অ্যাকশন ব্যবহার করুন।",
             "saveAsNewProfile": "নতুন প্রোফাইল হিসেবে সংরক্ষণ করুন",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "ডিফল্ট দূরবর্তী পথ (যেমন / বা DCIM)",
             "mtpSaveRequiresDevice": "সংরক্ষণ সক্ষম করতে একটি ডিভাইস শনাক্ত করুন এবং নির্বাচন করুন।",
             "mtpSelectPlaceholder": "একটি ডিভাইস নির্বাচন করুন...",
-            "mtpSelectPlaceholderEmpty": "এখনও কোনো ডিভাইস নেই — শনাক্ত করুন ক্লিক করুন",
+            "mtpSelectPlaceholderEmpty": "এখনও কোনো ডিভাইস নেই, শনাক্ত করুন ক্লিক করুন",
             "mtpNotAttachedTitle": "ডিভাইস সংযুক্ত নয়",
-            "mtpNotAttached": "ডিভাইসটি প্লাগ ইন করুন এবং ফাইল স্থানান্তর মোড সক্ষম করুন, তারপর আবার চেষ্টা করুন।",
+            "mtpNotAttached": "ডিভাইসটি প্লাগ ইন করুন, ফাইল স্থানান্তর মোড সক্ষম করুন, তারপর আবার চেষ্টা করুন।",
             "discovery": {
                 "fetch": "আনুন",
                 "fetching": "আনা হচ্ছে...",
                 "refresh": "হালনাগাদ করুন",
-                "none": "কোনো গন্তব্য পাওয়া যায়নি। তবুও আপনি ম্যানুয়ালি একটি লিখতে পারেন।",
-                "found": "{count}টি অ্যাক্সেসযোগ্য গন্তব্য পাওয়া গেছে। খুঁজতে লিখুন বা একটি বেছে নিন।"
+                "none": "কোনো লক্ষ্য ফেরত আসেনি। আপনি চাইলে নিজেই একটি লিখে দিতে পারেন।",
+                "found": "{count} টি অ্যাক্সেসযোগ্য লক্ষ্য পাওয়া গেছে। খুঁজতে টাইপ করুন বা একটি বেছে নিন।"
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "সার্ভার দ্বারা প্রদত্ত",
             "readOnly": "শুধুমাত্র পঠনযোগ্য",
             "hidden": "লুকানো",
-            "hiddenIsNameBased": "এই সিস্টেমে ফাইল তার নামের কারণে লুকানো থাকে, কোনো অ্যাট্রিবিউটের কারণে নয়: নাম পরিবর্তন করে শুরুতে একটি ডট দিন।",
+            "hiddenIsNameBased": "এই সিস্টেমে ফাইল তার নামের কারণে লুকানো থাকে, কোনো অ্যাট্রিবিউটের কারণে নয়: নামের শুরুতে একটি ডট দিয়ে নতুন নাম দিন।",
             "contains": "ধারণ করে",
             "foldersOnly": "শুধুমাত্র ফোল্ডার",
             "location": "অবস্থান",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "বাইনারি",
             "hashOutputLength": "BLAKE3 আউটপুট দৈর্ঘ্য (বাইট)",
-            "hashOutputLengthHint": "1–1024 · ডিফল্ট 32",
+            "hashOutputLengthHint": "1-1024 · ডিফল্ট 32",
             "hashDropHint": "হ্যাশ করতে এই ট্যাবে একটি ফাইল ফেলুন"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "রিমোট মার্কার (.aerocrypt.tsv) অনুপস্থিত ছিল এবং লোকাল কীস্টোর থেকে পুনর্গঠন করা হয়েছে। হেডারলেস মোডে না গেলে এটি আবার মুছবেন না: দ্বিতীয়বার মোছা এবং কীস্টোর হারানো মানে স্থায়ীভাবে প্রবেশাধিকার হারানো।",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "এনক্রিপশনের ধরন ও পাসওয়ার্ড একবারই সেট করা হয় এবং পরে পরিবর্তন করা যায় না: ইতিমধ্যে এনক্রিপ্ট করা ফাইলগুলি অপাঠ্য হয়ে যাবে।",
             "lockedNote": "এনক্রিপশনের ধরন ও শংসাপত্র লক করা আছে: এই ওভারলেতে ইতিমধ্যে এনক্রিপ্ট করা ডেটা রয়েছে।",
             "addToExistingWarn": "একটি বিদ্যমান প্রোফাইলে ওভারলে সক্রিয় করা হচ্ছে: এই রিমোটে ইতিমধ্যে থাকা যেকোনো প্লেইনটেক্সট ফাইল এনক্রিপ্ট না হয়েই থাকবে এবং একটি অপাঠ্য মিশ্রণ হিসেবে দেখাবে। একটি খালি রিমোট ব্যবহার করুন।",
-            "scopeHint": "ওভারলে পাথ এনক্রিপ্ট করা পরিসর নির্ধারণ করে। রিমোট পাথ শুধু ব্রাউজিং কোথা থেকে শুরু হবে তা বেছে নেয়; লোকাল পাথ কখনো এনক্রিপশন পরিবর্তন করে না।",
+            "scopeHint": "ওভারলে পাথ এনক্রিপ্ট করা পরিসর নির্ধারণ করে। রিমোট পাথ শুধু ঠিক করে ব্রাউজিং কোথা থেকে শুরু হবে; লোকাল পাথ এনক্রিপশন কখনও বদলায় না।",
             "overlaysPathLockedNote": "ওভারলে পাথ লক করা আছে: এটি এনক্রিপশনের অ্যাঙ্কর এবং ওভারলে যুক্ত হয়ে গেলে এটি আর পরিবর্তন করা যায় না।",
             "remotePathMustReachOverlay": "রিমোট পাথ অবশ্যই ওভারলে পাথ ({path}) অথবা তার কোনো উপরের ফোল্ডার হতে হবে, নাহলে এনক্রিপ্ট করা ফোল্ডারটি এই সেশনের বাইরে থেকে যাবে।",
             "overlaysSection": "র‍্যাপার / Overlay",

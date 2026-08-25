@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Zalijepite API ključ iz svog Filen CLI profila kako biste preskočili 2FA kod pri svakom ponovnom povezivanju. Lozinka računa i dalje je potrebna: ona dešifrira vaše datoteke od kraja do kraja. Nakon spremanja, ključ se pohranjuje šifriran u trezoru i više se ovdje ne prikazuje (poput vaše 2FA tajne); AeroFTP ga automatski ponovno koristi. Pri uređivanju ostavite prazno da biste zadržali spremljeni ključ.",
             "manualTotalStorage": "Ukupna pohrana (ručno)",
             "manualTotalStoragePlaceholder": "npr. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Neobavezno. Unesite brojčano ograničenje plana/računa i odaberite njegovu jedinicu. Koristi se samo kada pružatelj nema API za ukupnu kvotu; vlastiti ukupni iznos pružatelja uvijek ima prednost.",
+            "manualTotalStorageHint": "Neobavezno. Unesite brojčano ograničenje plana ili računa i odaberite mjernu jedinicu. Koristi se samo kad pružatelj nema API za ukupnu kvotu; pružateljev vlastiti ukupni iznos uvijek ima prednost.",
             "autoScanUsedOnConnect": "Izračunaj iskorištenu pohranu pri povezivanju",
             "autoScanUsedOnConnectHint": "Samo za pozadinske sustave bez API-ja za iskorišteni prostor (FTP, S3, WebDAV). Prema zadanim postavkama isključeno: veliko stablo (npr. web projekt) prolazi se rekurzivno, što može biti sporo. U protivnom koristite radnju StatusBar po potrebi.",
             "saveAsNewProfile": "Spremi kao novi profil",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Zadana udaljena putanja (npr. / ili DCIM)",
             "mtpSaveRequiresDevice": "Otkrijte i odaberite uređaj da biste omogućili Spremi.",
             "mtpSelectPlaceholder": "Odaberite uređaj...",
-            "mtpSelectPlaceholderEmpty": "Još nema uređaja – kliknite Otkrij",
+            "mtpSelectPlaceholderEmpty": "Još nema uređaja, kliknite Otkrij",
             "mtpNotAttachedTitle": "Uređaj nije povezan",
-            "mtpNotAttached": "Priključite uređaj i omogućite način prijenosa datoteka, zatim pokušajte ponovno.",
+            "mtpNotAttached": "Priključite uređaj, omogućite način prijenosa datoteka pa pokušajte ponovno.",
             "discovery": {
                 "fetch": "Dohvati",
                 "fetching": "Dohvaćanje...",
                 "refresh": "Osvježi",
-                "none": "Nije vraćeno nijedno odredište. I dalje ga možete unijeti ručno.",
-                "found": "Pronađeno je {count} dostupnih odredišta. Upišite za pretraživanje ili odaberite jedno."
+                "none": "Nijedno odredište nije vraćeno. Ipak ga možete unijeti ručno.",
+                "found": "Pronađeno je {count} dostupnih odredišta. Tipkajte za pretraživanje ili odaberite jedno."
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "notAvailable": "Nije dostupno",
             "readOnly": "Samo za čitanje",
             "hidden": "Skriveno",
-            "hiddenIsNameBased": "Na ovom sustavu datoteka je skrivena zbog svog naziva, a ne zbog atributa: preimenujte je tako da pocinje tockom.",
+            "hiddenIsNameBased": "Na ovom sustavu datoteka je skrivena zbog svojeg imena, a ne zbog atributa: preimenujte je tako da počinje točkom.",
             "contains": "Sadrži",
             "foldersOnly": "Samo mape",
             "location": "Lokacija",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binarno",
             "hashOutputLength": "Duljina BLAKE3 izlaza (bajtovi)",
-            "hashOutputLengthHint": "1–1024 · zadano 32",
+            "hashOutputLengthHint": "1-1024 · zadano 32",
             "hashDropHint": "Ispustite datoteku na ovu karticu za izračun hasha"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Udaljena oznaka (.aerocrypt.tsv) nedostajala je i obnovljena je iz lokalnog spremišta ključeva. Nemojte je ponovno brisati osim ako ne prijeđete na način bez zaglavlja (headerless): drugo brisanje uz gubitak spremišta ključeva trajno vam zaključava pristup.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Vrsta enkripcije i lozinka postavljaju se jednom i ne mogu se kasnije mijenjati: već šifrirane datoteke postale bi nečitljive.",
             "lockedNote": "Vrsta enkripcije i vjerodajnice su zaključane: ovaj sloj već sadrži šifrirane podatke.",
             "addToExistingWarn": "Omogućavanjem sloja na postojećem profilu: sve datoteke u običnom tekstu koje već postoje na ovom udaljenom mjestu ostaju nešifrirane i prikazat će se kao nedešifrabilna mješavina. Upotrijebite prazno udaljeno mjesto.",
-            "scopeHint": "Putanja slojeva određuje šifrirani opseg. Udaljena putanja samo bira gdje pregledavanje počinje; lokalna putanja nikada ne mijenja šifriranje.",
+            "scopeHint": "Putanja prekrivača određuje šifrirani opseg. Udaljena putanja samo bira gdje počinje pregledavanje; lokalna putanja nikada ne mijenja šifriranje.",
             "overlaysPathLockedNote": "Putanja prekrivača je zaključana: ona je sidro šifriranja i ne može se promijeniti nakon što je prekrivač povezan.",
             "remotePathMustReachOverlay": "Udaljena putanja mora biti putanja prekrivača ({path}) ili jedna od njezinih nadređenih mapa, inače šifrirana mapa ostaje izvan ove sesije.",
             "overlaysSection": "Omotači / Overlayi",

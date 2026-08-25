@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Tampal kunci API daripada profil Filen CLI anda untuk melangkau kod 2FA pada setiap sambungan semula. Kata laluan akaun masih diperlukan: ia menyahsulit fail anda secara hujung ke hujung. Setelah disimpan, kunci disimpan tersulit dalam bilik kebal dan tidak ditunjukkan lagi di sini (seperti rahsia 2FA anda); AeroFTP menggunakannya semula secara automatik. Semasa menyunting, biarkan kosong untuk mengekalkan kunci yang disimpan.",
             "manualTotalStorage": "Jumlah storan (manual)",
             "manualTotalStoragePlaceholder": "cth. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Pilihan. Masukkan had berangka pelan/akaun dan pilih unitnya. Hanya digunakan apabila penyedia tiada API kuota jumlah; jumlah penyedia sendiri sentiasa diutamakan.",
+            "manualTotalStorageHint": "Pilihan. Masukkan had berangka pelan atau akaun dan pilih unitnya. Digunakan hanya apabila penyedia tiada API kuota keseluruhan; jumlah daripada penyedia sendiri sentiasa diutamakan.",
             "autoScanUsedOnConnect": "Kira storan digunakan semasa menyambung",
             "autoScanUsedOnConnectHint": "Hanya untuk bahagian belakang tanpa API ruang digunakan (FTP, S3, WebDAV). Dimatikan secara lalai: pepohon yang besar (cth. projek web) dilalui secara rekursif, yang boleh menjadi perlahan. Jika tidak, gunakan tindakan StatusBar mengikut keperluan.",
             "saveAsNewProfile": "Simpan sebagai profil baru",
@@ -311,15 +311,15 @@
             "mtpRemotePathPlaceholder": "Laluan jauh lalai (cth. / atau DCIM)",
             "mtpSaveRequiresDevice": "Kesan dan pilih peranti untuk mendayakan Simpan.",
             "mtpSelectPlaceholder": "Pilih peranti...",
-            "mtpSelectPlaceholderEmpty": "Belum ada peranti — klik Kesan",
+            "mtpSelectPlaceholderEmpty": "Belum ada peranti, klik Kesan",
             "mtpNotAttachedTitle": "Peranti tidak disambungkan",
-            "mtpNotAttached": "Pasangkan peranti dan dayakan mod Pemindahan Fail, kemudian cuba lagi.",
+            "mtpNotAttached": "Pasangkan peranti, dayakan mod Pemindahan Fail, kemudian cuba lagi.",
             "discovery": {
                 "fetch": "Dapatkan",
                 "fetching": "Mendapatkan...",
                 "refresh": "Segar semula",
                 "none": "Tiada sasaran dikembalikan. Anda masih boleh memasukkannya secara manual.",
-                "found": "Menemui {count} sasaran yang boleh dicapai. Taip untuk mencari atau pilih satu."
+                "found": "Ditemui {count} sasaran yang boleh diakses. Taip untuk mencari atau pilih satu."
             }
         },
         "browser": {
@@ -3368,7 +3368,7 @@
             "checksumServerOnly": "Disediakan oleh pelayan",
             "readOnly": "Baca sahaja",
             "hidden": "Tersembunyi",
-            "hiddenIsNameBased": "Pada sistem ini fail disembunyikan kerana namanya, bukan kerana atribut: namakan semula supaya bermula dengan titik.",
+            "hiddenIsNameBased": "Pada sistem ini fail disembunyikan mengikut namanya, bukan oleh atribut: namakan semula supaya bermula dengan titik.",
             "contains": "Mengandungi",
             "foldersOnly": "Folder sahaja",
             "location": "Lokasi",
@@ -4004,7 +4004,7 @@
             "hashEncodingHex": "Hex",
             "hashEncodingBinary": "Binari",
             "hashOutputLength": "Panjang output BLAKE3 (bait)",
-            "hashOutputLengthHint": "1–1024 · lalai 32",
+            "hashOutputLengthHint": "1-1024 · lalai 32",
             "hashDropHint": "Lepaskan fail pada tab ini untuk mengira hashnya"
         },
         "dialog": {
@@ -5266,7 +5266,7 @@
             "verifyKitMismatch": "Mismatch: this kit/marker does not match the active profile keystore config.",
             "verifyKitKind": "Detected input: {kind}",
             "markerMissingRestoredTitle": "AeroCrypt safety net restored",
-            "markerMissingRestoredBody": "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out.",
+            "markerMissingRestoredBody": "Penanda jauh (.aerocrypt.tsv) tiada dan telah dibina semula daripada keystore setempat. Jangan padamkannya lagi melainkan anda beralih ke mod tanpa pengepala (headerless): pemadaman kedua ditambah kehilangan keystore mengunci anda secara kekal.",
             "markerMissingRestoreFailedTitle": "AeroCrypt marker still missing",
             "markerMissingRestoreFailedBody": "Unlocked from the local keystore, but the remote safety net could not be restored: {error}",
             "kitNotCachedYet": "No recovery kit is cached for this profile yet. Connect once so its public configuration is stored locally (this happens automatically on connect), then reopen the recovery kit. This is not an error.",
@@ -5334,7 +5334,7 @@
             "immutableWarn": "Jenis penyulitan dan kata laluan ditetapkan sekali dan tidak boleh diubah kemudian: fail yang telah disulitkan akan menjadi tidak boleh dibaca.",
             "lockedNote": "Jenis penyulitan dan kelayakan dikunci: lapisan ini sudah mengandungi data tersulit.",
             "addToExistingWarn": "Mengaktifkan tindihan pada profil sedia ada: sebarang fail teks biasa yang sudah ada pada jauh ini kekal tidak disulitkan dan akan dipaparkan sebagai campuran yang tidak boleh dinyahsulit. Gunakan jauh yang kosong.",
-            "scopeHint": "Laluan Tindanan menentukan skop yang disulitkan. Laluan Jauh hanya memilih tempat pelayaran bermula; Laluan Setempat tidak pernah mengubah penyulitan.",
+            "scopeHint": "Laluan Tindih menentukan skop tersulit. Laluan Jauh hanya memilih tempat pelayaran bermula; Laluan Setempat tidak pernah mengubah penyulitan.",
             "overlaysPathLockedNote": "Laluan Tindih dikunci: ia merupakan sauh penyulitan dan tidak boleh diubah setelah tindihan diikat.",
             "remotePathMustReachOverlay": "Laluan jauh mestilah Laluan Tindih ({path}) atau salah satu folder induknya, jika tidak folder tersulit akan berada di luar sesi ini.",
             "overlaysSection": "Pembalut / Overlay",
