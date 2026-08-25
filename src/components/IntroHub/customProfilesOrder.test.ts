@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { CUSTOM_PROFILES } from './DiscoverPanel';
 import { protocolBadgeRank, PROTOCOL_BADGE_ORDER } from '../providerCatalog';
+import { CONNECTION_METHOD_GLYPH } from '../connectionMethodIcons';
 
 /**
  * One presentation order for connection methods, everywhere they are listed
@@ -32,5 +33,26 @@ describe('CUSTOM / GENERIC SERVERS follow the one badge order (#347)', () => {
         for (const p of CUSTOM_PROFILES) {
             expect(PROTOCOL_BADGE_ORDER).toContain(p.protocol);
         }
+    });
+
+    it('draws each entry with its own method glyph, not one symbol for all', () => {
+        // The strip used to render a single `Server` icon for every entry, which
+        // is the same report's second half: "All protocols share the same generic
+        // symbol in CUSTOM / GENERIC SERVERS". Distinct methods must not collapse
+        // onto one glyph component.
+        const glyphs = CUSTOM_PROFILES.map(p => CONNECTION_METHOD_GLYPH[p.method]);
+        expect(glyphs.every(Boolean)).toBe(true);
+        expect(new Set(glyphs).size).toBeGreaterThan(1);
+    });
+
+    it('names the method each entry actually speaks', () => {
+        // A wrong-but-present glyph is worse than the generic one, so pin the
+        // pairing rather than only that a glyph exists.
+        expect(CUSTOM_PROFILES.map(p => [p.protocol, p.method])).toEqual([
+            ['webdav', 'WebDAV'],
+            ['sftp', 'SFTP'],
+            ['ftp', 'FTP'],
+            ['s3', 'S3'],
+        ]);
     });
 });
