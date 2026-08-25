@@ -134,14 +134,24 @@ sha256sum /tmp/AeroFTP.deb
 ### 3. Verify before pushing
 
 ```bash
-# Both sources must resolve, or the package fails to build for every user
-for u in ".deb" ".deb.sigstore.json"; do
-  curl -sL -o /dev/null -w "%{http_code}\n" \
-    "https://github.com/axpdev-lab/aeroftp/releases/download/vX.Y.Z/AeroFTP_X.Y.Z_amd64${u}"
-done
+# From this repo, pointed at the AUR checkout. Add --offline to skip the URL check.
+.github/scripts/aur-preflight.sh /path/to/aeroftp-bin
 ```
 
-The cosign identity in `prepare()` pins `refs/tags/vX.Y.Z`, so it re-pins per release; confirm the bundle's certificate really carries that tag before publishing.
+It refuses the push when the `PKGBUILD` does not parse, when `.SRCINFO` disagrees with it on any value (sources and checksums compared one by one, expanded, not just the scalar fields), when `sha256sums[0]` is not a full 64 hex digest, when a source was left on the previous version, or when a release URL does not answer 200. Off Arch it evaluates the `PKGBUILD` so that `${pkgver}` inside a URL is compared expanded, slicing out the top level assignments first rather than sourcing the file: a preflight reads as "only checks" and must not run a package's code.
+
+> **Install it as the pre-push hook of the AUR checkout**, once per machine, so a bad package cannot leave even in a hurry:
+>
+> ```bash
+> ln -s /path/to/aeroftp/.github/scripts/aur-preflight.sh \
+>       /path/to/aeroftp-bin/.git/hooks/pre-push
+> ```
+>
+> `ln -s` and not `ln -sf`: if a `pre-push` hook is already there it may be doing something else, and the command should refuse rather than replace it silently. Inspect it and chain the two by hand in that case.
+
+The check earns its place: **v3.5.2 shipped a `PKGBUILD` whose `sha256sums` array was closed after its first element**, so the file could not be sourced and `makepkg` aborted before downloading anything. Nobody could install `aeroftp-bin` for about 23 hours, until v3.5.3 replaced it, and the report came from a user rather than from us. The AUR runs no CI of any kind: what is pushed is what every user gets, on their next `yay -S`, with no gate in between. `bash -n` costs nothing and catches exactly that class of break.
+
+The cosign identity in `prepare()` pins `refs/tags/vX.Y.Z`, so it re-pins per release; confirm the bundle's certificate really carries that tag before publishing. The preflight does not check the signature, only that the artifacts exist: `cosign verify-blob` runs at build time in `prepare()`.
 
 ### 4. Push to AUR
 
