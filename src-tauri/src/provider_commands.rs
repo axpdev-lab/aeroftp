@@ -1384,51 +1384,73 @@ pub async fn provider_discover_targets(
     // target: each discovery method uses its account/service-root endpoint.
     params.bucket = Some(discovery_bucket_placeholder(&protocol));
     let config = params.to_provider_config()?;
-    let mut targets: Vec<ConnectionTarget> = match config.provider_type {
-        ProviderType::S3 => {
-            let s3_config = crate::providers::S3Config::from_provider_config(&config)
-                .map_err(|error| error.to_string())?;
-            crate::providers::S3Provider::new(s3_config)
-                .map_err(|error| error.to_string())?
-                .discover_buckets()
-                .await
-                .map_err(|error| error.to_string())?
-                .into_iter()
-                .map(|bucket| ConnectionTarget {
-                    label: bucket.clone(),
-                    value: bucket,
-                })
-                .collect()
-        }
-        ProviderType::Backblaze => {
-            let b2_config = crate::providers::b2::B2Config::from_provider_config(&config)
-                .map_err(|error| error.to_string())?;
-            crate::providers::B2Provider::new(b2_config)
-                .discover_buckets()
-                .await
-                .map_err(|error| error.to_string())?
-                .into_iter()
-                .map(|bucket| ConnectionTarget {
-                    label: bucket.clone(),
-                    value: bucket,
-                })
-                .collect()
-        }
-        ProviderType::KDrive => {
-            let kdrive_config = crate::providers::KDriveConfig::from_provider_config(&config)
-                .map_err(|error| error.to_string())?;
-            crate::providers::KDriveProvider::new(kdrive_config)
-                .discover_drives()
-                .await
-                .map_err(|error| error.to_string())?
-                .into_iter()
-                .map(|(value, label)| ConnectionTarget { value, label })
-                .collect()
-        }
-        _ => unreachable!("protocol guard and provider mapping must agree"),
+    // The provider clients carry transfer-scale read timeouts (1800s for S3 and
+    // kDrive, 120s for B2) and nothing here can be cancelled, so an endpoint
+    // that accepts the connection and stalls froze the Quick Connect button for
+    // up to half an hour with no way out. 45s matches the Zoho root-folder
+    // discovery bound already used elsewhere; 10s was rejected because kDrive
+    // discovery needs several round trips and would fail on a slow link.
+    const DISCOVERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
+    let discovery = async {
+        Ok::<Vec<ConnectionTarget>, String>(match config.provider_type {
+            ProviderType::S3 => {
+                let s3_config = crate::providers::S3Config::from_provider_config(&config)
+                    .map_err(|error| error.to_string())?;
+                crate::providers::S3Provider::new(s3_config)
+                    .map_err(|error| error.to_string())?
+                    .discover_buckets()
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .into_iter()
+                    .map(|bucket| ConnectionTarget {
+                        label: bucket.clone(),
+                        value: bucket,
+                    })
+                    .collect()
+            }
+            ProviderType::Backblaze => {
+                let b2_config = crate::providers::b2::B2Config::from_provider_config(&config)
+                    .map_err(|error| error.to_string())?;
+                crate::providers::B2Provider::new(b2_config)
+                    .discover_buckets()
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .into_iter()
+                    .map(|bucket| ConnectionTarget {
+                        label: bucket.clone(),
+                        value: bucket,
+                    })
+                    .collect()
+            }
+            ProviderType::KDrive => {
+                let kdrive_config = crate::providers::KDriveConfig::from_provider_config(&config)
+                    .map_err(|error| error.to_string())?;
+                crate::providers::KDriveProvider::new(kdrive_config)
+                    .discover_drives()
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .into_iter()
+                    .map(|(value, label)| ConnectionTarget { value, label })
+                    .collect()
+            }
+            _ => unreachable!("protocol guard and provider mapping must agree"),
+        })
     };
-    targets.sort_by_key(|target| target.label.to_lowercase());
+    let mut targets: Vec<ConnectionTarget> =
+        match tokio::time::timeout(DISCOVERY_TIMEOUT, discovery).await {
+            Ok(result) => result?,
+            Err(_) => return Err(
+                "Target discovery timed out. Check the endpoint and credentials, then try again."
+                    .to_string(),
+            ),
+        };
+    // Dedup on the identity, then present by label. `dedup_by` only removes
+    // ADJACENT equals, so it has to run against the key it compares: sorting by
+    // label first leaves two rows with the same value un-adjacent and both
+    // survive, which is the opposite of what the pair plainly intends.
+    targets.sort_by(|a, b| a.value.cmp(&b.value));
     targets.dedup_by(|left, right| left.value == right.value);
+    targets.sort_by_key(|target| target.label.to_lowercase());
     Ok(targets)
 }
 

@@ -306,8 +306,12 @@ impl KDriveProvider {
                 Some((id, label))
             })
             .collect();
-        drives.sort_by_key(|drive| drive.1.to_lowercase());
+        // Same rule as `provider_discover_targets`: `dedup_by` removes only
+        // ADJACENT equals, so it runs against the id it compares, and the label
+        // sort is applied afterwards for presentation.
+        drives.sort_by(|a, b| a.0.cmp(&b.0));
         drives.dedup_by(|left, right| left.0 == right.0);
+        drives.sort_by_key(|drive| drive.1.to_lowercase());
         Ok(drives)
     }
 

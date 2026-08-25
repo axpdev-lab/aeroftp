@@ -1147,6 +1147,13 @@ impl S3Provider {
     /// been selected. This is the service-root `ListBuckets` operation, not a
     /// bucket-root listing: it deliberately bypasses `build_url`, whose job is
     /// to inject the configured bucket into every data-plane request (#369).
+    /// A ListBuckets response is a short XML document listing bucket names.
+    /// 4 MiB is far past any real account and small enough that a hostile
+    /// endpoint cannot use it to exhaust memory.
+    const MAX_LIST_BUCKETS_BODY: u64 = 4 * 1024 * 1024;
+    /// Entry-count bound for the same reason, applied after parsing.
+    const MAX_DISCOVERED_BUCKETS: usize = 10_000;
+
     pub async fn discover_buckets(&self) -> Result<Vec<String>, ProviderError> {
         use sha2::{Digest, Sha256};
 
@@ -1168,9 +1175,19 @@ impl S3Provider {
                 .await
                 .map_err(|e| ProviderError::NetworkError(format!("ListBuckets failed: {e}")))?;
         let status = response.status();
-        let body = response.text().await.map_err(|e| {
-            ProviderError::NetworkError(format!("ListBuckets response read failed: {e}"))
-        })?;
+        // Quick Connect accepts arbitrary S3-compatible endpoints, so this body
+        // arrives from a host the user has only just typed in. `text()` has no
+        // bound, and the read timeout limits inactivity rather than total size:
+        // a server answering 200 with an endlessly growing chunked body keeps
+        // the connection lively while the process allocates until it is killed.
+        // The house already has a streaming limiter for exactly this and it is
+        // used in ten other provider paths.
+        let body = super::response_bytes_with_limit(response, Self::MAX_LIST_BUCKETS_BODY)
+            .await
+            .map_err(|e| {
+                ProviderError::ServerError(format!("ListBuckets response rejected: {e}"))
+            })?;
+        let body = String::from_utf8_lossy(&body);
         if !status.is_success() {
             let message = format_s3_error("ListBuckets failed", status, &body, None);
             return if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
@@ -1179,7 +1196,16 @@ impl S3Provider {
                 Err(ProviderError::ServerError(message))
             };
         }
-        Self::parse_bucket_names(&body)
+        let buckets = Self::parse_bucket_names(&body)?;
+        // A second bound, on entries rather than bytes: a valid but absurd
+        // listing would otherwise become a picker with a million rows in it.
+        if buckets.len() > Self::MAX_DISCOVERED_BUCKETS {
+            return Err(ProviderError::ServerError(format!(
+                "ListBuckets returned {} buckets, more than this picker will show",
+                buckets.len()
+            )));
+        }
+        Ok(buckets)
     }
 
     fn parse_bucket_names(xml: &str) -> Result<Vec<String>, ProviderError> {

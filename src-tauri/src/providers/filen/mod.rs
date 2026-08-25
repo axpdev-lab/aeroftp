@@ -611,9 +611,17 @@ impl FilenProvider {
     /// path collapses to `None`, which the bar renders as "no versions
     /// segment", the same as a provider that does not report versions.
     async fn versioned_storage_bytes(&self) -> Option<u64> {
+        // Cosmetic breakdown on a quota that `storage_info` has already
+        // obtained, so it must degrade fast rather than inherit the client's
+        // 1800 second read timeout: an endpoint that accepts the connection and
+        // never answers would otherwise block the whole quota read for half an
+        // hour, and the user sees no quota at all in the meantime because
+        // `storage_info` awaits this before returning the primary numbers.
+        const SETTINGS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
         let request = self
             .client
             .get(format!("{}/v3/user/settings", self.gateway_base()))
+            .timeout(SETTINGS_TIMEOUT)
             .header(
                 "Authorization",
                 HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
