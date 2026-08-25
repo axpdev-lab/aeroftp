@@ -1087,32 +1087,82 @@ pub async fn bind_callback_listener() -> Result<(tokio::net::TcpListener, u16), 
     bind_callback_listener_on_port(0).await
 }
 
-/// Wait for an OAuth2 callback on an already-bound listener.
-/// Returns (code, state) extracted from the callback request.
+/// Read only the `state` parameter out of a callback request, without failing on
+/// anything else in it.
+///
+/// The full parser refuses a request carrying an `error` parameter, which is the
+/// right answer for the callback we are waiting for and the wrong one for a
+/// stray request from some other local process: it would abort the flow. So the
+/// state is read first and used to decide whether the request is ours at all.
+fn callback_state(request: &str) -> Option<String> {
+    let line = request.lines().next()?;
+    let target = line.split_whitespace().nth(1)?;
+    let query = target.split_once('?')?.1;
+    for pair in query.split('&') {
+        if let Some(("state", value)) = pair.split_once('=') {
+            return Some(urlencoding::decode(value).ok()?.to_string());
+        }
+    }
+    None
+}
+
+/// Wait for the OAuth2 callback that belongs to THIS flow on an already-bound
+/// listener. Returns (code, state) extracted from the callback request.
+///
+/// Several providers require a fixed redirect port, so the listener sits on a
+/// well-known local port during the flow. It used to accept exactly one
+/// connection and hand whatever arrived to the caller, which meant any local
+/// process that reached the port first consumed the single accept and the real
+/// browser redirect then found nothing listening. State and PKCE stop that from
+/// becoming account injection; they do not stop it from being a denial of
+/// service. So requests that are not ours are answered and ignored, and the
+/// listener keeps waiting until the expected state arrives or the deadline
+/// passes.
 pub async fn wait_for_callback(
     listener: tokio::net::TcpListener,
+    expected_state: &str,
 ) -> Result<(String, String), ProviderError> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{timeout, Duration, Instant};
 
-    // A3-01: Timeout on accept to prevent indefinite blocking if no callback arrives
-    let (mut socket, _): (tokio::net::TcpStream, _) =
-        timeout(Duration::from_secs(120), listener.accept())
+    // A3-01: bounded overall, so an endless stream of stray requests cannot keep
+    // the flow alive forever. The budget is for the whole wait, not per accept.
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let (mut socket, code, state) = loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(ProviderError::Timeout);
+        }
+        let (mut socket, _): (tokio::net::TcpStream, _) = timeout(remaining, listener.accept())
             .await
             .map_err(|_| ProviderError::Timeout)?
             .map_err(|e| ProviderError::Other(format!("Failed to accept connection: {}", e)))?;
 
-    let mut buffer = vec![0u8; 4096];
-    // A3-01: Timeout on read to prevent slow-loris style attacks on the callback socket
-    let n: usize = timeout(Duration::from_secs(30), socket.read(&mut buffer))
-        .await
-        .map_err(|_| ProviderError::Other("OAuth callback read timed out after 30s".to_string()))?
-        .map_err(|e| ProviderError::Other(format!("Failed to read request: {}", e)))?;
+        let mut buffer = vec![0u8; 4096];
+        // A3-01: Timeout on read to prevent slow-loris style attacks on the callback socket
+        let n: usize = match timeout(Duration::from_secs(30), socket.read(&mut buffer)).await {
+            Ok(Ok(n)) => n,
+            // A connection that stalls or dies is not the callback: drop it and
+            // keep listening rather than ending the flow on someone else's socket.
+            _ => continue,
+        };
+        let request = String::from_utf8_lossy(&buffer[..n]).into_owned();
 
-    let request = String::from_utf8_lossy(&buffer[..n]);
+        if callback_state(&request).as_deref() != Some(expected_state) {
+            let _ = socket
+                .write_all(
+                    b"HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\nThis is not the AeroFTP authorization AeroFTP is waiting for.\n",
+                )
+                .await;
+            continue;
+        }
 
-    // Parse the request to extract code and state
-    let (code, state) = parse_callback_request(&request)?;
+        // The state matches, so this request IS ours: from here a failure is a
+        // real failure of this flow (the user denied access, for instance) and
+        // must be surfaced rather than waited out.
+        let (code, state) = parse_callback_request(&request)?;
+        break (socket, code, state);
+    };
 
     // Send success response with proper UTF-8 charset - Professional branded page
     let response = r#"HTTP/1.1 200 OK

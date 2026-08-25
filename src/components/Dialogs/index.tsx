@@ -557,6 +557,22 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     const [pendingAttr, setPendingAttr] = useState<'readOnly' | 'hidden' | null>(null);
     const [attrError, setAttrError] = useState<string | null>(null);
 
+    // Reseed when the dialog is pointed at a DIFFERENT file while staying
+    // mounted. Today every caller closes and reopens it, so this is latent, but
+    // the parent already updates the `file` prop in place for other fields
+    // (permissions), so the shape that breaks this is one refactor away and the
+    // failure is silent: the header would name the new file while the toggles
+    // still showed, and wrote, the old one's attributes.
+    //
+    // Keyed on identity alone, deliberately. `attrs` is also written by a
+    // successful toggle with what the backend re-read from disk, and rerunning
+    // this on any prop change would overwrite that with the stale prop value.
+    useEffect(() => {
+        setAttrs({ isReadonly: file.is_readonly, isHidden: file.is_hidden });
+        setAttrError(null);
+        setPendingAttr(null);
+    }, [file.path]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const toggleAttribute = async (which: 'readOnly' | 'hidden', next: boolean) => {
         if (!onAttributeChange || pendingAttr) return;
         setPendingAttr(which);

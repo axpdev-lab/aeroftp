@@ -12125,7 +12125,7 @@ pub async fn get_local_files_recursive_checked(
             {
                 let _ = handle.emit(
                     "sync_scan_progress",
-                    local_scan_progress_payload_scoped(count, dirs_found, bytes_found, progress_id),
+                    local_scan_progress_payload(count, dirs_found, bytes_found, progress_id),
                 );
                 last_progress_emit = now;
                 last_progress_count = count;
@@ -12248,7 +12248,7 @@ pub async fn get_local_files_recursive_checked(
     if let Some(handle) = app {
         let _ = handle.emit(
             "sync_scan_progress",
-            local_scan_progress_payload_scoped(files.len(), dirs_found, bytes_found, progress_id),
+            local_scan_progress_payload(files.len(), dirs_found, bytes_found, progress_id),
         );
     }
 
@@ -12258,15 +12258,16 @@ pub async fn get_local_files_recursive_checked(
 /// Payload shape for the local arm of `sync_scan_progress`. Shared by the
 /// throttled mid-walk ticks and the final flush so a pin test can assert the
 /// fields without a live AppHandle.
+///
+/// `progress_id` scopes the event to one compare run, and there is deliberately
+/// no unscoped constructor: two overlapping scans emit on the same global Tauri
+/// event, and `useScanProgress` drops any payload whose id does not match, so an
+/// unscoped emitter would be silently ignored by every scoped consumer. That is
+/// the exact bug the scoping was added to fix, and a defaulting wrapper made
+/// "unscoped" the path of least resistance for the one emitter that must not
+/// take it. Callers with genuinely no scope pass `None` at the call site, where
+/// the decision is visible in the diff.
 pub fn local_scan_progress_payload(
-    files_found: usize,
-    dirs_found: usize,
-    bytes_found: u64,
-) -> serde_json::Value {
-    local_scan_progress_payload_scoped(files_found, dirs_found, bytes_found, None)
-}
-
-fn local_scan_progress_payload_scoped(
     files_found: usize,
     dirs_found: usize,
     bytes_found: u64,
@@ -22240,7 +22241,7 @@ mod scan_completeness_gate_tests {
         assert!(dirs_found >= 1, "expected at least the sub/ dir");
         assert!(bytes_found > 0, "expected non-zero file bytes");
 
-        let payload = local_scan_progress_payload(files_found, dirs_found, bytes_found);
+        let payload = local_scan_progress_payload(files_found, dirs_found, bytes_found, None);
         assert_eq!(payload["phase"], "local");
         assert_eq!(payload["files_found"], files_found);
         assert_eq!(payload["dirs_found"], dirs_found);

@@ -5847,7 +5847,9 @@ pub async fn oauth2_full_auth(
     // (and the bound TCP listener) is aborted on ANY early-return path below -
     // raw tokio::spawn would detach the handle and leak the port until process
     // restart if `open::that` fails or the 5-minute timeout fires.
-    let mut callback_task = AbortOnDrop::spawn(async move { wait_for_callback(listener).await });
+    let callback_state = expected_state.clone();
+    let mut callback_task =
+        AbortOnDrop::spawn(async move { wait_for_callback(listener, &callback_state).await });
 
     // Open URL in default browser
     if let Err(e) = open::that(&auth_url) {

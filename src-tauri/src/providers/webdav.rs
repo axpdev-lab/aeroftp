@@ -21,6 +21,7 @@ use secrecy::ExposeSecret;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use super::{
     sanitize_api_error, MultipartHandle, ProviderError, ProviderTransferExecutorKind, ProviderType,
@@ -72,20 +73,149 @@ pub struct NextcloudTrashEntry {
 
 // ============ HTTP Digest Authentication (RFC 2617) ============
 
-/// State for HTTP Digest authentication
+/// The server-issued Digest challenge, immutable once parsed.
 #[derive(Clone)]
-struct DigestState {
+struct DigestChallenge {
     realm: String,
     nonce: String,
     qop: String,
     opaque: Option<String>,
-    /// Shared across `clone_for_transfer` workers so concurrent requests never
-    /// reuse the same `nc` against one nonce (RFC 2617).
+}
+
+/// State for HTTP Digest authentication.
+///
+/// Both halves are shared across `clone_for_transfer` workers, and the nonce is
+/// shared for the same reason the counter is. A nonce is a property of the
+/// session with the server, not of a worker: when the server rotates it (Apache
+/// mod_auth_digest does so on AuthDigestNonceLifetime, 300s by default, replying
+/// `stale=true`) a per-worker copy means one clone re-negotiates and the other
+/// seven keep presenting the dead nonce. Vanilla WebDAV became an eight-way
+/// clone pool in this release and Digest had never run under one before, while
+/// `download()` in this same file still refuses concurrency when Digest is
+/// active, for exactly this reason. Sharing the challenge is what makes those
+/// two statements agree.
+#[derive(Clone)]
+struct DigestState {
+    challenge: Arc<RwLock<DigestChallenge>>,
+    /// Shared across workers so concurrent requests never reuse the same `nc`
+    /// against one nonce (RFC 2617).
     nc: Arc<AtomicU32>,
 }
 
 impl DigestState {
+    /// A poisoned lock still holds a perfectly valid challenge: it is four
+    /// strings, and a panic elsewhere says nothing about them. Failing the
+    /// request because another thread died would turn an unrelated bug into an
+    /// authentication failure, so the value is taken either way.
+    fn read_challenge(&self) -> std::sync::RwLockReadGuard<'_, DigestChallenge> {
+        self.challenge
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn realm(&self) -> String {
+        self.read_challenge().realm.clone()
+    }
+
+    fn qop(&self) -> String {
+        self.read_challenge().qop.clone()
+    }
+
+    fn nonce(&self) -> String {
+        self.read_challenge().nonce.clone()
+    }
+
+    /// Adopt a rotated challenge from a `401 ... stale=true` response.
+    ///
+    /// Returns false when the header is not a usable Digest challenge, so the
+    /// caller can fall through to the ordinary failure path instead of retrying
+    /// against the same dead nonce. The counter restarts because `nc` counts
+    /// requests against ONE nonce; carrying it over would present a count the
+    /// new nonce has never seen.
+    fn renegotiate(&self, www_authenticate: &str) -> bool {
+        match DigestChallenge::parse(www_authenticate) {
+            Some(fresh) => {
+                let mut guard = self
+                    .challenge
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                *guard = fresh;
+                self.nc.store(0, Ordering::Relaxed);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Parse a `WWW-Authenticate: Digest ...` header value
+    fn parse(header: &str) -> Option<Self> {
+        Some(Self {
+            challenge: Arc::new(RwLock::new(DigestChallenge::parse(header)?)),
+            nc: Arc::new(AtomicU32::new(0)),
+        })
+    }
+
+    /// Generate the `Authorization: Digest ...` header value
+    fn authorization(&self, method: &str, uri: &str, username: &str, password: &str) -> String {
+        // One guard for the whole header: the nonce, the counter and the qop
+        // must all come from the SAME challenge, or a rotation landing between
+        // two reads would mix a fresh nonce with a count belonging to the old
+        // one and the server would reject a request that is otherwise correct.
+        let challenge = self.read_challenge();
+        // First request is nc=1, matching the previous `self.nc += 1` start.
+        let nc = self.nc.fetch_add(1, Ordering::Relaxed) + 1;
+        let nc_str = format!("{:08x}", nc);
+        let cnonce = Self::generate_cnonce();
+
+        let ha1 = md5_hex(&format!("{}:{}:{}", username, challenge.realm, password));
+        let ha2 = md5_hex(&format!("{}:{}", method, uri));
+
+        let response = if !challenge.qop.is_empty() {
+            md5_hex(&format!(
+                "{}:{}:{}:{}:auth:{}",
+                ha1, challenge.nonce, nc_str, cnonce, ha2
+            ))
+        } else {
+            md5_hex(&format!("{}:{}:{}", ha1, challenge.nonce, ha2))
+        };
+
+        // Quote algorithm and qop for maximum server compatibility
+        // (Python requests quotes these and works with all servers)
+        let mut header = format!(
+            r#"Digest username="{}", realm="{}", nonce="{}", uri="{}", response="{}", algorithm="MD5""#,
+            username, challenge.realm, challenge.nonce, uri, response
+        );
+
+        if !challenge.qop.is_empty() {
+            header.push_str(&format!(
+                r#", qop="auth", nc={}, cnonce="{}""#,
+                nc_str, cnonce
+            ));
+        }
+
+        if let Some(ref opaque) = challenge.opaque {
+            header.push_str(&format!(r#", opaque="{}""#, opaque));
+        }
+
+        tracing::debug!(
+            "[WebDAV Digest] method={} uri={} nc={} response={}",
+            method,
+            uri,
+            nc_str,
+            response
+        );
+
+        header
+    }
+
+    fn generate_cnonce() -> String {
+        use rand::rngs::OsRng;
+        let bytes: [u8; 8] = OsRng.gen();
+        bytes.iter().map(|b| format!("{:02x}", b)).collect()
+    }
+}
+
+impl DigestChallenge {
     fn parse(header: &str) -> Option<Self> {
         let s = header.strip_prefix("Digest ")?;
         Some(Self {
@@ -93,7 +223,6 @@ impl DigestState {
             nonce: Self::extract_param(s, "nonce")?,
             qop: Self::extract_param(s, "qop").unwrap_or_default(),
             opaque: Self::extract_param(s, "opaque"),
-            nc: Arc::new(AtomicU32::new(0)),
         })
     }
 
@@ -114,60 +243,6 @@ impl DigestState {
             return Some(after[..end].to_string());
         }
         None
-    }
-
-    /// Generate the `Authorization: Digest ...` header value
-    fn authorization(&self, method: &str, uri: &str, username: &str, password: &str) -> String {
-        // First request is nc=1, matching the previous `self.nc += 1` start.
-        let nc = self.nc.fetch_add(1, Ordering::Relaxed) + 1;
-        let nc_str = format!("{:08x}", nc);
-        let cnonce = Self::generate_cnonce();
-
-        let ha1 = md5_hex(&format!("{}:{}:{}", username, self.realm, password));
-        let ha2 = md5_hex(&format!("{}:{}", method, uri));
-
-        let response = if !self.qop.is_empty() {
-            md5_hex(&format!(
-                "{}:{}:{}:{}:auth:{}",
-                ha1, self.nonce, nc_str, cnonce, ha2
-            ))
-        } else {
-            md5_hex(&format!("{}:{}:{}", ha1, self.nonce, ha2))
-        };
-
-        // Quote algorithm and qop for maximum server compatibility
-        // (Python requests quotes these and works with all servers)
-        let mut header = format!(
-            r#"Digest username="{}", realm="{}", nonce="{}", uri="{}", response="{}", algorithm="MD5""#,
-            username, self.realm, self.nonce, uri, response
-        );
-
-        if !self.qop.is_empty() {
-            header.push_str(&format!(
-                r#", qop="auth", nc={}, cnonce="{}""#,
-                nc_str, cnonce
-            ));
-        }
-
-        if let Some(ref opaque) = self.opaque {
-            header.push_str(&format!(r#", opaque="{}""#, opaque));
-        }
-
-        tracing::debug!(
-            "[WebDAV Digest] method={} uri={} nc={} response={}",
-            method,
-            uri,
-            nc_str,
-            response
-        );
-
-        header
-    }
-
-    fn generate_cnonce() -> String {
-        use rand::rngs::OsRng;
-        let bytes: [u8; 8] = OsRng.gen();
-        bytes.iter().map(|b| format!("{:02x}", b)).collect()
     }
 }
 
@@ -857,19 +932,36 @@ impl WebDavProvider {
             .unwrap_or("")
             .to_string();
 
-        let Some(state) = DigestState::parse(&www_auth) else {
-            // No Digest challenge (Basic auth, or a genuine credential
-            // failure): keep the existing behaviour and let the caller map
-            // the 401.
-            return Ok(response);
-        };
-
-        tracing::debug!(
-            "[WebDAV] PROPFIND 401 with Digest challenge, re-negotiating stale nonce (realm={}, nonce={}...)",
-            state.realm,
-            &state.nonce[..state.nonce.len().min(12)]
-        );
-        self.digest_auth = Some(state);
+        // Adopt the rotated challenge IN PLACE when this session already has
+        // Digest state. Replacing `self.digest_auth` with a freshly parsed state
+        // would build a new Arc, so every `clone_for_transfer` worker would keep
+        // pointing at the old challenge and the repair would reach exactly one
+        // of them: the same defect sharing the challenge exists to prevent.
+        match self.digest_auth.as_ref() {
+            Some(existing) => {
+                if !existing.renegotiate(&www_auth) {
+                    // Not a usable Digest challenge (Basic auth, or a genuine
+                    // credential failure): let the caller map the 401.
+                    return Ok(response);
+                }
+                tracing::debug!(
+                    "[WebDAV] PROPFIND 401, adopted rotated nonce for every worker (realm={}, nonce={}...)",
+                    existing.realm(),
+                    &existing.nonce()[..existing.nonce().len().min(12)]
+                );
+            }
+            None => {
+                let Some(state) = DigestState::parse(&www_auth) else {
+                    return Ok(response);
+                };
+                tracing::debug!(
+                    "[WebDAV] PROPFIND 401 with Digest challenge, negotiating (realm={}, nonce={}...)",
+                    state.realm(),
+                    &state.nonce()[..state.nonce().len().min(12)]
+                );
+                self.digest_auth = Some(state);
+            }
+        }
 
         self.request(webdav_methods::propfind(), path)
             .header("Depth", depth)
@@ -2486,9 +2578,9 @@ impl StorageProvider for WebDavProvider {
                 if let Some(state) = DigestState::parse(&www_auth) {
                     tracing::debug!(
                         "[WebDAV] Server requires Digest auth (realm: {}, qop: {}, nonce: {}...)",
-                        state.realm,
-                        state.qop,
-                        &state.nonce[..state.nonce.len().min(12)]
+                        state.realm(),
+                        state.qop(),
+                        &state.nonce()[..state.nonce().len().min(12)]
                     );
                     self.digest_auth = Some(state);
 
@@ -4149,6 +4241,20 @@ impl StorageProvider for WebDavProvider {
     /// unordered part PUTs. Digest `nc` is an `Arc<AtomicU32>` so clones
     /// never reuse a nonce count.
     fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        // Digest is safe to clone now that the challenge is shared, not just the
+        // counter: a nonce rotation seen by any worker repairs the whole pool
+        // (see DigestState).
+        //
+        // ACCEPTED DEBT, and the only one this release carries. The remaining
+        // gap is that only the PROPFIND path re-negotiates on `stale=true`; the
+        // data paths still map a 401 to "Session expired". With the shared
+        // challenge, one PROPFIND repairs every worker, so the window is a batch
+        // of in-flight files rather than the whole session, and the pre-existing
+        // single-stream path failed on nonce expiry too. Trigger to close it: a
+        // Digest-authenticated WebDAV server that rotates its nonce mid-batch,
+        // which is Apache mod_auth_digest at its default 300s lifetime. Deferred
+        // because the retry cannot be validated without a live Digest server and
+        // a blanket 401 retry would turn a revoked password into a retry storm.
         Ok(Box::new(self.clone()))
     }
 
@@ -5512,5 +5618,68 @@ mod tests {
         let mut seen = [nc1.as_str(), nc2.as_str()];
         seen.sort();
         assert_eq!(seen, ["00000001", "00000002"]);
+    }
+
+    /// Issue #591 second half. The counter was shared but the NONCE was cloned
+    /// by value, so a server rotating it (Apache mod_auth_digest does this every
+    /// AuthDigestNonceLifetime, 300s by default) repaired the one worker that
+    /// received the `stale=true` and left the other seven presenting a dead
+    /// nonce. A nonce belongs to the session with the server, not to a worker.
+    #[test]
+    fn a_rotated_nonce_reaches_every_clone() {
+        let worker_a = DigestState::parse(r#"Digest realm="r", nonce="old", qop="auth""#)
+            .expect("parse digest challenge");
+        let worker_b = worker_a.clone();
+        let nonce_of = |h: &str| {
+            h.split("nonce=\"")
+                .nth(1)
+                .and_then(|s| s.split('"').next())
+                .unwrap_or("")
+                .to_string()
+        };
+        assert_eq!(
+            nonce_of(&worker_b.authorization("GET", "/b", "u", "p")),
+            "old"
+        );
+
+        // Worker A is the one that happens to receive the 401.
+        assert!(worker_a.renegotiate(r#"Digest realm="r", nonce="fresh", qop="auth", stale=true"#));
+
+        assert_eq!(
+            nonce_of(&worker_b.authorization("GET", "/b", "u", "p")),
+            "fresh",
+            "a worker that never saw the 401 must still leave the dead nonce behind"
+        );
+        // `nc` counts requests against ONE nonce, so it restarts with it.
+        let nc_of = |h: &str| {
+            h.split("nc=")
+                .nth(1)
+                .and_then(|s| s.split([',', ' ']).next())
+                .unwrap_or("")
+                .to_string()
+        };
+        assert_eq!(
+            nc_of(&worker_b.authorization("GET", "/b", "u", "p")),
+            "00000002"
+        );
+    }
+
+    /// A header that is not a usable challenge must not be adopted: retrying
+    /// against a half-parsed challenge is worse than failing the request, and
+    /// the caller needs the false to fall through to its ordinary error path.
+    #[test]
+    fn renegotiate_refuses_an_unusable_challenge() {
+        let state = DigestState::parse(r#"Digest realm="r", nonce="old", qop="auth""#)
+            .expect("parse digest challenge");
+        assert!(!state.renegotiate("Basic realm=\"r\""));
+        assert!(
+            !state.renegotiate(r#"Digest realm="r""#),
+            "no nonce is not usable"
+        );
+        assert_eq!(
+            state.nonce(),
+            "old",
+            "a refused challenge must change nothing"
+        );
     }
 }

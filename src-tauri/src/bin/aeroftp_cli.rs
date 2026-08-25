@@ -26196,7 +26196,9 @@ async fn cli_oauth_browser_auth(
     eprintln!("Waiting for authorization... (press Ctrl+C to cancel)");
 
     // Wait for callback with 5-minute timeout
-    let callback_handle = tokio::spawn(async move { wait_for_callback(listener).await });
+    let callback_state = expected_state.clone();
+    let callback_handle =
+        tokio::spawn(async move { wait_for_callback(listener, &callback_state).await });
     let (code, state) =
         tokio::time::timeout(tokio::time::Duration::from_secs(300), callback_handle)
             .await
