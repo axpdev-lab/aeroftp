@@ -29,6 +29,8 @@ import { AeroShareHandshakeBody } from './AeroShare/AeroShareHandshakeBody';
 import { TotpCodeInput } from './TotpCodeInput';
 import { StoredTotpSecretDisclosure } from './StoredTotpSecretDisclosure';
 import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
+import { ManualStorageField } from './common/ManualStorageField';
+import { DiscoverableTargetField, discoveryResetKey, type ConnectionTarget } from './common/DiscoverableTargetField';
 import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, resolveModeHeader, resolveModeSwitchCredentials } from './providerModeGroups';
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
@@ -47,7 +49,6 @@ import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serv
 import { carryFavoriteServer } from '../utils/favoriteServers';
 import { carryServerGroups } from '../utils/serverGroups';
 import { getStorageDedupKey } from '../utils/storageDedup';
-import { formatBytes, parseHumanSize } from '../utils/formatters';
 import { useActivityLog } from '../hooks/useActivityLog';
 import { logger } from '../utils/logger';
 import { Checkbox } from './ui/Checkbox';
@@ -511,6 +512,31 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Portable MTP device profile (APPENDIX-DEVICE-PROFILES Phase 2): no host/password;
     // detect attached devices, pick one, store deviceFingerprint + default paths.
     const isMtp = protocol === 'mtp';
+
+    const discoverConnectionTargets = (targetProtocol: 's3' | 'backblaze' | 'kdrive') => {
+        const options = connectionParams.options || {};
+        return invoke<ConnectionTarget[]>('provider_discover_targets', {
+            params: {
+                protocol: targetProtocol,
+                providerId: connectionParams.providerId,
+                server: connectionParams.server,
+                port: connectionParams.port,
+                username: targetProtocol === 'kdrive' ? 'api-token' : connectionParams.username,
+                password: connectionParams.password,
+                bucket: options.bucket,
+                region: options.region,
+                endpoint: options.endpoint,
+                path_style: options.pathStyle,
+                session_token: options.sessionToken,
+                role_arn: options.roleArn,
+                role_external_id: options.roleExternalId,
+                role_session_name: options.roleSessionName,
+                role_duration_seconds: options.roleDurationSeconds,
+                role_mfa_serial: options.roleMfaSerial,
+                role_mfa_token_code: options.roleMfaTokenCode,
+            },
+        });
+    };
 
     // Connections are always saved (the legacy "Save this connection" checkbox
     // was removed: the user can still delete a profile from the list afterwards).
@@ -3456,23 +3482,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         )}
                     </div>
                 )}
-                {/* Issue #215: persist credentials for every protocol of this
-                    account so switching modes never asks again, even after a
-                    restart. Only offered when the active provider/protocol is
-                    part of a mode group (Filen, MEGA, OpenDrive, Koofr, ...). */}
-                {showPersistCheckbox && (
-                    <div>
-                        <Checkbox
-                            checked={persistModeCredentials}
-                            onChange={setPersistModeCredentials}
-                            label={t('connection.persistModeCredentials')}
-                            labelClassName="text-sm"
-                        />
-                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                            {t('connection.persistModeCredentialsHint')}
-                        </p>
-                    </div>
-                )}
                 {/* Total storage (manual): optional cap for backends with no
                     quota API (raw FTP/FTPS/SFTP, most S3/WebDAV) or that
                     expose USED but not TOTAL (Backblaze B2). The provider API
@@ -3487,36 +3496,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     activeProviderId,
                     connectionParams.server,
                 ) && (
-                <div>
-                    <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                        <HardDrive size={14} />
-                        {t('connection.manualTotalStorage')}
-                    </label>
-                    <input
-                        key={`mtb-${editingProfileId || 'new'}`}
-                        type="text"
-                        defaultValue={connectionParams.options?.manualTotalBytes
-                            ? formatBytes(connectionParams.options.manualTotalBytes)
-                            : ''}
-                        onChange={(e) => {
-                            const raw = e.target.value.trim();
-                            const opts = { ...(connectionParams.options || {}) };
-                            if (!raw) {
-                                delete opts.manualTotalBytes;
-                            } else {
-                                const bytes = parseHumanSize(raw);
-                                if (bytes && bytes > 0) opts.manualTotalBytes = bytes;
-                                else delete opts.manualTotalBytes;
-                            }
-                            onConnectionParamsChange({ ...connectionParams, options: opts });
-                        }}
-                        placeholder={t('connection.manualTotalStoragePlaceholder')}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                    />
-                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                        {t('connection.manualTotalStorageHint')}
-                    </p>
-                </div>
+                <ManualStorageField
+                    key={`mtb-${editingProfileId || 'new'}`}
+                    valueBytes={connectionParams.options?.manualTotalBytes}
+                    onChange={(bytes) => {
+                        const opts = { ...(connectionParams.options || {}) };
+                        if (bytes) opts.manualTotalBytes = bytes;
+                        else delete opts.manualTotalBytes;
+                        onConnectionParamsChange({ ...connectionParams, options: opts });
+                    }}
+                    label={t('connection.manualTotalStorage')}
+                    hint={t('connection.manualTotalStorageHint')}
+                />
                 )}
                 {/* The opt-in used-storage scan is only meaningful for backends
                     that do NOT report their own quota. MEGAcmd now serves its
@@ -3800,6 +3791,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     </div>
                     )}
                     <div className="space-y-3">
+                        {/* Account-wide mode credentials affect which protocol can
+                            be selected, so keep this directly above the selector;
+                            quota controls stay inside the form below it (#369). */}
+                        {showPersistCheckbox && (
+                            <div>
+                                <Checkbox
+                                    checked={persistModeCredentials}
+                                    onChange={setPersistModeCredentials}
+                                    label={t('connection.persistModeCredentials')}
+                                    labelClassName="text-sm"
+                                />
+                                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    {t('connection.persistModeCredentialsHint')}
+                                </p>
+                            </div>
+                        )}
                         {/* Protocol Selector - hidden in formOnly unless editing a switchable protocol (FTP/FTPS/SFTP) */}
                         {(!formOnly || (editingProfileId && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType))) && (
                         <ProtocolSelector
@@ -5192,46 +5199,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 ) : protocol === 'kdrive' ? (
                                     /* kDrive Specific Form: Drive ID + API Token (#369) */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
-                                        {/* LEFT COLUMN: Credentials */}
+                                        {/* LEFT COLUMN: the secret comes first because drive
+                                            discovery is authenticated by that token (#369). */}
                                         <div className="space-y-4">
-                                        {/* Drive ID (numeric identifier) sits above the API Token
-                                            (the secret), mirroring the id-then-secret order used for
-                                            S3, per #369. The green link opens the kSuite page whose
-                                            address bar shows the numeric Drive ID. */}
-                                        <div>
-                                            <div className="flex items-center justify-between gap-2 mb-1.5">
-                                                <label className="block text-sm font-medium">{t('connection.kdriveDriveId')}</label>
-                                                <span className="inline-flex items-center shrink-0">
-                                                    <a
-                                                        href="https://ksuite.infomaniak.com/all/kdrive"
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        title={t('connection.kdriveFindDriveIdHint')}
-                                                        className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
-                                                    >
-                                                        <ExternalLink size={10} />
-                                                        {t('connection.kdriveFindDriveId')}
-                                                    </a>
-                                                    <CopyLinkButton url="https://ksuite.infomaniak.com/all/kdrive" />
-                                                </span>
-                                            </div>
-                                            <input
-                                                type="text"
-                                                value={connectionParams.options?.drive_id || connectionParams.options?.bucket || ''}
-                                                onChange={(e) => {
-                                                    const v = e.target.value.replace(/\D/g, '');
-                                                    onConnectionParamsChange({
-                                                        ...connectionParams,
-                                                        options: { ...connectionParams.options, bucket: v, drive_id: v }
-                                                    });
-                                                }}
-                                                className="w-32 px-4 py-2.5 font-mono tracking-wider bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                placeholder="1234567"
-                                                inputMode="numeric"
-                                                maxLength={10}
-                                                autoFocus
-                                            />
-                                        </div>
                                         <div>
                                             <div className="flex items-center justify-between gap-2 mb-1.5">
                                                 <label className="block text-sm font-medium">{t('connection.kdriveToken')}</label>
@@ -5267,6 +5237,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </button>
                                             </div>
                                         </div>
+                                        <DiscoverableTargetField
+                                            label={t('connection.kdriveDriveId')}
+                                            value={connectionParams.options?.drive_id || connectionParams.options?.bucket || ''}
+                                            onChange={(rawValue) => {
+                                                const value = rawValue.replace(/\D/g, '');
+                                                onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    server: 'api.infomaniak.com',
+                                                    port: 443,
+                                                    username: 'api-token',
+                                                    options: { ...connectionParams.options, bucket: value, drive_id: value },
+                                                });
+                                            }}
+                                            onDiscover={() => discoverConnectionTargets('kdrive')}
+                                            canDiscover={!!connectionParams.password}
+                                            resetKey={discoveryResetKey(connectionParams.password)}
+                                            placeholder="1234567"
+                                            inputMode="numeric"
+                                            maxLength={10}
+                                            helpText={t('connection.kdriveFindDriveIdHint')}
+                                            required
+                                        />
                                         </div>
 
                                         {formOnly ? (
@@ -5733,22 +5725,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </div>
                                                 <p className="text-xs text-gray-500 mt-1">Shown only once at creation. Treat it as a password.</p>
                                             </div>
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1.5">Bucket Name</label>
-                                                <input
-                                                    type="text"
-                                                    value={connectionParams.options?.bucket || ''}
-                                                    onChange={(e) => onConnectionParamsChange({
-                                                        ...connectionParams,
-                                                        server: connectionParams.server || 'api.backblazeb2.com',
-                                                        port: connectionParams.port || 443,
-                                                        options: { ...(connectionParams.options || {}), bucket: e.target.value },
-                                                    })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                                                    placeholder="my-b2-bucket"
-                                                />
-                                                <p className="text-xs text-gray-500 mt-1">Exact bucket name, case sensitive.</p>
-                                            </div>
+                                            <DiscoverableTargetField
+                                                label="Bucket Name"
+                                                value={connectionParams.options?.bucket || ''}
+                                                onChange={(bucket) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    server: connectionParams.server || 'api.backblazeb2.com',
+                                                    port: connectionParams.port || 443,
+                                                    options: { ...(connectionParams.options || {}), bucket },
+                                                })}
+                                                onDiscover={() => discoverConnectionTargets('backblaze')}
+                                                canDiscover={!!connectionParams.username && !!connectionParams.password}
+                                                resetKey={discoveryResetKey(connectionParams.username, connectionParams.password)}
+                                                placeholder="my-b2-bucket"
+                                                helpText="Exact bucket name, case sensitive."
+                                                required
+                                            />
 
                                             <div className="bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-100 dark:border-red-900/30 text-xs text-red-800 dark:text-red-200">
                                                 <p className="font-medium mb-1 flex items-center gap-1.5">
@@ -6651,6 +6643,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             isEditing={!!editingProfileId}
                                             presetUnlocked={presetUnlocked}
                                             onPresetUnlock={(field) => setPresetUnlocked(prev => ({ ...prev, [field]: true }))}
+                                            discoverS3Targets={() => discoverConnectionTargets('s3')}
+                                            canDiscoverS3Targets={!!connectionParams.username && !!connectionParams.password}
+                                            s3DiscoveryResetKey={discoveryResetKey(connectionParams.username, connectionParams.password, connectionParams.options?.endpoint)}
                                         />
                                         {/* Advanced Options: hidden server/port for preset WebDAV, hidden endpoint for preset S3 */}
                                         {(() => {

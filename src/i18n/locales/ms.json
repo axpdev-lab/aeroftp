@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Tampal kunci API daripada profil Filen CLI anda untuk melangkau kod 2FA pada setiap sambungan semula. Kata laluan akaun masih diperlukan: ia menyahsulit fail anda secara hujung ke hujung. Setelah disimpan, kunci disimpan tersulit dalam bilik kebal dan tidak ditunjukkan lagi di sini (seperti rahsia 2FA anda); AeroFTP menggunakannya semula secara automatik. Semasa menyunting, biarkan kosong untuk mengekalkan kunci yang disimpan.",
             "manualTotalStorage": "Jumlah storan (manual)",
             "manualTotalStoragePlaceholder": "cth. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Pilihan. Had pelan atau akaun untuk bahagian belakang tanpa API kuota (FTP, S3, WebDAV) atau yang hanya melaporkan ruang digunakan (Backblaze B2). Jumlah milik penyedia sendiri sentiasa diutamakan.",
+            "manualTotalStorageHint": "Pilihan. Masukkan had berangka pelan/akaun dan pilih unitnya. Hanya digunakan apabila penyedia tiada API kuota jumlah; jumlah penyedia sendiri sentiasa diutamakan.",
             "autoScanUsedOnConnect": "Kira storan digunakan semasa menyambung",
             "autoScanUsedOnConnectHint": "Hanya untuk bahagian belakang tanpa API ruang digunakan (FTP, S3, WebDAV). Dimatikan secara lalai: pepohon yang besar (cth. projek web) dilalui secara rekursif, yang boleh menjadi perlahan. Jika tidak, gunakan tindakan StatusBar mengikut keperluan.",
             "saveAsNewProfile": "Simpan sebagai profil baru",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Pilih peranti...",
             "mtpSelectPlaceholderEmpty": "Belum ada peranti — klik Kesan",
             "mtpNotAttachedTitle": "Peranti tidak disambungkan",
-            "mtpNotAttached": "Pasangkan peranti dan dayakan mod Pemindahan Fail, kemudian cuba lagi."
+            "mtpNotAttached": "Pasangkan peranti dan dayakan mod Pemindahan Fail, kemudian cuba lagi.",
+            "discovery": {
+                "fetch": "Dapatkan",
+                "fetching": "Mendapatkan...",
+                "refresh": "Segar semula",
+                "none": "Tiada sasaran dikembalikan. Anda masih boleh memasukkannya secara manual.",
+                "found": "Menemui {count} sasaran yang boleh dicapai. Taip untuk mencari atau pilih satu."
+            }
         },
         "browser": {
             "remote": "Jauh",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Jenis penyulitan dan kata laluan ditetapkan sekali dan tidak boleh diubah kemudian: fail yang telah disulitkan akan menjadi tidak boleh dibaca.",
             "lockedNote": "Jenis penyulitan dan kelayakan dikunci: lapisan ini sudah mengandungi data tersulit.",
             "addToExistingWarn": "Mengaktifkan tindihan pada profil sedia ada: sebarang fail teks biasa yang sudah ada pada jauh ini kekal tidak disulitkan dan akan dipaparkan sebagai campuran yang tidak boleh dinyahsulit. Gunakan jauh yang kosong.",
-            "scopeHint": "Laluan Jauh dan Tempatan di atas menentukan skop tersulit (biarkan Jauh kosong untuk menyulitkan seluruh root).",
+            "scopeHint": "Laluan Tindanan menentukan skop yang disulitkan. Laluan Jauh hanya memilih tempat pelayaran bermula; Laluan Setempat tidak pernah mengubah penyulitan.",
             "overlaysPathLockedNote": "Laluan Tindih dikunci: ia merupakan sauh penyulitan dan tidak boleh diubah setelah tindihan diikat.",
             "remotePathMustReachOverlay": "Laluan jauh mestilah Laluan Tindih ({path}) atau salah satu folder induknya, jika tidak folder tersulit akan berada di luar sesi ini.",
             "overlaysSection": "Pembalut / Overlay",

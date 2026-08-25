@@ -39,6 +39,16 @@ export function setupBoxDefaultOpen(
     return bridgeState !== 'green';
 }
 
+/**
+ * A vertical disclosure uses a down chevron while closed (content is below)
+ * and an up chevron while open. Keep this separate from the horizontal tree
+ * disclosure convention (`>`), which suggested lateral navigation in Quick
+ * Connect (#369).
+ */
+export function setupBoxChevronClass(open: boolean): string {
+    return open ? 'rotate-180' : '';
+}
+
 interface CollapsibleSetupBoxProps {
     title: React.ReactNode;
     tone?: Tone;
@@ -85,7 +95,7 @@ export const CollapsibleSetupBox: React.FC<CollapsibleSetupBoxProps> = ({
                 <span>{title}</span>
                 <ChevronDown
                     size={14}
-                    className={`shrink-0 transition-transform ${open ? '' : '-rotate-90'}`}
+                    className={`shrink-0 transition-transform ${setupBoxChevronClass(open)}`}
                 />
             </button>
             {open && <div className="mt-2">{children}</div>}

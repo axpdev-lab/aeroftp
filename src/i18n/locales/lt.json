@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Įklijuokite API raktą iš savo Filen CLI profilio, kad kiekvieną kartą iš naujo prisijungdami praleistumėte 2FA kodą. Paskyros slaptažodis vis tiek būtinas: jis iššifruoja jūsų failus visapusiškai. Išsaugojus raktas saugomas užšifruotas saugykloje ir čia daugiau nerodomas (kaip ir jūsų 2FA paslaptis); AeroFTP jį automatiškai naudoja pakartotinai. Redaguodami palikite tuščią, kad išlaikytumėte išsaugotą raktą.",
             "manualTotalStorage": "Bendra saugykla (rankiniu būdu)",
             "manualTotalStoragePlaceholder": "pvz. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Neprivaloma. Plano arba paskyros riba vidinėms sistemoms be kvotos API (FTP, S3, WebDAV) arba kurios praneša tik naudojamą vietą (Backblaze B2). Tiekėjo paties pateiktas bendras dydis visada turi pirmenybę.",
+            "manualTotalStorageHint": "Nebūtina. Įveskite skaitinį plano / paskyros limitą ir pasirinkite jo vienetą. Naudojama tik kai teikėjas neturi bendros kvotos API; paties teikėjo bendras dydis visada turi pirmenybę.",
             "autoScanUsedOnConnect": "Apskaičiuoti naudojamą saugyklą prisijungus",
             "autoScanUsedOnConnectHint": "Tik vidinėms sistemoms be naudojamos vietos API (FTP, S3, WebDAV). Pagal numatymą išjungta: didelis medis (pvz. žiniatinklio projektas) apeinamas rekursyviai, o tai gali būti lėta. Kitu atveju naudokite StatusBar veiksmą pagal poreikį.",
             "saveAsNewProfile": "Įrašyti kaip naują profilį",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Pasirinkite įrenginį...",
             "mtpSelectPlaceholderEmpty": "Dar nėra įrenginių – spustelėkite Aptikti",
             "mtpNotAttachedTitle": "Įrenginys neprijungtas",
-            "mtpNotAttached": "Prijunkite įrenginį ir įjunkite failų perdavimo režimą, tada bandykite dar kartą."
+            "mtpNotAttached": "Prijunkite įrenginį ir įjunkite failų perdavimo režimą, tada bandykite dar kartą.",
+            "discovery": {
+                "fetch": "Gauti",
+                "fetching": "Gaunama...",
+                "refresh": "Atnaujinti",
+                "none": "Nebuvo grąžinta jokių paskirties vietų. Vis tiek galite vieną įvesti rankiniu būdu.",
+                "found": "Rasta {count} pasiekiamų paskirties vietų. Rašykite norėdami ieškoti arba pasirinkite vieną."
+            }
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Šifravimo tipas ir slaptažodis nustatomi vieną kartą ir vėliau jų pakeisti negalima: jau užšifruoti failai taptų neįskaitomi.",
             "lockedNote": "Šifravimo tipas ir prisijungimo duomenys užrakinti: šis sluoksnis jau turi užšifruotų duomenų.",
             "addToExistingWarn": "Įjungus perdangą esamame profilyje: visi paprastojo teksto failai, jau esantys šioje nuotolinėje vietoje, lieka nešifruoti ir bus rodomi kaip neiššifruojamas mišinys. Naudokite tuščią nuotolinę vietą.",
-            "scopeHint": "Aukščiau nurodyti nuotolinis ir vietinis keliai apibrėžia šifruotą sritį (palikite Nuotolinį tuščią, kad būtų užšifruota visa šaknis).",
+            "scopeHint": "Perdangų kelias apibrėžia šifruojamą sritį. Nuotolinis kelias tik parenka naršymo pradžią; vietinis kelias niekada nekeičia šifravimo.",
             "overlaysPathLockedNote": "Perdangų kelias užrakintas: tai šifravimo inkaras, kurio nebegalima keisti susiejus perdangą.",
             "remotePathMustReachOverlay": "Nuotolinis kelias turi būti perdangų kelias ({path}) arba vienas iš jo pirminių aplankų, kitaip užšifruotas aplankas liks už šio seanso ribų.",
             "overlaysSection": "Apvalkalai / Perdangos",

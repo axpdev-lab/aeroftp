@@ -19979,6 +19979,7 @@ pub fn run() {
             ai::deepseek_fim_complete,
             // Multi-protocol provider commands
             provider_commands::provider_connect,
+            provider_commands::provider_discover_targets,
             provider_commands::cancel_connection,
             provider_commands::cancel_remote_listing,
             provider_commands::provider_disconnect,
@@ -20021,6 +20022,7 @@ pub fn run() {
             provider_commands::oauth2_complete_auth,
             provider_commands::oauth2_connect,
             provider_commands::oauth2_full_auth,
+            provider_commands::oauth2_redirect_uri,
             provider_commands::oauth2_has_tokens,
             provider_commands::oauth2_logout,
             // 4shared OAuth 1.0 commands

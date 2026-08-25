@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
-import { setupBoxDefaultOpen } from './CollapsibleSetupBox';
+import { setupBoxChevronClass, setupBoxDefaultOpen } from './CollapsibleSetupBox';
 
 // #215 idea D flash fix: a bridge setup box must NOT open during the "Checking…"
 // moment and then collapse on 🟢. It starts collapsed and only opens once the
@@ -25,5 +25,12 @@ describe('setupBoxDefaultOpen', () => {
     it('bridge box expands only once it settles to a non-green state', () => {
         expect(setupBoxDefaultOpen(true, 'amber')).toBe(true);
         expect(setupBoxDefaultOpen(true, 'red')).toBe(true);
+    });
+});
+
+describe('setupBoxChevronClass', () => {
+    it('points down while closed and up while open', () => {
+        expect(setupBoxChevronClass(false)).toBe('');
+        expect(setupBoxChevronClass(true)).toBe('rotate-180');
     });
 });

@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Ielīmējiet API atslēgu no sava Filen CLI profila, lai izlaistu 2FA kodu katrā atkārtotā savienojumā. Konta parole joprojām ir nepieciešama: tā atšifrē jūsu failus pilnībā. Pēc saglabāšanas atslēga tiek glabāta šifrēta glabātavā un šeit vairs netiek rādīta (tāpat kā jūsu 2FA noslēpums); AeroFTP to automātiski izmanto atkārtoti. Rediģējot atstājiet tukšu, lai saglabātu saglabāto atslēgu.",
             "manualTotalStorage": "Kopējā krātuve (manuāli)",
             "manualTotalStoragePlaceholder": "piem. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Neobligāti. Plāna vai konta ierobežojums aizmugursistēmām bez kvotas API (FTP, S3, WebDAV) vai kas ziņo tikai par izmantoto vietu (Backblaze B2). Pakalpojuma sniedzēja paša kopējam apjomam vienmēr ir prioritāte.",
+            "manualTotalStorageHint": "Neobligāti. Ievadiet plāna/konta skaitlisko ierobežojumu un izvēlieties tā mērvienību. Izmanto tikai tad, ja pakalpojumu sniedzējam nav kopējās kvotas API; pakalpojumu sniedzēja norādītajam kopapjomam vienmēr ir priekšroka.",
             "autoScanUsedOnConnect": "Aprēķināt izmantoto krātuvi, izveidojot savienojumu",
             "autoScanUsedOnConnectHint": "Tikai aizmugursistēmām bez izmantotās vietas API (FTP, S3, WebDAV). Pēc noklusējuma izslēgts: liels koks (piem. tīmekļa projekts) tiek apstaigāts rekursīvi, kas var būt lēni. Pretējā gadījumā izmantojiet StatusBar darbību pēc pieprasījuma.",
             "saveAsNewProfile": "Saglabāt kā jaunu profilu",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Atlasiet ierīci...",
             "mtpSelectPlaceholderEmpty": "Vēl nav ierīču — noklikšķiniet uz Noteikt",
             "mtpNotAttachedTitle": "Ierīce nav pievienota",
-            "mtpNotAttached": "Pievienojiet ierīci un iespējojiet failu pārsūtīšanas režīmu, pēc tam mēģiniet vēlreiz."
+            "mtpNotAttached": "Pievienojiet ierīci un iespējojiet failu pārsūtīšanas režīmu, pēc tam mēģiniet vēlreiz.",
+            "discovery": {
+                "fetch": "Iegūt",
+                "fetching": "Iegūst...",
+                "refresh": "Atsvaidzināt",
+                "none": "Netika atgriezts neviens mērķis. Joprojām varat to ievadīt manuāli.",
+                "found": "Atrasti {count} pieejami mērķi. Rakstiet, lai meklētu, vai atlasiet vienu."
+            }
         },
         "browser": {
             "remote": "Attālināts",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Šifrēšanas veids un parole tiek iestatīti vienreiz, un tos vēlāk nevar mainīt: jau šifrētie faili kļūtu nelasāmi.",
             "lockedNote": "Šifrēšanas veids un akreditācijas dati ir bloķēti: šis slānis jau satur šifrētus datus.",
             "addToExistingWarn": "Iespējojot pārklājumu esošā profilā: visi vienkārša teksta faili, kas jau ir šajā attālinātajā vietā, paliek nešifrēti un tiks rādīti kā neatšifrējams sajaukums. Izmantojiet tukšu attālināto vietu.",
-            "scopeHint": "Iepriekš norādītie attālie un vietējie ceļi nosaka šifrēto tvērumu (atstājiet Attālo tukšu, lai šifrētu visu sakni).",
+            "scopeHint": "Pārklājumu ceļš nosaka šifrēto tvērumu. Attālais ceļš tikai izvēlas pārlūkošanas sākuma vietu; lokālais ceļš nekad nemaina šifrēšanu.",
             "overlaysPathLockedNote": "Pārklājumu ceļš ir bloķēts: tas ir šifrēšanas enkurs, un pēc pārklājuma piesaistīšanas to vairs nevar mainīt.",
             "remotePathMustReachOverlay": "Attālajam ceļam jābūt pārklājumu ceļam ({path}) vai kādai no tā vecākmapēm, citādi šifrētā mape paliks ārpus šīs sesijas.",
             "overlaysSection": "Apvalki / Pārklājumi",

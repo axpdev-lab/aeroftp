@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Pega la clave API de tu perfil de Filen CLI para omitir el código 2FA en cada reconexión. La contraseña de la cuenta sigue siendo necesaria: descifra tus archivos de extremo a extremo. Una vez guardada, la clave se almacena cifrada en la bóveda y ya no se muestra aquí (como tu secreto 2FA); AeroFTP la reutiliza automáticamente. Al editar, déjalo en blanco para conservar la clave guardada.",
             "manualTotalStorage": "Almacenamiento total (manual)",
             "manualTotalStoragePlaceholder": "p. ej. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Opcional. Límite del plan o cuenta para backends sin quota API (FTP, S3, WebDAV) o que solo informan del espacio usado (Backblaze B2). El total propio del proveedor siempre tiene prioridad.",
+            "manualTotalStorageHint": "Opcional. Introduzca un límite numérico del plan o la cuenta y elija su unidad. Solo se usa cuando el proveedor no ofrece una API de cuota total; el total del proveedor siempre tiene prioridad.",
             "autoScanUsedOnConnect": "Calcular el almacenamiento usado al conectar",
             "autoScanUsedOnConnectHint": "Solo para backends sin API de espacio usado (FTP, S3, WebDAV). Desactivado por defecto: un árbol grande (p. ej. un proyecto web) se recorre de forma recursiva, lo que puede ser lento. De lo contrario, use la acción de la StatusBar cuando lo necesite.",
             "saveAsNewProfile": "Guardar como nuevo perfil",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Selecciona un dispositivo...",
             "mtpSelectPlaceholderEmpty": "Aún no hay dispositivos: haz clic en Detectar",
             "mtpNotAttachedTitle": "Dispositivo no conectado",
-            "mtpNotAttached": "Conecta el dispositivo y activa el modo de transferencia de archivos; luego inténtalo de nuevo."
+            "mtpNotAttached": "Conecta el dispositivo y activa el modo de transferencia de archivos; luego inténtalo de nuevo.",
+            "discovery": {
+                "fetch": "Obtener",
+                "fetching": "Obteniendo...",
+                "refresh": "Actualizar",
+                "none": "No se devolvió ningún destino. Aun así, puede introducir uno manualmente.",
+                "found": "Se encontraron {count} destinos accesibles. Escriba para buscar o seleccione uno."
+            }
         },
         "browser": {
             "remote": "Remoto",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "El tipo de cifrado y la contraseña se establecen una sola vez y no se pueden cambiar después: los archivos ya cifrados quedarían ilegibles.",
             "lockedNote": "El tipo de cifrado y las credenciales están bloqueados: esta superposición ya contiene datos cifrados.",
             "addToExistingWarn": "Al activar una superposición en un perfil existente: los archivos en texto plano que ya haya en este remoto permanecen sin cifrar y se mostrarán como una mezcla indescifrable. Usa un remoto vacío.",
-            "scopeHint": "Las rutas Remota y Local indicadas arriba definen el ámbito cifrado (deja Remota vacía para cifrar toda la raíz).",
+            "scopeHint": "La ruta de superposiciones define el ámbito cifrado. La ruta remota solo elige dónde comienza la exploración; la ruta local nunca cambia el cifrado.",
             "overlaysPathLockedNote": "La ruta de superposiciones está bloqueada: es el anclaje del cifrado y no se puede cambiar una vez vinculada la superposición.",
             "remotePathMustReachOverlay": "La ruta remota debe ser la ruta de superposiciones ({path}) o una de sus carpetas superiores; de lo contrario, la carpeta cifrada queda fuera de esta sesión.",
             "overlaysSection": "Envoltorios / Overlays",

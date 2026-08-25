@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Klistra in API-nyckeln från din Filen CLI-profil för att hoppa över 2FA-koden vid varje återanslutning. Kontolösenordet krävs fortfarande: det dekrypterar dina filer från början till slut. När den är sparad lagras nyckeln krypterad i valvet och visas inte längre här (precis som din 2FA-hemlighet); AeroFTP återanvänder den automatiskt. Lämna tomt vid redigering för att behålla den sparade nyckeln.",
             "manualTotalStorage": "Total lagring (manuell)",
             "manualTotalStoragePlaceholder": "t.ex. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Valfritt. Plan- eller kontogräns för backends utan kvot-API (FTP, S3, WebDAV) eller som endast rapporterar använt utrymme (Backblaze B2). Leverantörens egen totalsumma har alltid företräde.",
+            "manualTotalStorageHint": "Valfritt. Ange en numerisk gräns för abonnemanget/kontot och välj enhet. Används endast när leverantören saknar ett API för total kvot; leverantörens egen totalsumma har alltid företräde.",
             "autoScanUsedOnConnect": "Beräkna använd lagring vid anslutning",
             "autoScanUsedOnConnectHint": "Endast för backends utan API för använt utrymme (FTP, S3, WebDAV). Av som standard: ett stort träd (t.ex. ett webbprojekt) gås igenom rekursivt, vilket kan vara långsamt. Använd annars StatusBar-åtgärden vid behov.",
             "saveAsNewProfile": "Spara som ny profil",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Välj en enhet...",
             "mtpSelectPlaceholderEmpty": "Inga enheter ännu – klicka på Upptäck",
             "mtpNotAttachedTitle": "Enheten är inte ansluten",
-            "mtpNotAttached": "Anslut enheten och aktivera filöverföringsläge, försök sedan igen."
+            "mtpNotAttached": "Anslut enheten och aktivera filöverföringsläge, försök sedan igen.",
+            "discovery": {
+                "fetch": "Hämta",
+                "fetching": "Hämtar...",
+                "refresh": "Uppdatera",
+                "none": "Inga mål returnerades. Du kan fortfarande ange ett manuellt.",
+                "found": "Hittade {count} tillgängliga mål. Skriv för att söka eller välj ett."
+            }
         },
         "browser": {
             "remote": "Fjärr",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Krypteringstyp och lösenord anges en gång och kan inte ändras senare: de redan krypterade filerna skulle bli oläsliga.",
             "lockedNote": "Krypteringstyp och autentiseringsuppgifter är låsta: detta överlägg innehåller redan krypterad data.",
             "addToExistingWarn": "När du aktiverar ett överlägg på en befintlig profil: alla klartextfiler som redan finns på denna fjärrplats förblir okrypterade och visas som en odekrypterbar blandning. Använd en tom fjärrplats.",
-            "scopeHint": "De fjärr- och lokala sökvägar som anges ovan definierar det krypterade omfånget (lämna Fjärr tomt för att kryptera hela roten).",
+            "scopeHint": "Överlagringssökvägen definierar det krypterade omfånget. Fjärrsökvägen väljer bara var bläddringen börjar; den lokala sökvägen ändrar aldrig krypteringen.",
             "overlaysPathLockedNote": "Överläggssökvägen är låst: den är krypteringens ankare och kan inte ändras när överlägget väl har bundits.",
             "remotePathMustReachOverlay": "Fjärrsökvägen måste vara överläggssökvägen ({path}) eller någon av dess överordnade mappar, annars hamnar den krypterade mappen utanför den här sessionen.",
             "overlaysSection": "Omslag / Overlays",

@@ -279,7 +279,7 @@
             "filenApiKeyHelp": "Her yeniden bağlanışta 2FA kodunu atlamak için Filen CLI profilinizdeki API anahtarını yapıştırın. Hesap parolası hâlâ gereklidir: dosyalarınızı uçtan uca çözer. Kaydedildikten sonra anahtar kasada şifreli olarak saklanır ve burada tekrar gösterilmez (2FA gizli anahtarınız gibi); AeroFTP onu otomatik olarak yeniden kullanır. Düzenlerken kayıtlı anahtarı korumak için boş bırakın.",
             "manualTotalStorage": "Toplam depolama (manuel)",
             "manualTotalStoragePlaceholder": "ör. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "İsteğe bağlı. Kota API'si olmayan (FTP, S3, WebDAV) veya yalnızca kullanılan alanı bildiren (Backblaze B2) arka uçlar için plan veya hesap sınırı. Sağlayıcının kendi toplam değeri her zaman önceliklidir.",
+            "manualTotalStorageHint": "İsteğe bağlı. Plan/hesap için sayısal bir sınır girin ve birimini seçin. Yalnızca sağlayıcının toplam kota API'si olmadığında kullanılır; sağlayıcının kendi toplamı her zaman önceliklidir.",
             "autoScanUsedOnConnect": "Bağlanırken kullanılan depolamayı hesapla",
             "autoScanUsedOnConnectHint": "Yalnızca kullanılan alan API'si olmayan arka uçlar için (FTP, S3, WebDAV). Varsayılan olarak kapalı: büyük bir ağaç (ör. bir web projesi) özyinelemeli olarak gezilir ve bu yavaş olabilir. Aksi halde StatusBar eylemini gerektiğinde kullanın.",
             "saveAsNewProfile": "Yeni profil olarak kaydet",
@@ -313,7 +313,14 @@
             "mtpSelectPlaceholder": "Bir cihaz seçin...",
             "mtpSelectPlaceholderEmpty": "Henüz cihaz yok — Algıla'ya tıklayın",
             "mtpNotAttachedTitle": "Cihaz bağlı değil",
-            "mtpNotAttached": "Cihazı takın ve Dosya Aktarımı modunu etkinleştirin, ardından tekrar deneyin."
+            "mtpNotAttached": "Cihazı takın ve Dosya Aktarımı modunu etkinleştirin, ardından tekrar deneyin.",
+            "discovery": {
+                "fetch": "Getir",
+                "fetching": "Getiriliyor...",
+                "refresh": "Yenile",
+                "none": "Hiçbir hedef döndürülmedi. Yine de el ile bir hedef girebilirsiniz.",
+                "found": "{count} erişilebilir hedef bulundu. Aramak için yazın veya birini seçin."
+            }
         },
         "browser": {
             "remote": "Uzak",
@@ -5326,7 +5333,7 @@
             "immutableWarn": "Şifreleme türü ve parola bir kez ayarlanır ve sonradan değiştirilemez: zaten şifrelenmiş dosyalar okunamaz hale gelir.",
             "lockedNote": "Şifreleme türü ve kimlik bilgileri kilitli: bu katman zaten şifrelenmiş veri içeriyor.",
             "addToExistingWarn": "Mevcut bir profilde yerpaçma etkinleştirildiğinde: bu uzak konumda zaten bulunan düz metin dosyaları şifrelenmemiş kalır ve şifresi çözülemeyen bir karışım olarak görünür. Boş bir uzak konum kullanın.",
-            "scopeHint": "Yukarıdaki Uzak ve Yerel yollar şifreli kapsamı tanımlar (tüm kökü şifrelemek için Uzak'ı boş bırakın).",
+            "scopeHint": "Kaplama Yolu şifreli kapsamı tanımlar. Uzak Yol yalnızca gezinmenin nereden başlayacağını seçer; Yerel Yol şifrelemeyi asla değiştirmez.",
             "overlaysPathLockedNote": "Katman yolu kilitli: şifrelemenin çıpasıdır ve katman bağlandıktan sonra değiştirilemez.",
             "remotePathMustReachOverlay": "Uzak yol, katman yolu ({path}) veya onun üst klasörlerinden biri olmalıdır; aksi hâlde şifrelenmiş klasör bu oturumun dışında kalır.",
             "overlaysSection": "Sarmalayıcılar / Katmanlar",

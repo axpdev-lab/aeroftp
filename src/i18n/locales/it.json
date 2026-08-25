@@ -396,7 +396,7 @@
             "filenApiKeyHelp": "Incolla la chiave API dal tuo profilo Filen CLI per saltare il codice 2FA a ogni riconnessione. La password dell'account resta comunque necessaria: decifra i tuoi file end-to-end. Una volta salvata, la chiave è memorizzata cifrata nel vault e non viene più mostrata qui (come il segreto 2FA); AeroFTP la riutilizza automaticamente. In modifica, lascia vuoto per mantenere la chiave salvata.",
             "manualTotalStorage": "Spazio totale (manuale)",
             "manualTotalStoragePlaceholder": "es. 10 GB, 500 GB, 2 TB",
-            "manualTotalStorageHint": "Facoltativo. Limite del piano o dell'account per i backend senza API di quota (FTP, S3, WebDAV) o che riportano solo lo spazio usato (Backblaze B2). Il totale fornito dal provider ha sempre la precedenza.",
+            "manualTotalStorageHint": "Facoltativo. Inserisci un limite numerico del piano/account e scegli l'unità. Viene usato solo quando il provider non dispone di un'API per la quota totale; il totale del provider ha sempre la precedenza.",
             "autoScanUsedOnConnect": "Calcola lo spazio usato alla connessione",
             "autoScanUsedOnConnectHint": "Solo per i backend senza API per lo spazio usato (FTP, S3, WebDAV). Disattivato per impostazione predefinita: un albero di grandi dimensioni (es. un progetto web) viene percorso ricorsivamente, operazione che può essere lenta. In alternativa usa l'azione nella StatusBar quando serve.",
             "persistModeCredentials": "Ricorda le credenziali per ogni protocollo di questo account",
@@ -430,7 +430,14 @@
             "mtpSelectPlaceholder": "Seleziona un dispositivo...",
             "mtpSelectPlaceholderEmpty": "Ancora nessun dispositivo — fai clic su Rileva",
             "mtpNotAttachedTitle": "Dispositivo non connesso",
-            "mtpNotAttached": "Collega il dispositivo e attiva la modalità Trasferimento file, poi riprova."
+            "mtpNotAttached": "Collega il dispositivo e attiva la modalità Trasferimento file, poi riprova.",
+            "discovery": {
+                "fetch": "Recupera",
+                "fetching": "Recupero...",
+                "refresh": "Aggiorna",
+                "none": "Non è stata restituita alcuna destinazione. Puoi comunque inserirne una manualmente.",
+                "found": "Trovate {count} destinazioni accessibili. Digita per cercare o selezionane una."
+            }
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
@@ -5340,7 +5347,7 @@
             "immutableWarn": "Tipo di cifratura e password si impostano una sola volta e non sono modificabili in seguito: i file già cifrati diventerebbero illeggibili.",
             "lockedNote": "Tipo di cifratura e credenziali bloccati: questo overlay contiene già dati cifrati.",
             "addToExistingWarn": "Stai attivando un overlay su un profilo esistente: gli eventuali file in chiaro già presenti su questo remoto restano non cifrati e appariranno come un insieme indecifrabile. Usa un remoto vuoto.",
-            "scopeHint": "I percorsi Remoto e Locale qui sopra definiscono l'ambito cifrato (lascia Remoto vuoto per cifrare l'intera root).",
+            "scopeHint": "Il percorso degli overlay definisce l'ambito crittografato. Il percorso remoto sceglie solo da dove inizia la navigazione; il percorso locale non modifica mai la crittografia.",
             "overlaysPathLockedNote": "Il percorso overlay è bloccato: è l'ancora di cifratura e non può più cambiare una volta associato l'overlay.",
             "remotePathMustReachOverlay": "Il percorso remoto deve essere il percorso overlay ({path}) o una delle sue cartelle superiori, altrimenti la cartella cifrata resta fuori da questa sessione.",
             "keyfileLabel": "File chiave (opzionale)",
