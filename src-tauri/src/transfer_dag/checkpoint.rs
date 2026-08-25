@@ -20,6 +20,15 @@ use serde::{Deserialize, Serialize};
 pub const CHECKPOINT_SCHEMA_VERSION: u32 = 3;
 pub const DEFAULT_CHECKPOINT_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
+/// Upper bound on stored checkpoint records. The TTL scavenger only prunes a
+/// record when the very same endpoint is revisited, so a store on a real user's
+/// machine can only grow. This cap bounds it: when a new record would exceed the
+/// ceiling, the oldest records are evicted first, terminal residue before
+/// resumable transfers. The documented cost is that the oldest resumable
+/// transfer can be dropped once the store is full of resumable records; the
+/// explicit escape for a decommissioned endpoint is `forget_endpoint`.
+pub const DEFAULT_CHECKPOINT_MAX_RECORDS: usize = 256;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckpointSourceIdentity {
     pub local_path: String,
@@ -239,6 +248,7 @@ pub struct CheckpointOpen {
 pub struct TransferCheckpointStore {
     dir: PathBuf,
     ttl: Duration,
+    max_records: usize,
 }
 
 impl TransferCheckpointStore {
@@ -247,10 +257,23 @@ impl TransferCheckpointStore {
     }
 
     pub fn with_ttl(dir: impl Into<PathBuf>, ttl: Duration) -> Result<Self, String> {
+        Self::with_limits(dir, ttl, DEFAULT_CHECKPOINT_MAX_RECORDS)
+    }
+
+    pub fn with_limits(
+        dir: impl Into<PathBuf>,
+        ttl: Duration,
+        max_records: usize,
+    ) -> Result<Self, String> {
         let dir = dir.into();
         fs::create_dir_all(&dir)
             .map_err(|e| format!("cannot create transfer checkpoint directory: {e}"))?;
-        Ok(Self { dir, ttl })
+        Ok(Self {
+            dir,
+            ttl,
+            // A store must always be able to hold the record it is opening.
+            max_records: max_records.max(1),
+        })
     }
 
     pub fn default_store() -> Result<Self, String> {
@@ -270,6 +293,7 @@ impl TransferCheckpointStore {
         let path = self.path_for(&fresh.transfer_key);
         let Some(mut loaded) = self.load_path(&path)? else {
             self.persist(&fresh)?;
+            self.enforce_cap(&fresh.transfer_key)?;
             return Ok(CheckpointOpen {
                 checkpoint: fresh,
                 resumed: false,
@@ -277,6 +301,7 @@ impl TransferCheckpointStore {
         };
         if !same_identity(&loaded, &fresh) || loaded.status.is_terminal() {
             self.persist(&fresh)?;
+            self.enforce_cap(&fresh.transfer_key)?;
             return Ok(CheckpointOpen {
                 checkpoint: fresh,
                 resumed: false,
@@ -412,6 +437,90 @@ impl TransferCheckpointStore {
             fs::remove_file(path).map_err(|e| format!("cannot remove transfer checkpoint: {e}"))?;
         }
         Ok(())
+    }
+
+    /// Bound the directory to `max_records`. Evicts terminal residue first, then
+    /// the oldest resumable records, and never the record identified by `keep`
+    /// (the one being opened). An unreadable or corrupt entry still occupies a
+    /// slot, so it is treated as the oldest evictable residue and reclaimed.
+    fn enforce_cap(&self, keep: &str) -> Result<(), String> {
+        // (path, is_terminal, updated_unix_secs) for every record but `keep`.
+        let mut records: Vec<(PathBuf, bool, u64)> = Vec::new();
+        for entry in fs::read_dir(&self.dir)
+            .map_err(|e| format!("cannot read transfer checkpoint directory: {e}"))?
+        {
+            let entry = entry.map_err(|e| format!("cannot read checkpoint entry: {e}"))?;
+            let path = entry.path();
+            if path.extension().and_then(|v| v.to_str()) != Some("json") {
+                continue;
+            }
+            if path.file_stem().and_then(|v| v.to_str()) == Some(keep) {
+                continue;
+            }
+            match self.load_path(&path) {
+                Ok(Some(record)) => {
+                    records.push((path, record.status.is_terminal(), record.updated_unix_secs))
+                }
+                // Corrupt or vanished: count it as the oldest terminal residue so
+                // the cap can reclaim the slot rather than being wedged by it.
+                Ok(None) | Err(_) => records.push((path, true, 0)),
+            }
+        }
+        // The kept record is not in `records`, so it counts for one slot.
+        let total = records.len() + 1;
+        if total <= self.max_records {
+            return Ok(());
+        }
+        let evict = total - self.max_records;
+        // Terminal residue (0) before resumable (1); within each, oldest first.
+        records.sort_by(|a, b| {
+            let ta = u8::from(!a.1);
+            let tb = u8::from(!b.1);
+            ta.cmp(&tb).then(a.2.cmp(&b.2))
+        });
+        for (path, _, _) in records.into_iter().take(evict) {
+            // Best-effort: a record another process already removed is fine.
+            let _ = fs::remove_file(&path);
+        }
+        Ok(())
+    }
+
+    /// Remove every record bound to one destination endpoint, ignoring the
+    /// per-file remote path. This is the explicit, honest escape for a
+    /// decommissioned server: the TTL scavenger only prunes a record when the
+    /// same endpoint is revisited, so without this a server you stop using keeps
+    /// its records forever. Returns the number of records removed.
+    pub fn forget_endpoint(
+        &self,
+        provider: &str,
+        protocol: &str,
+        host: &str,
+        account: &str,
+    ) -> Result<usize, String> {
+        let mut removed = 0usize;
+        for entry in fs::read_dir(&self.dir)
+            .map_err(|e| format!("cannot read transfer checkpoint directory: {e}"))?
+        {
+            let entry = entry.map_err(|e| format!("cannot read checkpoint entry: {e}"))?;
+            let path = entry.path();
+            if path.extension().and_then(|v| v.to_str()) != Some("json") {
+                continue;
+            }
+            let Some(record) = self.load_path(&path)? else {
+                continue;
+            };
+            let d = &record.destination;
+            if d.provider == provider
+                && d.protocol == protocol
+                && d.host == host
+                && d.account == account
+            {
+                fs::remove_file(&path)
+                    .map_err(|e| format!("cannot remove transfer checkpoint: {e}"))?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
     }
 
     fn path_for(&self, transfer_key: &str) -> PathBuf {
@@ -884,5 +993,114 @@ mod tests {
         assert_eq!(store.stale_nonterminal().unwrap().len(), 1);
         store.remove(&record.transfer_key).unwrap();
         assert!(store.stale_nonterminal().unwrap().is_empty());
+    }
+
+    fn present_keys(dir: &Path) -> std::collections::HashSet<String> {
+        fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().and_then(|v| v.to_str()) == Some("json"))
+            .filter_map(|e| {
+                e.path()
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(str::to_string)
+            })
+            .collect()
+    }
+
+    fn record_at(remote: &str, status: CheckpointStatus, ts: u64) -> MultipartCheckpoint {
+        let dest = CheckpointDestinationIdentity {
+            remote_path: remote.into(),
+            ..destination()
+        };
+        let mut rec = MultipartCheckpoint::fresh(source(), dest, layout());
+        rec.status = status;
+        rec.updated_unix_secs = ts;
+        rec
+    }
+
+    #[test]
+    fn cap_evicts_oldest_resumable_and_never_the_opening_record() {
+        let temp = TempDir::new().unwrap();
+        let store =
+            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, 3).unwrap();
+        // Five distinct resumable records, strictly ageing oldest to newest.
+        let keys: Vec<String> = (0..5u64)
+            .map(|i| {
+                let rec = record_at(
+                    &format!("/f{i}.bin"),
+                    CheckpointStatus::Transferring,
+                    1000 + i,
+                );
+                store.persist(&rec).unwrap();
+                rec.transfer_key
+            })
+            .collect();
+        // The record being opened is the OLDEST, yet the cap must spare it.
+        store.enforce_cap(&keys[0]).unwrap();
+        let present = present_keys(temp.path());
+        assert_eq!(present.len(), 3);
+        assert!(
+            present.contains(&keys[0]),
+            "opening record is never evicted"
+        );
+        assert!(present.contains(&keys[4]));
+        assert!(present.contains(&keys[3]));
+        assert!(!present.contains(&keys[1]));
+        assert!(!present.contains(&keys[2]));
+    }
+
+    #[test]
+    fn cap_evicts_terminal_residue_before_a_newer_resumable() {
+        let temp = TempDir::new().unwrap();
+        let store =
+            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, 2).unwrap();
+        // A committed record that is the NEWEST by time, plus two older resumable
+        // records. The cap must still drop the terminal one first.
+        let terminal = record_at("/done.bin", CheckpointStatus::Committed, 9000);
+        let resumable_old = record_at("/old.bin", CheckpointStatus::Transferring, 1000);
+        let resumable_new = record_at("/new.bin", CheckpointStatus::Transferring, 2000);
+        for r in [&terminal, &resumable_old, &resumable_new] {
+            store.persist(r).unwrap();
+        }
+        // Opening a fourth, never-persisted key: three on disk, cap 2, evict two.
+        store.enforce_cap("opening-key-not-on-disk").unwrap();
+        let present = present_keys(temp.path());
+        assert_eq!(present.len(), 1);
+        assert!(present.contains(&resumable_new.transfer_key));
+        assert!(!present.contains(&terminal.transfer_key));
+        assert!(!present.contains(&resumable_old.transfer_key));
+    }
+
+    #[test]
+    fn forget_endpoint_removes_only_the_matching_destination() {
+        let temp = TempDir::new().unwrap();
+        let store = TransferCheckpointStore::new(temp.path()).unwrap();
+        // Two files on the endpoint to forget (same account, different paths).
+        for p in ["/a.bin", "/b.bin"] {
+            let dest = CheckpointDestinationIdentity {
+                remote_path: p.into(),
+                ..destination()
+            };
+            store.open_or_create(source(), dest, layout()).unwrap();
+        }
+        // One file on a different account must survive.
+        let other = CheckpointDestinationIdentity {
+            account: "other".into(),
+            ..destination()
+        };
+        let survivor = store
+            .open_or_create(source(), other, layout())
+            .unwrap()
+            .checkpoint;
+        let removed = store.forget_endpoint("s3", "s3", "test", "acct").unwrap();
+        assert_eq!(removed, 2);
+        assert!(store.path_for(&survivor.transfer_key).exists());
+        // Forgetting an endpoint with no records is zero, not an error.
+        assert_eq!(
+            store.forget_endpoint("s3", "s3", "nope", "acct").unwrap(),
+            0
+        );
     }
 }
