@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1 ya blob ya git, iliyokokotolewa kutokana na kichwa cha git pamoja na maudhui, hivyo hailingani na SHA-1 ya kawaida ya faili hiyo hiyo.",
                 "immich-asset-checksum": "Checksum ya rasilimali ambayo Immich huirekodi wakati wa kupakia.",
                 "crypt-overlay-ciphertext": "Muhtasari unahusu baiti zilizosimbwa zilizohifadhiwa kwenye seva."
-            }
+            },
+            "readOnlyIsLinkTarget": "Hiki ni kiungo ishara: ruhusa ni za faili ambalo kinaelekeza kwake. Fungua sifa za faili hilo ili kuzibadilisha."
         },
         "duplicates": {
             "sortWasted": "Nafasi iliyopotea",

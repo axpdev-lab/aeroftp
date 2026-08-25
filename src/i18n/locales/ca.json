@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "L'SHA-1 del blob de git, calculat sobre una capçalera git més el contingut, de manera que no coincideix amb un SHA-1 simple del mateix fitxer.",
                 "immich-asset-checksum": "La suma de verificació de l'element que Immich registra en pujar-lo.",
                 "crypt-overlay-ciphertext": "El hash cobreix els bytes xifrats desats al servidor."
-            }
+            },
+            "readOnlyIsLinkTarget": "Això és un enllaç simbòlic: els permisos pertanyen al fitxer al qual apunta. Obriu les propietats d'aquest fitxer per canviar-los."
         },
         "duplicates": {
             "sortWasted": "Espai malgastat",

@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "De SHA-1 van de git-blob, berekend over een git-header plus de inhoud, en dus niet gelijk aan een gewone SHA-1 van hetzelfde bestand.",
                 "immich-asset-checksum": "De controlesom van het item die Immich bij het uploaden vastlegt.",
                 "crypt-overlay-ciphertext": "De hash dekt de versleutelde bytes die op de server staan."
-            }
+            },
+            "readOnlyIsLinkTarget": "Dit is een symbolische koppeling: de rechten horen bij het bestand waarnaar deze verwijst. Open de eigenschappen van dat bestand om ze te wijzigen."
         },
         "duplicates": {
             "sortWasted": "Verspilde ruimte",

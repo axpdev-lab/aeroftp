@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "git blob SHA-1'i, bir git başlığı ile içeriğin üzerinden hesaplanır, bu yüzden aynı dosyanın düz SHA-1'iyle eşleşmez.",
                 "immich-asset-checksum": "Immich'in yükleme sırasında kaydettiği öğe sağlama toplamı.",
                 "crypt-overlay-ciphertext": "Karma, sunucuda saklanan şifreli baytları kapsar."
-            }
+            },
+            "readOnlyIsLinkTarget": "Bu bir sembolik bağlantıdır: izinler, bağlantının işaret ettiği dosyaya aittir. Bunları değiştirmek için o dosyanın özelliklerini açın."
         },
         "duplicates": {
             "sortWasted": "Boşa giden alan",

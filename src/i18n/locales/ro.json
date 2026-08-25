@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1-ul blobului git, calculat asupra unui antet git împreună cu conținutul, deci nu se potrivește cu un SHA-1 simplu al aceluiași fișier.",
                 "immich-asset-checksum": "Suma de control a elementului pe care Immich o înregistrează la încărcare.",
                 "crypt-overlay-ciphertext": "Hash-ul acoperă octeții criptați stocați pe server."
-            }
+            },
+            "readOnlyIsLinkTarget": "Aceasta este o legătură simbolică: permisiunile aparțin fișierului către care indică. Deschideți proprietățile acelui fișier pentru a le modifica."
         },
         "duplicates": {
             "sortWasted": "Spațiu irosit",

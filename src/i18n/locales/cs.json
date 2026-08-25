@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1 objektu git blob, vypočítaná z hlavičky objektu a z jeho obsahu, takže se neshoduje s prostou SHA-1 téhož souboru.",
                 "immich-asset-checksum": "Kontrolní součet položky, který si Immich zaznamená při nahrání.",
                 "crypt-overlay-ciphertext": "Otisk pokrývá zašifrované bajty uložené na serveru."
-            }
+            },
+            "readOnlyIsLinkTarget": "Toto je symbolický odkaz: oprávnění patří souboru, na který ukazuje. Chcete-li je změnit, otevřete vlastnosti daného souboru."
         },
         "duplicates": {
             "sortWasted": "Promarněné místo",

@@ -2714,7 +2714,8 @@
             "type": "Type",
             "visibility": "Visibility",
             "applyPrivacy": "Apply",
-            "applyPrivacyAll": "Apply to {count} items"
+            "applyPrivacyAll": "Apply to {count} items",
+            "readOnlyIsLinkTarget": "This is a symbolic link: permissions belong to the file it points at. Open that file's properties to change them."
         },
         "protocol": {
             "acceptInvalidCerts": "Accept invalid or self-signed certificates",

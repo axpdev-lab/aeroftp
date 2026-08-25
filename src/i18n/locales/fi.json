@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "git-blobin SHA-1, joka lasketaan git-otsakkeesta ja sisällöstä, joten se ei täsmää saman tiedoston tavallisen SHA-1:n kanssa.",
                 "immich-asset-checksum": "Kohteen tarkistussumma, jonka Immich kirjaa lähetyshetkellä.",
                 "crypt-overlay-ciphertext": "Tiiviste kattaa palvelimelle tallennetut salatut tavut."
-            }
+            },
+            "readOnlyIsLinkTarget": "Tämä on symbolinen linkki: käyttöoikeudet kuuluvat tiedostolle, johon se osoittaa. Muuta niitä avaamalla kyseisen tiedoston ominaisuudet."
         },
         "duplicates": {
             "sortWasted": "Hukattu tila",

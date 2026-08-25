@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1 git-blobsins, reiknað yfir git-haus og innihaldið, svo það passar ekki við venjulegt SHA-1 sömu skráar.",
                 "immich-asset-checksum": "Tékksumma efnisins sem Immich skráir við upphleðslu.",
                 "crypt-overlay-ciphertext": "Tætigildið nær yfir dulkóðuðu bætin sem geymd eru á þjóninum."
-            }
+            },
+            "readOnlyIsLinkTarget": "Þetta er tákntengill: heimildirnar tilheyra skránni sem hann vísar á. Opnaðu eiginleika þeirrar skráar til að breyta þeim."
         },
         "duplicates": {
             "sortWasted": "Sóað pláss",

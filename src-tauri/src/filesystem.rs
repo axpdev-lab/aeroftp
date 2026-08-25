@@ -1477,12 +1477,64 @@ pub async fn set_local_file_attributes(
         let metadata = std::fs::symlink_metadata(&target)
             .map_err(|_| "Failed to read file metadata".to_string())?;
 
+        // A symlink has no attributes of its own that either platform can
+        // write: `chmod(2)` and `SetFileAttributesW` (without
+        // FILE_FLAG_OPEN_REPARSE_POINT) both resolve the link, so honouring the
+        // checkbox here would edit a DIFFERENT file than the one whose
+        // properties are on screen. On Unix that is not a theoretical tidiness
+        // point: a link's own st_mode is always 0o777, so the owner-bit
+        // arithmetic below would have written 0o577 onto the target, handing a
+        // private 0o600 file to group and other. The properties of the target
+        // belong to the target, so refuse and name the file to open instead.
+        if metadata.file_type().is_symlink() {
+            let shown = std::fs::read_link(&target)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "its target".to_string());
+            return Err(format!(
+                "This is a symbolic link. Attributes belong to the file it points at ({shown}); open that file's properties to change them."
+            ));
+        }
+
         #[cfg(unix)]
         {
+            use std::os::fd::AsRawFd;
             use std::os::unix::fs::MetadataExt;
+            use std::os::unix::fs::OpenOptionsExt;
             use std::os::unix::fs::PermissionsExt;
 
             if let Some(ro) = read_only {
+                // The refusal above closes the honest case; O_NOFOLLOW closes
+                // the race where the path is swapped for a symlink between the
+                // stat and the write. Inspecting and mutating through the same
+                // descriptor means the inode we read the mode from is the inode
+                // we chmod, with no second path resolution in between.
+                // O_PATH would be the exact primitive (a handle to the inode,
+                // no read permission needed) but Linux refuses fchmod on an
+                // O_PATH descriptor, so the descriptor has to be a real open.
+                // `chmod` by path needs ownership, not readability, so opening
+                // read-only would newly fail on a file the user owns but cannot
+                // read (0o200, 0o000). Those are exactly the private modes this
+                // toggle exists to manage, so fall back to the path write when
+                // the no-follow open is refused for permissions. The symlink
+                // refusal above still holds; what is lost in the fallback is
+                // only the TOCTOU hardening, on a path the shipped code has
+                // always taken.
+                let file = match std::fs::OpenOptions::new()
+                    .read(true)
+                    .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
+                    .open(&target)
+                {
+                    Ok(file) => Some(file),
+                    Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => None,
+                    Err(e) => return Err(format!("Failed to open file: {e}")),
+                };
+                let metadata = match file.as_ref() {
+                    Some(file) => file
+                        .metadata()
+                        .map_err(|_| "Failed to read file metadata".to_string())?,
+                    None => metadata,
+                };
+
                 // Only the owner write bit moves. `Permissions::set_readonly`
                 // would have been shorter and wrong in both directions: it
                 // clears every write bit going in, and on the way out it sets
@@ -1492,8 +1544,24 @@ pub async fn set_local_file_attributes(
                 let mode = metadata.mode() & 0o7777;
                 let next = if ro { mode & !0o200 } else { mode | 0o200 };
                 if next != mode {
-                    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(next))
-                        .map_err(|e| format!("Failed to set permissions: {e}"))?;
+                    let failed = match file.as_ref() {
+                        Some(file) => {
+                            let rc =
+                                unsafe { libc::fchmod(file.as_raw_fd(), next as libc::mode_t) };
+                            rc != 0
+                        }
+                        None => std::fs::set_permissions(
+                            &target,
+                            std::fs::Permissions::from_mode(next),
+                        )
+                        .is_err(),
+                    };
+                    if failed {
+                        return Err(format!(
+                            "Failed to set permissions: {}",
+                            std::io::Error::last_os_error()
+                        ));
+                    }
                 }
             }
         }
@@ -2833,6 +2901,73 @@ mod main_thread_tests {
             mode, 0o600,
             "clearing read-only must restore the owner bit and nothing else: {mode:o}"
         );
+    }
+
+    /// A symlink's own st_mode is always 0o777, and `chmod(2)` follows the link.
+    /// Applying the owner-bit arithmetic to a link therefore wrote 0o577 (or
+    /// 0o777) onto whatever it pointed at, which is how ticking a checkbox on a
+    /// convenience link to a private key handed that key to group and other.
+    /// The sibling test above pins the regular-file arithmetic and passed
+    /// throughout, which is exactly why this case shipped unnoticed: refuse the
+    /// link, and leave the target's mode alone.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_symlink_never_chmods_what_it_points_at() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let real = dir.path().join("id_rsa");
+        std::fs::write(&real, b"KEY").expect("write");
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o600)).expect("chmod");
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).expect("symlink");
+        let link_path = link.to_string_lossy().to_string();
+
+        for ro in [true, false] {
+            let err = set_local_file_attributes(link_path.clone(), Some(ro), None)
+                .await
+                .expect_err("a symlink must not be chmod'ed through");
+            assert!(
+                err.contains("symbolic link"),
+                "the refusal must say why and name the target, got: {err}"
+            );
+        }
+
+        let mode = std::fs::metadata(&real).expect("stat").permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "the symlink target's mode must be untouched: {mode:o}"
+        );
+        // The link itself is untouched too: nothing was written anywhere.
+        let link_mode = std::fs::symlink_metadata(&link)
+            .expect("lstat")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(link_mode, 0o777, "the link's own mode must be untouched");
+    }
+
+    /// A file the owner cannot READ is still a file the owner may chmod: chmod
+    /// needs ownership, not readability. The no-follow descriptor does need read
+    /// permission, so without a fallback the hardening would newly refuse the
+    /// exact private modes (0o200, 0o000) this toggle exists to manage.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_owned_but_unreadable_file_can_still_be_toggled() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("write-only");
+        std::fs::write(&file, b"x").expect("write");
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o200)).expect("chmod");
+        let path = file.to_string_lossy().to_string();
+
+        let marked = set_local_file_attributes(path, Some(true), None)
+            .await
+            .expect("an owned file must stay toggleable even when unreadable");
+        assert_eq!(marked.is_readonly, Some(true));
+        let mode = std::fs::metadata(&file).expect("stat").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o000, "only the owner write bit may move: {mode:o}");
     }
 
     /// On Unix "hidden" is the leading dot in the NAME, so honouring the toggle

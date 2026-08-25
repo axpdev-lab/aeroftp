@@ -3372,7 +3372,8 @@
                 "github-blob-sha": "git blob の SHA-1 で、git ヘッダーと内容の両方から計算されるため、同じファイルの単純な SHA-1 とは一致しません。",
                 "immich-asset-checksum": "Immich がアップロード時に記録するアセットのチェックサムです。",
                 "crypt-overlay-ciphertext": "ダイジェストはサーバーに保存された暗号化済みのバイト列を対象とします。"
-            }
+            },
+            "readOnlyIsLinkTarget": "これはシンボリックリンクです。アクセス権はリンク先のファイルに属します。変更するには、そのファイルのプロパティを開いてください。"
         },
         "duplicates": {
             "sortWasted": "無駄な容量",

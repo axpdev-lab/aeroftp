@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1 blob git, wedi'i gyfrifo ar sail pennawd git ynghyd â'r cynnwys, felly nid yw'n cyfateb i SHA-1 syml yr un ffeil.",
                 "immich-asset-checksum": "Y swm gwirio ar gyfer yr eitem y mae Immich yn ei gofnodi adeg ei lwytho.",
                 "crypt-overlay-ciphertext": "Mae'r crynodeb yn cwmpasu'r beitiau wedi'u hamgryptio sydd wedi'u cadw ar y gweinydd."
-            }
+            },
+            "readOnlyIsLinkTarget": "Dolen symbolaidd yw hon: mae'r caniatadau'n perthyn i'r ffeil y mae'n pwyntio ati. Agorwch briodweddau'r ffeil honno i'w newid."
         },
         "duplicates": {
             "sortWasted": "Gofod wedi'i wastraffu",

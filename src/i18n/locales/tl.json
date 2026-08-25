@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "Ito ang SHA-1 ng git blob, na kinakalkula mula sa isang git header kasama ang nilalaman, kaya hindi ito tumutugma sa payak na SHA-1 ng parehong file.",
                 "immich-asset-checksum": "Ang checksum ng asset na itinatala ng Immich sa oras ng pag-upload.",
                 "crypt-overlay-ciphertext": "Sumasaklaw ang digest sa mga naka-encrypt na byte na nakaimbak sa server."
-            }
+            },
+            "readOnlyIsLinkTarget": "Ito ay isang symbolic link: ang mga pahintulot ay pagmamay-ari ng file na itinuturo nito. Buksan ang mga katangian ng file na iyon upang baguhin ang mga ito."
         },
         "duplicates": {
             "sortWasted": "Nasayang na espasyo",

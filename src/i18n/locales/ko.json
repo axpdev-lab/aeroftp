@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "git blob의 SHA-1로, git 헤더와 내용을 대상으로 계산되므로 같은 파일의 단순 SHA-1과는 일치하지 않습니다.",
                 "immich-asset-checksum": "Immich가 업로드 시점에 기록하는 자산 체크섬입니다.",
                 "crypt-overlay-ciphertext": "다이제스트는 서버에 저장된 암호화된 바이트를 대상으로 합니다."
-            }
+            },
+            "readOnlyIsLinkTarget": "이 항목은 심볼릭 링크입니다: 권한은 링크가 가리키는 파일에 속합니다. 권한을 변경하려면 해당 파일의 속성을 여세요."
         },
         "duplicates": {
             "sortWasted": "낭비된 공간",

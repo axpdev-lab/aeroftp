@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "git-blobi SHA-1, arvutatud git-päise ja sisu põhjal, seega ei klapi see sama faili tavalise SHA-1-ga.",
                 "immich-asset-checksum": "Üksuse kontrollsumma, mille Immich üleslaadimisel kirja paneb.",
                 "crypt-overlay-ciphertext": "Räsi katab serveris hoitavaid krüpteeritud baite."
-            }
+            },
+            "readOnlyIsLinkTarget": "See on sümbolviit: õigused kuuluvad failile, millele see osutab. Nende muutmiseks ava selle faili omadused."
         },
         "duplicates": {
             "sortWasted": "Raisatud ruum",

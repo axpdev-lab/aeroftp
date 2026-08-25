@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "git blob 的 SHA-1，基于 git 头部加内容计算，因此与同一文件的普通 SHA-1 并不相同。",
                 "immich-asset-checksum": "Immich 在上传时记录的资源校验和。",
                 "crypt-overlay-ciphertext": "摘要覆盖的是存储在服务器上的加密字节。"
-            }
+            },
+            "readOnlyIsLinkTarget": "这是一个符号链接：权限属于它指向的文件。请打开该文件的属性进行更改。"
         },
         "duplicates": {
             "sortWasted": "浪费的空间",

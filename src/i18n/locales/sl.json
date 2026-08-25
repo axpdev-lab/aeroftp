@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1 gitovega bloba, izračunan nad glavo git in vsebino, zato se ne ujema z navadnim SHA-1 iste datoteke.",
                 "immich-asset-checksum": "Kontrolna vsota gradiva, ki jo Immich zabeleži ob nalaganju.",
                 "crypt-overlay-ciphertext": "Kontrolna vsota zajema šifrirane bajte, shranjene na strežniku."
-            }
+            },
+            "readOnlyIsLinkTarget": "To je simbolna povezava: dovoljenja pripadajo datoteki, na katero kaže. Če jih želite spremeniti, odprite lastnosti te datoteke."
         },
         "duplicates": {
             "sortWasted": "Zapravljen prostor",

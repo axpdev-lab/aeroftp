@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "Die SHA-1 des git-Blobs, berechnet über einen git-Header plus den Inhalt, sie entspricht daher nicht einer einfachen SHA-1 derselben Datei.",
                 "immich-asset-checksum": "Die Prüfsumme des Assets, die Immich beim Hochladen festhält.",
                 "crypt-overlay-ciphertext": "Die Prüfsumme deckt die verschlüsselten Bytes ab, die auf dem Server liegen."
-            }
+            },
+            "readOnlyIsLinkTarget": "Dies ist eine symbolische Verknüpfung: Die Berechtigungen gehören zu der Datei, auf die sie verweist. Öffnen Sie die Eigenschaften dieser Datei, um sie zu ändern."
         },
         "duplicates": {
             "sortWasted": "Verschwendeter Speicher",

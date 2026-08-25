@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "git bloben SHA-1a, git goiburu bat eta edukia hartuta kalkulatua, beraz ez dator bat fitxategi beraren SHA-1 soilarekin.",
                 "immich-asset-checksum": "Immichek igotzean erregistratzen duen elementuaren kontrol-batura.",
                 "crypt-overlay-ciphertext": "Laburpenak zerbitzarian gordetako byte zifratuak hartzen ditu."
-            }
+            },
+            "readOnlyIsLinkTarget": "Hau esteka sinbolikoa da: baimenak seinalatzen duen fitxategiarenak dira. Aldatzeko, ireki fitxategi horren propietateak."
         },
         "duplicates": {
             "sortWasted": "Alferrik galdutako lekua",

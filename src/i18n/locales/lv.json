@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "git bloba SHA-1, kas aprēķināta no git galvenes un satura, tāpēc tā nesakrīt ar tā paša faila parasto SHA-1.",
                 "immich-asset-checksum": "Vienuma kontrolsumma, ko Immich reģistrē augšupielādes brīdī.",
                 "crypt-overlay-ciphertext": "Jaucējsumma aptver serverī glabātos šifrētos baitus."
-            }
+            },
+            "readOnlyIsLinkTarget": "Šī ir simboliskā saite: atļaujas pieder failam, uz kuru tā norāda. Lai tās mainītu, atveriet šī faila īpašības."
         },
         "duplicates": {
             "sortWasted": "Izšķiestā vieta",

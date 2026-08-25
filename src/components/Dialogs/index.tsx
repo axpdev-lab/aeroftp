@@ -1014,7 +1014,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                             )}
 
                             {attrs.isReadonly != null && (
-                                onAttributeChange ? (
+                                onAttributeChange && !file.is_symlink ? (
                                     <AttributeToggle
                                         icon={<Lock size={16} />}
                                         label={t('properties.readOnly')}
@@ -1024,15 +1024,32 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                         onChange={(next) => void toggleAttribute('readOnly', next)}
                                     />
                                 ) : (
-                                    <PropertyRow
-                                        icon={<Lock size={16} />}
-                                        label={t('properties.readOnly')}
-                                        value={attrs.isReadonly ? t('common.yes') : t('common.no')}
-                                    />
+                                    <>
+                                        <PropertyRow
+                                            icon={<Lock size={16} />}
+                                            label={t('properties.readOnly')}
+                                            value={attrs.isReadonly ? t('common.yes') : t('common.no')}
+                                        />
+                                        {/* A link has no permissions of its own to
+                                            write: chmod resolves it, so the toggle
+                                            would edit a file that is not the one on
+                                            screen. Same discipline as the hidden row:
+                                            say why it is a readout here. */}
+                                        {onAttributeChange && file.is_symlink && (
+                                            <div className="text-xs text-gray-500 dark:text-gray-400 pl-7 pb-2">
+                                                {t('properties.readOnlyIsLinkTarget')}
+                                            </div>
+                                        )}
+                                    </>
                                 )
                             )}
                             {attrs.isHidden != null && (
-                                onAttributeChange && canToggleHidden ? (
+                                // `canToggleHidden` is the PLATFORM capability, true on
+                                // Windows. A symlink is refused by the backend for every
+                                // attribute, so without the link check too, Windows would
+                                // still offer this toggle and answer with an error every
+                                // time. Same defect the read-only row above just fixed.
+                                onAttributeChange && canToggleHidden && !file.is_symlink ? (
                                     <AttributeToggle
                                         icon={attrs.isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
                                         label={t('properties.hidden')}
@@ -1051,7 +1068,11 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                         {/* Say why this one is not a toggle where the
                                             other one is, instead of leaving it looking
                                             like an oversight. */}
-                                        {onAttributeChange && !canToggleHidden && (
+                                        {onAttributeChange && file.is_symlink ? (
+                                            <div className="text-xs text-gray-500 dark:text-gray-400 pl-7 pb-2">
+                                                {t('properties.readOnlyIsLinkTarget')}
+                                            </div>
+                                        ) : onAttributeChange && !canToggleHidden && (
                                             <div className="text-xs text-gray-500 dark:text-gray-400 pl-7 pb-2">
                                                 {t('properties.hiddenIsNameBased')}
                                             </div>

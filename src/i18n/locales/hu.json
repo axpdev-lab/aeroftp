@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "A git blob SHA-1 értéke, amelyet egy git fejlécre és a tartalomra számítanak, ezért nem egyezik ugyanannak a fájlnak az egyszerű SHA-1 értékével.",
                 "immich-asset-checksum": "Az elem ellenőrzőösszege, amelyet az Immich a feltöltéskor rögzít.",
                 "crypt-overlay-ciphertext": "A lenyomat a kiszolgálón tárolt titkosított bájtokra vonatkozik."
-            }
+            },
+            "readOnlyIsLinkTarget": "Ez egy szimbolikus link: a jogosultságok ahhoz a fájlhoz tartoznak, amelyre mutat. A módosításhoz nyissa meg az adott fájl tulajdonságait."
         },
         "duplicates": {
             "sortWasted": "Elpazarolt hely",

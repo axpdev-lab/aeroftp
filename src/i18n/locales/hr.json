@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1 git bloba, izračunat nad git zaglavljem i sadržajem, pa se ne podudara s običnim SHA-1 iste datoteke.",
                 "immich-asset-checksum": "Kontrolni zbroj stavke koji Immich bilježi pri prijenosu.",
                 "crypt-overlay-ciphertext": "Otisak pokriva šifrirane bajtove pohranjene na poslužitelju."
-            }
+            },
+            "readOnlyIsLinkTarget": "Ovo je simbolička poveznica: dopuštenja pripadaju datoteci na koju pokazuje. Otvorite svojstva te datoteke da biste ih promijenili."
         },
         "duplicates": {
             "sortWasted": "Potrošen prostor",

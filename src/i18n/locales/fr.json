@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "Le SHA-1 du blob git, calculé sur un en-tête git plus le contenu ; il ne correspond donc pas à un SHA-1 simple du même fichier.",
                 "immich-asset-checksum": "La somme de contrôle de l'élément qu'Immich enregistre au moment de l'envoi.",
                 "crypt-overlay-ciphertext": "Le hachage porte sur les octets chiffrés stockés sur le serveur."
-            }
+            },
+            "readOnlyIsLinkTarget": "Ceci est un lien symbolique : les permissions appartiennent au fichier vers lequel il pointe. Ouvrez les propriétés de ce fichier pour les modifier."
         },
         "duplicates": {
             "sortWasted": "Espace gaspillé",

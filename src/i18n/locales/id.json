@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1 blob git, dihitung atas header git ditambah isinya, sehingga tidak cocok dengan SHA-1 biasa dari berkas yang sama.",
                 "immich-asset-checksum": "Checksum aset yang dicatat Immich pada saat unggah.",
                 "crypt-overlay-ciphertext": "Hash mencakup bita terenkripsi yang tersimpan di server."
-            }
+            },
+            "readOnlyIsLinkTarget": "Ini adalah tautan simbolik: izin dimiliki oleh berkas yang ditunjuknya. Buka properti berkas tersebut untuk mengubahnya."
         },
         "duplicates": {
             "sortWasted": "Ruang terbuang",

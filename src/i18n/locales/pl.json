@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1 blobu git, obliczany z nagłówka git i zawartości, więc nie zgadza się ze zwykłym SHA-1 tego samego pliku.",
                 "immich-asset-checksum": "Suma kontrolna zasobu zapisywana przez Immich w chwili wysłania.",
                 "crypt-overlay-ciphertext": "Skrót obejmuje zaszyfrowane bajty przechowywane na serwerze."
-            }
+            },
+            "readOnlyIsLinkTarget": "To jest dowiązanie symboliczne: uprawnienia należą do pliku, na który wskazuje. Aby je zmienić, otwórz właściwości tego pliku."
         },
         "duplicates": {
             "sortWasted": "Zmarnowane miejsce",

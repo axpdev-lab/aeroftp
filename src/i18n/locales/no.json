@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1 for git-bloben, beregnet over et git-hode pluss innholdet, så den stemmer ikke med en vanlig SHA-1 av samme fil.",
                 "immich-asset-checksum": "Kontrollsummen for elementet som Immich registrerer ved opplasting.",
                 "crypt-overlay-ciphertext": "Kontrollsummen dekker de krypterte bytene som ligger på serveren."
-            }
+            },
+            "readOnlyIsLinkTarget": "Dette er en symbolsk lenke: rettighetene tilhører filen den peker til. Åpne egenskapene til den filen for å endre dem."
         },
         "duplicates": {
             "sortWasted": "Bortkastet plass",

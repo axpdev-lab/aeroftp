@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1 của git blob, tính trên phần đầu git cộng với nội dung, nên nó không khớp với SHA-1 thông thường của cùng tệp đó.",
                 "immich-asset-checksum": "Tổng kiểm tra của tài nguyên mà Immich ghi lại lúc tải lên.",
                 "crypt-overlay-ciphertext": "Mã băm bao trùm các byte đã mã hoá được lưu trên máy chủ."
-            }
+            },
+            "readOnlyIsLinkTarget": "Đây là liên kết tượng trưng: quyền thuộc về tệp mà nó trỏ tới. Mở thuộc tính của tệp đó để thay đổi."
         },
         "duplicates": {
             "sortWasted": "Dung lượng lãng phí",

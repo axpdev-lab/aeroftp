@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "git blobo SHA-1, apskaičiuota nuo git antraštės ir turinio, todėl ji nesutampa su paprasta to paties failo SHA-1.",
                 "immich-asset-checksum": "Elemento kontrolinė suma, kurią Immich užfiksuoja įkėlimo metu.",
                 "crypt-overlay-ciphertext": "Maiša apima serveryje saugomus užšifruotus baitus."
-            }
+            },
+            "readOnlyIsLinkTarget": "Tai simbolinė nuoroda: leidimai priklauso failui, į kurį ji rodo. Norėdami juos pakeisti, atverkite to failo savybes."
         },
         "duplicates": {
             "sortWasted": "Iššvaistyta vieta",

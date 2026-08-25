@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "SHA-1 blob git, dikira ke atas pengepala git serta kandungannya, jadi ia tidak sepadan dengan SHA-1 biasa bagi fail yang sama.",
                 "immich-asset-checksum": "Checksum aset yang direkodkan Immich semasa muat naik.",
                 "crypt-overlay-ciphertext": "Hash meliputi bait disulitkan yang disimpan pada pelayan."
-            }
+            },
+            "readOnlyIsLinkTarget": "Ini ialah pautan simbolik: kebenaran milik fail yang ditudingnya. Buka sifat fail itu untuk mengubahnya."
         },
         "duplicates": {
             "sortWasted": "Ruang terbazir",

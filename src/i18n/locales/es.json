@@ -3407,7 +3407,8 @@
                 "github-blob-sha": "El SHA-1 del blob de git, calculado sobre una cabecera git más el contenido, por lo que no coincide con un SHA-1 simple del mismo archivo.",
                 "immich-asset-checksum": "La suma de verificación del recurso que Immich registra al subirlo.",
                 "crypt-overlay-ciphertext": "El hash cubre los bytes cifrados almacenados en el servidor."
-            }
+            },
+            "readOnlyIsLinkTarget": "Esto es un enlace simbólico: los permisos pertenecen al archivo al que apunta. Abre las propiedades de ese archivo para cambiarlos."
         },
         "duplicates": {
             "sortWasted": "Espacio desperdiciado",
