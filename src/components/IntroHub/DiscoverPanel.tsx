@@ -19,7 +19,7 @@ import { useDiscoverHealthCheck } from '../../hooks/useDiscoverHealthCheck';
 import { openUrl } from '../../utils/openUrl';
 import { middleClickOpen } from '../../utils/middleClick';
 import { CatalogTable, loadTierFilter, persistTierFilter, TIER_FILTERS, type TierFilter } from './CatalogTable';
-import { PROVIDER_CATALOG, companyInCategory, companyTierInCategory, isDevOnlyProvider } from '../providerCatalog';
+import { PROVIDER_CATALOG, companyInCategory, companyTierInCategory, isDevOnlyProvider, protocolBadgeRank } from '../providerCatalog';
 
 /** All category sidebar entries share these keys; 'all' is a virtual category. */
 type DiscoverCategoryId = CatalogCategoryId | 'all';
@@ -60,12 +60,22 @@ function resolveCompanyHealthUrl(c: CatalogCompany): string | undefined {
  *  and nothing shows in the cloud / media / developer tabs. Azure Blob is
  *  dropped here since it is a first-class Object Storage provider with its own
  *  row. */
-const CUSTOM_PROFILES: { labelKey: string; protocol: ProviderType; providerId?: string; categories: CatalogCategoryId[] }[] = [
+const CUSTOM_PROFILE_ENTRIES: { labelKey: string; protocol: ProviderType; providerId?: string; categories: CatalogCategoryId[] }[] = [
     { labelKey: 'introHub.list.customFtp', protocol: 'ftp', categories: ['protocols'] },
     { labelKey: 'introHub.list.customSftp', protocol: 'sftp', categories: ['protocols'] },
     { labelKey: 'introHub.list.customS3', protocol: 's3', providerId: 'custom-s3', categories: ['object-storage'] },
     { labelKey: 'introHub.list.customWebdav', protocol: 'webdav', providerId: 'custom-webdav', categories: ['webdav'] },
 ];
+
+/** The strip in the one presentation order, rather than in however the array
+ *  above happens to be authored. It used to render `FTP, SFTP, S3, WebDAV`,
+ *  a third hand-written opinion of the sequence the Add Service badges and the
+ *  Quick Connect tabs were unified on in v4.1.7 (Ehud, #347). Sorting by the
+ *  shared rank rather than reordering the literal means adding an entry cannot
+ *  reintroduce the drift. */
+export const CUSTOM_PROFILES = [...CUSTOM_PROFILE_ENTRIES].sort(
+    (a, b) => protocolBadgeRank(a.protocol) - protocolBadgeRank(b.protocol),
+);
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
     Server: <Server size={16} />,
