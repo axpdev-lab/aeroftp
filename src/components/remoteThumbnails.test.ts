@@ -90,6 +90,11 @@ describe('remote panel thumbnails (#347)', () => {
         expect(imageThumb).not.toMatch(/^\s*loadImage\(\);\s*$/m);
     });
 
+    // Budget rather than the 5s default: this one globs every production tsx
+    // file, 285 of them and about 6 MB, and lexes each. That is real work, not a
+    // hang, and it timed out in two separate sessions on a machine that was also
+    // building. The lexer is memoized now, so this is headroom, not a cover for
+    // something slow.
     it('passes a signature at every production thumbnail mount, in every file', () => {
         // The first version scanned `App.tsx` alone while its name said "every
         // call site". Three of the five mounts live elsewhere, one of them in
@@ -116,5 +121,5 @@ describe('remote panel thumbnails (#347)', () => {
         for (const { where, tag } of mounts) {
             expect(tag, `${where} silently opts out of the cache`).toMatch(/signature=\{/);
         }
-    });
+    }, 30_000);
 });

@@ -99,7 +99,30 @@ function opensRegex(source: string, i: number): boolean {
  * such a regex was truncated, and the pins that read those spans passed on
  * text that no longer contained what they were asserting about.
  */
+/**
+ * Memoized per source string.
+ *
+ * These helpers exist to let a test scan real source files, and the scans
+ * classify the same text more than once: `withoutComments(source)` lexes the
+ * file, then each `jsxTags(code, name)` lexes the stripped result again, once
+ * per component name. The thumbnail pin globs 285 tsx files, 6.3 MB, so the
+ * repeats were lexing roughly 19 MB per run and the test kept timing out on a
+ * loaded machine (twice, in two different sessions, on the default 5s budget).
+ * Caching the result cuts the repeats without changing what any caller sees:
+ * `classify` is pure, and this module is imported only by tests, so the cache
+ * lives for one short test process.
+ */
+const CLASSIFY_CACHE = new Map<string, Uint8Array>();
+
 export function classify(source: string): Uint8Array {
+    const cached = CLASSIFY_CACHE.get(source);
+    if (cached) return cached;
+    const computed = classifyUncached(source);
+    CLASSIFY_CACHE.set(source, computed);
+    return computed;
+}
+
+function classifyUncached(source: string): Uint8Array {
     const out = new Uint8Array(source.length);
     // Each frame is either a template literal, or the code inside a `${}` with
     // the brace depth reached so far, so that object literals and blocks inside
