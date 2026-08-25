@@ -147,12 +147,16 @@ The AeroVault v3 defaults are:
 | `cipher_hash` | `blake3-256` | 1 |
 | `ecc` | absent in v3 (reserved extension slot) | n/a |
 
-> **Naming: EC, not ECC.** Error correction is abbreviated **EC** throughout AeroFTP
-> documentation, and **ECC** is reserved for Elliptic Curve Cryptography. The `ecc`
-> field above is the Reed-Solomon parity that repairs a damaged vault, not an
-> elliptic-curve primitive: the cipher in this stack is AES-256-GCM-SIV and the hash
-> is BLAKE3, both named in the table. The field keeps its `ecc` spelling because it
-> is a wire-format name and cannot be renamed without breaking the format.
+> **Naming: EC, not ECC.** In prose, error correction is abbreviated **EC**, and
+> **ECC** is left to mean Elliptic Curve Cryptography. The `ecc` field above is the
+> Reed-Solomon parity that repairs a damaged vault, not an elliptic-curve primitive:
+> the cipher in this stack is AES-256-GCM-SIV and the hash is BLAKE3, both named in
+> the table.
+>
+> Names that identify something keep the older spelling, because renaming them would
+> break a reference: the task id `T-AEROVAULT-ECC`, the appendix directory
+> `APPENDIX-AEROVAULT-V4-ECC`, and the `ecc` field itself, which is a wire-format name
+> and cannot be renamed without changing the format.
 
 v4 reuses the same header layout and only adds the `ecc` field, so
 **v3 + error correction = v4** and a v3-only build opens a v4 vault for the
