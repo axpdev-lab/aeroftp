@@ -2,9 +2,11 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
-import { CONNECTION_METHOD_GLYPH } from './connectionMethodIcons';
+import { Boxes, Braces, Cloud, Container, Database, KeyRound, Server, TerminalSquare } from 'lucide-react';
+import { CONNECTION_METHOD_GLYPH, methodIcon } from './connectionMethodIcons';
 import modeGroupsRaw from './providerModeGroups.tsx?raw';
 import myServersRaw from './IntroHub/MyServersTable.tsx?raw';
+import catalogTableRaw from './IntroHub/CatalogTable.tsx?raw';
 
 /**
  * The icons for connection methods were assigned by hand at each site, so they
@@ -57,5 +59,39 @@ describe('one glyph per connection method (#347)', () => {
                 `My Servers still hand-picks an icon for ${method}`,
             ).toContain(`${method}: methodIcon('${method}'`);
         }
+
+        // CatalogTable used to keep a private PROTOCOL_GLYPHS map, so S3/OAuth
+        // /FTP/SFTP disagreed with the two surfaces above. One map, or it
+        // drifts again.
+        expect(catalogTableRaw).toContain('methodIcon(');
+        expect(catalogTableRaw).not.toContain('PROTOCOL_GLYPHS');
+    });
+
+    it('keeps the shipped #567 shapes', () => {
+        // CatalogTable's leftover private map drew a bucket for S3, KeyRound
+        // for OAuth, ShieldCheck for FTPS/SFTP. Unifying through methodIcon
+        // must not quietly rewrite the assignments already on main.
+        expect(CONNECTION_METHOD_GLYPH.OAuth).toBe(Cloud);
+        expect(CONNECTION_METHOD_GLYPH.API).toBe(Braces);
+        expect(CONNECTION_METHOD_GLYPH.S3).toBe(Database);
+        expect(CONNECTION_METHOD_GLYPH.FTP).toBe(Server);
+        expect(CONNECTION_METHOD_GLYPH.SFTP).toBe(KeyRound);
+    });
+
+    it('covers the catalog methods CatalogTable used to keep privately', () => {
+        for (const method of ['Swift', 'Blob', 'MEGAcmd'] as const) {
+            expect(
+                CONNECTION_METHOD_GLYPH,
+                `${method} is still missing from the shared map`,
+            ).toHaveProperty(method);
+            expect(methodIcon(method, { size: 11 }), `${method} still renders null`).not.toBeNull();
+        }
+        expect(CONNECTION_METHOD_GLYPH.Swift).toBe(Boxes);
+        expect(CONNECTION_METHOD_GLYPH.Blob).toBe(Container);
+        expect(CONNECTION_METHOD_GLYPH.MEGAcmd).toBe(TerminalSquare);
+        // Fail-first: Blob = Database exploded unique-shape with
+        // "Blob draws the same glyph as S3". Container is the non-colliding
+        // pick; S3 stays Database.
+        expect(CONNECTION_METHOD_GLYPH.Blob).not.toBe(CONNECTION_METHOD_GLYPH.S3);
     });
 });

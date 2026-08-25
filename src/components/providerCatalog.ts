@@ -50,9 +50,9 @@ export type CatalogProtocol =
 
 /** One connection method for a company, with its Quick Connect target. */
 export interface CatalogProtocolRef {
-    /** Badge glyph key into `PROTOCOL_GLYPHS` — must stay a member of the closed
-     *  `CatalogProtocol` enum. Display text prefers `labelOverride` when set
-     *  (GUI badges, CLI catalog, providers markdown). */
+    /** Badge glyph key into `methodIcon` / `CONNECTION_METHOD_GLYPH`. Must stay
+     *  a member of the closed `CatalogProtocol` enum. Display text prefers
+     *  `labelOverride` when set (GUI badges, CLI catalog, providers markdown). */
     label: CatalogProtocol;
     /** Display override when the branded product name differs from the wire
      *  protocol: e.g. MEGA's paid S3 object storage is "S4" and FileLu's is "S5",

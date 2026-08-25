@@ -11,11 +11,11 @@
 
 import * as React from 'react';
 import { useMemo, useState, useRef, useCallback } from 'react';
-import { Search, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe, ExternalLink, Braces, KeyRound, Server, Database, Boxes, TerminalSquare, ShieldCheck, CreditCard } from 'lucide-react';
+import { Search, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe, ExternalLink, CreditCard } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { CatalogCategoryId } from '../../types/catalog';
-import { PROVIDER_LOGOS, S3BucketLogo } from '../ProviderLogos';
-import type { CatalogProtocol } from '../providerCatalog';
+import { PROVIDER_LOGOS } from '../ProviderLogos';
+import { methodIcon } from '../connectionMethodIcons';
 import { CountryFlag } from '../CountryFlag';
 import { useTranslation } from '../../i18n';
 import { middleClickOpen } from '../../utils/middleClick';
@@ -106,21 +106,9 @@ function HealthDot({ status, enabled }: { status: HealthStatus; enabled: boolean
 
 // Per-connection-method glyph (issue #270, Ehud): a tiny inline icon before
 // the badge label so an S3 object-storage bucket reads differently from a
-// generic REST API at a glance. Keyed by the closed `CatalogProtocol` enum;
-// inherits the badge text colour via `currentColor`.
-const PROTOCOL_GLYPHS: Record<CatalogProtocol, React.ReactNode> = {
-    S3: <S3BucketLogo size={11} />,
-    API: <Braces size={11} />,
-    OAuth: <KeyRound size={11} />,
-    WebDAV: <Globe size={11} />,
-    Swift: <Boxes size={11} />,
-    Blob: <Database size={11} />,
-    FTP: <Server size={11} />,
-    FTPS: <ShieldCheck size={11} />,
-    SFTP: <ShieldCheck size={11} />,
-    MEGAcmd: <TerminalSquare size={11} />,
-};
-
+// generic REST API at a glance. The shape comes from the shared
+// `connectionMethodIcons` map (#347), the same glyph a method carries in the
+// Quick Connect tabs and the My Servers table, tinted here via `currentColor`.
 function ProtocolBadge({ p, paid, onSelect }: { p: CatalogProtocolRef; paid: boolean; onSelect: (openInBackground?: boolean) => void }) {
     return (
         <button
@@ -137,7 +125,7 @@ function ProtocolBadge({ p, paid, onSelect }: { p: CatalogProtocolRef; paid: boo
                     : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/60'
             }`}
         >
-            <span className="flex-shrink-0 opacity-80">{PROTOCOL_GLYPHS[p.label]}</span>
+            <span className="flex-shrink-0 opacity-80">{methodIcon(p.label, { size: 11 })}</span>
             {p.labelOverride ?? p.label}
         </button>
     );
