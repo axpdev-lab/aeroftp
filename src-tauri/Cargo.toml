@@ -291,7 +291,7 @@ tauri-plugin-localhost = "2"
 # the previous `abi-7-31` opt-in is dropped; `FUSE_WRITEBACK_CACHE`
 # now lives in `InitFlags::FUSE_WRITEBACK_CACHE` and is always
 # compiled in.
-fuser = "0.17"
+fuser = "0.18"
 # gtk: needed only to pin a stable GTK program name at startup via
 # `gtk::glib::set_prgname` so the X11/Wayland WM_CLASS is always
 # "aeroftp" regardless of how the binary is launched. This makes the
