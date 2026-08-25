@@ -12753,6 +12753,26 @@ pub async fn b2_permanent_delete(
         .map_err(|e| e.to_string())
 }
 
+/// Drop every resume record bound to one destination endpoint.
+///
+/// The TTL scavenger only prunes a record when the same endpoint is revisited,
+/// so a server the user has stopped using keeps its records until the cap
+/// evicts them, and the cap evicts terminal residue first and resumable
+/// transfers after. `DEFAULT_CHECKPOINT_MAX_RECORDS` documents this function as
+/// the explicit escape for a decommissioned endpoint, and until now it had no
+/// caller anywhere: not a command, not a CLI subcommand, not an MCP tool. A cap
+/// whose documented mitigation cannot be invoked is not a mitigation.
+#[tauri::command]
+pub async fn transfer_forget_endpoint_checkpoints(
+    provider: String,
+    protocol: String,
+    host: String,
+    account: String,
+) -> Result<usize, String> {
+    let store = crate::transfer_dag::TransferCheckpointStore::default_store()?;
+    store.forget_endpoint(&provider, &protocol, &host, &account)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

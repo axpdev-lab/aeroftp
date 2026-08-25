@@ -20265,6 +20265,7 @@ pub fn run() {
             provider_commands::b2_list_hidden,
             provider_commands::b2_restore_hidden,
             provider_commands::b2_permanent_delete,
+            provider_commands::transfer_forget_endpoint_checkpoints,
             // Permissions / Advanced sharing
             provider_commands::provider_supports_permissions,
             provider_commands::provider_list_permissions,

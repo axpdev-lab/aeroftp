@@ -419,12 +419,28 @@ impl TransferCheckpointStore {
             if entry.path().extension().and_then(|v| v.to_str()) != Some("json") {
                 continue;
             }
-            if let Some(record) = self.load_path(&entry.path())? {
-                if !record.status.is_terminal()
-                    && now.saturating_sub(record.updated_unix_secs) >= self.ttl.as_secs()
-                {
-                    stale.push(record);
+            // A record this build cannot read is not a reason to fail the
+            // transfer that is starting. `migrate` rejects any schema version it
+            // does not know, and a downgrade after a bad release is the ordinary
+            // way to end up with a future-schema record, since this directory
+            // survives installs. Propagating that error here failed EVERY
+            // multipart upload to every provider, and `enforce_cap`, the one
+            // function that reclaims such a record, runs afterwards and so was
+            // never reached. An unreadable record is simply not resumable, which
+            // is all this function is asked about.
+            match self.load_path(&entry.path()) {
+                Ok(Some(record)) => {
+                    if !record.status.is_terminal()
+                        && now.saturating_sub(record.updated_unix_secs) >= self.ttl.as_secs()
+                    {
+                        stale.push(record);
+                    }
                 }
+                Ok(None) => {}
+                Err(e) => tracing::warn!(
+                    "[checkpoint] skipping unreadable record {}: {e}",
+                    entry.path().display()
+                ),
             }
         }
         stale.sort_by(|a, b| a.transfer_key.cmp(&b.transfer_key));
@@ -444,8 +460,13 @@ impl TransferCheckpointStore {
     /// (the one being opened). An unreadable or corrupt entry still occupies a
     /// slot, so it is treated as the oldest evictable residue and reclaimed.
     fn enforce_cap(&self, keep: &str) -> Result<(), String> {
-        // (path, is_terminal, updated_unix_secs) for every record but `keep`.
-        let mut records: Vec<(PathBuf, bool, u64)> = Vec::new();
+        // First pass collects paths only. The store is under its cap on the
+        // overwhelming majority of opens, and in that case this function has to
+        // cost a `read_dir` and nothing more: `stale_nonterminal` has already
+        // read and fully parsed this same directory moments earlier on the
+        // transfer's critical path, so parsing it again to discover there is
+        // nothing to do was pure duplication, once per file in a batch.
+        let mut paths: Vec<PathBuf> = Vec::new();
         for entry in fs::read_dir(&self.dir)
             .map_err(|e| format!("cannot read transfer checkpoint directory: {e}"))?
         {
@@ -457,30 +478,56 @@ impl TransferCheckpointStore {
             if path.file_stem().and_then(|v| v.to_str()) == Some(keep) {
                 continue;
             }
-            match self.load_path(&path) {
-                Ok(Some(record)) => {
-                    records.push((path, record.status.is_terminal(), record.updated_unix_secs))
-                }
-                // Corrupt or vanished: count it as the oldest terminal residue so
-                // the cap can reclaim the slot rather than being wedged by it.
-                Ok(None) | Err(_) => records.push((path, true, 0)),
-            }
+            paths.push(path);
         }
-        // The kept record is not in `records`, so it counts for one slot.
-        let total = records.len() + 1;
+        // The kept record is not in `paths`, so it counts for one slot.
+        let total = paths.len() + 1;
         if total <= self.max_records {
             return Ok(());
         }
         let evict = total - self.max_records;
+        // Only now, and only because an eviction is actually happening, is the
+        // parse worth paying for: terminality is the one fact the directory
+        // cannot supply, and it is what orders the eviction.
+        let mut records: Vec<(PathBuf, bool, u64)> = paths
+            .into_iter()
+            .map(|path| match self.load_path(&path) {
+                Ok(Some(record)) => (path, record.status.is_terminal(), record.updated_unix_secs),
+                // Corrupt or vanished: count it as the oldest terminal residue so
+                // the cap can reclaim the slot rather than being wedged by it.
+                Ok(None) | Err(_) => (path, true, 0),
+            })
+            .collect();
         // Terminal residue (0) before resumable (1); within each, oldest first.
         records.sort_by(|a, b| {
             let ta = u8::from(!a.1);
             let tb = u8::from(!b.1);
             ta.cmp(&tb).then(a.2.cmp(&b.2))
         });
-        for (path, _, _) in records.into_iter().take(evict) {
-            // Best-effort: a record another process already removed is fine.
-            let _ = fs::remove_file(&path);
+        // Ignoring every unlink error made the advertised hard cap a claim
+        // rather than a bound: a candidate that cannot be deleted (permissions,
+        // a Windows sharing violation, a read-only filesystem) was reselected
+        // forever while new records kept being accepted. Skip past a stuck one
+        // and try the next, since another candidate may well be removable, and
+        // fail only when the target cannot be met at all.
+        let mut removed = 0usize;
+        let mut failures: Vec<String> = Vec::new();
+        for (path, _, _) in records {
+            if removed == evict {
+                break;
+            }
+            match fs::remove_file(&path) {
+                Ok(()) => removed += 1,
+                // Another process got there first: that is the desired end state.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => removed += 1,
+                Err(e) => failures.push(format!("{}: {e}", path.display())),
+            }
+        }
+        if removed < evict {
+            return Err(format!(
+                "checkpoint cap removed only {removed} of {evict} records: {}",
+                failures.join("; ")
+            ));
         }
         Ok(())
     }
@@ -490,6 +537,54 @@ impl TransferCheckpointStore {
     /// decommissioned server: the TTL scavenger only prunes a record when the
     /// same endpoint is revisited, so without this a server you stop using keeps
     /// its records forever. Returns the number of records removed.
+    /// Every destination endpoint the store currently holds records for, with
+    /// how many, newest activity first.
+    ///
+    /// `forget_endpoint` needs four exact strings to match on, and the provider
+    /// field is a Debug-formatted enum rather than anything a user would guess.
+    /// Without a way to read them back, the escape would be documented but
+    /// unusable in practice, which is most of what was wrong with it.
+    pub fn endpoints(&self) -> Result<Vec<(CheckpointDestinationIdentity, usize, u64)>, String> {
+        let mut seen: Vec<(CheckpointDestinationIdentity, usize, u64)> = Vec::new();
+        for entry in fs::read_dir(&self.dir)
+            .map_err(|e| format!("cannot read transfer checkpoint directory: {e}"))?
+        {
+            let entry = entry.map_err(|e| format!("cannot read checkpoint entry: {e}"))?;
+            let path = entry.path();
+            if path.extension().and_then(|v| v.to_str()) != Some("json") {
+                continue;
+            }
+            // Unreadable records are skipped rather than fatal, same rule as the
+            // other readers: a listing must not be the one operation a corrupt
+            // file can still break.
+            let Ok(Some(record)) = self.load_path(&path) else {
+                continue;
+            };
+            let d = &record.destination;
+            match seen.iter_mut().find(|(id, _, _)| {
+                id.provider == d.provider
+                    && id.protocol == d.protocol
+                    && id.host == d.host
+                    && id.account == d.account
+            }) {
+                Some((_, count, newest)) => {
+                    *count += 1;
+                    *newest = (*newest).max(record.updated_unix_secs);
+                }
+                None => seen.push((
+                    CheckpointDestinationIdentity {
+                        remote_path: String::new(),
+                        ..d.clone()
+                    },
+                    1,
+                    record.updated_unix_secs,
+                )),
+            }
+        }
+        seen.sort_by_key(|entry| std::cmp::Reverse(entry.2));
+        Ok(seen)
+    }
+
     pub fn forget_endpoint(
         &self,
         provider: &str,
@@ -506,8 +601,23 @@ impl TransferCheckpointStore {
             if path.extension().and_then(|v| v.to_str()) != Some("json") {
                 continue;
             }
-            let Some(record) = self.load_path(&path)? else {
-                continue;
+            // Same rule as `stale_nonterminal`: an unreadable record must not
+            // stop the sweep the user asked for. It cannot be matched against an
+            // endpoint, so it is left for `enforce_cap` to reclaim under actual
+            // capacity pressure. Deleting it here on sight would be tempting and
+            // wrong: a transient EACCES or EMFILE produces the same error, and
+            // destroying a valid resume record because the disk hiccuped costs
+            // the user a large transfer.
+            let record = match self.load_path(&path) {
+                Ok(Some(record)) => record,
+                Ok(None) => continue,
+                Err(e) => {
+                    tracing::warn!(
+                        "[checkpoint] skipping unreadable record {}: {e}",
+                        path.display()
+                    );
+                    continue;
+                }
             };
             let d = &record.destination;
             if d.provider == provider
@@ -515,9 +625,14 @@ impl TransferCheckpointStore {
                 && d.host == host
                 && d.account == account
             {
-                fs::remove_file(&path)
-                    .map_err(|e| format!("cannot remove transfer checkpoint: {e}"))?;
-                removed += 1;
+                // Already gone is the end state this asked for, so the sweep is
+                // idempotent: a concurrent cleanup must not make a retry fail on
+                // a different file every time.
+                match fs::remove_file(&path) {
+                    Ok(()) => removed += 1,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => removed += 1,
+                    Err(e) => return Err(format!("cannot remove transfer checkpoint: {e}")),
+                }
             }
         }
         Ok(removed)
@@ -1071,6 +1186,107 @@ mod tests {
         assert!(present.contains(&resumable_new.transfer_key));
         assert!(!present.contains(&terminal.transfer_key));
         assert!(!present.contains(&resumable_old.transfer_key));
+    }
+
+    /// The store survives installs, so a user who downgrades after a bad release
+    /// meets a record written by a schema this build refuses. `stale_nonterminal`
+    /// runs at the start of EVERY multipart transfer and used to propagate that
+    /// error, so one unreadable file failed every upload to every provider, and
+    /// `enforce_cap`, which reclaims such records, runs afterwards and was never
+    /// reached. Unreadable means not resumable, which is all this is asked.
+    #[test]
+    fn one_unreadable_record_does_not_fail_every_transfer() {
+        let temp = TempDir::new().unwrap();
+        let store = TransferCheckpointStore::new(temp.path()).unwrap();
+        let good = store
+            .open_or_create(source(), destination(), layout())
+            .unwrap()
+            .checkpoint;
+        // A record from a schema this build does not know, plus outright garbage.
+        fs::write(
+            temp.path().join("future.json"),
+            br#"{"schema_version":99,"transfer_key":"future"}"#,
+        )
+        .unwrap();
+        fs::write(temp.path().join("garbage.json"), b"not json at all").unwrap();
+
+        let stale = store
+            .stale_nonterminal()
+            .expect("must not fail the transfer");
+        assert!(stale.iter().all(|r| r.transfer_key != "future"));
+
+        // The sweep must not abort on them either, and must still remove the
+        // records it was asked about.
+        let removed = store.forget_endpoint("s3", "s3", "test", "acct").unwrap();
+        assert_eq!(removed, 1, "the readable matching record must be removed");
+        assert!(!store.path_for(&good.transfer_key).exists());
+        // The unreadable ones are left for the cap, not deleted on sight: a
+        // transient EACCES looks identical and must not destroy a resume record.
+        assert!(temp.path().join("future.json").exists());
+    }
+
+    /// The cap advertises a hard bound. Ignoring every unlink error made it a
+    /// claim instead: an undeletable oldest candidate was reselected forever
+    /// while new records kept being accepted.
+    #[test]
+    fn the_cap_reports_when_it_cannot_evict_enough() {
+        let temp = TempDir::new().unwrap();
+        let store = TransferCheckpointStore::with_limits(
+            temp.path(),
+            std::time::Duration::from_secs(3600),
+            2,
+        )
+        .unwrap();
+        for p in ["/a.bin", "/b.bin"] {
+            let dest = CheckpointDestinationIdentity {
+                remote_path: p.into(),
+                ..destination()
+            };
+            store.open_or_create(source(), dest, layout()).unwrap();
+        }
+        // A third open must evict one and succeed while the directory is writable.
+        let dest = CheckpointDestinationIdentity {
+            remote_path: "/c.bin".into(),
+            ..destination()
+        };
+        store
+            .open_or_create(source(), dest, layout())
+            .expect("eviction must succeed on a writable store");
+        let count = fs::read_dir(temp.path()).unwrap().count();
+        assert!(count <= 2, "the cap must hold: {count} records");
+    }
+
+    /// `endpoints()` is what makes the escape usable: `forget_endpoint` matches
+    /// four exact strings and `provider` is an internal name, so without a way
+    /// to read them back the escape is documented but unusable.
+    #[test]
+    fn endpoints_groups_records_and_survives_an_unreadable_one() {
+        let temp = TempDir::new().unwrap();
+        let store = TransferCheckpointStore::new(temp.path()).unwrap();
+        for p in ["/a.bin", "/b.bin"] {
+            let dest = CheckpointDestinationIdentity {
+                remote_path: p.into(),
+                ..destination()
+            };
+            store.open_or_create(source(), dest, layout()).unwrap();
+        }
+        let other = CheckpointDestinationIdentity {
+            account: "other".into(),
+            ..destination()
+        };
+        store.open_or_create(source(), other, layout()).unwrap();
+        fs::write(temp.path().join("garbage.json"), b"nope").unwrap();
+
+        let endpoints = store.endpoints().expect("listing must not fail");
+        assert_eq!(endpoints.len(), 2, "two distinct accounts");
+        let acct = endpoints
+            .iter()
+            .find(|(id, _, _)| id.account == "acct")
+            .expect("acct endpoint");
+        assert_eq!(acct.1, 2, "two records grouped under one endpoint");
+        // The remote path is not part of the endpoint identity and is cleared,
+        // so the four values printed are exactly the four `forget` matches on.
+        assert!(acct.0.remote_path.is_empty());
     }
 
     #[test]

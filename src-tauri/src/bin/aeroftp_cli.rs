@@ -1216,6 +1216,30 @@ impl CacheMode {
 }
 
 #[derive(Subcommand, Debug)]
+enum CheckpointCommands {
+    /// List the endpoints that currently hold resume records.
+    List,
+    /// Drop every resume record bound to one endpoint.
+    ///
+    /// Take the four values verbatim from `checkpoints list`: they are matched
+    /// exactly, and `provider` is an internal name rather than a display one.
+    Forget {
+        /// Provider name exactly as `checkpoints list` prints it
+        #[arg(long)]
+        provider: String,
+        /// Protocol exactly as `checkpoints list` prints it
+        #[arg(long)]
+        protocol: String,
+        /// Host exactly as `checkpoints list` prints it
+        #[arg(long)]
+        host: String,
+        /// Account exactly as `checkpoints list` prints it
+        #[arg(long)]
+        account: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum TrashCommands {
     /// List the items currently in the server-side trash.
     List {
@@ -2025,6 +2049,17 @@ enum Commands {
     Trash {
         #[command(subcommand)]
         command: TrashCommands,
+    },
+    /// Inspect and prune the multipart resume records (transfer checkpoints).
+    ///
+    /// A resumable upload leaves a record so it can restart where it stopped.
+    /// The TTL scavenger only prunes a record when the SAME endpoint is used
+    /// again, so a server you stop using keeps its records until the store hits
+    /// its cap, and the cap evicts terminal residue before resumable transfers.
+    /// This is the explicit escape for a decommissioned server.
+    Checkpoints {
+        #[command(subcommand)]
+        command: CheckpointCommands,
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
@@ -43468,6 +43503,93 @@ fn as_webdav(
 const TRASH_UNSUPPORTED: &str =
     "this backend has no server-side trash reachable from the CLI (Nextcloud WebDAV only today)";
 
+/// These two are deliberately synchronous and touch no network: the checkpoint
+/// store is a local directory, and the whole point of the escape is that it
+/// works for a server you can no longer reach.
+fn cmd_checkpoints_list(format: OutputFormat) -> i32 {
+    let store = match ftp_client_gui_lib::transfer_dag::TransferCheckpointStore::default_store() {
+        Ok(store) => store,
+        Err(e) => {
+            print_error(format, &e, 1);
+            return 1;
+        }
+    };
+    let endpoints = match store.endpoints() {
+        Ok(endpoints) => endpoints,
+        Err(e) => {
+            print_error(format, &e, 1);
+            return 1;
+        }
+    };
+    if matches!(format, OutputFormat::Json) {
+        let rows: Vec<serde_json::Value> = endpoints
+            .iter()
+            .map(|(id, count, updated)| {
+                serde_json::json!({
+                    "provider": id.provider,
+                    "protocol": id.protocol,
+                    "host": id.host,
+                    "account": id.account,
+                    "records": count,
+                    "updatedUnixSecs": updated,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::json!({ "endpoints": rows }));
+        return 0;
+    }
+    if endpoints.is_empty() {
+        println!("No transfer checkpoints stored.");
+        return 0;
+    }
+    println!(
+        "{:<14} {:<10} {:<28} {:<24} {:>7}",
+        "PROVIDER", "PROTOCOL", "HOST", "ACCOUNT", "RECORDS"
+    );
+    for (id, count, _) in &endpoints {
+        println!(
+            "{:<14} {:<10} {:<28} {:<24} {:>7}",
+            id.provider, id.protocol, id.host, id.account, count
+        );
+    }
+    0
+}
+
+fn cmd_checkpoints_forget(
+    provider: &str,
+    protocol: &str,
+    host: &str,
+    account: &str,
+    format: OutputFormat,
+) -> i32 {
+    let store = match ftp_client_gui_lib::transfer_dag::TransferCheckpointStore::default_store() {
+        Ok(store) => store,
+        Err(e) => {
+            print_error(format, &e, 1);
+            return 1;
+        }
+    };
+    match store.forget_endpoint(provider, protocol, host, account) {
+        Ok(removed) => {
+            if matches!(format, OutputFormat::Json) {
+                println!("{}", serde_json::json!({ "removed": removed }));
+            } else if removed == 0 {
+                // Not an error: the end state asked for is already the case.
+                // Say so plainly rather than reporting a bare zero, because the
+                // usual cause is one of the four values not matching exactly.
+                println!("No records matched that endpoint (nothing to remove).");
+            } else {
+                println!("Removed {removed} resume record(s).");
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &e, 1);
+            1
+        }
+    }
+}
+
 async fn cmd_trash_list(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, _p) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
@@ -63323,6 +63445,15 @@ async fn main() {
                 .await
             }
         }
+        Commands::Checkpoints { command } => match command {
+            CheckpointCommands::List => cmd_checkpoints_list(format),
+            CheckpointCommands::Forget {
+                provider,
+                protocol,
+                host,
+                account,
+            } => cmd_checkpoints_forget(provider, protocol, host, account, format),
+        },
         Commands::Trash { command } => match command {
             TrashCommands::List { url } => cmd_trash_list(url, &cli, format).await,
             TrashCommands::Empty { url, force } => cmd_trash_empty(url, *force, &cli, format).await,

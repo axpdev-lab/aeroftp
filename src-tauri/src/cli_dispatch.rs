@@ -44,6 +44,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "speed",
     "speed-compare",
     "benchmark",
+    "checkpoints",
     "cleanup",
     "dedupe",
     "sync",
