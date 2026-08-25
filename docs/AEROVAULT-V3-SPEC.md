@@ -201,11 +201,12 @@ The v2 wire format stores the HMAC-SHA512 at bytes `448..512` and computes it ov
 
 ## 11. v4 Evolution Note (T-AEROVAULT-ECC, shipped)
 
-> **ECC here means error-correcting code**, the Reed-Solomon parity that lets a
-> damaged vault be repaired. It does **not** mean Elliptic Curve Cryptography, which
-> is the usual reading of the abbreviation in a security document and is not used
-> anywhere in the AeroVault stack: the cipher is AES-256-GCM-SIV and the hash is
-> BLAKE3. The header field is spelled `ecc` for the same reason.
+> **Naming: EC, not ECC.** Error correction is abbreviated **EC** throughout AeroFTP
+> documentation, and **ECC** is reserved for Elliptic Curve Cryptography. EC here is
+> the Reed-Solomon parity that lets a damaged vault be repaired; no elliptic-curve
+> primitive is used anywhere in the AeroVault stack, whose cipher is AES-256-GCM-SIV
+> and whose hash is BLAKE3. The one place `ecc` survives is the header field itself,
+> which is a wire-format name and cannot be renamed without breaking the format.
 
 v4 = v3 + non-critical "error-correction.reed-solomon" extension (always critical=false). The extension carries a v2 Reed-Solomon payload (AVEC magic, version=2, K=10/P=2 fixed grid over the concatenated live-block stream, per-shard 16-byte truncated BLAKE3 for erasure localization, parity data). 
 

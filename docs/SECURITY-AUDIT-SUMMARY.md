@@ -674,7 +674,7 @@ All cryptographic algorithms are published, peer-reviewed standards implemented 
 |---------|------|----------|-------|
 | v4.0.9 | 24 Jun 2026 | Claude Opus 4.8 (4-way parallel sub-agents, Extra High/Max reasoning) | **12 findings (F-01–F-12), all resolved** — pre-release bundle audit of 86 commits (v4.0.8..release) |
 | v4.0.7 | 18 Jun 2026 | Claude Opus 4.8 (1M ctx, multi-agent) + GPT-5.5 Codex — dual-blind + 3-pass adversarial controaudit | **A** (0 open) — 1 High, 1 Medium, 3 Low, 4 Info, 0 Critical; AeroVault crate 0.6.1/0.6.2 + app embedder, all fixed + verified |
-| AeroVault v4 ECC | 12 Jun 2026 | GPT-5.5 Codex — live stress on a real cloud profile | **PASS** — Reed-Solomon gen/verify/repair round-trip, byte-identity + corruption detect/repair |
+| AeroVault v4 EC | 12 Jun 2026 | GPT-5.5 Codex — live stress on a real cloud profile | **PASS** — Reed-Solomon gen/verify/repair round-trip, byte-identity + corruption detect/repair |
 | CLI #360 | 5 Jun 2026 | Claude Opus 4.8 (blind) + GPT-5.5 Codex — merged release gate | 3 Medium + Low/Info confirmed; 5 mandatory release-gate (W0) fixes required before grade A |
 | AeroAgent | 4 Jun 2026 | Claude Opus 4.8 (deep audit + skeptic verification pass) | 25 findings, all confirmed and remediated (0 refuted) |
 | AeroVault v3/v4 | 3 Jun 2026 | Two independent reviewers (Claude Opus 4.8, dual-blind) | 3 High + ~10 Medium + Low/Info — unanimous NO-GO, then all fixed (crate 0.4.1/0.4.2 + app); v4 cleared |

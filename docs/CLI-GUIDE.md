@@ -1173,7 +1173,7 @@ container (`embedded`, the default), in a sibling `.aerovault.rec` recovery file
 (`detached`), or `both`. Detached keeps the encrypted container byte-identical to
 a plain vault (so a remote storage/browse view stays stable) and lets you add or
 refresh parity *after* the fact, the concrete win over Kopia (which can only
-enable ECC at creation). par2-style: the recovery file carries a binding id to its
+enable EC at creation). par2-style: the recovery file carries a binding id to its
 vault, so a wrong file is refused early; staleness after edits is caught by the
 payload's own per-shard checksums.
 
