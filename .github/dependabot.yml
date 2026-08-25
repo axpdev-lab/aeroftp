@@ -104,6 +104,11 @@ updates:
         versions: [">=0.8.0"]
       - dependency-name: "chacha20poly1305"
         versions: [">=0.11.0"]
+      # globset 0.4.20 declares rust-version 1.88; we still advertise
+      # 1.85.0. Unblock when the AeroFTP MSRV moves, or globset ships
+      # a 0.4.x that stays on 1.85.
+      - dependency-name: "globset"
+        versions: [">=0.4.20"]
 
   # npm dependencies
   - package-ecosystem: "npm"
