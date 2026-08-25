@@ -1327,6 +1327,23 @@ pub struct ConnectionTarget {
     pub label: String,
 }
 
+/// Stand-in value for the not-yet-chosen bucket/drive, so discovery can build a
+/// provider config that passes the same validation a real connection does.
+///
+/// kDrive needs its own: `to_provider_config` reuses the bucket field as
+/// `drive_id`, and `KDriveConfig::from_provider_config` rejects a non-numeric
+/// drive_id to stop URL path traversal. A textual placeholder therefore failed
+/// every kDrive discovery with "Drive ID must be numeric" before a single
+/// request left the process. `discover_drives` lists from the account endpoint
+/// and never interpolates drive_id, so a numeric dummy satisfies the guard
+/// without weakening it.
+fn discovery_bucket_placeholder(protocol: &str) -> String {
+    match protocol {
+        "kdrive" => "0".to_string(),
+        _ => "__aeroftp_discovery__".to_string(),
+    }
+}
+
 /// Discover the buckets or drives visible to the credentials currently typed
 /// into Quick Connect. Discovery is deliberately explicit (the UI calls this
 /// only after a button press) and does not mutate the active provider session.
@@ -1351,7 +1368,7 @@ pub async fn provider_discover_targets(
     // Provider configuration validates the same credential/endpoint contract
     // as a real connection. The placeholder is never sent as a data-plane
     // target: each discovery method uses its account/service-root endpoint.
-    params.bucket = Some("__aeroftp_discovery__".to_string());
+    params.bucket = Some(discovery_bucket_placeholder(&protocol));
     let config = params.to_provider_config()?;
     let mut targets: Vec<ConnectionTarget> = match config.provider_type {
         ProviderType::S3 => {
@@ -12725,13 +12742,14 @@ pub async fn b2_permanent_delete(
 #[cfg(test)]
 mod tests {
     use super::{
-        decrypt_rel_aerocrypt, decrypt_rel_rclone, drain_in_flight_transfers,
-        normalize_aerocrypt_remote_files_for_compare, normalize_rclone_remote_files_for_compare,
-        normalize_remote_files_for_compare, oauth_callback_endpoint, rclone_decrypted_size,
-        remote_matches_repo, resolve_compare_overlay_keys, run_cancellable_connect,
-        run_cancellable_listing, sanitize_remote_filename, verify_path_containment,
-        ConnectTokenGuard, ConnectionCancelRegistry, ListingCancelState, ProviderConnectionParams,
-        ProviderState, TransferOperationGuard, CONNECT_CANCELLED, LISTING_CANCELLED,
+        decrypt_rel_aerocrypt, decrypt_rel_rclone, discovery_bucket_placeholder,
+        drain_in_flight_transfers, normalize_aerocrypt_remote_files_for_compare,
+        normalize_rclone_remote_files_for_compare, normalize_remote_files_for_compare,
+        oauth_callback_endpoint, rclone_decrypted_size, remote_matches_repo,
+        resolve_compare_overlay_keys, run_cancellable_connect, run_cancellable_listing,
+        sanitize_remote_filename, verify_path_containment, ConnectTokenGuard,
+        ConnectionCancelRegistry, ListingCancelState, ProviderConnectionParams, ProviderState,
+        TransferOperationGuard, CONNECT_CANCELLED, LISTING_CANCELLED,
     };
     use crate::rclone_crypt::{
         derive_keys, derive_keys_with_tweak, encrypt_file_content, encrypt_name,
@@ -13133,6 +13151,50 @@ mod tests {
             normalized.is_empty(),
             "plaintext names are not valid ciphertext, so every row drops: this is \
              exactly the 'no differences' the wrapped-provider guard prevents"
+        );
+    }
+
+    /// The discovery placeholder has to survive the SAME validation a real
+    /// connection runs, or the feature is dead before it reaches the network.
+    /// kDrive maps the bucket field onto `drive_id`, which is checked numeric
+    /// as an anti-traversal guard, so the textual placeholder made every
+    /// "Discover drives" click fail with "Drive ID must be numeric". This
+    /// asserts against the real `KDriveConfig` parser, not against a copy of
+    /// the rule, so tightening that guard cannot silently re-break discovery.
+    #[test]
+    fn discovery_placeholder_passes_the_real_provider_validation() {
+        let mut params = s3_params(None);
+        params.protocol = "kdrive".to_string();
+        params.bucket = Some(discovery_bucket_placeholder("kdrive"));
+
+        let config = params
+            .to_provider_config()
+            .expect("kDrive discovery params must build a provider config");
+        let kdrive = crate::providers::KDriveConfig::from_provider_config(&config)
+            .expect("the kDrive discovery placeholder must satisfy KDriveConfig");
+        assert!(
+            kdrive.drive_id.chars().all(|c| c.is_ascii_digit()),
+            "drive_id placeholder must stay numeric: {}",
+            kdrive.drive_id
+        );
+
+        // The other discovery protocols keep the textual placeholder: their
+        // configs only require a non-empty bucket, and a numeric-looking bucket
+        // name would be a worse stand-in there.
+        assert_eq!(discovery_bucket_placeholder("s3"), "__aeroftp_discovery__");
+        assert_eq!(discovery_bucket_placeholder("b2"), "__aeroftp_discovery__");
+
+        // And this is what the bug was: the shared textual placeholder is
+        // rejected by kDrive, so sharing it again would break discovery again.
+        let mut shared = s3_params(None);
+        shared.protocol = "kdrive".to_string();
+        shared.bucket = Some("__aeroftp_discovery__".to_string());
+        let shared_config = shared.to_provider_config().expect("config");
+        let rejected = crate::providers::KDriveConfig::from_provider_config(&shared_config)
+            .expect_err("a non-numeric drive_id must stay rejected");
+        assert!(
+            rejected.to_string().contains("numeric"),
+            "expected the numeric guard to reject it, got: {rejected}"
         );
     }
 

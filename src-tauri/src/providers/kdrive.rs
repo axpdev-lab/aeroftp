@@ -245,6 +245,12 @@ impl KDriveProvider {
     /// the account-level `/2/drive` endpoint before constructing those URLs.
     /// Infomaniak requires `account_id`, sourced from the authenticated profile
     /// rather than guessed or requested from the user.
+    ///
+    /// INVARIANT: this method must never interpolate `config.drive_id`. Its
+    /// caller cannot have a real one yet, so it passes a numeric placeholder
+    /// purely to satisfy the anti-traversal check in `KDriveConfig`
+    /// (`discovery_bucket_placeholder` in provider_commands.rs). Reading
+    /// `drive_id` here would silently address drive 0.
     pub async fn discover_drives(&self) -> Result<Vec<(String, String)>, ProviderError> {
         let profile_response = self
             .get_with_retry(&format!("{API_BASE}/2/profile"))
