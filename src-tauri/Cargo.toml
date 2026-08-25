@@ -182,7 +182,7 @@ image_hasher = "3.1"                                                   # Percept
 tlsh2 = { version = "1.1", features = ["diff"] }                       # TLSH fuzzy byte hash for Modality::Other non-identical dedupe (Phase 3; pure-Rust, no ssdeep)
 
 # TOTP 2FA for AeroVault (v2.3.0)
-totp-rs = { version = "5", features = ["qr"] }                        # RFC 6238 TOTP with otpauth URI
+totp-rs = { version = "6", features = ["qr"] }                        # RFC 6238 TOTP with otpauth URI
 
 # Chat History SQLite (v2.3.0)
 rusqlite = { version = "0.32", features = ["bundled"] }                # SQLite with FTS5 (bundled = no system libsqlite3)
