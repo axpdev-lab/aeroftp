@@ -320,7 +320,9 @@
                 "refresh": "Vernieuwen",
                 "none": "Er zijn geen doelen teruggegeven. Je kunt er alsnog handmatig een invoeren.",
                 "found": "{count} bereikbare doelen gevonden. Typ om te zoeken of selecteer er een."
-            }
+            },
+            "swiftAuthUrl": "Keystone-authenticatie-URL",
+            "swiftAllowCleartextStorage": "Deze installatie levert objectopslag via onversleutelde HTTP. Accepteer dit voor dit profiel: het toegangstoken en elk bestand gaan onversleuteld over het netwerk."
         },
         "browser": {
             "remote": "Extern",

@@ -320,7 +320,9 @@
                 "refresh": "I-refresh",
                 "none": "Walang naibalik na target. Maaari ka pa ring maglagay ng isa nang manu-mano.",
                 "found": "May nakitang {count} na naa-access na target. Mag-type para maghanap o pumili ng isa."
-            }
+            },
+            "swiftAuthUrl": "URL ng pagpapatotoo ng Keystone",
+            "swiftAllowCleartextStorage": "Naghahain ang deployment na ito ng object storage sa plain HTTP. Tanggapin ito para sa profile na ito: ang access token at bawat file ay tumatawid sa network nang hindi naka-encrypt."
         },
         "browser": {
             "remote": "Remote",

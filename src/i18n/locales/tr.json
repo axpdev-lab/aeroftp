@@ -320,7 +320,9 @@
                 "refresh": "Yenile",
                 "none": "Hiçbir hedef döndürülmedi. Yine de birini elle girebilirsiniz.",
                 "found": "{count} erişilebilir hedef bulundu. Aramak için yazın veya birini seçin."
-            }
+            },
+            "swiftAuthUrl": "Keystone kimlik doğrulama URL'si",
+            "swiftAllowCleartextStorage": "Bu dağıtım nesne depolamayı şifrelenmemiş HTTP üzerinden sunuyor. Bu profil için kabul edin: erişim belirteci ve her dosya ağı şifrelenmemiş olarak geçer."
         },
         "browser": {
             "remote": "Uzak",

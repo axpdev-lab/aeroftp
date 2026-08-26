@@ -320,7 +320,9 @@
                 "refresh": "Osveži",
                 "none": "Vrnjen ni bil noben cilj. Kljub temu ga lahko vnesete ročno.",
                 "found": "Najdenih je {count} dosegljivih ciljev. Tipkajte za iskanje ali izberite enega."
-            }
+            },
+            "swiftAuthUrl": "URL za overjanje Keystone",
+            "swiftAllowCleartextStorage": "Ta namestitev streže objektno shrambo prek nešifriranega HTTP. Sprejmite to za ta profil: dostopni žeton in vsaka datoteka potujeta prek omrežja nešifrirana."
         },
         "browser": {
             "remote": "Oddaljeno",

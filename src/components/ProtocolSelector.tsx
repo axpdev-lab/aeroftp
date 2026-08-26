@@ -424,6 +424,15 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         color: 'text-purple-500',
         isCloudStorage: true,
         tooltip: t('protocol.blompTooltip'),
+        // Every other preset tile carries its id, and this one needs it more
+        // than most. The exemption that lets Blomp's cleartext object store
+        // through the downgrade guard is keyed on `provider_id`, which only
+        // the save paths were injecting, so picking Blomp here and connecting
+        // without saving first sent no id at all and the connection was
+        // refused. Declaring it also applies the preset's server, port and
+        // options through the normal provider branch instead of half of them
+        // through a fallback.
+        providerId: 'blomp',
     },
 ];
 

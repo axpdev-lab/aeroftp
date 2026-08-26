@@ -437,7 +437,9 @@
                 "refresh": "Aggiorna",
                 "none": "Nessuna destinazione restituita. Puoi comunque inserirne una a mano.",
                 "found": "Trovate {count} destinazioni raggiungibili. Digita per cercare oppure selezionane una."
-            }
+            },
+            "swiftAuthUrl": "URL di autenticazione Keystone",
+            "swiftAllowCleartextStorage": "Questo deployment serve lo storage a oggetti su HTTP in chiaro. Accettalo per questo profilo: il token di accesso e ogni file attraversano la rete non cifrati."
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",

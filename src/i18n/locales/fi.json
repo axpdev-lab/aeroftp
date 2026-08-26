@@ -320,7 +320,9 @@
                 "refresh": "Päivitä",
                 "none": "Kohteita ei palautunut. Voit silti syöttää kohteen käsin.",
                 "found": "Löytyi {count} käytettävissä olevaa kohdetta. Hae kirjoittamalla tai valitse yksi."
-            }
+            },
+            "swiftAuthUrl": "Keystone-todennuksen URL",
+            "swiftAllowCleartextStorage": "Tämä asennus tarjoaa objektitallennuksen salaamattoman HTTP:n kautta. Hyväksy se tälle profiilille: käyttöoikeustunnus ja jokainen tiedosto kulkevat verkon läpi salaamattomina."
         },
         "browser": {
             "remote": "Etä",

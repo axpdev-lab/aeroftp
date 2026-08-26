@@ -320,7 +320,9 @@
                 "refresh": "Onyesha upya",
                 "none": "Hakuna shabaha zilizorudishwa. Bado unaweza kuiandika mwenyewe.",
                 "found": "Zimepatikana shabaha {count} zinazofikika. Andika ili kutafuta au chagua moja."
-            }
+            },
+            "swiftAuthUrl": "URL ya uthibitishaji wa Keystone",
+            "swiftAllowCleartextStorage": "Usakinishaji huu hutoa hifadhi ya vitu kupitia HTTP wazi. Ikubali kwa wasifu huu: tokeni ya ufikiaji na kila faili hupita kwenye mtandao bila kusimbwa."
         },
         "browser": {
             "remote": "Mbali",

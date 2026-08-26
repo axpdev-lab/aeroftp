@@ -320,7 +320,9 @@
                 "refresh": "Obnoviť",
                 "none": "Neboli vrátené žiadne ciele. Napriek tomu môžete jeden zadať ručne.",
                 "found": "Nájdených {count} dostupných cieľov. Píšte na vyhľadávanie alebo niektorý vyberte."
-            }
+            },
+            "swiftAuthUrl": "Overovacia URL Keystone",
+            "swiftAllowCleartextStorage": "Toto nasadenie poskytuje objektové úložisko cez nešifrované HTTP. Prijmite to pre tento profil: prístupový token aj každý súbor prechádzajú sieťou nezašifrované."
         },
         "browser": {
             "remote": "Vzdialený",

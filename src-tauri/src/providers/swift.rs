@@ -247,14 +247,17 @@ impl SwiftProvider {
         }
         if auth.scheme() == "https" && endpoint.scheme() != "https" {
             if !self.config.allow_cleartext_storage_endpoint {
-                // Do not name a control the app does not have. v4.1.7 refused
-                // this case outright and said nothing useful; say what happened
-                // and why, and leave it at that until the per-profile switch has
-                // a real home in the connection form.
+                // The switch now has a home, so the message names it. It stays
+                // useful for the profiles that never see the form: the CLI, MCP
+                // and AeroCloud carry the same key, which is why both are named
+                // rather than only the checkbox.
                 return Err(ProviderError::AuthenticationFailed(format!(
                     "This Swift catalog serves object storage from {} over plain HTTP, \
                      while authentication used HTTPS. The access token and every file \
-                     would cross the network unencrypted, so the connection was refused.",
+                     would cross the network unencrypted, so the connection was refused. \
+                     Accept it for this deployment with the cleartext object store option \
+                     in the connection form, or set allow_cleartext_storage_endpoint on \
+                     the profile.",
                     endpoint.host_str().unwrap_or("?")
                 )));
             }
@@ -1787,12 +1790,19 @@ mod tests {
             msg.contains("plain HTTP") && msg.contains("unencrypted"),
             "the refusal has to say what is at stake, got: {msg}"
         );
-        // A refusal must not send the user looking for a switch that is not in
-        // the UI. The per-profile opt-in exists in the config, but nothing in
-        // the connection form sets it yet, so the message does not promise it.
+        // The opt-in now has a control, so the refusal points at it. Both names
+        // are required: the form covers the GUI, and the profile key covers the
+        // CLI, MCP and AeroCloud paths that never see a form. This assertion was
+        // the inverse until the control existed, and it passed by accident for a
+        // moment afterwards because the new wording happened to avoid the two
+        // words it forbade.
         assert!(
-            !msg.contains("Enable") && !msg.contains("checkbox"),
-            "the message must not name a control that does not exist: {msg}"
+            msg.contains("connection form"),
+            "the refusal must name the control that lifts it: {msg}"
+        );
+        assert!(
+            msg.contains("allow_cleartext_storage_endpoint"),
+            "a profile without a form needs the key named too: {msg}"
         );
     }
 

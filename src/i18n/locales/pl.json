@@ -320,7 +320,9 @@
                 "refresh": "Odśwież",
                 "none": "Nie zwrócono żadnych celów. Nadal możesz wpisać jeden ręcznie.",
                 "found": "Znaleziono {count} dostępnych celów. Pisz, aby wyszukać, lub wybierz jeden."
-            }
+            },
+            "swiftAuthUrl": "Adres URL uwierzytelniania Keystone",
+            "swiftAllowCleartextStorage": "To wdrożenie udostępnia magazyn obiektów przez nieszyfrowany HTTP. Zaakceptuj to dla tego profilu: token dostępu i każdy plik przechodzą przez sieć bez szyfrowania."
         },
         "browser": {
             "remote": "Zdalny",

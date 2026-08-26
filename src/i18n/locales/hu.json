@@ -320,7 +320,9 @@
                 "refresh": "Frissítés",
                 "none": "Nem érkezett vissza cél. Ettől még megadhat egyet kézzel.",
                 "found": "{count} elérhető cél található. Gépeljen a kereséshez, vagy válasszon egyet."
-            }
+            },
+            "swiftAuthUrl": "Keystone hitelesítési URL",
+            "swiftAllowCleartextStorage": "Ez a telepítés titkosítatlan HTTP-n keresztül szolgálja ki az objektumtárolót. Fogadja el ehhez a profilhoz: a hozzáférési token és minden fájl titkosítatlanul halad át a hálózaton."
         },
         "browser": {
             "remote": "Távoli",

@@ -320,7 +320,9 @@
                 "refresh": "Actualiser",
                 "none": "Aucune cible n'a été renvoyée. Vous pouvez tout de même en saisir une manuellement.",
                 "found": "{count} cibles accessibles trouvées. Saisissez du texte pour rechercher ou sélectionnez-en une."
-            }
+            },
+            "swiftAuthUrl": "URL d'authentification Keystone",
+            "swiftAllowCleartextStorage": "Ce déploiement sert le stockage objet en HTTP non chiffré. Acceptez-le pour ce profil : le jeton d'accès et chaque fichier traversent le réseau sans chiffrement."
         },
         "browser": {
             "remote": "Distant",

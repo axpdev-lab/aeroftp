@@ -320,7 +320,9 @@
                 "refresh": "刷新",
                 "none": "未返回任何目标。你仍可以手动输入一个。",
                 "found": "找到 {count} 个可访问的目标。输入以搜索，或选择其中一个。"
-            }
+            },
+            "swiftAuthUrl": "Keystone 认证 URL",
+            "swiftAllowCleartextStorage": "此部署通过明文 HTTP 提供对象存储。为此配置文件接受：访问令牌和每个文件都将以未加密方式穿越网络。"
         },
         "browser": {
             "remote": "远程",
