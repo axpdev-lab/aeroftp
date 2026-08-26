@@ -2755,7 +2755,7 @@
             "encryptionImplicit": "Require implicit FTP over TLS",
             "encryptionNone": "Only use plain FTP (insecure)",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "e.g. s3.example.com",
             "filenDesc": "E2E Encrypted Cloud (10 GB free)",
             "filenTooltip": "Filen - Zero-knowledge E2E encryption, 10GB free",
             "felicloudDesc": "Felicloud (10 GB free, EU/GDPR)",

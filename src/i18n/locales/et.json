@@ -1690,7 +1690,7 @@
             "region": "Regioon",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Kohandatud lõpp-punkt",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "nt s3.example.com",
             "endpointHelp": "MinIO, Wasabi, R2 jne jaoks.",
             "pathStyle": "Path-style URL",
             "webdavNote": "WebDAV rada peab olema täielik.",

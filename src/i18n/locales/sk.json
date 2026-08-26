@@ -1690,7 +1690,7 @@
             "region": "Región",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Vlastný koncový bod",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "napr. s3.example.com",
             "endpointHelp": "Pre MinIO, Wasabi, R2 atď.",
             "pathStyle": "URL v štýle cesty",
             "webdavNote": "Cesta WebDAV musí byť úplná.",

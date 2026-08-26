@@ -1690,7 +1690,7 @@
             "region": "Regiune",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Endpoint personalizat",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "de ex. s3.example.com",
             "endpointHelp": "Pentru MinIO, Wasabi, R2 etc.",
             "pathStyle": "URL-uri stil cale",
             "webdavNote": "Calea WebDAV trebuie să fie completă.",

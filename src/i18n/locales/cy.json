@@ -1690,7 +1690,7 @@
             "region": "Rhanbarth",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Pwynt Terfyn Personol",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "e.e. s3.example.com",
             "endpointHelp": "Ar gyfer MinIO, Wasabi, R2, ac ati.",
             "pathStyle": "URLau arddull llwybr",
             "webdavNote": "Rhaid i lwybr WebDAV fod yn llawn.",

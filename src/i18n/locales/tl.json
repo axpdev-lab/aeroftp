@@ -1690,7 +1690,7 @@
             "region": "Rehiyon",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Custom Endpoint",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "hal. s3.example.com",
             "endpointHelp": "Para sa MinIO, Wasabi, R2, atbp.",
             "pathStyle": "Path-style URLs",
             "webdavNote": "Dapat buo ang WebDAV path.",

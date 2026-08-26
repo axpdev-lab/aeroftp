@@ -1690,7 +1690,7 @@
             "region": "Регион",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Свой эндпоинт",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "напр. s3.example.com",
             "endpointHelp": "Для MinIO, Wasabi, R2 и т. д.",
             "pathStyle": "Path-style URL",
             "webdavNote": "Нужен полный путь WebDAV.",

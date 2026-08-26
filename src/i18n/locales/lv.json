@@ -1690,7 +1690,7 @@
             "region": "Reģions",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Pielāgots mērķis",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "piem. s3.example.com",
             "endpointHelp": "Paredzēts MinIO, Wasabi, R2 utt.",
             "pathStyle": "Path-style URL",
             "webdavNote": "WebDAV ceļam jābūt pilnam.",

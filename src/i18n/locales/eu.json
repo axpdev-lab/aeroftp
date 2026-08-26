@@ -1690,7 +1690,7 @@
             "region": "Eskualdea",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Amaiera-puntu pertsonalizatua",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "adib. s3.example.com",
             "endpointHelp": "MinIO, Wasabi, R2 eta abarrentzat.",
             "pathStyle": "Bide-estilo URLak",
             "webdavNote": "WebDAV bidea osoa izan behar da.",

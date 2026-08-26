@@ -1690,7 +1690,7 @@
             "region": "Region",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Brugerdefineret slutpunkt",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "f.eks. s3.example.com",
             "endpointHelp": "Til MinIO, Wasabi, R2 osv.",
             "pathStyle": "Path-style URL'er",
             "webdavNote": "WebDAV-stien skal være komplet.",

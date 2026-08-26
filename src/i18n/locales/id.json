@@ -1690,7 +1690,7 @@
             "region": "Wilayah",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Endpoint Kustom",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "mis. s3.example.com",
             "endpointHelp": "Untuk MinIO, Wasabi, R2, dll.",
             "pathStyle": "URL gaya jalur",
             "webdavNote": "Jalur WebDAV harus menyertakan jalur lengkap.",

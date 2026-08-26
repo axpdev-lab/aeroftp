@@ -1690,7 +1690,7 @@
             "region": "Khu vực",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Endpoint tùy chỉnh",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "ví dụ s3.example.com",
             "endpointHelp": "Dành cho MinIO, Wasabi, R2, v.v.",
             "pathStyle": "URL kiểu đường dẫn",
             "webdavNote": "Đường dẫn WebDAV phải bao gồm đường dẫn đầy đủ.",

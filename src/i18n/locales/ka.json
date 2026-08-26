@@ -1690,7 +1690,7 @@
             "region": "რეგიონი",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "მორგებული ბოლო წერტილი",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "მაგ. s3.example.com",
             "endpointHelp": "MinIO-სთვის, Wasabi-სთვის, R2-სთვის და ა.შ.",
             "pathStyle": "Path-style URL-ები",
             "webdavNote": "WebDAV გზა უნდა იყოს სრული.",

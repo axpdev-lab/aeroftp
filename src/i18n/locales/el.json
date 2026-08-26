@@ -1690,7 +1690,7 @@
             "region": "Περιοχή",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Προσαρμοσμένο τελικό σημείο",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "π.χ. s3.example.com",
             "endpointHelp": "Για MinIO, Wasabi, R2 κ.λπ.",
             "pathStyle": "Path-style URL",
             "webdavNote": "Η διαδρομή WebDAV πρέπει να είναι πλήρης.",

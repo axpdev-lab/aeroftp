@@ -1690,7 +1690,7 @@
             "region": "Mkoa",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Kituo Maalum",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "mf. s3.example.com",
             "endpointHelp": "Kwa MinIO, Wasabi, R2, n.k.",
             "pathStyle": "URL za mtindo wa njia",
             "webdavNote": "Njia ya WebDAV lazima iwe kamili.",

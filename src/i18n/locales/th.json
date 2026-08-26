@@ -1690,7 +1690,7 @@
             "region": "ภูมิภาค",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Endpoint กำหนดเอง",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "เช่น s3.example.com",
             "endpointHelp": "สำหรับ MinIO, Wasabi, R2 ฯลฯ",
             "pathStyle": "URL แบบ Path-style",
             "webdavNote": "เส้นทาง WebDAV ต้องระบุเส้นทางแบบเต็ม",

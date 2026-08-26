@@ -1690,7 +1690,7 @@
             "region": "តំបន់",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "ចំណុចបញ្ចប់ផ្ទាល់ខ្លួន",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "ឧ. s3.example.com",
             "endpointHelp": "សម្រាប់ MinIO, Wasabi, R2, ជាដើម។",
             "pathStyle": "URL រចនាប័ទ្មផ្លូវ (សម្រាប់ S3 បង្ហោះដោយខ្លួនឯង)",
             "webdavNote": "ផ្លូវ WebDAV គួរតែរួមបញ្ចូលផ្លូវពេញលេញទៅកាន់ឯកសាររបស់អ្នក។ សម្រាប់ Nextcloud ប្រើ:",

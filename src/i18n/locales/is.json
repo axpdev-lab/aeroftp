@@ -1690,7 +1690,7 @@
             "region": "Region",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Custom Endpoint",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "t.d. s3.example.com",
             "endpointHelp": "Fyrir MinIO, Wasabi, R2 o.s.frv.",
             "pathStyle": "Slóðir í slóðastíl (fyrir sjálfhýst S3)",
             "webdavNote": "WebDAV slóðin ætti að innihalda fulla slóð að skránum þínum. Fyrir Nextcloud notaðu:",

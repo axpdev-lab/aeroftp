@@ -1690,7 +1690,7 @@
             "region": "Регион",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Прилагођена крајња тачка",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "нпр. s3.example.com",
             "endpointHelp": "За MinIO, Wasabi, R2 итд.",
             "pathStyle": "Path-style URL-ови (за S3 на сопственом серверу)",
             "webdavNote": "WebDAV путања мора бити потпуна.",

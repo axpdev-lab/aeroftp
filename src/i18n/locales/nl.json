@@ -1690,7 +1690,7 @@
             "region": "Regio",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Aangepast eindpunt",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "bijv. s3.example.com",
             "endpointHelp": "Voor MinIO, Wasabi, R2 enz.",
             "pathStyle": "Pad-stijl URL's",
             "webdavNote": "WebDAV-pad moet volledig zijn.",

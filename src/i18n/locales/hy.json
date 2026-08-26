@@ -1683,7 +1683,7 @@
             "region": "Տարածաշրջան",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Հարմարեցված վերջնակետ",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "օր. s3.example.com",
             "endpointHelp": "MinIO, Wasabi, R2 և այլնի համար",
             "pathStyle": "Path-style URL-ներ",
             "webdavNote": "WebDAV ուղին պետք է լինի ամբողջական:",

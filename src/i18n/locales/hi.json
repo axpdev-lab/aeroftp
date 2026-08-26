@@ -1690,7 +1690,7 @@
             "region": "क्षेत्र",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "कस्टम एंडपॉइंट",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "उदा. s3.example.com",
             "endpointHelp": "MinIO, Wasabi, R2 आदि के लिए।",
             "pathStyle": "पथ-शैली URL",
             "webdavNote": "WebDAV पथ पूर्ण होना चाहिए।",

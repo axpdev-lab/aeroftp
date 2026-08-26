@@ -1690,7 +1690,7 @@
             "region": "Bölge",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Özel Uç Nokta",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "ör. s3.example.com",
             "endpointHelp": "MinIO, Wasabi, R2 vb. için.",
             "pathStyle": "Yol stili URL'ler",
             "webdavNote": "WebDAV yolu tam yolu içermelidir.",

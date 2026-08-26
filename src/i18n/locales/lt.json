@@ -1690,7 +1690,7 @@
             "region": "Regionas",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Pasirinktinis galinis taškas",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "pvz. s3.example.com",
             "endpointHelp": "Skirta MinIO, Wasabi, R2 ir kt.",
             "pathStyle": "Path-style URL",
             "webdavNote": "WebDAV kelias turi būti pilnas.",

@@ -1690,7 +1690,7 @@
             "region": "区域",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "自定义端点",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "例如 s3.example.com",
             "endpointHelp": "适用于 MinIO、Wasabi、R2 等。",
             "pathStyle": "路径样式URL",
             "webdavNote": "WebDAV路径必须包含完整路径。",

@@ -1690,7 +1690,7 @@
             "region": "Region",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Anpassad slutpunkt",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "t.ex. s3.example.com",
             "endpointHelp": "För MinIO, Wasabi, R2 osv.",
             "pathStyle": "Sökvägsbaserade URL:er",
             "webdavNote": "WebDAV-sökvägen måste vara fullständig.",

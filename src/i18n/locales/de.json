@@ -1690,7 +1690,7 @@
             "region": "Region",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Benutzerdefinierter Endpunkt",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "z. B. s3.example.com",
             "endpointHelp": "Für MinIO, Wasabi, R2 usw.",
             "pathStyle": "Path-style URLs",
             "webdavNote": "WebDAV-Pfad muss den vollen Pfad enthalten.",

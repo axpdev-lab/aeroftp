@@ -1690,7 +1690,7 @@
             "region": "অঞ্চল",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "কাস্টম এন্ডপয়েন্ট",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "যেমন s3.example.com",
             "endpointHelp": "MinIO, Wasabi, R2, ইত্যাদির জন্য",
             "pathStyle": "পাথ-স্টাইল URL (সেলফ-হোস্টেড S3 এর জন্য)",
             "webdavNote": "WebDAV পাথে আপনার ফাইলের পূর্ণ পাথ থাকা উচিত। Nextcloud-এর জন্য ব্যবহার করুন:",

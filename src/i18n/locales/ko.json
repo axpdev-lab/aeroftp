@@ -1690,7 +1690,7 @@
             "region": "지역",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "사용자 지정 엔드포인트",
-            "endpointPlaceholder": "es. s3.example.com",
+            "endpointPlaceholder": "예: s3.example.com",
             "endpointHelp": "MinIO, Wasabi, R2 등에 사용합니다.",
             "pathStyle": "경로 스타일 URL",
             "webdavNote": "WebDAV 경로는 전체 경로를 포함해야 합니다.",
