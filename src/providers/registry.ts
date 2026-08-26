@@ -912,6 +912,13 @@ export const PROVIDERS: ProviderConfig[] = [
         category: 's3',
         icon: 'Cloud',
         color: '#0069FF',
+        // NOT a known defect: never verified live, because the trial account
+        // used for testing expired and no other Spaces account was available.
+        // It is an ordinary S3 endpoint dispatching through the same stack as
+        // the other presets, so the expectation is that it works. Clearing this
+        // needs ten minutes with any Spaces key, not a code change. Recording
+        // the reason because a bare `stable: false` is indistinguishable from a
+        // known-broken provider, and that is how this one stayed hidden.
         stable: false,
         fields: [
             { ...COMMON_FIELDS.accessKeyId, label: 'Spaces Key', helpText: 'API → Spaces Keys → Key' },
@@ -1108,7 +1115,11 @@ export const PROVIDERS: ProviderConfig[] = [
         category: 's3',
         icon: 'HardDrive',
         color: '#0E7490',
-        stable: false,
+        // Verified live on 2026-08-26 against the dev-vault profile: connect,
+        // list, put, get with byte-identical content, and delete. The flag had
+        // been sitting here with no recorded reason, which is the only thing
+        // that kept it unverified for months.
+        stable: true,
         fields: [
             { ...COMMON_FIELDS.accessKeyId, placeholder: 'AKIA...', helpText: 'From S3Drive: open the "Setup with Rclone" page and copy the access_key_id value.' },
             { ...COMMON_FIELDS.secretAccessKey, helpText: 'From S3Drive: same "Setup with Rclone" page, copy the secret_access_key value.' },
