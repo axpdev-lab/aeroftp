@@ -1,0 +1,273 @@
+{
+  "_comment": [
+    "Hits from scripts/i18n-diacritics.mjs that a human read and judged correct as written.",
+    "The detector has no dictionary: it infers from frequency inside one locale file, so a word",
+    "that merely folds onto a more common accented word looks identical to a stripped one.",
+    "Roughly four in five hits are this. Suppressing them here is what keeps the gate readable,",
+    "and a readable gate is the whole point, because it exists to catch the NEXT one.",
+    "An entry is keyed by locale, key AND value, so rewording a string retires its acceptance:",
+    "the judgement was about that sentence, not about that key forever.",
+    "Never bulk-accept. Every line here was read against the language, not against the tool."
+  ],
+  "accepted": {
+    "ca\u001fprotocol.ftpTooltip\u001fFTP amb xifratge TLS configurable. Compatible amb modes Explicit, Implicit (FTPS) i oportunista.": {
+      "locale": "ca",
+      "key": "protocol.ftpTooltip",
+      "folded": "explicit",
+      "twin": "explícit",
+      "reason": "Explicit and Implicit are FTP mode names, and Descarrega is the imperative verb rather than the accented noun."
+    },
+    "ca\u001fai.welcomePromptRemote3\u001fDescarrega tots els fitxers .log": {
+      "locale": "ca",
+      "key": "ai.welcomePromptRemote3",
+      "folded": "descarrega",
+      "twin": "descàrrega",
+      "reason": "Explicit and Implicit are FTP mode names, and Descarrega is the imperative verb rather than the accented noun."
+    },
+    "cy\u001fsettings.githubOauthInfo\u001fGitHub uses Device Flow OAuth with the built-in AeroFTP App. No client credentials required.": {
+      "locale": "cy",
+      "key": "settings.githubOauthInfo",
+      "folded": "client",
+      "twin": "clïent",
+      "reason": "Untranslated English rather than a stripped Welsh string, which is a different defect tracked separately."
+    },
+    "da\u001fconnection.discovery.refresh\u001fOpdater": {
+      "locale": "da",
+      "key": "connection.discovery.refresh",
+      "folded": "opdater",
+      "twin": "opdatér",
+      "reason": "Danish writes the acute on an imperative only optionally, and kopier here is the plural noun copies, not the imperative."
+    },
+    "da\u001fbrowser.syncPathMismatch\u001fStierne er ikke synkroniserede - naviger til matchende mapper eller deaktiver synkroniseret navigation": {
+      "locale": "da",
+      "key": "browser.syncPathMismatch",
+      "folded": "naviger",
+      "twin": "navigér",
+      "reason": "Danish writes the acute on an imperative only optionally, and kopier here is the plural noun copies, not the imperative."
+    },
+    "da\u001fcontextMenu.deleteShareLinkPrompt\u001fIndtast link-ID for at slette (eller annuller):": {
+      "locale": "da",
+      "key": "contextMenu.deleteShareLinkPrompt",
+      "folded": "annuller",
+      "twin": "annullér",
+      "reason": "Danish writes the acute on an imperative only optionally, and kopier here is the plural noun copies, not the imperative."
+    },
+    "da\u001fsettings.migrationCleanup\u001fFjern ukrypterede kopier": {
+      "locale": "da",
+      "key": "settings.migrationCleanup",
+      "folded": "kopier",
+      "twin": "kopiér",
+      "reason": "Danish writes the acute on an imperative only optionally, and kopier here is the plural noun copies, not the imperative."
+    },
+    "da\u001fai.createEditFiles\u001fOpret og rediger filer": {
+      "locale": "da",
+      "key": "ai.createEditFiles",
+      "folded": "rediger",
+      "twin": "redigér",
+      "reason": "Danish writes the acute on an imperative only optionally, and kopier here is the plural noun copies, not the imperative."
+    },
+    "da\u001fduplicates.copies\u001fkopier": {
+      "locale": "da",
+      "key": "duplicates.copies",
+      "folded": "kopier",
+      "twin": "kopiér",
+      "reason": "Danish writes the acute on an imperative only optionally, and kopier here is the plural noun copies, not the imperative."
+    },
+    "da\u001fduplicates.everyCopyTicked\u001falle kopier markeret": {
+      "locale": "da",
+      "key": "duplicates.everyCopyTicked",
+      "folded": "kopier",
+      "twin": "kopiér",
+      "reason": "Danish writes the acute on an imperative only optionally, and kopier here is the plural noun copies, not the imperative."
+    },
+    "fr\u001fcyberTools.pwdDigits\u001fChiffres (0-9)": {
+      "locale": "fr",
+      "key": "cyberTools.pwdDigits",
+      "folded": "chiffres",
+      "twin": "chiffrés",
+      "reason": "chiffres is digits; the accented twin means encrypted, which is a different word."
+    },
+    "hr\u001fsettings.bridgeNoApps\u001fNijedna aplikacija ne odgovara pretrazi": {
+      "locale": "hr",
+      "key": "settings.bridgeNoApps",
+      "folded": "pretrazi",
+      "twin": "pretraži",
+      "reason": "pretrazi is the dative of pretraga; the accented twin is the imperative of a different verb."
+    },
+    "hr\u001ficonPicker.noResults\u001fNijedna ikona ne odgovara pretrazi": {
+      "locale": "hr",
+      "key": "iconPicker.noResults",
+      "folded": "pretrazi",
+      "twin": "pretraži",
+      "reason": "pretrazi is the dative of pretraga; the accented twin is the imperative of a different verb."
+    },
+    "is\u001faerosync.speedMode_fast\u001fHratt": {
+      "locale": "is",
+      "key": "aerosync.speedMode_fast",
+      "folded": "hratt",
+      "twin": "hrátt",
+      "reason": "hratt is the adverb fast; the accented twin means raw."
+    },
+    "lt\u001fcloud.nextSync\u001fKita sinchronizacija": {
+      "locale": "lt",
+      "key": "cloud.nextSync",
+      "folded": "kita",
+      "twin": "kitą",
+      "reason": "Lithuanian case endings fold together: these are correct nominative, instrumental and accusative forms, and the twins are other cases."
+    },
+    "lt\u001factivity.auth_method_key\u001fAutentifikuota su SSH raktu ({username})": {
+      "locale": "lt",
+      "key": "activity.auth_method_key",
+      "folded": "raktu",
+      "twin": "raktų",
+      "reason": "Lithuanian case endings fold together: these are correct nominative, instrumental and accusative forms, and the twins are other cases."
+    },
+    "lt\u001foverwrite.sameDate\u001fTa pati data": {
+      "locale": "lt",
+      "key": "overwrite.sameDate",
+      "folded": "pati",
+      "twin": "patį",
+      "reason": "Lithuanian case endings fold together: these are correct nominative, instrumental and accusative forms, and the twins are other cases."
+    },
+    "lt\u001fsyncPanel.schedulerNextSync\u001fKita sinchronizacija po {time}": {
+      "locale": "lt",
+      "key": "syncPanel.schedulerNextSync",
+      "folded": "kita",
+      "twin": "kitą",
+      "reason": "Lithuanian case endings fold together: these are correct nominative, instrumental and accusative forms, and the twins are other cases."
+    },
+    "lt\u001fproperties.privacyPrivate\u001fPrivatu": {
+      "locale": "lt",
+      "key": "properties.privacyPrivate",
+      "folded": "privatu",
+      "twin": "privatų",
+      "reason": "Lithuanian case endings fold together: these are correct nominative, instrumental and accusative forms, and the twins are other cases."
+    },
+    "lt\u001fproperties.checksumCaveats.onedrive-hashes\u001fKuri yra, priklauso nuo paskyros: asmeninis OneDrive skelbia QuickXorHash, verslo paskyros ir SharePoint paprastai SHA-1 ir SHA-256.": {
+      "locale": "lt",
+      "key": "properties.checksumCaveats.onedrive-hashes",
+      "folded": "kuri",
+      "twin": "kurį",
+      "reason": "Lithuanian case endings fold together: these are correct nominative, instrumental and accusative forms, and the twins are other cases."
+    },
+    "lv\u001fprotocol.megaS4Desc\u001fMEGA S4 Object Storage (Pro plan, 4 regions)": {
+      "locale": "lv",
+      "key": "protocol.megaS4Desc",
+      "folded": "regions",
+      "twin": "reģions",
+      "reason": "Untranslated English rather than a stripped Latvian string, which is a different defect tracked separately."
+    },
+    "no\u001faerocryptNative.keyslotsLoad\u001fLast inn spor": {
+      "locale": "no",
+      "key": "aerocryptNative.keyslotsLoad",
+      "folded": "spor",
+      "twin": "spør",
+      "reason": "spor is slots; the accented twin is the verb asks."
+    },
+    "pl\u001fprotocol.discoverOpenDrive\u001fPrzechowywanie i kopie zapasowe w chmurze (5 GB za darmo)": {
+      "locale": "pl",
+      "key": "protocol.discoverOpenDrive",
+      "folded": "kopie",
+      "twin": "kopię",
+      "reason": "Correct nominative forms; the accented twins are the accusative of the same words."
+    },
+    "pl\u001fvault.placementEmbedded\u001fWbudowana": {
+      "locale": "pl",
+      "key": "vault.placementEmbedded",
+      "folded": "wbudowana",
+      "twin": "wbudowaną",
+      "reason": "Correct nominative forms; the accented twins are the accusative of the same words."
+    },
+    "pl\u001fduplicates.everyCopyTicked\u001fzaznaczone wszystkie kopie": {
+      "locale": "pl",
+      "key": "duplicates.everyCopyTicked",
+      "folded": "kopie",
+      "twin": "kopię",
+      "reason": "Correct nominative forms; the accented twins are the accusative of the same words."
+    },
+    "ro\u001fcontextMenu.importLinkFailed\u001fNu s-a putut importa link-ul": {
+      "locale": "ro",
+      "key": "contextMenu.importLinkFailed",
+      "folded": "importa",
+      "twin": "importă",
+      "reason": "Romanian infinitives and the standalone pronoun Aceasta are correct here; the twins are third-person or adjectival forms."
+    },
+    "ro\u001fcontextMenu.shareLinkMoment\u001fAceasta poate dura un moment": {
+      "locale": "ro",
+      "key": "contextMenu.shareLinkMoment",
+      "folded": "aceasta",
+      "twin": "această",
+      "reason": "Romanian infinitives and the standalone pronoun Aceasta are correct here; the twins are third-person or adjectival forms."
+    },
+    "ro\u001factivity.move_error\u001f[{location}] Nu am putut muta {filename}": {
+      "locale": "ro",
+      "key": "activity.move_error",
+      "folded": "muta",
+      "twin": "mută",
+      "reason": "Romanian infinitives and the standalone pronoun Aceasta are correct here; the twins are third-person or adjectival forms."
+    },
+    "ro\u001fprotocol.hostKeyChangedBody\u001fCheia de host pentru acest server s-a schimbat de la ultima conexiune. Aceasta ar putea indica un atac de tip man-in-the-middle sau serverul ar fi putut fi reconfigurat.": {
+      "locale": "ro",
+      "key": "protocol.hostKeyChangedBody",
+      "folded": "aceasta",
+      "twin": "această",
+      "reason": "Romanian infinitives and the standalone pronoun Aceasta are correct here; the twins are third-person or adjectival forms."
+    },
+    "ro\u001fpreview.audio.speed\u001fViteza de redare": {
+      "locale": "ro",
+      "key": "preview.audio.speed",
+      "folded": "viteza",
+      "twin": "viteză",
+      "reason": "Romanian infinitives and the standalone pronoun Aceasta are correct here; the twins are third-person or adjectival forms."
+    },
+    "ro\u001fpreview.video.speed\u001fViteza de redare": {
+      "locale": "ro",
+      "key": "preview.video.speed",
+      "folded": "viteza",
+      "twin": "viteză",
+      "reason": "Romanian infinitives and the standalone pronoun Aceasta are correct here; the twins are third-person or adjectival forms."
+    },
+    "ro\u001fintroHub.health.clickToRetry\u001fclic pentru a verifica din nou": {
+      "locale": "ro",
+      "key": "introHub.health.clickToRetry",
+      "folded": "verifica",
+      "twin": "verifică",
+      "reason": "Romanian infinitives and the standalone pronoun Aceasta are correct here; the twins are third-person or adjectival forms."
+    },
+    "ro\u001faccountLock.skipNextTime\u001fOmite acest ecran data viitoare": {
+      "locale": "ro",
+      "key": "accountLock.skipNextTime",
+      "folded": "data",
+      "twin": "dată",
+      "reason": "Romanian infinitives and the standalone pronoun Aceasta are correct here; the twins are third-person or adjectival forms."
+    },
+    "sv\u001flockScreen.patternCross\u001fKors": {
+      "locale": "sv",
+      "key": "lockScreen.patternCross",
+      "folded": "kors",
+      "twin": "körs",
+      "reason": "Kors is the shape cross; the accented twin means is driven."
+    },
+    "sv\u001fappearance.patternCross\u001fKors": {
+      "locale": "sv",
+      "key": "appearance.patternCross",
+      "folded": "kors",
+      "twin": "körs",
+      "reason": "Kors is the shape cross; the accented twin means is driven."
+    },
+    "vi\u001fmenu.website\u001fTrang web": {
+      "locale": "vi",
+      "key": "menu.website",
+      "folded": "trang",
+      "twin": "trạng",
+      "reason": "Trang is page or site; the toned twin is an unrelated word."
+    },
+    "vi\u001fpreview.pdf.page\u001fTrang": {
+      "locale": "vi",
+      "key": "preview.pdf.page",
+      "folded": "trang",
+      "twin": "trạng",
+      "reason": "Trang is page or site; the toned twin is an unrelated word."
+    }
+  }
+}

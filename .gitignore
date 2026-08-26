@@ -113,6 +113,10 @@ run-clean.sh
 !/scripts/snap-stale-packages.mjs
 # Exception: regenerates the providers table from the GUI SSOT (#270 17104681)
 !/scripts/gen-providers-table.ts
+# Exception: stripped-diacritics gate and its reviewed baseline, run by the
+# fast checks workflow (#628 item 12)
+!/scripts/i18n-diacritics.mjs
+!/scripts/i18n-diacritics-accepted.json
 # Exception: single pre-release smoke entrypoint (`npm run smoke`, #408 row 1)
 !/scripts/smoke.mjs
 

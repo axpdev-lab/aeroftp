@@ -76,9 +76,9 @@
             "apply": "Aplikovat",
             "later": "Neskôr",
             "path": "Cesta",
-            "remove": "Odobrat",
+            "remove": "Odobrať",
             "reset": "Resetovať",
-            "saved": "Ulozene",
+            "saved": "Uložené",
             "saving": "Ukladanie...",
             "creating": "Vytvára sa..."
         },
@@ -1142,7 +1142,7 @@
             "encryptionPrivacyTitle": "Súkromie šifrovania",
             "warnSameNameEncrypted": "Označiť položky s rovnakým názvom v šifrovaných trezoroch",
             "warnSameNameEncryptedDesc": "Predvolene vypnuté. Vnútri aktívnej vrstvy AeroCrypt alebo rclone-crypt označuj súbory a priečinky, ktorých názov sa objavuje aj na inej ceste, ktorú navštívite. Názvy sa šifrujú deterministicky, takže zhodné názvy sú pre pozorovateľa šifrovaného úložiska viditeľné ako zhodné (rovnaký kompromis ako pri rclone-crypt a Cryptomator).",
-            "loading": "Nacitavanie..."
+            "loading": "Načítavanie..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1304,7 +1304,7 @@
             "importLegacy": "Importovať aktuálne ako pár",
             "importLegacyHint": "Importujte svoju existujúcu jedinú konfiguráciu AeroCloud ako prvý pár (zachováva spätnú kompatibilitu).",
             "versionHistory": "História verzií",
-            "restoreVersion": "Obnovit tuto verziu",
+            "restoreVersion": "Obnoviť túto verziu",
             "cleanupDone": "Vyčistené",
             "cleanupVersions": "Vyčistiť staré verzie",
             "noRemoteFolders": "Nenašli sa žiadne vzdialené priečinky",
@@ -1698,7 +1698,7 @@
             "pcloudDesc": "pCloud Drive (10 GB zadarmo)",
             "azureDesc": "Úložisko Microsoft Azure",
             "filenDesc": "Cloud s koncovým šifrovaním",
-            "selectRegion": "Vyberte region...",
+            "selectRegion": "Vyberte región...",
             "providerDocumentation": "Dokumentácia {name}",
             "webdavExampleLabel": "Priklad:",
             "connectVia": "Pripojiť sa k {name} cez {protocol}",
@@ -2413,7 +2413,7 @@
                 "addProviderFirst": "Najprv pridajte poskytovateľa pre správu modelov",
                 "modelsCountLabel": "{count} modelov",
                 "functionCalling": "Volanie funkcii",
-                "setDefault": "Predvolene",
+                "setDefault": "Predvolené",
                 "defaultBadge": "Predvolené",
                 "editModelTooltip": "Upraviť model",
                 "removeModel": "Odobrať model",
