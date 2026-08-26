@@ -1144,7 +1144,14 @@
             "encryptionPrivacyTitle": "Privasi enkripsi",
             "warnSameNameEncrypted": "Tandai entri bernama sama di brankas terenkripsi",
             "warnSameNameEncryptedDesc": "Nonaktif secara default. Di dalam lapisan AeroCrypt atau rclone-crypt yang aktif, tandai berkas dan folder yang namanya juga muncul di jalur lain yang Anda kunjungi. Nama dienkripsi secara deterministik, sehingga nama yang identik terlihat identik bagi pengamat penyimpanan terenkripsi (kompromi yang sama seperti rclone-crypt dan Cryptomator).",
-            "loading": "Memuat..."
+            "loading": "Memuat...",
+            "resumeRecords": "Catatan pelanjutan",
+            "resumeRecordsDesc": "Transfer multipart yang terputus menyimpan catatan kecil agar dapat dilanjutkan. Penyimpanan ini memiliki batas atas, sehingga transfer terlama yang dapat dilanjutkan akan dibuang saat penuh. Kosongkan ruang dengan menghapus server yang tidak Anda gunakan lagi.",
+            "resumeRecordsEmpty": "Tidak ada transfer terputus yang tersimpan.",
+            "resumeColumnDestination": "Tujuan",
+            "resumeColumnRecords": "Catatan",
+            "resumeForget": "Lupakan tujuan ini",
+            "resumeForgetConfirm": "Lupakan"
         },
         "devtools": {
             "title": "AeroTools",

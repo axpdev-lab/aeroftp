@@ -1144,7 +1144,14 @@
             "encryptionPrivacyTitle": "Salauksen tietosuoja",
             "warnSameNameEncrypted": "Merkitse samannimiset kohteet salatuissa holveissa",
             "warnSameNameEncryptedDesc": "Oletuksena pois päältä. Aktiivisen AeroCrypt- tai rclone-crypt-peiton sisällä merkitse tiedostot ja kansiot, joiden nimi esiintyy myös toisessa polussa, jolla käyt. Nimet salataan deterministisesti, joten identtiset nimet näkyvät identtisinä salatun tallennustilan tarkkailijalle (sama kompromissi kuin rclone-crypt ja Cryptomator).",
-            "loading": "Ladataan..."
+            "loading": "Ladataan...",
+            "resumeRecords": "Jatkamistietueet",
+            "resumeRecordsDesc": "Keskeytyneet moniosaiset siirrot säilyttävät pienen tietueen, jotta ne voidaan jatkaa. Varastolla on yläraja, joten sen täyttyessä vanhin jatkettavissa oleva siirto hylätään. Vapauta tilaa poistamalla palvelin, jota et enää käytä.",
+            "resumeRecordsEmpty": "Keskeytyneitä siirtoja ei ole tallennettu.",
+            "resumeColumnDestination": "Kohde",
+            "resumeColumnRecords": "Tietueet",
+            "resumeForget": "Unohda tämä kohde",
+            "resumeForgetConfirm": "Unohda"
         },
         "devtools": {
             "title": "AeroTools",

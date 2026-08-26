@@ -3566,7 +3566,14 @@
             "backupRowServersOnlyDesc": "Server profiles only, no app settings",
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Import & export with {count} other tools",
-            "loading": "Loading..."
+            "loading": "Loading...",
+            "resumeRecords": "Resume records",
+            "resumeRecordsDesc": "Interrupted multipart transfers keep a small record so they can resume. The store is capped, so the oldest resumable transfer is dropped once it fills. Clear a server you no longer use to make room instead.",
+            "resumeRecordsEmpty": "No interrupted transfers are stored.",
+            "resumeColumnDestination": "Destination",
+            "resumeColumnRecords": "Records",
+            "resumeForget": "Forget this destination",
+            "resumeForgetConfirm": "Forget"
         },
         "sharing": {
             "add": "Add",

@@ -1144,7 +1144,14 @@
             "encryptionPrivacyTitle": "Enkriptazio-pribatutasuna",
             "warnSameNameEncrypted": "Markatu izen bereko sarrerak enkriptatutako gordailuetan",
             "warnSameNameEncryptedDesc": "Lehenetsita itzalita. AeroCrypt edo rclone-crypt gainjartze aktibo baten barruan, markatu izena bisitatzen duzun beste bide batean ere agertzen den fitxategiak eta karpetak. Izenak modu deterministikoan enkriptatzen dira, beraz, izen berdinak berdin ikusten dira enkriptatutako biltegiaren behatzaile batentzat (rclone-crypt eta Cryptomator-en truke bera).",
-            "loading": "Kargatzen..."
+            "loading": "Kargatzen...",
+            "resumeRecords": "Berrekite-erregistroak",
+            "resumeRecordsDesc": "Eten diren zati anitzeko transferentziek erregistro txiki bat gordetzen dute berrekin ahal izateko. Biltegiak goi-muga bat du, beraz betetzean berrekin daitekeen transferentziarik zaharrena baztertzen da. Egin lekua jada erabiltzen ez duzun zerbitzari bat ezabatuz.",
+            "resumeRecordsEmpty": "Ez dago eten den transferentziarik gordeta.",
+            "resumeColumnDestination": "Helburua",
+            "resumeColumnRecords": "Erregistroak",
+            "resumeForget": "Ahaztu helburu hau",
+            "resumeForgetConfirm": "Ahaztu"
         },
         "devtools": {
             "title": "AeroTools",

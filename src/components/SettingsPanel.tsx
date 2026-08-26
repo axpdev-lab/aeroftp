@@ -9,6 +9,7 @@ import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Monitor, Image, Shapes, Info, Boxes, Share2, Users, Bell, ShieldOff } from 'lucide-react';
 import { AeroShareContacts } from './AeroShare/AeroShareContacts';
+import { CheckpointEndpoints } from './CheckpointEndpoints';
 import { AeroSharePrivacySettings } from './AeroShare/AeroSharePrivacySettings';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
@@ -1568,6 +1569,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* The resume store is capped, and forgetting a destination is
+                                        the documented escape from that cap. It reached only the CLI
+                                        until now, so a GUI user could watch the cap drop their
+                                        oldest resumable transfer with nothing to clear instead. */}
+                                    <CheckpointEndpoints />
                                 </div>
                             )}
 

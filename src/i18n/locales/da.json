@@ -1144,7 +1144,14 @@
             "encryptionPrivacyTitle": "Krypteringsprivatliv",
             "warnSameNameEncrypted": "Markér poster med samme navn i krypterede bokse",
             "warnSameNameEncryptedDesc": "Slået fra som standard. Inde i et aktivt AeroCrypt- eller rclone-crypt-overlay markeres filer og mapper, hvis navn også vises på en anden sti, du besøger. Navne krypteres deterministisk, så identiske navne er synlige som identiske for en observatør af det krypterede lager (den samme afvejning som rclone-crypt og Cryptomator).",
-            "loading": "Indlæser..."
+            "loading": "Indlæser...",
+            "resumeRecords": "Genoptagelsesposter",
+            "resumeRecordsDesc": "Afbrudte multipart-overførsler gemmer en lille post, så de kan genoptages. Lageret har en øvre grænse, så den ældste overførsel, der kan genoptages, kasseres når det fyldes. Frigør plads ved at slette en server, du ikke længere bruger.",
+            "resumeRecordsEmpty": "Der er ingen gemte afbrudte overførsler.",
+            "resumeColumnDestination": "Destination",
+            "resumeColumnRecords": "Poster",
+            "resumeForget": "Glem denne destination",
+            "resumeForgetConfirm": "Glem"
         },
         "devtools": {
             "title": "AeroTools",

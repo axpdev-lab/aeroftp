@@ -1558,7 +1558,14 @@
             "encryptionPrivacyTitle": "Privacy della cifratura",
             "warnSameNameEncrypted": "Segnala le voci con lo stesso nome nelle casseforti cifrate",
             "warnSameNameEncryptedDesc": "Disattivato per impostazione predefinita. All'interno di una sovrapposizione AeroCrypt o rclone-crypt attiva, contrassegna i file e le cartelle il cui nome compare anche in un altro percorso che visiti. I nomi sono cifrati in modo deterministico, quindi i nomi identici risultano identici a un osservatore dell'archivio cifrato (lo stesso compromesso di rclone-crypt e Cryptomator).",
-            "loading": "Caricamento..."
+            "loading": "Caricamento...",
+            "resumeRecords": "Record di ripresa",
+            "resumeRecordsDesc": "I trasferimenti multipart interrotti conservano un piccolo record per poter riprendere. L'archivio ha un tetto, quindi quando si riempie viene scartato il trasferimento riprendibile più vecchio. Libera spazio cancellando un server che non usi più.",
+            "resumeRecordsEmpty": "Nessun trasferimento interrotto in archivio.",
+            "resumeColumnDestination": "Destinazione",
+            "resumeColumnRecords": "Record",
+            "resumeForget": "Dimentica questa destinazione",
+            "resumeForgetConfirm": "Dimentica"
         },
         "appearance": {
             "patternCross": "Croce",

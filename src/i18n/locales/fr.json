@@ -1144,7 +1144,14 @@
             "encryptionPrivacyTitle": "Confidentialité du chiffrement",
             "warnSameNameEncrypted": "Signaler les entrées de même nom dans les coffres chiffrés",
             "warnSameNameEncryptedDesc": "Désactivé par défaut. Dans une superposition AeroCrypt ou rclone-crypt active, marquez les fichiers et dossiers dont le nom apparaît également sur un autre chemin que vous visitez. Les noms sont chiffrés de manière déterministe, de sorte que les noms identiques sont visibles comme identiques pour un observateur du stockage chiffré (le même compromis que rclone-crypt et Cryptomator).",
-            "loading": "Chargement..."
+            "loading": "Chargement...",
+            "resumeRecords": "Enregistrements de reprise",
+            "resumeRecordsDesc": "Les transferts multipart interrompus conservent un petit enregistrement pour pouvoir reprendre. Le stockage est plafonné, donc le transfert reprenable le plus ancien est supprimé lorsqu'il est plein. Libérez de la place en effaçant un serveur que vous n'utilisez plus.",
+            "resumeRecordsEmpty": "Aucun transfert interrompu n'est stocké.",
+            "resumeColumnDestination": "Destination",
+            "resumeColumnRecords": "Enregistrements",
+            "resumeForget": "Oublier cette destination",
+            "resumeForgetConfirm": "Oublier"
         },
         "devtools": {
             "title": "AeroTools",

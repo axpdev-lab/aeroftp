@@ -1144,7 +1144,14 @@
             "encryptionPrivacyTitle": "Confidențialitatea criptării",
             "warnSameNameEncrypted": "Semnalează intrările cu același nume din seifurile criptate",
             "warnSameNameEncryptedDesc": "Dezactivat implicit. În interiorul unui strat AeroCrypt sau rclone-crypt activ, marchează fișierele și folderele al căror nume apare și pe altă cale pe care o vizitezi. Numele sunt criptate determinist, așa că numele identice sunt vizibile ca identice pentru un observator al stocării criptate (același compromis ca la rclone-crypt și Cryptomator).",
-            "loading": "Se încarcă..."
+            "loading": "Se încarcă...",
+            "resumeRecords": "Înregistrări de reluare",
+            "resumeRecordsDesc": "Transferurile multipart întrerupte păstrează o mică înregistrare pentru a putea fi reluate. Stocarea are o limită, așa că la umplere cel mai vechi transfer care poate fi reluat este eliminat. Eliberați spațiu ștergând un server pe care nu îl mai folosiți.",
+            "resumeRecordsEmpty": "Nu există transferuri întrerupte stocate.",
+            "resumeColumnDestination": "Destinație",
+            "resumeColumnRecords": "Înregistrări",
+            "resumeForget": "Uită această destinație",
+            "resumeForgetConfirm": "Uită"
         },
         "devtools": {
             "title": "AeroTools",

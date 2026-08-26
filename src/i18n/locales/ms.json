@@ -1144,7 +1144,14 @@
             "encryptionPrivacyTitle": "Privasi penyulitan",
             "warnSameNameEncrypted": "Tandakan entri bernama sama dalam bilik kebal tersulit",
             "warnSameNameEncryptedDesc": "Dimatikan secara lalai. Di dalam tindanan AeroCrypt atau rclone-crypt yang aktif, tandakan fail dan folder yang namanya juga muncul di laluan lain yang anda lawati. Nama disulitkan secara deterministik, jadi nama yang serupa kelihatan serupa kepada pemerhati storan tersulit (pertukaran yang sama seperti rclone-crypt dan Cryptomator).",
-            "loading": "Memuatkan..."
+            "loading": "Memuatkan...",
+            "resumeRecords": "Rekod sambung semula",
+            "resumeRecordsDesc": "Pemindahan multipart yang terputus menyimpan rekod kecil supaya boleh disambung semula. Storan ini mempunyai had atas, jadi pemindahan tersambung semula yang paling lama akan dibuang apabila penuh. Kosongkan ruang dengan memadam pelayan yang anda tidak gunakan lagi.",
+            "resumeRecordsEmpty": "Tiada pemindahan terputus yang disimpan.",
+            "resumeColumnDestination": "Destinasi",
+            "resumeColumnRecords": "Rekod",
+            "resumeForget": "Lupakan destinasi ini",
+            "resumeForgetConfirm": "Lupakan"
         },
         "devtools": {
             "title": "AeroTools",

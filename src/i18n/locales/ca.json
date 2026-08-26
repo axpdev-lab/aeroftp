@@ -1144,7 +1144,14 @@
             "encryptionPrivacyTitle": "Privadesa del xifratge",
             "warnSameNameEncrypted": "Marca les entrades amb el mateix nom a les bústies xifrades",
             "warnSameNameEncryptedDesc": "Desactivat per defecte. Dins d'una superposició AeroCrypt o rclone-crypt activa, marca els fitxers i les carpetes el nom dels quals també apareix en una altra ruta que visites. Els noms es xifren de manera determinista, de manera que els noms idèntics són visibles com a idèntics per a un observador del magatzem xifrat (el mateix compromís que rclone-crypt i Cryptomator).",
-            "loading": "Carregant..."
+            "loading": "Carregant...",
+            "resumeRecords": "Registres de represa",
+            "resumeRecordsDesc": "Les transferències multipart interrompudes guarden un petit registre per poder reprendre's. El magatzem té un límit, així que la transferència reprenible més antiga es descarta quan s'omple. Fes lloc esborrant un servidor que ja no facis servir.",
+            "resumeRecordsEmpty": "No hi ha transferències interrompudes desades.",
+            "resumeColumnDestination": "Destinació",
+            "resumeColumnRecords": "Registres",
+            "resumeForget": "Oblida aquesta destinació",
+            "resumeForgetConfirm": "Oblida"
         },
         "devtools": {
             "title": "AeroTools",

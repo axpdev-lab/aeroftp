@@ -1144,7 +1144,14 @@
             "encryptionPrivacyTitle": "暗号化のプライバシー",
             "warnSameNameEncrypted": "暗号化ボールト内の同名項目にフラグを付ける",
             "warnSameNameEncryptedDesc": "既定ではオフ。アクティブな AeroCrypt または rclone-crypt オーバーレイ内で、あなたが訪れた別のパスにも名前が表示されるファイルやフォルダーをマークします。名前は決定論的に暗号化されるため、同一の名前は暗号化ストアの観察者には同一のものとして見えます（rclone-crypt や Cryptomator と同じトレードオフです）。",
-            "loading": "読み込み中..."
+            "loading": "読み込み中...",
+            "resumeRecords": "再開レコード",
+            "resumeRecordsDesc": "中断されたマルチパート転送は、再開できるように小さなレコードを保持します。この保存領域には上限があり、いっぱいになると最も古い再開可能な転送が破棄されます。使わなくなったサーバーを削除して空きを作ってください。",
+            "resumeRecordsEmpty": "中断された転送は保存されていません。",
+            "resumeColumnDestination": "宛先",
+            "resumeColumnRecords": "レコード",
+            "resumeForget": "この宛先を破棄",
+            "resumeForgetConfirm": "破棄"
         },
         "devtools": {
             "title": "AeroTools",

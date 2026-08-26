@@ -1144,7 +1144,14 @@
             "encryptionPrivacyTitle": "Prywatność szyfrowania",
             "warnSameNameEncrypted": "Oznaczaj wpisy o tej samej nazwie w zaszyfrowanych sejfach",
             "warnSameNameEncryptedDesc": "Domyślnie wyłączone. Wewnątrz aktywnej nakładki AeroCrypt lub rclone-crypt oznaczaj pliki i foldery, których nazwa pojawia się również na innej odwiedzanej ścieżce. Nazwy są szyfrowane deterministycznie, więc identyczne nazwy są widoczne jako identyczne dla obserwatora zaszyfrowanego magazynu (ten sam kompromis co w rclone-crypt i Cryptomator).",
-            "loading": "Ładowanie..."
+            "loading": "Ładowanie...",
+            "resumeRecords": "Rekordy wznawiania",
+            "resumeRecordsDesc": "Przerwane transfery wieloczęściowe zachowują mały rekord, aby można je było wznowić. Magazyn ma limit, więc po jego zapełnieniu najstarszy wznawialny transfer jest usuwany. Zwolnij miejsce, kasując serwer, którego już nie używasz.",
+            "resumeRecordsEmpty": "Brak zapisanych przerwanych transferów.",
+            "resumeColumnDestination": "Cel",
+            "resumeColumnRecords": "Rekordy",
+            "resumeForget": "Zapomnij ten cel",
+            "resumeForgetConfirm": "Zapomnij"
         },
         "devtools": {
             "title": "AeroTools",
