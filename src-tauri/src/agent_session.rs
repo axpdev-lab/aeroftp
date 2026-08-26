@@ -48,6 +48,19 @@ pub struct ProfileSummary {
 /// Convert camelCase JSON keys (the desktop frontend's `ProviderOptions`
 /// shape) into the snake_case keys the Rust `ProviderConfig.extra`
 /// builders expect. Pure ASCII: non-alpha chars are preserved as-is.
+/// Mechanical camelCase to snake_case, NOT the canonical option-key mapping.
+///
+/// `profile_loader::normalize_profile_option_key` is the table that knows the
+/// aliases where the two spellings are not a mechanical transform of each other
+/// (`webdavScheme` becomes `tls_mode`, `allowCleartextStorage` becomes
+/// `allow_cleartext_storage_endpoint`, the STS set). This function does not
+/// consult it, so any option in that table arrives here under the wrong key.
+///
+/// That is currently harmless because the protocols this path can connect are
+/// FTP, FTPS, SFTP, WebDAV, S3, GitHub and GitLab (`resolve_provider_type`), and
+/// none of them reads an aliased key. It is a live trap for the next one that
+/// does: unifying the two is tracked rather than done here, because changing what
+/// this returns would also change the keys the current callers already receive.
 fn camel_to_snake(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 4);
     for (i, ch) in s.chars().enumerate() {

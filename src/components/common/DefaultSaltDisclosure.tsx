@@ -17,7 +17,9 @@ interface DefaultSaltDisclosureProps {
 }
 
 /**
- * The public default salt, shown under the 128-bit / 256-bit radios (Ehud #369).
+ * The public default salt, shown under the default-salt toggle (Ehud #369).
+ * It sat under the 128/256 tier radios until those were removed for never
+ * reaching the backend; the salt disclosure itself was the part worth keeping.
  *
  * Two create surfaces offer default-salt mode (the Quick Connect form and the
  * native AeroCrypt dialog) and both were showing the radios with no salt and no

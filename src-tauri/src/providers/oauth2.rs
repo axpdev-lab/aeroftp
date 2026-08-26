@@ -1127,7 +1127,17 @@ pub async fn wait_for_callback(
 
     // A3-01: bounded overall, so an endless stream of stray requests cannot keep
     // the flow alive forever. The budget is for the whole wait, not per accept.
-    let deadline = Instant::now() + Duration::from_secs(120);
+    //
+    // Five minutes, matching the timeout the callers already wrap this in. The
+    // previous two minutes made theirs unreachable, so a sign-in with a slow
+    // second factor failed at two minutes against a promise of five.
+    let deadline = Instant::now() + Duration::from_secs(300);
+    // A browser sends its request immediately after connecting, so a socket that
+    // has said nothing in this long is not the callback. It has to be SHORT: the
+    // loop is sequential, so every stalled connection delays the real redirect
+    // by exactly this much, and a handful of them at thirty seconds each used to
+    // eat the whole budget while the genuine request waited in the backlog.
+    const READ_TIMEOUT: Duration = Duration::from_secs(5);
     let (mut socket, code, state) = loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
@@ -1139,8 +1149,12 @@ pub async fn wait_for_callback(
             .map_err(|e| ProviderError::Other(format!("Failed to accept connection: {}", e)))?;
 
         let mut buffer = vec![0u8; 4096];
-        // A3-01: Timeout on read to prevent slow-loris style attacks on the callback socket
-        let n: usize = match timeout(Duration::from_secs(30), socket.read(&mut buffer)).await {
+        // A3-01: Timeout on read to prevent slow-loris style attacks on the
+        // callback socket. Capped by what is left of the overall budget too, so
+        // the real ceiling is the deadline rather than the deadline plus one
+        // more read.
+        let read_budget = READ_TIMEOUT.min(deadline.saturating_duration_since(Instant::now()));
+        let n: usize = match timeout(read_budget, socket.read(&mut buffer)).await {
             Ok(Ok(n)) => n,
             // A connection that stalls or dies is not the callback: drop it and
             // keep listening rather than ending the flow on someone else's socket.

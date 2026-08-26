@@ -291,17 +291,41 @@ impl TransferCheckpointStore {
     ) -> Result<CheckpointOpen, String> {
         let fresh = MultipartCheckpoint::fresh(source, destination, layout);
         let path = self.path_for(&fresh.transfer_key);
-        let Some(mut loaded) = self.load_path(&path)? else {
-            self.persist(&fresh)?;
+        // A record this build cannot read is not a resumable record, and this is
+        // the third reader that has to say so: propagating the error here failed
+        // the transfer outright, when the honest answer is that there is nothing
+        // to resume from and a fresh one starts. Overwriting it does cost
+        // something, since a future-schema record IS resumable by a newer build,
+        // but only for this one transfer key, and only for the transfer the user
+        // is relaunching right now. Failing that transfer forever is worse.
+        let existing = match self.load_path(&path) {
+            Ok(existing) => existing,
+            Err(e) => {
+                tracing::warn!(
+                    "[checkpoint] starting fresh, {} is unreadable: {e}",
+                    path.display()
+                );
+                None
+            }
+        };
+        // The cap runs BEFORE the write, deliberately. `enforce_cap` counts the
+        // kept record as one slot whether or not it is on disk yet, so the
+        // arithmetic is identical, and running it first means a store that
+        // cannot evict refuses to grow instead of reporting failure with the
+        // new record already written: the previous order left the record behind
+        // and pushed the store past the cap in the very call that said it could
+        // not hold it.
+        let Some(mut loaded) = existing else {
             self.enforce_cap(&fresh.transfer_key)?;
+            self.persist(&fresh)?;
             return Ok(CheckpointOpen {
                 checkpoint: fresh,
                 resumed: false,
             });
         };
         if !same_identity(&loaded, &fresh) || loaded.status.is_terminal() {
-            self.persist(&fresh)?;
             self.enforce_cap(&fresh.transfer_key)?;
+            self.persist(&fresh)?;
             return Ok(CheckpointOpen {
                 checkpoint: fresh,
                 resumed: false,
@@ -537,6 +561,12 @@ impl TransferCheckpointStore {
     /// decommissioned server: the TTL scavenger only prunes a record when the
     /// same endpoint is revisited, so without this a server you stop using keeps
     /// its records forever. Returns the number of records removed.
+    ///
+    /// Reached from `aeroftp checkpoints forget`, paired with `endpoints()`
+    /// behind `checkpoints list` because the four values below are matched
+    /// exactly and nobody could otherwise supply them. There is deliberately no
+    /// Tauri command: one existed briefly with nothing in the GUI calling it,
+    /// which is an orphan export rather than a second way in.
     /// Every destination endpoint the store currently holds records for, with
     /// how many, newest activity first.
     ///
@@ -1186,6 +1216,32 @@ mod tests {
         assert!(present.contains(&resumable_new.transfer_key));
         assert!(!present.contains(&terminal.transfer_key));
         assert!(!present.contains(&resumable_old.transfer_key));
+    }
+
+    /// Pre-tag audit. Making the cap fail loudly created a worse failure than
+    /// the one it fixed: the record was persisted FIRST, so a store that could
+    /// not evict returned an error to the caller with the new record already on
+    /// disk, growing past the cap in the very call that reported it could not
+    /// hold it. And `open_or_create` was the one reader still propagating a read
+    /// error, so an unreadable record under this transfer's own key failed the
+    /// transfer instead of starting a fresh one.
+    #[test]
+    fn an_unreadable_own_record_starts_fresh_instead_of_failing() {
+        let temp = TempDir::new().unwrap();
+        let store = TransferCheckpointStore::new(temp.path()).unwrap();
+        let fresh = MultipartCheckpoint::fresh(source(), destination(), layout());
+        let path = store.path_for(&fresh.transfer_key);
+        // A record written by a schema this build refuses, under the key this
+        // transfer is about to use.
+        fs::write(&path, br#"{"schema_version":99,"transfer_key":"x"}"#).unwrap();
+
+        let opened = store
+            .open_or_create(source(), destination(), layout())
+            .expect("an unreadable own record must not fail the transfer");
+        assert!(!opened.resumed, "there is nothing to resume from");
+        // And it was replaced, not left to wedge the next attempt too.
+        let reread = store.load_path(&path).expect("now readable");
+        assert!(reread.is_some());
     }
 
     /// The store survives installs, so a user who downgrades after a bad release

@@ -227,9 +227,18 @@ fn generate_tauri_command_registry() {
         if valid {
             names.push((std::mem::take(&mut pending_cfg), name.to_string()));
         } else {
-            // Not a command line: whatever attributes were pending do not belong
-            // to anything, so they must not leak onto the next real entry.
-            pending_cfg.clear();
+            // Not a command line, and not an attribute either. Silently clearing
+            // here would put us straight back in the defect this fixes: a cfg
+            // split across lines would drop its own continuation, then emit the
+            // NEXT command unguarded, and the generated list would quietly claim
+            // a command the binary may not contain. Every cfg in the block is on
+            // one line today, so this is a trap rather than a bug, and it fails
+            // loudly instead of waiting to be discovered.
+            assert!(
+                pending_cfg.is_empty(),
+                "build.rs: `{s}` follows a #[cfg(...)] in the generate_handler! block but is not a command. \
+                 A multi-line cfg attribute is not supported: put it on one line, or teach this parser to join them."
+            );
         }
     }
     assert!(

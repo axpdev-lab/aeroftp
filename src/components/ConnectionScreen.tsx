@@ -1167,9 +1167,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const aeroCryptConfirmMismatch = aeroCryptEnabled && overlayEligible && !overlayFieldsLocked && !!aeroCryptPassword && aeroCryptConfirm !== aeroCryptPassword;
 
     // D1-D3 entropy gate (reuse PasswordStrengthBar visual signal + length floor).
-    // 128-bit recommended tier: level 4 + ~20 chars minimum.
-    // 256-bit stricter: level 4 + ~39 chars.
-    // Plus explicit attestation checkbox.
+    // One floor, level 4 and 20 characters: see `requiredLen` below for why the
+    // two tiers and the attestation checkbox this comment used to describe are
+    // gone from the GUI. The CLI still has both, on purpose.
     const pwLen = aeroCryptPassword.length;
     const strengthLevel = useMemo(() => {
         // Lightweight mirror of the bar's internal compute for gating (level 0-4).
@@ -3313,8 +3313,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
 
                                         {/* D1-D3: opt-in default-salt (public constant) for headerless password-only portability.
-                                            Sibling to header toggle. Gated by entropy + explicit attestation.
-                                            Two tiers: 128-bit recommended (default), 256-bit stricter. */}
+                                            Sibling to header toggle. Gated by password entropy alone: the
+                                            attestation checkbox and the 128/256 tier radios were removed (#369),
+                                            because neither reached the backend. */}
                                         {aeroCryptKind === 'aerocrypt' && (
                                             <div className="flex flex-col gap-1.5 mt-2 mb-4">
                                                 <label className="flex items-start gap-3 cursor-pointer group">

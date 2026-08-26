@@ -125,6 +125,23 @@ impl DigestState {
         self.read_challenge().nonce.clone()
     }
 
+    /// A short, log-safe prefix of the current nonce.
+    ///
+    /// Two things make the obvious `&state.nonce()[..12]` wrong here. `nonce()`
+    /// returns an owned String, so calling it twice (once to slice, once for the
+    /// bound) reads the shared challenge twice, and another worker may
+    /// re-negotiate in between: a short old nonce sliced at the new one's length
+    /// panics. And a byte index is not a character boundary, so a server sending
+    /// a non-ASCII nonce panics regardless of any race. One read, and cut on a
+    /// boundary.
+    fn nonce_prefix(&self) -> String {
+        let nonce = self.nonce();
+        match nonce.char_indices().nth(12) {
+            Some((cut, _)) => nonce[..cut].to_string(),
+            None => nonce,
+        }
+    }
+
     /// Adopt a rotated challenge from a `401 ... stale=true` response.
     ///
     /// Returns false when the header is not a usable Digest challenge, so the
@@ -947,7 +964,7 @@ impl WebDavProvider {
                 tracing::debug!(
                     "[WebDAV] PROPFIND 401, adopted rotated nonce for every worker (realm={}, nonce={}...)",
                     existing.realm(),
-                    &existing.nonce()[..existing.nonce().len().min(12)]
+                    existing.nonce_prefix()
                 );
             }
             None => {
@@ -957,7 +974,7 @@ impl WebDavProvider {
                 tracing::debug!(
                     "[WebDAV] PROPFIND 401 with Digest challenge, negotiating (realm={}, nonce={}...)",
                     state.realm(),
-                    &state.nonce()[..state.nonce().len().min(12)]
+                    state.nonce_prefix()
                 );
                 self.digest_auth = Some(state);
             }
@@ -2580,7 +2597,7 @@ impl StorageProvider for WebDavProvider {
                         "[WebDAV] Server requires Digest auth (realm: {}, qop: {}, nonce: {}...)",
                         state.realm(),
                         state.qop(),
-                        &state.nonce()[..state.nonce().len().min(12)]
+                        state.nonce_prefix()
                     );
                     self.digest_auth = Some(state);
 
@@ -5662,6 +5679,31 @@ mod tests {
             nc_of(&worker_b.authorization("GET", "/b", "u", "p")),
             "00000002"
         );
+    }
+
+    /// Pre-tag audit. Reading the nonce twice to slice it, once for the value
+    /// and once for the bound, races the very sharing this release introduced: a
+    /// worker re-negotiating between the two reads can leave a short string cut
+    /// at the new one's length. The byte index was never a character boundary
+    /// either, so a non-ASCII nonce panicked with no race at all.
+    #[test]
+    fn the_nonce_log_prefix_cannot_panic() {
+        let state = DigestState::parse(r#"Digest realm="r", nonce="short", qop="auth""#)
+            .expect("parse digest challenge");
+        assert_eq!(
+            state.nonce_prefix(),
+            "short",
+            "shorter than the cut stays whole"
+        );
+
+        assert!(state.renegotiate(r#"Digest realm="r", nonce="0123456789abcdef", qop="auth""#));
+        assert_eq!(state.nonce_prefix(), "0123456789ab", "longer is cut to 12");
+
+        // A server is free to send a non-ASCII nonce, and a byte cut inside a
+        // multi-byte character would panic.
+        assert!(state.renegotiate("Digest realm=\"r\", nonce=\"\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\", qop=\"auth\""));
+        let prefix = state.nonce_prefix();
+        assert_eq!(prefix.chars().count(), 12, "cut on characters, not bytes");
     }
 
     /// A header that is not a usable challenge must not be adopted: retrying

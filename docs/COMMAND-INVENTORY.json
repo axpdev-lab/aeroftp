@@ -160,9 +160,9 @@
       }
     ]
   },
-  "app_version": "4.1.7",
+  "app_version": "4.1.8",
   "cli": {
-    "count": 93,
+    "count": 94,
     "subcommands": [
       {
         "about": "Show detailed server info, account, and storage quota",
@@ -235,6 +235,10 @@
       {
         "about": "Verify local and remote directories are identical",
         "name": "check"
+      },
+      {
+        "about": "Inspect and prune the multipart resume records (transfer checkpoints)",
+        "name": "checkpoints"
       },
       {
         "about": "Remove orphaned .aerotmp files from interrupted downloads",
@@ -540,7 +544,7 @@
   },
   "counts": {
     "agent_tools": 39,
-    "cli_subcommands": 93,
+    "cli_subcommands": 94,
     "mcp_by_namespace": {
       "aeroftp_": 38,
       "other": 1,

@@ -55,6 +55,17 @@ jobs:
       - name: Frontend unit tests (vitest)
         run: npm run test:unit
 
+      - name: Command inventory is not stale (inventory --check)
+        working-directory: ./src-tauri
+        # `docs/COMMAND-INVENTORY.json` is a committed snapshot of the CLI, GUI
+        # and MCP command surfaces, and the drift check that compares it against
+        # the live binary already existed. Nothing ran it, so the snapshot went
+        # out of date the first time a subcommand was added and nobody noticed:
+        # at v4.1.8 it claimed 93 CLI subcommands against a binary with 94. A
+        # gate that exists but is never invoked is not a gate.
+        run: |
+          cargo run --quiet --bin aeroftp-cli -- inventory --check ../docs/COMMAND-INVENTORY.json
+
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
