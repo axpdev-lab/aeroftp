@@ -44,6 +44,7 @@ Four independent adversarial audits ran over the 111 commits behind this release
 - **A local process can no longer break an OAuth sign-in by reaching the callback port first.** The listener took one connection and handed on whatever arrived, so the real browser redirect found nothing listening.
 - **The generated command inventory no longer advertises commands the binary does not contain.**
 - **Security: h2 is bumped to 0.4.16**, closing RUSTSEC-2026-0258 (#597).
+- **Pre-tag commit audit: PASS.** Every commit in the cycle was reviewed again hours before the tag, in two independent lanes that each reviewed the other's work, on the principle that fixes are where new defects come from. It was right: three of the five findings were introduced by the fixes themselves. A shared Digest nonce read twice in a log line could panic mid-rotation, the checkpoint cap ran after the write it was meant to bound, and the OAuth callback read for thirty seconds per stray connection while the real redirect waited. A Tauri command with no caller was removed rather than left as an orphan export. The committed command-surface snapshot was stale, and the drift check that should have caught it turned out to exist while no workflow invoked it, so it is now wired into CI: a gate nobody runs is not a gate.
 
 #### Contributors
 [<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh) [<img src="https://github.com/roflhouse.png?size=48" width="48" height="48" alt="@roflhouse" />](https://github.com/roflhouse)
