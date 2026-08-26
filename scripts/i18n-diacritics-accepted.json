@@ -268,6 +268,8 @@
       "folded": "trang",
       "twin": "trạng",
       "reason": "Trang is page or site; the toned twin is an unrelated word."
-    }
+    },
+    "cy\u001fsettings.githubOauthDesc\u001fDevice Flow OAuth, dim angen Client ID": "Correct as written. The flagged word is 'Client' inside 'Client ID', which is the literal name of the field in GitHub's OAuth app settings and must stay in English so the user can match it on screen. Welsh 'client' in the ordinary sense is indeed spelled clïent, which is why it folds onto the six other occurrences in this file, but that is a different word from this identifier.",
+    "lv\u001fsyncPanel.schedulerTimeWindow\u001fLaika logs": "Correct as written. 'laika' is the genitive of 'laiks', which is the case Latvian needs for 'window OF time'. The form the detector prefers, 'laika' with a macron, is the locative and means 'in time' or 'during', a different sentence. The accented twin is more frequent in this file simply because it is the commoner form in prose, not because it is right here."
   }
 }

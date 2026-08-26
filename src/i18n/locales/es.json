@@ -4389,7 +4389,7 @@
             "ownerRepo": "Propietario / Repositorio",
             "personalAccessToken": "Personal Access Token",
             "commitMessage": "Mensaje del commit",
-            "commitMessagePlaceholder": "Update via AeroFTP",
+            "commitMessagePlaceholder": "Actualización mediante AeroFTP",
             "commitFiles": "Hacer commit de {count} archivo(s)",
             "branchSelector": "Rama",
             "writeModeDirect": "Push directo",
