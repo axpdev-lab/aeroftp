@@ -69,7 +69,7 @@
  *
  * Usage:
  *   node scripts/i18n-untranslated.mjs            # report, always exit 0
- *   node scripts/i18n-untranslated.mjs --max=1966 # exit 1 above the ratchet (CI)
+ *   node scripts/i18n-untranslated.mjs --max=465  # exit 1 above the ratchet (CI)
  *   node scripts/i18n-untranslated.mjs --strict   # exit 1 on ANY hit (the goal)
  *   node scripts/i18n-untranslated.mjs --all      # ignore the baseline
  *   node scripts/i18n-untranslated.mjs --json     # machine-readable, for the
