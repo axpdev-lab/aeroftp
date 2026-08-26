@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Privatnost šifriranja",
             "warnSameNameEncrypted": "Označi stavke istog naziva u šifriranim trezorima",
             "warnSameNameEncryptedDesc": "Prema zadanim postavkama isključeno. Unutar aktivnog AeroCrypt ili rclone-crypt sloja označi datoteke i mape čiji se naziv pojavljuje i na drugoj putanji koju posjetite. Nazivi se šifriraju deterministički, pa su identični nazivi vidljivi kao identični promatraču šifrirane pohrane (isti kompromis kao kod rclone-crypt i Cryptomator).",
-            "loading": "Učitavanje..."
+            "loading": "Učitavanje...",
+            "resumeRecords": "Zapisi nastavka",
+            "resumeRecordsDesc": "Prekinuti višedijelni prijenosi čuvaju mali zapis kako bi se mogli nastaviti. Pohrana ima gornju granicu, pa se pri popunjavanju odbacuje najstariji prijenos koji se može nastaviti. Oslobodite prostor brisanjem poslužitelja koji više ne koristite.",
+            "resumeRecordsEmpty": "Nema pohranjenih prekinutih prijenosa.",
+            "resumeColumnDestination": "Odredište",
+            "resumeColumnRecords": "Zapisi",
+            "resumeForget": "Zaboravi ovo odredište",
+            "resumeForgetConfirm": "Zaboravi"
         },
         "devtools": {
             "title": "AeroTools",

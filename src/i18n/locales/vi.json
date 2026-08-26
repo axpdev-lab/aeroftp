@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Quyền riêng tư mã hóa",
             "warnSameNameEncrypted": "Đánh dấu các mục trùng tên trong kho mã hóa",
             "warnSameNameEncryptedDesc": "Tắt theo mặc định. Bên trong lớp phủ AeroCrypt hoặc rclone-crypt đang hoạt động, hãy đánh dấu các tệp và thư mục có tên cũng xuất hiện ở một đường dẫn khác mà bạn truy cập. Tên được mã hóa theo cách xác định, nên các tên giống hệt nhau hiển thị giống hệt nhau đối với người quan sát kho lưu trữ đã mã hóa (cùng sự đánh đổi như rclone-crypt và Cryptomator).",
-            "loading": "Đang tải..."
+            "loading": "Đang tải...",
+            "resumeRecords": "Bản ghi tiếp tục",
+            "resumeRecordsDesc": "Các lần truyền nhiều phần bị gián đoạn giữ một bản ghi nhỏ để có thể tiếp tục. Kho lưu trữ có giới hạn trên, nên khi đầy thì lần truyền có thể tiếp tục cũ nhất sẽ bị loại bỏ. Hãy giải phóng chỗ bằng cách xóa một máy chủ bạn không còn dùng.",
+            "resumeRecordsEmpty": "Không có lần truyền bị gián đoạn nào được lưu.",
+            "resumeColumnDestination": "Đích",
+            "resumeColumnRecords": "Bản ghi",
+            "resumeForget": "Quên đích này",
+            "resumeForgetConfirm": "Quên"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Persónuvernd dulkóðunar",
             "warnSameNameEncrypted": "Merkja færslur með sama nafni í dulkóðuðum hvelfingum",
             "warnSameNameEncryptedDesc": "Sjálfgefið slökkt. Innan virks AeroCrypt eða rclone-crypt yfirlags skaltu merkja skrár og möppur sem bera nafn sem einnig birtist á annarri slóð sem þú heimsækir. Nöfn eru dulkóðuð með ákveðnum hætti, þannig að eins nöfn eru sýnileg sem eins fyrir áhorfanda dulkóðuðu geymslunnar (sama málamiðlun og rclone-crypt og Cryptomator).",
-            "loading": "Hleður..."
+            "loading": "Hleður...",
+            "resumeRecords": "Framhaldsfærslur",
+            "resumeRecordsDesc": "Rofnar fjölhluta flutningar geyma litla færslu svo hægt sé að halda þeim áfram. Geymslan hefur efri mörk, svo elsti flutningurinn sem hægt er að halda áfram er felldur niður þegar hún fyllist. Losaðu pláss með því að eyða netþjóni sem þú notar ekki lengur.",
+            "resumeRecordsEmpty": "Engir rofnir flutningar eru geymdir.",
+            "resumeColumnDestination": "Áfangastaður",
+            "resumeColumnRecords": "Færslur",
+            "resumeForget": "Gleyma þessum áfangastað",
+            "resumeForgetConfirm": "Gleyma"
         },
         "devtools": {
             "title": "AeroTools",

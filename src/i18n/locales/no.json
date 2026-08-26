@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Krypteringspersonvern",
             "warnSameNameEncrypted": "Merk oppføringer med samme navn i krypterte hvelv",
             "warnSameNameEncryptedDesc": "Av som standard. Inne i et aktivt AeroCrypt- eller rclone-crypt-overlegg merkes filer og mapper hvis navn også vises på en annen sti du besøker. Navn krypteres deterministisk, så identiske navn er synlige som identiske for en observatør av det krypterte lageret (den samme avveiningen som rclone-crypt og Cryptomator).",
-            "loading": "Laster..."
+            "loading": "Laster...",
+            "resumeRecords": "Gjenopptakingsposter",
+            "resumeRecordsDesc": "Avbrutte multipart-overføringer beholder en liten post slik at de kan gjenopptas. Lageret har en øvre grense, så den eldste overføringen som kan gjenopptas forkastes når det fylles. Frigjør plass ved å slette en tjener du ikke lenger bruker.",
+            "resumeRecordsEmpty": "Ingen avbrutte overføringer er lagret.",
+            "resumeColumnDestination": "Mål",
+            "resumeColumnRecords": "Poster",
+            "resumeForget": "Glem dette målet",
+            "resumeForgetConfirm": "Glem"
         },
         "devtools": {
             "title": "AeroTools",

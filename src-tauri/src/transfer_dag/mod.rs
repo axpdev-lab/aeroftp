@@ -12,6 +12,7 @@ pub mod aimd_hints;
 pub mod builder;
 pub mod capabilities;
 pub mod checkpoint;
+pub mod commands;
 pub mod engine_stats;
 pub mod error;
 pub mod executor;

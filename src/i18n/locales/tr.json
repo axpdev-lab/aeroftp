@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Şifreleme gizliliği",
             "warnSameNameEncrypted": "Şifreli kasalarda aynı adlı girişleri işaretle",
             "warnSameNameEncryptedDesc": "Varsayılan olarak kapalı. Etkin bir AeroCrypt veya rclone-crypt katmanı içinde, adı ziyaret ettiğiniz başka bir yolda da görünen dosya ve klasörleri işaretleyin. Adlar deterministik olarak şifrelenir, bu nedenle özdeş adlar şifreli deponun bir gözlemcisine özdeş olarak görünür (rclone-crypt ve Cryptomator ile aynı ödünleşim).",
-            "loading": "Yükleniyor..."
+            "loading": "Yükleniyor...",
+            "resumeRecords": "Sürdürme kayıtları",
+            "resumeRecordsDesc": "Kesintiye uğrayan çok parçalı aktarımlar, sürdürülebilmeleri için küçük bir kayıt tutar. Deponun bir üst sınırı vardır, dolduğunda en eski sürdürülebilir aktarım atılır. Artık kullanmadığınız bir sunucuyu silerek yer açın.",
+            "resumeRecordsEmpty": "Depoda kesintiye uğramış aktarım yok.",
+            "resumeColumnDestination": "Hedef",
+            "resumeColumnRecords": "Kayıtlar",
+            "resumeForget": "Bu hedefi unut",
+            "resumeForgetConfirm": "Unut"
         },
         "devtools": {
             "title": "AeroTools",

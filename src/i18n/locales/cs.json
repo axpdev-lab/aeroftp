@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Soukromí šifrování",
             "warnSameNameEncrypted": "Označit položky se stejným názvem v šifrovaných trezorech",
             "warnSameNameEncryptedDesc": "Ve výchozím nastavení vypnuto. Uvnitř aktivní vrstvy AeroCrypt nebo rclone-crypt označuj soubory a složky, jejichž název se objevuje i na jiné cestě, kterou navštívíte. Názvy se šifrují deterministicky, takže shodné názvy jsou pro pozorovatele šifrovaného úložiště viditelné jako shodné (stejný kompromis jako u rclone-crypt a Cryptomator).",
-            "loading": "Načítání..."
+            "loading": "Načítání...",
+            "resumeRecords": "Záznamy obnovení",
+            "resumeRecordsDesc": "Přerušené vícedílné přenosy si uchovávají malý záznam, aby je bylo možné obnovit. Úložiště má strop, takže po zaplnění se nejstarší obnovitelný přenos zahodí. Uvolněte místo smazáním serveru, který už nepoužíváte.",
+            "resumeRecordsEmpty": "Nejsou uloženy žádné přerušené přenosy.",
+            "resumeColumnDestination": "Cíl",
+            "resumeColumnRecords": "Záznamy",
+            "resumeForget": "Zapomenout tento cíl",
+            "resumeForgetConfirm": "Zapomenout"
         },
         "devtools": {
             "title": "AeroTools",

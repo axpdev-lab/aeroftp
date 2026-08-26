@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Šifravimo privatumas",
             "warnSameNameEncrypted": "Pažymėti to paties pavadinimo įrašus šifruotose saugyklose",
             "warnSameNameEncryptedDesc": "Pagal numatytuosius nustatymus išjungta. Aktyviame AeroCrypt arba rclone-crypt sluoksnyje pažymėkite failus ir aplankus, kurių pavadinimas taip pat pasirodo kitame jūsų lankomame kelyje. Pavadinimai šifruojami deterministiškai, todėl vienodi pavadinimai šifruotos saugyklos stebėtojui matomi kaip vienodi (tas pats kompromisas kaip rclone-crypt ir Cryptomator).",
-            "loading": "Įkeliama..."
+            "loading": "Įkeliama...",
+            "resumeRecords": "Tęsimo įrašai",
+            "resumeRecordsDesc": "Nutrūkę kelių dalių perdavimai išsaugo nedidelį įrašą, kad juos būtų galima tęsti. Saugykla turi viršutinę ribą, todėl jai užsipildžius seniausias tęsiamas perdavimas atmetamas. Atlaisvinkite vietos ištrindami serverį, kurio nebenaudojate.",
+            "resumeRecordsEmpty": "Nutrūkusių perdavimų nėra išsaugota.",
+            "resumeColumnDestination": "Paskirtis",
+            "resumeColumnRecords": "Įrašai",
+            "resumeForget": "Pamiršti šią paskirtį",
+            "resumeForgetConfirm": "Pamiršti"
         },
         "devtools": {
             "title": "AeroTools",

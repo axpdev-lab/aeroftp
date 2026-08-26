@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "加密隐私",
             "warnSameNameEncrypted": "在加密保险库中标记同名条目",
             "warnSameNameEncryptedDesc": "默认关闭。在活动的 AeroCrypt 或 rclone-crypt 覆盖层中，标记名称也出现在你访问的另一个路径中的文件和文件夹。名称采用确定性加密，因此相同的名称对加密存储的观察者来说显示为相同（与 rclone-crypt 和 Cryptomator 相同的权衡）。",
-            "loading": "加载中..."
+            "loading": "加载中...",
+            "resumeRecords": "续传记录",
+            "resumeRecordsDesc": "中断的分片传输会保留一条小记录以便续传。该存储有上限，写满后会丢弃最旧的可续传传输。删除不再使用的服务器即可腾出空间。",
+            "resumeRecordsEmpty": "没有已存储的中断传输。",
+            "resumeColumnDestination": "目标",
+            "resumeColumnRecords": "记录",
+            "resumeForget": "忘记此目标",
+            "resumeForgetConfirm": "忘记"
         },
         "devtools": {
             "title": "AeroTools",

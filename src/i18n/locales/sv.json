@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Krypteringsintegritet",
             "warnSameNameEncrypted": "Flagga poster med samma namn i krypterade valv",
             "warnSameNameEncryptedDesc": "Av som standard. Inuti ett aktivt AeroCrypt- eller rclone-crypt-överlägg markeras filer och mappar vars namn även visas på en annan sökväg du besöker. Namn krypteras deterministiskt, så identiska namn syns som identiska för en observatör av det krypterade lagret (samma avvägning som rclone-crypt och Cryptomator).",
-            "loading": "Laddar..."
+            "loading": "Laddar...",
+            "resumeRecords": "Återupptagningsposter",
+            "resumeRecordsDesc": "Avbrutna multipart-överföringar sparar en liten post så att de kan återupptas. Lagringen har en övre gräns, så den äldsta överföring som kan återupptas kastas när den fylls. Frigör plats genom att radera en server du inte längre använder.",
+            "resumeRecordsEmpty": "Inga avbrutna överföringar är sparade.",
+            "resumeColumnDestination": "Mål",
+            "resumeColumnRecords": "Poster",
+            "resumeForget": "Glöm detta mål",
+            "resumeForgetConfirm": "Glöm"
         },
         "devtools": {
             "title": "AeroTools",

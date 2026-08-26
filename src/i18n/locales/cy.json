@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Preifatrwydd amgryptio",
             "warnSameNameEncrypted": "Nodi cofnodion â'r un enw mewn claddgelloedd wedi'u hamgryptio",
             "warnSameNameEncryptedDesc": "Wedi'i ddiffodd yn ddiofyn. O fewn troshaen AeroCrypt neu rclone-crypt gweithredol, marciwch ffeiliau a ffolderi y mae eu henw hefyd yn ymddangos ar lwybr arall rydych chi'n ymweld ag ef. Mae enwau'n cael eu hamgryptio'n benderfyniadol, felly mae enwau union yr un fath yn weladwy fel rhai union i arsylwr o'r storfa wedi'i hamgryptio (yr un cyfaddawd â rclone-crypt a Cryptomator).",
-            "loading": "Yn llwytho..."
+            "loading": "Yn llwytho...",
+            "resumeRecords": "Cofnodion ailddechrau",
+            "resumeRecordsDesc": "Mae trosglwyddiadau amlran a dorrwyd ar eu traws yn cadw cofnod bach fel y gellir eu hailddechrau. Mae terfyn ar y storfa, felly pan fydd yn llenwi caiff y trosglwyddiad hynaf y gellir ei ailddechrau ei daflu. Gwnewch le drwy ddileu gweinydd nad ydych yn ei ddefnyddio mwyach.",
+            "resumeRecordsEmpty": "Nid oes trosglwyddiadau a dorrwyd ar eu traws wedi'u cadw.",
+            "resumeColumnDestination": "Cyrchfan",
+            "resumeColumnRecords": "Cofnodion",
+            "resumeForget": "Anghofio'r gyrchfan hon",
+            "resumeForgetConfirm": "Anghofio"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "암호화 개인정보 보호",
             "warnSameNameEncrypted": "암호화된 볼트에서 같은 이름의 항목 표시",
             "warnSameNameEncryptedDesc": "기본적으로 꺼짐. 활성화된 AeroCrypt 또는 rclone-crypt 오버레이 내에서 방문한 다른 경로에도 이름이 나타나는 파일과 폴더를 표시합니다. 이름은 결정론적으로 암호화되므로 동일한 이름은 암호화된 저장소의 관찰자에게 동일하게 보입니다(rclone-crypt 및 Cryptomator와 동일한 절충안).",
-            "loading": "로딩 중..."
+            "loading": "로딩 중...",
+            "resumeRecords": "이어받기 기록",
+            "resumeRecordsDesc": "중단된 멀티파트 전송은 이어받을 수 있도록 작은 기록을 남깁니다. 저장 공간에는 상한이 있어 가득 차면 가장 오래된 이어받기 가능 전송이 삭제됩니다. 더 이상 사용하지 않는 서버를 지워 공간을 확보하세요.",
+            "resumeRecordsEmpty": "저장된 중단 전송이 없습니다.",
+            "resumeColumnDestination": "대상",
+            "resumeColumnRecords": "기록",
+            "resumeForget": "이 대상 삭제",
+            "resumeForgetConfirm": "삭제"
         },
         "devtools": {
             "title": "AeroTools",

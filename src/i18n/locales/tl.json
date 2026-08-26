@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Privacy ng pag-encrypt",
             "warnSameNameEncrypted": "Markahan ang mga entry na parehong pangalan sa mga naka-encrypt na vault",
             "warnSameNameEncryptedDesc": "Naka-off bilang default. Sa loob ng aktibong AeroCrypt o rclone-crypt overlay, markahan ang mga file at folder na ang pangalan ay lumalabas din sa ibang landas na binibisita mo. Deterministikong naka-encrypt ang mga pangalan, kaya ang magkaparehong pangalan ay nakikitang magkapareho ng isang tagamasid ng naka-encrypt na imbakan (ang parehong trade-off gaya ng rclone-crypt at Cryptomator).",
-            "loading": "Naglo-load..."
+            "loading": "Naglo-load...",
+            "resumeRecords": "Mga tala ng pagpapatuloy",
+            "resumeRecordsDesc": "Ang mga naantalang multipart na paglilipat ay nag-iingat ng maliit na tala upang maipagpatuloy ang mga ito. May itaas na hangganan ang imbakan, kaya kapag napuno ay itinatapon ang pinakamatandang paglilipat na maaaring ipagpatuloy. Magbakante ng espasyo sa pamamagitan ng pagbura ng server na hindi mo na ginagamit.",
+            "resumeRecordsEmpty": "Walang nakaimbak na naantalang paglilipat.",
+            "resumeColumnDestination": "Patutunguhan",
+            "resumeColumnRecords": "Mga tala",
+            "resumeForget": "Kalimutan ang patutunguhang ito",
+            "resumeForgetConfirm": "Kalimutan"
         },
         "devtools": {
             "title": "AeroTools",

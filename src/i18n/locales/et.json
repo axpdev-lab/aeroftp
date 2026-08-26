@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Krüpteerimise privaatsus",
             "warnSameNameEncrypted": "Märgi sama nimega kirjed krüpteeritud hoidlates",
             "warnSameNameEncryptedDesc": "Vaikimisi väljas. Aktiivse AeroCrypt või rclone-crypt kihi sees märgi failid ja kaustad, mille nimi esineb ka teisel teel, mida külastad. Nimed krüpteeritakse deterministlikult, seega on identsed nimed krüpteeritud salvestusruumi vaatlejale nähtavad identsetena (sama kompromiss nagu rclone-crypt ja Cryptomator puhul).",
-            "loading": "Laadimine..."
+            "loading": "Laadimine...",
+            "resumeRecords": "Jätkamiskirjed",
+            "resumeRecordsDesc": "Katkenud mitmeosalised ülekanded hoiavad väikest kirjet, et neid saaks jätkata. Hoidlal on ülempiir, seega täitumisel visatakse kõrvale vanim jätkatav ülekanne. Vabastage ruumi, kustutades serveri, mida te enam ei kasuta.",
+            "resumeRecordsEmpty": "Katkenud ülekandeid ei ole salvestatud.",
+            "resumeColumnDestination": "Sihtkoht",
+            "resumeColumnRecords": "Kirjed",
+            "resumeForget": "Unusta see sihtkoht",
+            "resumeForgetConfirm": "Unusta"
         },
         "devtools": {
             "title": "AeroTools",

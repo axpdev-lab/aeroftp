@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Faragha ya usimbaji",
             "warnSameNameEncrypted": "Weka alama kwenye vipengele venye jina moja katika hifadhi zilizosimbwa",
             "warnSameNameEncryptedDesc": "Imezimwa kwa chaguomsingi. Ndani ya safu amilifu ya AeroCrypt au rclone-crypt, weka alama kwenye faili na folda ambazo jina lake pia linaonekana kwenye njia nyingine unayotembelea. Majina yanasimbwa kwa njia ya kubainika, hivyo majina yanayofanana yanaonekana yakifanana kwa mtazamaji wa hifadhi iliyosimbwa (mbadala uleule kama rclone-crypt na Cryptomator).",
-            "loading": "Inapakia..."
+            "loading": "Inapakia...",
+            "resumeRecords": "Rekodi za kuendeleza",
+            "resumeRecordsDesc": "Uhamishaji wa sehemu nyingi uliokatizwa huhifadhi rekodi ndogo ili uweze kuendelezwa. Hifadhi ina kikomo cha juu, kwa hivyo ikijaa uhamishaji wa zamani zaidi unaoweza kuendelezwa hutupwa. Toa nafasi kwa kufuta seva ambayo hutumii tena.",
+            "resumeRecordsEmpty": "Hakuna uhamishaji uliokatizwa uliohifadhiwa.",
+            "resumeColumnDestination": "Lengwa",
+            "resumeColumnRecords": "Rekodi",
+            "resumeForget": "Sahau lengwa hili",
+            "resumeForgetConfirm": "Sahau"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Šifrēšanas konfidencialitāte",
             "warnSameNameEncrypted": "Atzīmēt ierakstus ar tādu pašu nosaukumu šifrētās glabātavās",
             "warnSameNameEncryptedDesc": "Pēc noklusējuma izslēgts. Aktīvā AeroCrypt vai rclone-crypt pārklājumā atzīmējiet failus un mapes, kuru nosaukums parādās arī citā apmeklētajā ceļā. Nosaukumi tiek šifrēti deterministiski, tāpēc identiski nosaukumi šifrētās krātuves novērotājam ir redzami kā identiski (tāds pats kompromiss kā rclone-crypt un Cryptomator).",
-            "loading": "Ielādē..."
+            "loading": "Ielādē...",
+            "resumeRecords": "Atsākšanas ieraksti",
+            "resumeRecordsDesc": "Pārtrauktie vairākdaļu pārsūtījumi saglabā nelielu ierakstu, lai tos varētu atsākt. Krātuvei ir augšējā robeža, tāpēc, kad tā piepildās, vecākais atsākamais pārsūtījums tiek atmests. Atbrīvojiet vietu, dzēšot serveri, kuru vairs nelietojat.",
+            "resumeRecordsEmpty": "Nav saglabātu pārtrauktu pārsūtījumu.",
+            "resumeColumnDestination": "Galamērķis",
+            "resumeColumnRecords": "Ieraksti",
+            "resumeForget": "Aizmirst šo galamērķi",
+            "resumeForgetConfirm": "Aizmirst"
         },
         "devtools": {
             "title": "AeroTools",

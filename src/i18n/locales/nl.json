@@ -1142,7 +1142,14 @@
             "encryptionPrivacyTitle": "Privacy van versleuteling",
             "warnSameNameEncrypted": "Markeer items met dezelfde naam in versleutelde kluizen",
             "warnSameNameEncryptedDesc": "Standaard uit. Markeer binnen een actieve AeroCrypt- of rclone-crypt-overlay bestanden en mappen waarvan de naam ook voorkomt op een ander pad dat je bezoekt. Namen worden deterministisch versleuteld, dus identieke namen zijn zichtbaar als identiek voor een waarnemer van de versleutelde opslag (dezelfde afweging als rclone-crypt en Cryptomator).",
-            "loading": "Laden..."
+            "loading": "Laden...",
+            "resumeRecords": "Hervattingsgegevens",
+            "resumeRecordsDesc": "Onderbroken multipart-overdrachten bewaren een klein record om te kunnen hervatten. De opslag heeft een limiet, dus de oudste hervatbare overdracht vervalt zodra die vol is. Maak ruimte door een server te wissen die u niet meer gebruikt.",
+            "resumeRecordsEmpty": "Geen onderbroken overdrachten opgeslagen.",
+            "resumeColumnDestination": "Bestemming",
+            "resumeColumnRecords": "Records",
+            "resumeForget": "Deze bestemming vergeten",
+            "resumeForgetConfirm": "Vergeten"
         },
         "devtools": {
             "title": "AeroTools",

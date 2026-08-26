@@ -554,7 +554,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 846
+    "tauri_commands": 848
   },
   "mcp": {
     "count": 77,
@@ -1316,9 +1316,11 @@
       "speedtest_history_clear",
       "process_image",
       "infinicloud_discover",
-      "infinicloud_quota"
+      "infinicloud_quota",
+      "checkpoint_endpoints",
+      "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 368,
+    "name_unmatched_count": 370,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -2169,8 +2171,10 @@
       "mount_install_autostart",
       "mount_uninstall_autostart",
       "mount_autostart_blocked",
-      "mount_open_quick"
+      "mount_open_quick",
+      "checkpoint_endpoints",
+      "checkpoint_forget_endpoint"
     ],
-    "count": 846
+    "count": 848
   }
 }

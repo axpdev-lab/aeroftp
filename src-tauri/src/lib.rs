@@ -20431,6 +20431,8 @@ pub fn run() {
             mount_uninstall_autostart,
             mount_autostart_blocked,
             mount_open_quick,
+            transfer_dag::commands::checkpoint_endpoints,
+            transfer_dag::commands::checkpoint_forget_endpoint,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
