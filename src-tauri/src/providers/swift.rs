@@ -734,10 +734,16 @@ impl SwiftProvider {
     /// the first listing after connecting sent `./` and every Swift account
     /// looked empty in the app while the CLI, which passes `/`, worked.
     fn normalize_path(path: &str) -> String {
+        // Leading and trailing slashes are framing and go, exactly as the
+        // original trim did. Repeated slashes INSIDE the path do not: a Swift
+        // object name is an opaque key, so `a//b` and `a/b` name two different
+        // objects and collapsing them would point rename, copy and delete at
+        // the wrong one. Only `.` and `..` are resolved, because the GUI opens
+        // a session on `.` and a relative segment has no meaning to the server.
         let mut segments: Vec<&str> = Vec::new();
-        for segment in path.split('/') {
+        for segment in path.trim_matches('/').split('/') {
             match segment {
-                "" | "." => {}
+                "." => {}
                 ".." => {
                     segments.pop();
                 }
@@ -1702,6 +1708,25 @@ mod tests {
         assert_eq!(SwiftProvider::normalize_path("foo"), "foo");
         assert_eq!(SwiftProvider::normalize_path("/foo/bar/"), "foo/bar");
         assert_eq!(SwiftProvider::normalize_path("/a/b/c"), "a/b/c");
+    }
+
+    /// A Swift object name is an opaque key, so a repeated slash inside it is
+    /// part of the name and not punctuation to tidy away. The first cut of the
+    /// dot-path fix dropped every empty segment, which silently turned `a//b`
+    /// into `a/b`: listing kept the server's name while rename, copy and delete
+    /// went through the normalizer and addressed a different object. Raised by
+    /// CodeRabbit on the pull request that introduced it.
+    #[test]
+    fn normalize_path_keeps_repeated_slashes_inside_the_name() {
+        assert_eq!(SwiftProvider::normalize_path("a//b"), "a//b");
+        assert_eq!(SwiftProvider::normalize_path("/a//b/"), "a//b");
+        assert_eq!(
+            SwiftProvider::normalize_path("dir//sub///file.txt"),
+            "dir//sub///file.txt"
+        );
+        // Framing still goes, and the dot segments still resolve around them.
+        assert_eq!(SwiftProvider::normalize_path("//a//b//"), "a//b");
+        assert_eq!(SwiftProvider::normalize_path("a//./b"), "a//b");
     }
 
     #[test]
