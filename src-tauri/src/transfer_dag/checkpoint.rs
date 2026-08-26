@@ -27,7 +27,26 @@ pub const DEFAULT_CHECKPOINT_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 6
 /// resumable transfers. The documented cost is that the oldest resumable
 /// transfer can be dropped once the store is full of resumable records; the
 /// explicit escape for a decommissioned endpoint is `forget_endpoint`.
+///
+/// A just-opened resumable record sorts after older occupants for
+/// `DEFAULT_CHECKPOINT_EVICT_GRACE`, so two concurrent `open_or_create` calls
+/// at a full store prefer not to delete each other's opening record. Terminal
+/// residue is always first: a commit that just finished is the thing the
+/// cap exists to reclaim. The grace is an ordering, not a refused open: a
+/// fan-out that fills the 256 slots with fresh in-flight records still
+/// evicts the oldest of them and the 257th open succeeds.
 pub const DEFAULT_CHECKPOINT_MAX_RECORDS: usize = 256;
+
+/// Window during which a non-terminal record sorts after older eviction
+/// candidates. Two `enforce_cap` calls that share a saturated store of
+/// same-second timestamps could otherwise pick each other's just-persisted
+/// opening record: the previous sort was terminal-first then oldest, and
+/// equal timestamps fell through to readdir order. A lock file would
+/// serialize every multipart open. Preferring older occupants is enough
+/// when any exist; when every occupant is still inside this window the
+/// cap still holds by evicting the oldest of them, which is the documented
+/// cost of a full store of resumable records.
+pub const DEFAULT_CHECKPOINT_EVICT_GRACE: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckpointSourceIdentity {
@@ -483,6 +502,10 @@ impl TransferCheckpointStore {
     /// the oldest resumable records, and never the record identified by `keep`
     /// (the one being opened). An unreadable or corrupt entry still occupies a
     /// slot, so it is treated as the oldest evictable residue and reclaimed.
+    /// Non-terminal records newer than `DEFAULT_CHECKPOINT_EVICT_GRACE` sort
+    /// after older occupants so a concurrent opener is not the first pick.
+    /// They are still evicted if nothing older is available: the cap is a
+    /// bound, not a refused open.
     fn enforce_cap(&self, keep: &str) -> Result<(), String> {
         // First pass collects paths only. The store is under its cap on the
         // overwhelming majority of opens, and in that case this function has to
@@ -513,20 +536,39 @@ impl TransferCheckpointStore {
         // Only now, and only because an eviction is actually happening, is the
         // parse worth paying for: terminality is the one fact the directory
         // cannot supply, and it is what orders the eviction.
-        let mut records: Vec<(PathBuf, bool, u64)> = paths
+        let now = now_secs();
+        let grace = DEFAULT_CHECKPOINT_EVICT_GRACE.as_secs();
+        let mut records: Vec<(PathBuf, bool, u64, bool)> = paths
             .into_iter()
             .map(|path| match self.load_path(&path) {
-                Ok(Some(record)) => (path, record.status.is_terminal(), record.updated_unix_secs),
+                Ok(Some(record)) => {
+                    let terminal = record.status.is_terminal();
+                    let ts = record.updated_unix_secs;
+                    // A just-persisted in-flight record belongs to a concurrent
+                    // open and sorts last. Terminal residue is never delayed:
+                    // reclaiming it is the point of the cap.
+                    let fresh = !terminal && now.saturating_sub(ts) < grace;
+                    (path, terminal, ts, fresh)
+                }
                 // Corrupt or vanished: count it as the oldest terminal residue so
                 // the cap can reclaim the slot rather than being wedged by it.
-                Ok(None) | Err(_) => (path, true, 0),
+                Ok(None) | Err(_) => (path, true, 0, false),
             })
             .collect();
-        // Terminal residue (0) before resumable (1); within each, oldest first.
+        // Terminal (0), then aged resumable (1), then in-grace resumable (2);
+        // within each, oldest first. Fresh records are last, not skipped: a
+        // store of 256 in-flight opens still accepts the 257th.
         records.sort_by(|a, b| {
-            let ta = u8::from(!a.1);
-            let tb = u8::from(!b.1);
-            ta.cmp(&tb).then(a.2.cmp(&b.2))
+            let rank = |terminal: bool, fresh: bool| -> u8 {
+                if terminal {
+                    0
+                } else if fresh {
+                    2
+                } else {
+                    1
+                }
+            };
+            rank(a.1, a.3).cmp(&rank(b.1, b.3)).then(a.2.cmp(&b.2))
         });
         // Ignoring every unlink error made the advertised hard cap a claim
         // rather than a bound: a candidate that cannot be deleted (permissions,
@@ -536,7 +578,7 @@ impl TransferCheckpointStore {
         // fail only when the target cannot be met at all.
         let mut removed = 0usize;
         let mut failures: Vec<String> = Vec::new();
-        for (path, _, _) in records {
+        for (path, _, _, _) in records {
             if removed == evict {
                 break;
             }
@@ -1218,6 +1260,98 @@ mod tests {
         assert!(!present.contains(&resumable_old.transfer_key));
     }
 
+    /// R-01. When an older occupant exists, a concurrent open must evict that
+    /// one rather than a sibling still inside the grace window.
+    #[test]
+    fn cap_prefers_an_old_record_over_a_fresh_sibling() {
+        let temp = TempDir::new().unwrap();
+        let store =
+            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, 2).unwrap();
+        let now = now_secs();
+        let aged = now.saturating_sub(DEFAULT_CHECKPOINT_EVICT_GRACE.as_secs() + 1);
+        let old = record_at("/old.bin", CheckpointStatus::Transferring, aged);
+        let fresh = record_at("/fresh.bin", CheckpointStatus::Transferring, now);
+        store.persist(&old).unwrap();
+        store.persist(&fresh).unwrap();
+        store
+            .enforce_cap("opening-key-not-on-disk")
+            .expect("cap must still hold");
+        let present = present_keys(temp.path());
+        assert_eq!(present.len(), 1);
+        assert!(
+            present.contains(&fresh.transfer_key),
+            "the in-grace sibling is not the first pick"
+        );
+        assert!(!present.contains(&old.transfer_key));
+    }
+
+    /// A DAG fan-out that fills the cap with in-flight records inside the
+    /// grace window must still accept the next open. The cap holds by
+    /// dropping the oldest occupant, which is the documented cost; the open
+    /// itself must not fail.
+    #[test]
+    fn cap_still_holds_when_every_occupant_is_within_grace() {
+        let temp = TempDir::new().unwrap();
+        let store =
+            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, 2).unwrap();
+        let now = now_secs();
+        let older = record_at(
+            "/a.bin",
+            CheckpointStatus::Transferring,
+            now.saturating_sub(1),
+        );
+        let newer = record_at("/b.bin", CheckpointStatus::Transferring, now);
+        store.persist(&older).unwrap();
+        store.persist(&newer).unwrap();
+        store
+            .enforce_cap("opening-key-not-on-disk")
+            .expect("a full store of fresh records must not refuse the next open");
+        let present = present_keys(temp.path());
+        assert_eq!(present.len(), 1, "the cap still holds");
+        assert!(present.contains(&newer.transfer_key));
+        assert!(!present.contains(&older.transfer_key));
+    }
+
+    /// A commit that just finished is residue, not an in-flight opener. The
+    /// grace window does not protect it.
+    #[test]
+    fn cap_still_evicts_fresh_terminal_residue() {
+        let temp = TempDir::new().unwrap();
+        let store =
+            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, 2).unwrap();
+        let now = now_secs();
+        let terminal = record_at("/done.bin", CheckpointStatus::Committed, now);
+        let live = record_at("/live.bin", CheckpointStatus::Transferring, now);
+        store.persist(&terminal).unwrap();
+        store.persist(&live).unwrap();
+        store
+            .enforce_cap("opening-key-not-on-disk")
+            .expect("terminal residue must still be reclaimable");
+        let present = present_keys(temp.path());
+        assert_eq!(present.len(), 1);
+        assert!(present.contains(&live.transfer_key));
+        assert!(!present.contains(&terminal.transfer_key));
+    }
+
+    #[test]
+    fn cap_evicts_a_resumable_record_once_the_grace_expires() {
+        let temp = TempDir::new().unwrap();
+        let store =
+            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, 2).unwrap();
+        let expired = now_secs().saturating_sub(DEFAULT_CHECKPOINT_EVICT_GRACE.as_secs() + 1);
+        let older = record_at("/old.bin", CheckpointStatus::Transferring, expired - 10);
+        let newer = record_at("/new.bin", CheckpointStatus::Transferring, expired);
+        store.persist(&older).unwrap();
+        store.persist(&newer).unwrap();
+        store
+            .enforce_cap("opening-key-not-on-disk")
+            .expect("expired records are ordinary eviction candidates");
+        let present = present_keys(temp.path());
+        assert_eq!(present.len(), 1);
+        assert!(present.contains(&newer.transfer_key));
+        assert!(!present.contains(&older.transfer_key));
+    }
+
     /// Pre-tag audit. Making the cap fail loudly created a worse failure than
     /// the one it fixed: the record was persisted FIRST, so a store that could
     /// not evict returned an error to the caller with the new record already on
@@ -1298,7 +1432,15 @@ mod tests {
                 remote_path: p.into(),
                 ..destination()
             };
-            store.open_or_create(source(), dest, layout()).unwrap();
+            let mut rec = store
+                .open_or_create(source(), dest, layout())
+                .unwrap()
+                .checkpoint;
+            // Age them past the grace window so this test is about unlink
+            // success, not about protecting a concurrent opener.
+            rec.updated_unix_secs = now_secs()
+                .saturating_sub(DEFAULT_CHECKPOINT_EVICT_GRACE.as_secs().saturating_add(1));
+            store.persist(&rec).unwrap();
         }
         // A third open must evict one and succeed while the directory is writable.
         let dest = CheckpointDestinationIdentity {
