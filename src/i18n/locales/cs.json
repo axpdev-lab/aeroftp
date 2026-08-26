@@ -73,12 +73,12 @@
             "password": "Heslo",
             "default": "Výchozí",
             "add": "Přidat",
-            "apply": "Pouzit",
+            "apply": "Použít",
             "later": "Později",
             "path": "Cesta",
             "remove": "Odebrat",
             "reset": "Resetovat",
-            "saved": "Ulozeno",
+            "saved": "Uloženo",
             "saving": "Ukládání...",
             "creating": "Vytváření..."
         },
@@ -1142,7 +1142,7 @@
             "encryptionPrivacyTitle": "Soukromí šifrování",
             "warnSameNameEncrypted": "Označit položky se stejným názvem v šifrovaných trezorech",
             "warnSameNameEncryptedDesc": "Ve výchozím nastavení vypnuto. Uvnitř aktivní vrstvy AeroCrypt nebo rclone-crypt označuj soubory a složky, jejichž název se objevuje i na jiné cestě, kterou navštívíte. Názvy se šifrují deterministicky, takže shodné názvy jsou pro pozorovatele šifrovaného úložiště viditelné jako shodné (stejný kompromis jako u rclone-crypt a Cryptomator).",
-            "loading": "Nacitani..."
+            "loading": "Načítání..."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2195,7 +2195,7 @@
             "aerosyncScriptExportButton": "Exportovat skript",
             "aerosyncScriptExportedToast": "Skript AeroSync exportován",
             "aerosyncScriptImportedToast": "Skript AeroSync importován",
-            "aerosyncScriptAlsoWrapper": "Take vygenerovat OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptAlsoWrapper": "Také vygenerovat OS-native wrapper (.ps1 / .sh)",
             "aerosyncScriptFromWrapper": "(z wrapperu)",
             "aerosyncScriptUnmappedFields": "Nerozpoznana metadata pole",
             "aerosyncScriptApplyButton": "Uložit jako preset",

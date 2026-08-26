@@ -571,7 +571,7 @@
             "crossProfile": {
                 "title": "Profiluebergreifende Uebertragung",
                 "subtitle": "Kopiere Dateien direkt zwischen zwei gespeicherten Servern.",
-                "closeAria": "Profiluebergreifendes Uebertragungspanel schliessen",
+                "closeAria": "Profilübergreifendes Übertragungspanel schließen",
                 "source": "Quelle",
                 "destination": "Ziel",
                 "chooseProfile": "Gespeichertes Profil waehlen",
@@ -4073,7 +4073,7 @@
             "direction": "Richtung",
             "size": "Groesse",
             "applySync": "Synchronisierung anwenden",
-            "close": "Schliessen",
+            "close": "Schließen",
             "allInSync": "Alle Dateien sind synchron",
             "filesToVault": "Datei(en) zum Vault synchronisiert",
             "filesToLocal": "Datei(en) lokal extrahiert",

@@ -78,7 +78,7 @@
             "path": "Chemin",
             "remove": "Supprimer",
             "reset": "Réinitialiser",
-            "saved": "Enregistre",
+            "saved": "Enregistré",
             "saving": "Enregistrement...",
             "creating": "Création..."
         },
@@ -1494,7 +1494,7 @@
             "knownHosts": "Hotes connus",
             "active": "Actif",
             "inactive": "Inactif",
-            "found": "Trouve",
+            "found": "Trouvé",
             "notFound": "Non trouvé",
             "copyToClipboard": "Copier dans le presse-papiers",
             "license": "Licence",
@@ -2070,7 +2070,7 @@
             "close": "Fermer",
             "reportSuccess": "Synchronisation terminée avec succès",
             "reportPartial": "Synchronisation terminée avec des erreurs",
-            "reportUploaded": "Envoyes",
+            "reportUploaded": "Envoyés",
             "reportDownloaded": "Telecharges",
             "reportSkipped": "Ignorés",
             "reportTransferred": "Transférés",
@@ -2085,7 +2085,7 @@
             "errorBreakdown": "Détail des erreurs",
             "retryable": "repetable",
             "errorKind": {
-                "network": "Reseau",
+                "network": "Réseau",
                 "auth": "Authentification",
                 "path_not_found": "Non trouvé",
                 "permission_denied": "Permission refusée",
@@ -2265,7 +2265,7 @@
             "downloadComplete": "Téléchargement terminé !",
             "openFolder": "Ouvrir dans le gestionnaire de fichiers",
             "retry": "Réessayer le téléchargement",
-            "installRestart": "Installer et redemarrer",
+            "installRestart": "Installer et redémarrer",
             "openInstaller": "Ouvrir l'installateur",
             "skipForNow": "Plus tard, pas maintenant",
             "installing": "Installation de la mise à jour...",
@@ -2356,9 +2356,9 @@
             "toolApproval": {
                 "highRisk": "Opération à haut risque",
                 "requiresConfirmation": "Confirmation requise",
-                "toolExecution": "Execution de l'outil",
+                "toolExecution": "Exécution de l'outil",
                 "preview": "Aperçu : {preview}",
-                "executing": "Execution en cours...",
+                "executing": "Exécution en cours...",
                 "completed": "Terminé",
                 "errorPrefix": "Erreur : {error}",
                 "confirmDelete": "Confirmer la suppression",
@@ -2424,7 +2424,7 @@
                 "codeReview": "Revue de code",
                 "codeReviewDesc": "Revision, refactorisation, suggestions d'amelioration",
                 "quickAnswer": "Réponse rapide",
-                "quickAnswerDesc": "Questions simples, reponses courtes",
+                "quickAnswerDesc": "Questions simples, réponses courtes",
                 "fileAnalysis": "Analyse de fichiers",
                 "fileAnalysisDesc": "Analyse du contenu des fichiers, compréhension du code",
                 "terminalCommands": "Commandes terminal",
@@ -2478,7 +2478,7 @@
                 "fetchModelsAdded": "Ajouté",
                 "macros": "Macros",
                 "macroName": "Nom de la macro",
-                "macroSteps": "Etapes",
+                "macroSteps": "Étapes",
                 "macroParams": "Paramètres",
                 "noMacros": "Aucune macro configurée",
                 "baseUrl": "URL de base",
@@ -2562,7 +2562,7 @@
                 "pending": "en attente d'approbation",
                 "toolCall": "appel d'outil",
                 "toolCalls": "appels d'outils",
-                "running": "Execution...",
+                "running": "Exécution...",
                 "done": "Terminé",
                 "failed": "Échoué",
                 "allowThis": "Autoriser cet outil"
@@ -2573,7 +2573,7 @@
                 "cancel": "Annuler"
             },
             "tool": {
-                "running": "Execution...",
+                "running": "Exécution...",
                 "done": "Terminé",
                 "failed": "Échoué",
                 "confirm": "Confirmer",
@@ -2629,7 +2629,7 @@
             "costBudget": {
                 "conversationCost": "Coût de la conversation",
                 "tokens": "Tokens",
-                "requests": "Requetes",
+                "requests": "Requêtes",
                 "monthlyBudget": "Budget mensuel",
                 "budgetExhausted": "Budget mensuel epuise",
                 "budgetWarning": "Avertissement de budget"
@@ -2688,7 +2688,7 @@
                 "description": "Les prompts système et contextes volumineux (32K+ tokens) sont automatiquement mis en cache pendant 5 minutes, réduisant la latence et le coût jusqu'à 75% sur les requêtes suivantes."
             },
             "codeExec": {
-                "title": "Execution de code Gemini",
+                "title": "Exécution de code Gemini",
                 "output": "Sortie",
                 "ok": "OK",
                 "failed": "Échoué"
@@ -2825,7 +2825,7 @@
             "welcomeVision": "Vision et images",
             "welcomeVisionDesc": "Analyser des images et des captures d'écran",
             "welcomePromptLocal1": "Montre-moi les 10 plus gros fichiers du dossier actuel",
-            "welcomePromptLocal2": "Trouve les fichiers en double et suggeere un nettoyage",
+            "welcomePromptLocal2": "Trouve les fichiers en double et suggère un nettoyage",
             "welcomePromptLocal3": "Exécute ls -la et résume ce que tu vois",
             "welcomePromptRemote1": "Liste tous les fichiers sur le serveur distant",
             "welcomePromptRemote2": "Compare les dossiers local et distant",
@@ -3025,7 +3025,7 @@
             "recoveryLevelQuartile": "Quartile",
             "recoveryLevelHigh": "Élevé",
             "recoveryLevelHint": "Un surcout plus élevé récupère plus de dégats mais augmente les données de récupération. Style QR: Faible ~7%, Moyen ~15%, Quartile ~25%, Élevé ~30%.",
-            "placementEmbedded": "Integree",
+            "placementEmbedded": "Intégrée",
             "placementDetached": "Separee",
             "placementBoth": "Les deux",
             "placementEmbeddedDesc": "Dans le conteneur, actualisee a chaque enregistrement",
@@ -3481,7 +3481,7 @@
         "debug": {
             "tabs": {
                 "connection": "Connexion",
-                "network": "Reseau",
+                "network": "Réseau",
                 "system": "Système",
                 "logs": "Journaux",
                 "frontend": "Frontend",

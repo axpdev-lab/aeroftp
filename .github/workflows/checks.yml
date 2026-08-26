@@ -55,6 +55,17 @@ jobs:
       - name: Frontend unit tests (vitest)
         run: npm run test:unit
 
+      # Stripped diacritics are invisible to i18n:validate: the value is
+      # present, is not a placeholder and is the right length, it is simply
+      # spelled wrong. The class grew for eight months across eight commits
+      # because nothing looked. Runs here rather than in the long build lane so
+      # a locale typo costs minutes instead of the better part of two hours.
+      # It compares against a reviewed baseline and only fails on a NEW hit;
+      # judge it, then either fix the string or record why it is correct in
+      # scripts/i18n-diacritics-accepted.json. Never bulk-accept.
+      - name: i18n stripped-diacritics gate
+        run: npm run i18n:diacritics
+
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 

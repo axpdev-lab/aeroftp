@@ -992,7 +992,7 @@
             "bridgeSelectTarget": "Izberite aplikacijo za izvoz:",
             "nativeRsync": {
                 "title": "Izvorni rsync (eksperimentalno)",
-                "description": "Uporabite vgrajeno izvedbo protokola rsync v AeroFTP namesto zaganjanja sistemske binarne datoteke rsync. Zmanjsa rezije procesov; je lahko manj preizkusena v robnih primerih.",
+                "description": "Uporabite vgrajeno izvedbo protokola rsync v AeroFTP namesto zaganjanja sistemske binarne datoteke rsync. Zmanjša režije procesov; je lahko manj preizkušena v robnih primerih.",
                 "enableToggle": "Omogoči izvorni rsync za delta sinhronizacijo prek SFTP",
                 "experimental": "Eksperimentalno: ob napaki samodejno preklopi na klasični rsync. Neujemanja ključa gostitelja se pojavijo kot kritične napake brez tihega preklopa."
             },

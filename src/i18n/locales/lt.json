@@ -781,7 +781,7 @@
             "migrationTitle": "Apsaugokite savo duomenis",
             "migrationDesc": "AeroFTP rado neužšifruotų duomenų, kuriuos reikėtų perkelti į užšifruotą saugyklą maksimaliam saugumui.",
             "migrationProfiles": "{count} serverio profilių",
-            "migrationAiSettings": "AI konfiguracija",
+            "migrationAiSettings": "AI konfigūracija",
             "migrationOauth": "{count} OAuth prisijungimo duomenų",
             "migrationInProgress": "Duomenys šifruojami...",
             "migrationComplete": "Migracija baigta! {count} įrašų užšifruota.",
