@@ -554,7 +554,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 847
+    "tauri_commands": 846
   },
   "mcp": {
     "count": 77,
@@ -955,7 +955,6 @@
       "local_panel_watch",
       "local_panel_watch_stop",
       "resolve_hostname",
-      "debug_panic_command",
       "disconnect_ftp",
       "chooser_unavailable",
       "ftp_noop",
@@ -1319,7 +1318,7 @@
       "infinicloud_discover",
       "infinicloud_quota"
     ],
-    "name_unmatched_count": 369,
+    "name_unmatched_count": 368,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1336,7 +1335,6 @@
       "local_panel_watch",
       "local_panel_watch_stop",
       "resolve_hostname",
-      "debug_panic_command",
       "connect_ftp",
       "disconnect_ftp",
       "check_connection",
@@ -2173,6 +2171,6 @@
       "mount_autostart_blocked",
       "mount_open_quick"
     ],
-    "count": 847
+    "count": 846
   }
 }

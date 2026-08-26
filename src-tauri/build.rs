@@ -260,6 +260,26 @@ fn generate_tauri_command_registry() {
         body.push_str("\",\n");
     }
     body.push_str("];\n");
+
+    // Commands a release build does not register, listed unconditionally.
+    //
+    // The array above is cfg-aware, which is the point, but it also means a
+    // debug build and a release build report different surfaces. The committed
+    // snapshot records the SHIPPED surface, so without this the drift check
+    // would be a false alarm in the profile developers actually use, and a check
+    // that cries wolf where you work is a check that gets ignored. Subtracting
+    // this list makes the reported surface the same in both profiles.
+    body.push_str(
+        "\n// Registered only when `debug_assertions` is on, so absent from a shipped\n// binary. Subtract these to get the release surface from any build.\npub const TAURI_DEBUG_ONLY_COMMANDS: &[&str] = &[\n",
+    );
+    for (attrs, n) in &names {
+        if attrs.iter().any(|a| a.contains("debug_assertions")) {
+            body.push_str("    \"");
+            body.push_str(n);
+            body.push_str("\",\n");
+        }
+    }
+    body.push_str("];\n");
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
     let dest = std::path::Path::new(&out_dir).join("tauri_commands.rs");
     fs::write(&dest, body).expect("Failed to write tauri_commands.rs");

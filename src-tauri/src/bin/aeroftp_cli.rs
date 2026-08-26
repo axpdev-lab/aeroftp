@@ -58825,7 +58825,21 @@ fn build_inventory_doc() -> serde_json::Value {
     let subs = collect_cli_subcommands();
     let mcp = ftp_client_gui_lib::mcp::tools::tool_definitions();
     let agent = cli_tool_definitions();
-    let tauri = ftp_client_gui_lib::command_registry::TAURI_COMMANDS;
+    // The SHIPPED Tauri surface, which is the same whichever profile this
+    // binary was built in. `TAURI_COMMANDS` is cfg-aware, so a debug build
+    // registers commands a release build does not; reporting that difference
+    // would make the committed snapshot profile-dependent and turn the drift
+    // check into a false alarm for anyone running a debug binary. A check that
+    // cries wolf where people work is a check that gets ignored, so the
+    // debug-only names are subtracted here and the snapshot means one thing.
+    let tauri: Vec<&str> = ftp_client_gui_lib::command_registry::TAURI_COMMANDS
+        .iter()
+        .copied()
+        .filter(|name| {
+            !ftp_client_gui_lib::command_registry::TAURI_DEBUG_ONLY_COMMANDS.contains(name)
+        })
+        .collect();
+    let tauri = tauri.as_slice();
 
     // Structural name-overlap between the GUI command surface and the
     // command-line surfaces (CLI + MCP + agent). This is a NAME diff, not a
@@ -59037,6 +59051,8 @@ fn cmd_inventory(markdown: bool, check: Option<&str>) -> i32 {
             "  live:     {}",
             doc.get("counts").map(|c| c.to_string()).unwrap_or_default()
         );
+        // Any profile is fine: the reported surface subtracts the debug-only
+        // commands, so a debug and a release binary produce the same snapshot.
         eprintln!("Regenerate: aeroftp-cli inventory > docs/COMMAND-INVENTORY.json");
         return 1;
     }
