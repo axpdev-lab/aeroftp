@@ -320,7 +320,9 @@
                 "refresh": "Actualizar",
                 "none": "Non se devolveu ningún destino. Aínda así podes introducir un manualmente.",
                 "found": "Atopáronse {count} destinos accesibles. Escribe para buscar ou selecciona un."
-            }
+            },
+            "swiftAuthUrl": "URL de autenticación de Keystone",
+            "swiftAllowCleartextStorage": "Esta implantación serve o almacenamento de obxectos por HTTP sen cifrar. Acéptao para este perfil: o testemuño de acceso e todos os ficheiros atravesan a rede sen cifrar."
         },
         "browser": {
             "remote": "Remoto",

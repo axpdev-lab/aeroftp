@@ -320,7 +320,9 @@
                 "refresh": "Actualitza",
                 "none": "No s'ha retornat cap destinació. Tot i així, en pots introduir una manualment.",
                 "found": "S'han trobat {count} destinacions accessibles. Escriu per cercar o selecciona'n una."
-            }
+            },
+            "swiftAuthUrl": "URL d'autenticació de Keystone",
+            "swiftAllowCleartextStorage": "Aquest desplegament serveix l'emmagatzematge d'objectes per HTTP en text clar. Accepta-ho per a aquest perfil: el testimoni d'accés i tots els fitxers travessen la xarxa sense xifrar."
         },
         "browser": {
             "remote": "Remot",

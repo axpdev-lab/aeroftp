@@ -320,7 +320,9 @@
                 "refresh": "Làm mới",
                 "none": "Không có đích nào được trả về. Bạn vẫn có thể nhập thủ công.",
                 "found": "Đã tìm thấy {count} đích có thể truy cập. Nhập để tìm kiếm hoặc chọn một mục."
-            }
+            },
+            "swiftAuthUrl": "URL xác thực Keystone",
+            "swiftAllowCleartextStorage": "Triển khai này phục vụ lưu trữ đối tượng qua HTTP không mã hóa. Chấp nhận cho hồ sơ này: mã thông báo truy cập và mọi tệp đi qua mạng mà không được mã hóa."
         },
         "browser": {
             "remote": "Từ xa",

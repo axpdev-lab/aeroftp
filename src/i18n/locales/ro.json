@@ -320,7 +320,9 @@
                 "refresh": "Reîmprospătează",
                 "none": "Nu au fost returnate ținte. Poți totuși să introduci una manual.",
                 "found": "S-au găsit {count} ținte accesibile. Scrie pentru a căuta sau selectează una."
-            }
+            },
+            "swiftAuthUrl": "URL de autentificare Keystone",
+            "swiftAllowCleartextStorage": "Această implementare oferă stocarea de obiecte prin HTTP necriptat. Acceptați pentru acest profil: tokenul de acces și fiecare fișier traversează rețeaua necriptate."
         },
         "browser": {
             "remote": "La distanță",

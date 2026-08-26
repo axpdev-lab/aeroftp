@@ -320,7 +320,9 @@
                 "refresh": "Osvježi",
                 "none": "Nijedno odredište nije vraćeno. Ipak ga možete unijeti ručno.",
                 "found": "Pronađeno je {count} dostupnih odredišta. Tipkajte za pretraživanje ili odaberite jedno."
-            }
+            },
+            "swiftAuthUrl": "URL za autentifikaciju Keystone",
+            "swiftAllowCleartextStorage": "Ova implementacija poslužuje objektnu pohranu preko nešifriranog HTTP-a. Prihvatite to za ovaj profil: pristupni token i svaka datoteka prelaze mrežu nešifrirani."
         },
         "browser": {
             "remote": "Udaljeno",

@@ -320,7 +320,9 @@
                 "refresh": "Atnaujinti",
                 "none": "Negrąžinta nė vieno taikinio. Vis tiek galite jį įvesti rankiniu būdu.",
                 "found": "Rasta pasiekiamų taikinių: {count}. Rašykite, kad ieškotumėte, arba pasirinkite vieną."
-            }
+            },
+            "swiftAuthUrl": "Keystone autentifikavimo URL",
+            "swiftAllowCleartextStorage": "Ši diegtis teikia objektų saugyklą per neužšifruotą HTTP. Priimkite tai šiam profiliui: prieigos raktas ir kiekvienas failas keliauja tinklu neužšifruoti."
         },
         "browser": {
             "remote": "Nuotolinis",

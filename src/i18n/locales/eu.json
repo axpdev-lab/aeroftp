@@ -320,7 +320,9 @@
                 "refresh": "Freskatu",
                 "none": "Ez da helbururik itzuli. Hala ere, eskuz sar dezakezu bat.",
                 "found": "{count} helburu eskuragarri aurkitu dira. Idatzi bilatzeko edo hautatu bat."
-            }
+            },
+            "swiftAuthUrl": "Keystone autentifikazio URLa",
+            "swiftAllowCleartextStorage": "Inplementazio honek objektu-biltegiratzea HTTP soilaren bidez zerbitzatzen du. Onartu profil honetarako: sarbide-tokena eta fitxategi guztiak zifratu gabe zeharkatzen dute sarea."
         },
         "browser": {
             "remote": "Urrunekoa",

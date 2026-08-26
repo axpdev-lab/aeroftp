@@ -320,7 +320,9 @@
                 "refresh": "Aktualisieren",
                 "none": "Es wurden keine Ziele zurückgegeben. Sie können trotzdem eines manuell eingeben.",
                 "found": "{count} erreichbare Ziele gefunden. Tippen Sie, um zu suchen, oder wählen Sie eines aus."
-            }
+            },
+            "swiftAuthUrl": "Keystone-Authentifizierungs-URL",
+            "swiftAllowCleartextStorage": "Diese Installation stellt den Objektspeicher über unverschlüsseltes HTTP bereit. Für dieses Profil akzeptieren: Das Zugriffstoken und jede Datei durchqueren das Netzwerk unverschlüsselt."
         },
         "browser": {
             "remote": "Remote",

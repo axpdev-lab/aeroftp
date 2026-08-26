@@ -320,7 +320,9 @@
                 "refresh": "Endurnýja",
                 "none": "Engir áfangastaðir bárust. Þú getur samt slegið einn inn handvirkt.",
                 "found": "Fundust {count} aðgengilegir áfangastaðir. Skrifaðu til að leita eða veldu einn."
-            }
+            },
+            "swiftAuthUrl": "Keystone auðkenningarslóð",
+            "swiftAllowCleartextStorage": "Þessi uppsetning þjónar hlutageymslu um ódulkóðað HTTP. Samþykktu það fyrir þennan prófíl: aðgangsteiknið og hver skrá fara ódulkóðuð um netið."
         },
         "browser": {
             "remote": "Fjartengdur",

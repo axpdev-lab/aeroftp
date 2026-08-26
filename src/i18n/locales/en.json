@@ -1425,7 +1425,9 @@
             "opendriveDefaultPrivacy": "Default privacy for new items",
             "opendriveDefaultPrivacyHelp": "Applied to folders and files you create or upload. WebDAV connections use OpenDrive's own defaults.",
             "mtpNotAttachedTitle": "Device not connected",
-            "mtpNotAttached": "Plug in the device and enable File Transfer mode, then try again."
+            "mtpNotAttached": "Plug in the device and enable File Transfer mode, then try again.",
+            "swiftAuthUrl": "Keystone auth URL",
+            "swiftAllowCleartextStorage": "This deployment serves object storage over plain HTTP. Accept it for this profile: the access token and every file cross the network unencrypted."
         },
         "twoFactor": {
             "title": "Two-Factor Authentication Required",

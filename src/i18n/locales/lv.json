@@ -320,7 +320,9 @@
                 "refresh": "Atsvaidzināt",
                 "none": "Netika atgriezts neviens mērķis. Jūs tomēr varat to ievadīt manuāli.",
                 "found": "Atrasti {count} pieejami mērķi. Rakstiet, lai meklētu, vai izvēlieties vienu."
-            }
+            },
+            "swiftAuthUrl": "Keystone autentifikācijas URL",
+            "swiftAllowCleartextStorage": "Šī izvietošana nodrošina objektu krātuvi caur nešifrētu HTTP. Pieņemiet to šim profilam: piekļuves marķieris un katrs fails šķērso tīklu nešifrēts."
         },
         "browser": {
             "remote": "Attālināts",

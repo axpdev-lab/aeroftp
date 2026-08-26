@@ -320,7 +320,9 @@
                 "refresh": "Värskenda",
                 "none": "Ühtegi sihtkohta ei tagastatud. Saad siiski ühe käsitsi sisestada.",
                 "found": "Leiti {count} ligipääsetavat sihtkohta. Otsimiseks tipi teksti või vali üks."
-            }
+            },
+            "swiftAuthUrl": "Keystone'i autentimise URL",
+            "swiftAllowCleartextStorage": "See juurutus pakub objektisalvestust krüptimata HTTP kaudu. Nõustu sellega selle profiili puhul: juurdepääsuluba ja iga fail liiguvad võrgus krüptimata."
         },
         "browser": {
             "remote": "Kaugserver",

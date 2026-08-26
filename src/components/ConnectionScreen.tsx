@@ -44,6 +44,7 @@ import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
 import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers';
+import { isBlompAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
@@ -1554,12 +1555,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         initialPath: quickConnectDirs.remoteDir,
                         localInitialPath: quickConnectDirs.localDir,
                         persistModeCredentials: protocol === 'mtp' ? false : (persistModeCredentials && inModeGroup),
-                        providerId: selectedProviderId
-                            || s.providerId
-                            || (protocol === 'mtp' ? (connectionParams.providerId || 'mtp-portable')
-                                : protocol === 'swift' ? 'blomp'
-                                : protocol === 'mega' ? 'mega'
-                                : undefined),
+                        // Swift decides its id from the auth URL and nothing
+                        // else, ahead of the stored id: editing a Blomp profile
+                        // into a private OpenStack must not carry Blomp's
+                        // cleartext exemption across, and editing it back must
+                        // restore it.
+                        providerId: protocol === 'swift'
+                            ? (isBlompAuthUrl(connectionParams.server) ? 'blomp' : undefined)
+                            : (selectedProviderId
+                                || s.providerId
+                                || (protocol === 'mtp' ? (connectionParams.providerId || 'mtp-portable')
+                                    : protocol === 'mega' ? 'mega'
+                                    : undefined)),
                         customIconUrl: customIconForSave !== undefined ? customIconForSave : s.customIconUrl,
                         ...(protocol === 'mtp' && mtpFingerprint ? { deviceFingerprint: mtpFingerprint } : {}),
                         ...(protocol === 'mtp' ? {} : aeroFieldsEdit),
@@ -1625,11 +1632,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 localInitialPath: quickConnectDirs.localDir,
                 options: protocol === 'mtp' ? undefined : optionsToSave,
                 persistModeCredentials: protocol === 'mtp' ? false : (persistModeCredentials && inModeGroup),
-                providerId: selectedProviderId
-                    || (protocol === 'mtp' ? (connectionParams.providerId || 'mtp-portable')
-                        : protocol === 'swift' ? 'blomp'
-                        : protocol === 'mega' ? 'mega'
-                        : undefined),
+                providerId: protocol === 'swift'
+                    ? (isBlompAuthUrl(connectionParams.server) ? 'blomp' : undefined)
+                    : (selectedProviderId
+                        || (protocol === 'mtp' ? (connectionParams.providerId || 'mtp-portable')
+                            : protocol === 'mega' ? 'mega'
+                            : undefined)),
                 customIconUrl: customIconForSave,
                 ...(protocol === 'mtp' && mtpFingerprint ? { deviceFingerprint: mtpFingerprint } : {}),
                 ...aeroFieldsNew,
@@ -6202,8 +6210,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 onChange={(e) => onConnectionParamsChange({
                                                     ...connectionParams,
                                                     username: e.target.value,
-                                                    server: 'https://authenticate.blomp.com',
-                                                    port: 443
                                                 })}
                                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                                                 placeholder="your@blomp.com"
@@ -6232,6 +6238,44 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 {t('connection.optionalSettings')}
                                             </label>
                                             <div className="space-y-2">
+                                                {/* Swift is a protocol, not just Blomp. The auth URL is
+                                                    editable so a private OpenStack can be reached, and the
+                                                    preset identity follows it (see isBlompAuthUrl). */}
+                                                <input
+                                                    type="text"
+                                                    value={connectionParams.server}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        server: e.target.value,
+                                                        port: connectionParams.port || 443,
+                                                        // Leaving Blomp drops its preset opt-in: a private
+                                                        // OpenStack has to accept a cleartext object store
+                                                        // for itself. Returning to Blomp restores it.
+                                                        options: {
+                                                            ...connectionParams.options,
+                                                            allowCleartextStorage: isBlompAuthUrl(e.target.value) ? true : undefined,
+                                                        },
+                                                    })}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder={t('connection.swiftAuthUrl')}
+                                                />
+                                                {!isBlompAuthUrl(connectionParams.server) && (
+                                                    <label className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={connectionParams.options?.allowCleartextStorage === true}
+                                                            onChange={(e) => onConnectionParamsChange({
+                                                                ...connectionParams,
+                                                                options: {
+                                                                    ...connectionParams.options,
+                                                                    allowCleartextStorage: e.target.checked ? true : undefined,
+                                                                },
+                                                            })}
+                                                            className="mt-0.5 rounded border-gray-300 dark:border-gray-600"
+                                                        />
+                                                        <span>{t('connection.swiftAllowCleartextStorage')}</span>
+                                                    </label>
+                                                )}
                                                 <input
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}

@@ -320,7 +320,9 @@
                 "refresh": "Segarkan",
                 "none": "Tidak ada target yang dikembalikan. Anda tetap dapat memasukkannya secara manual.",
                 "found": "Ditemukan {count} target yang dapat diakses. Ketik untuk mencari atau pilih salah satu."
-            }
+            },
+            "swiftAuthUrl": "URL autentikasi Keystone",
+            "swiftAllowCleartextStorage": "Penerapan ini menyajikan penyimpanan objek melalui HTTP biasa. Terima untuk profil ini: token akses dan setiap berkas melintasi jaringan tanpa enkripsi."
         },
         "browser": {
             "remote": "Jarak Jauh",

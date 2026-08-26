@@ -320,7 +320,9 @@
                 "refresh": "Uppdatera",
                 "none": "Inga mål returnerades. Du kan ändå ange ett manuellt.",
                 "found": "Hittade {count} åtkomliga mål. Skriv för att söka eller välj ett."
-            }
+            },
+            "swiftAuthUrl": "Keystone-autentiserings-URL",
+            "swiftAllowCleartextStorage": "Den här installationen levererar objektlagring över okrypterad HTTP. Acceptera det för den här profilen: åtkomsttoken och varje fil passerar nätverket okrypterade."
         },
         "browser": {
             "remote": "Fjärr",
