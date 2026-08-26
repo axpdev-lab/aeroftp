@@ -5978,6 +5978,137 @@ mod tests {
         }
     }
 
+    // ── Data-path replay, against a real socket ──────────────────────────
+    //
+    // There is no HTTP mock in `[dev-dependencies]`, and none is needed: the
+    // project already tests wire behaviour with hand-rolled `TcpListener`
+    // stubs (`http_retry.rs`, `s3.rs`, `ttfb.rs`). `keep_alive` is the data
+    // path chosen here because it is a bare OPTIONS with no body and no XML,
+    // so what the assertions see is the retry decision and nothing else.
+
+    const ROTATED_401: &str = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Digest realm=\"r\", nonce=\"rotated\", qop=\"auth\", stale=true\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    const ROTATED_AGAIN_401: &str = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Digest realm=\"r\", nonce=\"rotated-twice\", qop=\"auth\", stale=true\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    const SAME_NONCE_401: &str = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Digest realm=\"r\", nonce=\"dead\", qop=\"auth\", stale=true\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    const OK_200: &str = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+    /// Serve one canned response per connection and count the connections.
+    /// Every response carries `Connection: close`, so the client opens a fresh
+    /// connection per request and the accept count IS the request count, which
+    /// is exactly the quantity a retry test needs to assert on. Requests past
+    /// the end of the list get the last response again.
+    async fn spawn_http_stub(
+        responses: Vec<&'static str>,
+    ) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let hits_task = std::sync::Arc::clone(&hits);
+
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let idx = hits_task.fetch_add(1, Ordering::SeqCst);
+                let reply = responses
+                    .get(idx)
+                    .copied()
+                    .unwrap_or_else(|| responses.last().copied().unwrap_or(OK_200));
+                // Drain the request head first: writing into a socket whose
+                // peer is still sending would race the response out.
+                let mut buf = [0u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let _ = socket.write_all(reply.as_bytes()).await;
+                let _ = socket.flush().await;
+            }
+        });
+
+        (format!("http://{addr}"), hits)
+    }
+
+    fn digest_provider(url: &str) -> WebDavProvider {
+        let mut provider = WebDavProvider::new(test_config(url)).expect("provider");
+        provider.connected = true;
+        provider.digest_auth = Some(
+            DigestState::parse(r#"Digest realm="r", nonce="dead", qop="auth""#).expect("state"),
+        );
+        provider
+    }
+
+    /// The behaviour the tracker item asks for: a rotation is survived, and it
+    /// costs exactly one extra request.
+    #[tokio::test]
+    async fn a_rotated_nonce_makes_a_data_path_replay_exactly_once() {
+        let (url, hits) = spawn_http_stub(vec![ROTATED_401, OK_200]).await;
+        let mut provider = digest_provider(&url);
+
+        provider
+            .keep_alive()
+            .await
+            .expect("a nonce rotation must not fail a healthy session");
+
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            2,
+            "one original request and one replay"
+        );
+        assert_eq!(
+            provider.digest_auth.as_ref().expect("digest state").nonce(),
+            "rotated",
+            "the replay must have used the rotated nonce"
+        );
+    }
+
+    /// The guard, and the reason this was deferred for a release. A server
+    /// that keeps answering 401 with the nonce we already hold is what a
+    /// revoked password looks like. It must cost ONE request, not a storm.
+    #[tokio::test]
+    async fn an_unchanged_nonce_is_not_replayed() {
+        let (url, hits) = spawn_http_stub(vec![SAME_NONCE_401]).await;
+        let mut provider = digest_provider(&url);
+
+        let err = provider
+            .keep_alive()
+            .await
+            .expect_err("an unrepairable 401 must still fail");
+        assert!(
+            matches!(err, ProviderError::AuthenticationFailed(_)),
+            "got {err:?}"
+        );
+
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "a credential failure must not be retried, even once"
+        );
+    }
+
+    /// Once, and only once. A server rotating the nonce on every response
+    /// would loop a caller that retried whenever the challenge looked fresh;
+    /// the replay is a straight-line `if`, so the second 401 is final.
+    #[tokio::test]
+    async fn a_second_rotation_is_not_chased() {
+        let (url, hits) = spawn_http_stub(vec![ROTATED_401, ROTATED_AGAIN_401, OK_200]).await;
+        let mut provider = digest_provider(&url);
+
+        provider
+            .keep_alive()
+            .await
+            .expect_err("a 401 surviving the single replay must fail");
+
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            2,
+            "the replay must not itself be retried"
+        );
+        assert_eq!(
+            provider.digest_auth.as_ref().expect("digest state").nonce(),
+            "rotated",
+            "only the first rotation is adopted"
+        );
+    }
+
     /// The pool-wide half of the repair, at the tighter gate: one worker
     /// adopting a rotation must fix every sibling, because the challenge is
     /// shared. This is what keeps a batch of in-flight parts from each
