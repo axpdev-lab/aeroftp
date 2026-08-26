@@ -55,6 +55,46 @@ pub fn normalize_profile_option_key(key: &str) -> &str {
     }
 }
 
+/// Mechanical camelCase to snake_case. Pure ASCII: non-alpha chars are
+/// preserved as-is. Already-snake keys pass through unchanged.
+fn camel_to_snake_case(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for (i, ch) in s.chars().enumerate() {
+        if ch.is_ascii_uppercase() {
+            if i > 0 {
+                out.push('_');
+            }
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Canonical option key for `ProviderConfig.extra`.
+///
+/// The alias table runs first, because some GUI keys are not a mechanical
+/// transform of the provider key (`webdavScheme` is `tls_mode`,
+/// `allowCleartextStorage` is `allow_cleartext_storage_endpoint`,
+/// `pcloudRegion` is `region`). Keys the table does not know are then
+/// converted from camelCase to snake_case, so a GUI-shaped
+/// `privateKeyPath` still lands as `private_key_path`. Already-snake keys
+/// pass through unchanged.
+///
+/// Agent session, AI tools, CLI and MCP all go through here. Two of those
+/// used to have their own tables and knew none of the aliases, so a
+/// saved WebDAV `webdavScheme` or Swift `allowCleartextStorage` arrived
+/// under the wrong key and the provider ignored it.
+pub fn canonicalize_profile_option_key(key: &str) -> String {
+    let aliased = normalize_profile_option_key(key);
+    if aliased != key {
+        aliased.to_string()
+    } else {
+        camel_to_snake_case(key)
+    }
+}
+
 /// Insert a single profile option into the `extra` map after normalizing the
 /// key and serializing primitive JSON values to strings.
 pub fn insert_profile_option(
@@ -62,7 +102,7 @@ pub fn insert_profile_option(
     key: &str,
     value: &serde_json::Value,
 ) {
-    let normalized_key = normalize_profile_option_key(key).to_string();
+    let normalized_key = canonicalize_profile_option_key(key);
 
     if let Some(string_value) = value.as_str() {
         extra.insert(normalized_key, string_value.to_string());
@@ -327,6 +367,80 @@ mod tests {
             normalize_profile_option_key("private_key_path"),
             "private_key_path"
         );
+        // Mechanical conversion is canonicalize's job, not the alias table's.
+        assert_eq!(
+            normalize_profile_option_key("privateKeyPath"),
+            "privateKeyPath"
+        );
+    }
+
+    #[test]
+    fn canonicalize_aliases_then_mechanical_camel_case() {
+        assert_eq!(canonicalize_profile_option_key("webdavScheme"), "tls_mode");
+        assert_eq!(
+            canonicalize_profile_option_key("allowCleartextStorage"),
+            "allow_cleartext_storage_endpoint"
+        );
+        assert_eq!(canonicalize_profile_option_key("pcloudRegion"), "region");
+        assert_eq!(
+            canonicalize_profile_option_key("sessionToken"),
+            "session_token"
+        );
+        assert_eq!(canonicalize_profile_option_key("roleArn"), "role_arn");
+        assert_eq!(
+            canonicalize_profile_option_key("privateKeyPath"),
+            "private_key_path"
+        );
+        assert_eq!(
+            canonicalize_profile_option_key("trustUnknownHosts"),
+            "trust_unknown_hosts"
+        );
+        assert_eq!(
+            canonicalize_profile_option_key("sseKmsKeyId"),
+            "sse_kms_key_id"
+        );
+        assert_eq!(canonicalize_profile_option_key("bucket"), "bucket");
+        assert_eq!(
+            canonicalize_profile_option_key("private_key_path"),
+            "private_key_path"
+        );
+        assert_eq!(canonicalize_profile_option_key("drive_id"), "drive_id");
+        // A mechanical rewrite of the alias would be the wrong provider key.
+        assert_ne!(
+            canonicalize_profile_option_key("webdavScheme"),
+            "webdav_scheme"
+        );
+        assert_ne!(
+            canonicalize_profile_option_key("allowCleartextStorage"),
+            "allow_cleartext_storage"
+        );
+        assert_ne!(
+            canonicalize_profile_option_key("pcloudRegion"),
+            "pcloud_region"
+        );
+    }
+
+    #[test]
+    fn insert_profile_option_maps_non_alias_camel_case() {
+        let mut extra = HashMap::new();
+        insert_profile_option(&mut extra, "privateKeyPath", &json!("/tmp/id"));
+        insert_profile_option(&mut extra, "webdavScheme", &json!("https"));
+        insert_profile_option(&mut extra, "allowCleartextStorage", &json!(true));
+        assert_eq!(
+            extra.get("private_key_path").map(String::as_str),
+            Some("/tmp/id")
+        );
+        assert_eq!(extra.get("tls_mode").map(String::as_str), Some("https"));
+        assert_eq!(
+            extra
+                .get("allow_cleartext_storage_endpoint")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert!(!extra.contains_key("webdavScheme"));
+        assert!(!extra.contains_key("webdav_scheme"));
+        assert!(!extra.contains_key("allowCleartextStorage"));
+        assert!(!extra.contains_key("allow_cleartext_storage"));
     }
 
     #[test]
