@@ -1666,7 +1666,6 @@ mod tests {
         })
     }
 
-    #[test]
     /// The GUI's default listing path is `"."`, not `"/"`, and Swift turned that
     /// into the prefix `./`, which matches no object. The container listed as
     /// empty in the app with a 200 and no error, while the CLI (which passes
