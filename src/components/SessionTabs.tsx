@@ -58,9 +58,27 @@ const createStatusConfig = (t: (key: string) => string): Record<SessionStatus, {
     disconnected: { icon: <Server size={12} />, color: 'text-gray-400', title: t('ui.session.disconnected') },
 });
 
-// Check if protocol is a provider (not standard FTP)
-const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
-    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab', 'immich', 'imagekit', 'uploadcare', 'cloudinary', 'backblaze'].includes(protocol);
+/**
+ * Everything except plain FTP is a "provider" for icon purposes.
+ *
+ * This used to be an allowlist of protocol names, and it drifted: `swift`,
+ * `googlephotos`, `aerocloud` and `peer` were in `ProviderType` and never in
+ * the list. Only `swift` was reachable, and it was the one that showed: a
+ * connected Blomp session drew the generic Wifi glyph even though the PNG, the
+ * `BlompLogo` component and the `PROVIDER_LOGOS['blomp']` entry all existed and
+ * were correct. The other three have no registry entry, so nothing could reach
+ * them; they were latent, not broken. Nothing failed either way, which is why
+ * it went unnoticed.
+ *
+ * Stated as the inverse it cannot drift: a protocol added tomorrow is a
+ * provider the day it exists, and only the two that genuinely are not have to
+ * be named. A protocol with no logo still falls back to the same Wifi glyph
+ * inside `ProviderIcon`, so widening this changes nothing for them.
+ */
+const NON_PROVIDER_PROTOCOLS: readonly ProviderType[] = ['ftp', 'ftps'];
+
+export const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
+    return protocol !== undefined && !NON_PROVIDER_PROTOCOLS.includes(protocol);
 };
 
 // Provider-specific icons with status awareness

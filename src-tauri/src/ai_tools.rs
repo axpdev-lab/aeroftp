@@ -1716,6 +1716,9 @@ pub(crate) fn find_server_by_name_or_id(
 }
 
 /// Load provider-specific extra options from the full server profile in vault.
+/// Keys go through `profile_loader::insert_profile_option`, the same
+/// canonicalizer CLI and MCP use. A local alias table here used to miss
+/// `webdavScheme`, `allowCleartextStorage` and the STS set.
 fn load_provider_extra_options(
     server_id: &str,
 ) -> Result<std::collections::HashMap<String, String>, String> {
@@ -1733,28 +1736,7 @@ fn load_provider_extra_options(
     {
         if let Some(options) = profile.get("options").and_then(|v| v.as_object()) {
             for (k, v) in options {
-                let key = match k.as_str() {
-                    "tlsMode" => "tls_mode",
-                    "verifyCert" => "verify_cert",
-                    "pathStyle" => "path_style",
-                    "private_key_path" => "private_key_path",
-                    "key_passphrase" => "key_passphrase",
-                    "accountName" => "account_name",
-                    "accessKey" => "access_key",
-                    "sasToken" => "sas_token",
-                    "pcloudRegion" | "region" => "region",
-                    "two_factor_code" => "two_factor_code",
-                    "drive_id" => "drive_id",
-                    "trust_unknown_hosts" => "trust_unknown_hosts",
-                    other => other,
-                };
-                if let Some(s) = v.as_str() {
-                    extra.insert(key.to_string(), s.to_string());
-                } else if let Some(b) = v.as_bool() {
-                    extra.insert(key.to_string(), b.to_string());
-                } else if let Some(n) = v.as_u64() {
-                    extra.insert(key.to_string(), n.to_string());
-                }
+                crate::profile_loader::insert_profile_option(&mut extra, k, v);
             }
         }
     }
@@ -2116,5 +2098,45 @@ mod approval_tests {
         assert!(verify
             .iter()
             .any(|d| d.contains("cargo-check") && d.contains("vitest")));
+    }
+}
+
+#[cfg(test)]
+mod extra_options_tests {
+    use crate::profile_loader::insert_profile_option;
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    #[test]
+    fn extra_options_use_canonical_aliases() {
+        let options = json!({
+            "webdavScheme": "http",
+            "allowCleartextStorage": true,
+            "pcloudRegion": "eu",
+            "privateKeyPath": "/tmp/id",
+            "drive_id": "123",
+            "sessionToken": "tok",
+        });
+        let mut extra = HashMap::new();
+        for (k, v) in options.as_object().unwrap() {
+            insert_profile_option(&mut extra, k, v);
+        }
+        assert_eq!(extra.get("tls_mode").map(String::as_str), Some("http"));
+        assert_eq!(
+            extra
+                .get("allow_cleartext_storage_endpoint")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(extra.get("region").map(String::as_str), Some("eu"));
+        assert_eq!(
+            extra.get("private_key_path").map(String::as_str),
+            Some("/tmp/id")
+        );
+        assert_eq!(extra.get("drive_id").map(String::as_str), Some("123"));
+        assert_eq!(extra.get("session_token").map(String::as_str), Some("tok"));
+        assert!(!extra.contains_key("webdav_scheme"));
+        assert!(!extra.contains_key("pcloud_region"));
+        assert!(!extra.contains_key("allow_cleartext_storage"));
     }
 }

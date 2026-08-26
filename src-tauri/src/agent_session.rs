@@ -45,58 +45,22 @@ pub struct ProfileSummary {
     pub extras: HashMap<String, String>,
 }
 
-/// Convert camelCase JSON keys (the desktop frontend's `ProviderOptions`
-/// shape) into the snake_case keys the Rust `ProviderConfig.extra`
-/// builders expect. Pure ASCII: non-alpha chars are preserved as-is.
-/// Mechanical camelCase to snake_case, NOT the canonical option-key mapping.
-///
-/// `profile_loader::normalize_profile_option_key` is the table that knows the
-/// aliases where the two spellings are not a mechanical transform of each other
-/// (`webdavScheme` becomes `tls_mode`, `allowCleartextStorage` becomes
-/// `allow_cleartext_storage_endpoint`, the STS set). This function does not
-/// consult it, so any option in that table arrives here under the wrong key.
-///
-/// That is currently harmless because the protocols this path can connect are
-/// FTP, FTPS, SFTP, WebDAV, S3, GitHub and GitLab (`resolve_provider_type`), and
-/// none of them reads an aliased key. It is a live trap for the next one that
-/// does: unifying the two is tracked rather than done here, because changing what
-/// this returns would also change the keys the current callers already receive.
-fn camel_to_snake(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 4);
-    for (i, ch) in s.chars().enumerate() {
-        if ch.is_ascii_uppercase() {
-            if i > 0 {
-                out.push('_');
-            }
-            out.push(ch.to_ascii_lowercase());
-        } else {
-            out.push(ch);
-        }
-    }
-    out
-}
-
 /// Flatten the profile's `options` JSON object into the snake_case
 /// string map providers consume via `ProviderConfig.extra`. Skips
 /// `null` and any non-scalar values; arrays/objects don't currently
 /// have a representation in the `extra` map and would silently confuse
 /// the provider if forwarded.
+///
+/// Keys go through `profile_loader::insert_profile_option`, the same
+/// canonicalizer CLI and MCP use, so aliases (`webdavScheme` →
+/// `tls_mode`) are not dropped the way a local camelCase rewrite did.
 fn flatten_options(options: Option<&Value>) -> HashMap<String, String> {
     let mut out = HashMap::new();
     let Some(obj) = options.and_then(|v| v.as_object()) else {
         return out;
     };
     for (k, v) in obj {
-        let key = camel_to_snake(k);
-        let value = match v {
-            Value::String(s) => s.clone(),
-            Value::Bool(b) => b.to_string(),
-            Value::Number(n) => n.to_string(),
-            // Skip nulls / arrays / nested objects: the legacy
-            // builders never accepted those shapes either.
-            _ => continue,
-        };
-        out.insert(key, value);
+        crate::profile_loader::insert_profile_option(&mut out, k, v);
     }
     out
 }
@@ -1481,13 +1445,28 @@ mod tests {
     }
 
     #[test]
-    fn camel_to_snake_handles_typical_keys() {
-        assert_eq!(camel_to_snake("bucket"), "bucket");
-        assert_eq!(camel_to_snake("tlsMode"), "tls_mode");
-        assert_eq!(camel_to_snake("verifyCert"), "verify_cert");
-        assert_eq!(camel_to_snake("privateKeyPath"), "private_key_path");
-        assert_eq!(camel_to_snake("trustUnknownHosts"), "trust_unknown_hosts");
-        assert_eq!(camel_to_snake("sseKmsKeyId"), "sse_kms_key_id");
+    fn flatten_options_uses_canonical_aliases() {
+        let v = json!({
+            "webdavScheme": "https",
+            "allowCleartextStorage": true,
+            "pcloudRegion": "eu",
+            "privateKeyPath": "/tmp/id",
+            "trustUnknownHosts": false,
+            "sseKmsKeyId": "kms-1",
+        });
+        let m = flatten_options(Some(&v));
+        assert_eq!(m.get("tls_mode"), Some(&"https".to_string()));
+        assert_eq!(
+            m.get("allow_cleartext_storage_endpoint"),
+            Some(&"true".to_string())
+        );
+        assert_eq!(m.get("region"), Some(&"eu".to_string()));
+        assert_eq!(m.get("private_key_path"), Some(&"/tmp/id".to_string()));
+        assert_eq!(m.get("trust_unknown_hosts"), Some(&"false".to_string()));
+        assert_eq!(m.get("sse_kms_key_id"), Some(&"kms-1".to_string()));
+        assert!(!m.contains_key("webdav_scheme"));
+        assert!(!m.contains_key("allow_cleartext_storage"));
+        assert!(!m.contains_key("pcloud_region"));
     }
 
     #[test]

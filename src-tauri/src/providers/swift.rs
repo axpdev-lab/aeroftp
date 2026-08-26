@@ -723,8 +723,34 @@ impl SwiftProvider {
         }
     }
 
+    /// Swift object keys are flat, so a path is only ever a prefix. This turns
+    /// a UI path into that prefix, and the segment walk is the point: without
+    /// it, `.` survives as a literal segment and the listing asks the server
+    /// for the objects starting with `./`, which are none. The server answers
+    /// 200 with an empty array, so the panel shows an empty container with no
+    /// error at all, which is exactly how this hid.
+    ///
+    /// The GUI reaches it: `provider_list_files` defaults its path to `"."`, so
+    /// the first listing after connecting sent `./` and every Swift account
+    /// looked empty in the app while the CLI, which passes `/`, worked.
     fn normalize_path(path: &str) -> String {
-        path.trim_matches('/').to_string()
+        // Leading and trailing slashes are framing and go, exactly as the
+        // original trim did. Repeated slashes INSIDE the path do not: a Swift
+        // object name is an opaque key, so `a//b` and `a/b` name two different
+        // objects and collapsing them would point rename, copy and delete at
+        // the wrong one. Only `.` and `..` are resolved, because the GUI opens
+        // a session on `.` and a relative segment has no meaning to the server.
+        let mut segments: Vec<&str> = Vec::new();
+        for segment in path.trim_matches('/').split('/') {
+            match segment {
+                "." => {}
+                ".." => {
+                    segments.pop();
+                }
+                other => segments.push(other),
+            }
+        }
+        segments.join("/")
     }
 
     // ─── Request with 401 retry ────────────────────────────────
@@ -1646,6 +1672,34 @@ mod tests {
         })
     }
 
+    /// The GUI's default listing path is `"."`, not `"/"`, and Swift turned that
+    /// into the prefix `./`, which matches no object. The container listed as
+    /// empty in the app with a 200 and no error, while the CLI (which passes
+    /// `/`) listed it correctly. Live-reproduced against Blomp: `ls /` returned
+    /// ten entries and `ls .` returned zero.
+    #[test]
+    fn a_dot_path_is_the_container_root_like_a_slash() {
+        assert_eq!(SwiftProvider::normalize_path("."), "");
+        assert_eq!(SwiftProvider::normalize_path("./"), "");
+        assert_eq!(SwiftProvider::normalize_path("/."), "");
+        assert_eq!(
+            SwiftProvider::normalize_path("."),
+            SwiftProvider::normalize_path("/"),
+            "the GUI default and the CLI default must address the same place"
+        );
+        // A dot inside a path is a segment to drop, not part of a name.
+        assert_eq!(SwiftProvider::normalize_path("foo/./bar"), "foo/bar");
+        // And `..` walks up rather than surviving into a prefix the server
+        // would match literally.
+        assert_eq!(SwiftProvider::normalize_path("foo/../bar"), "bar");
+        assert_eq!(SwiftProvider::normalize_path("/foo/bar/../"), "foo");
+        // A leading `..` cannot escape the container: there is nothing above it.
+        assert_eq!(SwiftProvider::normalize_path("../secrets"), "secrets");
+        // A file whose name merely contains a dot is untouched.
+        assert_eq!(SwiftProvider::normalize_path("/a.txt"), "a.txt");
+        assert_eq!(SwiftProvider::normalize_path("dir/.hidden"), "dir/.hidden");
+    }
+
     #[test]
     fn normalize_path_strips_leading_and_trailing_slashes() {
         assert_eq!(SwiftProvider::normalize_path(""), "");
@@ -1654,6 +1708,25 @@ mod tests {
         assert_eq!(SwiftProvider::normalize_path("foo"), "foo");
         assert_eq!(SwiftProvider::normalize_path("/foo/bar/"), "foo/bar");
         assert_eq!(SwiftProvider::normalize_path("/a/b/c"), "a/b/c");
+    }
+
+    /// A Swift object name is an opaque key, so a repeated slash inside it is
+    /// part of the name and not punctuation to tidy away. The first cut of the
+    /// dot-path fix dropped every empty segment, which silently turned `a//b`
+    /// into `a/b`: listing kept the server's name while rename, copy and delete
+    /// went through the normalizer and addressed a different object. Raised by
+    /// CodeRabbit on the pull request that introduced it.
+    #[test]
+    fn normalize_path_keeps_repeated_slashes_inside_the_name() {
+        assert_eq!(SwiftProvider::normalize_path("a//b"), "a//b");
+        assert_eq!(SwiftProvider::normalize_path("/a//b/"), "a//b");
+        assert_eq!(
+            SwiftProvider::normalize_path("dir//sub///file.txt"),
+            "dir//sub///file.txt"
+        );
+        // Framing still goes, and the dot segments still resolve around them.
+        assert_eq!(SwiftProvider::normalize_path("//a//b//"), "a//b");
+        assert_eq!(SwiftProvider::normalize_path("a//./b"), "a//b");
     }
 
     #[test]
