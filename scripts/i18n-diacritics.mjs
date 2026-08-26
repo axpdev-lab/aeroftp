@@ -158,13 +158,20 @@ for (const file of readdirSync(LOCALES_DIR).filter((f) => f.endsWith('.json')).s
     }
 }
 
+// `process.exitCode`, never `process.exit()`. Exiting outright abandons any
+// stdout still queued, and stdout to a pipe is queued: past the 64KB buffer the
+// report is cut mid-string and the caller gets unparseable JSON. Setting the
+// code instead lets node drain and exit on its own.
+const code = () => (strict && total > 0 ? 1 : 0);
+
 if (asJson) {
     console.log(JSON.stringify(found, null, 2));
-    process.exit(strict && total > 0 ? 1 : 0);
+    process.exitCode = code();
+} else {
+    console.log(`\n${total} new suspected stripped-diacritic string(s), ${suppressed} already reviewed and accepted.`);
+    if (total > 0) {
+        console.log('A hit is a question for a human, never an automated rewrite (see issue #512).');
+        console.log(`Judged correct as written? Add it to ${'scripts/i18n-diacritics-accepted.json'} with the reason.`);
+    }
+    process.exitCode = code();
 }
-console.log(`\n${total} new suspected stripped-diacritic string(s), ${suppressed} already reviewed and accepted.`);
-if (total > 0) {
-    console.log('A hit is a question for a human, never an automated rewrite (see issue #512).');
-    console.log(`Judged correct as written? Add it to ${'scripts/i18n-diacritics-accepted.json'} with the reason.`);
-}
-process.exit(strict && total > 0 ? 1 : 0);
