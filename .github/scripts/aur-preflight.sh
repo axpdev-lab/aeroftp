@@ -294,5 +294,5 @@ fi
 if [ "$offline" -eq 1 ]; then
     echo "aur-preflight: PKGBUILD parses as literals, .SRCINFO in sync, sources NOT checked (--offline)"
 else
-    echo "aur-preflight: PKGBUILD sourceable, .SRCINFO in sync, ${#urls[@]} sources resolve"
+    echo "aur-preflight: PKGBUILD parses as literals, .SRCINFO in sync, ${#urls[@]} sources resolve"
 fi
