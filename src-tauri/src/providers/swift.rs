@@ -723,8 +723,28 @@ impl SwiftProvider {
         }
     }
 
+    /// Swift object keys are flat, so a path is only ever a prefix. This turns
+    /// a UI path into that prefix, and the segment walk is the point: without
+    /// it, `.` survives as a literal segment and the listing asks the server
+    /// for the objects starting with `./`, which are none. The server answers
+    /// 200 with an empty array, so the panel shows an empty container with no
+    /// error at all, which is exactly how this hid.
+    ///
+    /// The GUI reaches it: `provider_list_files` defaults its path to `"."`, so
+    /// the first listing after connecting sent `./` and every Swift account
+    /// looked empty in the app while the CLI, which passes `/`, worked.
     fn normalize_path(path: &str) -> String {
-        path.trim_matches('/').to_string()
+        let mut segments: Vec<&str> = Vec::new();
+        for segment in path.split('/') {
+            match segment {
+                "" | "." => {}
+                ".." => {
+                    segments.pop();
+                }
+                other => segments.push(other),
+            }
+        }
+        segments.join("/")
     }
 
     // ─── Request with 401 retry ────────────────────────────────
@@ -1644,6 +1664,35 @@ mod tests {
             verify_cert: true,
             allow_cleartext_storage_endpoint: true,
         })
+    }
+
+    #[test]
+    /// The GUI's default listing path is `"."`, not `"/"`, and Swift turned that
+    /// into the prefix `./`, which matches no object. The container listed as
+    /// empty in the app with a 200 and no error, while the CLI (which passes
+    /// `/`) listed it correctly. Live-reproduced against Blomp: `ls /` returned
+    /// ten entries and `ls .` returned zero.
+    #[test]
+    fn a_dot_path_is_the_container_root_like_a_slash() {
+        assert_eq!(SwiftProvider::normalize_path("."), "");
+        assert_eq!(SwiftProvider::normalize_path("./"), "");
+        assert_eq!(SwiftProvider::normalize_path("/."), "");
+        assert_eq!(
+            SwiftProvider::normalize_path("."),
+            SwiftProvider::normalize_path("/"),
+            "the GUI default and the CLI default must address the same place"
+        );
+        // A dot inside a path is a segment to drop, not part of a name.
+        assert_eq!(SwiftProvider::normalize_path("foo/./bar"), "foo/bar");
+        // And `..` walks up rather than surviving into a prefix the server
+        // would match literally.
+        assert_eq!(SwiftProvider::normalize_path("foo/../bar"), "bar");
+        assert_eq!(SwiftProvider::normalize_path("/foo/bar/../"), "foo");
+        // A leading `..` cannot escape the container: there is nothing above it.
+        assert_eq!(SwiftProvider::normalize_path("../secrets"), "secrets");
+        // A file whose name merely contains a dot is untouched.
+        assert_eq!(SwiftProvider::normalize_path("/a.txt"), "a.txt");
+        assert_eq!(SwiftProvider::normalize_path("dir/.hidden"), "dir/.hidden");
     }
 
     #[test]
