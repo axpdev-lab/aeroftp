@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.8] - 2026-08-26
+
+### The Release That Audited Itself
+
+Four independent adversarial audits ran over the 111 commits behind this release, then two independent merges of those four reports were reconciled against each other. They found a checkbox that handed a private key to every account on the machine, a security guard silently removed for every OpenStack account while the provider it was meant for shipped as stable over cleartext, a discovery feature that had never once reached the network, and a release script that executed the file it documents itself as only inspecting. Every one of them is fixed here. The useful lesson is not the count: only two defects were found by all four auditors, thirteen by exactly one, and three auditors cleared kDrive discovery by reading the provider function when the defect was in its caller. Alongside that, Quick Connect learns to discover buckets and drives, rclone export covers Zoho WorkDrive and crypt overlays, and the resume-record store finally stops growing forever. 47 languages, with 47 strings this release had shipped with their diacritics stripped put back, 28 mangled Icelandic strings retranslated, and 187 banned dash characters removed with the validator now rejecting them.
+
+#### Added
+- **Quick Connect discovers your S3 and Backblaze buckets and your kDrive drives**, instead of asking you to type a name you may not remember. Manual entry stays. Quota fields take numeric units, OAuth shows the real callback URL, and the Crypt scope text says what it actually scopes (#369).
+- **Export to rclone.conf covers Zoho WorkDrive and rclone-crypt overlays.** Zoho was gated shut by a test claiming rclone had no zoho backend; it has had one for years. A crypt overlay emits a sibling `type = crypt` remote whose `remote = <base>:<path>` is the Overlays Path (@EhudKirsh, #347).
+- **Text files open in preview rather than an invisible editor tab, Filen reports the storage held by retained versions, and Properties makes read-only and hidden editable where they are real attributes** (@EhudKirsh, #347).
+- **Add Service form tabs can be dragged to reorder**, with the same inherit-slot drop My Servers uses, and the typed fields stay with their tab (@EhudKirsh, #347).
+- **`aeroftp checkpoints` lists and forgets multipart resume records.** The store documented an escape for a decommissioned server that nothing could call; the listing is what makes it usable, since forgetting matches four exact strings nobody could otherwise supply.
+- **CLI, GUI and MCP parity is measurable**: `inventory` now sees the Tauri command surface and diffs it against the other two.
+
+#### Changed
+- **Error correction is abbreviated EC everywhere, and ECC is left to mean Elliptic Curve Cryptography.** 26 bare occurrences renamed; task ids, on-disk directories and the wire-format field keep their spelling, and the notes now say why (@EhudKirsh, #347).
+
+#### Fixed
+- **Ticking read-only on a symbolic link changed the permissions of the file it pointed at.** The mode was read without following the link and written with a call that does follow, and a Linux symlink always reports 0777, so a convenience link to a private 0600 key wrote 0577 onto the key and handed it to every other account on the machine. Un-ticking wrote 0777. The dialog then reported the file as still writable, so there was no sign anything had happened.
+- **Swift and OpenStack accounts no longer send your access token in the clear without telling you.** A guard that refused a cleartext object store after an encrypted login had been removed for every account, while Blomp was promoted to the production grid in the same release. Blomp still works, because the provider preset declares that its storage offers no encryption, not because the guard is off.
+- **Quick Connect "Discover drives" works for kDrive.** It had never worked: the shared placeholder is rejected by the numeric drive-id check, so every click failed before a single request left the app.
+- **Folder downloads over WebDAV honour the concurrent-transfers setting** instead of running one file at a time, and Digest authentication now survives running them in parallel (@roflhouse, #591).
+- **An exported crypt remote could quietly take another profile's name in rclone.conf.** rclone merges duplicate sections, so the encrypted remote you thought you had exported did not exist, and syncing to that name wrote plaintext where you meant ciphertext. Skipped profiles are now reported instead of being a comment in the file.
+- **One unreadable resume record no longer fails every multipart upload to every provider.** It is skipped rather than fatal, and the store's size cap stops silently giving up when a record cannot be deleted.
+- **The transfer card no longer offers Cancel as if it were Dismiss just before the end.** The lock used the rounded percentage, so at 99.6 the padlock became a close button that cancels; the minimized chip closed itself three seconds into a live transfer.
+- **Importing an AeroSync template with more than one path pair no longer applies one and discards the rest in silence**, and one with none no longer applies empty paths (@EhudKirsh, #514).
+- **Discovery cannot show you the previous account's buckets.** A response still in flight when credentials changed wrote its results into the form and auto-selected them, and changing only an STS role left the old role's results selectable with no race at all.
+- **Bucket discovery, drive discovery and the Filen quota breakdown all give up in seconds rather than holding the window for half an hour** when an endpoint accepts the connection and then stalls.
+- **Blomp connects again** instead of failing with a misleading TempAuth 404 (#584).
+- **Compare no longer decrypts an explicitly named vault with this connection's overlay cache**, which dropped every row and read as "no differences" (@EhudKirsh, #600).
+- **rclone.conf export no longer writes a Zoho remote rclone cannot list**, or an S3 crypt overlay pointing at the wrong bucket. A profile with no root folder is skipped with a reason rather than counted as exported.
+- **Community triage**: Trash table columns and alignment, overlapping Duplicate and AeroSync scans, transfer-progress toggles, Filen credential generation, pCloud naming, and stable My Servers drag and drop (@EhudKirsh, #609, #364, #453).
+- **CUSTOM / GENERIC SERVERS uses the one badge order and its own method glyphs** instead of drawing a single icon for four different entries, and CatalogTable badges come from the shared glyph map (@EhudKirsh, #347).
+- **47 locale strings shipped by this release had their diacritics stripped**, and 28 Icelandic strings were corrupted rather than merely misspelled. One of those was telling Icelandic users that transfer mode presets do not apply to SFTP, which is untrue. 187 banned dash characters across all 47 files are gone, and the validator now rejects them so the rule stops being one that is only checked by hand.
+- **Finnish UI strings restored**: two stripped-diacritic strings and a drag-and-drop verb that read as a print run (#625).
+- **The AUR release preflight no longer executes the package file it claims only to inspect.** It sliced out the top-level assignments and evaluated them, which runs anything hidden in an assignment.
+- **A local process can no longer break an OAuth sign-in by reaching the callback port first.** The listener took one connection and handed on whatever arrived, so the real browser redirect found nothing listening.
+- **The generated command inventory no longer advertises commands the binary does not contain.**
+- **Security: h2 is bumped to 0.4.16**, closing RUSTSEC-2026-0258 (#597).
+
+#### Contributors
+[<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh) [<img src="https://github.com/roflhouse.png?size=48" width="48" height="48" alt="@roflhouse" />](https://github.com/roflhouse)
+
 ## [4.1.7] - 2026-08-08
 
 ### Summer Release: AeroRsync Extended Attributes, a Rebuilt Duplicate Finder, and Two Independent Pre-Tag Audits

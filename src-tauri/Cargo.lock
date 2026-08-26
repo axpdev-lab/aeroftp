@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "aeroftp"
-version = "4.1.7"
+version = "4.1.8"
 dependencies = [
  "aeroftp-peer-l0",
  "aerovault",
