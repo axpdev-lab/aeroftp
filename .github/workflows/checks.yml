@@ -66,6 +66,18 @@ jobs:
       - name: i18n stripped-diacritics gate
         run: npm run i18n:diacritics
 
+      # Raw English in a locale is invisible to i18n:validate too: the key is
+      # present, the value is a non-empty string and it is not a placeholder,
+      # it is simply still English. The naive test fires on 16000 pairs, almost
+      # all of them correct (FTP, AeroCloud, us-east-1), so this gate takes its
+      # evidence from the shape of the ENGLISH source and reports only
+      # translatable prose. It runs as a RATCHET rather than --strict: the
+      # backlog of the day is the ceiling, a newly untranslated string breaks
+      # it, and every batch of translations lowers the number in the same
+      # commit that does the translating. The number is never raised.
+      - name: i18n raw-English gate
+        run: npm run i18n:untranslated
+
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
