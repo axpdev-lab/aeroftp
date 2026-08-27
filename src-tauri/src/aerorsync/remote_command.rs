@@ -77,6 +77,19 @@ pub fn compact_flags_for(preserve_acls: bool, preserve_xattrs: bool) -> &'static
     }
 }
 
+/// Read the metadata bits from the compact bundle that will actually be sent.
+///
+/// This is intentionally based on the completed argv, not only on the spec:
+/// `AEROFTP_RSYNC_SERVER_FLAGS` can replace the measured bundle. The driver
+/// uses this result to reject an override whose `A`/`X` bits disagree with the
+/// codec state before opening the stream.
+pub(crate) fn metadata_flags_from_args(args: &[String]) -> Option<(bool, bool)> {
+    let bundle = args
+        .iter()
+        .find(|arg| arg.starts_with('-') && !arg.starts_with("--") && arg.len() > 1)?;
+    Some((bundle.contains('A'), bundle.contains('X')))
+}
+
 pub const AERORSYNC_SERVER_PROGRAM: &str = "/opt/aerorsync/bin/aerorsync_serve";
 
 /// Working directory placeholder passed to `rsync --server`.
@@ -397,6 +410,22 @@ mod tests {
             compact_flags_for(true, true),
             OBSERVED_COMPACT_FLAGS_ACL_XATTR
         );
+    }
+
+    #[test]
+    fn metadata_flags_are_read_from_the_effective_argv_bundle() {
+        for (bundle, expected) in [
+            (OBSERVED_COMPACT_FLAGS, (false, false)),
+            (OBSERVED_COMPACT_FLAGS_XATTR, (false, true)),
+            (OBSERVED_COMPACT_FLAGS_ACL, (true, false)),
+            (OBSERVED_COMPACT_FLAGS_ACL_XATTR, (true, true)),
+        ] {
+            let args = vec!["--server".to_string(), bundle.to_string()];
+            assert_eq!(metadata_flags_from_args(&args), Some(expected));
+        }
+        let alternate = vec!["--server".to_string(), "-rlptgoDAXzc".to_string()];
+        assert_eq!(metadata_flags_from_args(&alternate), Some((true, true)));
+        assert_eq!(metadata_flags_from_args(&["--mode".to_string()]), None);
     }
 
     #[test]

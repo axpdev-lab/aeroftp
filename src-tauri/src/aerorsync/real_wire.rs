@@ -2022,9 +2022,10 @@ fn decode_acl_wire(buf: &[u8]) -> Result<(AclWireEntry, usize), RealWireError> {
         for _ in 0..count {
             let (id, consumed) = decode_varint(&buf[cursor..])?;
             cursor += consumed;
-            if id < 0 || id > i64::from(u32::MAX) {
-                return Err(invalid_acl("id", id, buf.len().saturating_sub(cursor)));
-            }
+            // rsync's `id_t` is `unsigned int`, but `read_varint` returns
+            // `int32`. Values in the upper half therefore arrive negative
+            // and are intentionally reinterpreted as their u32 bit pattern.
+            let id = id as i32 as u32;
             let (xbits, consumed) = decode_varint(&buf[cursor..])?;
             cursor += consumed;
             if xbits < 0 || xbits > i64::from(ACL_XBITS_MAX) {
@@ -2074,7 +2075,7 @@ fn decode_acl_wire(buf: &[u8]) -> Result<(AclWireEntry, usize), RealWireError> {
                 None
             };
             names.push(AclNamedEntry {
-                id: id as u32,
+                id,
                 principal,
                 access,
                 name,
@@ -2103,10 +2104,8 @@ fn encode_acl_perm(perm: u8, field: &'static str, out: &mut Vec<u8>) {
 }
 
 fn encode_acl_id(id: u32, out: &mut Vec<u8>) {
-    assert!(
-        id <= i32::MAX as u32,
-        "ACL id {id} does not fit a signed varint"
-    );
+    // Upstream passes unsigned `id_t` through the signed `write_varint(int32)`
+    // API, preserving the full 32-bit bit pattern.
     out.extend_from_slice(&encode_varint(id as i32));
 }
 
@@ -2188,17 +2187,6 @@ fn encode_acl_wire(entry: &AclWireEntry, out: &mut Vec<u8>) {
                 }
             }
         }
-    }
-}
-
-fn empty_file_list_acls(mode: u32) -> FileListAcls {
-    FileListAcls {
-        access: AclWireEntry::Literal(RsyncAcl::empty()),
-        default: if is_directory_mode(mode) {
-            Some(AclWireEntry::Literal(RsyncAcl::empty()))
-        } else {
-            None
-        },
     }
 }
 
@@ -2883,8 +2871,9 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
 
     // --- 9.5 ACL (`-A` negotiated, skipped on symlinks) -------------------
     // Mirror of the decoder: after checksum, before xattr. A non-symlink
-    // under `-A` always emits an access ACL (empty literal if the caller
-    // left `acls` as `None`). Directories also emit a default ACL.
+    // under `-A` always emits an access ACL. Directories also emit a default
+    // ACL. Missing model fields are caller bugs: silently inventing an empty
+    // ACL here would turn a forgotten filesystem read into metadata loss.
     // Symlinks emit zero ACL bytes even when the session negotiated `-A`.
     if options.preserve_acls {
         if is_symlink_mode(entry.mode) {
@@ -2894,15 +2883,26 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
                 entry.path
             );
         } else {
-            let fallback = empty_file_list_acls(entry.mode);
-            let acls = entry.acls.as_ref().unwrap_or(&fallback);
+            let acls = entry.acls.as_ref().unwrap_or_else(|| {
+                panic!(
+                    "entry {:?} negotiated -A but carries no access ACL",
+                    entry.path
+                )
+            });
             encode_acl_wire(&acls.access, &mut out);
             if is_directory_mode(entry.mode) {
-                encode_acl_wire(
-                    acls.default
-                        .as_ref()
-                        .unwrap_or(&AclWireEntry::Literal(RsyncAcl::empty())),
-                    &mut out,
+                let default = acls.default.as_ref().unwrap_or_else(|| {
+                    panic!(
+                        "directory entry {:?} negotiated -A but carries no default ACL",
+                        entry.path
+                    )
+                });
+                encode_acl_wire(default, &mut out);
+            } else {
+                assert!(
+                    acls.default.is_none(),
+                    "non-directory entry {:?} carries a default ACL that rsync would not send",
+                    entry.path
                 );
             }
         }
@@ -6745,12 +6745,7 @@ mod tests {
                 };
                 assert_eq!(decoded.xattrs, expected_xattrs, "xattrs drift");
                 let expected_acls = if opts.preserve_acls && !is_symlink_mode(entry.mode) {
-                    Some(
-                        entry
-                            .acls
-                            .clone()
-                            .unwrap_or_else(|| empty_file_list_acls(entry.mode)),
-                    )
+                    Some(entry.acls.clone().expect("-A entry must carry ACL model"))
                 } else {
                     None
                 };
@@ -8139,6 +8134,42 @@ mod tests {
             default: None,
         });
         assert_eq!(blob, encode_varint(4));
+    }
+
+    #[test]
+    fn acl_named_id_preserves_the_full_unsigned_32_bit_space() {
+        let mut entry = baseline_entry();
+        entry.acls = Some(FileListAcls {
+            access: AclWireEntry::Literal(RsyncAcl {
+                names: vec![AclNamedEntry {
+                    id: u32::MAX - 1,
+                    principal: AclPrincipal::User,
+                    access: 4,
+                    name: None,
+                }],
+                ..RsyncAcl::empty()
+            }),
+            default: None,
+        });
+        assert_flist_entry_round_trip(entry, &acl_options_for_test(None));
+    }
+
+    #[test]
+    #[should_panic(expected = "negotiated -A but carries no access ACL")]
+    fn acl_negotiated_without_access_model_panics_instead_of_losing_metadata() {
+        let entry = baseline_entry();
+        let _ = encode_file_list_entry(&entry, &acl_options_for_test(None));
+    }
+
+    #[test]
+    #[should_panic(expected = "non-directory entry")]
+    fn regular_entry_with_default_acl_panics_instead_of_dropping_it() {
+        let mut entry = baseline_entry();
+        entry.acls = Some(FileListAcls {
+            access: AclWireEntry::Literal(RsyncAcl::empty()),
+            default: Some(AclWireEntry::Literal(RsyncAcl::empty())),
+        });
+        let _ = encode_file_list_entry(&entry, &acl_options_for_test(None));
     }
 
     #[test]

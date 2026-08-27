@@ -65,7 +65,9 @@ use crate::aerorsync::real_wire::{
     MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead,
     SummaryFrame, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
 };
-use crate::aerorsync::remote_command::{RemoteCommandFlavor, RemoteCommandSpec};
+use crate::aerorsync::remote_command::{
+    metadata_flags_from_args, RemoteCommandFlavor, RemoteCommandSpec,
+};
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
 use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionRole, SessionStats};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, AsyncWrite, SeekFrom};
@@ -604,6 +606,38 @@ fn wire_dump_server_response(received: &[u8], state: &str) {
         &format!("server-bytes-before-preamble state={state}"),
         received,
     );
+}
+
+fn validate_command_metadata_flags(
+    command_spec: &RemoteCommandSpec,
+    args: &[String],
+) -> Result<(), AerorsyncError> {
+    if command_spec.flavor != RemoteCommandFlavor::WrapperParity {
+        if command_spec.preserve_acls || command_spec.preserve_xattrs {
+            return Err(AerorsyncError::new(
+                AerorsyncErrorKind::NegotiationFailed,
+                "the aerorsync_serve development flavor has no -A/-X metadata negotiation",
+            ));
+        }
+        return Ok(());
+    }
+    let effective = metadata_flags_from_args(args).ok_or_else(|| {
+        AerorsyncError::new(
+            AerorsyncErrorKind::NegotiationFailed,
+            "rsync server argv has no recognised compact flag bundle",
+        )
+    })?;
+    let requested = (command_spec.preserve_acls, command_spec.preserve_xattrs);
+    if effective != requested {
+        return Err(AerorsyncError::new(
+            AerorsyncErrorKind::NegotiationFailed,
+            format!(
+                "effective rsync server flags negotiate A/X as {:?}, but the session codec requested {:?}",
+                effective, requested
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// Real-wire rsync session driver. Parameterised on the raw-capable
@@ -1489,15 +1523,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         command_spec: &RemoteCommandSpec,
     ) -> Result<(), AerorsyncError> {
         self.check_cancel("open_raw_stream")?;
+        let request = command_spec.to_exec_request();
+        validate_command_metadata_flags(command_spec, &request.args)?;
         // The one place the spec is in hand and every production path goes
         // through. Capturing the choice here is what lets the codec and the
         // sender agree with the flags we actually sent the server.
         self.negotiated_xattrs = command_spec.preserve_xattrs;
         self.negotiated_acls = command_spec.preserve_acls;
-        let stream = self
-            .transport
-            .open_raw_stream(command_spec.to_exec_request())
-            .await?;
+        let stream = self.transport.open_raw_stream(request).await?;
         self.stream = Some(stream);
         self.phase = AerorsyncSessionPhase::RawStreamOpen;
         Ok(())
@@ -4503,6 +4536,32 @@ mod tests {
                 "flist decode options disagree with the flag bundle"
             );
         }
+    }
+
+    #[test]
+    fn metadata_flag_override_mismatch_is_rejected_before_wire_open() {
+        let spec = RemoteCommandSpec::upload("/remote/target.bin").with_acls(true);
+        let mut args = spec.to_exec_request().args;
+        let bundle = args
+            .iter_mut()
+            .find(|arg| arg.starts_with("-logDtp"))
+            .expect("compact bundle");
+        *bundle = crate::aerorsync::remote_command::OBSERVED_COMPACT_FLAGS.to_string();
+
+        let error = validate_command_metadata_flags(&spec, &args)
+            .expect_err("an override that strips -A must fail before wire open");
+        assert_eq!(error.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert!(error.detail.contains("A/X"));
+    }
+
+    #[test]
+    fn development_command_flavor_rejects_unrepresented_metadata_bits() {
+        let spec = RemoteCommandSpec::aerorsync_upload("/remote/target.bin").with_xattrs(true);
+        let args = spec.to_exec_request().args;
+        let error = validate_command_metadata_flags(&spec, &args)
+            .expect_err("a dev argv with no -X representation must fail before wire open");
+        assert_eq!(error.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert!(error.detail.contains("development flavor"));
     }
 
     #[test]
