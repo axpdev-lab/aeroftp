@@ -58,6 +58,14 @@ html.is-changing-theme *::after {
   --radius-lg: 16px;
   --radius-xl: 20px;
   --radius-2xl: 24px;
+
+  /* Published UI tokens. Documented in docs/UI-TOKENS.md and overridable by the
+     user. Renaming one is a breaking change, see APPENDIX-UI-TOKENS. */
+  --aeroftp-scrollbar-width: 6px;
+  --aeroftp-scrollbar-radius: 3px;
+  --aeroftp-scrollbar-thumb: rgba(128, 128, 128, 0.15);
+  --aeroftp-scrollbar-thumb-hover: rgba(128, 128, 128, 0.3);
+  --aeroftp-panel-scrollbar-width: 10px;
 }
 
 /* Dark Mode */
@@ -122,8 +130,8 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: var(--aeroftp-scrollbar-width);
+  height: var(--aeroftp-scrollbar-width);
 }
 
 ::-webkit-scrollbar-track {
@@ -131,15 +139,21 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(128, 128, 128, 0.15);
-  border-radius: 3px;
+  background: var(--aeroftp-scrollbar-thumb);
+  border-radius: var(--aeroftp-scrollbar-radius);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(128, 128, 128, 0.3);
+  background: var(--aeroftp-scrollbar-thumb-hover);
 }
 
 /* Panel scrollbars - more visible */
+.overflow-auto::-webkit-scrollbar,
+table::-webkit-scrollbar {
+  width: var(--aeroftp-panel-scrollbar-width);
+  height: var(--aeroftp-panel-scrollbar-width);
+}
+
 .overflow-auto::-webkit-scrollbar-thumb,
 table::-webkit-scrollbar-thumb {
   background: var(--color-border-strong);
