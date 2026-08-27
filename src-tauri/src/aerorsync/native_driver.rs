@@ -69,7 +69,7 @@ use crate::aerorsync::real_wire::{
     SummaryFrame, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
 };
 use crate::aerorsync::remote_command::{
-    metadata_flags_from_args, RemoteCommandFlavor, RemoteCommandSpec,
+    metadata_flags_from_args, EffectiveMetadataFlags, RemoteCommandFlavor, RemoteCommandSpec,
 };
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
 use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionRole, SessionStats};
@@ -635,12 +635,12 @@ fn validate_command_metadata_flags(
             "rsync server argv has no recognised compact flag bundle",
         )
     })?;
-    let requested = (command_spec.preserve_acls, command_spec.preserve_xattrs);
+    let requested = command_spec.requested_metadata_flags();
     if effective != requested {
         return Err(AerorsyncError::new(
             AerorsyncErrorKind::NegotiationFailed,
             format!(
-                "effective rsync server flags negotiate A/X as {:?}, but the session codec requested {:?}",
+                "effective rsync server flags negotiate o/g/D/A/X as {:?}, but the session codec requested {:?}",
                 effective, requested
             ),
         ));
@@ -686,6 +686,11 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// and file-list decode options must agree, or the stream desynchronises
     /// by the ACL blob sitting between checksum and xattr.
     negotiated_acls: bool,
+
+    /// Effective compact-flag metadata captured from the argv actually sent.
+    /// File-list decode options read owner/group from here instead of
+    /// hardcoding `-o -g`.
+    effective_metadata: EffectiveMetadataFlags,
 
     phase: AerorsyncSessionPhase,
     committed: bool,
@@ -825,6 +830,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             negotiated_compression_algos: String::new(),
             negotiated_xattrs: false,
             negotiated_acls: false,
+            effective_metadata: EffectiveMetadataFlags::product(false, false),
             phase: AerorsyncSessionPhase::PreConnect,
             committed: false,
             stream: None,
@@ -1575,8 +1581,15 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // The one place the spec is in hand and every production path goes
         // through. Capturing the choice here is what lets the codec and the
         // sender agree with the flags we actually sent the server.
-        self.negotiated_xattrs = command_spec.preserve_xattrs;
-        self.negotiated_acls = command_spec.preserve_acls;
+        let effective = if command_spec.flavor == RemoteCommandFlavor::WrapperParity {
+            metadata_flags_from_args(&request.args)
+                .unwrap_or_else(|| command_spec.requested_metadata_flags())
+        } else {
+            command_spec.requested_metadata_flags()
+        };
+        self.effective_metadata = effective;
+        self.negotiated_xattrs = effective.preserve_xattrs;
+        self.negotiated_acls = effective.preserve_acls;
         let stream = self.transport.open_raw_stream(request).await?;
         self.stream = Some(stream);
         self.phase = AerorsyncSessionPhase::RawStreamOpen;
@@ -1704,22 +1717,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             // the varint path. If a legacy peer disagrees, decode will
             // surface a `RealWireError` which we translate.
             xfer_flags_as_varint: true,
-            // B.2: production dispatch invokes the server with `-c`
-            // (always_checksum) and `-o -g` (preserve owner/group).
-            // Mirror the oracle compat: each regular file entry carries
-            // the negotiated checksum + uid + gid varints (with names when
-            // XMIT_USER/GROUP_NAME_FOLLOWS gates them).
+            // `-c` is still always-checksum. Owner/group follow the compact
+            // bundle actually sent: product omits `-o -g`, capture keeps them.
             always_checksum: true,
             csum_len,
-            preserve_uid: true,
-            preserve_gid: true,
-            // Same negotiation as the `-A` / `-X` in the server flag bundle,
-            // so both flags read from the fields captured when the stream
-            // opened. Disagreeing with the bundle by a single bit would
-            // desynchronise the file list: ACL sits after the checksum and
-            // xattr after ACL.
-            preserve_acls: self.negotiated_acls,
-            preserve_xattrs: self.negotiated_xattrs,
+            preserve_uid: self.effective_metadata.preserve_owner,
+            preserve_gid: self.effective_metadata.preserve_group,
+            preserve_acls: self.effective_metadata.preserve_acls,
+            preserve_xattrs: self.effective_metadata.preserve_xattrs,
             previous_name: None,
         }
     }
@@ -4519,7 +4524,7 @@ mod tests {
         d.file_list.push(entry);
         d.session_role = Some(SessionRole::Receiver);
         d.open_raw_stream_internal(
-            &RemoteCommandSpec::download("/remote/download.bin").with_xattrs(true),
+            &RemoteCommandSpec::capture_download("/remote/download.bin").with_xattrs(true),
         )
         .await
         .unwrap();
@@ -4542,7 +4547,8 @@ mod tests {
         // desynchronise the stream, and they used to be wired
         // independently.
         for want_xattrs in [false, true] {
-            let spec = RemoteCommandSpec::upload("/remote/target.bin").with_xattrs(want_xattrs);
+            let spec =
+                RemoteCommandSpec::capture_upload("/remote/target.bin").with_xattrs(want_xattrs);
 
             // 1. the server flag bundle
             let sends_dash_x = spec
@@ -4581,7 +4587,7 @@ mod tests {
     #[tokio::test]
     async fn the_acl_decisions_all_follow_the_command_spec() {
         for want_acls in [false, true] {
-            let spec = RemoteCommandSpec::upload("/remote/target.bin").with_acls(want_acls);
+            let spec = RemoteCommandSpec::capture_upload("/remote/target.bin").with_acls(want_acls);
 
             let sends_dash_a = spec
                 .to_exec_request()
@@ -4606,7 +4612,7 @@ mod tests {
     async fn unresolved_acl_reference_is_rejected_before_wire_open() {
         use crate::aerorsync::real_wire::{AclWireEntry, FileListAcls};
 
-        let spec = RemoteCommandSpec::upload("/remote/target.bin").with_acls(true);
+        let spec = RemoteCommandSpec::capture_upload("/remote/target.bin").with_acls(true);
         let mut entry = sample_file_list_entry("upload.bin");
         entry.acls = Some(FileListAcls {
             access: AclWireEntry::Reference(0),
@@ -4633,7 +4639,7 @@ mod tests {
 
     #[test]
     fn metadata_flag_override_mismatch_is_rejected_before_wire_open() {
-        let spec = RemoteCommandSpec::upload("/remote/target.bin").with_acls(true);
+        let spec = RemoteCommandSpec::capture_upload("/remote/target.bin").with_acls(true);
         let mut args = spec.to_exec_request().args;
         let bundle = args
             .iter_mut()
@@ -4645,6 +4651,46 @@ mod tests {
             .expect_err("an override that strips -A must fail before wire open");
         assert_eq!(error.kind, AerorsyncErrorKind::NegotiationFailed);
         assert!(error.detail.contains("A/X"));
+    }
+
+    #[test]
+    fn product_server_flag_override_cannot_insert_owner_group_or_devices() {
+        let spec = RemoteCommandSpec::upload("/remote/target.bin");
+        let mut args = spec.to_exec_request().args;
+        let bundle = args
+            .iter_mut()
+            .find(|arg| arg.starts_with('-') && !arg.starts_with("--"))
+            .expect("compact bundle");
+        *bundle = crate::aerorsync::remote_command::OBSERVED_COMPACT_FLAGS.to_string();
+        let error = validate_command_metadata_flags(&spec, &args)
+            .expect_err("inserting o/g/D into the product profile must fail before wire open");
+        assert_eq!(error.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert!(error.detail.contains("o/g/D"));
+    }
+
+    #[tokio::test]
+    async fn product_flist_options_come_from_effective_flags_not_constants() {
+        let mut product = make_driver(mock_transport_with_raw_inbound(Vec::new()));
+        product
+            .open_raw_stream_internal(&RemoteCommandSpec::upload("/remote/target.bin"))
+            .await
+            .expect("open product");
+        let product_opts = product.build_flist_options(16);
+        assert!(
+            !product_opts.preserve_uid && !product_opts.preserve_gid,
+            "product profile must not hardcode uid/gid"
+        );
+
+        let mut capture = make_driver(mock_transport_with_raw_inbound(Vec::new()));
+        capture
+            .open_raw_stream_internal(&RemoteCommandSpec::capture_upload("/remote/target.bin"))
+            .await
+            .expect("open capture");
+        let capture_opts = capture.build_flist_options(16);
+        assert!(
+            capture_opts.preserve_uid && capture_opts.preserve_gid,
+            "capture profile retains historical uid/gid"
+        );
     }
 
     #[test]
@@ -5191,7 +5237,9 @@ mod tests {
                 compression_algos: "none".to_string(),
             });
             driver
-                .open_raw_stream_internal(&RemoteCommandSpec::download("/remote/target.bin"))
+                .open_raw_stream_internal(&RemoteCommandSpec::capture_download(
+                    "/remote/target.bin",
+                ))
                 .await
                 .unwrap();
             driver
@@ -5254,7 +5302,9 @@ mod tests {
                 compression_algos: "none".to_string(),
             });
             driver
-                .open_raw_stream_internal(&RemoteCommandSpec::download("/remote/target.bin"))
+                .open_raw_stream_internal(&RemoteCommandSpec::capture_download(
+                    "/remote/target.bin",
+                ))
                 .await
                 .unwrap();
             driver
@@ -5652,7 +5702,7 @@ mod tests {
             checksum_algos: ours.to_string(),
             compression_algos: "none".to_string(),
         });
-        d.open_raw_stream_internal(&RemoteCommandSpec::upload("/remote/target.bin"))
+        d.open_raw_stream_internal(&RemoteCommandSpec::capture_upload("/remote/target.bin"))
             .await
             .unwrap();
         let err = d
@@ -5697,7 +5747,7 @@ mod tests {
         });
         let err = d
             .drive_upload_through_delta(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 b"payload",
                 &MockSigAdapter::default(),
@@ -5805,7 +5855,7 @@ mod tests {
 
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -5903,7 +5953,7 @@ mod tests {
             let transport = mock_transport_with_raw_inbound(Vec::new());
             let last_raw_outbound = transport.last_raw_outbound.clone();
             let mut d = make_driver(transport);
-            d.open_raw_stream_internal(&RemoteCommandSpec::upload("/remote/big.bin"))
+            d.open_raw_stream_internal(&RemoteCommandSpec::capture_upload("/remote/big.bin"))
                 .await
                 .expect("raw stream opens");
             d.write_data_frame(payload).await.expect("write_data_frame");
@@ -5976,7 +6026,7 @@ mod tests {
         let transport = mock_transport_with_raw_inbound(Vec::new());
         let last_raw_outbound = transport.last_raw_outbound.clone();
         let mut d = make_driver(transport).with_progress_sink(Some(sink));
-        d.open_raw_stream_internal(&RemoteCommandSpec::upload("/remote/big.bin"))
+        d.open_raw_stream_internal(&RemoteCommandSpec::capture_upload("/remote/big.bin"))
             .await
             .expect("raw stream opens");
 
@@ -6060,7 +6110,7 @@ mod tests {
 
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -6113,7 +6163,7 @@ mod tests {
             compression_algos: "none".to_string(),
         });
         d.session_role = Some(SessionRole::Receiver);
-        d.open_raw_stream_internal(&RemoteCommandSpec::download("/remote/target.bin"))
+        d.open_raw_stream_internal(&RemoteCommandSpec::capture_download("/remote/target.bin"))
             .await
             .unwrap();
         d.perform_preamble_exchange(31, XXH64_ALGO_NAME, "none")
@@ -6160,7 +6210,7 @@ mod tests {
 
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -6188,7 +6238,7 @@ mod tests {
 
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -6231,7 +6281,7 @@ mod tests {
 
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -6278,7 +6328,7 @@ mod tests {
 
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -6299,7 +6349,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -6573,7 +6623,7 @@ mod tests {
 
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -6655,7 +6705,7 @@ mod tests {
         let destination_data = vec![0u8; 3584]; // 3.5 KiB: 3 full + 1 partial
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &destination_data,
                 &adapter,
                 &mut sink,
@@ -6800,7 +6850,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -6823,7 +6873,7 @@ mod tests {
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         d.drive_upload_through_delta(
-            RemoteCommandSpec::upload("/remote/target.bin"),
+            RemoteCommandSpec::capture_upload("/remote/target.bin"),
             sample_file_list_entry("target.bin"),
             b"already present",
             &MockSigAdapter::default(),
@@ -6853,7 +6903,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_upload_through_delta_streaming(
-            RemoteCommandSpec::upload("/remote/target.bin"),
+            RemoteCommandSpec::capture_upload("/remote/target.bin"),
             sample_file_list_entry("target.bin"),
             tokio::io::empty(),
             123,
@@ -6885,7 +6935,7 @@ mod tests {
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         d.drive_upload_through_delta(
-            RemoteCommandSpec::upload("/remote/target.bin"),
+            RemoteCommandSpec::capture_upload("/remote/target.bin"),
             sample_file_list_entry("target.bin"),
             b"already present",
             &MockSigAdapter::default(),
@@ -6923,7 +6973,7 @@ mod tests {
         let target = "../data/target.bin";
         let entry = symlink_file_list_entry("link.lnk", target);
         d.drive_upload_symlink(
-            RemoteCommandSpec::upload("/remote/link.lnk"),
+            RemoteCommandSpec::capture_upload("/remote/link.lnk"),
             entry.clone(),
             &mut sink,
         )
@@ -7013,7 +7063,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload_symlink(
-                RemoteCommandSpec::upload("/remote/link.lnk"),
+                RemoteCommandSpec::capture_upload("/remote/link.lnk"),
                 symlink_file_list_entry("link.lnk", "t.bin"),
                 &mut sink,
             )
@@ -7031,7 +7081,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload_symlink(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 live_file_list_entry("target.bin"),
                 &mut sink,
             )
@@ -7051,7 +7101,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload_through_delta(
-                RemoteCommandSpec::upload("/remote/link.lnk"),
+                RemoteCommandSpec::capture_upload("/remote/link.lnk"),
                 entry.clone(),
                 b"",
                 &MockSigAdapter::default(),
@@ -7064,7 +7114,7 @@ mod tests {
         let mut d = make_driver(mock_transport());
         let err = d
             .drive_upload_through_delta_streaming(
-                RemoteCommandSpec::upload("/remote/link.lnk"),
+                RemoteCommandSpec::capture_upload("/remote/link.lnk"),
                 entry,
                 std::io::Cursor::new(Vec::new()),
                 0,
@@ -7117,7 +7167,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/link.lnk"),
+            RemoteCommandSpec::capture_download("/remote/link.lnk"),
             &mut baseline,
             &mut writer,
             &MockSigAdapter::default(),
@@ -7212,7 +7262,7 @@ mod tests {
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta(
-            RemoteCommandSpec::download("/remote/link.lnk"),
+            RemoteCommandSpec::capture_download("/remote/link.lnk"),
             b"",
             &MockSigAdapter::default(),
             &mut sink,
@@ -7261,7 +7311,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -7309,7 +7359,7 @@ mod tests {
             MockSigAdapter::with_fixed_signatures(1024, vec![make_engine_sig(0, 0x11, 0x22, 1024)]);
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 b"abc",
                 &adapter,
                 &mut sink,
@@ -7336,7 +7386,7 @@ mod tests {
         let entry = sample_file_list_entry("target.bin");
         let outcome = d
             .drive_upload(
-                RemoteCommandSpec::upload("/workspace/upload/target.bin"),
+                RemoteCommandSpec::capture_upload("/workspace/upload/target.bin"),
                 entry,
                 &[],
                 &MockSigAdapter::default(),
@@ -7392,7 +7442,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 b"hello\0\0\0world",
                 &adapter,
@@ -7501,7 +7551,7 @@ mod tests {
                 make_driver(bulk_transport).with_preamble_profile(profile.clone());
             bulk_driver
                 .drive_upload_through_delta(
-                    RemoteCommandSpec::upload("/remote/target.bin"),
+                    RemoteCommandSpec::capture_upload("/remote/target.bin"),
                     sample_file_list_entry("target.bin"),
                     source,
                     &CurrentDeltaSyncBridge::new(),
@@ -7526,7 +7576,7 @@ mod tests {
             let mut stream_driver = make_driver(stream_transport).with_preamble_profile(profile);
             stream_driver
                 .drive_upload_through_delta_streaming(
-                    RemoteCommandSpec::upload("/remote/target.bin"),
+                    RemoteCommandSpec::capture_upload("/remote/target.bin"),
                     sample_file_list_entry("target.bin"),
                     std::io::Cursor::new(source.to_vec()),
                     source.len() as u64,
@@ -7592,7 +7642,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &payload,
                 &adapter,
@@ -7715,7 +7765,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &destination_data,
                 &adapter,
                 &mut sink,
@@ -7843,7 +7893,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &destination_data,
                 &adapter,
                 &mut sink,
@@ -7916,7 +7966,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &destination_data,
             &adapter,
             &mut sink,
@@ -7971,7 +8021,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &destination_data,
             &adapter,
             &mut sink,
@@ -8035,7 +8085,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &destination_data,
             &adapter,
             &mut sink,
@@ -8073,7 +8123,7 @@ mod tests {
         assert!(!d.committed(), "starts false");
         let _ = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/x"),
+                RemoteCommandSpec::capture_upload("/remote/x"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -8123,7 +8173,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -8164,7 +8214,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -8200,7 +8250,7 @@ mod tests {
         cancel_flag.store(true, Ordering::SeqCst);
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/x"),
+                RemoteCommandSpec::capture_upload("/remote/x"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -8256,7 +8306,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -8286,7 +8336,8 @@ mod tests {
         d: &mut AerorsyncDriver<MockRemoteShellTransport>,
         sink: &mut CollectingSink,
     ) {
-        drive_upload_to_stub_with_spec(d, sink, RemoteCommandSpec::upload("/remote/x")).await;
+        drive_upload_to_stub_with_spec(d, sink, RemoteCommandSpec::capture_upload("/remote/x"))
+            .await;
     }
 
     async fn drive_aerorsync_upload_to_stub(
@@ -8602,7 +8653,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -8770,7 +8821,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -8828,7 +8879,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -8869,7 +8920,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let res = d
             .drive_upload_through_delta(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -8924,7 +8975,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let res = d
             .drive_download_through_delta(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -8952,7 +9003,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload_through_delta(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -9046,7 +9097,7 @@ mod tests {
         let bulk_adapter = CurrentDeltaSyncBridge::new();
         bulk_d
             .drive_upload_through_delta(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 source,
                 &bulk_adapter,
@@ -9071,7 +9122,7 @@ mod tests {
         let cursor = std::io::Cursor::new(source.to_vec());
         stream_d
             .drive_upload_through_delta_streaming(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 cursor,
                 source.len() as u64,
@@ -9293,7 +9344,7 @@ mod tests {
         let bulk_adapter = CurrentDeltaSyncBridge::new();
         bulk_d
             .drive_upload_through_delta(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &source,
                 &bulk_adapter,
@@ -9319,7 +9370,7 @@ mod tests {
         let cursor = std::io::Cursor::new(source.clone());
         stream_d
             .drive_upload_through_delta_streaming(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 cursor,
                 source.len() as u64,
@@ -9394,7 +9445,7 @@ mod tests {
         let cursor = std::io::Cursor::new(source.clone());
         let err = d
             .drive_upload_through_delta_streaming(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 cursor,
                 // Lie about the length: declared 200, actual 100.
@@ -9444,7 +9495,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/x"),
+                RemoteCommandSpec::capture_upload("/remote/x"),
                 sample_file_list_entry("target.bin"),
                 &big_raw,
                 &adapter,
@@ -9483,7 +9534,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let outcome = d
             .drive_download(
-                RemoteCommandSpec::download("/workspace/download/target.bin"),
+                RemoteCommandSpec::capture_download("/workspace/download/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -9688,7 +9739,7 @@ mod tests {
 
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,
@@ -9759,7 +9810,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,
@@ -9816,7 +9867,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,
@@ -9881,7 +9932,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,
@@ -9929,7 +9980,7 @@ mod tests {
 
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,
@@ -9974,7 +10025,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download_through_delta_streaming(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &mut baseline,
                 &mut writer,
                 &adapter,
@@ -10025,7 +10076,7 @@ mod tests {
 
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,

@@ -1,93 +1,134 @@
 //! Remote command builder for rsync remote-shell mode.
 //!
-//! Goal: produce the exact same remote command line that the current wrapper
-//! capture observes. The captured forms are:
+//! Production uses the integrated product profile (`-ltp...`): mode, mtime,
+//! symlinks, optional xattrs and Linux ACLs. It does not request owner,
+//! group, or devices. Historical capture literals (`-logDtp...`) stay
+//! byte-identical for frozen oracles and are reachable only through an
+//! explicit test-only constructor.
 //!
-//!   upload   : `rsync --server -logDtprcze.iLsfxCIvu --stats . /workspace/upload/target.bin`
-//!   download : `rsync --server --sender -logDtprcze.iLsfxCIvu . /workspace/download/target.bin`
+//!   product upload   : `rsync --server -ltprcze.iLsfxCIvu --stats . <target>`
+//!   capture upload   : `rsync --server -logDtprcze.iLsfxCIvu --stats . /workspace/upload/target.bin`
 //!
-//! See `fixtures::UPLOAD_REMOTE_COMMAND` / `DOWNLOAD_REMOTE_COMMAND`.
+//! See `fixtures::UPLOAD_REMOTE_COMMAND` / `DOWNLOAD_REMOTE_COMMAND` for the
+//! historical capture command lines.
 //!
 //! Conventions:
 //!   - upload   → remote runs as Receiver (no `--sender`) and the wrapper
 //!     enables `--stats` on the remote command line
 //!   - download → remote runs as Sender (`--sender`) without `--stats`
-//!
-//! Flag order is fixed to match the captured shape.
 
 use crate::aerorsync::transport::RemoteExecRequest;
 use crate::aerorsync::types::SessionRole;
 
-/// The compact flag bundle observed in both captures.
-/// Spelled out: log, gid, Devices, times, perms, recursion, z (compress request),
-/// extended attribute chars `.iLsfxCIvu` (incremental + extras).
+/// Historical capture literals. Frozen oracles and explicit capture-profile
+/// tests keep these byte-identical. Production never selects them.
 pub const OBSERVED_COMPACT_FLAGS: &str = "-logDtprcze.iLsfxCIvu";
-
-/// Same bundle with `X` (preserve xattrs) enabled.
-///
-/// Measured against rsync 3.2.7 on 2026-07-25 by handing `rsync -e` a fake
-/// remote shell that prints its argv:
-///
-/// ```text
-/// rsync -logDtprcz   ...  ->  rsync --server -logDtprcze.iLsfxCIvu  . /tmp/
-/// rsync -logDtprczX  ...  ->  rsync --server -logDtpXrcze.iLsfxCIvu . /tmp/
-/// rsync -logDtprczAX ...  ->  rsync --server -logDtpAXrcze.iLsfxCIvu . /tmp/
-/// ```
-///
-/// The first line reproduces `OBSERVED_COMPACT_FLAGS` byte for byte, which is
-/// what validates the capture method.
-///
-/// **`X` is not a suffix.** Stock rsync inserts it after the `-logDtp` block and
-/// *before* `r`. Appending it to the end of the bundle would produce a server
-/// command line that stock rsync never emits, which is exactly the divergence
-/// this pinned constant exists to prevent. `A` (ACLs) sits in the same slot,
-/// immediately before `X` when both are on.
 pub const OBSERVED_COMPACT_FLAGS_XATTR: &str = "-logDtpXrcze.iLsfxCIvu";
-
-/// Same bundle with `A` (preserve ACLs) enabled. Measured against rsync 3.2.7
-/// on 2026-08-27: `rsync -logDtprczA` emits `--server -logDtpArcze.iLsfxCIvu`.
 pub const OBSERVED_COMPACT_FLAGS_ACL: &str = "-logDtpArcze.iLsfxCIvu";
-
-/// Same bundle with both `A` and `X` enabled. Measured against rsync 3.2.7
-/// on 2026-08-27: `rsync -logDtprczAX` emits `--server -logDtpAXrcze.iLsfxCIvu`.
-/// `A` is always before `X`; the reverse order is a command line stock rsync
-/// never emits.
 pub const OBSERVED_COMPACT_FLAGS_ACL_XATTR: &str = "-logDtpAXrcze.iLsfxCIvu";
 
-/// The prefix `A`/`X` are inserted after. Test-only on purpose: production
-/// selects between the measured literals rather than deriving one from the
-/// other, because the literals are the capture oracles. This constant exists
-/// so the pin tests can assert the *position* of `A` and `X`, not merely the
-/// resulting string.
-#[cfg(test)]
-const XATTR_FLAG_ANCHOR: &str = "-logDtp";
-
-/// Pick the compact flag bundle for a session.
+/// Integrated product literals, measured against rsync 3.2.7 on 2026-08-27
+/// through a fake remote shell at protocol 31:
 ///
-/// `-A` and `-X` are sent **only** when the session actually intends to carry
-/// ACLs / xattrs. Sending either unconditionally would change the byte-pinned
-/// server command line for every transfer, including the ones the frozen
-/// oracles are pinned against.
-pub fn compact_flags_for(preserve_acls: bool, preserve_xattrs: bool) -> &'static str {
-    match (preserve_acls, preserve_xattrs) {
-        (false, false) => OBSERVED_COMPACT_FLAGS,
-        (false, true) => OBSERVED_COMPACT_FLAGS_XATTR,
-        (true, false) => OBSERVED_COMPACT_FLAGS_ACL,
-        (true, true) => OBSERVED_COMPACT_FLAGS_ACL_XATTR,
+/// ```text
+/// -ltprcz   -> -ltprcze.iLsfxCIvu
+/// -ltprczX  -> -ltpXrcze.iLsfxCIvu
+/// -ltprczA  -> -ltpArcze.iLsfxCIvu
+/// -ltprczAX -> -ltpAXrcze.iLsfxCIvu
+/// ```
+///
+/// `A`/`X` sit after `-ltp` and before `r`, the same slot as the historical
+/// capture after `-logDtp`. They are never a suffix.
+pub const PRODUCT_COMPACT_FLAGS: &str = "-ltprcze.iLsfxCIvu";
+pub const PRODUCT_COMPACT_FLAGS_XATTR: &str = "-ltpXrcze.iLsfxCIvu";
+pub const PRODUCT_COMPACT_FLAGS_ACL: &str = "-ltpArcze.iLsfxCIvu";
+pub const PRODUCT_COMPACT_FLAGS_ACL_XATTR: &str = "-ltpAXrcze.iLsfxCIvu";
+
+#[cfg(test)]
+const CAPTURE_FLAG_ANCHOR: &str = "-logDtp";
+#[cfg(test)]
+const PRODUCT_FLAG_ANCHOR: &str = "-ltp";
+
+/// Which compact-flag family a session emits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CompactFlagProfile {
+    /// Integrated product: no owner/group/devices.
+    Product,
+    /// Historical stock-rsync capture with `-o -g -D`. Test-only.
+    #[cfg_attr(not(test), allow(dead_code))]
+    Capture,
+}
+
+/// Metadata bits read from the compact bundle that will actually be sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct EffectiveMetadataFlags {
+    pub preserve_owner: bool,
+    pub preserve_group: bool,
+    pub preserve_devices: bool,
+    pub preserve_acls: bool,
+    pub preserve_xattrs: bool,
+}
+
+impl EffectiveMetadataFlags {
+    pub(crate) fn product(preserve_acls: bool, preserve_xattrs: bool) -> Self {
+        Self {
+            preserve_owner: false,
+            preserve_group: false,
+            preserve_devices: false,
+            preserve_acls,
+            preserve_xattrs,
+        }
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn capture(preserve_acls: bool, preserve_xattrs: bool) -> Self {
+        Self {
+            preserve_owner: true,
+            preserve_group: true,
+            preserve_devices: true,
+            preserve_acls,
+            preserve_xattrs,
+        }
     }
 }
 
-/// Read the metadata bits from the compact bundle that will actually be sent.
+/// Pick the compact flag bundle for the integrated product profile.
+pub fn compact_flags_for(preserve_acls: bool, preserve_xattrs: bool) -> &'static str {
+    compact_flags_for_profile(CompactFlagProfile::Product, preserve_acls, preserve_xattrs)
+}
+
+fn compact_flags_for_profile(
+    profile: CompactFlagProfile,
+    preserve_acls: bool,
+    preserve_xattrs: bool,
+) -> &'static str {
+    match (profile, preserve_acls, preserve_xattrs) {
+        (CompactFlagProfile::Product, false, false) => PRODUCT_COMPACT_FLAGS,
+        (CompactFlagProfile::Product, false, true) => PRODUCT_COMPACT_FLAGS_XATTR,
+        (CompactFlagProfile::Product, true, false) => PRODUCT_COMPACT_FLAGS_ACL,
+        (CompactFlagProfile::Product, true, true) => PRODUCT_COMPACT_FLAGS_ACL_XATTR,
+        (CompactFlagProfile::Capture, false, false) => OBSERVED_COMPACT_FLAGS,
+        (CompactFlagProfile::Capture, false, true) => OBSERVED_COMPACT_FLAGS_XATTR,
+        (CompactFlagProfile::Capture, true, false) => OBSERVED_COMPACT_FLAGS_ACL,
+        (CompactFlagProfile::Capture, true, true) => OBSERVED_COMPACT_FLAGS_ACL_XATTR,
+    }
+}
+
+/// Read owner/group/devices/A/X from the compact bundle on the completed argv.
 ///
-/// This is intentionally based on the completed argv, not only on the spec:
-/// `AEROFTP_RSYNC_SERVER_FLAGS` can replace the measured bundle. The driver
-/// uses this result to reject an override whose `A`/`X` bits disagree with the
-/// codec state before opening the stream.
-pub(crate) fn metadata_flags_from_args(args: &[String]) -> Option<(bool, bool)> {
+/// `AEROFTP_RSYNC_SERVER_FLAGS` can replace the measured bundle, so the
+/// driver must parse the argv that will actually be sent.
+pub(crate) fn metadata_flags_from_args(args: &[String]) -> Option<EffectiveMetadataFlags> {
     let bundle = args
         .iter()
         .find(|arg| arg.starts_with('-') && !arg.starts_with("--") && arg.len() > 1)?;
-    Some((bundle.contains('A'), bundle.contains('X')))
+    Some(EffectiveMetadataFlags {
+        preserve_owner: bundle.contains('o'),
+        preserve_group: bundle.contains('g'),
+        preserve_devices: bundle.contains('D'),
+        preserve_acls: bundle.contains('A'),
+        preserve_xattrs: bundle.contains('X'),
+    })
 }
 
 pub const AERORSYNC_SERVER_PROGRAM: &str = "/opt/aerorsync/bin/aerorsync_serve";
@@ -123,6 +164,8 @@ pub struct RemoteCommandSpec {
     /// so the emitted command line is unchanged until a caller opts in via
     /// [`RemoteCommandSpec::with_xattrs`].
     pub preserve_xattrs: bool,
+    /// Compact-flag family. Production constructors pin [`CompactFlagProfile::Product`].
+    flag_profile: CompactFlagProfile,
 }
 
 impl RemoteCommandSpec {
@@ -134,6 +177,7 @@ impl RemoteCommandSpec {
             flavor: RemoteCommandFlavor::WrapperParity,
             preserve_acls: false,
             preserve_xattrs: false,
+            flag_profile: CompactFlagProfile::Product,
         }
     }
 
@@ -145,7 +189,25 @@ impl RemoteCommandSpec {
             flavor: RemoteCommandFlavor::WrapperParity,
             preserve_acls: false,
             preserve_xattrs: false,
+            flag_profile: CompactFlagProfile::Product,
         }
+    }
+
+    /// Historical capture profile with `-o -g -D`. Frozen-oracle tests only.
+    /// Not a production builder.
+    #[cfg(test)]
+    pub fn capture_upload(remote_target: impl Into<String>) -> Self {
+        let mut spec = Self::upload(remote_target);
+        spec.flag_profile = CompactFlagProfile::Capture;
+        spec
+    }
+
+    /// Historical capture profile with `-o -g -D`. Frozen-oracle tests only.
+    #[cfg(test)]
+    pub fn capture_download(remote_target: impl Into<String>) -> Self {
+        let mut spec = Self::download(remote_target);
+        spec.flag_profile = CompactFlagProfile::Capture;
+        spec
     }
 
     pub fn aerorsync_upload(remote_target: impl Into<String>) -> Self {
@@ -156,6 +218,7 @@ impl RemoteCommandSpec {
             flavor: RemoteCommandFlavor::AerorsyncServe,
             preserve_acls: false,
             preserve_xattrs: false,
+            flag_profile: CompactFlagProfile::Product,
         }
     }
 
@@ -167,6 +230,7 @@ impl RemoteCommandSpec {
             flavor: RemoteCommandFlavor::AerorsyncServe,
             preserve_acls: false,
             preserve_xattrs: false,
+            flag_profile: CompactFlagProfile::Product,
         }
     }
 
@@ -182,6 +246,17 @@ impl RemoteCommandSpec {
     pub fn with_xattrs(mut self, preserve_xattrs: bool) -> Self {
         self.preserve_xattrs = preserve_xattrs;
         self
+    }
+
+    pub(crate) fn requested_metadata_flags(&self) -> EffectiveMetadataFlags {
+        match self.flag_profile {
+            CompactFlagProfile::Product => {
+                EffectiveMetadataFlags::product(self.preserve_acls, self.preserve_xattrs)
+            }
+            CompactFlagProfile::Capture => {
+                EffectiveMetadataFlags::capture(self.preserve_acls, self.preserve_xattrs)
+            }
+        }
     }
 
     /// Produce the argv for `rsync --server [--sender] <flags> [--stats] . <target>`
@@ -204,7 +279,12 @@ impl RemoteCommandSpec {
                     .ok()
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or_else(|| {
-                        compact_flags_for(self.preserve_acls, self.preserve_xattrs).to_string()
+                        compact_flags_for_profile(
+                            self.flag_profile,
+                            self.preserve_acls,
+                            self.preserve_xattrs,
+                        )
+                        .to_string()
                     });
                 args.push(compact_flags);
                 if self.emit_stats {
@@ -295,8 +375,13 @@ mod tests {
     #[test]
     fn compact_flags_pin_preserve_links() {
         assert!(
+            PRODUCT_COMPACT_FLAGS.starts_with("-l"),
+            "product server flag string must keep -l (preserve links): {}",
+            PRODUCT_COMPACT_FLAGS
+        );
+        assert!(
             OBSERVED_COMPACT_FLAGS.starts_with("-l"),
-            "server flag string must keep -l (preserve links) as captured: {}",
+            "capture server flag string must keep -l (preserve links): {}",
             OBSERVED_COMPACT_FLAGS
         );
     }
@@ -310,24 +395,22 @@ mod tests {
     #[test]
     fn compact_flags_pin_xattr_position() {
         let base_head = OBSERVED_COMPACT_FLAGS
-            .strip_prefix(XATTR_FLAG_ANCHOR)
+            .strip_prefix(CAPTURE_FLAG_ANCHOR)
             .expect("base bundle must start with the -logDtp block");
         let xattr_head = OBSERVED_COMPACT_FLAGS_XATTR
-            .strip_prefix(XATTR_FLAG_ANCHOR)
+            .strip_prefix(CAPTURE_FLAG_ANCHOR)
             .expect("xattr bundle must start with the same -logDtp block");
 
         assert_eq!(
             xattr_head,
             format!("X{base_head}"),
-            "X must be inserted right after {XATTR_FLAG_ANCHOR} and before the \
+            "X must be inserted right after {CAPTURE_FLAG_ANCHOR} and before the \
              rest of the bundle; got {OBSERVED_COMPACT_FLAGS_XATTR}"
         );
         assert!(
             !OBSERVED_COMPACT_FLAGS_XATTR.ends_with('X'),
             "X is not a suffix: stock rsync never emits it at the end of the bundle"
         );
-        // The measured literal is the oracle: the derivation above must agree
-        // with what rsync actually printed, not merely be self-consistent.
         assert_eq!(
             OBSERVED_COMPACT_FLAGS_XATTR, "-logDtpXrcze.iLsfxCIvu",
             "captured from rsync 3.2.7 on 2026-07-25; re-measure before changing"
@@ -337,25 +420,25 @@ mod tests {
     #[test]
     fn compact_flags_pin_acl_position_before_xattr() {
         let base_head = OBSERVED_COMPACT_FLAGS
-            .strip_prefix(XATTR_FLAG_ANCHOR)
+            .strip_prefix(CAPTURE_FLAG_ANCHOR)
             .expect("base bundle must start with the -logDtp block");
         let acl_head = OBSERVED_COMPACT_FLAGS_ACL
-            .strip_prefix(XATTR_FLAG_ANCHOR)
+            .strip_prefix(CAPTURE_FLAG_ANCHOR)
             .expect("acl bundle must start with the same -logDtp block");
         let ax_head = OBSERVED_COMPACT_FLAGS_ACL_XATTR
-            .strip_prefix(XATTR_FLAG_ANCHOR)
+            .strip_prefix(CAPTURE_FLAG_ANCHOR)
             .expect("acl+xattr bundle must start with the same -logDtp block");
 
         assert_eq!(
             acl_head,
             format!("A{base_head}"),
-            "A must be inserted right after {XATTR_FLAG_ANCHOR} and before the \
+            "A must be inserted right after {CAPTURE_FLAG_ANCHOR} and before the \
              rest of the bundle; got {OBSERVED_COMPACT_FLAGS_ACL}"
         );
         assert_eq!(
             ax_head,
             format!("AX{base_head}"),
-            "A must sit immediately before X after {XATTR_FLAG_ANCHOR}; got \
+            "A must sit immediately before X after {CAPTURE_FLAG_ANCHOR}; got \
              {OBSERVED_COMPACT_FLAGS_ACL_XATTR}"
         );
         assert_eq!(
@@ -366,6 +449,43 @@ mod tests {
             OBSERVED_COMPACT_FLAGS_ACL_XATTR, "-logDtpAXrcze.iLsfxCIvu",
             "captured from rsync 3.2.7 on 2026-08-27; re-measure before changing"
         );
+    }
+
+    #[test]
+    fn product_compact_flag_literals_are_exact() {
+        assert_eq!(PRODUCT_COMPACT_FLAGS, "-ltprcze.iLsfxCIvu");
+        assert_eq!(PRODUCT_COMPACT_FLAGS_XATTR, "-ltpXrcze.iLsfxCIvu");
+        assert_eq!(PRODUCT_COMPACT_FLAGS_ACL, "-ltpArcze.iLsfxCIvu");
+        assert_eq!(PRODUCT_COMPACT_FLAGS_ACL_XATTR, "-ltpAXrcze.iLsfxCIvu");
+        let base_head = PRODUCT_COMPACT_FLAGS
+            .strip_prefix(PRODUCT_FLAG_ANCHOR)
+            .expect("product bundle must start with -ltp");
+        assert_eq!(
+            PRODUCT_COMPACT_FLAGS_XATTR
+                .strip_prefix(PRODUCT_FLAG_ANCHOR)
+                .expect("xattr product bundle"),
+            format!("X{base_head}")
+        );
+        assert_eq!(
+            PRODUCT_COMPACT_FLAGS_ACL
+                .strip_prefix(PRODUCT_FLAG_ANCHOR)
+                .expect("acl product bundle"),
+            format!("A{base_head}")
+        );
+        assert_eq!(
+            PRODUCT_COMPACT_FLAGS_ACL_XATTR
+                .strip_prefix(PRODUCT_FLAG_ANCHOR)
+                .expect("ax product bundle"),
+            format!("AX{base_head}")
+        );
+    }
+
+    #[test]
+    fn historical_capture_literals_remain_exact() {
+        assert_eq!(OBSERVED_COMPACT_FLAGS, "-logDtprcze.iLsfxCIvu");
+        assert_eq!(OBSERVED_COMPACT_FLAGS_XATTR, "-logDtpXrcze.iLsfxCIvu");
+        assert_eq!(OBSERVED_COMPACT_FLAGS_ACL, "-logDtpArcze.iLsfxCIvu");
+        assert_eq!(OBSERVED_COMPACT_FLAGS_ACL_XATTR, "-logDtpAXrcze.iLsfxCIvu");
     }
 
     // X.1: opting into xattrs must be the ONLY thing that changes the emitted
@@ -380,9 +500,13 @@ mod tests {
             assert!(!spec.preserve_xattrs, "xattrs must default to off");
             assert!(!spec.preserve_acls, "acls must default to off");
             assert!(
-                spec.to_args().iter().any(|a| a == OBSERVED_COMPACT_FLAGS),
-                "default spec must still emit the byte-pinned bundle: {:?}",
+                spec.to_args().iter().any(|a| a == PRODUCT_COMPACT_FLAGS),
+                "default product spec must emit the product bundle: {:?}",
                 spec.to_args()
+            );
+            assert!(
+                spec.to_args().iter().all(|a| a != OBSERVED_COMPACT_FLAGS),
+                "production must not emit the historical capture bundle"
             );
         }
 
@@ -391,40 +515,118 @@ mod tests {
             with_x
                 .to_args()
                 .iter()
-                .any(|a| a == OBSERVED_COMPACT_FLAGS_XATTR),
-            "with_xattrs(true) must emit the xattr bundle: {:?}",
+                .any(|a| a == PRODUCT_COMPACT_FLAGS_XATTR),
+            "with_xattrs(true) must emit the product xattr bundle: {:?}",
             with_x.to_args()
         );
         assert!(
-            with_x.to_args().iter().all(|a| a != OBSERVED_COMPACT_FLAGS),
-            "the two bundles are mutually exclusive"
+            with_x.to_args().iter().all(|a| a != PRODUCT_COMPACT_FLAGS),
+            "the two product bundles are mutually exclusive"
         );
     }
 
     #[test]
-    fn compact_flags_for_selects_the_four_measured_constants() {
-        assert_eq!(compact_flags_for(false, false), OBSERVED_COMPACT_FLAGS);
-        assert_eq!(compact_flags_for(false, true), OBSERVED_COMPACT_FLAGS_XATTR);
-        assert_eq!(compact_flags_for(true, false), OBSERVED_COMPACT_FLAGS_ACL);
+    fn compact_flags_for_selects_the_four_product_constants() {
+        assert_eq!(compact_flags_for(false, false), PRODUCT_COMPACT_FLAGS);
+        assert_eq!(compact_flags_for(false, true), PRODUCT_COMPACT_FLAGS_XATTR);
+        assert_eq!(compact_flags_for(true, false), PRODUCT_COMPACT_FLAGS_ACL);
         assert_eq!(
             compact_flags_for(true, true),
+            PRODUCT_COMPACT_FLAGS_ACL_XATTR
+        );
+    }
+
+    #[test]
+    fn capture_profile_selects_the_four_historical_literals() {
+        assert_eq!(
+            compact_flags_for_profile(CompactFlagProfile::Capture, false, false),
+            OBSERVED_COMPACT_FLAGS
+        );
+        assert_eq!(
+            compact_flags_for_profile(CompactFlagProfile::Capture, false, true),
+            OBSERVED_COMPACT_FLAGS_XATTR
+        );
+        assert_eq!(
+            compact_flags_for_profile(CompactFlagProfile::Capture, true, false),
+            OBSERVED_COMPACT_FLAGS_ACL
+        );
+        assert_eq!(
+            compact_flags_for_profile(CompactFlagProfile::Capture, true, true),
             OBSERVED_COMPACT_FLAGS_ACL_XATTR
         );
+        let spec = RemoteCommandSpec::capture_upload("/workdir/t.bin");
+        assert!(
+            spec.to_args().iter().any(|a| a == OBSERVED_COMPACT_FLAGS),
+            "capture constructor must emit the historical bundle: {:?}",
+            spec.to_args()
+        );
+    }
+
+    #[test]
+    fn product_effective_metadata_has_no_owner_group_or_devices() {
+        for (acls, xattrs, bundle) in [
+            (false, false, PRODUCT_COMPACT_FLAGS),
+            (false, true, PRODUCT_COMPACT_FLAGS_XATTR),
+            (true, false, PRODUCT_COMPACT_FLAGS_ACL),
+            (true, true, PRODUCT_COMPACT_FLAGS_ACL_XATTR),
+        ] {
+            let spec = RemoteCommandSpec::upload("/workdir/t.bin")
+                .with_acls(acls)
+                .with_xattrs(xattrs);
+            assert_eq!(
+                spec.requested_metadata_flags(),
+                EffectiveMetadataFlags::product(acls, xattrs)
+            );
+            assert_eq!(
+                metadata_flags_from_args(&spec.to_args()),
+                Some(EffectiveMetadataFlags::product(acls, xattrs))
+            );
+            assert!(spec.to_args().iter().any(|a| a == bundle));
+        }
     }
 
     #[test]
     fn metadata_flags_are_read_from_the_effective_argv_bundle() {
         for (bundle, expected) in [
-            (OBSERVED_COMPACT_FLAGS, (false, false)),
-            (OBSERVED_COMPACT_FLAGS_XATTR, (false, true)),
-            (OBSERVED_COMPACT_FLAGS_ACL, (true, false)),
-            (OBSERVED_COMPACT_FLAGS_ACL_XATTR, (true, true)),
+            (
+                OBSERVED_COMPACT_FLAGS,
+                EffectiveMetadataFlags::capture(false, false),
+            ),
+            (
+                OBSERVED_COMPACT_FLAGS_XATTR,
+                EffectiveMetadataFlags::capture(false, true),
+            ),
+            (
+                OBSERVED_COMPACT_FLAGS_ACL,
+                EffectiveMetadataFlags::capture(true, false),
+            ),
+            (
+                OBSERVED_COMPACT_FLAGS_ACL_XATTR,
+                EffectiveMetadataFlags::capture(true, true),
+            ),
+            (
+                PRODUCT_COMPACT_FLAGS,
+                EffectiveMetadataFlags::product(false, false),
+            ),
+            (
+                PRODUCT_COMPACT_FLAGS_ACL_XATTR,
+                EffectiveMetadataFlags::product(true, true),
+            ),
         ] {
             let args = vec!["--server".to_string(), bundle.to_string()];
             assert_eq!(metadata_flags_from_args(&args), Some(expected));
         }
         let alternate = vec!["--server".to_string(), "-rlptgoDAXzc".to_string()];
-        assert_eq!(metadata_flags_from_args(&alternate), Some((true, true)));
+        assert_eq!(
+            metadata_flags_from_args(&alternate),
+            Some(EffectiveMetadataFlags {
+                preserve_owner: true,
+                preserve_group: true,
+                preserve_devices: true,
+                preserve_acls: true,
+                preserve_xattrs: true,
+            })
+        );
         assert_eq!(metadata_flags_from_args(&["--mode".to_string()]), None);
     }
 
@@ -435,8 +637,8 @@ mod tests {
             with_a
                 .to_args()
                 .iter()
-                .any(|a| a == OBSERVED_COMPACT_FLAGS_ACL),
-            "with_acls(true) must emit the ACL bundle: {:?}",
+                .any(|a| a == PRODUCT_COMPACT_FLAGS_ACL),
+            "with_acls(true) must emit the product ACL bundle: {:?}",
             with_a.to_args()
         );
 
@@ -447,11 +649,11 @@ mod tests {
             with_ax
                 .to_args()
                 .iter()
-                .any(|a| a == OBSERVED_COMPACT_FLAGS_ACL_XATTR),
-            "with_acls+with_xattrs must emit the AX bundle: {:?}",
+                .any(|a| a == PRODUCT_COMPACT_FLAGS_ACL_XATTR),
+            "with_acls+with_xattrs must emit the product AX bundle: {:?}",
             with_ax.to_args()
         );
-        let ax = OBSERVED_COMPACT_FLAGS_ACL_XATTR;
+        let ax = PRODUCT_COMPACT_FLAGS_ACL_XATTR;
         let a_at = ax.find('A').expect("A present");
         let x_at = ax.find('X').expect("X present");
         assert!(a_at < x_at, "A must precede X in the compact flag bundle");

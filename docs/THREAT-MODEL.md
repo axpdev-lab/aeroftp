@@ -198,7 +198,7 @@ defaults. Unset, they change no bytes.
 |----------|-----------------|
 | `AEROFTP_RSYNC_CSUM_ALGOS` | Replaces the advertised checksum list (`native_driver.rs` `PreambleProfile::with_env_overrides`). Default is `xxh128 xxh3 xxh64 md5 md4`; `sha1` is a supported override-only winner. The override can change the supported winner priority, but an unsupported or `none` winner is rejected pre-commit (`NegotiationFailed`) and cannot disable verification in the integrated product. |
 | `AEROFTP_RSYNC_COMPRESS_ALGOS` | Replaces the advertised compressor list. Default is `zstd zlibx none`. Announcing a codec AeroRsync cannot drive (for example stock `lz4` or `zlib`) makes that name eligible as the negotiated winner; if it wins, the driver rejects the unsupported codec instead of attempting to decode it. |
-| `AEROFTP_RSYNC_SERVER_FLAGS` | Replaces the measured compact rsync `--server` flag bundle (`remote_command.rs`). A value that strips `A` or `X` while the session codec still requested ACL/xattr is rejected before the remote stream opens. |
+| `AEROFTP_RSYNC_SERVER_FLAGS` | Replaces the measured compact rsync `--server` flag bundle (`remote_command.rs`). Production is `-ltp...` (no owner/group/devices). An override that inserts `o`, `g`, or `D`, or that adds/strips `A`/`X` against the session codec, is rejected before any wire bytes are consumed. |
 | `AEROFTP_WIRE_DUMP_DIR` | Appends annotated preamble dumps, plain remote command lines and raw channel bytes under that directory. The artifacts may expose transferred file content. Best-effort, no-op when unset. |
 
 **Attack**: A local process or wrapper that can set the AeroFTP environment
@@ -207,8 +207,9 @@ shared dump directory.
 
 **Defense layers**:
 1. Defaults stay byte-pinned; empty values are ignored
-2. `AEROFTP_RSYNC_SERVER_FLAGS` is checked against the codec's A/X request
-   before wire open (`validate_command_metadata_flags`)
+2. `AEROFTP_RSYNC_SERVER_FLAGS` cannot widen `o/g/D/A/X` beyond the
+   product policy; mismatches are rejected before wire open
+   (`validate_command_metadata_flags`)
 3. An unsupported or `none` checksum winner is rejected after preamble and
    before file-list bytes (`resolved_file_checksum_kind`)
 4. Wire dumps require an explicit directory; they are not on by default
@@ -233,7 +234,7 @@ shared dump directory.
 | RR-09 | Vault key resident in process memory (no `mlock`) | Low | Accepted | 32-byte key held in a static `Mutex`; `mlock(2)` is not portable across that static layout and `secrecy::SecretBox` does not provide it either. Could in theory reach swap. Mitigated by encrypted swap on modern systems (default on macOS, LUKS on Linux) and by the short unlocked-vault lifetime. See `credential_store.rs` SECURITY NOTE |
 | RR-10 | Operator disables a safety check via a relaxation flag | Medium | Accepted | Flags such as `--insecure`, `--trust-host-key`, `--aimd-disable`, the abuse/cross-account/archive acknowledgements, and `--auto-approve`/`--yes` are explicit opt-ins. Unattended/agent runs can pass `--strict` / `AEROFTP_STRICT=1` to hard-refuse all of them (exit 5) |
 | RR-11 | Plaintext `.aerozip` archive mistaken for an encrypted vault | Medium | Mitigated | `.aerozip` is the passwordless aerovz lane: integrity + recovery, not confidentiality. The CLI labels reports with `encrypted:false` and `confidential:false`, rejects `--password`, and cross-lane rejects encrypted `vault` commands against plaintext archives (and `archive` commands against encrypted `.aerovault` containers). Use `.aerovault` / `vault create` for secrecy. |
-| RR-12 | AeroRsync env knobs widen checksum, compressor or flag surface, or dump wire bytes | Medium | Accepted | Same-user operator escape hatches for live endpoints. Unset they are no-ops. A mismatched `AEROFTP_RSYNC_SERVER_FLAGS` that drops `A`/`X` is rejected before wire open. An unsupported or `none` checksum winner is rejected pre-commit. `AEROFTP_STRICT` does not yet refuse them. |
+| RR-12 | AeroRsync env knobs widen checksum, compressor or flag surface, or dump wire bytes | Medium | Accepted | Same-user operator escape hatches for live endpoints. Unset they are no-ops. A mismatched `AEROFTP_RSYNC_SERVER_FLAGS` that inserts `o`/`g`/`D` or disagrees on `A`/`X` is rejected before wire open. An unsupported or `none` checksum winner is rejected pre-commit. `AEROFTP_STRICT` does not yet refuse them. |
 
 ---
 

@@ -79,6 +79,7 @@ shipped as default on OpenBSD).
 - **Remote-shell mode** via SSH (`SshRemoteShellTransport` con libssh2), host key pinning obbligatorio
 - **Single-file transfer** (batch / session reuse chiuso con `AerorsyncBatch`, P3-T01 W3)
 - **Explicit sender/receiver role split** nel driver state machine
+- **Profilo metadata di prodotto**: il comando `--server` integrato e' `-ltprcz` (piu' `A` su Linux e `X` su Unix quando quelle metadata sono attive). Non richiede e non emette owner/group/devices (`-o -g -D`). I literal storici `-logDtp...` restano solo per gli oracle di capture.
 
 ## Gating
 

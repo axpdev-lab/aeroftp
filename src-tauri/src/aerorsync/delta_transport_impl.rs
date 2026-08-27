@@ -72,7 +72,7 @@ use crate::aerorsync::native_driver::{
     SHA1_ALGO_NAME, XXH128_ALGO_NAME, XXH3_ALGO_NAME, XXH64_ALGO_NAME,
 };
 use crate::aerorsync::real_wire::{is_symlink_mode, FileListEntry};
-use crate::aerorsync::remote_command::RemoteCommandSpec;
+use crate::aerorsync::remote_command::{EffectiveMetadataFlags, RemoteCommandSpec};
 use crate::aerorsync::rsync_event_bridge::RsyncEventBridge;
 use crate::aerorsync::russh_session_transport::RusshSessionTransport;
 use crate::aerorsync::ssh_transport::{
@@ -546,8 +546,8 @@ where
         &metadata,
         Vec::new(),
         None,
-        preserve_xattrs,
         acls,
+        EffectiveMetadataFlags::product(preserve_acls, preserve_xattrs),
     );
 
     let mut driver = AerorsyncDriver::new(transport, cancel)
@@ -557,10 +557,10 @@ where
     let warnings = new_warnings_sink();
     let mut bridge = build_event_bridge(warnings.clone());
 
-    // B.1: production dispatch now talks to stock `rsync --server`
-    // (WrapperParity flavor) instead of the dev helper
-    // `aerorsync_serve`. The wrapper command line is byte-pinned
-    // against rsync 3.2.7 capture by `upload_remote_command_matches_capture`.
+    // B.1: production dispatch talks to stock `rsync --server`
+    // (WrapperParity flavor) with the product flag profile (`-ltp...`).
+    // Historical `-logDtp...` capture literals stay on the explicit
+    // test-only constructor.
     // B3/B2: `-X`/`-A` ride on the same switches as local metadata I/O.
     let spec = RemoteCommandSpec::upload(remote_path)
         .with_xattrs(preserve_xattrs)
@@ -658,8 +658,8 @@ where
             metadata,
             Vec::new(),
             Some(target),
-            preserve_xattrs,
             None,
+            EffectiveMetadataFlags::product(false, preserve_xattrs),
         );
 
         let mut driver = AerorsyncDriver::new(transport, cancel)
@@ -1180,9 +1180,8 @@ where
     let warnings = new_warnings_sink();
     let mut bridge = build_event_bridge(warnings.clone());
 
-    // B.1: production dispatch now talks to stock `rsync --server --sender`
-    // (WrapperParity flavor). Pinned against rsync 3.2.7 capture by
-    // `download_remote_command_matches_capture`.
+    // B.1: production dispatch talks to stock `rsync --server --sender`
+    // with the product flag profile (`-ltp...`).
     // B3/B2: `-X`/`-A` ride on the same switches as local metadata apply.
     let spec = RemoteCommandSpec::download(remote_path)
         .with_xattrs(preserve_xattrs)
@@ -1763,12 +1762,11 @@ impl DeltaBatch for AerorsyncBatch {
 /// [59..126], decoded in
 /// `docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/2026-04-25_File_List_Wire_Annotation.md`):
 /// the first entry of a list never SAMEs with anything (no previous
-/// entry to compare against), and the production CLI invokes
-/// `rsync --server -vlogDtprcze...` (preserve owner/group/times,
-/// `-c` always-checksum). Therefore `XMIT_USER_NAME_FOLLOWS |
-/// XMIT_GROUP_NAME_FOLLOWS | XMIT_MOD_NSEC` is the cumulative shape; the
-/// uid/gid varints + name pairs follow inline because `inc_recurse=1`
-/// is negotiated via CF_INC_RECURSE in the server compat byte.
+/// entry to compare against). The integrated product profile does not
+/// request `-o -g -D`, so uid/gid stay off the wire. The historical
+/// capture profile still emits `XMIT_USER_NAME_FOLLOWS |
+/// XMIT_GROUP_NAME_FOLLOWS | XMIT_MOD_NSEC`. `inc_recurse=1` is
+/// negotiated via CF_INC_RECURSE in the server compat byte.
 /// `symlink_target` is `Some` only on the Y-RSC.4 symlink-upload path:
 /// the caller resolved it with `read_link` after an lstat-style
 /// `symlink_metadata` probe, and `metadata` then carries `S_IFLNK` mode
@@ -1783,26 +1781,49 @@ fn build_source_entry(
     metadata: &std::fs::Metadata,
     file_checksum: Vec<u8>,
     symlink_target: Option<String>,
-    preserve_xattrs: bool,
     acls: Option<crate::aerorsync::real_wire::FileListAcls>,
+    metadata_flags: EffectiveMetadataFlags,
 ) -> FileListEntry {
-    // 0x2c00 = USER_NAME_FOLLOWS (1<<10) | GROUP_NAME_FOLLOWS (1<<11) | MOD_NSEC (1<<13).
-    const BASELINE_FLAGS: u32 = (1 << 10) | (1 << 11) | (1 << 13);
+    // 0x2000 = MOD_NSEC (1<<13). Capture adds USER_NAME_FOLLOWS (1<<10)
+    // and GROUP_NAME_FOLLOWS (1<<11) only when owner/group are requested.
+    const MOD_NSEC: u32 = 1 << 13;
+    const USER_NAME_FOLLOWS: u32 = 1 << 10;
+    const GROUP_NAME_FOLLOWS: u32 = 1 << 11;
+    let mut flags = MOD_NSEC;
+    if metadata_flags.preserve_owner {
+        flags |= USER_NAME_FOLLOWS;
+    }
+    if metadata_flags.preserve_group {
+        flags |= GROUP_NAME_FOLLOWS;
+    }
     let name = local_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("source.bin")
         .to_string();
     let (mtime_secs, mtime_nsec_opt) = file_mtime_components(metadata);
-    let (uid_value, gid_value) = file_owner_components(metadata);
-    let uid_name = lookup_user_name(uid_value);
-    let gid_name = lookup_group_name(gid_value);
+    let (uid, uid_name, gid, gid_name) =
+        if metadata_flags.preserve_owner || metadata_flags.preserve_group {
+            let (uid_value, gid_value) = file_owner_components(metadata);
+            (
+                metadata_flags.preserve_owner.then_some(uid_value as i64),
+                metadata_flags
+                    .preserve_owner
+                    .then(|| lookup_user_name(uid_value)),
+                metadata_flags.preserve_group.then_some(gid_value as i64),
+                metadata_flags
+                    .preserve_group
+                    .then(|| lookup_group_name(gid_value)),
+            )
+        } else {
+            (None, None, None, None)
+        };
     // B3 / X.3: when the session negotiates `-X`, read `user.*` xattrs
     // via libc. `None` when xattrs are off keeps the encoder emitting
     // zero xattr bytes (frozen oracles stay byte-identical). `Some(vec)`
     // — empty or not — when on matches the codec contract for negotiated
     // sessions.
-    let xattrs = if preserve_xattrs {
+    let xattrs = if metadata_flags.preserve_xattrs {
         Some(crate::aerorsync::xattr_fs::read_user_xattrs(local_path).unwrap_or_default())
     } else {
         None
@@ -1815,7 +1836,7 @@ fn build_source_entry(
     // value; using the real digest keeps semantics aligned with
     // classic rsync so the receiver may short-circuit equal files.
     FileListEntry {
-        flags: BASELINE_FLAGS,
+        flags,
         path: name,
         size: size as i64,
         mtime: mtime_secs,
@@ -1824,10 +1845,10 @@ fn build_source_entry(
         // consistent.
         mtime_nsec: Some(mtime_nsec_opt.unwrap_or(0)),
         mode: file_mode_from_metadata(metadata),
-        uid: Some(uid_value as i64),
-        uid_name: Some(uid_name),
-        gid: Some(gid_value as i64),
-        gid_name: Some(gid_name),
+        uid,
+        uid_name,
+        gid,
+        gid_name,
         checksum: file_checksum,
         symlink_target,
         xattrs,
@@ -2617,8 +2638,8 @@ mod tests {
             xfer_flags_as_varint: true,
             always_checksum: true,
             csum_len: checksum_len,
-            preserve_uid: true,
-            preserve_gid: true,
+            preserve_uid: false,
+            preserve_gid: false,
             previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,
@@ -3239,8 +3260,8 @@ mod tests {
             &meta,
             xxh128_digest_bytes(&[]),
             None,
-            false,
             None,
+            EffectiveMetadataFlags::capture(false, false),
         );
         assert_eq!(entry.path, "payload.bin");
         assert_eq!(entry.size, 1_234_567);
@@ -3251,7 +3272,7 @@ mod tests {
             "mtime must reflect the source file (got {})",
             entry.mtime
         );
-        // B.2 baseline: oracle's first-entry shape is
+        // Historical capture first-entry shape:
         // USER_NAME_FOLLOWS | GROUP_NAME_FOLLOWS | MOD_NSEC = 0x2c00.
         // uid/gid + names follow inline; xxh128 16-byte checksum trails.
         assert_eq!(entry.flags, (1 << 10) | (1 << 11) | (1 << 13));
@@ -3277,6 +3298,27 @@ mod tests {
     }
 
     #[test]
+    fn product_source_entries_omit_uid_gid_and_name_flags() {
+        let dir = fresh_tempdir();
+        let path = dir.path().join("payload.bin");
+        let meta = metadata_for(&path);
+        let entry = build_source_entry(
+            &path,
+            12,
+            &meta,
+            xxh128_digest_bytes(&[]),
+            None,
+            None,
+            EffectiveMetadataFlags::product(false, false),
+        );
+        assert_eq!(entry.flags, 1 << 13, "product first-entry is MOD_NSEC only");
+        assert!(entry.uid.is_none());
+        assert!(entry.gid.is_none());
+        assert!(entry.uid_name.is_none());
+        assert!(entry.gid_name.is_none());
+    }
+
+    #[test]
     fn build_source_entry_fallback_name_when_no_file_name() {
         // `/` has no file_name component; use any directory metadata as
         // a source (a directory is fine for the fallback check).
@@ -3288,8 +3330,8 @@ mod tests {
             &meta,
             xxh128_digest_bytes(&[]),
             None,
-            false,
             None,
+            EffectiveMetadataFlags::product(false, false),
         );
         assert_eq!(entry.path, "source.bin");
     }
@@ -3304,8 +3346,15 @@ mod tests {
             std::fs::File::create(&path).unwrap();
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
             let meta = std::fs::metadata(&path).unwrap();
-            let entry =
-                build_source_entry(&path, 0, &meta, xxh128_digest_bytes(&[]), None, false, None);
+            let entry = build_source_entry(
+                &path,
+                0,
+                &meta,
+                xxh128_digest_bytes(&[]),
+                None,
+                None,
+                EffectiveMetadataFlags::product(false, false),
+            );
             // `mode` is the raw `st_mode` value; the low 12 bits carry
             // the permission bits we just set.
             assert_eq!((entry.mode as u32) & 0o7777, 0o640);
@@ -3333,8 +3382,8 @@ mod tests {
             &meta,
             Vec::new(),
             Some(target.to_string()),
-            false,
             None,
+            EffectiveMetadataFlags::product(false, false),
         );
 
         assert_eq!(entry.mode & 0o170000, 0o120000, "S_IFLNK mode bits");
@@ -3345,8 +3394,9 @@ mod tests {
             "symlink entries carry no flist checksum (proto >= 28)"
         );
         // First-entry shape (audit 2026-07-21 §4.1): explicit mtime and
-        // mode, never XMIT_SAME_* compression.
-        assert_eq!(entry.flags, (1 << 10) | (1 << 11) | (1 << 13));
+        // mode, never XMIT_SAME_* compression. Product omits owner/group.
+        assert_eq!(entry.flags, 1 << 13);
+        assert!(entry.uid.is_none() && entry.gid.is_none());
         assert!(entry.mtime > 0, "explicit mtime required on first entry");
         assert!(entry.mtime_nsec.is_some(), "MOD_NSEC requires a value");
     }
@@ -3805,8 +3855,8 @@ mod tests {
             xfer_flags_as_varint: true,
             always_checksum: true,
             csum_len: 16,
-            preserve_uid: true,
-            preserve_gid: true,
+            preserve_uid: false,
+            preserve_gid: false,
             previous_name: None,
             preserve_acls: false,
             preserve_xattrs: false,

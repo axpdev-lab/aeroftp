@@ -158,7 +158,7 @@ fn rsync_3_1_3_deflate_byte_oracle_matches_real_wire_decoder() {
 
 #[test]
 fn upload_remote_command_matches_capture() {
-    let spec = RemoteCommandSpec::upload("/workspace/upload/target.bin");
+    let spec = RemoteCommandSpec::capture_upload("/workspace/upload/target.bin");
     assert_eq!(spec.remote_role, SessionRole::Receiver);
     assert!(spec.emit_stats);
     assert_eq!(spec.to_command_line(), UPLOAD_REMOTE_COMMAND);
@@ -166,10 +166,24 @@ fn upload_remote_command_matches_capture() {
 
 #[test]
 fn download_remote_command_matches_capture() {
-    let spec = RemoteCommandSpec::download("/workspace/download/target.bin");
+    let spec = RemoteCommandSpec::capture_download("/workspace/download/target.bin");
     assert_eq!(spec.remote_role, SessionRole::Sender);
     assert!(!spec.emit_stats);
     assert_eq!(spec.to_command_line(), DOWNLOAD_REMOTE_COMMAND);
+}
+
+#[test]
+fn upload_remote_command_matches_product_profile() {
+    let spec = RemoteCommandSpec::upload("/workspace/upload/target.bin");
+    let line = spec.to_command_line();
+    assert!(
+        line.contains("-ltprcze.iLsfxCIvu"),
+        "production upload must emit the product flag bundle: {line}"
+    );
+    assert!(
+        !line.contains("-logDtp"),
+        "production upload must not emit the historical capture bundle: {line}"
+    );
 }
 
 #[test]
