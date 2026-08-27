@@ -471,6 +471,214 @@ async fn product_path_uses_delta_when_session_is_eligible() {
     let _ = provider.disconnect().await;
 }
 
+/// Fail closed when this test is invoked without the key-auth fixture.
+/// A skip here would look identical to a green run in `--ignored` CI.
+#[cfg(target_os = "linux")]
+fn require_key_auth_fixture(test_name: &str) {
+    assert!(
+        ssh_key_path().exists(),
+        "{test_name}: run {}/setup.sh first",
+        fixture_dir().display()
+    );
+    assert!(
+        container_running("aeroftp-delta-sync-fixture"),
+        "{test_name}: fixture container not running; run `docker compose up -d --build` in {}",
+        fixture_dir().display()
+    );
+}
+
+#[cfg(target_os = "linux")]
+fn set_local_named_acl(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644))
+        .expect("chmod local ACL fixture");
+    let out = StdCommand::new("setfacl")
+        .args(["-m", "u:65534:r--,m::r--"])
+        .arg(path)
+        .output()
+        .expect("spawn setfacl");
+    assert!(
+        out.status.success(),
+        "setfacl failed for {}: {}",
+        path.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[cfg(target_os = "linux")]
+fn set_local_binary_xattr(path: &Path, name: &str, value: &[u8]) {
+    let hex: String = value.iter().map(|b| format!("{b:02x}")).collect();
+    let py = format!(
+        "import os, binascii; os.setxattr({path:?}, {name:?}, binascii.unhexlify({hex:?}))"
+    );
+    let out = StdCommand::new("python3")
+        .args(["-c", &py])
+        .output()
+        .expect("spawn python3 setxattr");
+    assert!(
+        out.status.success(),
+        "setxattr failed for {}: {}",
+        path.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[cfg(target_os = "linux")]
+fn sha256_hex(path: &Path) -> String {
+    let out = StdCommand::new("sha256sum")
+        .arg(path)
+        .output()
+        .expect("spawn sha256sum");
+    assert!(
+        out.status.success(),
+        "sha256sum failed for {}: {}",
+        path.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .next()
+        .expect("sha256sum printed a digest")
+        .to_string()
+}
+
+/// Product path: SftpProvider::connect + sync_tree_core must preserve
+/// Linux access ACL (uid 65534 r-- plus mask r--) and a binary user.*
+/// xattr without constructing AerorsyncDeltaTransport in the test.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+#[ignore = "requires docker fixture"]
+async fn product_path_native_delta_preserves_acl_and_xattr() {
+    const TEST: &str = "product_path_native_delta_preserves_acl_and_xattr";
+    require_key_auth_fixture(TEST);
+
+    let (log_buf, _guard) = capture_tracing_logs();
+    let mut provider: Box<dyn StorageProvider> = Box::new(SftpProvider::new(SftpConfig {
+        host: "127.0.0.1".to_string(),
+        port: 2222,
+        username: "testuser".to_string(),
+        password: None,
+        private_key_path: Some(ssh_key_path().to_string_lossy().to_string()),
+        key_passphrase: None,
+        initial_path: Some("/workdir".to_string()),
+        timeout_secs: 15,
+        trust_unknown_hosts: true,
+    }));
+    provider.connect().await.expect("key-auth SFTP connect");
+
+    let local_root = tempfile::tempdir().expect("local tempdir");
+    let payload = local_root.path().join("delta-payload.bin");
+    write_repeated_payload(&payload, 0x77, 2048);
+
+    let remote_root = unique_remote_root("p1-g4-acl-xattr");
+    let baseline = SyncOptions {
+        direction: SyncDirection::Upload,
+        delta_policy: DeltaPolicy::Mtime,
+        dry_run: false,
+        delete_orphans: false,
+        conflict_mode: ConflictMode::Larger,
+        scan: ScanOptions::default(),
+        error_correction: Default::default(),
+        download_segments: 1,
+        max_backlog: ftp_client_gui_lib::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
+        schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::Fifo,
+    };
+    let mut sink = NoopProgressSink;
+
+    let first_report = sync_tree_core(
+        &mut provider,
+        local_root.path().to_str().expect("utf8 local path"),
+        &remote_root,
+        &baseline,
+        &mut sink,
+    )
+    .await;
+    assert!(
+        first_report.errors.is_empty(),
+        "first product-path apply should succeed, got errors: {:?}",
+        first_report.errors
+    );
+    assert_eq!(first_report.uploaded, 1, "first apply should upload once");
+
+    thread::sleep(Duration::from_secs(2));
+    mutate_first_byte(&payload, b'X');
+    const XATTR_NAME: &str = "user.aeroftp.product";
+    const XATTR_VALUE: &[u8] = b"prod\x00acl\xffok";
+    set_local_named_acl(&payload);
+    set_local_binary_xattr(&payload, XATTR_NAME, XATTR_VALUE);
+
+    let delta_opts = SyncOptions {
+        delta_policy: DeltaPolicy::Delta,
+        ..baseline.clone()
+    };
+    let second_report = sync_tree_core(
+        &mut provider,
+        local_root.path().to_str().expect("utf8 local path"),
+        &remote_root,
+        &delta_opts,
+        &mut sink,
+    )
+    .await;
+    let logs = captured_text(&log_buf);
+    assert!(
+        second_report.errors.is_empty(),
+        "delta product-path apply should succeed, got errors: {:?}",
+        second_report.errors
+    );
+    assert_eq!(second_report.uploaded, 1, "delta apply should upload once");
+    assert!(
+        logs.contains("providers::sftp: using native rsync delta transport"),
+        "expected native transport selection; logs were:\n{logs}"
+    );
+    assert!(
+        logs.contains("sync.delta: used delta path")
+            || logs.contains("sync.delta: used batch path"),
+        "expected product path to use delta (single-shot or batch); logs were:\n{logs}"
+    );
+
+    let remote_file = format!("{remote_root}/delta-payload.bin");
+    let remote_sha = ssh_exec_shell(&format!("sha256sum '{remote_file}' | awk '{{print $1}}'"))
+        .unwrap_or_else(|e| panic!("{TEST}: remote sha256 failed: {e}"))
+        .trim()
+        .to_string();
+    let local_sha = sha256_hex(&payload);
+    assert_eq!(
+        remote_sha, local_sha,
+        "{TEST}: remote bytes must match after native delta"
+    );
+
+    let acl_text = ssh_exec_shell(&format!("getfacl -cpn '{remote_file}'"))
+        .unwrap_or_else(|e| panic!("{TEST}: remote getfacl failed: {e}"));
+    assert!(
+        acl_text.lines().any(|line| line == "user:65534:r--"),
+        "{TEST}: remote ACL missing user:65534:r--:\n{acl_text}"
+    );
+    assert!(
+        acl_text.lines().any(|line| line == "mask::r--"),
+        "{TEST}: remote ACL missing mask::r--:\n{acl_text}"
+    );
+
+    let xattr_text = ssh_exec_shell(&format!(
+        "getfattr -n {XATTR_NAME} -e hex --absolute-names '{remote_file}'"
+    ))
+    .unwrap_or_else(|e| panic!("{TEST}: remote getfattr failed: {e}"));
+    let expected_hex: String = XATTR_VALUE.iter().map(|b| format!("{b:02x}")).collect();
+    let xattr_hex = xattr_text.lines().find_map(|line| {
+        let line = line.trim();
+        let rest = line.strip_prefix(&format!("{XATTR_NAME}=0x"))?;
+        Some(rest.trim().to_string())
+    });
+    assert_eq!(
+        xattr_hex.as_deref(),
+        Some(expected_hex.as_str()),
+        "{TEST}: remote xattr must match the binary local value:\n{xattr_text}"
+    );
+
+    cleanup_remote_tree(&mut provider, &remote_root).await;
+    let _ = provider.disconnect().await;
+}
+
 /// Z.1.4 (2026-05-15, commit 24658dad) made password-backed SFTP
 /// profiles eligible for the native rsync leg, gated fail-closed on the
 /// host-key fingerprint the verified SFTP handshake captured (the U-02

@@ -52,7 +52,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            libacl1-dev
 
       - name: Clippy (deny warnings)
         working-directory: ./src-tauri

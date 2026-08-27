@@ -3,7 +3,7 @@
 
 FROM alpine:3.19
 
-RUN apk add --no-cache openssh rsync bash \
+RUN apk add --no-cache openssh rsync bash acl attr \
     && ssh-keygen -A \
     && adduser -D -s /bin/sh testuser \
     && passwd -u testuser \

@@ -159,6 +159,10 @@ jobs:
               -o APT::Keep-Downloaded-Packages=true \
               rsync \
               openssh-client \
+              acl \
+              attr \
+              libacl1 \
+              libacl1-dev \
               libwebkit2gtk-4.1-dev \
               libappindicator3-dev \
               librsvg2-dev
@@ -214,6 +218,14 @@ jobs:
         timeout-minutes: 15
         working-directory: src-tauri
         run: cargo test --test integration_delta_sync -- --ignored --nocapture
+
+      - name: Product-path native delta preserves ACL and xattr
+        timeout-minutes: 10
+        working-directory: src-tauri
+        run: |
+          cargo test --test integration_delta_sync \
+            product_path_native_delta_preserves_acl_and_xattr -- \
+            --ignored --nocapture --exact
 
       - name: Dump fixture logs on failure
         if: failure()
@@ -312,6 +324,7 @@ jobs:
               rsync \
               openssh-client \
               sshpass \
+              libacl1-dev \
               libwebkit2gtk-4.1-dev \
               libappindicator3-dev \
               librsvg2-dev
