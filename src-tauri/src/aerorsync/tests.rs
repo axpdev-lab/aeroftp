@@ -73,6 +73,7 @@ fn rsync_3_1_3_deflate_byte_oracle_matches_real_wire_decoder() {
         csum_len: 16,
         preserve_uid: true,
         preserve_gid: true,
+        preserve_acls: false,
         preserve_xattrs: false,
         previous_name: None,
     };

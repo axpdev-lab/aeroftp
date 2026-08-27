@@ -1713,6 +1713,7 @@ fn build_source_entry(
         checksum: file_checksum,
         symlink_target,
         xattrs,
+        acls: None,
     }
 }
 
@@ -2485,6 +2486,7 @@ mod tests {
             checksum: vec![0xAA; checksum_len],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         };
         let opts = FileListDecodeOptions {
             protocol: 31,
@@ -2494,6 +2496,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
 
@@ -3234,6 +3237,7 @@ mod tests {
             checksum: vec![],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         };
         let err = create_symlink_atomic(&entry, &dest, "/remote/no-target.lnk")
             .await
@@ -3286,6 +3290,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some("../../../../etc/passwd".to_string()),
             xattrs: None,
+            acls: None,
         };
         let err = create_symlink_atomic(&entry, &dest, "/remote/evil.lnk")
             .await
@@ -3320,6 +3325,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some("rel/tgt.bin".to_string()),
             xattrs: None,
+            acls: None,
         };
         create_symlink_atomic(&entry, &dest, "/remote/replace-me.lnk")
             .await
@@ -3430,6 +3436,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some("tgt.bin".to_string()),
             xattrs: None,
+            acls: None,
         };
         create_symlink_atomic(&entry, &dest, "/remote/dated.lnk")
             .await
@@ -3519,6 +3526,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some("tgt.bin".to_string()),
             xattrs: None,
+            acls: None,
         };
         let err = create_symlink_atomic(&entry, &dest, "/remote/refused.lnk")
             .await
@@ -3656,6 +3664,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some(target.to_string()),
             xattrs: None,
+            acls: None,
         };
         let opts = FileListDecodeOptions {
             protocol: 31,
@@ -3665,6 +3674,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let mut finish_tail = vec![0x00; 3];

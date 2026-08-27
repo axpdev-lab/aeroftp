@@ -639,6 +639,12 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// read from here, which reads from the spec.
     negotiated_xattrs: bool,
 
+    /// Whether this session asked the remote `rsync --server` for `-A`.
+    /// Twin of [`Self::negotiated_xattrs`]: command spec, session state
+    /// and file-list decode options must agree, or the stream desynchronises
+    /// by the ACL blob sitting between checksum and xattr.
+    negotiated_acls: bool,
+
     phase: AerorsyncSessionPhase,
     committed: bool,
 
@@ -776,6 +782,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             negotiated_checksum_algos: String::new(),
             negotiated_compression_algos: String::new(),
             negotiated_xattrs: false,
+            negotiated_acls: false,
             phase: AerorsyncSessionPhase::PreConnect,
             committed: false,
             stream: None,
@@ -1486,6 +1493,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // through. Capturing the choice here is what lets the codec and the
         // sender agree with the flags we actually sent the server.
         self.negotiated_xattrs = command_spec.preserve_xattrs;
+        self.negotiated_acls = command_spec.preserve_acls;
         let stream = self
             .transport
             .open_raw_stream(command_spec.to_exec_request())
@@ -1622,13 +1630,12 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             csum_len,
             preserve_uid: true,
             preserve_gid: true,
-            // Same negotiation as the `-X` in the server flag bundle, so
-            // it reads from the same field rather than being asserted
-            // independently. If this said `true` while the bundle omitted
-            // `-X`, the decoder would eat two bytes that are not on the
-            // wire and the file list would desynchronise; if it said
-            // `false` while the bundle sent `-X`, it would leave those two
-            // bytes behind and swallow the list terminator.
+            // Same negotiation as the `-A` / `-X` in the server flag bundle,
+            // so both flags read from the fields captured when the stream
+            // opened. Disagreeing with the bundle by a single bit would
+            // desynchronise the file list: ACL sits after the checksum and
+            // xattr after ACL.
+            preserve_acls: self.negotiated_acls,
             preserve_xattrs: self.negotiated_xattrs,
             previous_name: None,
         }
@@ -1701,14 +1708,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     // overshoots. All three are recoverable by pulling
                     // another MSG_DATA frame off the wire.
                     //
-                    // X.2a: this list is a contract the xattr codec is
-                    // written against. `decode_xattr_blob` reports a blob
-                    // that straddles a frame boundary as `TruncatedBuffer`
-                    // precisely so it lands here, and reserves its own
-                    // `InvalidXattrField` / `XattrAbbrevUnsupported` /
-                    // `XattrDatumAboveInlineLimit` for shapes that must
-                    // abort. Widening this arm to swallow those would turn
-                    // a hostile blob into an unbounded frame-pull loop.
+                    // X.2a / ACL B1: this list is a contract the xattr and
+                    // ACL codecs are written against. A blob that straddles
+                    // a frame boundary is `TruncatedBuffer` so it lands
+                    // here; `InvalidXattrField`, `XattrAbbrevUnsupported`
+                    // and `InvalidAclField` abort. Widening this arm to
+                    // swallow those would turn a hostile blob into an
+                    // unbounded frame-pull loop.
                     // Retrying is safe because decoding restarts from the
                     // front of `flist_buf` and the codec keeps no state
                     // across calls.
@@ -4475,6 +4481,30 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn the_acl_decisions_all_follow_the_command_spec() {
+        for want_acls in [false, true] {
+            let spec = RemoteCommandSpec::upload("/remote/target.bin").with_acls(want_acls);
+
+            let sends_dash_a = spec
+                .to_exec_request()
+                .args
+                .iter()
+                .any(|a| a.contains('A') && a.starts_with("-logDtp"));
+            assert_eq!(sends_dash_a, want_acls, "flag bundle disagrees");
+
+            let mut d = make_driver(mock_transport_with_raw_inbound(Vec::new()));
+            d.open_raw_stream_internal(&spec).await.expect("open");
+
+            assert_eq!(d.negotiated_acls, want_acls, "session state disagrees");
+            assert_eq!(
+                d.build_flist_options(16).preserve_acls,
+                want_acls,
+                "flist decode options disagree with the flag bundle"
+            );
+        }
+    }
+
     #[test]
     fn item_report_xattr_is_the_measured_bit() {
         // `06-xattr-oob-wire-evidence.md` §3: the per-file shortint moves
@@ -4534,6 +4564,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let (entry, mut cursor) =
@@ -4596,6 +4627,7 @@ mod tests {
             checksum: vec![0xAA; 16],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         }
     }
 
@@ -4636,6 +4668,7 @@ mod tests {
             checksum: vec![0xAA; 16],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         }
     }
 
@@ -4665,6 +4698,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some(target.to_string()),
             xattrs: None,
+            acls: None,
         }
     }
 
@@ -5483,6 +5517,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let mut expected_entry = sample_file_list_entry("target.bin");
@@ -5658,6 +5693,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry = sample_file_list_entry("target.bin");
@@ -5712,6 +5748,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let mut entry = sample_file_list_entry("target.bin");
@@ -5763,6 +5800,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry = sample_file_list_entry("target.bin");
@@ -5878,6 +5916,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry = sample_file_list_entry("target.bin");
@@ -6241,6 +6280,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -6587,6 +6627,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let mut flist_payload = encode_file_list_entry(&entry, &opts);
@@ -6711,6 +6752,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let target = "../rel/target.bin";
@@ -6815,6 +6857,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry = symlink_file_list_entry("link.lnk", "t/rel.bin");
@@ -6905,6 +6948,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7304,6 +7348,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7430,6 +7475,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7499,6 +7545,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7560,6 +7607,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7620,6 +7668,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7717,6 +7766,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7757,6 +7807,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7845,6 +7896,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -8183,6 +8235,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -8350,6 +8403,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -8410,6 +8464,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -8511,6 +8566,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -9248,6 +9304,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -9329,6 +9386,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -9392,6 +9450,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -9453,6 +9512,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);

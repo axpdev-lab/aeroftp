@@ -40,27 +40,40 @@ pub const OBSERVED_COMPACT_FLAGS: &str = "-logDtprcze.iLsfxCIvu";
 /// **`X` is not a suffix.** Stock rsync inserts it after the `-logDtp` block and
 /// *before* `r`. Appending it to the end of the bundle would produce a server
 /// command line that stock rsync never emits, which is exactly the divergence
-/// this pinned constant exists to prevent. ACL, when it lands, goes in as `AX`
-/// at the same position.
+/// this pinned constant exists to prevent. `A` (ACLs) sits in the same slot,
+/// immediately before `X` when both are on.
 pub const OBSERVED_COMPACT_FLAGS_XATTR: &str = "-logDtpXrcze.iLsfxCIvu";
 
-/// The prefix `X` is inserted after. Test-only on purpose: production selects
-/// between the two measured literals rather than deriving one from the other,
-/// because the literals are the capture oracles. This constant exists so the
-/// pin test can assert the *position* of `X`, not merely the resulting string.
+/// Same bundle with `A` (preserve ACLs) enabled. Measured against rsync 3.2.7
+/// on 2026-08-27: `rsync -logDtprczA` emits `--server -logDtpArcze.iLsfxCIvu`.
+pub const OBSERVED_COMPACT_FLAGS_ACL: &str = "-logDtpArcze.iLsfxCIvu";
+
+/// Same bundle with both `A` and `X` enabled. Measured against rsync 3.2.7
+/// on 2026-08-27: `rsync -logDtprczAX` emits `--server -logDtpAXrcze.iLsfxCIvu`.
+/// `A` is always before `X`; the reverse order is a command line stock rsync
+/// never emits.
+pub const OBSERVED_COMPACT_FLAGS_ACL_XATTR: &str = "-logDtpAXrcze.iLsfxCIvu";
+
+/// The prefix `A`/`X` are inserted after. Test-only on purpose: production
+/// selects between the measured literals rather than deriving one from the
+/// other, because the literals are the capture oracles. This constant exists
+/// so the pin tests can assert the *position* of `A` and `X`, not merely the
+/// resulting string.
 #[cfg(test)]
 const XATTR_FLAG_ANCHOR: &str = "-logDtp";
 
 /// Pick the compact flag bundle for a session.
 ///
-/// `-X` is sent **only** when the session actually intends to carry xattrs.
-/// Sending it unconditionally would change the byte-pinned server command line
-/// for every transfer, including the ones the frozen oracles are pinned against.
-pub fn compact_flags_for(preserve_xattrs: bool) -> &'static str {
-    if preserve_xattrs {
-        OBSERVED_COMPACT_FLAGS_XATTR
-    } else {
-        OBSERVED_COMPACT_FLAGS
+/// `-A` and `-X` are sent **only** when the session actually intends to carry
+/// ACLs / xattrs. Sending either unconditionally would change the byte-pinned
+/// server command line for every transfer, including the ones the frozen
+/// oracles are pinned against.
+pub fn compact_flags_for(preserve_acls: bool, preserve_xattrs: bool) -> &'static str {
+    match (preserve_acls, preserve_xattrs) {
+        (false, false) => OBSERVED_COMPACT_FLAGS,
+        (false, true) => OBSERVED_COMPACT_FLAGS_XATTR,
+        (true, false) => OBSERVED_COMPACT_FLAGS_ACL,
+        (true, true) => OBSERVED_COMPACT_FLAGS_ACL_XATTR,
     }
 }
 
@@ -87,6 +100,11 @@ pub struct RemoteCommandSpec {
     pub emit_stats: bool,
     /// Which remote command shape should be emitted.
     pub flavor: RemoteCommandFlavor,
+    /// Whether this session carries POSIX ACLs, i.e. whether `A` goes into
+    /// the compact flag bundle. Defaults to `false` on every constructor,
+    /// so the emitted command line is unchanged until a caller opts in via
+    /// [`RemoteCommandSpec::with_acls`].
+    pub preserve_acls: bool,
     /// Whether this session carries extended attributes, i.e. whether `X` goes
     /// into the compact flag bundle. Defaults to `false` on every constructor,
     /// so the emitted command line is unchanged until a caller opts in via
@@ -101,6 +119,7 @@ impl RemoteCommandSpec {
             remote_target: remote_target.into(),
             emit_stats: true,
             flavor: RemoteCommandFlavor::WrapperParity,
+            preserve_acls: false,
             preserve_xattrs: false,
         }
     }
@@ -111,6 +130,7 @@ impl RemoteCommandSpec {
             remote_target: remote_target.into(),
             emit_stats: false,
             flavor: RemoteCommandFlavor::WrapperParity,
+            preserve_acls: false,
             preserve_xattrs: false,
         }
     }
@@ -121,6 +141,7 @@ impl RemoteCommandSpec {
             remote_target: remote_target.into(),
             emit_stats: true,
             flavor: RemoteCommandFlavor::AerorsyncServe,
+            preserve_acls: false,
             preserve_xattrs: false,
         }
     }
@@ -131,8 +152,16 @@ impl RemoteCommandSpec {
             remote_target: remote_target.into(),
             emit_stats: false,
             flavor: RemoteCommandFlavor::AerorsyncServe,
+            preserve_acls: false,
             preserve_xattrs: false,
         }
+    }
+
+    /// Opt this session into POSIX ACLs, which puts `A` into the compact
+    /// flag bundle. Off by default: see `compact_flags_for`.
+    pub fn with_acls(mut self, preserve_acls: bool) -> Self {
+        self.preserve_acls = preserve_acls;
+        self
     }
 
     /// Opt this session into extended attributes, which puts `X` into the
@@ -161,7 +190,9 @@ impl RemoteCommandSpec {
                 let compact_flags = std::env::var("AEROFTP_RSYNC_SERVER_FLAGS")
                     .ok()
                     .filter(|v| !v.trim().is_empty())
-                    .unwrap_or_else(|| compact_flags_for(self.preserve_xattrs).to_string());
+                    .unwrap_or_else(|| {
+                        compact_flags_for(self.preserve_acls, self.preserve_xattrs).to_string()
+                    });
                 args.push(compact_flags);
                 if self.emit_stats {
                     args.push("--stats".to_string());
@@ -290,6 +321,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn compact_flags_pin_acl_position_before_xattr() {
+        let base_head = OBSERVED_COMPACT_FLAGS
+            .strip_prefix(XATTR_FLAG_ANCHOR)
+            .expect("base bundle must start with the -logDtp block");
+        let acl_head = OBSERVED_COMPACT_FLAGS_ACL
+            .strip_prefix(XATTR_FLAG_ANCHOR)
+            .expect("acl bundle must start with the same -logDtp block");
+        let ax_head = OBSERVED_COMPACT_FLAGS_ACL_XATTR
+            .strip_prefix(XATTR_FLAG_ANCHOR)
+            .expect("acl+xattr bundle must start with the same -logDtp block");
+
+        assert_eq!(
+            acl_head,
+            format!("A{base_head}"),
+            "A must be inserted right after {XATTR_FLAG_ANCHOR} and before the \
+             rest of the bundle; got {OBSERVED_COMPACT_FLAGS_ACL}"
+        );
+        assert_eq!(
+            ax_head,
+            format!("AX{base_head}"),
+            "A must sit immediately before X after {XATTR_FLAG_ANCHOR}; got \
+             {OBSERVED_COMPACT_FLAGS_ACL_XATTR}"
+        );
+        assert_eq!(
+            OBSERVED_COMPACT_FLAGS_ACL, "-logDtpArcze.iLsfxCIvu",
+            "captured from rsync 3.2.7 on 2026-08-27; re-measure before changing"
+        );
+        assert_eq!(
+            OBSERVED_COMPACT_FLAGS_ACL_XATTR, "-logDtpAXrcze.iLsfxCIvu",
+            "captured from rsync 3.2.7 on 2026-08-27; re-measure before changing"
+        );
+    }
+
     // X.1: opting into xattrs must be the ONLY thing that changes the emitted
     // flag bundle. Every existing call site keeps the byte-pinned string, which
     // is what keeps the frozen oracles and the live lanes valid.
@@ -300,6 +365,7 @@ mod tests {
             RemoteCommandSpec::download("/workdir/t.bin"),
         ] {
             assert!(!spec.preserve_xattrs, "xattrs must default to off");
+            assert!(!spec.preserve_acls, "acls must default to off");
             assert!(
                 spec.to_args().iter().any(|a| a == OBSERVED_COMPACT_FLAGS),
                 "default spec must still emit the byte-pinned bundle: {:?}",
@@ -323,9 +389,43 @@ mod tests {
     }
 
     #[test]
-    fn compact_flags_for_selects_the_measured_constants() {
-        assert_eq!(compact_flags_for(false), OBSERVED_COMPACT_FLAGS);
-        assert_eq!(compact_flags_for(true), OBSERVED_COMPACT_FLAGS_XATTR);
+    fn compact_flags_for_selects_the_four_measured_constants() {
+        assert_eq!(compact_flags_for(false, false), OBSERVED_COMPACT_FLAGS);
+        assert_eq!(compact_flags_for(false, true), OBSERVED_COMPACT_FLAGS_XATTR);
+        assert_eq!(compact_flags_for(true, false), OBSERVED_COMPACT_FLAGS_ACL);
+        assert_eq!(
+            compact_flags_for(true, true),
+            OBSERVED_COMPACT_FLAGS_ACL_XATTR
+        );
+    }
+
+    #[test]
+    fn acl_flag_is_opt_in_and_sits_before_x_when_both_are_on() {
+        let with_a = RemoteCommandSpec::upload("/workdir/t.bin").with_acls(true);
+        assert!(
+            with_a
+                .to_args()
+                .iter()
+                .any(|a| a == OBSERVED_COMPACT_FLAGS_ACL),
+            "with_acls(true) must emit the ACL bundle: {:?}",
+            with_a.to_args()
+        );
+
+        let with_ax = RemoteCommandSpec::upload("/workdir/t.bin")
+            .with_acls(true)
+            .with_xattrs(true);
+        assert!(
+            with_ax
+                .to_args()
+                .iter()
+                .any(|a| a == OBSERVED_COMPACT_FLAGS_ACL_XATTR),
+            "with_acls+with_xattrs must emit the AX bundle: {:?}",
+            with_ax.to_args()
+        );
+        let ax = OBSERVED_COMPACT_FLAGS_ACL_XATTR;
+        let a_at = ax.find('A').expect("A present");
+        let x_at = ax.find('X').expect("X present");
+        assert!(a_at < x_at, "A must precede X in the compact flag bundle");
     }
 
     #[test]
