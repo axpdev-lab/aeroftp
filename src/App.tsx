@@ -489,6 +489,7 @@ import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLo
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
 import { useActivityLog } from './hooks/useActivityLog';
+import { useUiTokens } from './hooks/useUiTokens';
 import { useMarqueeSelection } from './hooks/useMarqueeSelection';
 import { StopCancelSpinner } from './components/StopCancelSpinner';
 import { markProfileHealthy } from './hooks/useProviderHealth';
@@ -2105,6 +2106,11 @@ const App: React.FC = () => {
   const aeroShareEnabled = useAeroShareEnabled();
   const humanLog = useHumanizedLog();
   const activityLog = useActivityLog();
+
+  // Published UI token overrides (docs/UI-TOKENS.md): loaded once at startup
+  // from <config_dir>/ui-tokens.json. Deliberately NOT inside the theme effect
+  // (different trigger and cost profile) and not on a file watcher.
+  useUiTokens();
 
   // Activity Log badge counter respects the same filter selected inside ActivityLogPanel.
   // The panel writes filter state to localStorage and emits CustomEvents on every change,
