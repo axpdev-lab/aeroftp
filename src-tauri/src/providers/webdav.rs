@@ -816,7 +816,7 @@ impl WebDavProvider {
     }
 
     /// Make an authenticated request (Basic or Digest depending on server)
-    fn request(&mut self, method: Method, path: &str) -> reqwest::RequestBuilder {
+    fn request(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
         let url = self.build_url(path);
         let builder = self.client.request(method.clone(), &url);
 
@@ -1260,7 +1260,7 @@ impl WebDavProvider {
 
     /// Make an authenticated request to an arbitrary URL (for OCS / trashbin endpoints
     /// that live outside the WebDAV files path).
-    fn request_url(&mut self, method: Method, url: &str) -> reqwest::RequestBuilder {
+    fn request_url(&self, method: Method, url: &str) -> reqwest::RequestBuilder {
         let builder = self.client.request(method.clone(), url);
         if self.config.anonymous {
             return builder;
