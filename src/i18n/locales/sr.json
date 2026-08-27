@@ -1153,11 +1153,11 @@
             "resumeForget": "Заборави ово одредиште",
             "resumeForgetConfirm": "Заборави",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Премостите објављене CSS токене из docs/UI-TOKENS.md датотеком ui-tokens.json у конфигурационој фасцикли. Промене се примењују при поновном учитавању; неважећи уноси се прескачу и пријављују у Дневнику активности.",
+            "uiTokensDesc": "Замените објављене CSS токене из docs/UI-TOKENS.md датотеком ui-tokens.json у конфигурационој фасцикли. Промене се примењују при поновном учитавању; неважећи уноси се прескачу и пријављују у Дневнику активности.",
             "uiTokensOpenFile": "Отвори ui-tokens.json",
             "uiTokensReload": "Поново учитај",
             "uiTokensReset": "Врати на подразумевано",
-            "uiTokensApplied": "Примењена премоћавања: {count}",
+            "uiTokensApplied": "Примењене замене: {count}",
             "uiTokensRejected": "Одбијени уноси: {count}"
         },
         "devtools": {

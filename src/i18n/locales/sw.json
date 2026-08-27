@@ -1158,7 +1158,7 @@
             "uiTokensReload": "Pakia upya",
             "uiTokensReset": "Weka upya kwa chaguo-msingi",
             "uiTokensApplied": "Mabadiliko yaliyotumika: {count}",
-            "uiTokensRejected": "Ingizo zilizokataliwa: {count}"
+            "uiTokensRejected": "Maingizo yaliyokataliwa: {count}"
         },
         "devtools": {
             "title": "AeroTools",
