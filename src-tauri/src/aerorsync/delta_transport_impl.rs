@@ -430,15 +430,23 @@ where
     T: RawRemoteShellTransport + 'static,
 {
     let start = Instant::now();
+    // B2 review: platform support is a property of the requested transport
+    // policy, not of the source file type. Check it before the symlink branch
+    // so a non-Linux caller cannot silently turn `.with_acls(true)` into an
+    // ACL-less symlink session.
+    if preserve_acls {
+        crate::aerorsync::acl_fs::ensure_linux_acl_support()
+            .map_err(|e| RsyncError::HardRejection(e.to_string()))?;
+    }
     // Y-RSC.4: lstat semantics. `fs::metadata` follows symlinks, which
     // silently uploaded the link TARGET's content as a regular file;
     // stock rsync with `-l` (already in the pinned server flag string)
     // preserves the link itself. For non-symlink paths the two calls
     // return identical metadata.
-    let metadata = fs::symlink_metadata(local_path)
+    let path_metadata = fs::symlink_metadata(local_path)
         .await
         .map_err(RsyncError::Io)?;
-    if metadata.file_type().is_symlink() {
+    if path_metadata.file_type().is_symlink() {
         // Symlinks bypass the `min_file_size` gate on purpose: the gate
         // exists to skip delta overhead on small FILE payloads, but a
         // symlink has no data phase at all, and a `TooSmall` refusal
@@ -449,7 +457,7 @@ where
             cancel,
             local_path,
             remote_path,
-            &metadata,
+            &path_metadata,
             preamble_profile,
             progress,
             start,
@@ -457,12 +465,11 @@ where
         )
         .await;
     }
-    let file_size = metadata.len();
-    if file_size < min_file_size {
-        return Err(RsyncError::TooSmall {
-            size: file_size,
-            threshold: min_file_size,
-        });
+    if !path_metadata.is_file() {
+        return Err(RsyncError::HardRejection(format!(
+            "native upload only accepts regular files: {} is not regular",
+            local_path.display()
+        )));
     }
     // P3-T01 W1.3: upload-side cap removed. Sources of any size now
     // flow through `drive_upload_through_delta_streaming` (W1.2).
@@ -483,18 +490,33 @@ where
     // identifies the negotiated algorithm. The placeholder stays empty
     // here so upload cannot accidentally advertise xxh128 bytes to an
     // xxh64/xxh3/md5 receiver.
-    if preserve_acls {
-        crate::aerorsync::acl_fs::ensure_linux_acl_support()
-            .map_err(|e| RsyncError::HardRejection(e.to_string()))?;
-    }
-
     let mut open_opts = OpenOptions::new();
     open_opts.read(true);
     #[cfg(unix)]
     {
-        open_opts.custom_flags(libc::O_NOFOLLOW);
+        // O_NOFOLLOW closes the regular-to-symlink race. O_NONBLOCK keeps a
+        // regular-to-FIFO/device replacement from hanging this async task;
+        // it has no effect on regular-file reads.
+        open_opts.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     }
     let source_file = open_opts.open(local_path).await.map_err(RsyncError::Io)?;
+    // The fd, not the earlier lstat result, is authoritative for every field
+    // paired with the streamed bytes and ACL. This closes a regular-to-regular
+    // path swap that could otherwise send file B with file A's mode/size/mtime.
+    let metadata = source_file.metadata().await.map_err(RsyncError::Io)?;
+    if !metadata.is_file() {
+        return Err(RsyncError::HardRejection(format!(
+            "native upload source changed to a non-regular file while opening: {}",
+            local_path.display()
+        )));
+    }
+    let file_size = metadata.len();
+    if file_size < min_file_size {
+        return Err(RsyncError::TooSmall {
+            size: file_size,
+            threshold: min_file_size,
+        });
+    }
 
     let acls = if preserve_acls {
         #[cfg(unix)]
