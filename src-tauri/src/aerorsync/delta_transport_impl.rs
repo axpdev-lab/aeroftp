@@ -1306,10 +1306,11 @@ where
     //
     // INTEROP: run ONLY for algorithms we can recompute in-tree (xxh128
     // via the streaming `HashingWriter`; xxh3/xxh64/md5/md4/sha1 via a
-    // page-cache re-read of the temp). Against a peer that negotiated
-    // anything else (sha256, sha512, none: reachable only through the
-    // env override) the check is a deliberate no-op so a verify that
-    // assumed the wrong digest cannot silently disable delta forever.
+    // page-cache re-read of the temp). Named unsupported winners
+    // (sha256, sha512, none, ...) are rejected at preamble time, so this
+    // match never has to invent a digest. The `_` arm remains for an
+    // empty legacy advertisement, where `negotiated_checksum_algo()` is
+    // None and the historical no-op verify is preserved.
     //
     // HASHER DESIGN (CLAUDE-AV-B3-14): `HashingWriter` is constructed
     // BEFORE the drive, but the negotiated algo is only known AFTER it
@@ -1401,10 +1402,9 @@ where
             }
         }
         _ => {
-            // Unimplemented algo (sha256 / sha512 / none, or an absent
-            // negotiation): leave the delta path alone. The no-op is what
-            // keeps this shippable without live fixtures for every peer
-            // flavour. Y-RSC.3 moved md4 and sha1 out of this arm.
+            // Absent negotiation (empty legacy advertisement): leave the
+            // delta path alone. Named unsupported winners never reach
+            // this arm; they fail at preamble as NegotiationFailed.
         }
     }
 
@@ -2694,10 +2694,11 @@ mod tests {
 
     /// Y-RSC.3: like [`run_download_fixture`] but with an explicit client
     /// advertisement. Needed for winners outside the byte-pinned default
-    /// list (sha1, sha256, ...), which in production become reachable
-    /// only through the `AEROFTP_RSYNC_CSUM_ALGOS` override; the custom
-    /// profile mirrors that override without touching process env (unit
-    /// tests run in parallel).
+    /// list (sha1, and named unsupported names such as sha256 used to
+    /// pin rejection), which in production become reachable only through
+    /// the `AEROFTP_RSYNC_CSUM_ALGOS` override; the custom profile
+    /// mirrors that override without touching process env (unit tests
+    /// run in parallel).
     async fn run_download_fixture_with_profile(
         dir: &TempDir,
         content: &[u8],
@@ -2770,20 +2771,13 @@ mod tests {
         );
     }
 
-    /// The interop guard for algorithms we still do not recompute.
-    /// xxh128, xxh3, xxh64, md5, md4, and sha1 are verified (Y-RSC.3
-    /// moved md4/sha1 out of this pin), so the skip case now points at
-    /// sha256: reachable only when an `AEROFTP_RSYNC_CSUM_ALGOS`-shaped
-    /// override advertises it, mirrored here via a custom profile. The
-    /// same mismatching trailer that is fatal for the implemented algos
-    /// has to commit here. Getting this wrong would silently disable
-    /// delta for every peer that negotiated an unimplemented algo.
+    /// Named unsupported checksum winners are rejected at preamble time.
+    /// The previous "skip verify and commit" path for sha256 was a
+    /// width/implementation mismatch, not an honest no-op.
     #[tokio::test]
-    async fn download_skips_the_verify_when_the_peer_negotiated_an_unimplemented_algo() {
+    async fn download_rejects_unimplemented_checksum_winner_before_commit() {
         let dir = fresh_tempdir();
         let content = b"the bytes that actually arrive on the wire".to_vec();
-        // "sha256" wins negotiation (32-byte trailer) and remains
-        // unimplemented, so the verify must no-op.
         let (result, local_path) = run_download_fixture_with_profile(
             &dir,
             &content,
@@ -2796,14 +2790,23 @@ mod tests {
         )
         .await;
 
+        match result {
+            Err(RsyncError::TransferFailed { exit, stderr }) => {
+                assert_eq!(exit, -1, "typed native fallback uses the -1 envelope");
+                assert!(
+                    stderr.contains("NegotiationFailed"),
+                    "fallback must retain the typed cause: {stderr}"
+                );
+                assert!(
+                    stderr.contains("sha256"),
+                    "fallback must name the unsupported winner: {stderr}"
+                );
+            }
+            other => panic!("unsupported checksum must stay fallback-eligible, got {other:?}"),
+        }
         assert!(
-            result.is_ok(),
-            "an unimplemented-algo peer must keep the pre-verify path, got {result:?}"
-        );
-        assert_eq!(
-            tokio::fs::read(&local_path).await.expect("target written"),
-            content,
-            "reconstruction must still commit unchanged"
+            !local_path.exists(),
+            "a pre-commit checksum rejection must not publish the local target"
         );
     }
 
@@ -4179,6 +4182,88 @@ mod tests {
                 );
             }
             other => panic!("unsupported compressor must stay fallback-eligible, got {other:?}"),
+        }
+
+        let publication = lane3_ssh_testuser(
+            &key_path,
+            &format!("test ! -e '{remote_path}' && echo absent || echo published"),
+        );
+        assert_eq!(
+            publication, "absent",
+            "a pre-commit fallback must not publish the remote target"
+        );
+    }
+
+    /// A real peer that negotiates a checksum we cannot drive must fail
+    /// before commit through the typed fallback envelope, not as a
+    /// malformed frame and not after publishing a partial destination.
+    ///
+    /// The default advertisement cannot reach this branch by construction
+    /// (`xxh128 xxh3 xxh64 md5 md4`). This lane deliberately models the
+    /// documented `AEROFTP_RSYNC_CSUM_ALGOS="none"` escape hatch without
+    /// mutating process-global environment state while the other lane-3
+    /// tests run in parallel.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_unsupported_checksum_live_lane_3_routes_to_fallback() {
+        use crate::aerorsync::ssh_transport::SshRemoteShellTransport;
+
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!(
+                "[lane3-unsupported-checksum] harness not reachable on 127.0.0.1:2224: skipping"
+            );
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("unsupported-checksum.bin");
+        let payload = vec![0xA5; 256 * 1024];
+        std::fs::write(&local, &payload).expect("write local payload");
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_path = format!("/workspace/lane3-unsupported-checksum-{nanos}.bin");
+        let transport = SshRemoteShellTransport::new(lane3_ssh_config(key_path.clone()));
+        let profile = PreambleProfile {
+            checksum_algos: "none".to_string(),
+            compression_algos: PreambleProfile::default().compression_algos,
+        };
+
+        let error = do_upload(
+            transport,
+            CancelHandle::inert(),
+            &local,
+            &remote_path,
+            0,
+            profile,
+            None,
+            false,
+            false,
+        )
+        .await
+        .expect_err("stock rsync must negotiate none and enter the typed fallback path");
+
+        match error {
+            RsyncError::TransferFailed { exit, stderr } => {
+                assert_eq!(exit, -1, "typed native fallback uses the -1 envelope");
+                assert!(
+                    stderr.contains("NegotiationFailed"),
+                    "fallback must retain the typed cause: {stderr}"
+                );
+                assert!(
+                    stderr.contains("none"),
+                    "fallback must name the unsupported negotiated checksum: {stderr}"
+                );
+            }
+            other => panic!("unsupported checksum must stay fallback-eligible, got {other:?}"),
         }
 
         let publication = lane3_ssh_testuser(

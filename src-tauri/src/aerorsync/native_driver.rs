@@ -44,10 +44,13 @@
 //!
 //! File-list checksums and delta-stream trailers have no length prefix.
 //! Their width must therefore follow the algorithm that won checksum
-//! negotiation. [`AerorsyncDriver::negotiated_file_checksum_len`] mirrors
-//! rsync 3.2.7 `checksum.c::csum_len_for_type`; assuming 16 made downloads
+//! negotiation. [`AerorsyncDriver::negotiated_file_checksum_len`] is the
+//! width of a supported [`FileChecksumKind`]; assuming 16 made downloads
 //! from `xxh64` and `xxh3` peers wait forever for eight bytes that were
-//! never coming.
+//! never coming. Named unsupported winners (`none`, `sha256`, `sha512`,
+//! `xxhash`, unknown names) and a non-empty disjoint advertisement are
+//! `NegotiationFailed` immediately after the preamble, before any
+//! file-list byte.
 
 use crate::aerorsync::engine_adapter::{
     apply_delta_streaming, BaselineSource, BlockStrongAlgo, DeltaEngineAdapter, DeltaPlanProducer,
@@ -137,17 +140,23 @@ enum FileChecksumKind {
 }
 
 impl FileChecksumKind {
-    fn from_negotiated_name(name: Option<&str>) -> Self {
+    fn try_from_negotiated_name(name: &str) -> Result<Self, AerorsyncError> {
         match name {
-            Some(XXH3_ALGO_NAME) => Self::Xxh3,
-            Some(XXH64_ALGO_NAME) => Self::Xxh64,
-            Some(MD5_ALGO_NAME) => Self::Md5,
-            Some(MD4_ALGO_NAME) => Self::Md4,
-            Some(SHA1_ALGO_NAME) => Self::Sha1,
-            // Preserve the historical xxh128 behavior for an absent or
-            // unsupported winner. The default production profile always
-            // negotiates one of the explicitly supported algorithms.
-            _ => Self::Xxh128,
+            XXH128_ALGO_NAME => Ok(Self::Xxh128),
+            XXH3_ALGO_NAME => Ok(Self::Xxh3),
+            XXH64_ALGO_NAME => Ok(Self::Xxh64),
+            MD5_ALGO_NAME => Ok(Self::Md5),
+            MD4_ALGO_NAME => Ok(Self::Md4),
+            SHA1_ALGO_NAME => Ok(Self::Sha1),
+            other => Err(unsupported_checksum_error(other)),
+        }
+    }
+
+    fn wire_len(self) -> usize {
+        match self {
+            Self::Xxh128 | Self::Md5 | Self::Md4 => A2_3_FILE_CHECKSUM_LEN,
+            Self::Xxh3 | Self::Xxh64 => 8,
+            Self::Sha1 => 20,
         }
     }
 
@@ -226,10 +235,9 @@ impl FileChecksumHasher {
 }
 
 /// Checksum algorithm names the download-side whole-file verify can
-/// recompute in-tree. Peers that negotiate anything else (sha256,
-/// sha512, none, ...) keep the pre-verify delta path untouched: the
-/// check is a deliberate no-op for unimplemented algorithms so a verify
-/// that assumed the wrong digest cannot silently disable delta forever.
+/// recompute in-tree. Named unsupported winners (sha256, sha512, none,
+/// xxhash, unknown names) are rejected at preamble time, so the verify
+/// path never has to guess a digest it cannot recompute.
 pub(crate) const XXH128_ALGO_NAME: &str = "xxh128";
 /// CLAUDE-AV-B3-14: md5 whole-file trailer, the practical fallback
 /// real rsync uses when xxh* is unavailable. Same 16-byte length as
@@ -921,9 +929,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// confirming rolling hits against wire signatures. Must match how
     /// the peer (or we, on the download emit path) filled
     /// `SumBlock.strong`. xxh128, xxh3, xxh64, md5, md4, and sha1 are
-    /// recomputed in-tree; other winners (sha256/sha512/none, reachable
-    /// only through the env override) stay `Unknown` (safer than
-    /// rolling-only confirmation).
+    /// recomputed in-tree. Named unsupported winners are rejected at
+    /// preamble time; `Unknown` remains only as a defensive arm.
     pub(crate) fn block_strong_algo(&self) -> BlockStrongAlgo {
         match self.negotiated_checksum_algo() {
             Some(XXH128_ALGO_NAME) => BlockStrongAlgo::Xxh128 {
@@ -954,8 +961,36 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    fn file_checksum_kind(&self) -> FileChecksumKind {
-        FileChecksumKind::from_negotiated_name(self.negotiated_checksum_algo())
+    fn file_checksum_kind(&self) -> Result<FileChecksumKind, AerorsyncError> {
+        self.resolved_file_checksum_kind()
+    }
+
+    /// Single source of truth for the negotiated checksum codec.
+    ///
+    /// A named winner must be one of the six implemented algorithms.
+    /// Two non-empty advertisements with no intersection fail closed.
+    /// Only a genuinely empty peer string keeps the historical xxh128
+    /// compatibility used when the peer omitted the negotiated field.
+    fn resolved_file_checksum_kind(&self) -> Result<FileChecksumKind, AerorsyncError> {
+        match self.negotiated_checksum_algo() {
+            Some(name) => FileChecksumKind::try_from_negotiated_name(name),
+            None if self
+                .negotiated_checksum_algos
+                .split_whitespace()
+                .next()
+                .is_none() =>
+            {
+                Ok(FileChecksumKind::Xxh128)
+            }
+            None => Err(AerorsyncError::new(
+                AerorsyncErrorKind::NegotiationFailed,
+                format!(
+                    "checksum negotiation found no common algorithm (client {:?} vs server {:?}); \
+                     falling back",
+                    self.preamble_profile.checksum_algos, self.negotiated_checksum_algos
+                ),
+            )),
+        }
     }
     pub fn negotiated_checksum_algos(&self) -> &str {
         &self.negotiated_checksum_algos
@@ -990,20 +1025,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// CLAUDE-AV-B3-18: byte width of both the `--checksum` file-list
     /// digest and the whole-file delta trailer for the negotiated winner.
     ///
-    /// Mirrors rsync 3.2.7 `checksum.c::csum_len_for_type`. Unknown or
-    /// absent negotiation retains the historical 16-byte behavior instead
-    /// of guessing a new wire shape.
-    pub(crate) fn negotiated_file_checksum_len(&self) -> usize {
-        match self.negotiated_checksum_algo() {
-            Some(XXH3_ALGO_NAME | XXH64_ALGO_NAME | "xxhash") => 8,
-            Some(SHA1_ALGO_NAME) => 20,
-            Some("sha256") => 32,
-            Some("sha512") => 64,
-            Some("none") => 1,
-            // xxh128, md5, md4, and the absent-negotiation fallback all
-            // share the historical 16-byte width.
-            _ => A2_3_FILE_CHECKSUM_LEN,
-        }
+    /// Width follows the resolved [`FileChecksumKind`]. Named unsupported
+    /// winners and a non-empty disjoint advertisement error instead of
+    /// inventing a width that the digest implementation cannot keep.
+    /// An empty peer advertisement keeps the historical 16-byte xxh128
+    /// compatibility.
+    pub(crate) fn negotiated_file_checksum_len(&self) -> Result<usize, AerorsyncError> {
+        Ok(self.resolved_file_checksum_kind()?.wire_len())
     }
     pub fn negotiated_compression_algos(&self) -> &str {
         &self.negotiated_compression_algos
@@ -1377,7 +1405,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let comp_algos = self.preamble_profile.compression_algos.clone();
         self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
-        source_entry.checksum = self.file_checksum_kind().digest(source_data);
+        source_entry.checksum = self.file_checksum_kind()?.digest(source_data);
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
         if !self.upload_noop_transfer {
@@ -1419,7 +1447,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let comp_algos = self.preamble_profile.compression_algos.clone();
         self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
-        let checksum_kind = self.file_checksum_kind();
+        let checksum_kind = self.file_checksum_kind()?;
         let mut checksum_hasher = checksum_kind.streaming_hasher();
         let mut checksum_buf = vec![0u8; STREAMING_READ_CHUNK_BYTES];
         loop {
@@ -1624,6 +1652,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     self.checksum_seed = preamble.checksum_seed;
                     self.negotiated_checksum_algos = preamble.checksum_algos;
                     self.negotiated_compression_algos = preamble.compression_algos;
+                    // Reject unsupported / disjoint checksum winners before
+                    // any leftover bytes are treated as file-list material.
+                    self.resolved_file_checksum_kind()?;
                     if preamble.consumed < scratch.len() {
                         self.mux_reader.feed(&scratch[preamble.consumed..]);
                     }
@@ -1726,7 +1757,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // A stock xxh64/xxh3 peer sends 8 bytes; assuming 16 consumed the
         // list terminator as checksum and then waited forever for another
         // MSG_DATA frame.
-        let opts = self.build_flist_options(self.negotiated_file_checksum_len());
+        let opts = self.build_flist_options(self.negotiated_file_checksum_len()?);
         let mut flist_buf: Vec<u8> = Vec::new();
         let mut entry_seen = false;
         let mut waiting_for_more = false;
@@ -2667,7 +2698,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
         // File-level trailers are unseeded even though per-block strong
         // digests use the negotiated checksum seed.
-        let file_checksum = self.file_checksum_kind().digest(source_data);
+        let file_checksum = self.file_checksum_kind()?.digest(source_data);
 
         let report = DeltaStreamReport {
             ops: wire_ops.clone(),
@@ -2783,7 +2814,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // whole-file checksum of the source. Both are populated from the same
         // chunk slice so the wire trailer matches what
         // `compute_xxh128_wire(source_data)` would have produced bulk.
-        let mut file_hasher = self.file_checksum_kind().streaming_hasher();
+        let mut file_hasher = self.file_checksum_kind()?.streaming_hasher();
         let mut ops: Vec<EngineDeltaOp> = Vec::new();
         let mut total_source_bytes: u64 = 0;
         let mut buf = vec![0u8; STREAMING_READ_CHUNK_BYTES];
@@ -3018,7 +3049,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let sum_head_count = self.sent_sum_head.as_ref().map(|h| h.count);
         // CLAUDE-AV-B3-18: like the file-list checksum, the delta trailer
         // has no length prefix and must follow the negotiated winner.
-        let file_checksum_len = self.negotiated_file_checksum_len();
+        let file_checksum_len = self.negotiated_file_checksum_len()?;
 
         // Stock rsync's sender frames every file transfer as
         // `write_ndx_and_attrs` (ndx + iflags) + `write_sum_head`
@@ -3189,7 +3220,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let sum_head_count = self.sent_sum_head.as_ref().map(|h| h.count);
         // CLAUDE-AV-B3-18: streaming and bulk receive paths must decode
         // the same negotiated-width trailer.
-        let file_checksum_len = self.negotiated_file_checksum_len();
+        let file_checksum_len = self.negotiated_file_checksum_len()?;
 
         // Consume the sender's `write_ndx_and_attrs` + `write_sum_head`
         // prefix (ndx + iflags + sum_head) that precedes the token
@@ -4108,6 +4139,19 @@ fn unsupported_compressor_error(chosen: &str) -> AerorsyncError {
     )
 }
 
+/// A checksum name we cannot drive is a **negotiation** outcome, not a
+/// malformed frame. Same pre-commit fallback semantics as
+/// [`unsupported_compressor_error`].
+fn unsupported_checksum_error(chosen: &str) -> AerorsyncError {
+    AerorsyncError::new(
+        AerorsyncErrorKind::NegotiationFailed,
+        format!(
+            "negotiation chose file checksum {chosen:?}, which this client does not \
+             implement; falling back"
+        ),
+    )
+}
+
 fn map_realwire_error(err: RealWireError, context: &'static str) -> AerorsyncError {
     AerorsyncError::new(
         AerorsyncErrorKind::InvalidFrame,
@@ -4130,7 +4174,8 @@ mod tests {
     use crate::aerorsync::fixtures::RealRsyncBaselineByteTranscript;
     use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
     use crate::aerorsync::real_wire::{
-        decode_client_preamble, encode_server_preamble, reassemble_msg_data, ServerPreamble,
+        decode_client_preamble, encode_client_preamble, encode_server_preamble,
+        reassemble_msg_data, ClientPreamble, ServerPreamble,
     };
 
     /// Mock adapter used by A2.2/A2.3 tests. Returns a configurable
@@ -5450,51 +5495,240 @@ mod tests {
         );
     }
 
-    /// CLAUDE-AV-B3-18: pin rsync 3.2.7
-    /// `checksum.c::csum_len_for_type` for every name the runtime override
-    /// can advertise. The xxh3 naming trap is intentional: `xxh3` is the
-    /// 64-bit, 8-byte variant, while `xxh128` is 16 bytes.
-    #[tokio::test]
-    async fn file_checksum_len_follows_the_negotiated_algorithm() {
-        let cases = [
-            ("xxh128", 16),
-            ("xxh3", 8),
-            ("xxh64", 8),
-            ("xxhash", 8),
-            ("md5", 16),
-            ("md4", 16),
-            ("sha1", 20),
-            ("sha256", 32),
-            ("sha512", 64),
-            ("none", 1),
-        ];
+    async fn resolve_checksum(
+        ours: &str,
+        theirs: &str,
+    ) -> Result<FileChecksumKind, AerorsyncError> {
+        let encoded = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07,
+            checksum_algos: theirs.to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0,
+            consumed: 0,
+        });
+        let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+        });
+        d.receive_server_preamble(&encoded).await.unwrap();
+        d.resolved_file_checksum_kind()
+    }
 
-        for (algorithm, expected_len) in cases {
-            let encoded = encode_server_preamble(&ServerPreamble {
-                protocol_version: 31,
-                compat_flags: 0x07,
-                checksum_algos: algorithm.to_string(),
-                compression_algos: "none".to_string(),
-                checksum_seed: 0,
-                consumed: 0,
-            });
-            let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
-                checksum_algos: algorithm.to_string(),
-                compression_algos: "none".to_string(),
-            });
-            d.receive_server_preamble(&encoded).await.unwrap();
+    fn assert_checksum_negotiation_failed(err: &AerorsyncError, named: &str) {
+        assert_eq!(err.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert!(
+            err.detail.contains(named),
+            "NegotiationFailed must name {named:?}: {}",
+            err.detail
+        );
+    }
+
+    /// Every name we advertise by default is a codec this client can drive.
+    #[tokio::test]
+    async fn default_checksum_advertisement_names_are_all_driveable() {
+        let default = PreambleProfile::default().checksum_algos;
+        for name in default.split_whitespace() {
+            let kind = resolve_checksum(&default, name)
+                .await
+                .unwrap_or_else(|err| panic!("{name} must be driveable, got {err:?}"));
             assert_eq!(
-                d.negotiated_file_checksum_len(),
+                kind.wire_len(),
+                match name {
+                    XXH128_ALGO_NAME | MD5_ALGO_NAME | MD4_ALGO_NAME => 16,
+                    XXH3_ALGO_NAME | XXH64_ALGO_NAME => 8,
+                    other => panic!("unexpected default checksum name {other}"),
+                },
+                "{name} wire width must follow the implemented codec"
+            );
+        }
+    }
+
+    /// sha1 is omitted from the default advertisement but remains a
+    /// first-class override winner.
+    #[tokio::test]
+    async fn sha1_override_winner_remains_driveable() {
+        let kind = resolve_checksum(SHA1_ALGO_NAME, SHA1_ALGO_NAME)
+            .await
+            .expect("sha1 must stay driveable");
+        assert_eq!(kind, FileChecksumKind::Sha1);
+        assert_eq!(kind.wire_len(), 20);
+    }
+
+    /// Named unsupported winners fail as NegotiationFailed. Widths from
+    /// rsync's `csum_len_for_type` are not a codec promise here.
+    #[tokio::test]
+    async fn named_unsupported_checksum_winners_fail_negotiation() {
+        for name in ["none", "sha256", "sha512", "xxhash", "bogus-csum"] {
+            let err = resolve_checksum(name, name)
+                .await
+                .expect_err(&format!("{name} must not be treated as a codec"));
+            assert_checksum_negotiation_failed(&err, name);
+        }
+    }
+
+    /// Two non-empty lists with no intersection fail closed instead of
+    /// silently assuming xxh128.
+    #[tokio::test]
+    async fn disjoint_non_empty_checksum_lists_fail_negotiation() {
+        let err = resolve_checksum("xxh128", "md5 md4")
+            .await
+            .expect_err("disjoint non-empty lists must fail");
+        assert_eq!(err.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert!(
+            err.detail.contains("no common algorithm"),
+            "disjoint lists must not be described as a named codec: {}",
+            err.detail
+        );
+    }
+
+    /// A peer that omitted the negotiated checksum string keeps the
+    /// historical xxh128 compatibility. This is not the same as two
+    /// non-empty lists missing each other.
+    #[tokio::test]
+    async fn empty_legacy_checksum_advertisement_keeps_xxh128() {
+        let kind = resolve_checksum(PreambleProfile::default().checksum_algos.as_str(), "")
+            .await
+            .expect("empty peer advertisement is the legacy compatibility path");
+        assert_eq!(kind, FileChecksumKind::Xxh128);
+        assert_eq!(kind.wire_len(), A2_3_FILE_CHECKSUM_LEN);
+
+        let d = make_driver(mock_transport());
+        assert_eq!(
+            d.negotiated_file_checksum_len()
+                .expect("absent negotiation"),
+            A2_3_FILE_CHECKSUM_LEN,
+            "absent negotiation must retain the historical fallback"
+        );
+    }
+
+    /// CLAUDE-AV-B3-18: supported winners keep their real wire widths.
+    /// The xxh3 naming trap is intentional: `xxh3` is the 64-bit,
+    /// 8-byte variant, while `xxh128` is 16 bytes.
+    #[tokio::test]
+    async fn file_checksum_len_follows_the_implemented_algorithm() {
+        let cases = [
+            (XXH128_ALGO_NAME, 16),
+            (XXH3_ALGO_NAME, 8),
+            (XXH64_ALGO_NAME, 8),
+            (MD5_ALGO_NAME, 16),
+            (MD4_ALGO_NAME, 16),
+            (SHA1_ALGO_NAME, 20),
+        ];
+        for (algorithm, expected_len) in cases {
+            let kind = resolve_checksum(algorithm, algorithm)
+                .await
+                .unwrap_or_else(|err| panic!("{algorithm} must resolve, got {err:?}"));
+            assert_eq!(
+                kind.wire_len(),
                 expected_len,
                 "{algorithm} must use a {expected_len}-byte file checksum"
             );
         }
+    }
 
-        let d = make_driver(mock_transport());
+    /// Unsupported checksum winners fail inside `perform_preamble_exchange`
+    /// after the client preamble and before any file-list bytes.
+    #[tokio::test]
+    async fn unsupported_checksum_winner_fails_before_file_list_bytes() {
+        let ours = "none";
+        let inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07,
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0,
+            consumed: 0,
+        });
+        let expected_client = encode_client_preamble(&ClientPreamble {
+            protocol_version: 31,
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+            consumed: 0,
+        });
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let last_raw_outbound = transport.last_raw_outbound.clone();
+        let mut d = make_driver(transport).with_preamble_profile(PreambleProfile {
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+        });
+        d.open_raw_stream_internal(&RemoteCommandSpec::upload("/remote/target.bin"))
+            .await
+            .unwrap();
+        let err = d
+            .perform_preamble_exchange(31, ours, "none")
+            .await
+            .expect_err("none must fail after the preamble");
+        assert_checksum_negotiation_failed(&err, "none");
+        assert!(!d.committed(), "preamble rejection is pre-commit");
+        let guard = last_raw_outbound.lock().unwrap();
+        let outbound_arc = guard.as_ref().expect("raw stream must have opened");
+        let outbound = outbound_arc.lock().unwrap().clone();
         assert_eq!(
-            d.negotiated_file_checksum_len(),
-            A2_3_FILE_CHECKSUM_LEN,
-            "absent negotiation must retain the historical fallback"
+            outbound, expected_client,
+            "a rejected checksum winner must not emit file-list bytes"
+        );
+    }
+
+    /// The upload drive path uses the same preamble validator, so a
+    /// named unsupported winner never reaches file-list construction.
+    #[tokio::test]
+    async fn drive_upload_rejects_unsupported_checksum_before_file_list() {
+        let ours = "none";
+        let inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07,
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0,
+            consumed: 0,
+        });
+        let expected_client = encode_client_preamble(&ClientPreamble {
+            protocol_version: 31,
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+            consumed: 0,
+        });
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let last_raw_outbound = transport.last_raw_outbound.clone();
+        let mut d = make_driver(transport).with_preamble_profile(PreambleProfile {
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+        });
+        let err = d
+            .drive_upload_through_delta(
+                RemoteCommandSpec::upload("/remote/target.bin"),
+                sample_file_list_entry("target.bin"),
+                b"payload",
+                &MockSigAdapter::default(),
+                &mut CollectingSink::default(),
+            )
+            .await
+            .expect_err("drive_upload must fail on checksum none");
+        assert_checksum_negotiation_failed(&err, "none");
+        assert!(!d.committed(), "unsupported checksum is pre-commit");
+        let guard = last_raw_outbound.lock().unwrap();
+        let outbound_arc = guard.as_ref().expect("raw stream must have opened");
+        let outbound = outbound_arc.lock().unwrap().clone();
+        assert_eq!(
+            outbound, expected_client,
+            "drive_upload must stop before file-list bytes"
+        );
+    }
+
+    #[test]
+    fn unsupported_checksum_error_stays_on_the_classic_fallback_allowlist() {
+        use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
+        let err = unsupported_checksum_error("none");
+        assert_eq!(err.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert_eq!(
+            classify_fallback(&err, false),
+            FallbackVerdict::AttemptClassicSftpFallback
+        );
+        assert_eq!(
+            classify_fallback(&err, true),
+            FallbackVerdict::HardError,
+            "post-commit NegotiationFailed must not silently retry"
         );
     }
 
