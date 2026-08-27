@@ -45,10 +45,12 @@ shipped as default on OpenBSD).
 > Existing installs keep the user-persisted value. The config key
 > retains its historical name for backward compatibility of persisted
 > settings. The module ships with wire-protocol 31 parity for the
-> single-file delta path on Unix; on Windows the Tauri / sync_tree
-> call surface compiles since Patch v2 (2026-05-21), but the runtime
-> batch path is currently tracked under `Z.4.3.f6` (channel-multiplex
-> deadlock on session reuse).
+> single-file delta path on Linux, macOS and Windows. `Z.4.3.f6` (mux
+> header/payload coalesce plus Windows `S_IFREG` synthesis) closed the
+> last session-reuse deadlock in v3.8.5; `AerorsyncBatch` shares one
+> SSH session across N files on every OS. POSIX access ACL (`-A`) is
+> Linux-only at the provider metadata policy; Windows has no classic
+> `rsync` binary fallback.
 >
 > **Production dispatch (Blocco B closed 2026-04-26)**: `AerorsyncDeltaTransport`
 > invokes stock `rsync --server` via `RemoteCommandFlavor::WrapperParity`

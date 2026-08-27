@@ -13268,7 +13268,6 @@ fn provider_type_from_string(value: &str) -> Option<providers::ProviderType> {
 async fn sftp_probe_delta_eligibility(
     provider_state: State<'_, provider_commands::ProviderState>,
 ) -> Result<DeltaEligibilityProbeResult, String> {
-    #[cfg_attr(not(unix), allow(unused_variables))]
     let (active_session_is_sftp, private_key_configured, server_identity) = {
         let config_lock = provider_state.config.lock().await;
         let config = config_lock.as_ref();
@@ -13302,67 +13301,56 @@ async fn sftp_probe_delta_eligibility(
         });
     }
 
-    #[cfg(not(unix))]
-    {
-        Ok(DeltaEligibilityProbeResult {
+    // Z.4.3.f6 closed the Windows S_IFREG / mux-framing deadlock. Native
+    // delta is compiled on all three OS; POSIX access ACL stays Linux-only
+    // at the provider metadata policy, not here.
+    let native_feature_compiled = crate::settings::native_rsync_feature_compiled();
+    if !native_feature_compiled {
+        return Ok(DeltaEligibilityProbeResult {
+            eligible: false,
+            reason: Some("This build was compiled without native rsync support.".to_string()),
+            server_identity,
+        });
+    }
+
+    if !native_rsync_runtime_enabled() {
+        return Ok(DeltaEligibilityProbeResult {
             eligible: false,
             reason: Some(
-                "Native delta sync runtime is currently only enabled on Unix builds (Windows support pending Z.4.3.f6 fix).".to_string(),
+                "Enable Native Rsync in Settings to make SFTP delta eligible.".to_string(),
             ),
             server_identity,
-        })
+        });
     }
 
-    #[cfg(unix)]
-    {
-        let native_feature_compiled = crate::settings::native_rsync_feature_compiled();
-        if !native_feature_compiled {
-            return Ok(DeltaEligibilityProbeResult {
-                eligible: false,
-                reason: Some("This build was compiled without native rsync support.".to_string()),
-                server_identity,
-            });
-        }
-
-        if !native_rsync_runtime_enabled() {
-            return Ok(DeltaEligibilityProbeResult {
-                eligible: false,
-                reason: Some(
-                    "Enable Native Rsync in Settings to make SFTP delta eligible.".to_string(),
-                ),
-                server_identity,
-            });
-        }
-
-        if !private_key_configured {
-            return Ok(DeltaEligibilityProbeResult {
-                eligible: false,
-                reason: Some(
-                    "Requires an SSH key-based SFTP session; password auth stays on the classic path."
-                        .to_string(),
-                ),
-                server_identity,
-            });
-        }
-
-        let mut provider_lock = provider_state.provider.lock().await;
-        let provider = provider_lock
-            .as_mut()
-            .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-        let verdict = crate::delta_sync_rsync::check_delta_eligibility(provider.as_mut())
-            .await
-            .unwrap_or(crate::delta_sync_rsync::DeltaEligibilityStatus {
-                eligible: false,
-                reason: Some("Reconnect the SFTP session to evaluate delta sync.".to_string()),
-            });
-
-        Ok(DeltaEligibilityProbeResult {
-            eligible: verdict.eligible,
-            reason: verdict.reason,
+    if !private_key_configured {
+        return Ok(DeltaEligibilityProbeResult {
+            eligible: false,
+            reason: Some(
+                "Requires an SSH key-based SFTP session; password auth stays on the classic path."
+                    .to_string(),
+            ),
             server_identity,
-        })
+        });
     }
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    let verdict = crate::delta_sync_rsync::check_delta_eligibility(provider.as_mut())
+        .await
+        .unwrap_or(crate::delta_sync_rsync::DeltaEligibilityStatus {
+            eligible: false,
+            reason: Some("Reconnect the SFTP session to evaluate delta sync.".to_string()),
+        });
+
+    Ok(DeltaEligibilityProbeResult {
+        eligible: verdict.eligible,
+        reason: verdict.reason,
+        server_identity,
+    })
 }
 
 // =============================
