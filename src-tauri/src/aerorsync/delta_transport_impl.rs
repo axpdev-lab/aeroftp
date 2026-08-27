@@ -3964,6 +3964,87 @@ mod tests {
         assert!(!temp.exists(), "no temp leftovers after live download");
     }
 
+    /// A real peer that negotiates a compressor we cannot drive must fail
+    /// before commit through the typed fallback envelope, not as a malformed
+    /// frame and not after publishing a partial destination.
+    ///
+    /// The default advertisement cannot reach this branch by construction
+    /// (`zstd zlibx none`). This lane deliberately models the documented
+    /// `AEROFTP_RSYNC_COMPRESS_ALGOS="zlib none"` escape hatch without
+    /// mutating process-global environment state while the other lane-3 tests
+    /// run in parallel.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_unsupported_compressor_live_lane_3_routes_to_fallback() {
+        use crate::aerorsync::ssh_transport::SshRemoteShellTransport;
+
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!(
+                "[lane3-unsupported-compressor] harness not reachable on 127.0.0.1:2224: skipping"
+            );
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("unsupported-compressor.bin");
+        let payload = vec![0xA5; 256 * 1024];
+        std::fs::write(&local, &payload).expect("write local payload");
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_path = format!("/workspace/lane3-unsupported-compressor-{nanos}.bin");
+        let transport = SshRemoteShellTransport::new(lane3_ssh_config(key_path.clone()));
+        let profile = PreambleProfile {
+            checksum_algos: PreambleProfile::default().checksum_algos,
+            compression_algos: "zlib none".to_string(),
+        };
+
+        let error = do_upload(
+            transport,
+            CancelHandle::inert(),
+            &local,
+            &remote_path,
+            0,
+            profile,
+            None,
+            false,
+        )
+        .await
+        .expect_err("stock rsync must negotiate zlib and enter the typed fallback path");
+
+        match error {
+            RsyncError::TransferFailed { exit, stderr } => {
+                assert_eq!(exit, -1, "typed native fallback uses the -1 envelope");
+                assert!(
+                    stderr.contains("NegotiationFailed"),
+                    "fallback must retain the typed cause: {stderr}"
+                );
+                assert!(
+                    stderr.contains("zlib"),
+                    "fallback must name the unsupported negotiated codec: {stderr}"
+                );
+            }
+            other => panic!("unsupported compressor must stay fallback-eligible, got {other:?}"),
+        }
+
+        let publication = lane3_ssh_testuser(
+            &key_path,
+            &format!("test ! -e '{remote_path}' && echo absent || echo published"),
+        );
+        assert_eq!(
+            publication, "absent",
+            "a pre-commit fallback must not publish the remote target"
+        );
+    }
+
     // -- B4 / X.6 live lane 3 xattr acceptance (stock rsync 3.2.7, -X) ------
     //
     // Production still defaults preserve_xattrs=false; these tests opt in
