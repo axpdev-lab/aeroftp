@@ -1133,6 +1133,17 @@ impl WebDavProvider {
     /// nonce still equals the one just used and `adopt_rotated_nonce` refused,
     /// so both arms are false and a revoked credential still costs exactly one
     /// request.
+    ///
+    /// Known imprecision, deliberately left: `used` comes from a read of the
+    /// shared challenge taken just before the request is built, not from the
+    /// single read inside `authorization` that actually computes the header.
+    /// A sibling rotating in that window makes the snapshot disagree with what
+    /// the request really carried, and the second arm then grants a replay
+    /// that was not needed. It costs one extra request and cannot storm, since
+    /// the replay is still capped at one. Closing it means having
+    /// `authorization` report the nonce it used, which changes the signature
+    /// `request` and `request_url` share across some forty call sites; the
+    /// trade was not worth making inside this fix.
     fn should_replay_after_401(&self, response: &reqwest::Response, used: &Option<String>) -> bool {
         if self.adopt_rotated_nonce(response) {
             return true;
