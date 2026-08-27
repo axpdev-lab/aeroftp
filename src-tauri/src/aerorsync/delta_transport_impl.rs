@@ -117,8 +117,8 @@ pub struct AerorsyncDeltaTransport {
     /// byte-identical until a caller opts in via [`Self::with_xattrs`].
     preserve_xattrs: bool,
     /// When true, negotiate `-A` and carry POSIX access ACLs (B2).
-    /// Default off; internal/test opt-in only. Not wired from production
-    /// `RsyncConfig`.
+    /// Default off; Linux production opts in at the provider boundary rather
+    /// than mapping this into the cross-platform `RsyncConfig`.
     preserve_acls: bool,
     /// X.5: turn ENOTSUP / metadata-loss warnings into hard errors.
     fail_on_metadata_loss: bool,
@@ -144,8 +144,8 @@ impl AerorsyncDeltaTransport {
         self
     }
 
-    /// Internal/test opt-in for POSIX access ACLs (`-A` + fd-bound
-    /// read/apply). Off by default and not mapped from production config.
+    /// Opt this transport into POSIX access ACLs (`-A` + fd-bound read/apply).
+    /// Off by default and enabled by production only on Linux.
     pub fn with_acls(mut self, preserve_acls: bool) -> Self {
         self.preserve_acls = preserve_acls;
         self
@@ -164,7 +164,7 @@ impl AerorsyncDeltaTransport {
     /// it needs these flags explicitly. Reading them through a single
     /// accessor keeps `begin_batch` from drifting away from the
     /// single-file path.
-    fn metadata_policy(&self) -> (bool, bool, bool) {
+    pub(crate) fn metadata_policy(&self) -> (bool, bool, bool) {
         (
             self.preserve_xattrs,
             self.preserve_acls,

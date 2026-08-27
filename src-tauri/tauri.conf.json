@@ -79,6 +79,7 @@
                     "libgtk-3-0",
                     "libwebkit2gtk-4.1-0",
                     "libayatana-appindicator3-1",
+                    "libacl1",
                     "libgstreamer1.0-0",
                     "gstreamer1.0-plugins-base",
                     "gstreamer1.0-plugins-good",

@@ -32,6 +32,21 @@ use super::multi_thread::{
     aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
 };
 
+/// Apply the native transport's production metadata policy in one testable
+/// choke point. Xattrs are a Unix capability; POSIX access ACL preservation
+/// is intentionally Linux-only because the ACL backend hard-rejects other
+/// platforms. Directory default ACL awaits recursive entries.
+#[cfg(feature = "aerorsync")]
+fn configure_aerorsync_metadata(
+    transport: crate::aerorsync::delta_transport_impl::AerorsyncDeltaTransport,
+) -> crate::aerorsync::delta_transport_impl::AerorsyncDeltaTransport {
+    #[cfg(unix)]
+    let transport = transport.with_xattrs(true);
+    #[cfg(target_os = "linux")]
+    let transport = transport.with_acls(true);
+    transport
+}
+
 /// Hard cap on intra-file SFTP range streams (PD-SFTP-2), mirroring the S3
 /// `MULTI_THREAD_MAX_STREAMS`. Each stream is a full independent SSH
 /// connection from the pool, so the cap stays conservative; the live
@@ -636,12 +651,10 @@ impl SftpProvider {
 
                 match AerorsyncDeltaTransport::from_rsync_config(&rsync_config, host_key_policy) {
                     Ok(transport) => {
-                        // B4 / X.6: after live lane3 xattr acceptance is green,
-                        // opt Unix into -X so user.* rides the native path.
-                        // fail_on_metadata_loss stays off (X.5 soft ENOTSUP).
-                        // Windows: leave default off (no user.* analogue).
-                        #[cfg(unix)]
-                        let transport = transport.with_xattrs(true);
+                        // B4 / ACL B4: production metadata opt-ins follow live
+                        // stock-rsync acceptance. fail_on_metadata_loss remains
+                        // off, so destination ENOTSUP stays soft by default.
+                        let transport = configure_aerorsync_metadata(transport);
                         tracing::info!(
                             "providers::sftp: using native rsync delta transport (host key pinned)"
                         );
@@ -3734,6 +3747,23 @@ mod tests {
 
         let provider = SftpProvider::new(config);
         assert!(provider.rsync_config_for_delta(None).is_none());
+    }
+
+    #[cfg(feature = "aerorsync")]
+    #[test]
+    fn aerorsync_native_metadata_policy_is_linux_acl_unix_xattr_and_soft_loss() {
+        let transport = crate::aerorsync::delta_transport_impl::AerorsyncDeltaTransport::new(
+            crate::aerorsync::russh_session_transport::test_dummy_config(),
+            1,
+        );
+        let configured = configure_aerorsync_metadata(transport);
+
+        #[cfg(target_os = "linux")]
+        assert_eq!(configured.metadata_policy(), (true, true, false));
+        #[cfg(all(unix, not(target_os = "linux")))]
+        assert_eq!(configured.metadata_policy(), (true, false, false));
+        #[cfg(not(unix))]
+        assert_eq!(configured.metadata_policy(), (false, false, false));
     }
 
     #[test]
