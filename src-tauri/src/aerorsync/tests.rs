@@ -176,13 +176,9 @@ fn download_remote_command_matches_capture() {
 fn upload_remote_command_matches_product_profile() {
     let spec = RemoteCommandSpec::upload("/workspace/upload/target.bin");
     let line = spec.to_command_line();
-    assert!(
-        line.contains("-ltprcze.iLsfxCIvu"),
-        "production upload must emit the product flag bundle: {line}"
-    );
-    assert!(
-        !line.contains("-logDtp"),
-        "production upload must not emit the historical capture bundle: {line}"
+    assert_eq!(
+        line, "rsync --server -ltprcze.iLsfxCIvu --stats . /workspace/upload/target.bin",
+        "production upload command must pin the complete product policy"
     );
 }
 

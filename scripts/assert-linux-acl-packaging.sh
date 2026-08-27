@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Mechanical Linux ACL runtime-contract checks for AeroRsync (G4).
 #
-# Release binary with AeroRsync enabled must DT_NEEDED libacl.so.1.
-# .deb must declare libacl1. .rpm must auto-require libacl.so.1 (ELF).
+# The shipped CLI/MCP payload that exposes AeroRsync must DT_NEEDED
+# libacl.so.1. .deb must declare libacl1. .rpm must require the ELF
+# capability explicitly because Tauri does not auto-scan extra `files`.
 # Snap must contain libacl.so.1. AppImage must keep the system-library
-# contract: the payload still needs libacl.so.1, but must not bundle it.
+# contract: its CLI payload needs libacl.so.1, but must not bundle it.
 #
 # --require-bundles: fail if an expected artifact class is missing.
 # SNAP_FILE: optional path to a .snap to inspect.
@@ -55,7 +56,7 @@ require_or_skip() {
 check_dt_needed() {
   local bin="$1"
   need_cmd readelf
-  if ! readelf -d "$bin" | grep -q 'NEEDED[[:space:]]*\[libacl\.so\.1\]'; then
+  if ! readelf -d "$bin" | grep -q 'NEEDED.*\[libacl\.so\.1\]'; then
     fail "$bin does not DT_NEEDED libacl.so.1"
     return
   fi
@@ -63,13 +64,16 @@ check_dt_needed() {
 }
 
 BIN=""
-for candidate in "$RELEASE/aeroftp" "$RELEASE/aeroftp.bin"; do
+for candidate in \
+  "$RELEASE/aeroftp-dispatch-bundle/aeroftp-cli" \
+  "$RELEASE/aeroftp-cli"
+do
   if [ -f "$candidate" ]; then
     BIN="$candidate"
     break
   fi
 done
-if require_or_skip "release binary" "$BIN"; then
+if require_or_skip "release AeroRsync CLI payload" "$BIN"; then
   check_dt_needed "$BIN"
 fi
 
@@ -87,6 +91,15 @@ if require_or_skip ".deb" "$DEB"; then
   else
     echo "OK: $(basename "$DEB") Depends includes libacl1"
   fi
+  tmp="$(mktemp -d)"
+  dpkg-deb -x "$DEB" "$tmp/deb"
+  deb_cli="$tmp/deb/usr/lib/aeroftp/aeroftp-cli"
+  if [ ! -f "$deb_cli" ]; then
+    fail "$DEB does not contain usr/lib/aeroftp/aeroftp-cli"
+  else
+    check_dt_needed "$deb_cli"
+  fi
+  rm -rf "$tmp"
 fi
 
 RPM=""
@@ -101,6 +114,11 @@ if require_or_skip ".rpm" "$RPM"; then
     fail "$RPM does not auto-require libacl.so.1: $reqs"
   else
     echo "OK: $(basename "$RPM") Requires libacl.so.1"
+  fi
+  if ! rpm -qpl "$RPM" | grep -qx '/usr/lib/aeroftp/aeroftp-cli'; then
+    fail "$RPM does not contain /usr/lib/aeroftp/aeroftp-cli"
+  else
+    echo "OK: $(basename "$RPM") contains the AeroRsync CLI payload"
   fi
 fi
 
@@ -117,9 +135,9 @@ if require_or_skip "AppImage" "$APPIMAGE"; then
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   unsquashfs -d "$tmp/root" -o "$offset" "$APPIMAGE" >/dev/null
-  inner="$(find "$tmp/root" -type f \( -name aeroftp -o -name aeroftp.bin \) | head -1)"
-  if [ -z "$inner" ]; then
-    fail "AppImage payload binary not found"
+  inner="$tmp/root/usr/lib/aeroftp/aeroftp-cli"
+  if [ ! -f "$inner" ]; then
+    fail "AppImage AeroRsync CLI payload not found at usr/lib/aeroftp/aeroftp-cli"
   else
     check_dt_needed "$inner"
   fi
@@ -137,8 +155,15 @@ if [ -n "$SNAP_FILE" ]; then
     fail "SNAP_FILE is set but missing: $SNAP_FILE"
   else
     need_cmd unsquashfs
+    need_cmd readelf
     tmp="$(mktemp -d)"
     unsquashfs -d "$tmp/snap" "$SNAP_FILE" >/dev/null
+    snap_cli="$tmp/snap/usr/lib/aeroftp/aeroftp-cli"
+    if [ ! -f "$snap_cli" ]; then
+      fail "snap AeroRsync CLI payload not found at usr/lib/aeroftp/aeroftp-cli"
+    else
+      check_dt_needed "$snap_cli"
+    fi
     if ! find "$tmp/snap" -name 'libacl.so.1*' | grep -q .; then
       fail "snap does not contain libacl.so.1"
     else

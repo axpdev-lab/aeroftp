@@ -295,11 +295,25 @@ fn detect_and_link_libacl() {
     #[cfg(target_os = "linux")]
     {
         use std::path::PathBuf;
+        let target = std::env::var("TARGET").unwrap_or_default();
+        let host = std::env::var("HOST").unwrap_or_default();
+        if !target.contains("-linux-") || target != host {
+            // Never offer a host library to a cross-target linker. A configured
+            // cross toolchain must resolve libacl from its own sysroot.
+            return;
+        }
+        let multiarch = match target.split('-').next().unwrap_or_default() {
+            "x86_64" => "x86_64-linux-gnu",
+            "aarch64" => "aarch64-linux-gnu",
+            "arm" => "arm-linux-gnueabihf",
+            "riscv64" => "riscv64-linux-gnu",
+            _ => return,
+        };
         let candidates = [
-            PathBuf::from("/usr/lib/x86_64-linux-gnu/libacl.so"),
-            PathBuf::from("/usr/lib/x86_64-linux-gnu/libacl.so.1"),
-            PathBuf::from("/lib/x86_64-linux-gnu/libacl.so"),
-            PathBuf::from("/lib/x86_64-linux-gnu/libacl.so.1"),
+            PathBuf::from(format!("/usr/lib/{multiarch}/libacl.so")),
+            PathBuf::from(format!("/usr/lib/{multiarch}/libacl.so.1")),
+            PathBuf::from(format!("/lib/{multiarch}/libacl.so")),
+            PathBuf::from(format!("/lib/{multiarch}/libacl.so.1")),
             PathBuf::from("/usr/lib/libacl.so"),
             PathBuf::from("/usr/lib/libacl.so.1"),
         ];

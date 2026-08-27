@@ -147,6 +147,9 @@
                 "postRemoveScript": "scripts/linux-postrm.sh"
             },
             "rpm": {
+                "depends": [
+                    "libacl.so.1()(64bit)"
+                ],
                 "files": {
                     "/usr/lib/aeroftp/aeroftp-cli": "target/release/aeroftp-dispatch-bundle/aeroftp-cli",
                     "/usr/lib/aeroftp/aeroftp-dispatch": "target/release/aeroftp-dispatch-bundle/aeroftp-dispatch"

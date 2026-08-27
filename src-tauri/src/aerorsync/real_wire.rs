@@ -2455,6 +2455,10 @@ pub fn decode_file_list_entry(
     // before `send_xattr`. `receive_acl` skips `S_ISLNK` and always reads
     // a default ACL for `S_ISDIR`. With `-A` off this branch consumes
     // nothing, so every byte-pinned capture stays identical.
+    // `XMIT_SAME_MODE` decodes as mode zero, so a future recursive file list
+    // must resolve the inherited mode before deciding whether to consume the
+    // directory default-ACL slot. The current single-entry path cannot emit
+    // SAME_MODE and therefore cannot reach that ambiguity.
     let acls = if options.preserve_acls && !is_symlink_mode(mode) {
         let (access, consumed) = decode_acl_wire(&buf[cursor..])?;
         cursor += consumed;

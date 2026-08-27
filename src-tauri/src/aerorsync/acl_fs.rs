@@ -427,11 +427,11 @@ mod linux {
         let raw = posix.into_raw();
         // SAFETY: `raw` is the unique acl_t just yielded by into_raw; fd is live.
         let rc = unsafe { acl_sys::acl_set_fd(fd, raw) };
+        let os_err = (rc != 0).then(io::Error::last_os_error);
         // Re-wrap so Drop still owns the only acl_t, success or failure.
         // SAFETY: same unique non-NULL acl_t; this is the only owner.
         let _owner = unsafe { PosixACL::from_raw(raw) };
-        if rc != 0 {
-            let err = io::Error::last_os_error();
+        if let Some(err) = os_err {
             let enotsup = err.raw_os_error() == Some(libc::ENOTSUP)
                 || err.raw_os_error() == Some(libc::EOPNOTSUPP);
             let message = format!("acl_set_fd: {err}");
@@ -664,6 +664,7 @@ mod tests {
         ));
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn enotsup_seam_honours_fail_on_metadata_loss() {
         let acls = filesystem_acl_to_wire(full_acl(Some(6), vec![named_user(1000, 4)]), 0o100_644)

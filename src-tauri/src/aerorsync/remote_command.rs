@@ -122,12 +122,13 @@ pub(crate) fn metadata_flags_from_args(args: &[String]) -> Option<EffectiveMetad
     let bundle = args
         .iter()
         .find(|arg| arg.starts_with('-') && !arg.starts_with("--") && arg.len() > 1)?;
+    let short_options = bundle.split('.').next().unwrap_or(bundle);
     Some(EffectiveMetadataFlags {
-        preserve_owner: bundle.contains('o'),
-        preserve_group: bundle.contains('g'),
-        preserve_devices: bundle.contains('D'),
-        preserve_acls: bundle.contains('A'),
-        preserve_xattrs: bundle.contains('X'),
+        preserve_owner: short_options.contains('o'),
+        preserve_group: short_options.contains('g'),
+        preserve_devices: short_options.contains('D'),
+        preserve_acls: short_options.contains('A'),
+        preserve_xattrs: short_options.contains('X'),
     })
 }
 
@@ -628,6 +629,12 @@ mod tests {
             })
         );
         assert_eq!(metadata_flags_from_args(&["--mode".to_string()]), None);
+        let info_letters = vec!["--server".to_string(), "-ltrc.oDgAX".to_string()];
+        assert_eq!(
+            metadata_flags_from_args(&info_letters),
+            Some(EffectiveMetadataFlags::product(false, false)),
+            "letters after the info/debug separator are not short options"
+        );
     }
 
     #[test]
