@@ -816,7 +816,7 @@ impl WebDavProvider {
     }
 
     /// Make an authenticated request (Basic or Digest depending on server)
-    fn request(&mut self, method: Method, path: &str) -> reqwest::RequestBuilder {
+    fn request(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
         let url = self.build_url(path);
         let builder = self.client.request(method.clone(), &url);
 
@@ -904,7 +904,14 @@ impl WebDavProvider {
             None
         };
 
+        // A rotated Digest nonce is replayed at most once per call, tracked
+        // here rather than by attempt number: the 425 loop may already have
+        // burned attempts, and a second rotation inside one call is the retry
+        // storm the `stale` gate exists to prevent.
+        let mut digest_replayed = false;
+
         for attempt in 1..=MAX_ATTEMPTS {
+            let nonce_used = self.digest_nonce_snapshot();
             let mut req = self.request(method.clone(), path);
             if let Some(ref r) = referer {
                 req = req.header("Referer", r);
@@ -916,6 +923,14 @@ impl WebDavProvider {
                 .send()
                 .await
                 .map_err(|e| ProviderError::NetworkError(describe_reqwest_error(&e)))?;
+
+            if response.status() == StatusCode::UNAUTHORIZED
+                && !digest_replayed
+                && self.should_replay_after_401(&response, &nonce_used)
+            {
+                digest_replayed = true;
+                continue;
+            }
 
             if response.status() != StatusCode::TOO_EARLY || attempt == MAX_ATTEMPTS {
                 return Ok(response);
@@ -932,6 +947,52 @@ impl WebDavProvider {
         }
 
         unreachable!("retry loop must return on final attempt")
+    }
+
+    /// Send a request and, on a `401` carrying a genuinely rotated Digest
+    /// nonce, rebuild it and send it exactly once more.
+    ///
+    /// `build` runs once per attempt, so the `Authorization` header is
+    /// recomputed from the challenge the provider holds *now*: a replay never
+    /// re-presents the dead nonce, and a body is rebuilt from its source
+    /// instead of being buffered for a retry that usually never happens.
+    ///
+    /// Replaying on `401` is safe for every caller, idempotent or not,
+    /// because a `401` means the server rejected the request BEFORE applying
+    /// it: there is no intermediate state. That is what separates this from
+    /// replaying a timeout or a `5xx`, where the server may already have
+    /// acted and idempotence would have to decide. It is why `MOVE`, `DELETE`
+    /// and the multipart `complete` can all go through here safely.
+    ///
+    /// Exactly one replay, structurally: a straight-line `if`, no loop. A
+    /// second rotation inside one call is the storm the `stale` gate exists
+    /// to prevent.
+    ///
+    /// This is one half of a pair; [`Self::send_with_too_early_retry`] is the
+    /// other, and heals `425 Too Early` on the same principle for the two
+    /// GET paths that need it. Do not add a third variant: extend one of
+    /// these, or every future request site will pick a different half and the
+    /// gap this pair closes will reopen.
+    async fn send_replaying_digest(
+        &self,
+        build: impl Fn() -> reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let nonce_used = self.digest_nonce_snapshot();
+        let response = build()
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if response.status() == StatusCode::UNAUTHORIZED
+            && self.should_replay_after_401(&response, &nonce_used)
+        {
+            return build()
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()));
+        }
+
+        Ok(response)
     }
 
     /// Send a PROPFIND and, on a `401` that carries a fresh
@@ -1038,6 +1099,61 @@ impl WebDavProvider {
     /// The repair is pool-wide, not per-caller: the challenge lives behind a
     /// shared `Arc`, so one worker adopting the rotated nonce fixes it for
     /// every `clone_for_transfer` sibling still presenting the dead one.
+    /// The nonce this provider holds right now, or `None` when the connection
+    /// is not Digest-authenticated.
+    ///
+    /// Read immediately before a request is sent so that a `401` can be told
+    /// apart from a sibling worker's repair: see
+    /// [`Self::should_replay_after_401`].
+    fn digest_nonce_snapshot(&self) -> Option<String> {
+        self.digest_auth.as_ref().map(|state| state.nonce())
+    }
+
+    /// Whether a `401` should be replayed once, given the nonce the failed
+    /// request actually carried.
+    ///
+    /// Two things can make a replay right, and only one of them is a rotation
+    /// this worker performs itself:
+    ///
+    /// - `adopt_rotated_nonce` succeeded: the server offered `stale=true` with
+    ///   a nonce we were not holding, and we installed it.
+    /// - It refused, but the nonce we hold is no longer the one this request
+    ///   used. A sibling worker hit the same rotation first and repaired the
+    ///   shared challenge, so the server is now offering back the nonce that
+    ///   sibling already installed. `renegotiate` correctly declines to adopt
+    ///   what it already has, but this request still went out with a dead
+    ///   nonce and deserves its one replay, with the fresh one.
+    ///
+    /// Without the second arm, concurrent transfers lose whichever requests
+    /// lost the race: measured against Apache `mod_auth_digest` with a 2s
+    /// `AuthDigestNonceLifetime`, a 60-file recursive download failed a
+    /// random 2 to 6 files per run while the rest succeeded.
+    ///
+    /// The anti-storm property is untouched. When nothing changed, the held
+    /// nonce still equals the one just used and `adopt_rotated_nonce` refused,
+    /// so both arms are false and a revoked credential still costs exactly one
+    /// request.
+    ///
+    /// Known imprecision, deliberately left: `used` comes from a read of the
+    /// shared challenge taken just before the request is built, not from the
+    /// single read inside `authorization` that actually computes the header.
+    /// A sibling rotating in that window makes the snapshot disagree with what
+    /// the request really carried, and the second arm then grants a replay
+    /// that was not needed. It costs one extra request and cannot storm, since
+    /// the replay is still capped at one. Closing it means having
+    /// `authorization` report the nonce it used, which changes the signature
+    /// `request` and `request_url` share across some forty call sites; the
+    /// trade was not worth making inside this fix.
+    fn should_replay_after_401(&self, response: &reqwest::Response, used: &Option<String>) -> bool {
+        if self.adopt_rotated_nonce(response) {
+            return true;
+        }
+        match (used, self.digest_nonce_snapshot()) {
+            (Some(before), Some(now)) => *before != now,
+            _ => false,
+        }
+    }
+
     fn adopt_rotated_nonce(&self, response: &reqwest::Response) -> bool {
         let Some(existing) = self.digest_auth.as_ref() else {
             return false;
@@ -1260,7 +1376,7 @@ impl WebDavProvider {
 
     /// Make an authenticated request to an arbitrary URL (for OCS / trashbin endpoints
     /// that live outside the WebDAV files path).
-    fn request_url(&mut self, method: Method, url: &str) -> reqwest::RequestBuilder {
+    fn request_url(&self, method: Method, url: &str) -> reqwest::RequestBuilder {
         let builder = self.client.request(method.clone(), url);
         if self.config.anonymous {
             return builder;
@@ -3237,25 +3353,56 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let file = tokio::fs::File::open(local_path)
+        let total_size = tokio::fs::metadata(local_path)
             .await
-            .map_err(ProviderError::IoError)?;
-        let total_size = file.metadata().await.map_err(ProviderError::IoError)?.len();
+            .map_err(ProviderError::IoError)?
+            .len();
 
         // Stream file with Content-Length header (required by some HTTP/1.1 servers).
         // 256 KiB capacity matches our SFTP default and avoids the 4 KiB read
         // chunks ReaderStream uses by default, which churn syscalls and bottleneck
         // local-network throughput.
-        let stream = tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024);
-        let body = reqwest::Body::wrap_stream(stream);
+        //
+        // Built per attempt rather than once: the body is a stream over an open
+        // file and `send` consumes it, so a Digest replay has to rebuild it. It
+        // rebuilds from `local_path`, which costs one file descriptor, instead
+        // of buffering `total_size` bytes to hold a copy for a retry that
+        // usually never happens: that would defeat the streaming this path
+        // exists for, on files of arbitrary size. Reopening also guarantees the
+        // replay starts at offset zero instead of wherever the first attempt
+        // stopped reading.
+        let put_body = || async {
+            let file = tokio::fs::File::open(local_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+            let stream = tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024);
+            Ok::<reqwest::Body, ProviderError>(reqwest::Body::wrap_stream(stream))
+        };
 
-        let response = self
+        let nonce_used = self.digest_nonce_snapshot();
+        let mut response = self
             .request(Method::PUT, remote_path)
             .header("Content-Length", total_size)
-            .body(body)
+            .body(put_body().await?)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        // The single-PUT path used to map a 401 straight into
+        // `upload_failure_error`'s catch-all, so a rotated nonce failed the
+        // whole upload. Replay exactly once, on the same `stale=true` gate the
+        // other paths use.
+        if response.status() == StatusCode::UNAUTHORIZED
+            && self.should_replay_after_401(&response, &nonce_used)
+        {
+            response = self
+                .request(Method::PUT, remote_path)
+                .header("Content-Length", total_size)
+                .body(put_body().await?)
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        }
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
@@ -3277,10 +3424,8 @@ impl StorageProvider for WebDavProvider {
         // Apache does not 301 to a scheme-downgraded URL that loses auth.
         let col = Self::collection_path(path);
         let response = self
-            .request(webdav_methods::mkcol(), &col)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_replaying_digest(|| self.request(webdav_methods::mkcol(), &col))
+            .await?;
 
         match response.status() {
             // RFC 4918 §9.3.1: 201 Created on success, 405 Method Not Allowed
@@ -3307,10 +3452,8 @@ impl StorageProvider for WebDavProvider {
         }
 
         let response = self
-            .request(Method::DELETE, path)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_replaying_digest(|| self.request(Method::DELETE, path))
+            .await?;
 
         match response.status() {
             StatusCode::OK | StatusCode::NO_CONTENT | StatusCode::ACCEPTED => Ok(()),
@@ -3348,13 +3491,13 @@ impl StorageProvider for WebDavProvider {
         };
 
         let response = self
-            .request(webdav_methods::move_method(), from)
-            .header("Destination", destination)
-            .header("Overwrite", "F") // Don't overwrite existing
-            .header("Depth", move_depth)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_replaying_digest(|| {
+                self.request(webdav_methods::move_method(), from)
+                    .header("Destination", &destination)
+                    .header("Overwrite", "F") // Don't overwrite existing
+                    .header("Depth", move_depth)
+            })
+            .await?;
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
@@ -3889,11 +4032,11 @@ impl StorageProvider for WebDavProvider {
         let token_header = format!("<{}>", lock_token);
 
         let response = self
-            .request(webdav_methods::unlock(), path)
-            .header("Lock-Token", &token_header)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_replaying_digest(|| {
+                self.request(webdav_methods::unlock(), path)
+                    .header("Lock-Token", &token_header)
+            })
+            .await?;
 
         match response.status() {
             reqwest::StatusCode::OK | reqwest::StatusCode::NO_CONTENT => Ok(()),
@@ -3952,12 +4095,12 @@ impl StorageProvider for WebDavProvider {
         let destination = self.build_url(to);
 
         let response = self
-            .request(webdav_methods::copy(), from)
-            .header("Destination", destination)
-            .header("Overwrite", "F")
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_replaying_digest(|| {
+                self.request(webdav_methods::copy(), from)
+                    .header("Destination", &destination)
+                    .header("Overwrite", "F")
+            })
+            .await?;
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
@@ -4332,11 +4475,11 @@ impl StorageProvider for WebDavProvider {
         }
 
         let response = self
-            .request(Method::GET, remote_path)
-            .header("Range", format!("bytes={}-", offset))
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_replaying_digest(|| {
+                self.request(Method::GET, remote_path)
+                    .header("Range", format!("bytes={}-", offset))
+            })
+            .await?;
 
         match response.status() {
             StatusCode::PARTIAL_CONTENT => {
@@ -4487,11 +4630,11 @@ impl StorageProvider for WebDavProvider {
         let range_header = format!("bytes={}-{}", offset, end);
 
         let response = self
-            .request(Method::GET, path)
-            .header("Range", &range_header)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_replaying_digest(|| {
+                self.request(Method::GET, path)
+                    .header("Range", &range_header)
+            })
+            .await?;
 
         let status = response.status();
         match status {
