@@ -17793,7 +17793,14 @@ const App: React.FC = () => {
                         opendrive: () => setShowOpenDriveTrash(true),
                         yandexdisk: () => setShowYandexTrash(true),
                         kdrive: () => setShowKDriveTrash(true),
-                        pcloud: () => setShowPCloudTrash(true),
+                        // pcloud: disabled: pCloud refuses its trash endpoints to OAuth
+                        // access tokens. Verified live against a real account: listfolder
+                        // returns result 0 while trash_list returns result 1000 "Log in
+                        // required." for the same token, on Bearer and on access_token
+                        // query param alike, and userinfo?getauth=1 mints no session token
+                        // for an OAuth caller. pCloud OAuth has no trash permission to
+                        // request (manageshares is the only one), so no re-authorization
+                        // fixes it. See docs/dev/drafts/TRACKER-628-DRAFT-pcloud-trash.md
                         onedrive: () => setShowOneDriveTrash(true),
                         backblaze: () => setShowB2Hidden(true),
                         s3: () => setShowS3Trash(true),
