@@ -11,7 +11,6 @@
 
 #![cfg(feature = "aerorsync")]
 
-use std::cell::Cell;
 use std::io;
 
 use crate::aerorsync::real_wire::{
@@ -31,9 +30,10 @@ pub enum AclApplyOutcome {
     },
 }
 
-/// Why an ACL conversion or I/O step failed. These are always hard
-/// except [`AclFsError::Unsupported`] on apply, which the caller may
-/// downgrade to a warning when `fail_on_metadata_loss` is off.
+/// Why an ACL conversion or I/O step failed. Platform
+/// [`AclFsError::Unsupported`] is always hard. Destination-FS ENOTSUP
+/// is surfaced as [`AclApplyOutcome::Unsupported`] and may become a
+/// warning when `fail_on_metadata_loss` is off.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AclFsError {
     Unsupported,
@@ -58,14 +58,6 @@ impl std::fmt::Display for AclFsError {
             Self::Io { message } => write!(f, "{message}"),
         }
     }
-}
-
-thread_local! {
-    static FORCE_ENOTSUP: Cell<bool> = const { Cell::new(false) };
-}
-
-fn forced_enotsup() -> bool {
-    FORCE_ENOTSUP.with(Cell::get)
 }
 
 /// Refuse an ACL opt-in on any platform that is not Linux, before the
@@ -398,6 +390,7 @@ mod linux {
         mode: u32,
         fail_on_metadata_loss: bool,
     ) -> AclApplyOutcome {
+        #[cfg(test)]
         if forced_enotsup() {
             let warning = "acl_set_fd ENOTSUP (test seam); destination does not support POSIX ACLs"
                 .to_string();
@@ -477,12 +470,28 @@ pub fn apply_access_acl_fd(
     _mode: u32,
     fail_on_metadata_loss: bool,
 ) -> AclApplyOutcome {
-    let warning = AclFsError::Unsupported.to_string();
-    if fail_on_metadata_loss {
-        AclApplyOutcome::Failed { message: warning }
-    } else {
-        AclApplyOutcome::Unsupported { warning }
+    // Platform unsupported is not destination-FS ENOTSUP: fail closed even
+    // when `fail_on_metadata_loss` is off. Production callers must have
+    // refused the opt-in in `ensure_linux_acl_support` before the wire.
+    let _ = fail_on_metadata_loss;
+    AclApplyOutcome::Failed {
+        message: AclFsError::Unsupported.to_string(),
     }
+}
+
+// Test-only seam lives after production so the unsafe-surface pin, which
+// stops at the first column-0 `#[cfg(test)]`, still counts the libacl FFI.
+#[cfg(test)]
+use std::cell::Cell;
+
+#[cfg(test)]
+thread_local! {
+    static FORCE_ENOTSUP: Cell<bool> = const { Cell::new(false) };
+}
+
+#[cfg(test)]
+fn forced_enotsup() -> bool {
+    FORCE_ENOTSUP.with(Cell::get)
 }
 
 #[cfg(test)]
@@ -526,6 +535,40 @@ mod tests {
         assert_eq!(wire.group_obj, None);
         assert_eq!(wire.mask_obj, Some(6));
         assert_eq!(wire.names, vec![named_user(1000, 4)]);
+    }
+
+    #[test]
+    fn strip_keeps_group_obj_when_it_differs_from_mode_group_bits() {
+        // mode 0644 group bits 4, explicit group_obj 5, mask 6: rsync
+        // 3.2.7 keeps both because neither equals the mode group bits.
+        let src = RsyncAcl {
+            user_obj: Some(6),
+            group_obj: Some(5),
+            mask_obj: Some(6),
+            other_obj: Some(4),
+            names: vec![named_user(1000, 4)],
+        };
+        let wire = strip_perms_for_wire(&src, 0o100_644).expect("strip");
+        assert_eq!(wire.user_obj, None);
+        assert_eq!(wire.other_obj, None);
+        assert_eq!(wire.group_obj, Some(5));
+        assert_eq!(wire.mask_obj, Some(6));
+    }
+
+    #[test]
+    fn omitted_mask_without_named_entries_stays_absent() {
+        let wire = RsyncAcl {
+            user_obj: None,
+            group_obj: None,
+            mask_obj: None,
+            other_obj: None,
+            names: Vec::new(),
+        };
+        let full = reconstruct_from_wire(&wire, 0o100_755).expect("fake");
+        assert_eq!(full.user_obj, Some(7));
+        assert_eq!(full.group_obj, Some(5));
+        assert_eq!(full.other_obj, Some(5));
+        assert_eq!(full.mask_obj, None);
     }
 
     #[test]

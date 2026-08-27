@@ -255,12 +255,19 @@ async fn finalize_steps(
         }
         if let Some(acls) = acls {
             use crate::aerorsync::acl_fs::{apply_access_acl_fd, AclApplyOutcome};
-            match apply_access_acl_fd(
-                file.as_raw_fd(),
-                acls,
-                mode.unwrap_or(0),
-                fail_on_metadata_loss,
-            ) {
+            // Reconstructing omitted USER/GROUP/OTHER/MASK bits needs the
+            // file-list mode. Inventing 0 would fake a 000 ACL and can
+            // clobber a chmod we just applied. Download always has a mode
+            // when `-A` is on; refuse any other caller.
+            let Some(acl_mode) = mode else {
+                return Err(WriteAtomicError::PostOpen {
+                    stage: "acl",
+                    source: std::io::Error::other(
+                        "ACL apply requires a file mode to reconstruct omitted object bits",
+                    ),
+                });
+            };
+            match apply_access_acl_fd(file.as_raw_fd(), acls, acl_mode, fail_on_metadata_loss) {
                 AclApplyOutcome::Applied => {}
                 AclApplyOutcome::Unsupported { warning } => warnings.push(warning),
                 AclApplyOutcome::Failed { message } => {
@@ -275,18 +282,15 @@ async fn finalize_steps(
     #[cfg(not(unix))]
     {
         let _ = mode;
-        if let Some(acls) = acls {
-            use crate::aerorsync::acl_fs::{apply_access_acl_fd, AclApplyOutcome};
-            match apply_access_acl_fd(-1, acls, 0, fail_on_metadata_loss) {
-                AclApplyOutcome::Applied => {}
-                AclApplyOutcome::Unsupported { warning } => warnings.push(warning),
-                AclApplyOutcome::Failed { message } => {
-                    return Err(WriteAtomicError::PostOpen {
-                        stage: "acl",
-                        source: std::io::Error::other(message),
-                    });
-                }
-            }
+        if let Some(_acls) = acls {
+            // Non-Unix never applies POSIX.1e ACLs. Fail closed rather than
+            // reconstructing from a synthetic mode 0.
+            return Err(WriteAtomicError::PostOpen {
+                stage: "acl",
+                source: std::io::Error::other(
+                    crate::aerorsync::acl_fs::AclFsError::Unsupported.to_string(),
+                ),
+            });
         }
     }
 
@@ -771,6 +775,55 @@ mod tests {
             bytes, b"OLD BYTES",
             "the target was cut over despite the xattr rejection"
         );
+    }
+
+    #[tokio::test]
+    async fn acl_apply_without_mode_fails_closed_and_leaves_target() {
+        use crate::aerorsync::acl_fs::filesystem_acl_to_wire;
+        use crate::aerorsync::real_wire::{AclNamedEntry, AclPrincipal, RsyncAcl};
+
+        let dir = fresh_tempdir();
+        let target = dir.path().join("doc.txt");
+        tokio::fs::write(&target, b"OLD BYTES")
+            .await
+            .expect("seed target");
+
+        let mut w = StreamingAtomicWriter::new(&target).await.expect("new");
+        w.write_all(b"NEW PAYLOAD").await.expect("write");
+        let temp = w.temp_path().to_path_buf();
+        let acls = filesystem_acl_to_wire(
+            RsyncAcl {
+                user_obj: Some(6),
+                group_obj: Some(4),
+                mask_obj: Some(4),
+                other_obj: Some(4),
+                names: vec![AclNamedEntry {
+                    id: 65534,
+                    principal: AclPrincipal::User,
+                    access: 4,
+                    name: None,
+                }],
+            },
+            0o100_644,
+        )
+        .expect("wire");
+        let err = w
+            .finalize(None, None, None, Some(acls), true)
+            .await
+            .expect_err("ACL apply without a mode must fail closed");
+        match err {
+            WriteAtomicError::PostOpen { stage, source } => {
+                assert_eq!(stage, "acl");
+                assert!(
+                    source.to_string().contains("file mode"),
+                    "error should name the missing mode, got {source}"
+                );
+            }
+            other => panic!("expected PostOpen{{stage: \"acl\"}}, got {other:?}"),
+        }
+        let bytes = tokio::fs::read(&target).await.expect("read target");
+        assert_eq!(bytes, b"OLD BYTES");
+        assert!(!temp.exists(), "temp must be cleaned up on ACL failure");
     }
 
     #[tokio::test]
