@@ -6,8 +6,8 @@
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
 > 1. **7 transport protocols** (FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift) - native wire-level support;
-> 2. **25+ native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, GitHub, GitLab, Immich, ImageKit, Uploadcare, Cloudinary, InfiniCLOUD, Felicloud);
-> 3. **45+ pre-configured presets** in the Discover catalog: S3-compatible (MEGA S4, Filen S5, MinIO, Wasabi, Cloudflare R2, DigitalOcean, Tencent COS, Alibaba OSS, Oracle, Storj, IDrive e2, Hetzner, Yandex Object Storage, Quotaless, Backblaze B2-S3, Filen Desktop S3, S3Drive), WebDAV-compatible (Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, CloudMe, Jianguoyun, Koofr-WebDAV, FileLu-WebDAV, Yandex-WebDAV, OpenDrive-WebDAV, Quotaless-WebDAV, MEGAcmd, Filen Desktop WebDAV), and SFTP-based (SourceForge, GitHub via SFTP).
+> 2. **24 native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, GitHub, GitLab, Immich, ImageKit, Uploadcare, Cloudinary, InfiniCLOUD, Felicloud);
+> 3. **44 pre-configured presets** in the Discover catalog: S3-compatible (MEGA S4, Filen S5, MinIO, Wasabi, Cloudflare R2, DigitalOcean, Tencent COS, Alibaba OSS, Oracle, Storj, IDrive e2, Hetzner, Yandex Object Storage, Quotaless, Backblaze B2-S3, Filen Desktop S3, S3Drive), WebDAV-compatible (Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, CloudMe, Jianguoyun, Koofr-WebDAV, FileLu-WebDAV, Yandex-WebDAV, OpenDrive-WebDAV, Quotaless-WebDAV, MEGAcmd, Filen Desktop WebDAV), and SFTP-based (SourceForge, GitHub via SFTP).
 >
 > The feature matrix tables below cover the core production set. GitHub, GitLab, Immich, ImageKit, Uploadcare, and Cloudinary have repository / media-specific semantics and are documented inline in their dedicated sections.
 
@@ -699,7 +699,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-The remote-facing tools route through the `StorageProvider` trait, so they behave identically across the 7 transport protocols and 25+ native provider integrations. Local-only tools (file management, search, archives, clipboard, shell) act on the local filesystem.
+The remote-facing tools route through the `StorageProvider` trait, so they behave identically across the 7 transport protocols and 24 native provider integrations. Local-only tools (file management, search, archives, clipboard, shell) act on the local filesystem.
 
 **Remote tools (protocol-routed)**
 

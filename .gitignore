@@ -113,6 +113,9 @@ run-clean.sh
 !/scripts/snap-stale-packages.mjs
 # Exception: regenerates the providers table from the GUI SSOT (#270 17104681)
 !/scripts/gen-providers-table.ts
+# Exception: derives every published provider/preset/protocol figure into
+# docs/PROVIDER-INVENTORY.json, gated by the fast checks workflow
+!/scripts/gen-provider-inventory.ts
 # Exception: stripped-diacritics gate and its reviewed baseline, run by the
 # fast checks workflow (#628 item 12)
 !/scripts/i18n-diacritics.mjs

@@ -83,11 +83,11 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ## Integrations
 
-AeroFTP organizes integrations on three tiers, so what you see in the catalog is precise rather than vague:
+AeroFTP organizes integrations on three tiers, so what you see in the catalog is precise rather than vague. The figures below are generated into [`docs/PROVIDER-INVENTORY.json`](docs/PROVIDER-INVENTORY.json) from the catalog and the registry, and CI fails when they drift from the code:
 
 1. **Transport protocols (7):** native wire-level support for FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift. Plus **portable devices over MTP / WPD** - attached phones, cameras and media players that the OS never assigns a drive letter, saved as profiles keyed to a stable device fingerprint (see [Portable devices](docs/PROTOCOL-FEATURES.md#portable-devices-mtp--wpd)).
-2. **Native provider integrations (25+):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
-3. **Pre-configured presets (45+):** server URL, port, base path, password-generation deep-link filled in automatically for compatible services on top of the protocols above (S3-compatible endpoints from MEGA S4 to Filen S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.).
+2. **Native provider integrations (24):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
+3. **Pre-configured presets (44):** the form arrives already filled in, server URL, port, base path and password-generation deep-link, for a named service on top of the protocols above. A form with nothing pre-filled is not a preset: the two generic ones (Custom S3, WebDAV Server) exist precisely for when no preset applies (S3-compatible endpoints from MEGA S4 to Filen S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.).
 
 <!-- BEGIN PROVIDERS-GRID -->
 
