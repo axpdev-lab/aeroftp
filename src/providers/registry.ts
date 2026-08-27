@@ -912,14 +912,7 @@ export const PROVIDERS: ProviderConfig[] = [
         category: 's3',
         icon: 'Cloud',
         color: '#0069FF',
-        // NOT a known defect: never verified live, because the trial account
-        // used for testing expired and no other Spaces account was available.
-        // It is an ordinary S3 endpoint dispatching through the same stack as
-        // the other presets, so the expectation is that it works. Clearing this
-        // needs ten minutes with any Spaces key, not a code change. Recording
-        // the reason because a bare `stable: false` is indistinguishable from a
-        // known-broken provider, and that is how this one stayed hidden.
-        stable: false,
+        stable: true,
         fields: [
             { ...COMMON_FIELDS.accessKeyId, label: 'Spaces Key', helpText: 'API → Spaces Keys → Key' },
             { ...COMMON_FIELDS.secretAccessKey, label: 'Spaces Secret', helpText: 'API → Spaces Keys → Secret' },
