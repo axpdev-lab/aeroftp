@@ -637,7 +637,7 @@ impl SftpProvider {
                         tracing::warn!(
                             "providers::sftp: native rsync disabled for this session: parent \
                              SFTP handshake did not capture a host key fingerprint (possible \
-                             password-only auth or early error); falling back to classic"
+                             incomplete handshake or early error); falling back to classic"
                         );
                         if matches!(native_mode, crate::settings::NativeRsyncMode::Native) {
                             tracing::warn!(

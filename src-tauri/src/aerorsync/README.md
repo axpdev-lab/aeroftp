@@ -116,7 +116,7 @@ cargo test --features aerorsync \
 
 ## Stato test
 
-- **656 unit/integration test passano, 0 failed** (contro byte reali di rsync 3.2.7 frozen e contro l'oracolo di byte catturati da rsync 3.1.3): wire, protocol, compression zstd e deflate, file-list, delta ops, summary frame, xattr, ACL e pin della policy provider (snapshot 2026-08-27)
+- **657 unit/integration test passano, 0 failed** (contro byte reali di rsync 3.2.7 frozen e contro l'oracolo di byte catturati da rsync 3.1.3): wire, protocol, compression zstd e deflate, file-list, delta ops, summary frame, xattr, ACL e pin delle policy provider/probe (snapshot 2026-08-27)
 - **8 live test** `#[ignore]` sulla matrice dei checksum negoziati (xxh128, xxh3, xxh64, md5, md4, sha1) che pilotano i transport di upload e download di produzione, piu' i live test per fixture Docker + **3 benchmark live** `#[ignore]` (`aerorsync_bench_*`, confronto diretto con rsync nativo sullo stesso harness)
 - **14 CI test** `ci_lane3` contro stock rsync 3.2.7 reale in Docker: upload byte-identical (sha256 match), upload streaming, symlink in entrambe le direzioni, compressor fallback, `user.*` xattr inline / out-of-band / binario con NUL / vuoto, path batch, symlink senza xattr ereditato, e POSIX access ACL con named user + mask in entrambe le direzioni
 - **1 lane deflate dedicata** in `.github/workflows/aerorsync-protocol.yml`: fixture Docker con client e server entrambi pinnati a rsync 3.1.3 protocollo 31, che e' il vintage senza zstd, piu' l'oracolo di byte catturati che pinna il framing dei token `zlibx`

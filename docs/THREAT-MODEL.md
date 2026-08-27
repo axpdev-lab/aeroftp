@@ -196,10 +196,10 @@ defaults. Unset, they change no bytes.
 
 | Variable | Effect when set |
 |----------|-----------------|
-| `AEROFTP_RSYNC_CSUM_ALGOS` | Replaces the advertised checksum list (`native_driver.rs` `PreambleProfile::with_env_overrides`). Default is `xxh128 xxh3 xxh64 md5 md4`. A list that includes `none` disables whole-file trailer verification for that session. |
-| `AEROFTP_RSYNC_COMPRESS_ALGOS` | Replaces the advertised compressor list. Default is `zstd zlibx none`. Announcing a codec AeroRsync cannot drive (for example stock `lz4` or `zlib`) makes that name eligible as the negotiated winner. |
+| `AEROFTP_RSYNC_CSUM_ALGOS` | Replaces the advertised checksum list (`native_driver.rs` `PreambleProfile::with_env_overrides`). Default is `xxh128 xxh3 xxh64 md5 md4`. If `none` becomes the negotiated winner, whole-file trailer verification is skipped for that session. Merely listing `none` below another common winner does not disable verification. |
+| `AEROFTP_RSYNC_COMPRESS_ALGOS` | Replaces the advertised compressor list. Default is `zstd zlibx none`. Announcing a codec AeroRsync cannot drive (for example stock `lz4` or `zlib`) makes that name eligible as the negotiated winner; if it wins, the driver rejects the unsupported codec instead of attempting to decode it. |
 | `AEROFTP_RSYNC_SERVER_FLAGS` | Replaces the measured compact rsync `--server` flag bundle (`remote_command.rs`). A value that strips `A` or `X` while the session codec still requested ACL/xattr is rejected before the remote stream opens. |
-| `AEROFTP_WIRE_DUMP_DIR` | Appends hex dumps of preambles, remote command lines and wire bytes (including file content) under that directory. Best-effort, no-op when unset. |
+| `AEROFTP_WIRE_DUMP_DIR` | Appends annotated preamble dumps, plain remote command lines and raw channel bytes under that directory. The artifacts may expose transferred file content. Best-effort, no-op when unset. |
 
 **Attack**: A local process or wrapper that can set the AeroFTP environment
 widens or disables integrity checks, or writes transferred file bytes to a

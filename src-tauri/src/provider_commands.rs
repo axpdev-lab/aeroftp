@@ -3131,9 +3131,9 @@ pub async fn provider_download_file(
         None
     };
 
-    // Delta path (SFTP + key-auth + rsync on remote): tried before the
+    // Delta path (SFTP + supported SSH auth + rsync on remote): tried before the
     // classic download. Self-gated inside `try_delta_transfer`: returns
-    // `None` for non-SFTP providers, password-only auth, or when the SSH
+    // `None` for non-SFTP providers, unusable auth, or when the SSH
     // handle is not available. A `hard_error` (host-key mismatch, permission
     // denied) surfaces as a transfer error without the silent classic
     // fallback: security failures must not be masked. Same contract as
@@ -4687,9 +4687,9 @@ pub async fn provider_upload_file(
         None
     };
 
-    // Delta path (SFTP + key-auth + rsync on remote): same contract as
+    // Delta path (SFTP + supported SSH auth + rsync on remote): same contract as
     // `sync::perform_upload`. Skipped automatically for GitHub / non-SFTP
-    // / password-only auth (self-gated inside `try_delta_transfer`).
+    // / unusable auth (self-gated inside `try_delta_transfer`).
     // `hard_error` must not silently fall back to the classic path.
     let mut delta_fallback_reason: Option<String> = None;
     {

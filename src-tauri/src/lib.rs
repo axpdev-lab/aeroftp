@@ -1589,7 +1589,7 @@ pub struct TransferEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>, // Full path for context (file or folder)
     /// Populated only on `event_type == "complete"` when the rsync delta
-    /// path actually serviced the transfer (SFTP + key-auth + rsync on the
+    /// path actually serviced the transfer (SFTP + supported SSH auth + rsync on the
     /// remote). Absent for classic transfers and for providers that don't
     /// support delta. Frontend uses this to render the per-file delta badge
     /// and accumulate the end-of-sync savings card.
@@ -3557,9 +3557,9 @@ async fn upload_file(
             let mut guard = provider_state.provider.lock().await;
             if let Some(provider) = guard.as_mut() {
                 let mut delta_fallback_reason: Option<String> = None;
-                // Delta path (SFTP + key-auth + rsync on remote): attempted
+                // Delta path (SFTP + supported SSH auth + rsync on remote): attempted
                 // before the classic provider upload. `try_delta_transfer`
-                // is self-gated: `None` for non-SFTP / password-only /
+                // is self-gated: `None` for non-SFTP / unusable auth /
                 // missing SSH handle, `used_delta=true` when rsync ran,
                 // `hard_error` when security (host-key, permission) said
                 // no: in which case we must NOT silently fall back to
@@ -13057,6 +13057,44 @@ fn native_rsync_runtime_enabled() -> bool {
     }
 }
 
+/// Cheap eligibility gates that precede the provider-owned transport probe.
+/// Authentication method is intentionally not an input: key, password and
+/// agent support belong to `SftpProvider::delta_transport()`, the same source
+/// of truth used by real transfers.
+fn delta_probe_preflight_reason(
+    active_session_is_sftp: bool,
+    native_feature_compiled: bool,
+    native_feature_enabled: bool,
+) -> Option<&'static str> {
+    if !active_session_is_sftp {
+        Some("Connect an SFTP session to evaluate delta eligibility.")
+    } else if !native_feature_compiled {
+        Some("This build was compiled without native rsync support.")
+    } else if !native_feature_enabled {
+        Some("Enable Native Rsync in Settings to make SFTP delta eligible.")
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn aerorsync_delta_probe_preflight_defers_auth_method_to_provider() {
+    assert_eq!(
+        delta_probe_preflight_reason(false, true, true),
+        Some("Connect an SFTP session to evaluate delta eligibility.")
+    );
+    assert_eq!(
+        delta_probe_preflight_reason(true, false, true),
+        Some("This build was compiled without native rsync support.")
+    );
+    assert_eq!(
+        delta_probe_preflight_reason(true, true, false),
+        Some("Enable Native Rsync in Settings to make SFTP delta eligible.")
+    );
+    assert_eq!(delta_probe_preflight_reason(true, true, true), None);
+}
+
 #[derive(Serialize, Clone)]
 struct DeltaServerIdentity {
     protocol: String,
@@ -13145,7 +13183,6 @@ async fn get_transfer_optimization_hints(
 
         let native_feature_compiled = crate::settings::native_rsync_feature_compiled();
         let native_feature_enabled = native_rsync_runtime_enabled();
-        let private_key_configured = provider_can_deliver_delta;
         let delta_eligible =
             active_session_is_sftp && provider_can_deliver_delta && native_feature_enabled;
 
@@ -13162,8 +13199,8 @@ async fn get_transfer_optimization_hints(
             "This build was compiled without native rsync support.".to_string()
         } else if !native_feature_enabled {
             "Enable Native Rsync in Settings to make SFTP delta eligible.".to_string()
-        } else if !private_key_configured {
-            "Requires an SSH key-based SFTP session; password auth stays on the classic path."
+        } else if !provider_can_deliver_delta {
+            "This SFTP session cannot create a delta transport; reconnect or verify its SSH authentication and host-key state."
                 .to_string()
         } else {
             "Session is ready for Delta Sync.".to_string()
@@ -13268,15 +13305,11 @@ fn provider_type_from_string(value: &str) -> Option<providers::ProviderType> {
 async fn sftp_probe_delta_eligibility(
     provider_state: State<'_, provider_commands::ProviderState>,
 ) -> Result<DeltaEligibilityProbeResult, String> {
-    let (active_session_is_sftp, private_key_configured, server_identity) = {
+    let (active_session_is_sftp, server_identity) = {
         let config_lock = provider_state.config.lock().await;
         let config = config_lock.as_ref();
         let active_session_is_sftp = config
             .map(|cfg| cfg.provider_type == providers::ProviderType::Sftp)
-            .unwrap_or(false);
-        let private_key_configured = config
-            .and_then(|cfg| cfg.extra.get("private_key_path"))
-            .map(|path| !path.trim().is_empty())
             .unwrap_or(false);
         let server_identity = config.and_then(|cfg| {
             (cfg.provider_type == providers::ProviderType::Sftp).then(|| DeltaServerIdentity {
@@ -13286,17 +13319,19 @@ async fn sftp_probe_delta_eligibility(
                 username: cfg.username.clone().unwrap_or_default(),
             })
         });
-        (
-            active_session_is_sftp,
-            private_key_configured,
-            server_identity,
-        )
+        (active_session_is_sftp, server_identity)
     };
 
-    if !active_session_is_sftp {
+    let native_feature_compiled = crate::settings::native_rsync_feature_compiled();
+    let native_feature_enabled = native_rsync_runtime_enabled();
+    if let Some(reason) = delta_probe_preflight_reason(
+        active_session_is_sftp,
+        native_feature_compiled,
+        native_feature_enabled,
+    ) {
         return Ok(DeltaEligibilityProbeResult {
             eligible: false,
-            reason: Some("Connect an SFTP session to evaluate delta eligibility.".to_string()),
+            reason: Some(reason.to_string()),
             server_identity,
         });
     }
@@ -13304,36 +13339,6 @@ async fn sftp_probe_delta_eligibility(
     // Z.4.3.f6 closed the Windows S_IFREG / mux-framing deadlock. Native
     // delta is compiled on all three OS; POSIX access ACL stays Linux-only
     // at the provider metadata policy, not here.
-    let native_feature_compiled = crate::settings::native_rsync_feature_compiled();
-    if !native_feature_compiled {
-        return Ok(DeltaEligibilityProbeResult {
-            eligible: false,
-            reason: Some("This build was compiled without native rsync support.".to_string()),
-            server_identity,
-        });
-    }
-
-    if !native_rsync_runtime_enabled() {
-        return Ok(DeltaEligibilityProbeResult {
-            eligible: false,
-            reason: Some(
-                "Enable Native Rsync in Settings to make SFTP delta eligible.".to_string(),
-            ),
-            server_identity,
-        });
-    }
-
-    if !private_key_configured {
-        return Ok(DeltaEligibilityProbeResult {
-            eligible: false,
-            reason: Some(
-                "Requires an SSH key-based SFTP session; password auth stays on the classic path."
-                    .to_string(),
-            ),
-            server_identity,
-        });
-    }
-
     let mut provider_lock = provider_state.provider.lock().await;
     let provider = provider_lock
         .as_mut()
