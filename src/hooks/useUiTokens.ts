@@ -15,7 +15,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { readTextFile } from '@tauri-apps/plugin-fs';
 import { useActivityLog } from './useActivityLog';
 
 // ============================================================================
@@ -168,11 +167,6 @@ export function resetUiTokenOverrides(style: UiTokenStyleTarget): void {
 // Loading
 // ============================================================================
 
-/** Subset of the `get_system_info` response this loader needs. */
-interface SystemInfoLike {
-    config_dir: string;
-}
-
 /**
  * Read and validate `<config_dir>/ui-tokens.json`.
  *
@@ -185,13 +179,23 @@ interface SystemInfoLike {
  * is not valid JSON is a user error and is reported as a rejection.
  */
 export async function loadUiTokenOverrides(): Promise<UiTokenValidationResult | null> {
-    let text: string;
+    let text: string | null;
     try {
-        const info = await invoke<SystemInfoLike>('get_system_info');
-        text = await readTextFile(`${info.config_dir}/${UI_TOKENS_FILENAME}`);
-    } catch {
-        return null;
+        // Through the backend, not the fs plugin. The data root contains a hidden
+        // component on Linux (`~/.config/aeroftp`) and the Tauri fs scope sets
+        // `require_literal_leading_dot` on unix, so `$HOME/**` does not match it;
+        // widening the scope would also expose `vault.db`, which lives there.
+        text = await invoke<string | null>('read_ui_tokens_file');
+    } catch (error) {
+        // A real failure, not an absent file: the command returns null for that.
+        // Reported rather than swallowed, because a silent failure here looks
+        // exactly like a file that applied cleanly.
+        return {
+            accepted: {},
+            rejected: [{ key: '(file)', reason: `cannot read ${UI_TOKENS_FILENAME}: ${String(error)}` }],
+        };
     }
+    if (text === null) return null;
     let parsed: unknown;
     try {
         parsed = JSON.parse(text);

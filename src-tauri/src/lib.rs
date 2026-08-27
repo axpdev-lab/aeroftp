@@ -6175,6 +6175,61 @@ fn get_system_info_blocking() -> SystemInfo {
     }
 }
 
+// ============ UI Token Overrides ============
+//
+// `ui-tokens.json` lives in the AeroFTP data root, which on Linux is
+// `~/.config/aeroftp`. The frontend cannot read it through the fs plugin: the
+// Tauri scope sets `require_literal_leading_dot = true` on unix (see
+// `tauri::scope::fs`, "dotfiles are not supposed to be exposed by default"), so
+// `$HOME/**` does not match a path with a hidden component, and `$APPCONFIG`
+// resolves to the legacy identifier-scoped directory rather than the real root.
+//
+// Widening the scope was the wrong fix twice over. `$HOME/.config/aeroftp/**`
+// would hand the webview read access to `vault.db`, which sits in the same
+// directory, and it would still miss portable mode and a custom
+// `XDG_CONFIG_HOME`. These two commands resolve the root the same way
+// `get_system_info` does and touch exactly one file.
+
+/// Absolute path of `ui-tokens.json` inside the resolved data root.
+fn ui_tokens_path() -> Result<std::path::PathBuf, String> {
+    portable::aeroftp_data_root()
+        .map(|dir| dir.join("ui-tokens.json"))
+        .ok_or_else(|| "Cannot resolve the AeroFTP data root".to_string())
+}
+
+/// Read `ui-tokens.json`. `Ok(None)` means the file is absent, which is the
+/// normal case and not an error. Anything else (a permission problem, a broken
+/// symlink) is returned as an error rather than folded into "no overrides":
+/// a silent failure here is indistinguishable from a file that applied cleanly,
+/// which is exactly how the scope bug survived the first live test.
+#[tauri::command]
+async fn read_ui_tokens_file() -> Result<Option<String>, String> {
+    let path = ui_tokens_path()?;
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(format!("Cannot read {}: {err}", path.display())),
+    }
+}
+
+/// Return the absolute path of `ui-tokens.json`, creating it from `example`
+/// when it does not exist yet. An existing file is never overwritten: the user
+/// may have edited it, and the Settings button that calls this is "open", not
+/// "reset".
+#[tauri::command]
+async fn ensure_ui_tokens_file(example: String) -> Result<String, String> {
+    let path = ui_tokens_path()?;
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| format!("Cannot create {}: {err}", parent.display()))?;
+        }
+        std::fs::write(&path, example)
+            .map_err(|err| format!("Cannot write {}: {err}", path.display()))?;
+    }
+    Ok(path.to_string_lossy().to_string())
+}
+
 // ============ Local File System Commands ============
 
 #[tauri::command]
@@ -19795,6 +19850,8 @@ pub fn run() {
             get_dependencies,
             check_crate_versions,
             get_system_info,
+            read_ui_tokens_file,
+            ensure_ui_tokens_file,
             // DebugPanel diagnostic suite (Tests tab)
             debug_tests::debug_test_connectivity,
             debug_tests::debug_test_vault_roundtrip,

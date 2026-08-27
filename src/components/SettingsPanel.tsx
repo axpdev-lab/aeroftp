@@ -6,7 +6,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { sendNotification } from '@tauri-apps/plugin-notification';
-import { readFile, exists, writeTextFile } from '@tauri-apps/plugin-fs';
 import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Monitor, Image, Shapes, Info, Boxes, Share2, Users, Bell, ShieldOff } from 'lucide-react';
 import { AeroShareContacts } from './AeroShare/AeroShareContacts';
 import { CheckpointEndpoints } from './CheckpointEndpoints';
@@ -592,11 +591,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     // documented-defaults example first when the file does not exist yet.
     const handleOpenUiTokensFile = useCallback(async () => {
         try {
-            const info = await invoke<{ config_dir: string }>('get_system_info');
-            const path = `${info.config_dir}/ui-tokens.json`;
-            if (!(await exists(path))) {
-                await writeTextFile(path, UI_TOKENS_EXAMPLE_JSON);
-            }
+            // Through the backend: the fs plugin cannot reach the data root, see
+            // the comment on `read_ui_tokens_file` in lib.rs.
+            const path = await invoke<string>('ensure_ui_tokens_file', {
+                example: UI_TOKENS_EXAMPLE_JSON,
+            });
             await invoke('open_in_file_manager', { path });
         } catch (err) {
             logger.error('[SettingsPanel] Failed to open ui-tokens.json', err);

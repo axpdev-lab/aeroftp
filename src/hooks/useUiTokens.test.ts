@@ -13,11 +13,6 @@ vi.mock('@tauri-apps/api/core', () => ({
     invoke: (cmd: string, args?: unknown) => mockInvoke(cmd, args),
 }));
 
-const mockReadTextFile = vi.fn();
-vi.mock('@tauri-apps/plugin-fs', () => ({
-    readTextFile: (path: string) => mockReadTextFile(path),
-}));
-
 import {
     PUBLISHED_UI_TOKEN_NAMES,
     loadUiTokenOverrides,
@@ -98,18 +93,49 @@ describe('validateUiTokenOverrides', () => {
 describe('loadUiTokenOverrides', () => {
     beforeEach(() => {
         mockInvoke.mockReset();
-        mockReadTextFile.mockReset();
     });
 
     it('a missing file yields no overrides and no error', async () => {
-        mockInvoke.mockResolvedValue({ config_dir: '/home/user/.config/aeroftp' });
-        mockReadTextFile.mockRejectedValue(new Error('No such file or directory'));
+        // The backend returns null for "absent", which is the normal case.
+        mockInvoke.mockResolvedValue(null);
 
         const result = await loadUiTokenOverrides();
 
         expect(result).toBeNull();
-        expect(mockInvoke).toHaveBeenCalledWith('get_system_info', undefined);
-        expect(mockReadTextFile).toHaveBeenCalledWith('/home/user/.config/aeroftp/ui-tokens.json');
+        expect(mockInvoke).toHaveBeenCalledWith('read_ui_tokens_file', undefined);
+    });
+
+    it('a read failure is reported, not silently treated as absent', async () => {
+        // The distinction that matters: a permission or path problem must not
+        // look like a clean run with no overrides. That conflation is how the
+        // fs-scope bug survived its first live test.
+        mockInvoke.mockRejectedValue(new Error('Cannot read /x/ui-tokens.json: denied'));
+
+        const result = await loadUiTokenOverrides();
+
+        expect(result).not.toBeNull();
+        expect(result?.accepted).toEqual({});
+        expect(result?.rejected).toHaveLength(1);
+        expect(result?.rejected[0].key).toBe('(file)');
+        expect(result?.rejected[0].reason).toContain('cannot read');
+    });
+
+    it('a valid file is parsed and validated', async () => {
+        mockInvoke.mockResolvedValue('{"--aeroftp-scrollbar-width":"12px","--nope":"1px"}');
+
+        const result = await loadUiTokenOverrides();
+
+        expect(result?.accepted).toEqual({ '--aeroftp-scrollbar-width': '12px' });
+        expect(result?.rejected.map((r) => r.key)).toEqual(['--nope']);
+    });
+
+    it('malformed JSON is reported as a rejection, not a crash', async () => {
+        mockInvoke.mockResolvedValue('{ not json');
+
+        const result = await loadUiTokenOverrides();
+
+        expect(result?.accepted).toEqual({});
+        expect(result?.rejected[0].reason).toContain('not valid JSON');
     });
 });
 
