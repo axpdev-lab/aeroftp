@@ -16,6 +16,8 @@ vi.mock('@tauri-apps/api/core', () => ({
 import {
     PUBLISHED_UI_TOKEN_NAMES,
     loadUiTokenOverrides,
+    shouldRunStartupLoad,
+    resetStartupLoadForTests,
     resetUiTokenOverrides,
     validateUiTokenOverrides,
 } from './useUiTokens';
@@ -136,6 +138,40 @@ describe('loadUiTokenOverrides', () => {
 
         expect(result?.accepted).toEqual({});
         expect(result?.rejected[0].reason).toContain('not valid JSON');
+    });
+});
+
+describe('the startup load runs once per process', () => {
+    // React StrictMode double-mounts in development precisely to surface effects
+    // that are not idempotent. Applying the overrides twice is harmless because
+    // setProperty is idempotent, but logging twice is not: a panel whose job is
+    // to say what was dropped must not say it twice. The guard makes the effect
+    // idempotent rather than hiding the double invoke, and this test is what
+    // keeps it that way.
+    beforeEach(() => {
+        mockInvoke.mockReset();
+        resetStartupLoadForTests();
+    });
+
+    it('a second mount does not read the file again', async () => {
+        mockInvoke.mockResolvedValue('{"--aeroftp-scrollbar-width":"14px"}');
+
+        expect(shouldRunStartupLoad()).toBe(true);
+        expect(shouldRunStartupLoad()).toBe(false);
+        expect(shouldRunStartupLoad()).toBe(false);
+    });
+
+    it('an explicit reload always reads, and is never skipped', async () => {
+        mockInvoke.mockResolvedValue('{"--aeroftp-scrollbar-width":"14px"}');
+
+        expect(shouldRunStartupLoad()).toBe(true);
+        // reload() does not consult the guard: it calls the loader directly.
+        const first = await loadUiTokenOverrides();
+        const second = await loadUiTokenOverrides();
+
+        expect(first?.accepted).toEqual({ '--aeroftp-scrollbar-width': '14px' });
+        expect(second?.accepted).toEqual({ '--aeroftp-scrollbar-width': '14px' });
+        expect(mockInvoke).toHaveBeenCalledTimes(2);
     });
 });
 

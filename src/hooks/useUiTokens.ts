@@ -270,6 +270,47 @@ function setUiTokenCounts(next: UiTokenCounts): void {
 }
 
 /**
+ * The startup load happens once per process, not once per mount.
+ *
+ * The overrides belong to the document, not to a component: two components
+ * calling `useUiTokens()` must not each read the file, and remounting must not
+ * re-read it. Applying twice is harmless because `setProperty` is idempotent,
+ * but LOGGING twice is not: a user reading eight rejections for four bad values
+ * reasonably concludes something ran twice, and in a panel whose whole job is to
+ * tell the truth about what was dropped, that is a defect.
+ *
+ * This is not a suppression of React StrictMode's double invoke. StrictMode
+ * double-mounts precisely to surface effects that are not idempotent, and the
+ * correct answer to that signal is to make the effect idempotent rather than to
+ * hide it. The flag is set BEFORE the first await so the second synchronous
+ * mount cannot slip past it.
+ *
+ * `reload()` is never guarded: an explicit reload always re-reads the file.
+ */
+let startupLoadDone = false;
+
+/**
+ * True exactly once per process, for the first caller. Every later caller gets
+ * false. Named as a question rather than exposed as a flag so the invariant is
+ * readable at the call site and cannot be half-applied.
+ */
+export function shouldRunStartupLoad(): boolean {
+    if (startupLoadDone) return false;
+    startupLoadDone = true;
+    return true;
+}
+
+/** Record that a load has happened, so a later mount does not repeat it. */
+function markStartupLoadDone(): void {
+    startupLoadDone = true;
+}
+
+/** Test-only: the guard is process-wide, so a test suite must be able to clear it. */
+export function resetStartupLoadForTests(): void {
+    startupLoadDone = false;
+}
+
+/**
  * Load ui-tokens.json once at startup and apply the surviving overrides to
  * the document root. Rejections are reported to the activity log with the
  * key and the reason. Not driven by a file watcher: re-application happens
@@ -290,6 +331,10 @@ export function useUiTokens(options?: UseUiTokensOptions): UseUiTokensResult {
     }, []);
 
     const reload = useCallback(async () => {
+        // Always re-reads: `reload` is the explicit path and is never guarded.
+        // It also marks the startup load as done, so a component mounting later
+        // does not read the file a second time on top of a manual reload.
+        markStartupLoadDone();
         const result = await loadUiTokenOverrides();
         if (!result) {
             setUiTokenCounts({ appliedCount: 0, rejectedCount: 0 });
@@ -312,7 +357,7 @@ export function useUiTokens(options?: UseUiTokensOptions): UseUiTokensResult {
 
     const loadOnMount = options?.loadOnMount !== false;
     useEffect(() => {
-        if (!loadOnMount) return;
+        if (!loadOnMount || !shouldRunStartupLoad()) return;
         void reload();
     }, [reload, loadOnMount]);
 
