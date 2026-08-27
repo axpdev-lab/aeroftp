@@ -110,7 +110,7 @@ Read with a library author's eyes, the old flat list undersold the ambition: "ou
 
 Metadata the wire protocol can carry and AeroRsync does not. This half *is* a backlog.
 
-1. **owner / group (`-o` / `-g`)** - uid, gid and their resolved names are already emitted in the file-list entry because the wire format requires it, but nothing is applied on the receiving side: `StreamingAtomicWriter::finalize` takes only mode and mtime. Applying them needs a privileged receiver, which rarely matches AeroFTP's desktop deployment model.
+1. **owner / group (`-o` / `-g`)** - uid, gid and their resolved names are already emitted in the file-list entry because the wire format requires it, but owner and group are not applied on the receiving side: `StreamingAtomicWriter::finalize` already applies mode, mtime, Unix `user.*` xattrs and Linux access ACLs. Applying owner/group needs a privileged receiver, which rarely matches AeroFTP's desktop deployment model.
 2. **Device and special files** - Unix-only, needs a privileged create.
 3. **hardlink (`-H`)** - the hardest, and the only one that is *structurally* blocked rather than merely unimplemented: it needs a device/inode map across the whole file list, which is a tree-scope concept. A single-file accelerator cannot detect that two paths share an inode. This one waits on recursive scope, not on effort.
 
