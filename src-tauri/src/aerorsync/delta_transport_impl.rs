@@ -4564,6 +4564,225 @@ PY"#
         let _ = lane3_ssh_testuser(&key_path, &format!("rm -f '{remote_path}'"));
     }
 
+    // ACL B3 covers regular-file access ACLs only. Directory default ACL is
+    // out of B3: the single-file driver has no recursive entries, so the
+    // default slot stays wire-only from B1. Apply-failure atomicity remains
+    // pinned by `acl_hard_failure_leaves_existing_target_and_removes_temp`
+    // and `acl_apply_without_mode_fails_closed_and_leaves_target`.
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_local_set_named_acl(path: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644))
+            .expect("chmod local ACL fixture");
+        let out = std::process::Command::new("setfacl")
+            .args(["-m", "u:65534:r--"])
+            .arg(path)
+            .output()
+            .expect("spawn setfacl");
+        assert!(
+            out.status.success(),
+            "setfacl failed for {}: {}",
+            path.display(),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_local_acl_text(path: &Path) -> String {
+        let out = std::process::Command::new("getfacl")
+            .args(["-n", "-p"])
+            .arg(path)
+            .output()
+            .expect("spawn getfacl");
+        assert!(
+            out.status.success(),
+            "getfacl failed for {}: {}",
+            path.display(),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_assert_named_acl(text: &str, side: &str) {
+        assert!(
+            text.lines()
+                .any(|line| line == "user:65534:r--" || line == "user:nobody:r--"),
+            "{side} ACL is missing named user 65534/nobody r--:\n{text}"
+        );
+        assert!(
+            text.lines().any(|line| line == "mask::r--"),
+            "{side} ACL is missing the expected mask::r--:\n{text}"
+        );
+    }
+
+    /// The lane-3 image intentionally has no `setfacl`/`getfacl` binaries,
+    /// but stock rsync links the same libacl ABI. Seed a fixture as its owner
+    /// (`testuser`) without mutating the image or requiring host root.
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_remote_set_named_acl(key_path: &Path, remote_path: &str) {
+        let command = format!(
+            r#"python3 - <<'PY'
+import ctypes
+lib = ctypes.CDLL("libacl.so.1", use_errno=True)
+lib.acl_from_text.argtypes = [ctypes.c_char_p]
+lib.acl_from_text.restype = ctypes.c_void_p
+lib.acl_set_file.argtypes = [ctypes.c_char_p, ctypes.c_uint, ctypes.c_void_p]
+lib.acl_set_file.restype = ctypes.c_int
+lib.acl_free.argtypes = [ctypes.c_void_p]
+lib.acl_free.restype = ctypes.c_int
+text = b"user::rw-\nuser:65534:r--\ngroup::r--\nmask::r--\nother::r--\n"
+acl = lib.acl_from_text(text)
+if not acl:
+    raise SystemExit("acl_from_text failed errno=%s" % ctypes.get_errno())
+try:
+    if lib.acl_set_file(b"{remote_path}", 0x8000, acl) != 0:
+        raise SystemExit("acl_set_file failed errno=%s" % ctypes.get_errno())
+finally:
+    lib.acl_free(acl)
+print("ok")
+PY"#
+        );
+        assert_eq!(lane3_ssh_testuser(key_path, &command), "ok");
+    }
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_remote_acl_text(key_path: &Path, remote_path: &str) -> String {
+        let command = format!(
+            r#"python3 - <<'PY'
+import ctypes
+lib = ctypes.CDLL("libacl.so.1", use_errno=True)
+lib.acl_get_file.argtypes = [ctypes.c_char_p, ctypes.c_uint]
+lib.acl_get_file.restype = ctypes.c_void_p
+lib.acl_to_text.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ssize_t)]
+lib.acl_to_text.restype = ctypes.c_void_p
+lib.acl_free.argtypes = [ctypes.c_void_p]
+lib.acl_free.restype = ctypes.c_int
+acl = lib.acl_get_file(b"{remote_path}", 0x8000)
+if not acl:
+    raise SystemExit("acl_get_file failed errno=%s" % ctypes.get_errno())
+length = ctypes.c_ssize_t()
+text = lib.acl_to_text(acl, ctypes.byref(length))
+if not text:
+    lib.acl_free(acl)
+    raise SystemExit("acl_to_text failed errno=%s" % ctypes.get_errno())
+try:
+    print(ctypes.string_at(text, length.value).decode())
+finally:
+    lib.acl_free(text)
+    lib.acl_free(acl)
+PY"#
+        );
+        lane3_ssh_testuser(key_path, &command)
+    }
+
+    /// ACL B3 upload: source access ACL crosses AeroRsync `-A` and is
+    /// observable on the stock-rsync destination with matching content.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_acl_named_user_live_lane_3() {
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("[lane3-acl] harness not reachable on 127.0.0.1:2224: skipping");
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("lane3-acl-upload.bin");
+        let payload = b"lane3-acl-upload-payload-v1";
+        std::fs::write(&local, payload).expect("write local ACL payload");
+        lane3_local_set_named_acl(&local);
+        lane3_assert_named_acl(&lane3_local_acl_text(&local), "upload source");
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_path = format!("/workspace/lane3-acl-up-{nanos}.bin");
+        let transport =
+            AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_acls(true);
+        let stats = transport
+            .upload(&local, &remote_path)
+            .await
+            .expect("live ACL upload against stock rsync");
+        assert_eq!(stats.total_size, payload.len() as u64);
+        assert_eq!(
+            lane3_remote_sha256(&key_path, &remote_path),
+            lane3_local_sha256(&local),
+            "upload content sha256 must match"
+        );
+        let remote_acl = lane3_remote_acl_text(&key_path, &remote_path);
+        lane3_assert_named_acl(&remote_acl, "upload destination");
+        eprintln!("[lane3-acl] upload destination ACL:\n{remote_acl}");
+
+        let _ = lane3_ssh_testuser(&key_path, &format!("rm -f '{remote_path}'"));
+    }
+
+    /// ACL B3 download: stock-rsync source access ACL is decoded and applied
+    /// to the local temp before the atomic rename.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_download_acl_named_user_live_lane_3() {
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("[lane3-acl] harness not reachable on 127.0.0.1:2224: skipping");
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_path = format!("/workspace/lane3-acl-dl-{nanos}.bin");
+        let payload = b"lane3-acl-download-payload-v1";
+        use base64::Engine as _;
+        let payload_b64 = base64::engine::general_purpose::STANDARD.encode(payload);
+        lane3_ssh_testuser(
+            &key_path,
+            &format!(
+                r#"python3 - <<'PY'
+import base64
+open("{remote_path}", "wb").write(base64.b64decode("{payload_b64}"))
+print("seeded")
+PY"#
+            ),
+        );
+        lane3_remote_set_named_acl(&key_path, &remote_path);
+        let seeded_acl = lane3_remote_acl_text(&key_path, &remote_path);
+        lane3_assert_named_acl(&seeded_acl, "download source");
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("lane3-acl-download.bin");
+        let transport =
+            AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_acls(true);
+        let stats = transport
+            .download(&remote_path, &local)
+            .await
+            .expect("live ACL download against stock rsync");
+        assert_eq!(stats.total_size, payload.len() as u64);
+        assert_eq!(
+            std::fs::read(&local).expect("read downloaded ACL payload"),
+            payload
+        );
+        let local_acl = lane3_local_acl_text(&local);
+        lane3_assert_named_acl(&local_acl, "download destination");
+        eprintln!("[lane3-acl] download destination ACL:\n{local_acl}");
+
+        let _ = lane3_ssh_testuser(&key_path, &format!("rm -f '{remote_path}'"));
+    }
+
     /// (6) R3 acceptance: the **batch** path preserves xattrs against a real
     /// rsync, observed rather than argued.
     ///
