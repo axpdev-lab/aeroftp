@@ -24,7 +24,9 @@
     "i18n:diacritics": "node scripts/i18n-diacritics.mjs --strict",
     "i18n:untranslated": "node scripts/i18n-untranslated.mjs --strict",
     "gen:cli-catalog": "npx tsx scripts/gen-cli-catalog.ts",
-    "gen:providers-table": "npx tsx scripts/gen-providers-table.ts"
+    "gen:providers-table": "npx tsx scripts/gen-providers-table.ts",
+    "gen:provider-inventory": "npx tsx scripts/gen-provider-inventory.ts",
+    "check:provider-inventory": "npx tsx scripts/gen-provider-inventory.ts --check"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

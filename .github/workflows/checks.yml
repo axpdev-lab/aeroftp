@@ -78,6 +78,15 @@ jobs:
       - name: i18n raw-English gate
         run: npm run i18n:untranslated
 
+      # Every published "how many providers / presets / protocols" figure is
+      # derived from the catalog and the registry into docs/PROVIDER-INVENTORY.json.
+      # They used to be prose, which is why three different numbers for the same
+      # noun could all sit in the tree at once and none of them error. This fails
+      # when the committed inventory no longer matches the code, and prints which
+      # count moved, so the prose that quotes it gets updated in the same commit.
+      - name: Provider inventory is not stale
+        run: npm run check:provider-inventory
+
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 

@@ -26,7 +26,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/support-multi--protocol-green" alt="Multi-Protocol Support" />
   <img src="https://img.shields.io/badge/AI%20providers-24-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
-  <img src="https://img.shields.io/badge/AI%20tools-50%2B-ff6600" alt="AI Tools" />
+  <img src="https://img.shields.io/badge/AI%20tools-39-ff6600" alt="AI Tools" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
   <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
   <img src="https://img.shields.io/badge/CLI-ready-blue?logo=gnubash&logoColor=white" alt="CLI Ready" />
@@ -83,11 +83,11 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ## Integrations
 
-AeroFTP organizes integrations on three tiers, so what you see in the catalog is precise rather than vague:
+AeroFTP organizes integrations on three tiers, so what you see in the catalog is precise rather than vague. The figures below are generated into [`docs/PROVIDER-INVENTORY.json`](docs/PROVIDER-INVENTORY.json) from the catalog and the registry, and CI fails when they drift from the code:
 
 1. **Transport protocols (7):** native wire-level support for FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift. Plus **portable devices over MTP / WPD** - attached phones, cameras and media players that the OS never assigns a drive letter, saved as profiles keyed to a stable device fingerprint (see [Portable devices](docs/PROTOCOL-FEATURES.md#portable-devices-mtp--wpd)).
-2. **Native provider integrations (25+):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
-3. **Pre-configured presets (45+):** server URL, port, base path, password-generation deep-link filled in automatically for compatible services on top of the protocols above (S3-compatible endpoints from MEGA S4 to Filen S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.).
+2. **Native provider integrations (24):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
+3. **Pre-configured presets (44):** the form arrives already filled in, server URL, port, base path and password-generation deep-link, for a named service on top of the protocols above. A form with nothing pre-filled is not a preset: the two generic ones (Custom S3, WebDAV Server) exist precisely for when no preset applies (S3-compatible endpoints from MEGA S4 to Filen S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.).
 
 <!-- BEGIN PROVIDERS-GRID -->
 
@@ -312,7 +312,7 @@ AeroFTP defines seven user-facing file formats. Each has a single purpose and a 
 
 ```
 AeroFTP
-├── AeroCloud    - Personal cloud (7 transport protocols + 25+ native providers + 6 media services, sync, share)
+├── AeroCloud    - Personal cloud (7 transport protocols + 24 native providers + 6 media services, sync, share)
 ├── AeroFile     - Professional file manager (multi-file Properties, recursive search, default-app routing)
 ├── AeroShare    - Peer-to-peer user-to-user transfer (end-to-end encrypted, no server in the middle) [Beta]
 ├── AeroMount    - Persistent FUSE / WebDAV mounts with cross-platform autostart (the Mount Manager)
@@ -320,7 +320,7 @@ AeroFTP
 │   └── AeroRsync    - Native Rust delta sync (clean-room rsync protocol 31)
 ├── AeroVault    - Military-grade encryption
 ├── AeroTools    - Code editor + Terminal + AI chat
-│   └── AeroAgent    - AI-powered assistant (50+ tools, 24 providers)
+│   └── AeroAgent    - AI-powered assistant (39 tools, 24 providers)
 ├── AeroFTP CLI  - Production command-line client (vault profiles, JSON output, batch scripting, daemon, FUSE mount, crypt, ncdu, agent discovery)
 └── AeroPlayer   - Media player with visualizers
 ```
@@ -331,7 +331,7 @@ AeroFTP
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerocloud.html)
 
-Turn **any server** into a private personal cloud. Connect through 7 transport protocols and 25+ native provider integrations with bidirectional sync, selective sync, file versioning, .aeroignore, share links, and per-project folders. Background tray sync with native OS file manager badges (Nautilus, Nemo, Windows Explorer). See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
+Turn **any server** into a private personal cloud. Connect through 7 transport protocols and 24 native provider integrations with bidirectional sync, selective sync, file versioning, .aeroignore, share links, and per-project folders. Background tray sync with native OS file manager badges (Nautilus, Nemo, Windows Explorer). See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
 
 ---
 
@@ -533,7 +533,7 @@ Integrated development panel with three tools in a tabbed interface: **Monaco Ed
 
 #### AeroAgent - AI-Powered Assistant
 
-An AI assistant with **50+ tools** that work across local files and remote providers. Supports **24 AI providers** (OpenAI, Anthropic, Gemini, xAI, Ollama, DeepSeek, Mistral, Cerebras, SambaNova, Fireworks, Nvidia, and 13 more). Vision/multimodal, RAG indexing, plugin ecosystem, streaming responses, multi-step autonomous execution, native MCP server mode (73 MCP tools), and Command Palette (Ctrl+Shift+P).
+An AI assistant with **39 tools** that work across local files and remote providers. Supports **24 AI providers** (OpenAI, Anthropic, Gemini, xAI, Ollama, DeepSeek, Mistral, Cerebras, SambaNova, Fireworks, Nvidia, and 13 more). Vision/multimodal, RAG indexing, plugin ecosystem, streaming responses, multi-step autonomous execution, native MCP server mode (73 MCP tools), and Command Palette (Ctrl+Shift+P).
 
 ---
 
@@ -545,7 +545,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 **For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp-cli` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp-script` batch files make AeroFTP a first-class tool in any agent's toolkit. External agents can also invoke `aeroftp-cli agent` to orchestrate AeroAgent as a credential-isolating proxy for multi-server operations. See [Agent Orchestration](https://docs.aeroftp.app/features/agent-orchestration) for the full orchestration guide, CLI reference, and a verified field test report.
 
-**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 50+ tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows with backend-enforced grants, and 24 AI providers.
+**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 39 tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows with backend-enforced grants, and 24 AI providers.
 
 ---
 
@@ -553,7 +553,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-Production CLI sharing the same Rust backend as the GUI. 90 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `archive`, `crypt`, `import`/`export`, `serve`, `users`, `groups`) across 7 transport protocols and 25+ native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), plaintext `.aerozip` archives (`archive create/list/extract`), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
+Production CLI sharing the same Rust backend as the GUI. 94 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `archive`, `crypt`, `import`/`export`, `serve`, `users`, `groups`) across 7 transport protocols and 24 native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), plaintext `.aerozip` archives (`archive create/list/extract`), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
 
 > **Short invocation**: every package ships a native dispatcher, so `aeroftp <subcommand>` and the built-in 4-character name `aftp` both route to the CLI; `aeroftp-cli` is kept for back-compat. An opt-in `aero` alias can be enabled with `aeroftp-cli alias-toggle aero` (idempotent, the same command turns it off). See the [Short Invocation](docs/CLI-GUIDE.md#short-invocation) section of the CLI Guide.
 
@@ -573,7 +573,7 @@ aeroftp-cli daemon start                                   # Background job queu
 
 **Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-11), `.aeroftp-script` batch files, `archive create/list/extract` for plaintext `.aerozip` recovery archives, `check` / `cryptcheck` for local-vs-remote verification (size/checksum against cleartext or encrypted remotes), `dedupe` / `cleanup` for orphan management, `hashsum` for remote file hashing (sha256/md5/blake3), `link` for shareable URLs, `--bwlimit "08:00,512k 18:00,off"` time-based bandwidth schedule (local time), `serve http/webdav/ftp/sftp`, MCP server mode, `--immutable` append-only mode, `--files-from` selective transfers, `--fast-list` S3 optimization, bisync with `--conflict-mode rename`, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
 
-**MCP server (73 tools)**: curated tools for agents covering safe / medium / destructive operation tiers: file ops (`aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_upload_file`), batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with per-file `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` with two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree` between two saved profiles in one batch), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`), and pool introspection (`aeroftp://connections` resource + `aeroftp_close_connection`). Real-time `notifications/progress` during uploads, downloads, and sync. The pool auto-recovers from transport-level failures (stale FTP data channels, broken pipes) without manual intervention. Pool reuse gives roughly **14x speedup** vs CLI cold-start on warm calls (measured 13-14 ms vs ~194 ms on Docker SFTP). Run `aeroftp-cli mcp` and plug it into Claude Desktop, Cursor, Windsurf, or VS Code via the [`axpdev-lab.aeroftp-mcp` extension](https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp).
+**MCP server (77 tools)**: curated tools for agents covering safe / medium / destructive operation tiers: file ops (`aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_upload_file`), batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with per-file `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` with two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree` between two saved profiles in one batch), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`), and pool introspection (`aeroftp://connections` resource + `aeroftp_close_connection`). Real-time `notifications/progress` during uploads, downloads, and sync. The pool auto-recovers from transport-level failures (stale FTP data channels, broken pipes) without manual intervention. Pool reuse gives roughly **14x speedup** vs CLI cold-start on warm calls (measured 13-14 ms vs ~194 ms on Docker SFTP). Run `aeroftp-cli mcp` and plug it into Claude Desktop, Cursor, Windsurf, or VS Code via the [`axpdev-lab.aeroftp-mcp` extension](https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp).
 
 ---
 

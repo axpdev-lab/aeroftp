@@ -1,0 +1,448 @@
+{
+  "schema_version": 1,
+  "generated_by": "scripts/gen-provider-inventory.ts",
+  "counts": {
+    "transport_protocols": 7,
+    "native_integrations": 24,
+    "presets": 44,
+    "presets_over_transport": 40,
+    "connection_forms": 49,
+    "connection_forms_generic": 2,
+    "connection_forms_named_without_defaults": 3,
+    "providers": 51,
+    "connection_methods": 65,
+    "catalog_services": 72
+  },
+  "transport_protocols": [
+    "ftp",
+    "ftps",
+    "sftp",
+    "webdav",
+    "s3",
+    "azure",
+    "swift"
+  ],
+  "native_integrations": [
+    "backblaze",
+    "box",
+    "cloudinary",
+    "drime",
+    "dropbox",
+    "filelu",
+    "filen",
+    "fourshared",
+    "github",
+    "gitlab",
+    "googledrive",
+    "imagekit",
+    "immich",
+    "internxt",
+    "jottacloud",
+    "kdrive",
+    "koofr",
+    "mega",
+    "onedrive",
+    "opendrive",
+    "pcloud",
+    "uploadcare",
+    "yandexdisk",
+    "zohoworkdrive"
+  ],
+  "presets_by_category": {
+    "ftp": [
+      "filelu-ftp",
+      "filelu-ftps",
+      "hetzner-storage-box",
+      "sourceforge"
+    ],
+    "mega": [
+      "mega"
+    ],
+    "object": [
+      "cloudinary",
+      "imagekit",
+      "uploadcare"
+    ],
+    "s3": [
+      "alibaba-oss",
+      "amazon-s3",
+      "backblaze",
+      "cloudflare-r2",
+      "digitalocean-spaces",
+      "filelu-s3",
+      "filen-desktop-s3",
+      "google-cloud-storage",
+      "idrive-e2",
+      "mega-s4",
+      "minio",
+      "oracle-cloud",
+      "quotaless-s3",
+      "s3drive",
+      "storj",
+      "tencent-cos",
+      "wasabi",
+      "yandex-storage"
+    ],
+    "swift": [
+      "blomp"
+    ],
+    "webdav": [
+      "4shared-webdav",
+      "cloudme",
+      "drivehq",
+      "felicloud",
+      "filelu-webdav",
+      "filen-desktop-webdav",
+      "infinicloud",
+      "jianguoyun",
+      "koofr",
+      "megacmd-webdav",
+      "nextcloud",
+      "opendrive-webdav",
+      "pcloud-webdav",
+      "quotaless-webdav",
+      "seafile",
+      "tabdigital",
+      "yandexdisk-webdav"
+    ]
+  },
+  "generic_connection_forms": [
+    "custom-s3",
+    "custom-webdav"
+  ],
+  "connection_forms_named_without_defaults": [
+    "4shared",
+    "backblaze-native",
+    "filelu"
+  ],
+  "catalog_categories": {
+    "protocols": 7,
+    "object-storage": 20,
+    "webdav": 18,
+    "cloud-storage": 18,
+    "media-services": 5,
+    "developer": 3
+  },
+  "providers": [
+    {
+      "id": "4shared",
+      "protocols": [
+        "fourshared",
+        "webdav"
+      ]
+    },
+    {
+      "id": "alibaba-oss",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "amazon-s3",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "azure",
+      "protocols": [
+        "azure"
+      ]
+    },
+    {
+      "id": "backblaze",
+      "protocols": [
+        "backblaze",
+        "s3"
+      ]
+    },
+    {
+      "id": "blomp",
+      "protocols": [
+        "swift"
+      ]
+    },
+    {
+      "id": "box",
+      "protocols": [
+        "box"
+      ]
+    },
+    {
+      "id": "cloudflare-r2",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "cloudinary",
+      "protocols": [
+        "cloudinary"
+      ]
+    },
+    {
+      "id": "cloudme",
+      "protocols": [
+        "webdav"
+      ]
+    },
+    {
+      "id": "digitalocean-spaces",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "drime",
+      "protocols": [
+        "drime"
+      ]
+    },
+    {
+      "id": "drivehq",
+      "protocols": [
+        "webdav"
+      ]
+    },
+    {
+      "id": "dropbox",
+      "protocols": [
+        "dropbox"
+      ]
+    },
+    {
+      "id": "felicloud",
+      "protocols": [
+        "webdav"
+      ]
+    },
+    {
+      "id": "filelu",
+      "protocols": [
+        "filelu",
+        "ftp",
+        "webdav",
+        "s3"
+      ]
+    },
+    {
+      "id": "filen",
+      "protocols": [
+        "filen",
+        "s3",
+        "webdav"
+      ]
+    },
+    {
+      "id": "github",
+      "protocols": [
+        "github"
+      ]
+    },
+    {
+      "id": "gitlab",
+      "protocols": [
+        "gitlab"
+      ]
+    },
+    {
+      "id": "google-cloud-storage",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "googledrive",
+      "protocols": [
+        "googledrive"
+      ]
+    },
+    {
+      "id": "hetzner-storage-box",
+      "protocols": [
+        "sftp"
+      ]
+    },
+    {
+      "id": "idrive-e2",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "imagekit",
+      "protocols": [
+        "imagekit"
+      ]
+    },
+    {
+      "id": "immich",
+      "protocols": [
+        "immich"
+      ]
+    },
+    {
+      "id": "infinicloud",
+      "protocols": [
+        "webdav"
+      ]
+    },
+    {
+      "id": "internxt",
+      "protocols": [
+        "internxt"
+      ]
+    },
+    {
+      "id": "jianguoyun",
+      "protocols": [
+        "webdav"
+      ]
+    },
+    {
+      "id": "jottacloud",
+      "protocols": [
+        "jottacloud"
+      ]
+    },
+    {
+      "id": "kdrive",
+      "protocols": [
+        "kdrive"
+      ]
+    },
+    {
+      "id": "koofr",
+      "protocols": [
+        "koofr",
+        "webdav"
+      ]
+    },
+    {
+      "id": "mega",
+      "protocols": [
+        "mega",
+        "webdav",
+        "s3"
+      ]
+    },
+    {
+      "id": "minio",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "nextcloud",
+      "protocols": [
+        "webdav"
+      ]
+    },
+    {
+      "id": "onedrive",
+      "protocols": [
+        "onedrive"
+      ]
+    },
+    {
+      "id": "opendrive",
+      "protocols": [
+        "opendrive",
+        "webdav"
+      ]
+    },
+    {
+      "id": "oracle-cloud",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "pcloud",
+      "protocols": [
+        "pcloud",
+        "webdav"
+      ]
+    },
+    {
+      "id": "pixelunion",
+      "protocols": [
+        "immich"
+      ]
+    },
+    {
+      "id": "quotaless-s3",
+      "protocols": [
+        "s3",
+        "webdav"
+      ]
+    },
+    {
+      "id": "s3drive",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "seafile",
+      "protocols": [
+        "webdav"
+      ]
+    },
+    {
+      "id": "sourceforge",
+      "protocols": [
+        "sftp"
+      ]
+    },
+    {
+      "id": "storj",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "tabdigital",
+      "protocols": [
+        "webdav"
+      ]
+    },
+    {
+      "id": "tencent-cos",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "uploadcare",
+      "protocols": [
+        "uploadcare"
+      ]
+    },
+    {
+      "id": "wasabi",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "yandex-storage",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "yandexdisk",
+      "protocols": [
+        "yandexdisk",
+        "webdav"
+      ]
+    },
+    {
+      "id": "zohoworkdrive",
+      "protocols": [
+        "zohoworkdrive"
+      ]
+    }
+  ]
+}

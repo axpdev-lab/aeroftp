@@ -44,7 +44,7 @@ description: |
   Built-in Developer Suite:
   - Monaco Editor (VS Code engine) for remote file editing
   - Integrated terminal with theme sync
-  - AeroAgent AI assistant (19 providers including OpenAI, Anthropic,
+  - AeroAgent AI assistant (24 providers including OpenAI, Anthropic,
     Gemini, Ollama, and more)
 
   AeroSync, Reliable Synchronization:
