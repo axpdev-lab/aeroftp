@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Mål",
             "resumeColumnRecords": "Poster",
             "resumeForget": "Glem dette målet",
-            "resumeForgetConfirm": "Glem"
+            "resumeForgetConfirm": "Glem",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Overstyr de publiserte CSS-tokenene fra docs/UI-TOKENS.md med en ui-tokens.json-fil i konfigurasjonsmappen. Endringer trer i kraft ved omlasting; ugyldige oppføringer hoppes over og rapporteres i Aktivitetslogg.",
+            "uiTokensOpenFile": "Åpne ui-tokens.json",
+            "uiTokensReload": "Last inn på nytt",
+            "uiTokensReset": "Tilbakestill til standard",
+            "uiTokensApplied": "Brukte overstyringer: {count}",
+            "uiTokensRejected": "Avviste oppføringer: {count}"
         },
         "devtools": {
             "title": "AeroTools",

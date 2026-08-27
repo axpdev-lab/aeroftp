@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "대상",
             "resumeColumnRecords": "기록",
             "resumeForget": "이 대상 삭제",
-            "resumeForgetConfirm": "삭제"
+            "resumeForgetConfirm": "삭제",
+            "uiTokensTitle": "UI 토큰",
+            "uiTokensDesc": "구성 폴더의 ui-tokens.json 파일로 docs/UI-TOKENS.md에 게시된 CSS 토큰을 재정의합니다. 변경 사항은 다시 로드할 때 적용되며, 유효하지 않은 항목은 건너뛰고 활동 로그에 보고됩니다.",
+            "uiTokensOpenFile": "ui-tokens.json 열기",
+            "uiTokensReload": "다시 로드",
+            "uiTokensReset": "기본값으로 재설정",
+            "uiTokensApplied": "적용된 재정의: {count}",
+            "uiTokensRejected": "거부된 항목: {count}"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Paskirtis",
             "resumeColumnRecords": "Įrašai",
             "resumeForget": "Pamiršti šią paskirtį",
-            "resumeForgetConfirm": "Pamiršti"
+            "resumeForgetConfirm": "Pamiršti",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Pakeiskite paskelbtus CSS žetonus iš docs/UI-TOKENS.md ui-tokens.json failu konfigūracijos aplanke. Pakeitimai pritaikomi iš naujo įkeliant; neteisingi įrašai praleidžiami ir apie juos pranešama Veiklos žurnale.",
+            "uiTokensOpenFile": "Atidaryti ui-tokens.json",
+            "uiTokensReload": "Įkelti iš naujo",
+            "uiTokensReset": "Atkurti numatytuosius",
+            "uiTokensApplied": "Pritaikyti pakeitimai: {count}",
+            "uiTokensRejected": "Atmesti įrašai: {count}"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Áfangastaður",
             "resumeColumnRecords": "Færslur",
             "resumeForget": "Gleyma þessum áfangastað",
-            "resumeForgetConfirm": "Gleyma"
+            "resumeForgetConfirm": "Gleyma",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Hafðu út af gildi birtu CSS-táknanna úr docs/UI-TOKENS.md með ui-tokens.json skrá í stillingamöppunni. Breytingar taka gildi við endurhleðslu; ógildar færslur eru sleppt og tilkynnt í Aðgerðaskrá.",
+            "uiTokensOpenFile": "Opna ui-tokens.json",
+            "uiTokensReload": "Endurhlaða",
+            "uiTokensReset": "Endurstilla á sjálfgefið",
+            "uiTokensApplied": "Beittar yfirskrifanir: {count}",
+            "uiTokensRejected": "Hafnaðar færslur: {count}"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Destination",
             "resumeColumnRecords": "Enregistrements",
             "resumeForget": "Oublier cette destination",
-            "resumeForgetConfirm": "Oublier"
+            "resumeForgetConfirm": "Oublier",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Remplacez les tokens CSS publiés de docs/UI-TOKENS.md par un fichier ui-tokens.json dans le dossier de configuration. Les changements s'appliquent au rechargement ; les entrées invalides sont ignorées et signalées dans le Journal d'activité.",
+            "uiTokensOpenFile": "Ouvrir ui-tokens.json",
+            "uiTokensReload": "Recharger",
+            "uiTokensReset": "Rétablir les valeurs par défaut",
+            "uiTokensApplied": "Remplacements appliqués : {count}",
+            "uiTokensRejected": "Entrées rejetées : {count}"
         },
         "devtools": {
             "title": "AeroTools",

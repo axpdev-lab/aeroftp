@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Kohde",
             "resumeColumnRecords": "Tietueet",
             "resumeForget": "Unohda tämä kohde",
-            "resumeForgetConfirm": "Unohda"
+            "resumeForgetConfirm": "Unohda",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Ohita tiedostossa docs/UI-TOKENS.md julkaistut CSS-tunnukset asetuskansion ui-tokens.json-tiedostolla. Muutokset tulevat voimaan uudelleenlatauksen yhteydessä; virheelliset kohteet ohitetaan ja niistä ilmoitetaan Toimintalokissa.",
+            "uiTokensOpenFile": "Avaa ui-tokens.json",
+            "uiTokensReload": "Lataa uudelleen",
+            "uiTokensReset": "Palauta oletukset",
+            "uiTokensApplied": "Käytetyt ohitukset: {count}",
+            "uiTokensRejected": "Hylätyt kohteet: {count}"
         },
         "devtools": {
             "title": "AeroTools",

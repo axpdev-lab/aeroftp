@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Cél",
             "resumeColumnRecords": "Rekordok",
             "resumeForget": "Cél elfelejtése",
-            "resumeForgetConfirm": "Elfelejtés"
+            "resumeForgetConfirm": "Elfelejtés",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "A docs/UI-TOKENS.md fájlban közzétett CSS tokeneket felülírhatja a konfigurációs mappában található ui-tokens.json fájllal. A módosítások újratöltéskor lépnek életbe; az érvénytelen bejegyzések kimaradnak, és a Tevékenységnaplóban jelennek meg.",
+            "uiTokensOpenFile": "ui-tokens.json megnyitása",
+            "uiTokensReload": "Újratöltés",
+            "uiTokensReset": "Visszaállítás alapértelmezettre",
+            "uiTokensApplied": "Alkalmazott felülírások: {count}",
+            "uiTokensRejected": "Elutasított bejegyzések: {count}"
         },
         "devtools": {
             "title": "AeroTools",

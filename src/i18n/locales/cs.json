@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Cíl",
             "resumeColumnRecords": "Záznamy",
             "resumeForget": "Zapomenout tento cíl",
-            "resumeForgetConfirm": "Zapomenout"
+            "resumeForgetConfirm": "Zapomenout",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Přepište publikované CSS tokeny z docs/UI-TOKENS.md souborem ui-tokens.json ve složce s konfigurací. Změny se projeví po znovunačtení; neplatné položky se přeskočí a nahlásí v Protokolu aktivit.",
+            "uiTokensOpenFile": "Otevřít ui-tokens.json",
+            "uiTokensReload": "Znovu načíst",
+            "uiTokensReset": "Obnovit výchozí hodnoty",
+            "uiTokensApplied": "Použitá přepsání: {count}",
+            "uiTokensRejected": "Odmítnuté položky: {count}"
         },
         "devtools": {
             "title": "AeroTools",

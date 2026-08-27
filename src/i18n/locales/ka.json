@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "დანიშნულება",
             "resumeColumnRecords": "ჩანაწერები",
             "resumeForget": "დაივიწყე ეს დანიშნულება",
-            "resumeForgetConfirm": "დაივიწყე"
+            "resumeForgetConfirm": "დაივიწყე",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "ჩაანაცვლეთ docs/UI-TOKENS.md-დან გამოქვეყნებული CSS ტოკენები კონფიგურაციის საქაღალდეში არსებული ui-tokens.json ფაილით. ცვლილებები გამოიყენება ხელახალი ჩატვირთვისას; არასწორი ჩანაწერები გამოიტოვება და ერეპორტება აქტივობის ჟურნალში.",
+            "uiTokensOpenFile": "ui-tokens.json-ის გახსნა",
+            "uiTokensReload": "ხელახლა ჩატვირთვა",
+            "uiTokensReset": "ნაგულისხმევებზე დაბრუნება",
+            "uiTokensApplied": "გამოყენებული ჩანაცვლებები: {count}",
+            "uiTokensRejected": "უარყოფილი ჩანაწერები: {count}"
         },
         "devtools": {
             "title": "AeroTools",

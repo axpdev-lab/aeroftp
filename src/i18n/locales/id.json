@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Tujuan",
             "resumeColumnRecords": "Catatan",
             "resumeForget": "Lupakan tujuan ini",
-            "resumeForgetConfirm": "Lupakan"
+            "resumeForgetConfirm": "Lupakan",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Ganti token CSS yang dipublikasikan dari docs/UI-TOKENS.md dengan file ui-tokens.json di folder konfigurasi. Perubahan diterapkan saat dimuat ulang; entri yang tidak valid dilewati dan dilaporkan di Log Aktivitas.",
+            "uiTokensOpenFile": "Buka ui-tokens.json",
+            "uiTokensReload": "Muat Ulang",
+            "uiTokensReset": "Atur ulang ke default",
+            "uiTokensApplied": "Penggantian diterapkan: {count}",
+            "uiTokensRejected": "Entri ditolak: {count}"
         },
         "devtools": {
             "title": "AeroTools",

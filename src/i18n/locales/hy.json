@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Նպատակակետ",
             "resumeColumnRecords": "Գրառումներ",
             "resumeForget": "Մոռանալ այս նպատակակետը",
-            "resumeForgetConfirm": "Մոռանալ"
+            "resumeForgetConfirm": "Մոռանալ",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Փոխարինեք docs/UI-TOKENS.md-ի հրապարակված CSS տոկենները կազմաձևման թղթապանակում գտնվող ui-tokens.json ֆայլով: Փոփոխությունները կիրառվում են վերաբեռնելիս. անվավեր գրառումները բաց են թողնվում և հաղորդվում են Գործունեության մատյանում:",
+            "uiTokensOpenFile": "Բացել ui-tokens.json-ը",
+            "uiTokensReload": "Վերաբեռնել",
+            "uiTokensReset": "Վերականգնել լռելյայնները",
+            "uiTokensApplied": "Կիրառված փոխարինումներ՝ {count}",
+            "uiTokensRejected": "Մերժված գրառումներ՝ {count}"
         },
         "devtools": {
             "title": "AeroTools",

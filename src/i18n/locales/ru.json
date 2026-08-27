@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Назначение",
             "resumeColumnRecords": "Записи",
             "resumeForget": "Забыть это назначение",
-            "resumeForgetConfirm": "Забыть"
+            "resumeForgetConfirm": "Забыть",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Переопределите опубликованные CSS-токены из docs/UI-TOKENS.md файлом ui-tokens.json в папке конфигурации. Изменения применяются при перезагрузке; недопустимые записи пропускаются и сообщаются в Журнале активности.",
+            "uiTokensOpenFile": "Открыть ui-tokens.json",
+            "uiTokensReload": "Перезагрузить",
+            "uiTokensReset": "Сбросить до значений по умолчанию",
+            "uiTokensApplied": "Применённые переопределения: {count}",
+            "uiTokensRejected": "Отклонённые записи: {count}"
         },
         "devtools": {
             "title": "AeroTools",

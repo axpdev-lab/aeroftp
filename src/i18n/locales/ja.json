@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "宛先",
             "resumeColumnRecords": "レコード",
             "resumeForget": "この宛先を破棄",
-            "resumeForgetConfirm": "破棄"
+            "resumeForgetConfirm": "破棄",
+            "uiTokensTitle": "UI トークン",
+            "uiTokensDesc": "設定フォルダー内の ui-tokens.json ファイルで docs/UI-TOKENS.md の公開済み CSS トークンを上書きします。変更は再読み込み時に適用され、無効なエントリーはスキップされてアクティビティログに記録されます。",
+            "uiTokensOpenFile": "ui-tokens.json を開く",
+            "uiTokensReload": "再読み込み",
+            "uiTokensReset": "デフォルトにリセット",
+            "uiTokensApplied": "適用された上書き: {count}",
+            "uiTokensRejected": "拒否されたエントリー: {count}"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Destinație",
             "resumeColumnRecords": "Înregistrări",
             "resumeForget": "Uită această destinație",
-            "resumeForgetConfirm": "Uită"
+            "resumeForgetConfirm": "Uită",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Suprascrieți tokenurile CSS publicate din docs/UI-TOKENS.md cu un fișier ui-tokens.json din folderul de configurare. Modificările se aplică la reîncărcare; intrările invalide sunt omise și raportate în Jurnalul de activitate.",
+            "uiTokensOpenFile": "Deschide ui-tokens.json",
+            "uiTokensReload": "Reîncarcă",
+            "uiTokensReset": "Resetare la valori implicite",
+            "uiTokensApplied": "Suprascrieri aplicate: {count}",
+            "uiTokensRejected": "Intrări respinse: {count}"
         },
         "devtools": {
             "title": "AeroTools",

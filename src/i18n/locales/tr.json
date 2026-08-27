@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Hedef",
             "resumeColumnRecords": "Kayıtlar",
             "resumeForget": "Bu hedefi unut",
-            "resumeForgetConfirm": "Unut"
+            "resumeForgetConfirm": "Unut",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "docs/UI-TOKENS.md dosyasındaki yayınlanmış CSS belirteçlerini yapılandırma klasöründeki bir ui-tokens.json dosyasıyla geçersiz kılın. Değişiklikler yeniden yüklemede uygulanır; geçersiz girdiler atlanır ve Etkinlik Günlüğünde raporlanır.",
+            "uiTokensOpenFile": "ui-tokens.json dosyasını aç",
+            "uiTokensReload": "Yeniden Yükle",
+            "uiTokensReset": "Varsayılanlara sıfırla",
+            "uiTokensApplied": "Uygulanan geçersiz kılmalar: {count}",
+            "uiTokensRejected": "Reddedilen girdiler: {count}"
         },
         "devtools": {
             "title": "AeroTools",

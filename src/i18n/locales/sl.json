@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Cilj",
             "resumeColumnRecords": "Zapisi",
             "resumeForget": "Pozabi ta cilj",
-            "resumeForgetConfirm": "Pozabi"
+            "resumeForgetConfirm": "Pozabi",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Preglasite objavljene CSS žetone iz docs/UI-TOKENS.md z datoteko ui-tokens.json v konfiguracijski mapi. Spremembe se uporabijo ob ponovnem nalaganju; neveljavni vnosi se preskočijo in prijavijo v Dnevniku dejavnosti.",
+            "uiTokensOpenFile": "Odpri ui-tokens.json",
+            "uiTokensReload": "Ponovno naloži",
+            "uiTokensReset": "Ponastavi na privzeto",
+            "uiTokensApplied": "Uporabljene preglasitve: {count}",
+            "uiTokensRejected": "Zavrnjeni vnosi: {count}"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Đích",
             "resumeColumnRecords": "Bản ghi",
             "resumeForget": "Quên đích này",
-            "resumeForgetConfirm": "Quên"
+            "resumeForgetConfirm": "Quên",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Ghi đè các token CSS đã xuất bản từ docs/UI-TOKENS.md bằng tệp ui-tokens.json trong thư mục cấu hình. Các thay đổi có hiệu lực khi tải lại; các mục không hợp lệ sẽ bị bỏ qua và được báo cáo trong Nhật ký hoạt động.",
+            "uiTokensOpenFile": "Mở ui-tokens.json",
+            "uiTokensReload": "Tải lại",
+            "uiTokensReset": "Đặt lại về mặc định",
+            "uiTokensApplied": "Các ghi đè đã áp dụng: {count}",
+            "uiTokensRejected": "Các mục bị từ chối: {count}"
         },
         "devtools": {
             "title": "AeroTools",

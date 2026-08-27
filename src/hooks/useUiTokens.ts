@@ -204,6 +204,25 @@ export async function loadUiTokenOverrides(): Promise<UiTokenValidationResult | 
     return validateUiTokenOverrides(parsed);
 }
 
+/**
+ * Example ui-tokens.json content, written by the Settings panel when the file
+ * does not exist yet: the five scrollbar tokens at their documented defaults
+ * (docs/UI-TOKENS.md). Applying defaults is a visual no-op, so the example is
+ * self-documenting; JSON has no comments, so a real example is the only valid
+ * option.
+ */
+export const UI_TOKENS_EXAMPLE_JSON = JSON.stringify(
+    {
+        '--aeroftp-scrollbar-width': '6px',
+        '--aeroftp-panel-scrollbar-width': '10px',
+        '--aeroftp-scrollbar-radius': '3px',
+        '--aeroftp-scrollbar-thumb': 'rgba(128, 128, 128, 0.15)',
+        '--aeroftp-scrollbar-thumb-hover': 'rgba(128, 128, 128, 0.3)',
+    },
+    null,
+    2,
+) + '\n';
+
 // ============================================================================
 // Hook
 // ============================================================================
@@ -219,43 +238,81 @@ export interface UseUiTokensResult {
     rejectedCount: number;
 }
 
+export interface UseUiTokensOptions {
+    /**
+     * Set to false to skip the initial file read on mount. The instance still
+     * shares the counts of the last load (whoever ran it) and can reload() or
+     * reset() explicitly. Used by the Settings panel, which must not re-read
+     * the file (and re-log the same rejections) every time it opens.
+     */
+    loadOnMount?: boolean;
+}
+
+interface UiTokenCounts {
+    appliedCount: number;
+    rejectedCount: number;
+}
+
+// Shared snapshot of the last load's counts, so every useUiTokens() instance
+// reports the same numbers regardless of which instance performed the load.
+let uiTokenCounts: UiTokenCounts = { appliedCount: 0, rejectedCount: 0 };
+const uiTokenListeners = new Set<(counts: UiTokenCounts) => void>();
+
+function setUiTokenCounts(next: UiTokenCounts): void {
+    uiTokenCounts = next;
+    for (const listener of uiTokenListeners) {
+        listener(next);
+    }
+}
+
 /**
  * Load ui-tokens.json once at startup and apply the surviving overrides to
  * the document root. Rejections are reported to the activity log with the
  * key and the reason. Not driven by a file watcher: re-application happens
  * only through reload().
  */
-export function useUiTokens(): UseUiTokensResult {
+export function useUiTokens(options?: UseUiTokensOptions): UseUiTokensResult {
     const { log } = useActivityLog();
-    const [appliedCount, setAppliedCount] = useState(0);
-    const [rejectedCount, setRejectedCount] = useState(0);
+    const [counts, setCounts] = useState<UiTokenCounts>(uiTokenCounts);
+
+    useEffect(() => {
+        const listener = (next: UiTokenCounts) => setCounts(next);
+        uiTokenListeners.add(listener);
+        // Catch up with a load that landed between render and subscribe.
+        setCounts(uiTokenCounts);
+        return () => {
+            uiTokenListeners.delete(listener);
+        };
+    }, []);
 
     const reload = useCallback(async () => {
         const result = await loadUiTokenOverrides();
         if (!result) {
-            setAppliedCount(0);
-            setRejectedCount(0);
+            setUiTokenCounts({ appliedCount: 0, rejectedCount: 0 });
             return;
         }
         applyUiTokenOverrides(result.accepted, document.documentElement.style);
         for (const rejection of result.rejected) {
             log('ERROR', `UI token override rejected: ${rejection.key}`, 'error', rejection.reason);
         }
-        setAppliedCount(Object.keys(result.accepted).length);
-        setRejectedCount(result.rejected.length);
+        setUiTokenCounts({
+            appliedCount: Object.keys(result.accepted).length,
+            rejectedCount: result.rejected.length,
+        });
     }, [log]);
 
     const reset = useCallback(() => {
         resetUiTokenOverrides(document.documentElement.style);
-        setAppliedCount(0);
-        setRejectedCount(0);
+        setUiTokenCounts({ appliedCount: 0, rejectedCount: 0 });
     }, []);
 
+    const loadOnMount = options?.loadOnMount !== false;
     useEffect(() => {
+        if (!loadOnMount) return;
         void reload();
-    }, [reload]);
+    }, [reload, loadOnMount]);
 
-    return { reload, reset, appliedCount, rejectedCount };
+    return { reload, reset, appliedCount: counts.appliedCount, rejectedCount: counts.rejectedCount };
 }
 
 export default useUiTokens;

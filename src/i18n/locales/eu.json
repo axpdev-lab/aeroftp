@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Helburua",
             "resumeColumnRecords": "Erregistroak",
             "resumeForget": "Ahaztu helburu hau",
-            "resumeForgetConfirm": "Ahaztu"
+            "resumeForgetConfirm": "Ahaztu",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Gainidatzi docs/UI-TOKENS.md fitxategiko CSS token argitaratuak konfigurazio-karpetako ui-tokens.json fitxategi batekin. Aldaketak berriz kargatzean aplikatzen dira; balio gabeko sarrerak saltatzen dira eta Jarduera erregistroan jakinarazten dira.",
+            "uiTokensOpenFile": "Ireki ui-tokens.json",
+            "uiTokensReload": "Berriz kargatu",
+            "uiTokensReset": "Berrezarri lehenetsiak",
+            "uiTokensApplied": "Aplikatutako gainidatziak: {count}",
+            "uiTokensRejected": "Baztertutako sarrerak: {count}"
         },
         "devtools": {
             "title": "AeroTools",

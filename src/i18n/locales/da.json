@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Destination",
             "resumeColumnRecords": "Poster",
             "resumeForget": "Glem denne destination",
-            "resumeForgetConfirm": "Glem"
+            "resumeForgetConfirm": "Glem",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Tilsidesæt de publicerede CSS-tokens fra docs/UI-TOKENS.md med en ui-tokens.json-fil i konfigurationsmappen. Ændringer træder i kraft ved genindlæsning; ugyldige poster springes over og rapporteres i Aktivitetslog.",
+            "uiTokensOpenFile": "Åbn ui-tokens.json",
+            "uiTokensReload": "Genindlæs",
+            "uiTokensReset": "Nulstil til standarder",
+            "uiTokensApplied": "Anvendte tilsidesættelser: {count}",
+            "uiTokensRejected": "Afviste poster: {count}"
         },
         "devtools": {
             "title": "AeroTools",
