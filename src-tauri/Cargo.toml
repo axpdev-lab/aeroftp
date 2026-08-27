@@ -300,6 +300,11 @@ fuser = "0.17"
 # fixing the generic-icon-after-update bug. Already present transitively
 # via tauri/wry, so this adds no real build cost.
 gtk = "0.18"
+# AeroRsync ACL B2: POSIX.1e access ACLs, Linux fd-bound only.
+# posix-acl owns the safe model; acl-sys exposes acl_get_fd/acl_set_fd.
+# Do not use path-following helpers (exacl, getfacl/setfacl).
+posix-acl = "1.2.0"
+acl-sys = "1.2.2"
 
 [dev-dependencies]
 

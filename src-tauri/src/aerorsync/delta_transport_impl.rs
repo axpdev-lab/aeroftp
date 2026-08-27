@@ -116,6 +116,10 @@ pub struct AerorsyncDeltaTransport {
     /// Default off so frozen wire oracles and non-xattr paths stay
     /// byte-identical until a caller opts in via [`Self::with_xattrs`].
     preserve_xattrs: bool,
+    /// When true, negotiate `-A` and carry POSIX access ACLs (B2).
+    /// Default off; internal/test opt-in only. Not wired from production
+    /// `RsyncConfig`.
+    preserve_acls: bool,
     /// X.5: turn ENOTSUP / metadata-loss warnings into hard errors.
     fail_on_metadata_loss: bool,
 }
@@ -128,6 +132,7 @@ impl AerorsyncDeltaTransport {
             ssh_config,
             min_file_size,
             preserve_xattrs: false,
+            preserve_acls: false,
             fail_on_metadata_loss: false,
         }
     }
@@ -139,6 +144,13 @@ impl AerorsyncDeltaTransport {
         self
     }
 
+    /// Internal/test opt-in for POSIX access ACLs (`-A` + fd-bound
+    /// read/apply). Off by default and not mapped from production config.
+    pub fn with_acls(mut self, preserve_acls: bool) -> Self {
+        self.preserve_acls = preserve_acls;
+        self
+    }
+
     /// X.5: when the destination cannot store xattrs, fail the transfer
     /// instead of continuing with a typed warning.
     pub fn with_fail_on_metadata_loss(mut self, fail: bool) -> Self {
@@ -146,14 +158,18 @@ impl AerorsyncDeltaTransport {
         self
     }
 
-    /// The xattr negotiation a batch must inherit, as one value.
+    /// Metadata flags a batch must inherit as one value.
     ///
-    /// R3: the batch path calls `do_upload` / `do_download` itself, so it
-    /// needs these flags explicitly. Reading them through a single accessor
-    /// keeps `begin_batch` from drifting away from the single-file path,
-    /// which is how the two ended up disagreeing in the first place.
-    fn xattr_policy(&self) -> (bool, bool) {
-        (self.preserve_xattrs, self.fail_on_metadata_loss)
+    /// R3/B2: the batch path calls `do_upload` / `do_download` itself, so
+    /// it needs these flags explicitly. Reading them through a single
+    /// accessor keeps `begin_batch` from drifting away from the
+    /// single-file path.
+    fn metadata_policy(&self) -> (bool, bool, bool) {
+        (
+            self.preserve_xattrs,
+            self.preserve_acls,
+            self.fail_on_metadata_loss,
+        )
     }
 
     /// Convenience constructor that maps the production `RsyncConfig`
@@ -312,11 +328,13 @@ impl DeltaTransport for AerorsyncDeltaTransport {
     async fn begin_batch(&self) -> Result<Box<dyn DeltaBatch>, RsyncError> {
         match RusshSessionTransport::connect(self.ssh_config.clone()).await {
             Ok(transport) => {
-                let (preserve_xattrs, fail_on_metadata_loss) = self.xattr_policy();
+                let (preserve_xattrs, preserve_acls, fail_on_metadata_loss) =
+                    self.metadata_policy();
                 Ok(Box::new(AerorsyncBatch::new(
                     transport,
                     self.min_file_size,
                     preserve_xattrs,
+                    preserve_acls,
                     fail_on_metadata_loss,
                 )))
             }
@@ -362,6 +380,7 @@ impl AerorsyncDeltaTransport {
                 preamble_profile,
                 progress,
                 self.preserve_xattrs,
+                self.preserve_acls,
             )
             .await
         } else {
@@ -375,6 +394,7 @@ impl AerorsyncDeltaTransport {
                 preamble_profile,
                 progress,
                 self.preserve_xattrs,
+                self.preserve_acls,
             )
             .await
         }
@@ -404,6 +424,7 @@ async fn do_upload<T>(
     preamble_profile: PreambleProfile,
     progress: Option<crate::delta_transport::DeltaProgressSink>,
     preserve_xattrs: bool,
+    preserve_acls: bool,
 ) -> Result<RsyncStats, RsyncError>
 where
     T: RawRemoteShellTransport + 'static,
@@ -462,6 +483,41 @@ where
     // identifies the negotiated algorithm. The placeholder stays empty
     // here so upload cannot accidentally advertise xxh128 bytes to an
     // xxh64/xxh3/md5 receiver.
+    if preserve_acls {
+        crate::aerorsync::acl_fs::ensure_linux_acl_support()
+            .map_err(|e| RsyncError::HardRejection(e.to_string()))?;
+    }
+
+    let mut open_opts = OpenOptions::new();
+    open_opts.read(true);
+    #[cfg(unix)]
+    {
+        open_opts.custom_flags(libc::O_NOFOLLOW);
+    }
+    let source_file = open_opts.open(local_path).await.map_err(RsyncError::Io)?;
+
+    let acls = if preserve_acls {
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            Some(
+                crate::aerorsync::acl_fs::read_access_acl_fd(
+                    source_file.as_raw_fd(),
+                    file_mode_from_metadata(&metadata),
+                )
+                .map_err(|e| RsyncError::HardRejection(e.to_string()))?,
+            )
+        }
+        #[cfg(not(unix))]
+        {
+            return Err(RsyncError::HardRejection(
+                crate::aerorsync::acl_fs::AclFsError::Unsupported.to_string(),
+            ));
+        }
+    } else {
+        None
+    };
+
     let source_entry = build_source_entry(
         local_path,
         file_size,
@@ -469,9 +525,8 @@ where
         Vec::new(),
         None,
         preserve_xattrs,
+        acls,
     );
-
-    let source_file = fs::File::open(local_path).await.map_err(RsyncError::Io)?;
 
     let mut driver = AerorsyncDriver::new(transport, cancel)
         .with_preamble_profile(preamble_profile)
@@ -484,8 +539,10 @@ where
     // (WrapperParity flavor) instead of the dev helper
     // `aerorsync_serve`. The wrapper command line is byte-pinned
     // against rsync 3.2.7 capture by `upload_remote_command_matches_capture`.
-    // B3: `-X` rides on the same switch as local xattr read/apply.
-    let spec = RemoteCommandSpec::upload(remote_path).with_xattrs(preserve_xattrs);
+    // B3/B2: `-X`/`-A` ride on the same switches as local metadata I/O.
+    let spec = RemoteCommandSpec::upload(remote_path)
+        .with_xattrs(preserve_xattrs)
+        .with_acls(preserve_acls);
     let drive_res = driver
         .drive_upload_through_delta_streaming(
             spec,
@@ -580,6 +637,7 @@ where
             Vec::new(),
             Some(target),
             preserve_xattrs,
+            None,
         );
 
         let mut driver = AerorsyncDriver::new(transport, cancel)
@@ -589,6 +647,9 @@ where
         let mut bridge = build_event_bridge(warnings.clone());
 
         let spec = RemoteCommandSpec::upload(remote_path).with_xattrs(preserve_xattrs);
+        // Symlink entries carry no ACL model even when the transport
+        // opted into -A; the command flag stays off here because this
+        // file is a link-only transfer.
         if let Err(e) = driver
             .drive_upload_symlink(spec, source_entry, &mut bridge)
             .await
@@ -638,6 +699,7 @@ impl AerorsyncDeltaTransport {
                 preamble_profile,
                 progress,
                 self.preserve_xattrs,
+                self.preserve_acls,
                 self.fail_on_metadata_loss,
             )
             .await
@@ -651,6 +713,7 @@ impl AerorsyncDeltaTransport {
                 preamble_profile,
                 progress,
                 self.preserve_xattrs,
+                self.preserve_acls,
                 self.fail_on_metadata_loss,
             )
             .await
@@ -996,12 +1059,17 @@ async fn do_download<T>(
     preamble_profile: PreambleProfile,
     progress: Option<crate::delta_transport::DeltaProgressSink>,
     preserve_xattrs: bool,
+    preserve_acls: bool,
     fail_on_metadata_loss: bool,
 ) -> Result<RsyncStats, RsyncError>
 where
     T: RawRemoteShellTransport + 'static,
 {
     let start = Instant::now();
+    if preserve_acls {
+        crate::aerorsync::acl_fs::ensure_linux_acl_support()
+            .map_err(|e| RsyncError::HardRejection(e.to_string()))?;
+    }
     // Y-RSC.5: open a streaming baseline only (no bulk `fs::read`).
     // Signatures and CopyBlock reconstruction both use
     // `BaselineSource::read_block`, so peak RAM is O(block_size) plus
@@ -1093,8 +1161,10 @@ where
     // B.1: production dispatch now talks to stock `rsync --server --sender`
     // (WrapperParity flavor). Pinned against rsync 3.2.7 capture by
     // `download_remote_command_matches_capture`.
-    // B3: `-X` rides on the same switch as local xattr apply.
-    let spec = RemoteCommandSpec::download(remote_path).with_xattrs(preserve_xattrs);
+    // B3/B2: `-X`/`-A` ride on the same switches as local metadata apply.
+    let spec = RemoteCommandSpec::download(remote_path)
+        .with_xattrs(preserve_xattrs)
+        .with_acls(preserve_acls);
     // CLAUDE-AV-B3-12: hash the reconstruction as it streams to disk so
     // the whole-file trailer can be checked below. The shim borrows
     // `writer` only for the drive; the digest outlives the scope so
@@ -1323,15 +1393,33 @@ where
         .and_then(|e| e.xattrs.as_ref())
         .filter(|_| preserve_xattrs)
         .cloned();
+    let apply_acls = if preserve_acls {
+        let entry = remote_entry.as_ref().ok_or_else(|| {
+            RsyncError::HardRejection(
+                "session negotiated -A but the download finished without a file-list entry".into(),
+            )
+        })?;
+        let acls = entry.acls.as_ref().ok_or_else(|| {
+            RsyncError::HardRejection(
+                "session negotiated -A but the file-list entry carries no access ACL".into(),
+            )
+        })?;
+        crate::aerorsync::acl_fs::access_literal(acls)
+            .map_err(|e| RsyncError::HardRejection(e.to_string()))?;
+        Some(acls.clone())
+    } else {
+        None
+    };
 
-    // Atomic commit: flush + sync_all + chmod (Unix) + set_mtime +
-    // xattrs + rename. Failures here are post-commit-cutover and surface
-    // as `HardRejection` via `map_write_atomic_error`.
+    // Atomic commit: flush + sync_all + fchmod + ACL + set_mtime +
+    // xattrs + rename. ACL failures are HardRejection (not classic
+    // fallback) so a committed protocol cannot lose metadata silently.
     let xattr_warnings = writer
         .finalize(
             preserve_mode,
             preserve_mtime,
             apply_xattrs,
+            apply_acls,
             fail_on_metadata_loss,
         )
         .await
@@ -1377,6 +1465,7 @@ pub struct AerorsyncBatch {
     /// directly and would otherwise hard-code the flags off, dropping the
     /// attributes of a caller that asked for them without a warning.
     preserve_xattrs: bool,
+    preserve_acls: bool,
     /// Companion of `preserve_xattrs` (X.5): turns an ENOTSUP warning into
     /// a hard error. Carried for the same reason.
     fail_on_metadata_loss: bool,
@@ -1387,6 +1476,7 @@ impl AerorsyncBatch {
         transport: RusshSessionTransport,
         min_file_size: u64,
         preserve_xattrs: bool,
+        preserve_acls: bool,
         fail_on_metadata_loss: bool,
     ) -> Self {
         let flag = Arc::new(AtomicBool::new(false));
@@ -1398,6 +1488,7 @@ impl AerorsyncBatch {
             bytes_on_wire: AtomicU64::new(0),
             cancel_observed: flag,
             preserve_xattrs,
+            preserve_acls,
             fail_on_metadata_loss,
         }
     }
@@ -1496,6 +1587,7 @@ impl DeltaBatch for AerorsyncBatch {
             preamble_profile.clone(),
             None,
             self.preserve_xattrs,
+            self.preserve_acls,
         )
         .await;
         if let Err(ref e) = first {
@@ -1534,6 +1626,7 @@ impl DeltaBatch for AerorsyncBatch {
                     preamble_profile,
                     None,
                     self.preserve_xattrs,
+                    self.preserve_acls,
                 )
                 .await?
             }
@@ -1567,6 +1660,7 @@ impl DeltaBatch for AerorsyncBatch {
             preamble_profile.clone(),
             None,
             self.preserve_xattrs,
+            self.preserve_acls,
             self.fail_on_metadata_loss,
         )
         .await;
@@ -1602,6 +1696,7 @@ impl DeltaBatch for AerorsyncBatch {
                     preamble_profile,
                     None,
                     self.preserve_xattrs,
+                    self.preserve_acls,
                     self.fail_on_metadata_loss,
                 )
                 .await?
@@ -1667,6 +1762,7 @@ fn build_source_entry(
     file_checksum: Vec<u8>,
     symlink_target: Option<String>,
     preserve_xattrs: bool,
+    acls: Option<crate::aerorsync::real_wire::FileListAcls>,
 ) -> FileListEntry {
     // 0x2c00 = USER_NAME_FOLLOWS (1<<10) | GROUP_NAME_FOLLOWS (1<<11) | MOD_NSEC (1<<13).
     const BASELINE_FLAGS: u32 = (1 << 10) | (1 << 11) | (1 << 13);
@@ -1713,7 +1809,7 @@ fn build_source_entry(
         checksum: file_checksum,
         symlink_target,
         xattrs,
-        acls: None,
+        acls,
     }
 }
 
@@ -2118,6 +2214,12 @@ fn map_write_atomic_error(err: WriteAtomicError) -> RsyncError {
         //     user may see the old contents AND a leftover `.aerotmp`.
         //     Keep as `HardRejection` so classic does not silently
         //     attempt the same overwrite without acknowledgement.
+        WriteAtomicError::PostOpen {
+            stage: "acl",
+            source,
+        } => RsyncError::HardRejection(format!(
+            "atomic write failed at acl (target untouched): {source}"
+        )),
         WriteAtomicError::PostOpen { stage, source } if stage != "rename" => {
             RsyncError::TransferFailed {
                 exit: -1,
@@ -2595,6 +2697,7 @@ mod tests {
             &local_path,
             profile,
             None,
+            false,
             false,
             false,
         )
@@ -3112,6 +3215,7 @@ mod tests {
             xxh128_digest_bytes(&[]),
             None,
             false,
+            None,
         );
         assert_eq!(entry.path, "payload.bin");
         assert_eq!(entry.size, 1_234_567);
@@ -3160,6 +3264,7 @@ mod tests {
             xxh128_digest_bytes(&[]),
             None,
             false,
+            None,
         );
         assert_eq!(entry.path, "source.bin");
     }
@@ -3174,7 +3279,8 @@ mod tests {
             std::fs::File::create(&path).unwrap();
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
             let meta = std::fs::metadata(&path).unwrap();
-            let entry = build_source_entry(&path, 0, &meta, xxh128_digest_bytes(&[]), None, false);
+            let entry =
+                build_source_entry(&path, 0, &meta, xxh128_digest_bytes(&[]), None, false, None);
             // `mode` is the raw `st_mode` value; the low 12 bits carry
             // the permission bits we just set.
             assert_eq!((entry.mode as u32) & 0o7777, 0o640);
@@ -3203,6 +3309,7 @@ mod tests {
             Vec::new(),
             Some(target.to_string()),
             false,
+            None,
         );
 
         assert_eq!(entry.mode & 0o170000, 0o120000, "S_IFLNK mode bits");
@@ -3588,6 +3695,7 @@ mod tests {
             PreambleProfile::default(),
             None,
             false,
+            false,
         )
         .await
         .expect("symlink upload must succeed despite the min_file_size gate");
@@ -3618,6 +3726,7 @@ mod tests {
             0,
             PreambleProfile::default(),
             None,
+            false,
             false,
         )
         .await
@@ -3728,6 +3837,7 @@ mod tests {
             None,
             false,
             false,
+            false,
         )
         .await
         .expect("symlink download must create the link");
@@ -3764,6 +3874,7 @@ mod tests {
             &local,
             PreambleProfile::default(),
             None,
+            false,
             false,
             false,
         )
@@ -3893,6 +4004,7 @@ mod tests {
             PreambleProfile::for_host("127.0.0.1"),
             None,
             false,
+            false,
         )
         .await
         .expect("live symlink upload against stock rsync");
@@ -3951,6 +4063,7 @@ mod tests {
             &local,
             PreambleProfile::for_host("127.0.0.1"),
             None,
+            false,
             false,
             false,
         )
@@ -4025,6 +4138,7 @@ mod tests {
             0,
             profile,
             None,
+            false,
             false,
         )
         .await
@@ -5076,37 +5190,67 @@ PY"#
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let base = AerorsyncDeltaTransport::new(cfg.clone(), 1);
         assert_eq!(
-            base.xattr_policy(),
-            (false, false),
+            base.metadata_policy(),
+            (false, false, false),
             "default must stay off: frozen wire oracles depend on it"
         );
 
         let opted_in = AerorsyncDeltaTransport::new(cfg.clone(), 1).with_xattrs(true);
-        assert_eq!(opted_in.xattr_policy(), (true, false));
+        assert_eq!(opted_in.metadata_policy(), (true, false, false));
 
         let hard = AerorsyncDeltaTransport::new(cfg, 1)
             .with_xattrs(true)
             .with_fail_on_metadata_loss(true);
-        assert_eq!(hard.xattr_policy(), (true, true));
+        assert_eq!(hard.metadata_policy(), (true, false, true));
 
-        let (preserve_xattrs, fail_on_metadata_loss) = hard.xattr_policy();
+        let (preserve_xattrs, _, fail_on_metadata_loss) = hard.metadata_policy();
         let transport = RusshSessionTransport::test_with_empty_handle(
             crate::aerorsync::russh_session_transport::test_dummy_config(),
             1,
         );
-        let batch = AerorsyncBatch::new(transport, 1, preserve_xattrs, fail_on_metadata_loss);
+        let batch =
+            AerorsyncBatch::new(transport, 1, preserve_xattrs, false, fail_on_metadata_loss);
         assert!(batch.preserve_xattrs, "batch dropped -X on the floor");
+        assert!(
+            !batch.preserve_acls,
+            "xattr-only opt-in must not turn -A on"
+        );
         assert!(
             batch.fail_on_metadata_loss,
             "batch dropped fail_on_metadata_loss on the floor"
         );
     }
 
+    #[test]
+    fn batch_inherits_the_transport_acl_policy() {
+        let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
+        let base = AerorsyncDeltaTransport::new(cfg.clone(), 1);
+        assert_eq!(base.metadata_policy(), (false, false, false));
+
+        let opted_in = AerorsyncDeltaTransport::new(cfg.clone(), 1).with_acls(true);
+        assert_eq!(opted_in.metadata_policy(), (false, true, false));
+
+        let (preserve_xattrs, preserve_acls, fail_on_metadata_loss) = opted_in.metadata_policy();
+        let transport = RusshSessionTransport::test_with_empty_handle(
+            crate::aerorsync::russh_session_transport::test_dummy_config(),
+            1,
+        );
+        let batch = AerorsyncBatch::new(
+            transport,
+            1,
+            preserve_xattrs,
+            preserve_acls,
+            fail_on_metadata_loss,
+        );
+        assert!(batch.preserve_acls, "batch dropped -A on the floor");
+        assert!(!batch.preserve_xattrs);
+    }
+
     #[tokio::test]
     async fn aerorsync_batch_reuses_ssh_session() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let mut batch = AerorsyncBatch::new(transport, 1, false, false);
+        let mut batch = AerorsyncBatch::new(transport, 1, false, false, false);
         let dir = fresh_tempdir();
         let local = write_test_file(&dir, "batch_reuse.bin", b"1234567890");
 
@@ -5123,7 +5267,7 @@ PY"#
     async fn aerorsync_batch_per_file_open_raw_stream_count_equals_file_count() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let mut batch = AerorsyncBatch::new(transport, 1, false, false);
+        let mut batch = AerorsyncBatch::new(transport, 1, false, false, false);
         let dir = fresh_tempdir();
         let a = write_test_file(&dir, "a.bin", b"AAAA");
         let b = write_test_file(&dir, "b.bin", b"BBBB");
@@ -5141,7 +5285,7 @@ PY"#
     async fn aerorsync_batch_finalize_returns_session_count_one_on_perfect_reuse() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let batch = AerorsyncBatch::new(transport, 1, false, false);
+        let batch = AerorsyncBatch::new(transport, 1, false, false, false);
 
         let stats = Box::new(batch)
             .finalize()
@@ -5158,7 +5302,7 @@ PY"#
         // transport state before finalize.
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let batch = AerorsyncBatch::new(transport, 1, false, false);
+        let batch = AerorsyncBatch::new(transport, 1, false, false, false);
         batch.transport.test_set_handshake_count(2);
 
         let stats = Box::new(batch)

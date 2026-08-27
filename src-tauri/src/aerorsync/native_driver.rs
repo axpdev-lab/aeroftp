@@ -1358,6 +1358,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
         self.reject_symlink_entry_on_regular_upload(&source_entry)?;
+        crate::aerorsync::acl_fs::validate_outgoing_acls(command_spec.preserve_acls, &source_entry)
+            .map_err(|err| match err {
+                crate::aerorsync::acl_fs::AclFsError::Unsupported => {
+                    AerorsyncError::new(AerorsyncErrorKind::NegotiationFailed, err.to_string())
+                }
+                other => AerorsyncError::invalid_frame(other.to_string()),
+            })?;
         self.session_role = Some(SessionRole::Sender);
         self.remote_command_flavor = command_spec.flavor;
         self.open_raw_stream_internal(&command_spec).await?;
@@ -1398,6 +1405,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         R: AsyncRead + AsyncSeek + Unpin + Send,
     {
         self.reject_symlink_entry_on_regular_upload(&source_entry)?;
+        crate::aerorsync::acl_fs::validate_outgoing_acls(command_spec.preserve_acls, &source_entry)
+            .map_err(|err| match err {
+                crate::aerorsync::acl_fs::AclFsError::Unsupported => {
+                    AerorsyncError::new(AerorsyncErrorKind::NegotiationFailed, err.to_string())
+                }
+                other => AerorsyncError::invalid_frame(other.to_string()),
+            })?;
         self.session_role = Some(SessionRole::Sender);
         self.remote_command_flavor = command_spec.flavor;
         self.open_raw_stream_internal(&command_spec).await?;
@@ -1525,6 +1539,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.check_cancel("open_raw_stream")?;
         let request = command_spec.to_exec_request();
         validate_command_metadata_flags(command_spec, &request.args)?;
+        if command_spec.preserve_acls {
+            crate::aerorsync::acl_fs::ensure_linux_acl_support().map_err(|err| {
+                AerorsyncError::new(AerorsyncErrorKind::NegotiationFailed, err.to_string())
+            })?;
+        }
         // The one place the spec is in hand and every production path goes
         // through. Capturing the choice here is what lets the codec and the
         // sender agree with the flags we actually sent the server.
@@ -4536,6 +4555,35 @@ mod tests {
                 "flist decode options disagree with the flag bundle"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn unresolved_acl_reference_is_rejected_before_wire_open() {
+        use crate::aerorsync::real_wire::{AclWireEntry, FileListAcls};
+
+        let spec = RemoteCommandSpec::upload("/remote/target.bin").with_acls(true);
+        let mut entry = sample_file_list_entry("upload.bin");
+        entry.acls = Some(FileListAcls {
+            access: AclWireEntry::Reference(0),
+            default: None,
+        });
+        let mut d = make_driver(mock_transport_with_raw_inbound(Vec::new()));
+        let err = d
+            .drive_upload_through_delta(
+                spec,
+                entry,
+                b"payload-bytes",
+                &MockSigAdapter::default(),
+                &mut CollectingSink::default(),
+            )
+            .await
+            .expect_err("unresolved ACL reference must fail closed");
+        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
+        assert!(err.detail.contains("reference"));
+        assert!(
+            d.stream.is_none(),
+            "the remote stream must not open after an unresolved ACL reference"
+        );
     }
 
     #[test]

@@ -2816,7 +2816,12 @@ fn production_unsafe_surface_matches_the_documented_count() {
     // hardcoded exclusion list, so a new harness file is handled without
     // editing this test, and a production file can never be excluded by
     // being added to a list.
-    const DOCUMENTED: [(&str, usize); 2] = [("xattr_fs.rs", 10), ("delta_transport_impl.rs", 3)];
+    const DOCUMENTED: [(&str, usize); 4] = [
+        ("acl_fs.rs", 5),
+        ("delta_transport_impl.rs", 3),
+        ("streaming_writer.rs", 1),
+        ("xattr_fs.rs", 10),
+    ];
 
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync");
     let mut found: Vec<(String, usize)> = Vec::new();
@@ -2874,5 +2879,5 @@ fn production_unsafe_surface_matches_the_documented_count() {
     );
 
     let total: usize = found.iter().map(|(_, n)| n).sum();
-    assert_eq!(total, 13, "documented total in the parity docs is 13");
+    assert_eq!(total, 19, "documented total in the parity docs is 19");
 }

@@ -151,16 +151,17 @@ impl StreamingAtomicWriter {
     /// Commit the temp file as `target`:
     ///
     ///   1. `flush` + `sync_all` on the open handle.
-    ///   2. drop the handle (some kernels require this before rename
+    ///   2. apply `mode` with `fchmod` while the handle is still open
+    ///      (Unix only). ACL apply requires chmod first: a later chmod
+    ///      would rewrite the mask.
+    ///   3. apply the access ACL on the same file descriptor (Linux B2).
+    ///   4. drop the handle (some kernels require this before rename
     ///      for cache coherency, mirroring `write_atomic_chunked`).
-    ///   3. apply `mode` to the temp (Unix only: silently ignored on
-    ///      other platforms because the underlying `set_permissions`
-    ///      cannot map the bits faithfully).
-    ///   4. apply `mtime` (seconds + nanoseconds) to the temp via the
+    ///   5. apply `mtime` (seconds + nanoseconds) to the temp via the
     ///      `filetime` crate, matching `write_atomic_chunked` semantics.
-    ///   5. apply `xattrs` to the temp (B3 / X.4). **Before rename**, so
+    ///   6. apply `xattrs` to the temp (B3 / X.4). **Before rename**, so
     ///      a kill-9 never leaves a visible target without metadata.
-    ///   6. `rename` temp → target.
+    ///   7. `rename` temp → target.
     ///
     /// Returns any soft metadata-loss warnings (X.5 ENOTSUP path).
     /// Errors map to `WriteAtomicError::PostOpen { stage, source }` so
@@ -174,6 +175,7 @@ impl StreamingAtomicWriter {
         mode: Option<u32>,
         mtime: Option<(i64, u32)>,
         xattrs: Option<Vec<crate::aerorsync::real_wire::XattrPair>>,
+        acls: Option<crate::aerorsync::real_wire::FileListAcls>,
         fail_on_metadata_loss: bool,
     ) -> Result<Vec<String>, WriteAtomicError> {
         let Self {
@@ -190,6 +192,7 @@ impl StreamingAtomicWriter {
             mode,
             mtime,
             xattrs.as_deref(),
+            acls.as_ref(),
             fail_on_metadata_loss,
             &mut committed,
         )
@@ -213,6 +216,7 @@ async fn finalize_steps(
     mode: Option<u32>,
     mtime: Option<(i64, u32)>,
     xattrs: Option<&[crate::aerorsync::real_wire::XattrPair]>,
+    acls: Option<&crate::aerorsync::real_wire::FileListAcls>,
     fail_on_metadata_loss: bool,
     committed: &mut bool,
 ) -> Result<Vec<String>, WriteAtomicError> {
@@ -228,30 +232,90 @@ async fn finalize_steps(
             stage: "sync_all",
             source: e,
         })?;
+
+    let mut warnings = Vec::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+        if let Some(mode) = mode {
+            // Same masking rule as `write_atomic_chunked_core`: `mode` is the
+            // peer's, so the setuid/setgid/sticky bits in 0o7000 are
+            // attacker-supplied and must not survive onto the file we land.
+            let masked = mode & 0o0777;
+            // SAFETY: `file` is still open; fchmod on its fd cannot follow a
+            // swapped path. The mode has already had setuid/setgid/sticky
+            // stripped.
+            let rc = unsafe { libc::fchmod(file.as_raw_fd(), masked as libc::mode_t) };
+            if rc != 0 {
+                return Err(WriteAtomicError::PostOpen {
+                    stage: "chmod",
+                    source: std::io::Error::last_os_error(),
+                });
+            }
+        }
+        if let Some(acls) = acls {
+            use crate::aerorsync::acl_fs::{apply_access_acl_fd, AclApplyOutcome};
+            match apply_access_acl_fd(
+                file.as_raw_fd(),
+                acls,
+                mode.unwrap_or(0),
+                fail_on_metadata_loss,
+            ) {
+                AclApplyOutcome::Applied => {}
+                AclApplyOutcome::Unsupported { warning } => warnings.push(warning),
+                AclApplyOutcome::Failed { message } => {
+                    return Err(WriteAtomicError::PostOpen {
+                        stage: "acl",
+                        source: std::io::Error::other(message),
+                    });
+                }
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = mode;
+        if let Some(acls) = acls {
+            use crate::aerorsync::acl_fs::{apply_access_acl_fd, AclApplyOutcome};
+            match apply_access_acl_fd(-1, acls, 0, fail_on_metadata_loss) {
+                AclApplyOutcome::Applied => {}
+                AclApplyOutcome::Unsupported { warning } => warnings.push(warning),
+                AclApplyOutcome::Failed { message } => {
+                    return Err(WriteAtomicError::PostOpen {
+                        stage: "acl",
+                        source: std::io::Error::other(message),
+                    });
+                }
+            }
+        }
+    }
+
     // Drop the live handle before rename. Mirrors the comment in
     // `write_atomic_chunked`: some Linux kernels exhibit cache-coherency
     // oddities when renaming a path with an open writer pinned to its
     // inode. Cheap to drop explicitly.
     drop(file);
+    finalize_after_acl(
+        target,
+        temp,
+        mtime,
+        xattrs,
+        fail_on_metadata_loss,
+        committed,
+        warnings,
+    )
+    .await
+}
 
-    #[cfg(unix)]
-    if let Some(mode) = mode {
-        use std::os::unix::fs::PermissionsExt;
-        // Same masking rule as `write_atomic_chunked_core`: `mode` is the
-        // peer's, so the setuid/setgid/sticky bits in 0o7000 are
-        // attacker-supplied and must not survive onto the file we land.
-        // See the longer note there (rclone GHSA-945v-v9p3-v5xw).
-        let perms = std::fs::Permissions::from_mode(mode & 0o0777);
-        fs::set_permissions(temp, perms)
-            .await
-            .map_err(|e| WriteAtomicError::PostOpen {
-                stage: "chmod",
-                source: e,
-            })?;
-    }
-    #[cfg(not(unix))]
-    let _ = mode;
-
+async fn finalize_after_acl(
+    target: &Path,
+    temp: &Path,
+    mtime: Option<(i64, u32)>,
+    xattrs: Option<&[crate::aerorsync::real_wire::XattrPair]>,
+    fail_on_metadata_loss: bool,
+    committed: &mut bool,
+    mut warnings: Vec<String>,
+) -> Result<Vec<String>, WriteAtomicError> {
     if let Some((secs, nanos)) = mtime {
         let nanos = if nanos < 1_000_000_000 { nanos } else { 0 };
         let ft = filetime::FileTime::from_unix_time(secs, nanos);
@@ -263,7 +327,6 @@ async fn finalize_steps(
 
     // X.4: xattrs on the temp, before rename. Never after: that would
     // open a window where the target is visible without metadata.
-    let mut warnings = Vec::new();
     if let Some(pairs) = xattrs {
         use crate::aerorsync::xattr_fs::{apply_xattrs, XattrApplyOutcome};
         match apply_xattrs(temp, pairs, fail_on_metadata_loss) {
@@ -342,7 +405,9 @@ mod tests {
         w.write_all(b"world").await.expect("chunk3");
         assert_eq!(w.bytes_written(), 21);
         let temp = w.temp_path().to_path_buf();
-        w.finalize(None, None, None, false).await.expect("finalize");
+        w.finalize(None, None, None, None, false)
+            .await
+            .expect("finalize");
 
         let bytes = tokio::fs::read(&target).await.expect("read target");
         assert_eq!(bytes, b"hello streaming world");
@@ -362,7 +427,9 @@ mod tests {
 
         let mut w = StreamingAtomicWriter::new(&target).await.expect("new");
         w.write_all(b"NEW PAYLOAD").await.expect("write");
-        w.finalize(None, None, None, false).await.expect("finalize");
+        w.finalize(None, None, None, None, false)
+            .await
+            .expect("finalize");
 
         let bytes = tokio::fs::read(&target).await.expect("read");
         assert_eq!(bytes, b"NEW PAYLOAD");
@@ -414,7 +481,7 @@ mod tests {
         w.write_all(b"data").await.expect("write");
         // Use a fixed historical timestamp so the assertion is exact.
         let mtime = (1_700_000_000_i64, 123_456_000_u32);
-        w.finalize(Some(0o600), Some(mtime), None, false)
+        w.finalize(Some(0o600), Some(mtime), None, None, false)
             .await
             .expect("finalize");
 
@@ -452,7 +519,7 @@ mod tests {
             let target = dir.path().join(format!("mode-{peer_mode:o}.bin"));
             let mut w = StreamingAtomicWriter::new(&target).await.expect("new");
             w.write_all(b"data").await.expect("write");
-            w.finalize(Some(peer_mode), None, None, false)
+            w.finalize(Some(peer_mode), None, None, None, false)
                 .await
                 .expect("finalize");
 
@@ -482,7 +549,9 @@ mod tests {
         assert_eq!(w.bytes_written(), 5);
         w.write_all(b"fghij").await.expect("w3");
         assert_eq!(w.bytes_written(), 10);
-        w.finalize(None, None, None, false).await.expect("finalize");
+        w.finalize(None, None, None, None, false)
+            .await
+            .expect("finalize");
 
         let bytes = tokio::fs::read(&target).await.expect("read");
         assert_eq!(bytes, b"abcdefghij");
@@ -508,7 +577,7 @@ mod tests {
 
         // Build a fresh writer, finalize it, ensure the target lands.
         let w2 = StreamingAtomicWriter::new(&target).await.expect("new2");
-        w2.finalize(None, None, None, false)
+        w2.finalize(None, None, None, None, false)
             .await
             .expect("finalize");
         assert!(target.exists(), "target landed after finalize");
@@ -531,7 +600,9 @@ mod tests {
 
         let mut w = StreamingAtomicWriter::new(&target).await.expect("new");
         w.write_all(b"FRESH").await.expect("write");
-        w.finalize(None, None, None, false).await.expect("finalize");
+        w.finalize(None, None, None, None, false)
+            .await
+            .expect("finalize");
 
         let bytes = tokio::fs::read(&target).await.expect("read");
         assert_eq!(
@@ -582,7 +653,7 @@ mod tests {
         assert_eq!(n as usize, expected.len(), "byte count matches");
         assert_eq!(writer.bytes_written(), n);
         writer
-            .finalize(None, None, None, false)
+            .finalize(None, None, None, None, false)
             .await
             .expect("finalize");
 
@@ -617,7 +688,9 @@ mod tests {
             w.write_all(&[i; 256]).await.expect("write");
             tokio::time::sleep(Duration::from_millis(0)).await;
         }
-        w.finalize(None, None, None, false).await.expect("finalize");
+        w.finalize(None, None, None, None, false)
+            .await
+            .expect("finalize");
 
         let bytes = tokio::fs::read(&target).await.expect("read");
         assert_eq!(bytes.len(), 16 * 256);
@@ -653,7 +726,7 @@ mod tests {
 
         let poisoned = vec![XattrPair::inline("trusted.nope", b"v".to_vec())];
         let err = w
-            .finalize(None, None, Some(poisoned), false)
+            .finalize(None, None, Some(poisoned), None, false)
             .await
             .expect_err("a rejected xattr blob must fail finalize");
         match err {
@@ -689,7 +762,7 @@ mod tests {
         w.write_all(b"NEW PAYLOAD").await.expect("write");
 
         let poisoned = vec![XattrPair::inline("trusted.nope", b"v".to_vec())];
-        w.finalize(None, None, Some(poisoned), false)
+        w.finalize(None, None, Some(poisoned), None, false)
             .await
             .expect_err("a rejected xattr blob must fail finalize");
 
@@ -698,5 +771,90 @@ mod tests {
             bytes, b"OLD BYTES",
             "the target was cut over despite the xattr rejection"
         );
+    }
+
+    #[tokio::test]
+    async fn acl_hard_failure_leaves_existing_target_and_removes_temp() {
+        use crate::aerorsync::real_wire::{AclWireEntry, FileListAcls};
+
+        let dir = fresh_tempdir();
+        let target = dir.path().join("doc.txt");
+        tokio::fs::write(&target, b"OLD BYTES")
+            .await
+            .expect("seed target");
+
+        let mut w = StreamingAtomicWriter::new(&target).await.expect("new");
+        w.write_all(b"NEW PAYLOAD").await.expect("write");
+        let temp = w.temp_path().to_path_buf();
+        let acls = FileListAcls {
+            access: AclWireEntry::Reference(0),
+            default: None,
+        };
+        let err = w
+            .finalize(Some(0o644), None, None, Some(acls), true)
+            .await
+            .expect_err("unresolved ACL reference must fail finalize");
+        match err {
+            WriteAtomicError::PostOpen { stage, .. } => assert_eq!(stage, "acl"),
+            other => panic!("expected PostOpen{{stage: \"acl\"}}, got {other:?}"),
+        }
+        let bytes = tokio::fs::read(&target).await.expect("read target");
+        assert_eq!(bytes, b"OLD BYTES");
+        assert!(!temp.exists(), "temp must be cleaned up on ACL failure");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn finalize_applies_chmod_then_acl_before_rename() {
+        use crate::aerorsync::acl_fs::{
+            apply_access_acl_fd, filesystem_acl_to_wire, read_access_acl_model_fd, AclApplyOutcome,
+        };
+        use crate::aerorsync::real_wire::{AclNamedEntry, AclPrincipal, RsyncAcl};
+        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::io::AsRawFd;
+
+        let dir = fresh_tempdir();
+        let probe = tempfile::tempfile().expect("probe");
+        let src = RsyncAcl {
+            user_obj: Some(6),
+            group_obj: Some(4),
+            mask_obj: Some(4),
+            other_obj: Some(0),
+            names: vec![AclNamedEntry {
+                id: 65534,
+                principal: AclPrincipal::User,
+                access: 4,
+                name: None,
+            }],
+        };
+        let acls = filesystem_acl_to_wire(src, 0o100_640).expect("wire");
+        match apply_access_acl_fd(probe.as_raw_fd(), &acls, 0o100_640, true) {
+            AclApplyOutcome::Applied => {}
+            AclApplyOutcome::Unsupported { warning } => {
+                eprintln!("skipping finalize ACL test: {warning}");
+                return;
+            }
+            AclApplyOutcome::Failed { message } => {
+                eprintln!("skipping finalize ACL test: {message}");
+                return;
+            }
+        }
+
+        let target = dir.path().join("payload.bin");
+        let mut w = StreamingAtomicWriter::new(&target).await.expect("new");
+        w.write_all(b"ACL DATA").await.expect("write");
+        w.finalize(Some(0o640), None, None, Some(acls.clone()), true)
+            .await
+            .expect("finalize");
+
+        let file = std::fs::File::open(&target).expect("open target");
+        let mode = file.metadata().expect("meta").permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o640,
+            "chmod then ACL with matching mask must keep 0640 through rename"
+        );
+        let reread = read_access_acl_model_fd(file.as_raw_fd()).expect("reread");
+        assert_eq!(reread.mask_obj, Some(4));
+        assert!(reread.names.iter().any(|n| n.id == 65534 && n.access == 4));
     }
 }

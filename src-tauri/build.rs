@@ -167,6 +167,7 @@ fn main() {
     // Optional Linux MTP: link libmtp when pkg-config finds it. CI and hosts
     // without libmtp-dev stay green via NullMtpBackend (cfg mtp_libmtp unset).
     detect_and_link_libmtp();
+    detect_and_link_libacl();
 
     // Generate the registered Tauri command list so `aeroftp-cli inventory` can
     // measure CLI/MCP parity against the GUI surface without a hand-maintained
@@ -284,6 +285,39 @@ fn generate_tauri_command_registry() {
     let dest = std::path::Path::new(&out_dir).join("tauri_commands.rs");
     fs::write(&dest, body).expect("Failed to write tauri_commands.rs");
     println!("cargo:rerun-if-changed=src/lib.rs");
+}
+
+/// POSIX ACL B2: `acl-sys` links `-lacl`. Hosts with only `libacl1` (no
+/// `-dev` package) ship `libacl.so.1` without the unversioned `libacl.so`
+/// symlink. Point rustc at a local SONAME symlink so the notebook can
+/// compile without installing headers.
+fn detect_and_link_libacl() {
+    #[cfg(target_os = "linux")]
+    {
+        use std::path::PathBuf;
+        let candidates = [
+            PathBuf::from("/usr/lib/x86_64-linux-gnu/libacl.so"),
+            PathBuf::from("/usr/lib/x86_64-linux-gnu/libacl.so.1"),
+            PathBuf::from("/lib/x86_64-linux-gnu/libacl.so"),
+            PathBuf::from("/lib/x86_64-linux-gnu/libacl.so.1"),
+            PathBuf::from("/usr/lib/libacl.so"),
+            PathBuf::from("/usr/lib/libacl.so.1"),
+        ];
+        let Some(found) = candidates.iter().find(|p| p.exists()) else {
+            return;
+        };
+        if found.file_name().and_then(|n| n.to_str()) == Some("libacl.so") {
+            if let Some(dir) = found.parent() {
+                println!("cargo:rustc-link-search=native={}", dir.display());
+            }
+            return;
+        }
+        let out = std::env::var("OUT_DIR").expect("OUT_DIR");
+        let dest = PathBuf::from(&out).join("libacl.so");
+        let _ = fs::remove_file(&dest);
+        let _ = std::os::unix::fs::symlink(found, &dest);
+        println!("cargo:rustc-link-search=native={out}");
+    }
 }
 
 /// Probe for system libmtp (Linux). Emits `cargo:rustc-cfg=mtp_libmtp` and link
