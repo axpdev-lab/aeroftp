@@ -51,7 +51,7 @@ import {
     normalizeAppFontFamily,
 } from '../hooks/useSettings';
 import { useStorageThresholds, DEFAULT_THRESHOLDS } from '../hooks/useStorageThresholds';
-import { useUiTokens, UI_TOKENS_EXAMPLE_JSON } from '../hooks/useUiTokens';
+import { useUiTokens } from '../hooks/useUiTokens';
 import { useMyServersDensity } from '../hooks/useMyServersDensity';
 import { createTauriListener } from '../hooks/useTauriListener';
 import { useDraggableModal } from '../hooks/useDraggableModal';
@@ -593,9 +593,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         try {
             // Through the backend: the fs plugin cannot reach the data root, see
             // the comment on `read_ui_tokens_file` in lib.rs.
-            const path = await invoke<string>('ensure_ui_tokens_file', {
-                example: UI_TOKENS_EXAMPLE_JSON,
-            });
+            const path = await invoke<string>('ensure_ui_tokens_file');
             await invoke('open_in_file_manager', { path });
         } catch (err) {
             logger.error('[SettingsPanel] Failed to open ui-tokens.json', err);

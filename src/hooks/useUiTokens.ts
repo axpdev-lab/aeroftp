@@ -157,6 +157,27 @@ export function applyUiTokenOverrides(accepted: Record<string, string>, style: U
  * Remove every published token from the style target, restoring the :root
  * defaults. Properties outside the published list are left untouched.
  */
+/**
+ * Apply one load result to the document, authoritatively.
+ *
+ * Extracted from `reload()` so a test can exercise the real code path rather
+ * than re-enacting it: a test that repeats the sequence by hand keeps passing
+ * when someone deletes the reset from the caller, which makes it decoration
+ * rather than a guard.
+ *
+ * The reset is the whole point. The file is the source of truth, so applying
+ * without clearing first is additive: a key the user removed from the file
+ * would stay on the document while the panel reported it gone, and deleting
+ * the file would leave every override applied until the app restarted.
+ */
+export function applyLoadResultToDocument(
+    result: UiTokenValidationResult | null,
+    style: UiTokenStyleTarget,
+): void {
+    resetUiTokenOverrides(style);
+    if (result) applyUiTokenOverrides(result.accepted, style);
+}
+
 export function resetUiTokenOverrides(style: UiTokenStyleTarget): void {
     for (const name of PUBLISHED_UI_TOKEN_NAMES) {
         style.removeProperty(name);
@@ -207,25 +228,6 @@ export async function loadUiTokenOverrides(): Promise<UiTokenValidationResult | 
     }
     return validateUiTokenOverrides(parsed);
 }
-
-/**
- * Example ui-tokens.json content, written by the Settings panel when the file
- * does not exist yet: the five scrollbar tokens at their documented defaults
- * (docs/UI-TOKENS.md). Applying defaults is a visual no-op, so the example is
- * self-documenting; JSON has no comments, so a real example is the only valid
- * option.
- */
-export const UI_TOKENS_EXAMPLE_JSON = JSON.stringify(
-    {
-        '--aeroftp-scrollbar-width': '6px',
-        '--aeroftp-panel-scrollbar-width': '10px',
-        '--aeroftp-scrollbar-radius': '3px',
-        '--aeroftp-scrollbar-thumb': 'rgba(128, 128, 128, 0.15)',
-        '--aeroftp-scrollbar-thumb-hover': 'rgba(128, 128, 128, 0.3)',
-    },
-    null,
-    2,
-) + '\n';
 
 // ============================================================================
 // Hook
@@ -336,11 +338,11 @@ export function useUiTokens(options?: UseUiTokensOptions): UseUiTokensResult {
         // does not read the file a second time on top of a manual reload.
         markStartupLoadDone();
         const result = await loadUiTokenOverrides();
+        applyLoadResultToDocument(result, document.documentElement.style);
         if (!result) {
             setUiTokenCounts({ appliedCount: 0, rejectedCount: 0 });
             return;
         }
-        applyUiTokenOverrides(result.accepted, document.documentElement.style);
         for (const rejection of result.rejected) {
             log('ERROR', `UI token override rejected: ${rejection.key}`, 'error', rejection.reason);
         }

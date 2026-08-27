@@ -15,6 +15,8 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import {
     PUBLISHED_UI_TOKEN_NAMES,
+    applyLoadResultToDocument,
+    applyUiTokenOverrides,
     loadUiTokenOverrides,
     shouldRunStartupLoad,
     resetStartupLoadForTests,
@@ -138,6 +140,61 @@ describe('loadUiTokenOverrides', () => {
 
         expect(result?.accepted).toEqual({});
         expect(result?.rejected[0].reason).toContain('not valid JSON');
+    });
+});
+
+describe('reload is authoritative, not additive', () => {
+    // The file is the source of truth. A key the user removes from it must stop
+    // being applied, and deleting the file must clear everything. Without this
+    // the panel can report "0 overrides" while the document still carries them,
+    // which is the failure mode the whole feature is built to avoid: a report
+    // that disagrees with reality is worse than no report.
+    it('a key removed from the file stops being applied', () => {
+        const store = new Map<string, string>();
+        const style = {
+            setProperty: (name: string, value: string): void => { store.set(name, value); },
+            removeProperty: (name: string): string => {
+                const old = store.get(name) ?? '';
+                store.delete(name);
+                return old;
+            },
+        };
+
+        applyUiTokenOverrides(
+            { '--aeroftp-scrollbar-width': '14px', '--color-accent': '#ff0000' },
+            style,
+        );
+        expect(store.size).toBe(2);
+
+        // The real code path reload takes, not a re-enactment of it.
+        applyLoadResultToDocument(
+            { accepted: { '--aeroftp-scrollbar-width': '14px' }, rejected: [] },
+            style,
+        );
+
+        expect([...store.keys()]).toEqual(['--aeroftp-scrollbar-width']);
+        expect(store.has('--color-accent')).toBe(false);
+    });
+
+    it('an emptied or deleted file clears every override', () => {
+        const store = new Map<string, string>();
+        const style = {
+            setProperty: (name: string, value: string): void => { store.set(name, value); },
+            removeProperty: (name: string): string => {
+                const old = store.get(name) ?? '';
+                store.delete(name);
+                return old;
+            },
+        };
+
+        applyUiTokenOverrides({ '--color-accent': '#ff0000' }, style);
+        expect(store.size).toBe(1);
+
+        // The `!result` branch: the file is gone, nothing to apply, and the
+        // previous overrides must not survive it.
+        applyLoadResultToDocument(null, style);
+
+        expect(store.size).toBe(0);
     });
 });
 

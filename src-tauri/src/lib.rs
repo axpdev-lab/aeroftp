@@ -6212,19 +6212,37 @@ async fn read_ui_tokens_file() -> Result<Option<String>, String> {
     }
 }
 
-/// Return the absolute path of `ui-tokens.json`, creating it from `example`
-/// when it does not exist yet. An existing file is never overwritten: the user
-/// may have edited it, and the Settings button that calls this is "open", not
-/// "reset".
+/// The seeded example: the five scrollbar tokens at their documented defaults.
+/// Applying the defaults is a visual no-op, so the file is self-documenting.
+/// JSON has no comments, so a real example is the only option.
+///
+/// It lives here rather than in the frontend on purpose. The comment above these
+/// commands defends this directory because `vault.db` is in it, and that argument
+/// does not survive handing the webview a primitive that writes an arbitrary
+/// string into it. With the content owned by the backend the command takes no
+/// arguments and the directory is read-only as far as the webview is concerned.
+const UI_TOKENS_EXAMPLE: &str = r#"{
+    "--aeroftp-scrollbar-width": "6px",
+    "--aeroftp-panel-scrollbar-width": "10px",
+    "--aeroftp-scrollbar-radius": "3px",
+    "--aeroftp-scrollbar-thumb": "rgba(128, 128, 128, 0.15)",
+    "--aeroftp-scrollbar-thumb-hover": "rgba(128, 128, 128, 0.3)"
+}
+"#;
+
+/// Return the absolute path of `ui-tokens.json`, creating it from the example
+/// above when it does not exist yet. An existing file is never overwritten: the
+/// user may have edited it, and the Settings button that calls this is "open",
+/// not "reset".
 #[tauri::command]
-async fn ensure_ui_tokens_file(example: String) -> Result<String, String> {
+async fn ensure_ui_tokens_file() -> Result<String, String> {
     let path = ui_tokens_path()?;
     if !path.exists() {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|err| format!("Cannot create {}: {err}", parent.display()))?;
         }
-        std::fs::write(&path, example)
+        std::fs::write(&path, UI_TOKENS_EXAMPLE)
             .map_err(|err| format!("Cannot write {}: {err}", path.display()))?;
     }
     Ok(path.to_string_lossy().to_string())
