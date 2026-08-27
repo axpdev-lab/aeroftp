@@ -80,6 +80,11 @@ struct DigestChallenge {
     nonce: String,
     qop: String,
     opaque: Option<String>,
+    /// `stale=true` on a 401: RFC 2617's one signal for "the credentials are
+    /// fine, the nonce is not". Without it a nonce rotation and a revoked
+    /// password are the same event to us, because both answer with a
+    /// perfectly parseable challenge.
+    stale: bool,
 }
 
 /// State for HTTP Digest authentication.
@@ -144,24 +149,44 @@ impl DigestState {
 
     /// Adopt a rotated challenge from a `401 ... stale=true` response.
     ///
-    /// Returns false when the header is not a usable Digest challenge, so the
-    /// caller can fall through to the ordinary failure path instead of retrying
-    /// against the same dead nonce. The counter restarts because `nc` counts
-    /// requests against ONE nonce; carrying it over would present a count the
-    /// new nonce has never seen.
+    /// Returns false, so the caller falls through to its ordinary failure path,
+    /// in all three cases where adopting would be wrong:
+    ///
+    /// - the header is not a usable Digest challenge (Basic auth, a truncated
+    ///   header): retrying against a half-parsed challenge is worse than
+    ///   failing the request;
+    /// - the challenge does not carry `stale=true`: this is the case that used
+    ///   to be missing, and it is the whole point. A revoked password answers
+    ///   with a challenge that parses perfectly, so "it parsed" cannot tell a
+    ///   nonce rotation from a credential failure. Adopting it and retrying is
+    ///   exactly how a dead password turns into a retry storm, which is why
+    ///   the data paths were left un-wired as accepted debt until now;
+    /// - the challenge re-offers the nonce already held: a server that answers
+    ///   `stale=true` without actually rotating would otherwise have us retry
+    ///   against the nonce that just failed, once per request, indefinitely.
+    ///
+    /// On success the counter restarts, because `nc` counts requests against
+    /// ONE nonce and carrying it over would present a count the new nonce has
+    /// never seen. The write stays in place: replacing the `Arc` would leave
+    /// every `clone_for_transfer` worker pointing at the old challenge, the
+    /// very defect the shared challenge exists to prevent.
     fn renegotiate(&self, www_authenticate: &str) -> bool {
-        match DigestChallenge::parse(www_authenticate) {
-            Some(fresh) => {
-                let mut guard = self
-                    .challenge
-                    .write()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                *guard = fresh;
-                self.nc.store(0, Ordering::Relaxed);
-                true
-            }
-            None => false,
+        let Some(fresh) = DigestChallenge::parse(www_authenticate) else {
+            return false;
+        };
+        if !fresh.stale {
+            return false;
         }
+        let mut guard = self
+            .challenge
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if guard.nonce == fresh.nonce {
+            return false;
+        }
+        *guard = fresh;
+        self.nc.store(0, Ordering::Relaxed);
+        true
     }
 
     /// Parse a `WWW-Authenticate: Digest ...` header value
@@ -240,6 +265,12 @@ impl DigestChallenge {
             nonce: Self::extract_param(s, "nonce")?,
             qop: Self::extract_param(s, "qop").unwrap_or_default(),
             opaque: Self::extract_param(s, "opaque"),
+            // RFC 2617 writes the flag bare (`stale=true`), but servers quote
+            // it and case it freely, so `extract_param` handles both forms and
+            // the comparison ignores case. Absent means false: a challenge
+            // that does not claim staleness is not one.
+            stale: Self::extract_param(s, "stale")
+                .is_some_and(|v| v.trim().eq_ignore_ascii_case("true")),
         })
     }
 
@@ -987,6 +1018,46 @@ impl WebDavProvider {
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))
+    }
+
+    /// One-shot Digest re-negotiation for a `401` on a data path.
+    ///
+    /// `send_propfind` has renegotiated since Digest landed; the data paths
+    /// never did, and that asymmetry IS the accepted debt this closes. The
+    /// gate is [`DigestState::renegotiate`], which adopts a challenge only
+    /// when it says `stale=true` AND carries a nonce we are not already
+    /// holding. So a caller that replays on `true` replays at most once per
+    /// request, and never on a credential failure: that is what keeps a
+    /// revoked password from becoming a retry storm, which is the reason the
+    /// data paths were left un-wired in the first place.
+    ///
+    /// Unlike `send_propfind` this never negotiates Digest from scratch. A
+    /// session with no `digest_auth` is either not speaking Digest or has not
+    /// finished `connect`, and neither of those is a nonce rotation.
+    ///
+    /// The repair is pool-wide, not per-caller: the challenge lives behind a
+    /// shared `Arc`, so one worker adopting the rotated nonce fixes it for
+    /// every `clone_for_transfer` sibling still presenting the dead one.
+    fn adopt_rotated_nonce(&self, response: &reqwest::Response) -> bool {
+        let Some(existing) = self.digest_auth.as_ref() else {
+            return false;
+        };
+        let Some(www_auth) = response
+            .headers()
+            .get("www-authenticate")
+            .and_then(|v| v.to_str().ok())
+        else {
+            return false;
+        };
+        if !existing.renegotiate(www_auth) {
+            return false;
+        }
+        tracing::debug!(
+            "[WebDAV] 401 stale=true, adopted rotated nonce for every worker (realm={}, nonce={}...)",
+            existing.realm(),
+            existing.nonce_prefix()
+        );
+        true
     }
 
     // ─── Nextcloud OCS / Trashbin helpers ─────────────────────────────
@@ -3339,7 +3410,7 @@ impl StorageProvider for WebDavProvider {
 
         let mut last_status = StatusCode::NOT_FOUND;
         for attempt in attempts {
-            let response = self
+            let mut response = self
                 .request(webdav_methods::propfind(), attempt)
                 .header("Depth", "0")
                 .header("Content-Type", "application/xml")
@@ -3347,6 +3418,23 @@ impl StorageProvider for WebDavProvider {
                 .send()
                 .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            // A 401 is ambiguous twice over here: a rotated nonce, or the
+            // slash-stripped redirect the second attempt form exists for.
+            // Settle the rotation first, once, because the collection form
+            // cannot repair a dead nonce; a 401 that survives the replay
+            // still falls through to that second form below.
+            if response.status() == StatusCode::UNAUTHORIZED && self.adopt_rotated_nonce(&response)
+            {
+                response = self
+                    .request(webdav_methods::propfind(), attempt)
+                    .header("Depth", "0")
+                    .header("Content-Type", "application/xml")
+                    .body(PROPFIND_BODY)
+                    .send()
+                    .await
+                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            }
 
             match response.status() {
                 StatusCode::OK | StatusCode::MULTI_STATUS => {
@@ -3441,7 +3529,7 @@ impl StorageProvider for WebDavProvider {
         }
 
         for attempt in attempts {
-            let response = self
+            let mut response = self
                 .request(webdav_methods::propfind(), attempt)
                 .header("Depth", "0")
                 .header("Content-Type", "application/xml")
@@ -3449,6 +3537,22 @@ impl StorageProvider for WebDavProvider {
                 .send()
                 .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            // Same one-shot rotation repair as `stat`. Without it a nonce that
+            // rotates mid-listing silently degrades every server-side hash to
+            // "not available", which reads as "this server has no checksums"
+            // and sends the reconciler back to downloading whole files.
+            if response.status() == StatusCode::UNAUTHORIZED && self.adopt_rotated_nonce(&response)
+            {
+                response = self
+                    .request(webdav_methods::propfind(), attempt)
+                    .header("Depth", "0")
+                    .header("Content-Type", "application/xml")
+                    .body(PROPFIND_BODY)
+                    .send()
+                    .await
+                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            }
 
             match response.status() {
                 StatusCode::OK | StatusCode::MULTI_STATUS => {
@@ -3494,11 +3598,24 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let response = self
+        let mut response = self
             .request(Method::OPTIONS, "/")
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        // A probe is the cheapest possible place to discover a rotation, and
+        // the repair reaches every worker through the shared challenge. Left
+        // un-wired, the idle-timer probe is what marks a perfectly healthy
+        // session disconnected 300 seconds into a transfer, which is the
+        // user-visible shape of this bug.
+        if response.status() == StatusCode::UNAUTHORIZED && self.adopt_rotated_nonce(&response) {
+            response = self
+                .request(Method::OPTIONS, "/")
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        }
 
         if response.status() == StatusCode::UNAUTHORIZED {
             self.connected = false;
@@ -3898,11 +4015,24 @@ impl StorageProvider for WebDavProvider {
                 )
             })?;
 
-        let response = self
+        let mut response = self
             .request_url(webdav_methods::mkcol(), &folder_url)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        // MKCOL carries no body and is already treated as idempotent below
+        // (405 means a previous attempt created it), so replaying it once
+        // costs nothing and is safe. This is the head of the chunked upload:
+        // losing it to a rotation fails the whole multi-part transfer before
+        // a single chunk is sent.
+        if response.status() == StatusCode::UNAUTHORIZED && self.adopt_rotated_nonce(&response) {
+            response = self
+                .request_url(webdav_methods::mkcol(), &folder_url)
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        }
 
         match response.status() {
             // RFC 4918 §9.3.1: 201 Created. Some Nextcloud deployments
@@ -3998,7 +4128,32 @@ impl StorageProvider for WebDavProvider {
             })?;
 
         let part_len = body.len();
-        let response = self
+        // Capture the SOURCE, not the bytes. `into_reqwest_body` consumes the
+        // part, so a replay needs it again, and `DiskSlicePart` is an
+        // `Arc<PathBuf>` plus two integers: cloning it bumps a refcount and
+        // copies nothing. The second attempt re-opens and re-seeks the same
+        // window, which is exactly what `PartBody`'s replayability contract
+        // means by "disk re-opens and re-seeks".
+        //
+        // Buffering the bytes instead would be an unaccounted overcommit, not
+        // merely a cost: this provider returns true from
+        // `multipart_streams_part_body`, so the shaping profile reserves only
+        // one streaming window of `buffer_bytes` per part (DAG-P2-05). Holding
+        // a whole part to be able to replay it would put resident bytes the
+        // governor never leased in flight, once per concurrent part.
+        //
+        // `Owned` is deliberately not replayed. Its bytes are already fully
+        // resident, so copying them is the same overcommit, and it does not
+        // arise here in practice: both DAG sites build `disk_slice`, and
+        // `Owned` reaches this method only through the compat `upload_part`
+        // path. On that path a rotation still repairs the shared challenge for
+        // every sibling worker below, so the next part succeeds; only this one
+        // fails, exactly as it did before.
+        let replay = match &body {
+            crate::transfer_multipart::PartBody::DiskSlice(slice) => Some(slice.clone()),
+            crate::transfer_multipart::PartBody::Owned(_) => None,
+        };
+        let mut response = self
             .request_url(Method::PUT, &chunk_url)
             .header("Content-Length", part_len)
             .header("OC-Total-Length", payload.total_size)
@@ -4006,6 +4161,23 @@ impl StorageProvider for WebDavProvider {
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        // The batch case that motivated the whole deferral: eight clone workers
+        // share one challenge, the server rotates the nonce mid-upload, and
+        // every in-flight chunk 401s at once. One of them adopts the rotation
+        // and repairs the challenge for all of them.
+        if response.status() == StatusCode::UNAUTHORIZED && self.adopt_rotated_nonce(&response) {
+            if let Some(slice) = replay {
+                response = self
+                    .request_url(Method::PUT, &chunk_url)
+                    .header("Content-Length", part_len)
+                    .header("OC-Total-Length", payload.total_size)
+                    .body(crate::transfer_multipart::PartBody::DiskSlice(slice).into_reqwest_body())
+                    .send()
+                    .await
+                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            }
+        }
 
         match response.status() {
             // Nextcloud returns 201 Created for a new chunk and 204 No
@@ -4262,16 +4434,21 @@ impl StorageProvider for WebDavProvider {
         // counter: a nonce rotation seen by any worker repairs the whole pool
         // (see DigestState).
         //
-        // ACCEPTED DEBT, and the only one this release carries. The remaining
-        // gap is that only the PROPFIND path re-negotiates on `stale=true`; the
-        // data paths still map a 401 to "Session expired". With the shared
-        // challenge, one PROPFIND repairs every worker, so the window is a batch
-        // of in-flight files rather than the whole session, and the pre-existing
-        // single-stream path failed on nonce expiry too. Trigger to close it: a
-        // Digest-authenticated WebDAV server that rotates its nonce mid-batch,
-        // which is Apache mod_auth_digest at its default 300s lifetime. Deferred
-        // because the retry cannot be validated without a live Digest server and
-        // a blanket 401 retry would turn a revoked password into a retry storm.
+        // The accepted debt this carried is CLOSED. It used to read: only the
+        // PROPFIND path re-negotiates on `stale=true`, the data paths still map
+        // a 401 to "Session expired", deferred because a blanket 401 retry
+        // would turn a revoked password into a retry storm.
+        //
+        // What closed it was not the retry, it was making the retry decidable.
+        // `DigestChallenge` now carries `stale`, and `renegotiate` adopts a
+        // challenge only when it says `stale=true` AND offers a nonce we are
+        // not already holding, so a rotation is distinguishable from a
+        // credential failure and from a server that echoes a dead nonce. On
+        // that gate the data paths replay exactly once, through
+        // `adopt_rotated_nonce`: `stat`, `checksum`, `keep_alive`, the chunked
+        // MKCOL and the chunked part PUT. `list` is deliberately NOT among them
+        // because it goes through `send_propfind`, which already renegotiates;
+        // a retry there would be a second attempt, which is the storm itself.
         Ok(Box::new(self.clone()))
     }
 
@@ -5696,12 +5873,16 @@ mod tests {
             "shorter than the cut stays whole"
         );
 
-        assert!(state.renegotiate(r#"Digest realm="r", nonce="0123456789abcdef", qop="auth""#));
+        // `stale=true` is what makes these adoptions happen at all now: this
+        // test uses `renegotiate` purely as the way to swap the nonce, so the
+        // flag is scaffolding here, not the subject.
+        assert!(state
+            .renegotiate(r#"Digest realm="r", nonce="0123456789abcdef", qop="auth", stale=true"#));
         assert_eq!(state.nonce_prefix(), "0123456789ab", "longer is cut to 12");
 
         // A server is free to send a non-ASCII nonce, and a byte cut inside a
         // multi-byte character would panic.
-        assert!(state.renegotiate("Digest realm=\"r\", nonce=\"\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\", qop=\"auth\""));
+        assert!(state.renegotiate("Digest realm=\"r\", nonce=\"\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\u{e8}\", qop=\"auth\", stale=true"));
         let prefix = state.nonce_prefix();
         assert_eq!(prefix.chars().count(), 12, "cut on characters, not bytes");
     }
@@ -5722,6 +5903,230 @@ mod tests {
             state.nonce(),
             "old",
             "a refused challenge must change nothing"
+        );
+    }
+
+    /// Tracker #628 item 11. The gate that made the data-path retry safe
+    /// enough to wire at all: without `stale`, a revoked password and a
+    /// rotated nonce are the same event, and retrying on both is the storm
+    /// that kept this deferred for a release.
+    #[test]
+    fn renegotiate_adopts_only_a_genuine_rotation() {
+        let state = DigestState::parse(r#"Digest realm="r", nonce="old", qop="auth""#)
+            .expect("parse digest challenge");
+
+        // A perfectly parseable challenge with no `stale`: this is what a
+        // revoked password answers with. Adopting it would retry a credential
+        // failure once per request, forever.
+        assert!(
+            !state.renegotiate(r#"Digest realm="r", nonce="fresh", qop="auth""#),
+            "no stale is a credential failure, not a rotation"
+        );
+        assert_eq!(state.nonce(), "old", "a refusal must change nothing");
+
+        // `stale=false` is an explicit denial, not a missing field.
+        assert!(
+            !state.renegotiate(r#"Digest realm="r", nonce="fresh", qop="auth", stale=false"#),
+            "stale=false is not a rotation"
+        );
+        assert_eq!(state.nonce(), "old");
+
+        // The real thing.
+        assert!(
+            state.renegotiate(r#"Digest realm="r", nonce="fresh", qop="auth", stale=true"#),
+            "stale=true with a new nonce is the rotation we exist for"
+        );
+        assert_eq!(state.nonce(), "fresh", "the fresh nonce is adopted");
+    }
+
+    /// A server that answers `stale=true` while handing back the nonce that
+    /// just failed would have us retry against a dead nonce once per request.
+    /// The nonce comparison, not the flag, is what bounds that.
+    #[test]
+    fn renegotiate_refuses_a_stale_flag_on_an_unchanged_nonce() {
+        let state = DigestState::parse(r#"Digest realm="r", nonce="same", qop="auth""#)
+            .expect("parse digest challenge");
+        assert!(
+            !state.renegotiate(r#"Digest realm="r", nonce="same", qop="auth", stale=true"#),
+            "same nonce is not a rotation, however the server labels it"
+        );
+        assert_eq!(state.nonce(), "same");
+    }
+
+    /// RFC 2617 writes the flag bare; real servers quote it and case it as
+    /// they please. Apache mod_auth_digest sends `stale=true`, others send
+    /// `stale="TRUE"`. Reading only the bare lowercase form would leave the
+    /// rotation undetected on exactly the servers this closes the gap for.
+    #[test]
+    fn stale_is_parsed_bare_quoted_and_in_any_case() {
+        for header in [
+            r#"Digest realm="r", nonce="n1", qop="auth", stale=true"#,
+            r#"Digest realm="r", nonce="n1", qop="auth", stale="true""#,
+            r#"Digest realm="r", nonce="n1", qop="auth", stale=TRUE"#,
+            r#"Digest realm="r", nonce="n1", qop="auth", stale="True""#,
+        ] {
+            let challenge = DigestChallenge::parse(header).expect("parse challenge");
+            assert!(challenge.stale, "stale must be read from {header}");
+        }
+
+        for header in [
+            r#"Digest realm="r", nonce="n1", qop="auth""#,
+            r#"Digest realm="r", nonce="n1", qop="auth", stale=false"#,
+        ] {
+            let challenge = DigestChallenge::parse(header).expect("parse challenge");
+            assert!(!challenge.stale, "stale must be false for {header}");
+        }
+    }
+
+    // ── Data-path replay, against a real socket ──────────────────────────
+    //
+    // There is no HTTP mock in `[dev-dependencies]`, and none is needed: the
+    // project already tests wire behaviour with hand-rolled `TcpListener`
+    // stubs (`http_retry.rs`, `s3.rs`, `ttfb.rs`). `keep_alive` is the data
+    // path chosen here because it is a bare OPTIONS with no body and no XML,
+    // so what the assertions see is the retry decision and nothing else.
+
+    const ROTATED_401: &str = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Digest realm=\"r\", nonce=\"rotated\", qop=\"auth\", stale=true\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    const ROTATED_AGAIN_401: &str = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Digest realm=\"r\", nonce=\"rotated-twice\", qop=\"auth\", stale=true\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    const SAME_NONCE_401: &str = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Digest realm=\"r\", nonce=\"dead\", qop=\"auth\", stale=true\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    const OK_200: &str = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+    /// Serve one canned response per connection and count the connections.
+    /// Every response carries `Connection: close`, so the client opens a fresh
+    /// connection per request and the accept count IS the request count, which
+    /// is exactly the quantity a retry test needs to assert on. Requests past
+    /// the end of the list get the last response again.
+    async fn spawn_http_stub(
+        responses: Vec<&'static str>,
+    ) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let hits_task = std::sync::Arc::clone(&hits);
+
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let idx = hits_task.fetch_add(1, Ordering::SeqCst);
+                let reply = responses
+                    .get(idx)
+                    .copied()
+                    .unwrap_or_else(|| responses.last().copied().unwrap_or(OK_200));
+                // Drain the request head first: writing into a socket whose
+                // peer is still sending would race the response out.
+                let mut buf = [0u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let _ = socket.write_all(reply.as_bytes()).await;
+                let _ = socket.flush().await;
+            }
+        });
+
+        (format!("http://{addr}"), hits)
+    }
+
+    fn digest_provider(url: &str) -> WebDavProvider {
+        let mut provider = WebDavProvider::new(test_config(url)).expect("provider");
+        provider.connected = true;
+        provider.digest_auth = Some(
+            DigestState::parse(r#"Digest realm="r", nonce="dead", qop="auth""#).expect("state"),
+        );
+        provider
+    }
+
+    /// The behaviour the tracker item asks for: a rotation is survived, and it
+    /// costs exactly one extra request.
+    #[tokio::test]
+    async fn a_rotated_nonce_makes_a_data_path_replay_exactly_once() {
+        let (url, hits) = spawn_http_stub(vec![ROTATED_401, OK_200]).await;
+        let mut provider = digest_provider(&url);
+
+        provider
+            .keep_alive()
+            .await
+            .expect("a nonce rotation must not fail a healthy session");
+
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            2,
+            "one original request and one replay"
+        );
+        assert_eq!(
+            provider.digest_auth.as_ref().expect("digest state").nonce(),
+            "rotated",
+            "the replay must have used the rotated nonce"
+        );
+    }
+
+    /// The guard, and the reason this was deferred for a release. A server
+    /// that keeps answering 401 with the nonce we already hold is what a
+    /// revoked password looks like. It must cost ONE request, not a storm.
+    #[tokio::test]
+    async fn an_unchanged_nonce_is_not_replayed() {
+        let (url, hits) = spawn_http_stub(vec![SAME_NONCE_401]).await;
+        let mut provider = digest_provider(&url);
+
+        let err = provider
+            .keep_alive()
+            .await
+            .expect_err("an unrepairable 401 must still fail");
+        assert!(
+            matches!(err, ProviderError::AuthenticationFailed(_)),
+            "got {err:?}"
+        );
+
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "a credential failure must not be retried, even once"
+        );
+    }
+
+    /// Once, and only once. A server rotating the nonce on every response
+    /// would loop a caller that retried whenever the challenge looked fresh;
+    /// the replay is a straight-line `if`, so the second 401 is final.
+    #[tokio::test]
+    async fn a_second_rotation_is_not_chased() {
+        let (url, hits) = spawn_http_stub(vec![ROTATED_401, ROTATED_AGAIN_401, OK_200]).await;
+        let mut provider = digest_provider(&url);
+
+        provider
+            .keep_alive()
+            .await
+            .expect_err("a 401 surviving the single replay must fail");
+
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            2,
+            "the replay must not itself be retried"
+        );
+        assert_eq!(
+            provider.digest_auth.as_ref().expect("digest state").nonce(),
+            "rotated",
+            "only the first rotation is adopted"
+        );
+    }
+
+    /// The pool-wide half of the repair, at the tighter gate: one worker
+    /// adopting a rotation must fix every sibling, because the challenge is
+    /// shared. This is what keeps a batch of in-flight parts from each
+    /// needing its own 401.
+    #[test]
+    fn a_stale_rotation_adopted_by_one_worker_reaches_every_clone() {
+        let worker_a = DigestState::parse(r#"Digest realm="r", nonce="dead", qop="auth""#)
+            .expect("parse digest challenge");
+        let worker_b = worker_a.clone();
+
+        assert!(
+            worker_a.renegotiate(r#"Digest realm="r", nonce="rotated", qop="auth", stale=true"#)
+        );
+
+        assert_eq!(
+            worker_b.nonce(),
+            "rotated",
+            "the sibling must not still be presenting the dead nonce"
         );
     }
 }
