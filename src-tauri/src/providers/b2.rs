@@ -50,6 +50,23 @@ const HEADER_BUDGET_REDUCED: usize = 2048;
 /// The key is 24 bytes and a millisecond epoch is 13 digits today; the extra
 /// byte covers the day that becomes 14.
 const SRC_LAST_MODIFIED_INFO_BYTES: usize = "src_last_modified_millis".len() + 14;
+
+/// How many `fileInfo` bytes an upload of this size will actually send.
+///
+/// A single-shot upload carries `src_last_modified_millis`; the large-file
+/// path does not, because `b2_start_large_file` sends only `bucketId`,
+/// `fileName` and `contentType`. Charging the large path for metadata it never
+/// sends would make the check 38 bytes stricter than B2, and refuse a name B2
+/// would have accepted: the exact failure this check exists to prevent, in
+/// miniature. Reported by an automated review of the first version of this
+/// change, and confirmed against `start_large_file`.
+fn upload_info_extra(size: u64) -> usize {
+    if size > SINGLE_UPLOAD_RECOMMENDED_MAX {
+        0
+    } else {
+        SRC_LAST_MODIFIED_INFO_BYTES
+    }
+}
 const PLACEHOLDER_NAME: &str = ".bzEmpty";
 
 /// Upper bound on concurrent Range streams for multi-thread download
@@ -2237,12 +2254,14 @@ impl StorageProvider for B2Provider {
         let key = self.b2_key(&abs);
         // The upload below sends one `fileInfo` entry, and B2 counts it against
         // the same budget as the name.
-        let info_extra = SRC_LAST_MODIFIED_INFO_BYTES;
-        self.validate_header_budget(&key, info_extra)?;
         let metadata = tokio::fs::metadata(local_path)
             .await
             .map_err(|e| ProviderError::Other(format!("stat local: {}", e)))?;
         let size = metadata.len();
+        // The charge depends on which upload this turns out to be, so the size
+        // has to be known first.
+        let info_extra = upload_info_extra(size);
+        self.validate_header_budget(&key, info_extra)?;
         if size > SINGLE_UPLOAD_RECOMMENDED_MAX {
             // Large path: retry once on master-token failure during start_large_file.
             // progress is moved on first attempt; the rare retry runs without it.
@@ -3780,6 +3799,36 @@ mod tests {
         );
         assert!(untouched.to_string().contains("upload send: timeout"));
         assert!(!untouched.to_string().contains("readBucketEncryption"));
+    }
+
+    /// The charge must follow the upload that will actually happen. Charging a
+    /// large upload for metadata it never sends would refuse a name B2 accepts.
+    #[test]
+    fn only_the_single_shot_upload_is_charged_for_its_file_info() {
+        assert_eq!(upload_info_extra(0), SRC_LAST_MODIFIED_INFO_BYTES);
+        assert_eq!(
+            upload_info_extra(SINGLE_UPLOAD_RECOMMENDED_MAX),
+            SRC_LAST_MODIFIED_INFO_BYTES
+        );
+        assert_eq!(upload_info_extra(SINGLE_UPLOAD_RECOMMENDED_MAX + 1), 0);
+
+        // The 38 bytes are the whole difference between accepting and refusing
+        // a name at the edge of the reduced budget.
+        let at_edge = "x".repeat(HEADER_BUDGET_REDUCED);
+        let p = provider_with(budget_of(Setting::Reduces, Setting::DoesNot));
+        assert!(
+            p.validate_header_budget(
+                &at_edge,
+                upload_info_extra(SINGLE_UPLOAD_RECOMMENDED_MAX + 1)
+            )
+            .is_ok(),
+            "a large upload sends no fileInfo, so this name fits"
+        );
+        assert!(
+            p.validate_header_budget(&at_edge, upload_info_extra(1))
+                .is_err(),
+            "a single-shot upload does send one, so the same name does not"
+        );
     }
 
     #[test]
