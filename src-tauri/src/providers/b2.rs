@@ -37,7 +37,36 @@ const COPY_MAX_SIZE: u64 = 5 * 1024 * 1024 * 1024; // 5 GB hard limit on b2_copy
 const COPY_PART_MAX_SIZE: u64 = 5 * 1024 * 1024 * 1024; // 5 GB per b2_copy_part call
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024 * 1024 * 1024; // 10 TB practical ceiling
 const DEFAULT_LIST_PAGE: u32 = 1000;
+/// B2 caps `fileName` + `fileInfo` at 7 000 bytes, but only 2 048 on a bucket
+/// with server-side encryption or Object Lock. From 2026-09-14 Backblaze turns
+/// SSE-B2 on by default for new buckets and rolls it out to existing ones, so
+/// the smaller budget stops being the exception. Documented as: "For files that
+/// are encrypted with server-side encryption or files that are in Object
+/// Lock-enabled buckets, the limit is reduced to 2,048 bytes".
 const HEADER_BUDGET_STD: usize = 7000;
+const HEADER_BUDGET_REDUCED: usize = 2048;
+/// `upload` sends one `fileInfo` entry, `src_last_modified_millis`, and B2
+/// counts the whole `fileInfo` map against the same budget as the file name.
+/// The key is 24 bytes and a millisecond epoch is 13 digits today; the extra
+/// byte covers the day that becomes 14.
+const SRC_LAST_MODIFIED_INFO_BYTES: usize = "src_last_modified_millis".len() + 14;
+
+/// How many `fileInfo` bytes an upload of this size will actually send.
+///
+/// A single-shot upload carries `src_last_modified_millis`; the large-file
+/// path does not, because `b2_start_large_file` sends only `bucketId`,
+/// `fileName` and `contentType`. Charging the large path for metadata it never
+/// sends would make the check 38 bytes stricter than B2, and refuse a name B2
+/// would have accepted: the exact failure this check exists to prevent, in
+/// miniature. Reported by an automated review of the first version of this
+/// change, and confirmed against `start_large_file`.
+fn upload_info_extra(size: u64) -> usize {
+    if size > SINGLE_UPLOAD_RECOMMENDED_MAX {
+        0
+    } else {
+        SRC_LAST_MODIFIED_INFO_BYTES
+    }
+}
 const PLACEHOLDER_NAME: &str = ".bzEmpty";
 
 /// Upper bound on concurrent Range streams for multi-thread download
@@ -156,6 +185,213 @@ struct B2ApiError {
 struct B2Bucket {
     bucket_id: String,
     bucket_name: String,
+    /// Kept as raw JSON on purpose, and interpreted by [`bucket_encryption`].
+    ///
+    /// Backblaze's own documentation disagrees with itself here: the OpenAPI
+    /// schema on `b2-list-buckets` marks `value` as non-nullable while the
+    /// prose on the server-side-encryption page states it IS null when the key
+    /// lacks `readBucketEncryption`. A typed field would make some legal shape
+    /// fail to deserialise, and that error would not stop at the budget: it
+    /// would fail the whole bucket listing, that is, the connect. Trading a
+    /// wrong budget for a broken connection is a far worse deal than the defect
+    /// this field exists to fix, so nothing here can propagate a parse error
+    /// and every shape we do not recognise becomes `Unknown`.
+    #[serde(default)]
+    default_server_side_encryption: Option<serde_json::Value>,
+    /// Raw for the same reason, and with a third example of why: the OpenAPI
+    /// schema types `defaultRetention.period` as a string while its own
+    /// examples show an object. Nothing here may fail the bucket listing.
+    #[serde(default)]
+    file_lock_configuration: Option<serde_json::Value>,
+}
+
+/// What one bucket setting says about the header budget.
+///
+/// `Unknown` is a real answer, not a missing one: B2 wraps both settings in
+/// `isClientAuthorizedToRead`, and a key without the matching capability is
+/// told nothing. That is a fact about our key, never about the bucket, and
+/// bucket-restricted keys are the norm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Setting {
+    /// Read, and it lowers the budget.
+    Reduces,
+    /// Read, and it does not.
+    DoesNot,
+    /// B2 told us we may not read it: the field is absent, the wrapper is not
+    /// the documented shape, or `isClientAuthorizedToRead` is not true. The key
+    /// lacks the capability, and naming it is a statement we can defend.
+    Unauthorized,
+    /// We were authorised and read it, and the payload is not a shape Backblaze
+    /// documents. The key HAS the capability, so blaming a missing capability
+    /// here would assert something the response itself contradicts.
+    Unrecognised,
+}
+
+impl Setting {
+    /// Both of these mean "we do not know", and the budget treats them alike.
+    /// They differ only in what we may say about WHY, which is the whole point
+    /// of keeping them apart.
+    fn is_unknown(self) -> bool {
+        matches!(self, Setting::Unauthorized | Setting::Unrecognised)
+    }
+}
+
+/// The two documented reasons B2 lowers the budget, read independently.
+///
+/// They are NOT symmetric and must not be collapsed into one test. Encryption
+/// is read from `value.mode`; Object Lock is read from `value.isFileLockEnabled`
+/// and only from there, because "If default bucket retention is disabled, then
+/// mode and period will both be null" while the lock itself is on. Deciding the
+/// budget from `defaultRetention` would get exactly that state wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BucketBudget {
+    /// From `defaultServerSideEncryption`, gated by `readBucketEncryption`.
+    ///
+    /// `Reduces` here carries a derivation of ours, not a quoted rule.
+    /// Backblaze documents that "All uploads to that bucket, from the time
+    /// default encryption is enabled onward, will then be encrypted with SSE-B2
+    /// by default unless you explicitly specify SSE-C", and separately that
+    /// encrypted files get the 2 048 byte limit. That a bucket with default
+    /// encryption therefore gets the smaller budget follows from those two
+    /// documented statements; no single sentence says it.
+    encryption: Setting,
+    /// From `fileLockConfiguration`, gated by `readBucketRetentions`. Unlike
+    /// the above this needs no derivation: the limit is documented against
+    /// "files that are in Object Lock-enabled buckets", a property of the
+    /// bucket.
+    object_lock: Setting,
+}
+
+impl BucketBudget {
+    /// Before `resolve_bucket_id` has run we have read neither setting.
+    const UNREAD: Self = Self {
+        encryption: Setting::Unauthorized,
+        object_lock: Setting::Unauthorized,
+    };
+
+    /// B2's `fileName` + `fileInfo` budget for this bucket.
+    ///
+    /// An unread setting gets the standard budget on purpose. Our check is a
+    /// courtesy that turns B2's late refusal into an early, readable one; B2 is
+    /// the authority on what it accepts. Refusing a path B2 would have taken
+    /// would break a working setup with no way for the user to override us,
+    /// whereas the permissive choice leaves the authority to say no. What it
+    /// costs is the early warning on a bucket we cannot read, which
+    /// `reduced_budget_hint` explains after the fact instead.
+    fn bytes(self) -> usize {
+        if self.encryption == Setting::Reduces || self.object_lock == Setting::Reduces {
+            HEADER_BUDGET_REDUCED
+        } else {
+            HEADER_BUDGET_STD
+        }
+    }
+
+    /// Why the budget is the smaller one, for an error a reader can act on.
+    fn reduced_because(self) -> Option<&'static str> {
+        match (self.encryption, self.object_lock) {
+            (Setting::Reduces, Setting::Reduces) => {
+                Some("this bucket uses server-side encryption and has Object Lock enabled")
+            }
+            (Setting::Reduces, _) => Some("this bucket uses server-side encryption"),
+            (_, Setting::Reduces) => Some("this bucket has Object Lock enabled"),
+            _ => None,
+        }
+    }
+
+    /// The settings we could not read, named by the capability that would have
+    /// let us. Empty when both were readable.
+    fn unread_capabilities(self) -> Vec<&'static str> {
+        let mut missing = Vec::new();
+        if self.encryption == Setting::Unauthorized {
+            missing.push("readBucketEncryption");
+        }
+        if self.object_lock == Setting::Unauthorized {
+            missing.push("readBucketRetentions");
+        }
+        missing
+    }
+
+    /// True when a setting was read but not understood. Distinct from a missing
+    /// capability: here the key was allowed to look, so the hint must describe
+    /// the payload, not the permissions.
+    fn has_unrecognised(self) -> bool {
+        self.encryption == Setting::Unrecognised || self.object_lock == Setting::Unrecognised
+    }
+
+    /// Any reason at all that a setting could not be turned into an answer.
+    fn has_unknown(self) -> bool {
+        self.encryption.is_unknown() || self.object_lock.is_unknown()
+    }
+}
+
+/// What one of B2's capability-gated wrappers actually told us.
+///
+/// Both settings arrive as `{ "isClientAuthorizedToRead": bool, "value": ... }`.
+/// The two ways of not getting an answer are NOT the same fact and must not be
+/// collapsed: one is about our key, the other about the payload, and only the
+/// first justifies naming a missing capability.
+enum Wrapper<'a> {
+    /// B2 would not show it to us: absent, not an object, or the flag is not
+    /// true. Documented as `isClientAuthorizedToRead` false with a null value.
+    Denied,
+    /// Shown to us, and the payload is an object we can look inside.
+    Value(&'a serde_json::Map<String, serde_json::Value>),
+    /// Shown to us, and the payload is not the shape Backblaze documents. The
+    /// key has the capability, so blaming one here would contradict the
+    /// response itself.
+    Unusable,
+}
+
+fn read_wrapper(field: Option<&serde_json::Value>) -> Wrapper<'_> {
+    let Some(serde_json::Value::Object(wrapper)) = field else {
+        return Wrapper::Denied;
+    };
+    if wrapper.get("isClientAuthorizedToRead") != Some(&serde_json::Value::Bool(true)) {
+        return Wrapper::Denied;
+    }
+    match wrapper.get("value") {
+        Some(serde_json::Value::Object(value)) => Wrapper::Value(value),
+        _ => Wrapper::Unusable,
+    }
+}
+
+/// Read both budget-relevant settings out of a `b2_list_buckets` entry.
+///
+/// Every shape that is not the documented one lands on `Unknown`, which the
+/// permissive budget turns into today's behaviour. Reading an unrecognised
+/// shape as `DoesNot` would assert "this bucket does not lower the budget" on
+/// no evidence, which is guessing, only quieter.
+fn bucket_budget(bucket: &B2Bucket) -> BucketBudget {
+    let encryption = match read_wrapper(bucket.default_server_side_encryption.as_ref()) {
+        Wrapper::Value(value) => match value.get("mode") {
+            // Documented when disabled: "algorithm and mode will both be
+            // returned as null".
+            Some(serde_json::Value::Null) => Setting::DoesNot,
+            // Documented when enabled: `{ "algorithm": "AES256", "mode":
+            // "SSE-B2" }`. Any other mode Backblaze may add still encrypts.
+            Some(serde_json::Value::String(mode)) if !mode.is_empty() => Setting::Reduces,
+            // Authorised, so the key is not the problem: the payload is.
+            _ => Setting::Unrecognised,
+        },
+        Wrapper::Unusable => Setting::Unrecognised,
+        Wrapper::Denied => Setting::Unauthorized,
+    };
+    let object_lock = match read_wrapper(bucket.file_lock_configuration.as_ref()) {
+        // `isFileLockEnabled` and only that. The lock can be on while
+        // `defaultRetention` is `{ "mode": null, "period": null }`, so reading
+        // the retention instead would call that bucket unlocked.
+        Wrapper::Value(value) => match value.get("isFileLockEnabled") {
+            Some(serde_json::Value::Bool(true)) => Setting::Reduces,
+            Some(serde_json::Value::Bool(false)) => Setting::DoesNot,
+            _ => Setting::Unrecognised,
+        },
+        Wrapper::Unusable => Setting::Unrecognised,
+        Wrapper::Denied => Setting::Unauthorized,
+    };
+    BucketBudget {
+        encryption,
+        object_lock,
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -325,6 +561,9 @@ pub struct B2Provider {
     download_url: String,
     auth_token: SecretString,
     bucket_id: String,
+    /// Drives the header budget. Unread until `resolve_bucket_id` has run, and
+    /// it stays unread for a key that may not see the settings.
+    bucket_budget: BucketBudget,
 
     current_path: String,
     connected: bool,
@@ -353,6 +592,7 @@ impl B2Provider {
             download_url: String::new(),
             auth_token: SecretString::new(String::new().into()),
             bucket_id: String::new(),
+            bucket_budget: BucketBudget::UNREAD,
             current_path: "/".to_string(),
             connected: false,
             multi_thread_streams: 1,
@@ -468,6 +708,7 @@ impl B2Provider {
                     bucket_name
                 ))
             })?;
+        self.bucket_budget = bucket_budget(&target);
         self.bucket_id = target.bucket_id;
         Ok(())
     }
@@ -510,13 +751,136 @@ impl B2Provider {
         file_name: &str,
         info_extra: usize,
     ) -> Result<(), ProviderError> {
-        if file_name.len() + info_extra > HEADER_BUDGET_STD {
+        let used = file_name.len() + info_extra;
+        let budget = self.bucket_budget.bytes();
+        if used > budget {
+            let because = match self.bucket_budget.reduced_because() {
+                Some(reason) => format!(" ({reason})"),
+                None => String::new(),
+            };
             return Err(ProviderError::InvalidConfig(format!(
-                "file name + metadata exceed B2 header budget ({} bytes)",
-                HEADER_BUDGET_STD
+                "file name + metadata are {used} bytes, over B2's {budget}-byte header budget{because}"
             )));
         }
         Ok(())
+    }
+
+    /// What to add to a B2 rejection when we let through an upload the smaller
+    /// budget would have stopped.
+    ///
+    /// This is the honest half of the permissive choice in
+    /// [`BucketBudget::bytes`]: on a bucket whose settings we may not read, a
+    /// path over 2 048 bytes is accepted here and can be refused by B2 with an
+    /// error that explains nothing. The hint names what we could NOT read and
+    /// which capability would have let us, and deliberately does not claim the
+    /// bucket is encrypted or locked, because we have no basis for either and
+    /// asserting one would be the same mistake in words.
+    /// The name as it actually travels: `X-Bz-File-Name` carries it
+    /// percent-encoded, and encoding only ever grows it. A space becomes `%20`,
+    /// an accented letter's two UTF-8 bytes become six characters.
+    fn encoded_len(file_name: &str) -> usize {
+        urlencoding::encode(file_name).len()
+    }
+
+    /// What to add when the name we measured and the name we sent differ enough
+    /// to matter.
+    ///
+    /// Backblaze documents the 7000 byte cap and, separately, that the header
+    /// is "in percent-encoded UTF-8", and never says which form the cap applies
+    /// to. So we refuse only on the raw length, which cannot be stricter than
+    /// B2 under either reading, and when the encoded form is the one that
+    /// overflows we say so instead of blocking. Being wrong about which form
+    /// B2 measures then costs an explained late refusal, not a refusal of names
+    /// B2 would have taken.
+    fn encoded_length_hint(&self, file_name: &str, info_extra: usize) -> Option<String> {
+        let raw = file_name.len() + info_extra;
+        let encoded = Self::encoded_len(file_name) + info_extra;
+        let budget = self.bucket_budget.bytes();
+        if raw > budget || encoded <= budget {
+            return None;
+        }
+        Some(format!(
+            "the name is {raw} bytes but travels percent-encoded as {encoded}, over the \
+             {budget}-byte budget; B2 does not document which of the two forms the limit applies \
+             to, so this upload was not refused locally"
+        ))
+    }
+
+    fn reduced_budget_hint(&self, file_name: &str, info_extra: usize) -> Option<String> {
+        if !self.bucket_budget.has_unknown() {
+            return None;
+        }
+        // Measured on the encoded form, the same metre `encoded_length_hint`
+        // uses. On the raw one the two hints leave a hole exactly where both
+        // uncertainties meet: a bucket we could not read, and a name that fits
+        // raw but not encoded. There neither hint fired and the upload failed
+        // with nothing said, which is the one case this PR exists to cover.
+        // Encoding never shortens, so this is also never quieter than before.
+        let used = Self::encoded_len(file_name) + info_extra;
+        if used <= HEADER_BUDGET_REDUCED {
+            return None;
+        }
+        // Say why we could not tell, and say only what is true. A key that was
+        // allowed to read the setting and got back a payload we did not
+        // recognise does NOT lack the capability, and telling the reader it
+        // does would be a false statement dressed as a diagnosis.
+        let unread = self.bucket_budget.unread_capabilities();
+        let because = match (unread.as_slice(), self.bucket_budget.has_unrecognised()) {
+            ([], _) => "the bucket's settings came back in a shape this build does not recognise"
+                .to_string(),
+            (caps, false) => format!(
+                "this application key cannot read {} (it lacks the {} capability)",
+                if caps.len() == 2 {
+                    "the bucket's encryption or Object Lock settings"
+                } else if caps[0] == "readBucketEncryption" {
+                    "the bucket's encryption setting"
+                } else {
+                    "the bucket's Object Lock setting"
+                },
+                caps.join(" / ")
+            ),
+            (caps, true) => format!(
+                "this application key lacks the {} capability, and the other setting came back in \
+                 a shape this build does not recognise",
+                caps.join(" / ")
+            ),
+        };
+        Some(format!(
+            "file name + metadata are {used} bytes; {because}, and B2 lowers the limit from \
+             {HEADER_BUDGET_STD} to {HEADER_BUDGET_REDUCED} bytes on a bucket with server-side \
+             encryption or Object Lock"
+        ))
+    }
+
+    fn annotate_with_reduced_budget(
+        &self,
+        err: ProviderError,
+        status: Option<u16>,
+        file_name: &str,
+        info_extra: usize,
+    ) -> ProviderError {
+        // Only a 400 can be a rejected budget. `map_b2_status` funnels 403,
+        // 503 and its catch-all into the same `ServerError`, so the variant
+        // alone cannot tell a bad request from a permission error or an
+        // outage: attaching a note about header budgets to either of those
+        // would be answering a question nobody asked.
+        if status != Some(400) {
+            return err;
+        }
+        let ProviderError::ServerError(ref message) = err else {
+            return err;
+        };
+        let hints: Vec<String> = [
+            self.encoded_length_hint(file_name, info_extra),
+            self.reduced_budget_hint(file_name, info_extra),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        if hints.is_empty() {
+            return err;
+        }
+        ProviderError::ServerError(format!("{message}. {}", hints.join(". ")))
     }
 
     async fn list_file_names(
@@ -1995,11 +2359,28 @@ impl StorageProvider for B2Provider {
         }
         let abs = self.resolved_path(remote_path);
         let key = self.b2_key(&abs);
-        self.validate_header_budget(&key, 0)?;
+        // The upload below sends one `fileInfo` entry, and B2 counts it against
+        // the same budget as the name.
         let metadata = tokio::fs::metadata(local_path)
             .await
             .map_err(|e| ProviderError::Other(format!("stat local: {}", e)))?;
         let size = metadata.len();
+        // The charge depends on which upload this turns out to be, so the size
+        // has to be known first. It also depends on whether the one header we
+        // send is actually sendable: `src_last_modified_millis` is written only
+        // when the local mtime is readable (see below), so charging for it
+        // unconditionally would bill bytes that never leave.
+        let mtime_millis = metadata
+            .modified()
+            .ok()
+            .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis().to_string());
+        let info_extra = if mtime_millis.is_some() {
+            upload_info_extra(size)
+        } else {
+            0
+        };
+        self.validate_header_budget(&key, info_extra)?;
         if size > SINGLE_UPLOAD_RECOMMENDED_MAX {
             // Large path: retry once on master-token failure during start_large_file.
             // progress is moved on first attempt; the rare retry runs without it.
@@ -2047,13 +2428,11 @@ impl StorageProvider for B2Provider {
             )
             .header(CONTENT_TYPE, "b2/x-auto")
             .header(HeaderName::from_static("x-bz-content-sha1"), &sha1);
-        if let Ok(modified) = metadata.modified() {
-            if let Ok(epoch) = modified.duration_since(std::time::UNIX_EPOCH) {
-                req = req.header(
-                    HeaderName::from_static("x-bz-info-src_last_modified_millis"),
-                    epoch.as_millis().to_string(),
-                );
-            }
+        if let Some(ref millis) = mtime_millis {
+            req = req.header(
+                HeaderName::from_static("x-bz-info-src_last_modified_millis"),
+                millis,
+            );
         }
         if let Some(ref p) = progress {
             p(0, size);
@@ -2066,7 +2445,12 @@ impl StorageProvider for B2Provider {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(map_b2_status(status, &text, "b2_upload_file"));
+            return Err(self.annotate_with_reduced_budget(
+                map_b2_status(status, &text, "b2_upload_file"),
+                Some(status.as_u16()),
+                &key,
+                info_extra,
+            ));
         }
         let parsed: UploadFileResponse = resp
             .json()
@@ -2123,10 +2507,11 @@ impl StorageProvider for B2Provider {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(map_b2_status(
-                status,
-                &text,
-                "b2_upload_file (mkdir placeholder)",
+            return Err(self.annotate_with_reduced_budget(
+                map_b2_status(status, &text, "b2_upload_file (mkdir placeholder)"),
+                Some(status.as_u16()),
+                &key,
+                0,
             ));
         }
         Ok(())
@@ -2704,7 +3089,13 @@ impl StorageProvider for B2Provider {
         let abs = self.resolved_path(remote_path);
         let key = self.b2_key(&abs);
         self.validate_header_budget(&key, 0)?;
-        let started = self.start_large_file(&key).await?;
+        let started = self
+            .start_large_file(&key)
+            .await
+            // No status here: `start_large_file` has already mapped it away, and
+            // inferring one from the message text is the guess this change
+            // removed. Better no hint than a hint attached to the wrong error.
+            .map_err(|e| self.annotate_with_reduced_budget(e, None, &key, 0))?;
         Ok(MultipartHandle {
             upload_id: started.file_id,
             remote_path: key,
@@ -3204,6 +3595,515 @@ mod tests {
             .is_ok());
     }
 
+    // ── Reduced header budget (SSE default from 2026-09-14, Object Lock) ───
+
+    fn bucket_from(json: serde_json::Value) -> B2Bucket {
+        serde_json::from_value(json).expect("bucket parses")
+    }
+
+    /// A bucket entry carrying one setting, with the other left absent.
+    fn bucket_with(field: &str, wrapper: serde_json::Value) -> B2Bucket {
+        let mut json = serde_json::json!({ "bucketId": "i", "bucketName": "n" });
+        json[field] = wrapper;
+        bucket_from(json)
+    }
+
+    fn authorized(value: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({ "isClientAuthorizedToRead": true, "value": value })
+    }
+
+    fn provider_with(budget: BucketBudget) -> B2Provider {
+        let mut p = B2Provider::new(B2Config {
+            application_key_id: "id".into(),
+            application_key: SecretString::new("k".into()),
+            bucket: "b".into(),
+            initial_path: None,
+        });
+        p.bucket_budget = budget;
+        p
+    }
+
+    fn budget_of(encryption: Setting, object_lock: Setting) -> BucketBudget {
+        BucketBudget {
+            encryption,
+            object_lock,
+        }
+    }
+
+    // ── Encryption, gated by readBucketEncryption ──────────────────────────
+
+    #[test]
+    fn an_encrypting_bucket_reduces_the_budget() {
+        let bucket = bucket_with(
+            "defaultServerSideEncryption",
+            authorized(serde_json::json!({ "algorithm": "AES256", "mode": "SSE-B2" })),
+        );
+        assert_eq!(bucket_budget(&bucket).encryption, Setting::Reduces);
+    }
+
+    /// Documented for a disabled default: "algorithm and mode will both be
+    /// returned as null."
+    #[test]
+    fn a_plain_bucket_does_not_reduce_the_budget() {
+        let bucket = bucket_with(
+            "defaultServerSideEncryption",
+            authorized(serde_json::json!({ "algorithm": null, "mode": null })),
+        );
+        assert_eq!(bucket_budget(&bucket).encryption, Setting::DoesNot);
+    }
+
+    // ── Object Lock, gated by readBucketRetentions ─────────────────────────
+
+    /// The trap this pair exists for: the lock can be ON while its default
+    /// retention is off, and B2 documents exactly that shape. Reading
+    /// `defaultRetention` instead of `isFileLockEnabled` would call the second
+    /// bucket unlocked and hand it the 7 000 byte budget it must not have.
+    #[test]
+    fn object_lock_is_read_from_the_flag_not_from_the_retention() {
+        let with_retention = bucket_with(
+            "fileLockConfiguration",
+            authorized(serde_json::json!({
+                "defaultRetention": { "mode": "governance", "period": { "duration": 2, "unit": "years" } },
+                "isFileLockEnabled": true
+            })),
+        );
+        assert_eq!(bucket_budget(&with_retention).object_lock, Setting::Reduces);
+
+        // "If default bucket retention is disabled, then mode and period will
+        // both be null" - and the lock is still enabled.
+        let without_retention = bucket_with(
+            "fileLockConfiguration",
+            authorized(serde_json::json!({
+                "defaultRetention": { "mode": null, "period": null },
+                "isFileLockEnabled": true
+            })),
+        );
+        assert_eq!(
+            bucket_budget(&without_retention).object_lock,
+            Setting::Reduces,
+            "a lock with no default retention is still a lock"
+        );
+    }
+
+    #[test]
+    fn an_unlocked_bucket_does_not_reduce_the_budget() {
+        let bucket = bucket_with(
+            "fileLockConfiguration",
+            authorized(serde_json::json!({
+                "defaultRetention": { "mode": null, "period": null },
+                "isFileLockEnabled": false
+            })),
+        );
+        assert_eq!(bucket_budget(&bucket).object_lock, Setting::DoesNot);
+    }
+
+    // ── The three ways we end up not knowing, for either setting ───────────
+
+    /// Cause 1: the field is absent. The prose does not describe this, but the
+    /// OpenAPI schema marks both fields optional, so it is legal.
+    #[test]
+    fn absent_fields_leave_both_settings_unknown() {
+        let bucket = bucket_from(serde_json::json!({ "bucketId": "i", "bucketName": "n" }));
+        let budget = bucket_budget(&bucket);
+        assert_eq!(budget.encryption, Setting::Unauthorized);
+        assert_eq!(budget.object_lock, Setting::Unauthorized);
+    }
+
+    /// Cause 2: the key may list buckets but not read these settings, which is
+    /// the normal shape of a bucket-restricted key. Documented for both:
+    /// `isClientAuthorizedToRead` false and `value` null.
+    #[test]
+    fn an_unauthorized_key_leaves_the_setting_unknown() {
+        let denied = serde_json::json!({ "isClientAuthorizedToRead": false, "value": null });
+        assert_eq!(
+            bucket_budget(&bucket_with("defaultServerSideEncryption", denied.clone())).encryption,
+            Setting::Unauthorized
+        );
+        assert_eq!(
+            bucket_budget(&bucket_with("fileLockConfiguration", denied)).object_lock,
+            Setting::Unauthorized
+        );
+    }
+
+    /// Cause 3: authorised, but the payload is not a shape Backblaze documents.
+    /// None of these may be read as "this bucket does not lower the budget".
+    #[test]
+    fn an_undocumented_payload_leaves_the_setting_unknown() {
+        for value in [
+            serde_json::json!(null),
+            serde_json::json!("SSE-B2"),
+            serde_json::json!({}),
+            serde_json::json!({ "mode": "" }),
+            serde_json::json!({ "mode": 7 }),
+        ] {
+            let bucket = bucket_with("defaultServerSideEncryption", authorized(value.clone()));
+            assert_eq!(
+                bucket_budget(&bucket).encryption,
+                Setting::Unrecognised,
+                "value {value} must not be read as a definite answer"
+            );
+        }
+        for value in [
+            serde_json::json!(null),
+            serde_json::json!({}),
+            serde_json::json!({ "isFileLockEnabled": "true" }),
+            serde_json::json!({ "defaultRetention": { "mode": null, "period": null } }),
+        ] {
+            let bucket = bucket_with("fileLockConfiguration", authorized(value.clone()));
+            assert_eq!(
+                bucket_budget(&bucket).object_lock,
+                Setting::Unrecognised,
+                "value {value} must not be read as a definite answer"
+            );
+        }
+    }
+
+    /// The guarantee that matters most: no shape of either field may fail the
+    /// deserialisation, because that error would not stop at the budget, it
+    /// would fail `b2_list_buckets` and therefore the connect. Backblaze's
+    /// documentation contradicts itself in three places about these types, so
+    /// nothing can be trusted to bound what arrives.
+    #[test]
+    fn no_shape_of_either_field_can_break_the_bucket_listing() {
+        let hostile = [
+            serde_json::json!(null),
+            serde_json::json!("nonsense"),
+            serde_json::json!(42),
+            serde_json::json!([1, 2, 3]),
+            serde_json::json!({ "isClientAuthorizedToRead": "yes", "value": {} }),
+            serde_json::json!({ "isClientAuthorizedToRead": true }),
+            serde_json::json!({ "unexpected": true }),
+        ];
+        for field in ["defaultServerSideEncryption", "fileLockConfiguration"] {
+            for shape in &hostile {
+                let parsed: Result<B2Bucket, _> = serde_json::from_value(serde_json::json!({
+                    "bucketId": "i",
+                    "bucketName": "n",
+                    field: shape
+                }));
+                let bucket = parsed.expect("the bucket must still parse");
+                let budget = bucket_budget(&bucket);
+                assert_eq!(budget.bytes(), HEADER_BUDGET_STD);
+                assert!(!budget.unread_capabilities().is_empty());
+            }
+        }
+    }
+
+    // ── The budget, and the choice inside Unknown ──────────────────────────
+
+    #[test]
+    fn either_reason_alone_is_enough_to_reduce_the_budget() {
+        assert_eq!(
+            budget_of(Setting::Reduces, Setting::DoesNot).bytes(),
+            HEADER_BUDGET_REDUCED
+        );
+        assert_eq!(
+            budget_of(Setting::DoesNot, Setting::Reduces).bytes(),
+            HEADER_BUDGET_REDUCED
+        );
+        assert_eq!(
+            budget_of(Setting::DoesNot, Setting::DoesNot).bytes(),
+            HEADER_BUDGET_STD
+        );
+        // A reason we CAN see wins over one we cannot.
+        assert_eq!(
+            budget_of(Setting::Unauthorized, Setting::Reduces).bytes(),
+            HEADER_BUDGET_REDUCED
+        );
+        // The deliberate choice: B2 is the authority on what it accepts, so we
+        // never refuse a path it might take.
+        assert_eq!(BucketBudget::UNREAD.bytes(), HEADER_BUDGET_STD);
+    }
+
+    #[test]
+    fn a_long_path_is_refused_only_where_a_reason_was_actually_read() {
+        let long = "x".repeat(HEADER_BUDGET_REDUCED + 1);
+        assert!(provider_with(budget_of(Setting::Reduces, Setting::DoesNot))
+            .validate_header_budget(&long, 0)
+            .is_err());
+        assert!(provider_with(budget_of(Setting::DoesNot, Setting::Reduces))
+            .validate_header_budget(&long, 0)
+            .is_err());
+        assert!(provider_with(budget_of(Setting::DoesNot, Setting::DoesNot))
+            .validate_header_budget(&long, 0)
+            .is_ok());
+        assert!(provider_with(BucketBudget::UNREAD)
+            .validate_header_budget(&long, 0)
+            .is_ok());
+    }
+
+    #[test]
+    fn the_refusal_names_the_reason_it_was_refused_for() {
+        let long = "x".repeat(HEADER_BUDGET_REDUCED + 1);
+        let cases = [
+            (
+                budget_of(Setting::Reduces, Setting::DoesNot),
+                "server-side encryption",
+            ),
+            (
+                budget_of(Setting::DoesNot, Setting::Reduces),
+                "Object Lock enabled",
+            ),
+            (
+                budget_of(Setting::Reduces, Setting::Reduces),
+                "encryption and has Object Lock",
+            ),
+        ];
+        for (budget, expected) in cases {
+            let text = provider_with(budget)
+                .validate_header_budget(&long, 0)
+                .expect_err("over the reduced budget")
+                .to_string();
+            assert!(text.contains("2048"), "must name the budget: {text}");
+            assert!(text.contains(expected), "must say why: {text}");
+        }
+    }
+
+    // ── The hint, for the case the check cannot warn about in advance ──────
+
+    #[test]
+    fn the_hint_names_the_capability_we_lack_without_claiming_what_we_did_not_read() {
+        let long = "x".repeat(HEADER_BUDGET_REDUCED + 1);
+
+        let both = provider_with(BucketBudget::UNREAD)
+            .reduced_budget_hint(&long, 0)
+            .expect("neither setting read, path over the smaller budget");
+        assert!(both.contains("readBucketEncryption"), "{both}");
+        assert!(both.contains("readBucketRetentions"), "{both}");
+        assert!(both.contains("2048") && both.contains("7000"), "{both}");
+        // The whole point: we never say the bucket IS encrypted or locked.
+        assert!(
+            !both.contains("this bucket uses") && !both.contains("this bucket has"),
+            "the hint must not assert what we could not read: {both}"
+        );
+
+        // Only one setting unreadable: name only that one.
+        let only_lock = provider_with(budget_of(Setting::DoesNot, Setting::Unauthorized))
+            .reduced_budget_hint(&long, 0)
+            .expect("Object Lock unread");
+        assert!(only_lock.contains("readBucketRetentions"), "{only_lock}");
+        assert!(!only_lock.contains("readBucketEncryption"), "{only_lock}");
+    }
+
+    #[test]
+    fn the_hint_stays_quiet_when_it_has_nothing_to_add() {
+        let long = "x".repeat(HEADER_BUDGET_REDUCED + 1);
+        // Nothing to say when both settings were read, either way.
+        assert!(provider_with(budget_of(Setting::Reduces, Setting::DoesNot))
+            .reduced_budget_hint(&long, 0)
+            .is_none());
+        assert!(provider_with(budget_of(Setting::DoesNot, Setting::DoesNot))
+            .reduced_budget_hint(&long, 0)
+            .is_none());
+        // Nor when the path fits the smaller budget anyway.
+        assert!(provider_with(BucketBudget::UNREAD)
+            .reduced_budget_hint("photos/cats/fluffy.jpg", 0)
+            .is_none());
+    }
+
+    #[test]
+    fn only_a_server_error_is_annotated() {
+        let long = "x".repeat(HEADER_BUDGET_REDUCED + 1);
+        let p = provider_with(BucketBudget::UNREAD);
+
+        let annotated = p.annotate_with_reduced_budget(
+            ProviderError::ServerError("b2_upload_file (400): bad_request".into()),
+            Some(400),
+            &long,
+            0,
+        );
+        assert!(annotated.to_string().contains("readBucketEncryption"));
+
+        // A network or auth failure is not the budget's fault; leave it alone.
+        let untouched = p.annotate_with_reduced_budget(
+            ProviderError::ConnectionFailed("upload send: timeout".into()),
+            Some(400),
+            &long,
+            0,
+        );
+        assert!(untouched.to_string().contains("upload send: timeout"));
+        assert!(!untouched.to_string().contains("readBucketEncryption"));
+    }
+
+    /// The defect this split exists for: a key that WAS allowed to read the
+    /// setting, and got back a payload we did not recognise, does not lack the
+    /// capability. Saying it does is a false statement dressed as a diagnosis.
+    #[test]
+    fn an_unrecognised_payload_is_never_blamed_on_a_missing_capability() {
+        let long = "x".repeat(HEADER_BUDGET_REDUCED + 1);
+        let hint = provider_with(budget_of(Setting::Unrecognised, Setting::Unrecognised))
+            .reduced_budget_hint(&long, 0)
+            .expect("neither setting usable, path over the smaller budget");
+        assert!(
+            !hint.contains("capability"),
+            "the key has the capability here: {hint}"
+        );
+        assert!(
+            hint.contains("shape this build does not recognise"),
+            "{hint}"
+        );
+
+        // Mixed: one cause each, and both must be described truthfully.
+        let mixed = provider_with(budget_of(Setting::Unauthorized, Setting::Unrecognised))
+            .reduced_budget_hint(&long, 0)
+            .expect("one unauthorised, one unrecognised");
+        assert!(mixed.contains("readBucketEncryption"), "{mixed}");
+        assert!(mixed.contains("does not recognise"), "{mixed}");
+        assert!(
+            !mixed.contains("readBucketRetentions"),
+            "that capability is present, so it must not be named: {mixed}"
+        );
+    }
+
+    /// `map_b2_status` funnels 403, 503 and its catch-all into the same
+    /// `ServerError`, so the variant cannot say which it was. Only a 400 can be
+    /// a rejected budget; the others must be left alone.
+    #[test]
+    fn only_a_bad_request_is_annotated_not_every_server_error() {
+        let long = "x".repeat(HEADER_BUDGET_REDUCED + 1);
+        let p = provider_with(BucketBudget::UNREAD);
+
+        let bad_request = p.annotate_with_reduced_budget(
+            ProviderError::ServerError("b2_upload_file (400): bad_request".into()),
+            Some(400),
+            &long,
+            0,
+        );
+        assert!(bad_request.to_string().contains("readBucketEncryption"));
+
+        for (status, message) in [
+            (403u16, "b2_upload_file: access denied"),
+            (503u16, "b2_upload_file: service unavailable"),
+        ] {
+            let other = p.annotate_with_reduced_budget(
+                ProviderError::ServerError(message.into()),
+                Some(status),
+                &long,
+                0,
+            );
+            assert_eq!(
+                other.to_string(),
+                format!("Server error: {message}"),
+                "a {status} is not a budget refusal and must not be annotated"
+            );
+        }
+
+        // No status available at all: no hint, rather than a guess.
+        let unknown_status = p.annotate_with_reduced_budget(
+            ProviderError::ServerError("b2_start_large_file: something".into()),
+            None,
+            &long,
+            0,
+        );
+        assert!(!unknown_status.to_string().contains("readBucketEncryption"));
+    }
+
+    /// The gap the two hints left between them: a bucket whose settings we
+    /// could not read, and a name that fits raw and overflows once encoded.
+    /// Before this, neither hint fired and the upload failed in silence.
+    #[test]
+    fn the_two_hints_leave_no_silent_gap_between_them() {
+        // Each space triples under encoding: 700 raw become 2100, which with
+        // the metadata charge is over the reduced budget and far under the
+        // standard one. The raw form fits comfortably.
+        let spacey = " ".repeat(700);
+        let p = provider_with(BucketBudget::UNREAD);
+        let used_raw = spacey.len() + SRC_LAST_MODIFIED_INFO_BYTES;
+        assert!(
+            used_raw <= HEADER_BUDGET_REDUCED,
+            "the raw form must fit, or the case is not the one under test"
+        );
+        assert!(
+            B2Provider::encoded_len(&spacey) + SRC_LAST_MODIFIED_INFO_BYTES > HEADER_BUDGET_REDUCED,
+            "and the encoded form must not, or there is no gap to close"
+        );
+        let annotated = p.annotate_with_reduced_budget(
+            ProviderError::ServerError("b2_upload_file (400): bad_request".into()),
+            Some(400),
+            &spacey,
+            SRC_LAST_MODIFIED_INFO_BYTES,
+        );
+        let text = annotated.to_string();
+        assert!(
+            text.contains("readBucketEncryption") || text.contains("percent-encoded"),
+            "an upload that failed here must not be answered with silence: {text}"
+        );
+    }
+
+    /// Backblaze documents the byte cap and the percent-encoded header
+    /// separately and never says which form the cap applies to. So a name that
+    /// fits raw and overflows encoded is NOT refused locally, and the rejection
+    /// that may follow explains itself.
+    #[test]
+    fn a_name_that_only_overflows_once_encoded_is_explained_not_refused() {
+        // Spaces triple under encoding: 800 of them are 800 bytes raw, 2400
+        // encoded, so this straddles the reduced budget.
+        let spacey = " ".repeat(800);
+        let p = provider_with(budget_of(Setting::Reduces, Setting::DoesNot));
+        assert!(
+            p.validate_header_budget(&spacey, 0).is_ok(),
+            "the raw name fits, so we must not be stricter than B2 might be"
+        );
+        let hint = p
+            .encoded_length_hint(&spacey, 0)
+            .expect("raw fits, encoded does not");
+        assert!(
+            hint.contains("800 bytes") && hint.contains("2400"),
+            "{hint}"
+        );
+        assert!(hint.contains("not refused locally"), "{hint}");
+
+        // When both forms fit, there is nothing to say.
+        assert!(p.encoded_length_hint("plain.txt", 0).is_none());
+        // When even the raw form overflows, the refusal already happened.
+        let huge = "x".repeat(HEADER_BUDGET_REDUCED + 1);
+        assert!(p.encoded_length_hint(&huge, 0).is_none());
+    }
+
+    /// The charge must follow the upload that will actually happen. Charging a
+    /// large upload for metadata it never sends would refuse a name B2 accepts.
+    #[test]
+    fn only_the_single_shot_upload_is_charged_for_its_file_info() {
+        assert_eq!(upload_info_extra(0), SRC_LAST_MODIFIED_INFO_BYTES);
+        assert_eq!(
+            upload_info_extra(SINGLE_UPLOAD_RECOMMENDED_MAX),
+            SRC_LAST_MODIFIED_INFO_BYTES
+        );
+        assert_eq!(upload_info_extra(SINGLE_UPLOAD_RECOMMENDED_MAX + 1), 0);
+
+        // The 38 bytes are the whole difference between accepting and refusing
+        // a name at the edge of the reduced budget.
+        let at_edge = "x".repeat(HEADER_BUDGET_REDUCED);
+        let p = provider_with(budget_of(Setting::Reduces, Setting::DoesNot));
+        assert!(
+            p.validate_header_budget(
+                &at_edge,
+                upload_info_extra(SINGLE_UPLOAD_RECOMMENDED_MAX + 1)
+            )
+            .is_ok(),
+            "a large upload sends no fileInfo, so this name fits"
+        );
+        assert!(
+            p.validate_header_budget(&at_edge, upload_info_extra(1))
+                .is_err(),
+            "a single-shot upload does send one, so the same name does not"
+        );
+    }
+
+    #[test]
+    fn upload_counts_the_file_info_entry_it_actually_sends() {
+        // `upload` sends `src_last_modified_millis`, and B2 counts fileInfo
+        // against the same budget as the name, so the check must too.
+        assert_eq!(SRC_LAST_MODIFIED_INFO_BYTES, 24 + 14);
+        let at_budget = "x".repeat(HEADER_BUDGET_REDUCED - SRC_LAST_MODIFIED_INFO_BYTES);
+        let p = provider_with(budget_of(Setting::Reduces, Setting::DoesNot));
+        assert!(p
+            .validate_header_budget(&at_budget, SRC_LAST_MODIFIED_INFO_BYTES)
+            .is_ok());
+        assert!(p
+            .validate_header_budget(&format!("{at_budget}x"), SRC_LAST_MODIFIED_INFO_BYTES)
+            .is_err());
+    }
     // ── Phase 2 ────────────────────────────────────────────────────────────
 
     #[test]
