@@ -6,7 +6,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { sendNotification } from '@tauri-apps/plugin-notification';
-import { readFile } from '@tauri-apps/plugin-fs';
 import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Monitor, Image, Shapes, Info, Boxes, Share2, Users, Bell, ShieldOff } from 'lucide-react';
 import { AeroShareContacts } from './AeroShare/AeroShareContacts';
 import { CheckpointEndpoints } from './CheckpointEndpoints';
@@ -52,6 +51,7 @@ import {
     normalizeAppFontFamily,
 } from '../hooks/useSettings';
 import { useStorageThresholds, DEFAULT_THRESHOLDS } from '../hooks/useStorageThresholds';
+import { useUiTokens } from '../hooks/useUiTokens';
 import { useMyServersDensity } from '../hooks/useMyServersDensity';
 import { createTauriListener } from '../hooks/useTauriListener';
 import { useDraggableModal } from '../hooks/useDraggableModal';
@@ -580,6 +580,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const selectedFontPreset = getSelectedFontPreset(settings.fontFamily);
     const fontSelectValue = selectedFontPreset?.value ?? CUSTOM_FONT_VALUE;
     const previewFontFamily = normalizeAppFontFamily(settings.fontFamily);
+
+    // UI token overrides (docs/UI-TOKENS.md). loadOnMount is false: App already
+    // loads the file at startup, and re-reading it here would re-log the same
+    // rejections to the activity log on every panel open. The counts are shared
+    // with the App instance, and reload()/reset() update both.
+    const uiTokens = useUiTokens({ loadOnMount: false });
+
+    // Reveal <config_dir>/ui-tokens.json in the OS file manager, writing the
+    // documented-defaults example first when the file does not exist yet.
+    const handleOpenUiTokensFile = useCallback(async () => {
+        try {
+            // Through the backend: the fs plugin cannot reach the data root, see
+            // the comment on `read_ui_tokens_file` in lib.rs.
+            const path = await invoke<string>('ensure_ui_tokens_file');
+            await invoke('open_in_file_manager', { path });
+        } catch (err) {
+            logger.error('[SettingsPanel] Failed to open ui-tokens.json', err);
+        }
+    }, []);
 
     // Load settings on open
     useEffect(() => {
@@ -2161,6 +2180,46 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         {t('common.reset')}
                                                     </button>
                                                 )}
+                                            </div>
+
+                                            {/* UI token overrides (docs/UI-TOKENS.md): the file lives in the
+                                                config dir, not in the repo, so the panel offers to open it
+                                                (creating a documented-defaults example when missing), plus
+                                                explicit reload/reset and the applied/rejected counts from
+                                                the last load. */}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-2">{t('settings.uiTokensTitle')}</label>
+                                                <p className="text-xs text-gray-500 mb-3">{t('settings.uiTokensDesc')}</p>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void handleOpenUiTokensFile()}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                    >
+                                                        {t('settings.uiTokensOpenFile')}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void uiTokens.reload()}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                    >
+                                                        {t('settings.uiTokensReload')}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={uiTokens.reset}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                    >
+                                                        {t('settings.uiTokensReset')}
+                                                    </button>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-2">
+                                                    {t('settings.uiTokensApplied', { count: uiTokens.appliedCount })}
+                                                    {' | '}
+                                                    <span className={uiTokens.rejectedCount > 0 ? 'text-amber-600 dark:text-amber-400 font-medium' : undefined}>
+                                                        {t('settings.uiTokensRejected', { count: uiTokens.rejectedCount })}
+                                                    </span>
+                                                </p>
                                             </div>
 
                                             <div>

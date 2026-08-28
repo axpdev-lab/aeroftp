@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Местоназначение",
             "resumeColumnRecords": "Записи",
             "resumeForget": "Забрави това местоназначение",
-            "resumeForgetConfirm": "Забрави"
+            "resumeForgetConfirm": "Забрави",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Заменете публикуваните CSS токени от docs/UI-TOKENS.md с файл ui-tokens.json в конфигурационната папка. Промените се прилагат при презареждане; невалидните записи се пропускат и се отчитат в Дневника на активността.",
+            "uiTokensOpenFile": "Отвори ui-tokens.json",
+            "uiTokensReload": "Презареди",
+            "uiTokensReset": "Възстанови настройките по подразбиране",
+            "uiTokensApplied": "Приложени замествания: {count}",
+            "uiTokensRejected": "Отхвърлени записи: {count}"
         },
         "devtools": {
             "title": "AeroTools",

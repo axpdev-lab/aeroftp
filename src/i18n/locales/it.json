@@ -1565,7 +1565,14 @@
             "resumeColumnDestination": "Destinazione",
             "resumeColumnRecords": "Record",
             "resumeForget": "Dimentica questa destinazione",
-            "resumeForgetConfirm": "Dimentica"
+            "resumeForgetConfirm": "Dimentica",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Sostituisci i token CSS pubblicati di docs/UI-TOKENS.md con un file ui-tokens.json nella cartella di configurazione. Le modifiche si applicano alla ricarica; le voci non valide vengono ignorate e riportate nel Registro attività.",
+            "uiTokensOpenFile": "Apri ui-tokens.json",
+            "uiTokensReload": "Ricarica",
+            "uiTokensReset": "Ripristina predefiniti",
+            "uiTokensApplied": "Sostituzioni applicate: {count}",
+            "uiTokensRejected": "Voci rifiutate: {count}"
         },
         "appearance": {
             "patternCross": "Croce",

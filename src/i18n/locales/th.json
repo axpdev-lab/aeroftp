@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "ปลายทาง",
             "resumeColumnRecords": "ระเบียน",
             "resumeForget": "ลืมปลายทางนี้",
-            "resumeForgetConfirm": "ลืม"
+            "resumeForgetConfirm": "ลืม",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "แทนที่ CSS token ที่เผยแพร่จาก docs/UI-TOKENS.md ด้วยไฟล์ ui-tokens.json ในโฟลเดอร์การตั้งค่า การเปลี่ยนแปลงจะมีผลเมื่อโหลดใหม่; รายการที่ไม่ถูกต้องจะถูกข้ามและรายงานในบันทึกกิจกรรม",
+            "uiTokensOpenFile": "เปิด ui-tokens.json",
+            "uiTokensReload": "โหลดใหม่",
+            "uiTokensReset": "รีเซ็ตเป็นค่าเริ่มต้น",
+            "uiTokensApplied": "การแทนที่ที่ใช้แล้ว: {count}",
+            "uiTokensRejected": "รายการที่ถูกปฏิเสธ: {count}"
         },
         "devtools": {
             "title": "AeroTools",

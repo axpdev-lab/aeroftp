@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Galamērķis",
             "resumeColumnRecords": "Ieraksti",
             "resumeForget": "Aizmirst šo galamērķi",
-            "resumeForgetConfirm": "Aizmirst"
+            "resumeForgetConfirm": "Aizmirst",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Aizstājiet publicētos CSS tokenus no docs/UI-TOKENS.md ar ui-tokens.json failu konfigurācijas mapē. Izmaiņas stājas spēkā pārlādējot; nederīgie ieraksti tiek izlaisti un ziņoti Aktivitāšu žurnālā.",
+            "uiTokensOpenFile": "Atvērt ui-tokens.json",
+            "uiTokensReload": "Pārlādēt",
+            "uiTokensReset": "Atiestatīt uz noklusējumiem",
+            "uiTokensApplied": "Lietotie aizstājumi: {count}",
+            "uiTokensRejected": "Noraidītie ieraksti: {count}"
         },
         "devtools": {
             "title": "AeroTools",

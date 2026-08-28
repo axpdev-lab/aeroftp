@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Sihtkoht",
             "resumeColumnRecords": "Kirjed",
             "resumeForget": "Unusta see sihtkoht",
-            "resumeForgetConfirm": "Unusta"
+            "resumeForgetConfirm": "Unusta",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Asendage failis docs/UI-TOKENS.md avaldatud CSS-i tunnused konfiguratsioonikaustas oleva ui-tokens.json-failiga. Muudatused rakenduvad uuesti laadimisel; kehtetud kirjed jäetakse vahele ja neist teavitatakse Tegevuslogis.",
+            "uiTokensOpenFile": "Ava ui-tokens.json",
+            "uiTokensReload": "Laadi uuesti",
+            "uiTokensReset": "Lähtesta vaikeväärtustele",
+            "uiTokensApplied": "Rakendatud asendused: {count}",
+            "uiTokensRejected": "Tagasi lükatud kirjed: {count}"
         },
         "devtools": {
             "title": "AeroTools",

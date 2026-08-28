@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "ទិសដៅ",
             "resumeColumnRecords": "កំណត់ត្រា",
             "resumeForget": "ភ្លេចទិសដៅនេះ",
-            "resumeForgetConfirm": "ភ្លេច"
+            "resumeForgetConfirm": "ភ្លេច",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "បដិសេធ CSS token ដែលបានបោះពុម្ពផ្សាយពី docs/UI-TOKENS.md ដោយឯកសារ ui-tokens.json នៅក្នុងថតកំណត់រចនាសម្ព័ន្ធ។ ការផ្លាស់ប្តូរអនុវត្តនៅពេលផ្ទុកឡើងវិញ; ធាតុមិនត្រឹមត្រូវត្រូវបានរំលង និងរាយការណ៍នៅក្នុងកំណត់ហេតុសកម្មភាព។",
+            "uiTokensOpenFile": "បើក ui-tokens.json",
+            "uiTokensReload": "ផ្ទុកឡើងវិញ",
+            "uiTokensReset": "កំណត់ឡើងវិញទៅលំនាំដើម",
+            "uiTokensApplied": "ការបដិសេធដែលបានអនុវត្ត: {count}",
+            "uiTokensRejected": "ធាតុដែលបានច្រានចោល: {count}"
         },
         "devtools": {
             "title": "AeroTools",

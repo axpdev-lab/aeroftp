@@ -6175,6 +6175,79 @@ fn get_system_info_blocking() -> SystemInfo {
     }
 }
 
+// ============ UI Token Overrides ============
+//
+// `ui-tokens.json` lives in the AeroFTP data root, which on Linux is
+// `~/.config/aeroftp`. The frontend cannot read it through the fs plugin: the
+// Tauri scope sets `require_literal_leading_dot = true` on unix (see
+// `tauri::scope::fs`, "dotfiles are not supposed to be exposed by default"), so
+// `$HOME/**` does not match a path with a hidden component, and `$APPCONFIG`
+// resolves to the legacy identifier-scoped directory rather than the real root.
+//
+// Widening the scope was the wrong fix twice over. `$HOME/.config/aeroftp/**`
+// would hand the webview read access to `vault.db`, which sits in the same
+// directory, and it would still miss portable mode and a custom
+// `XDG_CONFIG_HOME`. These two commands resolve the root the same way
+// `get_system_info` does and touch exactly one file.
+
+/// Absolute path of `ui-tokens.json` inside the resolved data root.
+fn ui_tokens_path() -> Result<std::path::PathBuf, String> {
+    portable::aeroftp_data_root()
+        .map(|dir| dir.join("ui-tokens.json"))
+        .ok_or_else(|| "Cannot resolve the AeroFTP data root".to_string())
+}
+
+/// Read `ui-tokens.json`. `Ok(None)` means the file is absent, which is the
+/// normal case and not an error. Anything else (a permission problem, a broken
+/// symlink) is returned as an error rather than folded into "no overrides":
+/// a silent failure here is indistinguishable from a file that applied cleanly,
+/// which is exactly how the scope bug survived the first live test.
+#[tauri::command]
+async fn read_ui_tokens_file() -> Result<Option<String>, String> {
+    let path = ui_tokens_path()?;
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(format!("Cannot read {}: {err}", path.display())),
+    }
+}
+
+/// The seeded example: the five scrollbar tokens at their documented defaults.
+/// Applying the defaults is a visual no-op, so the file is self-documenting.
+/// JSON has no comments, so a real example is the only option.
+///
+/// It lives here rather than in the frontend on purpose. The comment above these
+/// commands defends this directory because `vault.db` is in it, and that argument
+/// does not survive handing the webview a primitive that writes an arbitrary
+/// string into it. With the content owned by the backend the command takes no
+/// arguments and the directory is read-only as far as the webview is concerned.
+const UI_TOKENS_EXAMPLE: &str = r#"{
+    "--aeroftp-scrollbar-width": "6px",
+    "--aeroftp-panel-scrollbar-width": "10px",
+    "--aeroftp-scrollbar-radius": "3px",
+    "--aeroftp-scrollbar-thumb": "rgba(128, 128, 128, 0.15)",
+    "--aeroftp-scrollbar-thumb-hover": "rgba(128, 128, 128, 0.3)"
+}
+"#;
+
+/// Return the absolute path of `ui-tokens.json`, creating it from the example
+/// above when it does not exist yet. An existing file is never overwritten: the
+/// user may have edited it, and the Settings button that calls this is "open",
+/// not "reset".
+#[tauri::command]
+async fn ensure_ui_tokens_file() -> Result<String, String> {
+    let path = ui_tokens_path()?;
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| format!("Cannot create {}: {err}", parent.display()))?;
+        }
+        std::fs::write(&path, UI_TOKENS_EXAMPLE)
+            .map_err(|err| format!("Cannot write {}: {err}", path.display()))?;
+    }
+    Ok(path.to_string_lossy().to_string())
+}
+
 // ============ Local File System Commands ============
 
 #[tauri::command]
@@ -19795,6 +19868,8 @@ pub fn run() {
             get_dependencies,
             check_crate_versions,
             get_system_info,
+            read_ui_tokens_file,
+            ensure_ui_tokens_file,
             // DebugPanel diagnostic suite (Tests tab)
             debug_tests::debug_test_connectivity,
             debug_tests::debug_test_vault_roundtrip,

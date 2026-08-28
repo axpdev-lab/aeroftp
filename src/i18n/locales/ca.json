@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Destinació",
             "resumeColumnRecords": "Registres",
             "resumeForget": "Oblida aquesta destinació",
-            "resumeForgetConfirm": "Oblida"
+            "resumeForgetConfirm": "Oblida",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Substitueix els tokens CSS publicats de docs/UI-TOKENS.md amb un fitxer ui-tokens.json a la carpeta de configuració. Els canvis s'apliquen en recarregar; les entrades no vàlides s'ometen i es notifiquen al Registre d'Activitat.",
+            "uiTokensOpenFile": "Obre ui-tokens.json",
+            "uiTokensReload": "Recarrega",
+            "uiTokensReset": "Restableix els valors per defecte",
+            "uiTokensApplied": "Substitucions aplicades: {count}",
+            "uiTokensRejected": "Entrades rebutjades: {count}"
         },
         "devtools": {
             "title": "AeroTools",

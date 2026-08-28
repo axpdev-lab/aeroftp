@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Mål",
             "resumeColumnRecords": "Poster",
             "resumeForget": "Glöm detta mål",
-            "resumeForgetConfirm": "Glöm"
+            "resumeForgetConfirm": "Glöm",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Åsidosätt de publicerade CSS-tokensen från docs/UI-TOKENS.md med en ui-tokens.json-fil i konfigurationsmappen. Ändringar tillämpas vid omladdning; ogiltiga poster hoppas över och rapporteras i Aktivitetslogg.",
+            "uiTokensOpenFile": "Öppna ui-tokens.json",
+            "uiTokensReload": "Ladda om",
+            "uiTokensReset": "Återställ till standard",
+            "uiTokensApplied": "Tillämpade åsidosättningar: {count}",
+            "uiTokensRejected": "Avvisade poster: {count}"
         },
         "devtools": {
             "title": "AeroTools",

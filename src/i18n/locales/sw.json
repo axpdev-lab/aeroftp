@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Lengwa",
             "resumeColumnRecords": "Rekodi",
             "resumeForget": "Sahau lengwa hili",
-            "resumeForgetConfirm": "Sahau"
+            "resumeForgetConfirm": "Sahau",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Batilisha tokeni za CSS zilizochapishwa kutoka docs/UI-TOKENS.md kwa faili ya ui-tokens.json katika folda ya usanidi. Mabadiliko hutekelezwa unapopakia upya; ingizo batili hurukwa na kuripotiwa kwenye Kumbukumbu ya Shughuli.",
+            "uiTokensOpenFile": "Fungua ui-tokens.json",
+            "uiTokensReload": "Pakia upya",
+            "uiTokensReset": "Weka upya kwa chaguo-msingi",
+            "uiTokensApplied": "Mabadiliko yaliyotumika: {count}",
+            "uiTokensRejected": "Maingizo yaliyokataliwa: {count}"
         },
         "devtools": {
             "title": "AeroTools",

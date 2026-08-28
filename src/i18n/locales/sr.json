@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Одредиште",
             "resumeColumnRecords": "Записи",
             "resumeForget": "Заборави ово одредиште",
-            "resumeForgetConfirm": "Заборави"
+            "resumeForgetConfirm": "Заборави",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Замените објављене CSS токене из docs/UI-TOKENS.md датотеком ui-tokens.json у конфигурационој фасцикли. Промене се примењују при поновном учитавању; неважећи уноси се прескачу и пријављују у Дневнику активности.",
+            "uiTokensOpenFile": "Отвори ui-tokens.json",
+            "uiTokensReload": "Поново учитај",
+            "uiTokensReset": "Врати на подразумевано",
+            "uiTokensApplied": "Примењене замене: {count}",
+            "uiTokensRejected": "Одбијени уноси: {count}"
         },
         "devtools": {
             "title": "AeroTools",

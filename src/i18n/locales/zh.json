@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "目标",
             "resumeColumnRecords": "记录",
             "resumeForget": "忘记此目标",
-            "resumeForgetConfirm": "忘记"
+            "resumeForgetConfirm": "忘记",
+            "uiTokensTitle": "UI 令牌",
+            "uiTokensDesc": "使用配置文件夹中的 ui-tokens.json 文件覆盖 docs/UI-TOKENS.md 中已发布的 CSS 令牌。更改在重新加载后生效；无效条目将被跳过并记录在活动日志中。",
+            "uiTokensOpenFile": "打开 ui-tokens.json",
+            "uiTokensReload": "重新加载",
+            "uiTokensReset": "重置为默认值",
+            "uiTokensApplied": "已应用的覆盖：{count}",
+            "uiTokensRejected": "被拒绝的条目：{count}"
         },
         "devtools": {
             "title": "AeroTools",

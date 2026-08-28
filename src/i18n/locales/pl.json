@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Cel",
             "resumeColumnRecords": "Rekordy",
             "resumeForget": "Zapomnij ten cel",
-            "resumeForgetConfirm": "Zapomnij"
+            "resumeForgetConfirm": "Zapomnij",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Nadpisz opublikowane tokeny CSS z docs/UI-TOKENS.md plikiem ui-tokens.json w folderze konfiguracji. Zmiany zostają zastosowane po ponownym załadowaniu; nieprawidłowe wpisy są pomijane i zgłaszane w Dzienniku aktywności.",
+            "uiTokensOpenFile": "Otwórz ui-tokens.json",
+            "uiTokensReload": "Załaduj ponownie",
+            "uiTokensReset": "Przywróć domyślne",
+            "uiTokensApplied": "Zastosowane nadpisania: {count}",
+            "uiTokensRejected": "Odrzucone wpisy: {count}"
         },
         "devtools": {
             "title": "AeroTools",

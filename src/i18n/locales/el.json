@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Προορισμός",
             "resumeColumnRecords": "Εγγραφές",
             "resumeForget": "Να ξεχαστεί αυτός ο προορισμός",
-            "resumeForgetConfirm": "Να ξεχαστεί"
+            "resumeForgetConfirm": "Να ξεχαστεί",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Παρακάμψτε τα δημοσιευμένα tokens CSS από το docs/UI-TOKENS.md με ένα αρχείο ui-tokens.json στον φάκελο ρυθμίσεων. Οι αλλαγές εφαρμόζονται κατά την επαναφόρτωση· οι μη έγκυρες καταχωρήσεις παραλείπονται και αναφέρονται στο Αρχείο δραστηριότητας.",
+            "uiTokensOpenFile": "Άνοιγμα ui-tokens.json",
+            "uiTokensReload": "Επαναφόρτωση",
+            "uiTokensReset": "Επαναφορά στα προεπιλεγμένα",
+            "uiTokensApplied": "Εφαρμοσμένες παρακάμψεις: {count}",
+            "uiTokensRejected": "Απορριφθείσες καταχωρήσεις: {count}"
         },
         "devtools": {
             "title": "AeroTools",

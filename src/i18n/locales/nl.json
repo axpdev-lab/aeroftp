@@ -1151,7 +1151,14 @@
             "resumeColumnDestination": "Bestemming",
             "resumeColumnRecords": "Records",
             "resumeForget": "Deze bestemming vergeten",
-            "resumeForgetConfirm": "Vergeten"
+            "resumeForgetConfirm": "Vergeten",
+            "uiTokensTitle": "UI tokens",
+            "uiTokensDesc": "Overschrijf de gepubliceerde CSS-tokens uit docs/UI-TOKENS.md met een ui-tokens.json-bestand in de configuratiemap. Wijzigingen worden toegepast bij herladen; ongeldige vermeldingen worden overgeslagen en gemeld in het Activiteitenlog.",
+            "uiTokensOpenFile": "ui-tokens.json openen",
+            "uiTokensReload": "Herladen",
+            "uiTokensReset": "Terugzetten naar standaardwaarden",
+            "uiTokensApplied": "Toegepaste overschrijvingen: {count}",
+            "uiTokensRejected": "Afgewezen vermeldingen: {count}"
         },
         "devtools": {
             "title": "AeroTools",
