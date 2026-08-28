@@ -810,7 +810,13 @@ impl B2Provider {
         if !self.bucket_budget.has_unknown() {
             return None;
         }
-        let used = file_name.len() + info_extra;
+        // Measured on the encoded form, the same metre `encoded_length_hint`
+        // uses. On the raw one the two hints leave a hole exactly where both
+        // uncertainties meet: a bucket we could not read, and a name that fits
+        // raw but not encoded. There neither hint fired and the upload failed
+        // with nothing said, which is the one case this PR exists to cover.
+        // Encoding never shortens, so this is also never quieter than before.
+        let used = Self::encoded_len(file_name) + info_extra;
         if used <= HEADER_BUDGET_REDUCED {
             return None;
         }
@@ -3990,6 +3996,38 @@ mod tests {
             0,
         );
         assert!(!unknown_status.to_string().contains("readBucketEncryption"));
+    }
+
+    /// The gap the two hints left between them: a bucket whose settings we
+    /// could not read, and a name that fits raw and overflows once encoded.
+    /// Before this, neither hint fired and the upload failed in silence.
+    #[test]
+    fn the_two_hints_leave_no_silent_gap_between_them() {
+        // Each space triples under encoding: 700 raw become 2100, which with
+        // the metadata charge is over the reduced budget and far under the
+        // standard one. The raw form fits comfortably.
+        let spacey = " ".repeat(700);
+        let p = provider_with(BucketBudget::UNREAD);
+        let used_raw = spacey.len() + SRC_LAST_MODIFIED_INFO_BYTES;
+        assert!(
+            used_raw <= HEADER_BUDGET_REDUCED,
+            "the raw form must fit, or the case is not the one under test"
+        );
+        assert!(
+            B2Provider::encoded_len(&spacey) + SRC_LAST_MODIFIED_INFO_BYTES > HEADER_BUDGET_REDUCED,
+            "and the encoded form must not, or there is no gap to close"
+        );
+        let annotated = p.annotate_with_reduced_budget(
+            ProviderError::ServerError("b2_upload_file (400): bad_request".into()),
+            Some(400),
+            &spacey,
+            SRC_LAST_MODIFIED_INFO_BYTES,
+        );
+        let text = annotated.to_string();
+        assert!(
+            text.contains("readBucketEncryption") || text.contains("percent-encoded"),
+            "an upload that failed here must not be answered with silence: {text}"
+        );
     }
 
     /// Backblaze documents the byte cap and the percent-encoded header
