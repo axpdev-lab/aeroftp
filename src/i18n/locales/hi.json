@@ -1153,10 +1153,10 @@
             "resumeForget": "इस गंतव्य को भूल जाएँ",
             "resumeForgetConfirm": "भूल जाएँ",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "कॉन्फ़िग फ़ोल्डर में ui-tokens.json फ़ाइल से docs/UI-TOKENS.md के प्रकाशित CSS टोकन को ओवरराइड करें। रीलोड करने पर बदलाव लागू होते हैं; अमान्य प्रविष्टियाँ छोड़ दी जाती हैं और गतिविधि लॉग में रिपोर्ट की जाती हैं।",
+            "uiTokensDesc": "कॉन्फ़िग फ़ोल्डर में ui-tokens.json फ़ाइल से docs/UI-TOKENS.md के प्रकाशित CSS टोकन को ओवरराइड करें। रीलोड करने पर बदलाव लागू होते हैं; अमान्य प्रविष्टियाँ छोड़ दी जाती हैं और गतिविधि लॉग में रिपोर्ट की जाती हैं। ओवरराइड हटाने से केवल चल रहे ऐप पर असर पड़ता है। फ़ाइल कभी नहीं बदली जाती।",
             "uiTokensOpenFile": "ui-tokens.json खोलें",
             "uiTokensReload": "रीलोड करें",
-            "uiTokensReset": "डिफ़ॉल्ट पर रीसेट करें",
+            "uiTokensReset": "ओवरराइड हटाएँ",
             "uiTokensApplied": "लागू किए गए ओवरराइड: {count}",
             "uiTokensRejected": "अस्वीकृत प्रविष्टियाँ: {count}"
         },

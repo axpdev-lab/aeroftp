@@ -1153,10 +1153,10 @@
             "resumeForget": "Esquecer este destino",
             "resumeForgetConfirm": "Esquecer",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Substitua os tokens CSS publicados de docs/UI-TOKENS.md por um arquivo ui-tokens.json na pasta de configuração. As alterações são aplicadas ao recarregar; as entradas inválidas são ignoradas e relatadas no Registro de Atividades.",
+            "uiTokensDesc": "Substitua os tokens CSS publicados de docs/UI-TOKENS.md por um arquivo ui-tokens.json na pasta de configuração. As alterações são aplicadas ao recarregar; as entradas inválidas são ignoradas e relatadas no Registro de Atividades. Limpar as substituições afeta apenas o aplicativo em execução. O arquivo nunca é modificado.",
             "uiTokensOpenFile": "Abrir ui-tokens.json",
             "uiTokensReload": "Recarregar",
-            "uiTokensReset": "Redefinir para os padrões",
+            "uiTokensReset": "Limpar substituições",
             "uiTokensApplied": "Substituições aplicadas: {count}",
             "uiTokensRejected": "Entradas rejeitadas: {count}"
         },

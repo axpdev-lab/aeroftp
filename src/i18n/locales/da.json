@@ -1153,10 +1153,10 @@
             "resumeForget": "Glem denne destination",
             "resumeForgetConfirm": "Glem",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Tilsidesæt de publicerede CSS-tokens fra docs/UI-TOKENS.md med en ui-tokens.json-fil i konfigurationsmappen. Ændringer træder i kraft ved genindlæsning; ugyldige poster springes over og rapporteres i Aktivitetslog.",
+            "uiTokensDesc": "Tilsidesæt de publicerede CSS-tokens fra docs/UI-TOKENS.md med en ui-tokens.json-fil i konfigurationsmappen. Ændringer træder i kraft ved genindlæsning; ugyldige poster springes over og rapporteres i Aktivitetslog. Rydning af tilsidesættelserne påvirker kun den kørende app. Filen ændres aldrig.",
             "uiTokensOpenFile": "Åbn ui-tokens.json",
             "uiTokensReload": "Genindlæs",
-            "uiTokensReset": "Nulstil til standarder",
+            "uiTokensReset": "Ryd tilsidesættelser",
             "uiTokensApplied": "Anvendte tilsidesættelser: {count}",
             "uiTokensRejected": "Afviste poster: {count}"
         },

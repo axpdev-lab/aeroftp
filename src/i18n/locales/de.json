@@ -1153,10 +1153,10 @@
             "resumeForget": "Dieses Ziel vergessen",
             "resumeForgetConfirm": "Vergessen",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Überschreiben Sie die veröffentlichten CSS-Tokens aus docs/UI-TOKENS.md mit einer ui-tokens.json-Datei im Konfigurationsordner. Änderungen werden beim Neuladen angewendet; ungültige Einträge werden übersprungen und im Aktivitätsprotokoll gemeldet.",
+            "uiTokensDesc": "Überschreiben Sie die veröffentlichten CSS-Tokens aus docs/UI-TOKENS.md mit einer ui-tokens.json-Datei im Konfigurationsordner. Änderungen werden beim Neuladen angewendet; ungültige Einträge werden übersprungen und im Aktivitätsprotokoll gemeldet. Das Löschen der Überschreibungen wirkt sich nur auf die laufende App aus. Die Datei wird nie geändert.",
             "uiTokensOpenFile": "ui-tokens.json öffnen",
             "uiTokensReload": "Neu laden",
-            "uiTokensReset": "Auf Standard zurücksetzen",
+            "uiTokensReset": "Überschreibungen löschen",
             "uiTokensApplied": "Angewendete Überschreibungen: {count}",
             "uiTokensRejected": "Abgelehnte Einträge: {count}"
         },

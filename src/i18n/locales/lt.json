@@ -1153,10 +1153,10 @@
             "resumeForget": "Pamiršti šią paskirtį",
             "resumeForgetConfirm": "Pamiršti",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Pakeiskite paskelbtus CSS žetonus iš docs/UI-TOKENS.md ui-tokens.json failu konfigūracijos aplanke. Pakeitimai pritaikomi iš naujo įkeliant; neteisingi įrašai praleidžiami ir apie juos pranešama Veiklos žurnale.",
+            "uiTokensDesc": "Pakeiskite paskelbtus CSS žetonus iš docs/UI-TOKENS.md ui-tokens.json failu konfigūracijos aplanke. Pakeitimai pritaikomi iš naujo įkeliant; neteisingi įrašai praleidžiami ir apie juos pranešama Veiklos žurnale. Perrašymų išvalymas veikia tik veikiančią programą. Failas niekada nekeičiamas.",
             "uiTokensOpenFile": "Atidaryti ui-tokens.json",
             "uiTokensReload": "Įkelti iš naujo",
-            "uiTokensReset": "Atkurti numatytuosius",
+            "uiTokensReset": "Išvalyti perrašymus",
             "uiTokensApplied": "Pritaikyti pakeitimai: {count}",
             "uiTokensRejected": "Atmesti įrašai: {count}"
         },

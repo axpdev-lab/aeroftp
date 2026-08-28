@@ -1153,10 +1153,10 @@
             "resumeForget": "Glöm detta mål",
             "resumeForgetConfirm": "Glöm",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Åsidosätt de publicerade CSS-tokensen från docs/UI-TOKENS.md med en ui-tokens.json-fil i konfigurationsmappen. Ändringar tillämpas vid omladdning; ogiltiga poster hoppas över och rapporteras i Aktivitetslogg.",
+            "uiTokensDesc": "Åsidosätt de publicerade CSS-tokensen från docs/UI-TOKENS.md med en ui-tokens.json-fil i konfigurationsmappen. Ändringar tillämpas vid omladdning; ogiltiga poster hoppas över och rapporteras i Aktivitetslogg. Att rensa åsidosättningarna påverkar endast appen som körs. Filen ändras aldrig.",
             "uiTokensOpenFile": "Öppna ui-tokens.json",
             "uiTokensReload": "Ladda om",
-            "uiTokensReset": "Återställ till standard",
+            "uiTokensReset": "Rensa åsidosättningar",
             "uiTokensApplied": "Tillämpade åsidosättningar: {count}",
             "uiTokensRejected": "Avvisade poster: {count}"
         },
