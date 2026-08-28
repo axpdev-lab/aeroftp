@@ -1153,10 +1153,10 @@
             "resumeForget": "Gleyma þessum áfangastað",
             "resumeForgetConfirm": "Gleyma",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Hafðu út af gildi birtu CSS-táknanna úr docs/UI-TOKENS.md með ui-tokens.json skrá í stillingamöppunni. Breytingar taka gildi við endurhleðslu; ógildar færslur eru sleppt og tilkynnt í Aðgerðaskrá. Að hreinsa yfirskriftirnar hefur aðeins áhrif á forritið sem er í gangi. Skránni er aldrei breytt.",
+            "uiTokensDesc": "Hafðu út af gildi birtu CSS-táknanna úr docs/UI-TOKENS.md með ui-tokens.json skrá í stillingamöppunni. Breytingar taka gildi við endurhleðslu; ógildar færslur eru sleppt og tilkynnt í Aðgerðaskrá. Að hreinsa yfirskrifanirnar hefur aðeins áhrif á forritið sem er í gangi. Skránni er aldrei breytt.",
             "uiTokensOpenFile": "Opna ui-tokens.json",
             "uiTokensReload": "Endurhlaða",
-            "uiTokensReset": "Hreinsa yfirskriftir",
+            "uiTokensReset": "Hreinsa yfirskrifanir",
             "uiTokensApplied": "Beittar yfirskrifanir: {count}",
             "uiTokensRejected": "Hafnaðar færslur: {count}"
         },

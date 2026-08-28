@@ -1153,7 +1153,7 @@
             "resumeForget": "Unohda tämä kohde",
             "resumeForgetConfirm": "Unohda",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Ohita tiedostossa docs/UI-TOKENS.md julkaistut CSS-tunnukset asetuskansion ui-tokens.json-tiedostolla. Muutokset tulevat voimaan uudelleenlatauksen yhteydessä; virheelliset kohteet ohitetaan ja niistä ilmoitetaan Toimintalokissa. Ohitusten tyhjentäminen vaikuttaa vain käynnissä olevaan sovellukseen. Tiedostoa ei muuteta koskaan.",
+            "uiTokensDesc": "Ohita tiedostossa docs/UI-TOKENS.md julkaistut CSS-tunnukset asetuskansion ui-tokens.json-tiedostolla. Muutokset tulevat voimaan uudelleenlatauksen yhteydessä; virheelliset kohteet ohitetaan ja niistä ilmoitetaan Toimintalokissa. Ohitusten tyhjentäminen vaikuttaa vain käynnissä olevaan sovellukseen. ui-tokens.json-tiedostoa ei muuteta koskaan.",
             "uiTokensOpenFile": "Avaa ui-tokens.json",
             "uiTokensReload": "Lataa uudelleen",
             "uiTokensReset": "Tyhjennä ohitukset",
