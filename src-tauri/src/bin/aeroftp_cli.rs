@@ -59003,6 +59003,26 @@ fn inventory_doc_inconsistencies(doc: &serde_json::Value) -> Vec<String> {
         }
         value
     }
+    // Figures read off disk are added with a checked sum: a hand-edited value
+    // near `u64::MAX` panics this function in a debug build and wraps in a
+    // release one, and a wrapped sum can match the total and hide the very
+    // violation it exists to report. The overflow is named as its own
+    // violation rather than swallowed, which would be the silent pass this
+    // check was written to close.
+    fn checked_sum(problems: &mut Vec<String>, label: &str, parts: &[Option<u64>]) -> Option<u64> {
+        let mut total: u64 = 0;
+        for part in parts {
+            let part = (*part)?;
+            match total.checked_add(part) {
+                Some(next) => total = next,
+                None => {
+                    problems.push(format!("{label} overflows a 64-bit integer"));
+                    return None;
+                }
+            }
+        }
+        Some(total)
+    }
     // Report only when both sides could be read: an unreadable field is already
     // its own violation.
     fn expect_eq(
@@ -59091,36 +59111,27 @@ fn inventory_doc_inconsistencies(doc: &serde_json::Value) -> Vec<String> {
 
     // Both MCP partitions cover the same total exactly once: no tool counted
     // twice, none dropped.
+    const NAMESPACE_SUM: &str = "the sum of the `counts.mcp_by_namespace` buckets";
+    const MCP_SPLIT: &str = "`counts.mcp_tools_primary` + `counts.mcp_tools_aliases`";
+    const PARITY_SPLIT: &str = "`parity.name_matched_count` + `parity.name_unmatched_count`";
+    let namespace_sum = checked_sum(&mut problems, NAMESPACE_SUM, &namespaces);
+    let mcp_split = checked_sum(&mut problems, MCP_SPLIT, &[mcp_primary, mcp_aliases]);
+    let parity_split = checked_sum(&mut problems, PARITY_SPLIT, &[matched, unmatched]);
     expect_eq(
         &mut problems,
-        (
-            "the sum of the `counts.mcp_by_namespace` buckets",
-            namespaces.iter().copied().sum(),
-        ),
+        (NAMESPACE_SUM, namespace_sum),
         ("`counts.mcp_tools_total`", mcp_total),
     );
     expect_eq(
         &mut problems,
-        (
-            "`counts.mcp_tools_primary` + `counts.mcp_tools_aliases`",
-            match (mcp_primary, mcp_aliases) {
-                (Some(p), Some(a)) => Some(p + a),
-                _ => None,
-            },
-        ),
+        (MCP_SPLIT, mcp_split),
         ("`counts.mcp_tools_total`", mcp_total),
     );
 
     // The name-overlap diff partitions the Tauri surface the same way.
     expect_eq(
         &mut problems,
-        (
-            "`parity.name_matched_count` + `parity.name_unmatched_count`",
-            match (matched, unmatched) {
-                (Some(m), Some(u)) => Some(m + u),
-                _ => None,
-            },
-        ),
+        (PARITY_SPLIT, parity_split),
         ("`counts.tauri_commands`", tauri),
     );
 
@@ -59145,14 +59156,18 @@ fn inventory_doc_inconsistencies(doc: &serde_json::Value) -> Vec<String> {
         ("the `tauri.commands` list length", tauri_list),
     );
 
-    // A near-empty Tauri surface means the build-time generated command list
-    // never made it into the document; the real surface is in the hundreds.
-    if let Some(t) = tauri {
-        if t <= 500 {
-            problems.push(format!(
-                "`counts.tauri_commands` is {t}: the generated Tauri surface looks empty"
-            ));
-        }
+    // An empty command list is the one magnitude this invariant set can judge:
+    // a count and a list that are both zero agree with each other, so nothing
+    // above would catch a document whose generated Tauri surface never made it
+    // in. Where the surface is merely SMALL there is no internal contradiction
+    // to report, and calling a self-consistent document inconsistent is the
+    // wrong-diagnosis failure this whole check exists to stop. The tripwire on
+    // a suspiciously small surface belongs to the build, and lives in
+    // `inventory_counts_are_internally_consistent`.
+    if tauri == Some(0) {
+        problems.push(
+            "`counts.tauri_commands` is 0: the generated Tauri command list is missing".to_string(),
+        );
     }
 
     problems
@@ -59322,12 +59337,22 @@ mod inventory_tests {
 
     #[test]
     fn inventory_counts_are_internally_consistent() {
-        let problems = on_a_wide_stack("inventory-consistency", || {
-            inventory_doc_inconsistencies(&build_inventory_doc())
-        });
+        let doc = on_a_wide_stack("inventory-consistency", build_inventory_doc);
+        let problems = inventory_doc_inconsistencies(&doc);
         assert!(
             problems.is_empty(),
             "the built inventory contradicts itself: {problems:#?}"
+        );
+
+        // A magnitude tripwire on the BUILD, deliberately not one of the
+        // invariants above. A document reporting a small surface is not
+        // self-contradictory, so `--check` must not call it inconsistent; but a
+        // fresh build collapsing from the hundreds to a handful means the
+        // generated command list came out wrong, and that is worth a red here.
+        let tauri = doc["counts"]["tauri_commands"].as_u64().unwrap();
+        assert!(
+            tauri > 500,
+            "the generated Tauri surface came out at {tauri}, which is not a plausible build"
         );
     }
 
@@ -59385,6 +59410,44 @@ mod inventory_tests {
                 .iter()
                 .any(|p| p == "`counts.mcp_tools_primary` is missing or not a non-negative integer"),
             "a removed figure must be reported by name: {problems:#?}"
+        );
+    }
+
+    /// An empty generated surface is self-consistent (0 == 0) and would slip
+    /// past every count/list check, so the invariant set names it on its own.
+    #[test]
+    fn an_empty_tauri_surface_is_named() {
+        let mut snap = committed_snapshot();
+        snap["counts"]["tauri_commands"] = serde_json::json!(0);
+        snap["tauri"]["count"] = serde_json::json!(0);
+        snap["tauri"]["commands"] = serde_json::json!([]);
+        snap["parity"]["name_matched_count"] = serde_json::json!(0);
+        snap["parity"]["name_unmatched_count"] = serde_json::json!(0);
+        snap["parity"]["name_unmatched"] = serde_json::json!([]);
+
+        let problems = inventory_doc_inconsistencies(&snap);
+        assert_eq!(
+            problems,
+            vec![
+                "`counts.tauri_commands` is 0: the generated Tauri command list is missing"
+                    .to_string()
+            ]
+        );
+    }
+
+    /// A figure near the integer limit must be reported, not blow up the check:
+    /// this function is documented as non-panicking precisely so `--check` can
+    /// run it on a file a person can edit.
+    #[test]
+    fn a_figure_near_the_integer_limit_is_named_not_a_panic() {
+        let mut snap = committed_snapshot();
+        snap["counts"]["mcp_tools_primary"] = serde_json::json!(u64::MAX);
+
+        let problems = inventory_doc_inconsistencies(&snap);
+        assert!(
+            problems.iter().any(|p| p
+                == "`counts.mcp_tools_primary` + `counts.mcp_tools_aliases` overflows a 64-bit integer"),
+            "an overflowing sum must be named as its own violation: {problems:#?}"
         );
     }
 
