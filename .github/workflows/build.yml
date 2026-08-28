@@ -126,7 +126,7 @@ jobs:
           # daemon those tests skipped, and a skip is invisible in the log because
           # a passing test's stderr is captured: the pin would have reported
           # success while proving nothing. See #510.
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse3-dev dbus
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse3-dev dbus libacl1-dev libacl1 binutils rpm squashfs-tools
           # No snapcraft here any more: this leg stopped building the snap when
           # PR #172 moved it to its own job, and snapcore/action-build brings
           # its own snapcraft. The leftover install (5 retries, 60 s apart on a
@@ -405,6 +405,13 @@ jobs:
           ARCH=x86_64 ./appimagetool --appimage-extract-and-run squashfs-root "$APPIMAGE"
           NEW_SIZE=$(du -m "$APPIMAGE" | cut -f1)
           echo "AppImage re-packaged: ${ORIG_SIZE}MB -> ${NEW_SIZE}MB (system libs only)"
+
+      - name: Assert Linux ACL packaging contracts
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          chmod +x scripts/assert-linux-acl-packaging.sh
+          ./scripts/assert-linux-acl-packaging.sh --require-bundles
 
       # Snap build moved to dedicated `build-snap` job below (issue #164).
       # The Snap Store stayed frozen at 3.6.10 because the inline step kept
@@ -786,6 +793,8 @@ jobs:
           # release pipeline must too.
           ./scripts/snap-gpu-lint-check.sh "$SNAP_FILE"
           echo "OK: GPU userspace is supplied only by graphics-core22."
+          chmod +x "$GITHUB_WORKSPACE/scripts/assert-linux-acl-packaging.sh"
+          SNAP_FILE="$SNAP_FILE" "$GITHUB_WORKSPACE/scripts/assert-linux-acl-packaging.sh" --snap "$SNAP_FILE"
 
       # ----------------------------------------------------------------------
       # Gate G2 - install the snap and run a command that actually reaches the

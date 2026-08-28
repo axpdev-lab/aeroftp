@@ -111,6 +111,8 @@ run-clean.sh
 !/scripts/snap-abi-check.sh
 !/scripts/snap-gui-check.sh
 !/scripts/snap-stale-packages.mjs
+# Exception: Linux ACL packaging contracts for AeroRsync (G4)
+!/scripts/assert-linux-acl-packaging.sh
 # Exception: regenerates the providers table from the GUI SSOT (#270 17104681)
 !/scripts/gen-providers-table.ts
 # Exception: derives every published provider/preset/protocol figure into

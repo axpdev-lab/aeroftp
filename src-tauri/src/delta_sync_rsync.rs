@@ -132,7 +132,7 @@ pub struct DeltaSyncContext {
 /// - `used_delta = true` + `stats = Some(_)` → rsync completed successfully;
 ///   the caller should record the measured stats and proceed.
 /// - `used_delta = false` + `fallback_reason = Some(_)` → delta path declined
-///   (small file, no key, remote unavailable, transient failure). The caller
+///   (small file, unavailable auth, remote unavailable, transient failure). The caller
 ///   must fall back to the classic download/upload transparently.
 /// - `used_delta = false` + `hard_error = Some(_)` → delta path refused for a
 ///   reason that MUST NOT trigger silent classic fallback (SSH host-key
@@ -523,8 +523,8 @@ pub async fn check_delta_eligibility_with_transport(
 /// return `None` so the caller proceeds with the classic path unchanged.
 ///
 /// Returns:
-/// - `None` → provider is not delta-eligible (not SFTP, password auth, not
-///   connected, etc.). Caller falls through to classic download/upload.
+/// - `None` → provider is not delta-eligible (not SFTP, disconnected, unusable
+///   authentication, etc.). Caller falls through to classic download/upload.
 /// - `Some(result)` → delta path was attempted. `result.used_delta` says whether
 ///   it actually saved bytes; `result.fallback_reason` is populated when false.
 ///
@@ -592,7 +592,7 @@ pub async fn try_delta_transfer_with_progress(
 /// currently available, without transferring any data.
 ///
 /// Returns `None` when the connected provider is not an eligible SFTP session
-/// (wrong provider type, no SSH handle, missing SSH key).
+/// (wrong provider type, no SSH handle, or no usable transport).
 pub async fn check_delta_eligibility(
     provider: &mut dyn crate::providers::StorageProvider,
 ) -> Option<DeltaEligibilityStatus> {
@@ -612,7 +612,10 @@ pub async fn check_delta_eligibility(
         None => {
             return Some(DeltaEligibilityStatus {
                 eligible: false,
-                reason: Some("Delta sync requires an SSH key-based SFTP session.".to_string()),
+                reason: Some(
+                    "Delta sync is unavailable for this SFTP session; reconnect or verify its SSH authentication and host-key state."
+                        .to_string(),
+                ),
             });
         }
     };
@@ -630,7 +633,8 @@ pub async fn check_delta_eligibility(
 /// P3-T01 W4: open a delta-sync batch for the current provider session.
 ///
 /// Returns `None` when:
-/// - The provider is not delta-eligible (non-SFTP, password auth, etc.)
+/// - The provider is not delta-eligible (non-SFTP, disconnected, or its
+///   authentication/host-key state cannot create a transport)
 /// - The transport's `begin_batch()` returns a [`NoopBatch`] marker
 ///   (transport does not support session reuse: caller should fall
 ///   through to the per-file single-shot path).

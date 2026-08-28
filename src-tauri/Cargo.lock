@@ -3,6 +3,15 @@
 version = 4
 
 [[package]]
+name = "acl-sys"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbc079f9bdd3124fd18df23c67f7e0f79d24751ae151dcffd095fcade07a3eb2"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "acto"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -47,6 +56,7 @@ dependencies = [
 name = "aeroftp"
 version = "4.1.8"
 dependencies = [
+ "acl-sys",
  "aeroftp-peer-l0",
  "aerovault",
  "aes 0.8.4",
@@ -103,6 +113,7 @@ dependencies = [
  "pbkdf2 0.12.2",
  "percent-encoding",
  "portable-pty",
+ "posix-acl",
  "quick-xml",
  "rand 0.10.1",
  "rand 0.8.7",
@@ -7593,6 +7604,16 @@ checksum = "d4ec4b80060f033312b99b6874025d9503d2af87aef2dd4c516e253fbfcdada7"
 dependencies = [
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "posix-acl"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9928b761309e4a4ca4f2d90eb03029142e3f7164107e18db4d46516515b87441"
+dependencies = [
+ "acl-sys",
+ "libc",
 ]
 
 [[package]]

@@ -79,6 +79,7 @@
                     "libgtk-3-0",
                     "libwebkit2gtk-4.1-0",
                     "libayatana-appindicator3-1",
+                    "libacl1",
                     "libgstreamer1.0-0",
                     "gstreamer1.0-plugins-base",
                     "gstreamer1.0-plugins-good",
@@ -146,6 +147,9 @@
                 "postRemoveScript": "scripts/linux-postrm.sh"
             },
             "rpm": {
+                "depends": [
+                    "libacl.so.1()(64bit)"
+                ],
                 "files": {
                     "/usr/lib/aeroftp/aeroftp-cli": "target/release/aeroftp-dispatch-bundle/aeroftp-cli",
                     "/usr/lib/aeroftp/aeroftp-dispatch": "target/release/aeroftp-dispatch-bundle/aeroftp-dispatch"

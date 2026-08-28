@@ -72,7 +72,7 @@ use crate::aerorsync::native_driver::{
     SHA1_ALGO_NAME, XXH128_ALGO_NAME, XXH3_ALGO_NAME, XXH64_ALGO_NAME,
 };
 use crate::aerorsync::real_wire::{is_symlink_mode, FileListEntry};
-use crate::aerorsync::remote_command::RemoteCommandSpec;
+use crate::aerorsync::remote_command::{EffectiveMetadataFlags, RemoteCommandSpec};
 use crate::aerorsync::rsync_event_bridge::RsyncEventBridge;
 use crate::aerorsync::russh_session_transport::RusshSessionTransport;
 use crate::aerorsync::ssh_transport::{
@@ -116,6 +116,10 @@ pub struct AerorsyncDeltaTransport {
     /// Default off so frozen wire oracles and non-xattr paths stay
     /// byte-identical until a caller opts in via [`Self::with_xattrs`].
     preserve_xattrs: bool,
+    /// When true, negotiate `-A` and carry POSIX access ACLs (B2).
+    /// Default off; Linux production opts in at the provider boundary rather
+    /// than mapping this into the cross-platform `RsyncConfig`.
+    preserve_acls: bool,
     /// X.5: turn ENOTSUP / metadata-loss warnings into hard errors.
     fail_on_metadata_loss: bool,
 }
@@ -128,6 +132,7 @@ impl AerorsyncDeltaTransport {
             ssh_config,
             min_file_size,
             preserve_xattrs: false,
+            preserve_acls: false,
             fail_on_metadata_loss: false,
         }
     }
@@ -139,6 +144,13 @@ impl AerorsyncDeltaTransport {
         self
     }
 
+    /// Opt this transport into POSIX access ACLs (`-A` + fd-bound read/apply).
+    /// Off by default and enabled by production only on Linux.
+    pub fn with_acls(mut self, preserve_acls: bool) -> Self {
+        self.preserve_acls = preserve_acls;
+        self
+    }
+
     /// X.5: when the destination cannot store xattrs, fail the transfer
     /// instead of continuing with a typed warning.
     pub fn with_fail_on_metadata_loss(mut self, fail: bool) -> Self {
@@ -146,14 +158,18 @@ impl AerorsyncDeltaTransport {
         self
     }
 
-    /// The xattr negotiation a batch must inherit, as one value.
+    /// Metadata flags a batch must inherit as one value.
     ///
-    /// R3: the batch path calls `do_upload` / `do_download` itself, so it
-    /// needs these flags explicitly. Reading them through a single accessor
-    /// keeps `begin_batch` from drifting away from the single-file path,
-    /// which is how the two ended up disagreeing in the first place.
-    fn xattr_policy(&self) -> (bool, bool) {
-        (self.preserve_xattrs, self.fail_on_metadata_loss)
+    /// R3/B2: the batch path calls `do_upload` / `do_download` itself, so
+    /// it needs these flags explicitly. Reading them through a single
+    /// accessor keeps `begin_batch` from drifting away from the
+    /// single-file path.
+    pub(crate) fn metadata_policy(&self) -> (bool, bool, bool) {
+        (
+            self.preserve_xattrs,
+            self.preserve_acls,
+            self.fail_on_metadata_loss,
+        )
     }
 
     /// Convenience constructor that maps the production `RsyncConfig`
@@ -312,11 +328,13 @@ impl DeltaTransport for AerorsyncDeltaTransport {
     async fn begin_batch(&self) -> Result<Box<dyn DeltaBatch>, RsyncError> {
         match RusshSessionTransport::connect(self.ssh_config.clone()).await {
             Ok(transport) => {
-                let (preserve_xattrs, fail_on_metadata_loss) = self.xattr_policy();
+                let (preserve_xattrs, preserve_acls, fail_on_metadata_loss) =
+                    self.metadata_policy();
                 Ok(Box::new(AerorsyncBatch::new(
                     transport,
                     self.min_file_size,
                     preserve_xattrs,
+                    preserve_acls,
                     fail_on_metadata_loss,
                 )))
             }
@@ -362,6 +380,7 @@ impl AerorsyncDeltaTransport {
                 preamble_profile,
                 progress,
                 self.preserve_xattrs,
+                self.preserve_acls,
             )
             .await
         } else {
@@ -375,6 +394,7 @@ impl AerorsyncDeltaTransport {
                 preamble_profile,
                 progress,
                 self.preserve_xattrs,
+                self.preserve_acls,
             )
             .await
         }
@@ -404,20 +424,29 @@ async fn do_upload<T>(
     preamble_profile: PreambleProfile,
     progress: Option<crate::delta_transport::DeltaProgressSink>,
     preserve_xattrs: bool,
+    preserve_acls: bool,
 ) -> Result<RsyncStats, RsyncError>
 where
     T: RawRemoteShellTransport + 'static,
 {
     let start = Instant::now();
+    // B2 review: platform support is a property of the requested transport
+    // policy, not of the source file type. Check it before the symlink branch
+    // so a non-Linux caller cannot silently turn `.with_acls(true)` into an
+    // ACL-less symlink session.
+    if preserve_acls {
+        crate::aerorsync::acl_fs::ensure_linux_acl_support()
+            .map_err(|e| RsyncError::HardRejection(e.to_string()))?;
+    }
     // Y-RSC.4: lstat semantics. `fs::metadata` follows symlinks, which
     // silently uploaded the link TARGET's content as a regular file;
     // stock rsync with `-l` (already in the pinned server flag string)
     // preserves the link itself. For non-symlink paths the two calls
     // return identical metadata.
-    let metadata = fs::symlink_metadata(local_path)
+    let path_metadata = fs::symlink_metadata(local_path)
         .await
         .map_err(RsyncError::Io)?;
-    if metadata.file_type().is_symlink() {
+    if path_metadata.file_type().is_symlink() {
         // Symlinks bypass the `min_file_size` gate on purpose: the gate
         // exists to skip delta overhead on small FILE payloads, but a
         // symlink has no data phase at all, and a `TooSmall` refusal
@@ -428,7 +457,7 @@ where
             cancel,
             local_path,
             remote_path,
-            &metadata,
+            &path_metadata,
             preamble_profile,
             progress,
             start,
@@ -436,12 +465,11 @@ where
         )
         .await;
     }
-    let file_size = metadata.len();
-    if file_size < min_file_size {
-        return Err(RsyncError::TooSmall {
-            size: file_size,
-            threshold: min_file_size,
-        });
+    if !path_metadata.is_file() {
+        return Err(RsyncError::HardRejection(format!(
+            "native upload only accepts regular files: {} is not regular",
+            local_path.display()
+        )));
     }
     // P3-T01 W1.3: upload-side cap removed. Sources of any size now
     // flow through `drive_upload_through_delta_streaming` (W1.2).
@@ -462,16 +490,65 @@ where
     // identifies the negotiated algorithm. The placeholder stays empty
     // here so upload cannot accidentally advertise xxh128 bytes to an
     // xxh64/xxh3/md5 receiver.
+    let mut open_opts = OpenOptions::new();
+    open_opts.read(true);
+    #[cfg(unix)]
+    {
+        // O_NOFOLLOW closes the regular-to-symlink race. O_NONBLOCK keeps a
+        // regular-to-FIFO/device replacement from hanging this async task;
+        // it has no effect on regular-file reads.
+        open_opts.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    let source_file = open_opts.open(local_path).await.map_err(RsyncError::Io)?;
+    // The fd, not the earlier lstat result, is authoritative for every field
+    // paired with the streamed bytes and ACL. This closes a regular-to-regular
+    // path swap that could otherwise send file B with file A's mode/size/mtime.
+    let metadata = source_file.metadata().await.map_err(RsyncError::Io)?;
+    if !metadata.is_file() {
+        return Err(RsyncError::HardRejection(format!(
+            "native upload source changed to a non-regular file while opening: {}",
+            local_path.display()
+        )));
+    }
+    let file_size = metadata.len();
+    if file_size < min_file_size {
+        return Err(RsyncError::TooSmall {
+            size: file_size,
+            threshold: min_file_size,
+        });
+    }
+
+    let acls = if preserve_acls {
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            Some(
+                crate::aerorsync::acl_fs::read_access_acl_fd(
+                    source_file.as_raw_fd(),
+                    file_mode_from_metadata(&metadata),
+                )
+                .map_err(|e| RsyncError::HardRejection(e.to_string()))?,
+            )
+        }
+        #[cfg(not(unix))]
+        {
+            return Err(RsyncError::HardRejection(
+                crate::aerorsync::acl_fs::AclFsError::Unsupported.to_string(),
+            ));
+        }
+    } else {
+        None
+    };
+
     let source_entry = build_source_entry(
         local_path,
         file_size,
         &metadata,
         Vec::new(),
         None,
-        preserve_xattrs,
+        acls,
+        EffectiveMetadataFlags::product(preserve_acls, preserve_xattrs),
     );
-
-    let source_file = fs::File::open(local_path).await.map_err(RsyncError::Io)?;
 
     let mut driver = AerorsyncDriver::new(transport, cancel)
         .with_preamble_profile(preamble_profile)
@@ -480,12 +557,14 @@ where
     let warnings = new_warnings_sink();
     let mut bridge = build_event_bridge(warnings.clone());
 
-    // B.1: production dispatch now talks to stock `rsync --server`
-    // (WrapperParity flavor) instead of the dev helper
-    // `aerorsync_serve`. The wrapper command line is byte-pinned
-    // against rsync 3.2.7 capture by `upload_remote_command_matches_capture`.
-    // B3: `-X` rides on the same switch as local xattr read/apply.
-    let spec = RemoteCommandSpec::upload(remote_path).with_xattrs(preserve_xattrs);
+    // B.1: production dispatch talks to stock `rsync --server`
+    // (WrapperParity flavor) with the product flag profile (`-ltp...`).
+    // Historical `-logDtp...` capture literals stay on the explicit
+    // test-only constructor.
+    // B3/B2: `-X`/`-A` ride on the same switches as local metadata I/O.
+    let spec = RemoteCommandSpec::upload(remote_path)
+        .with_xattrs(preserve_xattrs)
+        .with_acls(preserve_acls);
     let drive_res = driver
         .drive_upload_through_delta_streaming(
             spec,
@@ -579,7 +658,8 @@ where
             metadata,
             Vec::new(),
             Some(target),
-            preserve_xattrs,
+            None,
+            EffectiveMetadataFlags::product(false, preserve_xattrs),
         );
 
         let mut driver = AerorsyncDriver::new(transport, cancel)
@@ -589,6 +669,9 @@ where
         let mut bridge = build_event_bridge(warnings.clone());
 
         let spec = RemoteCommandSpec::upload(remote_path).with_xattrs(preserve_xattrs);
+        // Symlink entries carry no ACL model even when the transport
+        // opted into -A; the command flag stays off here because this
+        // file is a link-only transfer.
         if let Err(e) = driver
             .drive_upload_symlink(spec, source_entry, &mut bridge)
             .await
@@ -638,6 +721,7 @@ impl AerorsyncDeltaTransport {
                 preamble_profile,
                 progress,
                 self.preserve_xattrs,
+                self.preserve_acls,
                 self.fail_on_metadata_loss,
             )
             .await
@@ -651,6 +735,7 @@ impl AerorsyncDeltaTransport {
                 preamble_profile,
                 progress,
                 self.preserve_xattrs,
+                self.preserve_acls,
                 self.fail_on_metadata_loss,
             )
             .await
@@ -996,12 +1081,17 @@ async fn do_download<T>(
     preamble_profile: PreambleProfile,
     progress: Option<crate::delta_transport::DeltaProgressSink>,
     preserve_xattrs: bool,
+    preserve_acls: bool,
     fail_on_metadata_loss: bool,
 ) -> Result<RsyncStats, RsyncError>
 where
     T: RawRemoteShellTransport + 'static,
 {
     let start = Instant::now();
+    if preserve_acls {
+        crate::aerorsync::acl_fs::ensure_linux_acl_support()
+            .map_err(|e| RsyncError::HardRejection(e.to_string()))?;
+    }
     // Y-RSC.5: open a streaming baseline only (no bulk `fs::read`).
     // Signatures and CopyBlock reconstruction both use
     // `BaselineSource::read_block`, so peak RAM is O(block_size) plus
@@ -1090,11 +1180,12 @@ where
     let warnings = new_warnings_sink();
     let mut bridge = build_event_bridge(warnings.clone());
 
-    // B.1: production dispatch now talks to stock `rsync --server --sender`
-    // (WrapperParity flavor). Pinned against rsync 3.2.7 capture by
-    // `download_remote_command_matches_capture`.
-    // B3: `-X` rides on the same switch as local xattr apply.
-    let spec = RemoteCommandSpec::download(remote_path).with_xattrs(preserve_xattrs);
+    // B.1: production dispatch talks to stock `rsync --server --sender`
+    // with the product flag profile (`-ltp...`).
+    // B3/B2: `-X`/`-A` ride on the same switches as local metadata apply.
+    let spec = RemoteCommandSpec::download(remote_path)
+        .with_xattrs(preserve_xattrs)
+        .with_acls(preserve_acls);
     // CLAUDE-AV-B3-12: hash the reconstruction as it streams to disk so
     // the whole-file trailer can be checked below. The shim borrows
     // `writer` only for the drive; the digest outlives the scope so
@@ -1214,10 +1305,11 @@ where
     //
     // INTEROP: run ONLY for algorithms we can recompute in-tree (xxh128
     // via the streaming `HashingWriter`; xxh3/xxh64/md5/md4/sha1 via a
-    // page-cache re-read of the temp). Against a peer that negotiated
-    // anything else (sha256, sha512, none: reachable only through the
-    // env override) the check is a deliberate no-op so a verify that
-    // assumed the wrong digest cannot silently disable delta forever.
+    // page-cache re-read of the temp). Named unsupported winners
+    // (sha256, sha512, none, ...) are rejected at preamble time, so this
+    // match never has to invent a digest. The `_` arm remains for an
+    // empty legacy advertisement, where `negotiated_checksum_algo()` is
+    // None and the historical no-op verify is preserved.
     //
     // HASHER DESIGN (CLAUDE-AV-B3-14): `HashingWriter` is constructed
     // BEFORE the drive, but the negotiated algo is only known AFTER it
@@ -1309,10 +1401,9 @@ where
             }
         }
         _ => {
-            // Unimplemented algo (sha256 / sha512 / none, or an absent
-            // negotiation): leave the delta path alone. The no-op is what
-            // keeps this shippable without live fixtures for every peer
-            // flavour. Y-RSC.3 moved md4 and sha1 out of this arm.
+            // Absent negotiation (empty legacy advertisement): leave the
+            // delta path alone. Named unsupported winners never reach
+            // this arm; they fail at preamble as NegotiationFailed.
         }
     }
 
@@ -1323,15 +1414,33 @@ where
         .and_then(|e| e.xattrs.as_ref())
         .filter(|_| preserve_xattrs)
         .cloned();
+    let apply_acls = if preserve_acls {
+        let entry = remote_entry.as_ref().ok_or_else(|| {
+            RsyncError::HardRejection(
+                "session negotiated -A but the download finished without a file-list entry".into(),
+            )
+        })?;
+        let acls = entry.acls.as_ref().ok_or_else(|| {
+            RsyncError::HardRejection(
+                "session negotiated -A but the file-list entry carries no access ACL".into(),
+            )
+        })?;
+        crate::aerorsync::acl_fs::access_literal(acls)
+            .map_err(|e| RsyncError::HardRejection(e.to_string()))?;
+        Some(acls.clone())
+    } else {
+        None
+    };
 
-    // Atomic commit: flush + sync_all + chmod (Unix) + set_mtime +
-    // xattrs + rename. Failures here are post-commit-cutover and surface
-    // as `HardRejection` via `map_write_atomic_error`.
+    // Atomic commit: flush + sync_all + fchmod + ACL + set_mtime +
+    // xattrs + rename. ACL failures are HardRejection (not classic
+    // fallback) so a committed protocol cannot lose metadata silently.
     let xattr_warnings = writer
         .finalize(
             preserve_mode,
             preserve_mtime,
             apply_xattrs,
+            apply_acls,
             fail_on_metadata_loss,
         )
         .await
@@ -1377,6 +1486,7 @@ pub struct AerorsyncBatch {
     /// directly and would otherwise hard-code the flags off, dropping the
     /// attributes of a caller that asked for them without a warning.
     preserve_xattrs: bool,
+    preserve_acls: bool,
     /// Companion of `preserve_xattrs` (X.5): turns an ENOTSUP warning into
     /// a hard error. Carried for the same reason.
     fail_on_metadata_loss: bool,
@@ -1387,6 +1497,7 @@ impl AerorsyncBatch {
         transport: RusshSessionTransport,
         min_file_size: u64,
         preserve_xattrs: bool,
+        preserve_acls: bool,
         fail_on_metadata_loss: bool,
     ) -> Self {
         let flag = Arc::new(AtomicBool::new(false));
@@ -1398,6 +1509,7 @@ impl AerorsyncBatch {
             bytes_on_wire: AtomicU64::new(0),
             cancel_observed: flag,
             preserve_xattrs,
+            preserve_acls,
             fail_on_metadata_loss,
         }
     }
@@ -1496,6 +1608,7 @@ impl DeltaBatch for AerorsyncBatch {
             preamble_profile.clone(),
             None,
             self.preserve_xattrs,
+            self.preserve_acls,
         )
         .await;
         if let Err(ref e) = first {
@@ -1534,6 +1647,7 @@ impl DeltaBatch for AerorsyncBatch {
                     preamble_profile,
                     None,
                     self.preserve_xattrs,
+                    self.preserve_acls,
                 )
                 .await?
             }
@@ -1567,6 +1681,7 @@ impl DeltaBatch for AerorsyncBatch {
             preamble_profile.clone(),
             None,
             self.preserve_xattrs,
+            self.preserve_acls,
             self.fail_on_metadata_loss,
         )
         .await;
@@ -1602,6 +1717,7 @@ impl DeltaBatch for AerorsyncBatch {
                     preamble_profile,
                     None,
                     self.preserve_xattrs,
+                    self.preserve_acls,
                     self.fail_on_metadata_loss,
                 )
                 .await?
@@ -1646,12 +1762,11 @@ impl DeltaBatch for AerorsyncBatch {
 /// [59..126], decoded in
 /// `docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/2026-04-25_File_List_Wire_Annotation.md`):
 /// the first entry of a list never SAMEs with anything (no previous
-/// entry to compare against), and the production CLI invokes
-/// `rsync --server -vlogDtprcze...` (preserve owner/group/times,
-/// `-c` always-checksum). Therefore `XMIT_USER_NAME_FOLLOWS |
-/// XMIT_GROUP_NAME_FOLLOWS | XMIT_MOD_NSEC` is the cumulative shape; the
-/// uid/gid varints + name pairs follow inline because `inc_recurse=1`
-/// is negotiated via CF_INC_RECURSE in the server compat byte.
+/// entry to compare against). The integrated product profile does not
+/// request `-o -g -D`, so uid/gid stay off the wire. The historical
+/// capture profile still emits `XMIT_USER_NAME_FOLLOWS |
+/// XMIT_GROUP_NAME_FOLLOWS | XMIT_MOD_NSEC`. `inc_recurse=1` is
+/// negotiated via CF_INC_RECURSE in the server compat byte.
 /// `symlink_target` is `Some` only on the Y-RSC.4 symlink-upload path:
 /// the caller resolved it with `read_link` after an lstat-style
 /// `symlink_metadata` probe, and `metadata` then carries `S_IFLNK` mode
@@ -1666,25 +1781,49 @@ fn build_source_entry(
     metadata: &std::fs::Metadata,
     file_checksum: Vec<u8>,
     symlink_target: Option<String>,
-    preserve_xattrs: bool,
+    acls: Option<crate::aerorsync::real_wire::FileListAcls>,
+    metadata_flags: EffectiveMetadataFlags,
 ) -> FileListEntry {
-    // 0x2c00 = USER_NAME_FOLLOWS (1<<10) | GROUP_NAME_FOLLOWS (1<<11) | MOD_NSEC (1<<13).
-    const BASELINE_FLAGS: u32 = (1 << 10) | (1 << 11) | (1 << 13);
+    // 0x2000 = MOD_NSEC (1<<13). Capture adds USER_NAME_FOLLOWS (1<<10)
+    // and GROUP_NAME_FOLLOWS (1<<11) only when owner/group are requested.
+    const MOD_NSEC: u32 = 1 << 13;
+    const USER_NAME_FOLLOWS: u32 = 1 << 10;
+    const GROUP_NAME_FOLLOWS: u32 = 1 << 11;
+    let mut flags = MOD_NSEC;
+    if metadata_flags.preserve_owner {
+        flags |= USER_NAME_FOLLOWS;
+    }
+    if metadata_flags.preserve_group {
+        flags |= GROUP_NAME_FOLLOWS;
+    }
     let name = local_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("source.bin")
         .to_string();
     let (mtime_secs, mtime_nsec_opt) = file_mtime_components(metadata);
-    let (uid_value, gid_value) = file_owner_components(metadata);
-    let uid_name = lookup_user_name(uid_value);
-    let gid_name = lookup_group_name(gid_value);
+    let (uid, uid_name, gid, gid_name) =
+        if metadata_flags.preserve_owner || metadata_flags.preserve_group {
+            let (uid_value, gid_value) = file_owner_components(metadata);
+            (
+                metadata_flags.preserve_owner.then_some(uid_value as i64),
+                metadata_flags
+                    .preserve_owner
+                    .then(|| lookup_user_name(uid_value)),
+                metadata_flags.preserve_group.then_some(gid_value as i64),
+                metadata_flags
+                    .preserve_group
+                    .then(|| lookup_group_name(gid_value)),
+            )
+        } else {
+            (None, None, None, None)
+        };
     // B3 / X.3: when the session negotiates `-X`, read `user.*` xattrs
     // via libc. `None` when xattrs are off keeps the encoder emitting
     // zero xattr bytes (frozen oracles stay byte-identical). `Some(vec)`
     // — empty or not — when on matches the codec contract for negotiated
     // sessions.
-    let xattrs = if preserve_xattrs {
+    let xattrs = if metadata_flags.preserve_xattrs {
         Some(crate::aerorsync::xattr_fs::read_user_xattrs(local_path).unwrap_or_default())
     } else {
         None
@@ -1697,7 +1836,7 @@ fn build_source_entry(
     // value; using the real digest keeps semantics aligned with
     // classic rsync so the receiver may short-circuit equal files.
     FileListEntry {
-        flags: BASELINE_FLAGS,
+        flags,
         path: name,
         size: size as i64,
         mtime: mtime_secs,
@@ -1706,13 +1845,14 @@ fn build_source_entry(
         // consistent.
         mtime_nsec: Some(mtime_nsec_opt.unwrap_or(0)),
         mode: file_mode_from_metadata(metadata),
-        uid: Some(uid_value as i64),
-        uid_name: Some(uid_name),
-        gid: Some(gid_value as i64),
-        gid_name: Some(gid_name),
+        uid,
+        uid_name,
+        gid,
+        gid_name,
         checksum: file_checksum,
         symlink_target,
         xattrs,
+        acls,
     }
 }
 
@@ -2117,6 +2257,12 @@ fn map_write_atomic_error(err: WriteAtomicError) -> RsyncError {
         //     user may see the old contents AND a leftover `.aerotmp`.
         //     Keep as `HardRejection` so classic does not silently
         //     attempt the same overwrite without acknowledgement.
+        WriteAtomicError::PostOpen {
+            stage: "acl",
+            source,
+        } => RsyncError::HardRejection(format!(
+            "atomic write failed at acl (target untouched): {source}"
+        )),
         WriteAtomicError::PostOpen { stage, source } if stage != "rename" => {
             RsyncError::TransferFailed {
                 exit: -1,
@@ -2485,15 +2631,17 @@ mod tests {
             checksum: vec![0xAA; checksum_len],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         };
         let opts = FileListDecodeOptions {
             protocol: 31,
             xfer_flags_as_varint: true,
             always_checksum: true,
             csum_len: checksum_len,
-            preserve_uid: true,
-            preserve_gid: true,
+            preserve_uid: false,
+            preserve_gid: false,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
 
@@ -2567,10 +2715,11 @@ mod tests {
 
     /// Y-RSC.3: like [`run_download_fixture`] but with an explicit client
     /// advertisement. Needed for winners outside the byte-pinned default
-    /// list (sha1, sha256, ...), which in production become reachable
-    /// only through the `AEROFTP_RSYNC_CSUM_ALGOS` override; the custom
-    /// profile mirrors that override without touching process env (unit
-    /// tests run in parallel).
+    /// list (sha1, and named unsupported names such as sha256 used to
+    /// pin rejection), which in production become reachable only through
+    /// the `AEROFTP_RSYNC_CSUM_ALGOS` override; the custom profile
+    /// mirrors that override without touching process env (unit tests
+    /// run in parallel).
     async fn run_download_fixture_with_profile(
         dir: &TempDir,
         content: &[u8],
@@ -2592,6 +2741,7 @@ mod tests {
             &local_path,
             profile,
             None,
+            false,
             false,
             false,
         )
@@ -2642,20 +2792,13 @@ mod tests {
         );
     }
 
-    /// The interop guard for algorithms we still do not recompute.
-    /// xxh128, xxh3, xxh64, md5, md4, and sha1 are verified (Y-RSC.3
-    /// moved md4/sha1 out of this pin), so the skip case now points at
-    /// sha256: reachable only when an `AEROFTP_RSYNC_CSUM_ALGOS`-shaped
-    /// override advertises it, mirrored here via a custom profile. The
-    /// same mismatching trailer that is fatal for the implemented algos
-    /// has to commit here. Getting this wrong would silently disable
-    /// delta for every peer that negotiated an unimplemented algo.
+    /// Named unsupported checksum winners are rejected at preamble time.
+    /// The previous "skip verify and commit" path for sha256 was a
+    /// width/implementation mismatch, not an honest no-op.
     #[tokio::test]
-    async fn download_skips_the_verify_when_the_peer_negotiated_an_unimplemented_algo() {
+    async fn download_rejects_unimplemented_checksum_winner_before_commit() {
         let dir = fresh_tempdir();
         let content = b"the bytes that actually arrive on the wire".to_vec();
-        // "sha256" wins negotiation (32-byte trailer) and remains
-        // unimplemented, so the verify must no-op.
         let (result, local_path) = run_download_fixture_with_profile(
             &dir,
             &content,
@@ -2668,14 +2811,23 @@ mod tests {
         )
         .await;
 
+        match result {
+            Err(RsyncError::TransferFailed { exit, stderr }) => {
+                assert_eq!(exit, -1, "typed native fallback uses the -1 envelope");
+                assert!(
+                    stderr.contains("NegotiationFailed"),
+                    "fallback must retain the typed cause: {stderr}"
+                );
+                assert!(
+                    stderr.contains("sha256"),
+                    "fallback must name the unsupported winner: {stderr}"
+                );
+            }
+            other => panic!("unsupported checksum must stay fallback-eligible, got {other:?}"),
+        }
         assert!(
-            result.is_ok(),
-            "an unimplemented-algo peer must keep the pre-verify path, got {result:?}"
-        );
-        assert_eq!(
-            tokio::fs::read(&local_path).await.expect("target written"),
-            content,
-            "reconstruction must still commit unchanged"
+            !local_path.exists(),
+            "a pre-commit checksum rejection must not publish the local target"
         );
     }
 
@@ -3108,7 +3260,8 @@ mod tests {
             &meta,
             xxh128_digest_bytes(&[]),
             None,
-            false,
+            None,
+            EffectiveMetadataFlags::capture(false, false),
         );
         assert_eq!(entry.path, "payload.bin");
         assert_eq!(entry.size, 1_234_567);
@@ -3119,7 +3272,7 @@ mod tests {
             "mtime must reflect the source file (got {})",
             entry.mtime
         );
-        // B.2 baseline: oracle's first-entry shape is
+        // Historical capture first-entry shape:
         // USER_NAME_FOLLOWS | GROUP_NAME_FOLLOWS | MOD_NSEC = 0x2c00.
         // uid/gid + names follow inline; xxh128 16-byte checksum trails.
         assert_eq!(entry.flags, (1 << 10) | (1 << 11) | (1 << 13));
@@ -3145,6 +3298,27 @@ mod tests {
     }
 
     #[test]
+    fn product_source_entries_omit_uid_gid_and_name_flags() {
+        let dir = fresh_tempdir();
+        let path = dir.path().join("payload.bin");
+        let meta = metadata_for(&path);
+        let entry = build_source_entry(
+            &path,
+            12,
+            &meta,
+            xxh128_digest_bytes(&[]),
+            None,
+            None,
+            EffectiveMetadataFlags::product(false, false),
+        );
+        assert_eq!(entry.flags, 1 << 13, "product first-entry is MOD_NSEC only");
+        assert!(entry.uid.is_none());
+        assert!(entry.gid.is_none());
+        assert!(entry.uid_name.is_none());
+        assert!(entry.gid_name.is_none());
+    }
+
+    #[test]
     fn build_source_entry_fallback_name_when_no_file_name() {
         // `/` has no file_name component; use any directory metadata as
         // a source (a directory is fine for the fallback check).
@@ -3156,7 +3330,8 @@ mod tests {
             &meta,
             xxh128_digest_bytes(&[]),
             None,
-            false,
+            None,
+            EffectiveMetadataFlags::product(false, false),
         );
         assert_eq!(entry.path, "source.bin");
     }
@@ -3171,7 +3346,15 @@ mod tests {
             std::fs::File::create(&path).unwrap();
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
             let meta = std::fs::metadata(&path).unwrap();
-            let entry = build_source_entry(&path, 0, &meta, xxh128_digest_bytes(&[]), None, false);
+            let entry = build_source_entry(
+                &path,
+                0,
+                &meta,
+                xxh128_digest_bytes(&[]),
+                None,
+                None,
+                EffectiveMetadataFlags::product(false, false),
+            );
             // `mode` is the raw `st_mode` value; the low 12 bits carry
             // the permission bits we just set.
             assert_eq!((entry.mode as u32) & 0o7777, 0o640);
@@ -3199,7 +3382,8 @@ mod tests {
             &meta,
             Vec::new(),
             Some(target.to_string()),
-            false,
+            None,
+            EffectiveMetadataFlags::product(false, false),
         );
 
         assert_eq!(entry.mode & 0o170000, 0o120000, "S_IFLNK mode bits");
@@ -3210,8 +3394,9 @@ mod tests {
             "symlink entries carry no flist checksum (proto >= 28)"
         );
         // First-entry shape (audit 2026-07-21 §4.1): explicit mtime and
-        // mode, never XMIT_SAME_* compression.
-        assert_eq!(entry.flags, (1 << 10) | (1 << 11) | (1 << 13));
+        // mode, never XMIT_SAME_* compression. Product omits owner/group.
+        assert_eq!(entry.flags, 1 << 13);
+        assert!(entry.uid.is_none() && entry.gid.is_none());
         assert!(entry.mtime > 0, "explicit mtime required on first entry");
         assert!(entry.mtime_nsec.is_some(), "MOD_NSEC requires a value");
     }
@@ -3234,6 +3419,7 @@ mod tests {
             checksum: vec![],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         };
         let err = create_symlink_atomic(&entry, &dest, "/remote/no-target.lnk")
             .await
@@ -3286,6 +3472,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some("../../../../etc/passwd".to_string()),
             xattrs: None,
+            acls: None,
         };
         let err = create_symlink_atomic(&entry, &dest, "/remote/evil.lnk")
             .await
@@ -3320,6 +3507,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some("rel/tgt.bin".to_string()),
             xattrs: None,
+            acls: None,
         };
         create_symlink_atomic(&entry, &dest, "/remote/replace-me.lnk")
             .await
@@ -3430,6 +3618,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some("tgt.bin".to_string()),
             xattrs: None,
+            acls: None,
         };
         create_symlink_atomic(&entry, &dest, "/remote/dated.lnk")
             .await
@@ -3519,6 +3708,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some("tgt.bin".to_string()),
             xattrs: None,
+            acls: None,
         };
         let err = create_symlink_atomic(&entry, &dest, "/remote/refused.lnk")
             .await
@@ -3580,6 +3770,7 @@ mod tests {
             PreambleProfile::default(),
             None,
             false,
+            false,
         )
         .await
         .expect("symlink upload must succeed despite the min_file_size gate");
@@ -3610,6 +3801,7 @@ mod tests {
             0,
             PreambleProfile::default(),
             None,
+            false,
             false,
         )
         .await
@@ -3656,15 +3848,17 @@ mod tests {
             checksum: vec![],
             symlink_target: Some(target.to_string()),
             xattrs: None,
+            acls: None,
         };
         let opts = FileListDecodeOptions {
             protocol: 31,
             xfer_flags_as_varint: true,
             always_checksum: true,
             csum_len: 16,
-            preserve_uid: true,
-            preserve_gid: true,
+            preserve_uid: false,
+            preserve_gid: false,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let mut finish_tail = vec![0x00; 3];
@@ -3718,6 +3912,7 @@ mod tests {
             None,
             false,
             false,
+            false,
         )
         .await
         .expect("symlink download must create the link");
@@ -3754,6 +3949,7 @@ mod tests {
             &local,
             PreambleProfile::default(),
             None,
+            false,
             false,
             false,
         )
@@ -3883,6 +4079,7 @@ mod tests {
             PreambleProfile::for_host("127.0.0.1"),
             None,
             false,
+            false,
         )
         .await
         .expect("live symlink upload against stock rsync");
@@ -3943,6 +4140,7 @@ mod tests {
             None,
             false,
             false,
+            false,
         )
         .await
         .expect("live symlink download against stock rsync");
@@ -3962,6 +4160,170 @@ mod tests {
             PathBuf::from(os)
         };
         assert!(!temp.exists(), "no temp leftovers after live download");
+    }
+
+    /// A real peer that negotiates a compressor we cannot drive must fail
+    /// before commit through the typed fallback envelope, not as a malformed
+    /// frame and not after publishing a partial destination.
+    ///
+    /// The default advertisement cannot reach this branch by construction
+    /// (`zstd zlibx none`). This lane deliberately models the documented
+    /// `AEROFTP_RSYNC_COMPRESS_ALGOS="zlib none"` escape hatch without
+    /// mutating process-global environment state while the other lane-3 tests
+    /// run in parallel.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_unsupported_compressor_live_lane_3_routes_to_fallback() {
+        use crate::aerorsync::ssh_transport::SshRemoteShellTransport;
+
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!(
+                "[lane3-unsupported-compressor] harness not reachable on 127.0.0.1:2224: skipping"
+            );
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("unsupported-compressor.bin");
+        let payload = vec![0xA5; 256 * 1024];
+        std::fs::write(&local, &payload).expect("write local payload");
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_path = format!("/workspace/lane3-unsupported-compressor-{nanos}.bin");
+        let transport = SshRemoteShellTransport::new(lane3_ssh_config(key_path.clone()));
+        let profile = PreambleProfile {
+            checksum_algos: PreambleProfile::default().checksum_algos,
+            compression_algos: "zlib none".to_string(),
+        };
+
+        let error = do_upload(
+            transport,
+            CancelHandle::inert(),
+            &local,
+            &remote_path,
+            0,
+            profile,
+            None,
+            false,
+            false,
+        )
+        .await
+        .expect_err("stock rsync must negotiate zlib and enter the typed fallback path");
+
+        match error {
+            RsyncError::TransferFailed { exit, stderr } => {
+                assert_eq!(exit, -1, "typed native fallback uses the -1 envelope");
+                assert!(
+                    stderr.contains("NegotiationFailed"),
+                    "fallback must retain the typed cause: {stderr}"
+                );
+                assert!(
+                    stderr.contains("zlib"),
+                    "fallback must name the unsupported negotiated codec: {stderr}"
+                );
+            }
+            other => panic!("unsupported compressor must stay fallback-eligible, got {other:?}"),
+        }
+
+        let publication = lane3_ssh_testuser(
+            &key_path,
+            &format!("test ! -e '{remote_path}' && echo absent || echo published"),
+        );
+        assert_eq!(
+            publication, "absent",
+            "a pre-commit fallback must not publish the remote target"
+        );
+    }
+
+    /// A real peer that negotiates a checksum we cannot drive must fail
+    /// before commit through the typed fallback envelope, not as a
+    /// malformed frame and not after publishing a partial destination.
+    ///
+    /// The default advertisement cannot reach this branch by construction
+    /// (`xxh128 xxh3 xxh64 md5 md4`). This lane deliberately models the
+    /// documented `AEROFTP_RSYNC_CSUM_ALGOS="none"` escape hatch without
+    /// mutating process-global environment state while the other lane-3
+    /// tests run in parallel.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_unsupported_checksum_live_lane_3_routes_to_fallback() {
+        use crate::aerorsync::ssh_transport::SshRemoteShellTransport;
+
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!(
+                "[lane3-unsupported-checksum] harness not reachable on 127.0.0.1:2224: skipping"
+            );
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("unsupported-checksum.bin");
+        let payload = vec![0xA5; 256 * 1024];
+        std::fs::write(&local, &payload).expect("write local payload");
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_path = format!("/workspace/lane3-unsupported-checksum-{nanos}.bin");
+        let transport = SshRemoteShellTransport::new(lane3_ssh_config(key_path.clone()));
+        let profile = PreambleProfile {
+            checksum_algos: "none".to_string(),
+            compression_algos: PreambleProfile::default().compression_algos,
+        };
+
+        let error = do_upload(
+            transport,
+            CancelHandle::inert(),
+            &local,
+            &remote_path,
+            0,
+            profile,
+            None,
+            false,
+            false,
+        )
+        .await
+        .expect_err("stock rsync must negotiate none and enter the typed fallback path");
+
+        match error {
+            RsyncError::TransferFailed { exit, stderr } => {
+                assert_eq!(exit, -1, "typed native fallback uses the -1 envelope");
+                assert!(
+                    stderr.contains("NegotiationFailed"),
+                    "fallback must retain the typed cause: {stderr}"
+                );
+                assert!(
+                    stderr.contains("none"),
+                    "fallback must name the unsupported negotiated checksum: {stderr}"
+                );
+            }
+            other => panic!("unsupported checksum must stay fallback-eligible, got {other:?}"),
+        }
+
+        let publication = lane3_ssh_testuser(
+            &key_path,
+            &format!("test ! -e '{remote_path}' && echo absent || echo published"),
+        );
+        assert_eq!(
+            publication, "absent",
+            "a pre-commit fallback must not publish the remote target"
+        );
     }
 
     // -- B4 / X.6 live lane 3 xattr acceptance (stock rsync 3.2.7, -X) ------
@@ -4333,6 +4695,225 @@ PY"#
             "[lane3-xattr] download: local {attr_name} ok ({} bytes)",
             attr_value.len()
         );
+
+        let _ = lane3_ssh_testuser(&key_path, &format!("rm -f '{remote_path}'"));
+    }
+
+    // ACL B3 covers regular-file access ACLs only. Directory default ACL is
+    // out of B3: the single-file driver has no recursive entries, so the
+    // default slot stays wire-only from B1. Apply-failure atomicity remains
+    // pinned by `acl_hard_failure_leaves_existing_target_and_removes_temp`
+    // and `acl_apply_without_mode_fails_closed_and_leaves_target`.
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_local_set_named_acl(path: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644))
+            .expect("chmod local ACL fixture");
+        let out = std::process::Command::new("setfacl")
+            .args(["-m", "u:65534:r--"])
+            .arg(path)
+            .output()
+            .expect("spawn setfacl");
+        assert!(
+            out.status.success(),
+            "setfacl failed for {}: {}",
+            path.display(),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_local_acl_text(path: &Path) -> String {
+        let out = std::process::Command::new("getfacl")
+            .args(["-n", "-p"])
+            .arg(path)
+            .output()
+            .expect("spawn getfacl");
+        assert!(
+            out.status.success(),
+            "getfacl failed for {}: {}",
+            path.display(),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_assert_named_acl(text: &str, side: &str) {
+        assert!(
+            text.lines()
+                .any(|line| line == "user:65534:r--" || line == "user:nobody:r--"),
+            "{side} ACL is missing named user 65534/nobody r--:\n{text}"
+        );
+        assert!(
+            text.lines().any(|line| line == "mask::r--"),
+            "{side} ACL is missing the expected mask::r--:\n{text}"
+        );
+    }
+
+    /// The lane-3 image intentionally has no `setfacl`/`getfacl` binaries,
+    /// but stock rsync links the same libacl ABI. Seed a fixture as its owner
+    /// (`testuser`) without mutating the image or requiring host root.
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_remote_set_named_acl(key_path: &Path, remote_path: &str) {
+        let command = format!(
+            r#"python3 - <<'PY'
+import ctypes
+lib = ctypes.CDLL("libacl.so.1", use_errno=True)
+lib.acl_from_text.argtypes = [ctypes.c_char_p]
+lib.acl_from_text.restype = ctypes.c_void_p
+lib.acl_set_file.argtypes = [ctypes.c_char_p, ctypes.c_uint, ctypes.c_void_p]
+lib.acl_set_file.restype = ctypes.c_int
+lib.acl_free.argtypes = [ctypes.c_void_p]
+lib.acl_free.restype = ctypes.c_int
+text = b"user::rw-\nuser:65534:r--\ngroup::r--\nmask::r--\nother::r--\n"
+acl = lib.acl_from_text(text)
+if not acl:
+    raise SystemExit("acl_from_text failed errno=%s" % ctypes.get_errno())
+try:
+    if lib.acl_set_file(b"{remote_path}", 0x8000, acl) != 0:
+        raise SystemExit("acl_set_file failed errno=%s" % ctypes.get_errno())
+finally:
+    lib.acl_free(acl)
+print("ok")
+PY"#
+        );
+        assert_eq!(lane3_ssh_testuser(key_path, &command), "ok");
+    }
+
+    #[cfg(all(ci_lane3, unix))]
+    fn lane3_remote_acl_text(key_path: &Path, remote_path: &str) -> String {
+        let command = format!(
+            r#"python3 - <<'PY'
+import ctypes
+lib = ctypes.CDLL("libacl.so.1", use_errno=True)
+lib.acl_get_file.argtypes = [ctypes.c_char_p, ctypes.c_uint]
+lib.acl_get_file.restype = ctypes.c_void_p
+lib.acl_to_text.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ssize_t)]
+lib.acl_to_text.restype = ctypes.c_void_p
+lib.acl_free.argtypes = [ctypes.c_void_p]
+lib.acl_free.restype = ctypes.c_int
+acl = lib.acl_get_file(b"{remote_path}", 0x8000)
+if not acl:
+    raise SystemExit("acl_get_file failed errno=%s" % ctypes.get_errno())
+length = ctypes.c_ssize_t()
+text = lib.acl_to_text(acl, ctypes.byref(length))
+if not text:
+    lib.acl_free(acl)
+    raise SystemExit("acl_to_text failed errno=%s" % ctypes.get_errno())
+try:
+    print(ctypes.string_at(text, length.value).decode())
+finally:
+    lib.acl_free(text)
+    lib.acl_free(acl)
+PY"#
+        );
+        lane3_ssh_testuser(key_path, &command)
+    }
+
+    /// ACL B3 upload: source access ACL crosses AeroRsync `-A` and is
+    /// observable on the stock-rsync destination with matching content.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_upload_acl_named_user_live_lane_3() {
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("[lane3-acl] harness not reachable on 127.0.0.1:2224: skipping");
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("lane3-acl-upload.bin");
+        let payload = b"lane3-acl-upload-payload-v1";
+        std::fs::write(&local, payload).expect("write local ACL payload");
+        lane3_local_set_named_acl(&local);
+        lane3_assert_named_acl(&lane3_local_acl_text(&local), "upload source");
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_path = format!("/workspace/lane3-acl-up-{nanos}.bin");
+        let transport =
+            AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_acls(true);
+        let stats = transport
+            .upload(&local, &remote_path)
+            .await
+            .expect("live ACL upload against stock rsync");
+        assert_eq!(stats.total_size, payload.len() as u64);
+        assert_eq!(
+            lane3_remote_sha256(&key_path, &remote_path),
+            lane3_local_sha256(&local),
+            "upload content sha256 must match"
+        );
+        let remote_acl = lane3_remote_acl_text(&key_path, &remote_path);
+        lane3_assert_named_acl(&remote_acl, "upload destination");
+        eprintln!("[lane3-acl] upload destination ACL:\n{remote_acl}");
+
+        let _ = lane3_ssh_testuser(&key_path, &format!("rm -f '{remote_path}'"));
+    }
+
+    /// ACL B3 download: stock-rsync source access ACL is decoded and applied
+    /// to the local temp before the atomic rename.
+    #[cfg(all(ci_lane3, unix))]
+    #[tokio::test]
+    async fn delta_download_acl_named_user_live_lane_3() {
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("[lane3-acl] harness not reachable on 127.0.0.1:2224: skipping");
+            return;
+        }
+        let Some(key_path) = lane3_key_path() else {
+            return;
+        };
+
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_path = format!("/workspace/lane3-acl-dl-{nanos}.bin");
+        let payload = b"lane3-acl-download-payload-v1";
+        use base64::Engine as _;
+        let payload_b64 = base64::engine::general_purpose::STANDARD.encode(payload);
+        lane3_ssh_testuser(
+            &key_path,
+            &format!(
+                r#"python3 - <<'PY'
+import base64
+open("{remote_path}", "wb").write(base64.b64decode("{payload_b64}"))
+print("seeded")
+PY"#
+            ),
+        );
+        lane3_remote_set_named_acl(&key_path, &remote_path);
+        let seeded_acl = lane3_remote_acl_text(&key_path, &remote_path);
+        lane3_assert_named_acl(&seeded_acl, "download source");
+
+        let dir = fresh_tempdir();
+        let local = dir.path().join("lane3-acl-download.bin");
+        let transport =
+            AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_acls(true);
+        let stats = transport
+            .download(&remote_path, &local)
+            .await
+            .expect("live ACL download against stock rsync");
+        assert_eq!(stats.total_size, payload.len() as u64);
+        assert_eq!(
+            std::fs::read(&local).expect("read downloaded ACL payload"),
+            payload
+        );
+        let local_acl = lane3_local_acl_text(&local);
+        lane3_assert_named_acl(&local_acl, "download destination");
+        eprintln!("[lane3-acl] download destination ACL:\n{local_acl}");
 
         let _ = lane3_ssh_testuser(&key_path, &format!("rm -f '{remote_path}'"));
     }
@@ -4985,37 +5566,67 @@ PY"#
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let base = AerorsyncDeltaTransport::new(cfg.clone(), 1);
         assert_eq!(
-            base.xattr_policy(),
-            (false, false),
+            base.metadata_policy(),
+            (false, false, false),
             "default must stay off: frozen wire oracles depend on it"
         );
 
         let opted_in = AerorsyncDeltaTransport::new(cfg.clone(), 1).with_xattrs(true);
-        assert_eq!(opted_in.xattr_policy(), (true, false));
+        assert_eq!(opted_in.metadata_policy(), (true, false, false));
 
         let hard = AerorsyncDeltaTransport::new(cfg, 1)
             .with_xattrs(true)
             .with_fail_on_metadata_loss(true);
-        assert_eq!(hard.xattr_policy(), (true, true));
+        assert_eq!(hard.metadata_policy(), (true, false, true));
 
-        let (preserve_xattrs, fail_on_metadata_loss) = hard.xattr_policy();
+        let (preserve_xattrs, _, fail_on_metadata_loss) = hard.metadata_policy();
         let transport = RusshSessionTransport::test_with_empty_handle(
             crate::aerorsync::russh_session_transport::test_dummy_config(),
             1,
         );
-        let batch = AerorsyncBatch::new(transport, 1, preserve_xattrs, fail_on_metadata_loss);
+        let batch =
+            AerorsyncBatch::new(transport, 1, preserve_xattrs, false, fail_on_metadata_loss);
         assert!(batch.preserve_xattrs, "batch dropped -X on the floor");
+        assert!(
+            !batch.preserve_acls,
+            "xattr-only opt-in must not turn -A on"
+        );
         assert!(
             batch.fail_on_metadata_loss,
             "batch dropped fail_on_metadata_loss on the floor"
         );
     }
 
+    #[test]
+    fn batch_inherits_the_transport_acl_policy() {
+        let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
+        let base = AerorsyncDeltaTransport::new(cfg.clone(), 1);
+        assert_eq!(base.metadata_policy(), (false, false, false));
+
+        let opted_in = AerorsyncDeltaTransport::new(cfg.clone(), 1).with_acls(true);
+        assert_eq!(opted_in.metadata_policy(), (false, true, false));
+
+        let (preserve_xattrs, preserve_acls, fail_on_metadata_loss) = opted_in.metadata_policy();
+        let transport = RusshSessionTransport::test_with_empty_handle(
+            crate::aerorsync::russh_session_transport::test_dummy_config(),
+            1,
+        );
+        let batch = AerorsyncBatch::new(
+            transport,
+            1,
+            preserve_xattrs,
+            preserve_acls,
+            fail_on_metadata_loss,
+        );
+        assert!(batch.preserve_acls, "batch dropped -A on the floor");
+        assert!(!batch.preserve_xattrs);
+    }
+
     #[tokio::test]
     async fn aerorsync_batch_reuses_ssh_session() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let mut batch = AerorsyncBatch::new(transport, 1, false, false);
+        let mut batch = AerorsyncBatch::new(transport, 1, false, false, false);
         let dir = fresh_tempdir();
         let local = write_test_file(&dir, "batch_reuse.bin", b"1234567890");
 
@@ -5032,7 +5643,7 @@ PY"#
     async fn aerorsync_batch_per_file_open_raw_stream_count_equals_file_count() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let mut batch = AerorsyncBatch::new(transport, 1, false, false);
+        let mut batch = AerorsyncBatch::new(transport, 1, false, false, false);
         let dir = fresh_tempdir();
         let a = write_test_file(&dir, "a.bin", b"AAAA");
         let b = write_test_file(&dir, "b.bin", b"BBBB");
@@ -5050,7 +5661,7 @@ PY"#
     async fn aerorsync_batch_finalize_returns_session_count_one_on_perfect_reuse() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let batch = AerorsyncBatch::new(transport, 1, false, false);
+        let batch = AerorsyncBatch::new(transport, 1, false, false, false);
 
         let stats = Box::new(batch)
             .finalize()
@@ -5067,7 +5678,7 @@ PY"#
         // transport state before finalize.
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let batch = AerorsyncBatch::new(transport, 1, false, false);
+        let batch = AerorsyncBatch::new(transport, 1, false, false, false);
         batch.transport.test_set_handshake_count(2);
 
         let stats = Box::new(batch)

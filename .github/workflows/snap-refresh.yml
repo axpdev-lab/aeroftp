@@ -176,7 +176,8 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libfuse3-dev
+            libfuse3-dev \
+            libacl1-dev
 
       - name: Install npm dependencies
         run: npm ci

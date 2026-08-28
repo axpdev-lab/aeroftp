@@ -231,6 +231,16 @@ pub enum RealWireError {
     XattrDatumDigestMismatch {
         name: String,
     },
+    /// A peer-declared ACL field is negative, uses a reserved bit, sits
+    /// outside the 0..7 permission range, or exceeds the named-entry /
+    /// name-length ceilings. `field` names which one. Truncation of an
+    /// otherwise well-formed ACL is [`RealWireError::TruncatedBuffer`],
+    /// not this variant: the driver retries only on the recoverable set.
+    InvalidAclField {
+        field: &'static str,
+        declared: i64,
+        available: usize,
+    },
 }
 
 impl fmt::Display for RealWireError {
@@ -379,6 +389,16 @@ impl fmt::Display for RealWireError {
                     f,
                     "out-of-band datum for xattr {name:?} does not match the digest \
                      carried by the file-list entry"
+                )
+            }
+            RealWireError::InvalidAclField {
+                field,
+                declared,
+                available,
+            } => {
+                write!(
+                    f,
+                    "invalid acl {field}: declared {declared}, {available} byte(s) available"
                 )
             }
         }
@@ -1325,6 +1345,13 @@ pub struct FileListDecodeOptions<'a> {
     /// `-g` / `--group` equivalent: gid field is present when
     /// `XMIT_SAME_GID` is not set.
     pub preserve_gid: bool,
+    /// `-A` / `--acls` was negotiated, so every non-symlink entry carries
+    /// an access ACL after the checksum (and a directory also carries a
+    /// default ACL). Symlinks skip ACL entirely, matching
+    /// `flist.c::send_file_entry` / `receive_acl`. Off by default: the
+    /// frozen oracles were captured without `-A`, and leaving it off is
+    /// what keeps their byte-pinned path unchanged.
+    pub preserve_acls: bool,
     /// `-X` / `--xattrs` was negotiated, so every entry carries a
     /// trailing xattr blob — including entries whose file has no
     /// extended attribute at all, where the blob is still `00 00`
@@ -1352,6 +1379,7 @@ impl<'a> FileListDecodeOptions<'a> {
             csum_len: 16,
             preserve_uid: true,
             preserve_gid: true,
+            preserve_acls: false,
             preserve_xattrs: false,
             previous_name: None,
         }
@@ -1497,6 +1525,75 @@ pub fn xattr_value_digest(value: &[u8]) -> [u8; XATTR_DIGEST_LEN] {
     digest
 }
 
+/// Literal ACL flag bits from rsync 3.2.7 `acls.c`. One byte on the wire.
+pub const ACL_XMIT_USER_OBJ: u8 = 1 << 0;
+pub const ACL_XMIT_GROUP_OBJ: u8 = 1 << 1;
+pub const ACL_XMIT_MASK_OBJ: u8 = 1 << 2;
+pub const ACL_XMIT_OTHER_OBJ: u8 = 1 << 3;
+pub const ACL_XMIT_NAME_LIST: u8 = 1 << 4;
+pub const ACL_XMIT_FLAGS_MASK: u8 = 0x1f;
+
+/// Low bits of a named-entry `xbits` varint (`acls.c`).
+pub const ACL_NAME_FOLLOWS: u8 = 1;
+pub const ACL_NAME_IS_USER: u8 = 2;
+pub const ACL_XBITS_FLAGS_MASK: u8 = 0x03;
+pub const ACL_ACCESS_MAX: u8 = 7;
+pub const ACL_XBITS_MAX: u8 = (ACL_ACCESS_MAX << 2) | ACL_XBITS_FLAGS_MASK;
+
+/// Peer-supplied ceilings for one ACL. A count above this is a hostile
+/// blob, not a frame boundary: the driver must abort rather than retry.
+pub const MAX_ACL_NAMED_ENTRIES: usize = 256;
+pub const MAX_ACL_NAME_LEN: usize = 255;
+
+/// A file-list ACL is either a full literal or a back-reference to an
+/// ACL already sent in this session (`write_varint(ndx + 1)` with
+/// `ndx >= 0`). The codec does not resolve references: that needs a
+/// per-session table the recursive file-list will own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AclWireEntry {
+    Literal(RsyncAcl),
+    Reference(u32),
+}
+
+/// POSIX ACL body as rsync puts it on the wire. Object permissions that
+/// rsync can infer from the file mode are omitted (`None`); B1 preserves
+/// that shape instead of reconstructing the policy.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RsyncAcl {
+    pub user_obj: Option<u8>,
+    pub group_obj: Option<u8>,
+    pub mask_obj: Option<u8>,
+    pub other_obj: Option<u8>,
+    pub names: Vec<AclNamedEntry>,
+}
+
+impl RsyncAcl {
+    pub fn empty() -> Self {
+        Self::default()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AclPrincipal {
+    User,
+    Group,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AclNamedEntry {
+    pub id: u32,
+    pub principal: AclPrincipal,
+    pub access: u8,
+    pub name: Option<String>,
+}
+
+/// Access ACL plus the optional default ACL a directory carries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileListAcls {
+    pub access: AclWireEntry,
+    pub default: Option<AclWireEntry>,
+}
+
 /// Decoded file-list entry (regular file, protocol ≥ 31 path). Device /
 /// symlink / hardlink extensions are deferred: they land in a later
 /// sinergia when we encounter them in a transcript.
@@ -1545,12 +1642,27 @@ pub struct FileListEntry {
     /// it on `preserve_xattrs` alone, with no `S_ISLNK` exclusion — that
     /// exclusion applies to ACLs, not xattrs).
     pub xattrs: Option<Vec<XattrPair>>,
+    /// POSIX ACLs, present iff `-A` was negotiated
+    /// (`FileListDecodeOptions::preserve_acls`) and this entry is not a
+    /// symlink. Three states, matching the xattr field:
+    ///
+    /// | State | Wire | Here |
+    /// |---|---|---|
+    /// | `-A` not negotiated, or symlink | zero bytes | `None` |
+    /// | `-A` negotiated, no extra ACL | literal with flags 0 | `Some` with empty objects |
+    /// | `-A` negotiated, ACL present | literal or reference | `Some(...)` |
+    ///
+    /// Directories also carry `FileListAcls::default`. The codec keeps
+    /// references unresolved: a later session table owns that.
+    pub acls: Option<FileListAcls>,
 }
 
-/// POSIX `S_IFMT` mask and `S_IFLNK` value. Used to gate symlink wire
-/// handling on the entry mode exactly like rsync's `S_ISLNK(mode)`.
+/// POSIX `S_IFMT` mask and `S_IFLNK` / `S_IFDIR` values. Used to gate
+/// symlink and directory wire handling on the entry mode exactly like
+/// rsync's `S_ISLNK` / `S_ISDIR`.
 pub const S_IFMT: u32 = 0o170000;
 pub const S_IFLNK: u32 = 0o120000;
+pub const S_IFDIR: u32 = 0o040000;
 
 /// True when `mode`'s file-type bits mark a symbolic link. Mirrors the
 /// libc `S_ISLNK` macro so the wire codec keys symlink-target presence
@@ -1558,6 +1670,16 @@ pub const S_IFLNK: u32 = 0o120000;
 #[inline]
 pub fn is_symlink_mode(mode: u32) -> bool {
     (mode & S_IFMT) == S_IFLNK
+}
+
+/// True when `mode`'s file-type bits mark a directory. Mirrors libc
+/// `S_ISDIR` so a negotiated `-A` session emits the default-ACL slot
+/// on the same condition stock rsync does. Single-file transfers never
+/// send a directory entry today; adding the predicate here does not
+/// change that path.
+#[inline]
+pub fn is_directory_mode(mode: u32) -> bool {
+    (mode & S_IFMT) == S_IFDIR
 }
 
 /// Read `len` bytes from `buf[offset..]` and interpret them as UTF-8.
@@ -1795,6 +1917,277 @@ fn decode_xattr_blob(buf: &[u8]) -> Result<(Vec<XattrPair>, usize), RealWireErro
     }
 
     Ok((pairs, cursor))
+}
+
+fn invalid_acl(field: &'static str, declared: i64, available: usize) -> RealWireError {
+    RealWireError::InvalidAclField {
+        field,
+        declared,
+        available,
+    }
+}
+
+fn decode_acl_perm(
+    buf: &[u8],
+    cursor: &mut usize,
+    field: &'static str,
+) -> Result<u8, RealWireError> {
+    let (raw, consumed) = decode_varint(&buf[*cursor..])?;
+    *cursor += consumed;
+    if raw < 0 || raw > i64::from(ACL_ACCESS_MAX) {
+        return Err(invalid_acl(field, raw, buf.len().saturating_sub(*cursor)));
+    }
+    Ok(raw as u8)
+}
+
+/// Decode one rsync ACL (`send_rsync_acl` / `recv_rsync_acl`).
+///
+/// Wire shape:
+/// - `varint(0)` then a literal: flags byte, optional object perms,
+///   optional named list;
+/// - `varint(N)` with `N > 0`: reference to previously sent ACL `N-1`.
+///
+/// Truncation of a well-formed prefix is [`RealWireError::TruncatedBuffer`].
+/// Reserved flag bits, out-of-range access, a negative index, and a
+/// named-entry count above [`MAX_ACL_NAMED_ENTRIES`] are
+/// [`RealWireError::InvalidAclField`].
+fn decode_acl_wire(buf: &[u8]) -> Result<(AclWireEntry, usize), RealWireError> {
+    let mut cursor = 0usize;
+    let (ndx, consumed) = decode_varint(&buf[cursor..])?;
+    cursor += consumed;
+    if ndx < 0 {
+        return Err(invalid_acl("ndx", ndx, buf.len().saturating_sub(cursor)));
+    }
+    if ndx > 0 {
+        return Ok((AclWireEntry::Reference((ndx as u32) - 1), cursor));
+    }
+
+    if cursor >= buf.len() {
+        return Err(RealWireError::TruncatedBuffer {
+            at: "flist_acl_flags",
+            needed: 1,
+            available: 0,
+        });
+    }
+    let flags = buf[cursor];
+    cursor += 1;
+    if flags & !ACL_XMIT_FLAGS_MASK != 0 {
+        return Err(invalid_acl(
+            "flags",
+            i64::from(flags),
+            buf.len().saturating_sub(cursor),
+        ));
+    }
+
+    let user_obj = if flags & ACL_XMIT_USER_OBJ != 0 {
+        Some(decode_acl_perm(buf, &mut cursor, "user_obj")?)
+    } else {
+        None
+    };
+    let group_obj = if flags & ACL_XMIT_GROUP_OBJ != 0 {
+        Some(decode_acl_perm(buf, &mut cursor, "group_obj")?)
+    } else {
+        None
+    };
+    let mask_obj = if flags & ACL_XMIT_MASK_OBJ != 0 {
+        Some(decode_acl_perm(buf, &mut cursor, "mask_obj")?)
+    } else {
+        None
+    };
+    let other_obj = if flags & ACL_XMIT_OTHER_OBJ != 0 {
+        Some(decode_acl_perm(buf, &mut cursor, "other_obj")?)
+    } else {
+        None
+    };
+
+    let mut names = Vec::new();
+    if flags & ACL_XMIT_NAME_LIST != 0 {
+        let (count, consumed) = decode_varint(&buf[cursor..])?;
+        cursor += consumed;
+        if count < 0 {
+            return Err(invalid_acl(
+                "count",
+                count,
+                buf.len().saturating_sub(cursor),
+            ));
+        }
+        let count = count as usize;
+        if count > MAX_ACL_NAMED_ENTRIES {
+            return Err(invalid_acl(
+                "count",
+                count as i64,
+                buf.len().saturating_sub(cursor),
+            ));
+        }
+        for _ in 0..count {
+            let (id, consumed) = decode_varint(&buf[cursor..])?;
+            cursor += consumed;
+            // rsync's `id_t` is `unsigned int`, but `read_varint` returns
+            // `int32`. Values in the upper half therefore arrive negative
+            // and are intentionally reinterpreted as their u32 bit pattern.
+            let id = id as i32 as u32;
+            let (xbits, consumed) = decode_varint(&buf[cursor..])?;
+            cursor += consumed;
+            if xbits < 0 || xbits > i64::from(ACL_XBITS_MAX) {
+                return Err(invalid_acl(
+                    "xbits",
+                    xbits,
+                    buf.len().saturating_sub(cursor),
+                ));
+            }
+            let xbits = xbits as u8;
+            let access = xbits >> 2;
+            let xflags = xbits & ACL_XBITS_FLAGS_MASK;
+            let principal = if xflags & ACL_NAME_IS_USER != 0 {
+                AclPrincipal::User
+            } else {
+                AclPrincipal::Group
+            };
+            let name = if xflags & ACL_NAME_FOLLOWS != 0 {
+                if cursor >= buf.len() {
+                    return Err(RealWireError::TruncatedBuffer {
+                        at: "flist_acl_name_len",
+                        needed: 1,
+                        available: 0,
+                    });
+                }
+                let name_len = buf[cursor] as usize;
+                cursor += 1;
+                if name_len > MAX_ACL_NAME_LEN {
+                    return Err(invalid_acl(
+                        "name_len",
+                        name_len as i64,
+                        buf.len().saturating_sub(cursor),
+                    ));
+                }
+                let available = buf.len().saturating_sub(cursor);
+                if name_len > available {
+                    return Err(RealWireError::TruncatedBuffer {
+                        at: "flist_acl_name",
+                        needed: name_len,
+                        available,
+                    });
+                }
+                let s = read_utf8_slice(buf, cursor, name_len)?;
+                cursor += name_len;
+                Some(s)
+            } else {
+                None
+            };
+            names.push(AclNamedEntry {
+                id,
+                principal,
+                access,
+                name,
+            });
+        }
+    }
+
+    Ok((
+        AclWireEntry::Literal(RsyncAcl {
+            user_obj,
+            group_obj,
+            mask_obj,
+            other_obj,
+            names,
+        }),
+        cursor,
+    ))
+}
+
+fn encode_acl_perm(perm: u8, field: &'static str, out: &mut Vec<u8>) {
+    assert!(
+        perm <= ACL_ACCESS_MAX,
+        "ACL {field} permission {perm} is outside 0..={ACL_ACCESS_MAX}"
+    );
+    out.extend_from_slice(&encode_varint(i32::from(perm)));
+}
+
+fn encode_acl_id(id: u32, out: &mut Vec<u8>) {
+    // Upstream passes unsigned `id_t` through the signed `write_varint(int32)`
+    // API, preserving the full 32-bit bit pattern.
+    out.extend_from_slice(&encode_varint(id as i32));
+}
+
+/// Encode one rsync ACL. Exact mirror of [`decode_acl_wire`].
+fn encode_acl_wire(entry: &AclWireEntry, out: &mut Vec<u8>) {
+    match entry {
+        AclWireEntry::Reference(index) => {
+            let ndx = index
+                .checked_add(1)
+                .expect("ACL reference overflows the wire index");
+            assert!(
+                ndx <= i32::MAX as u32,
+                "ACL reference {index} does not fit a signed varint"
+            );
+            out.extend_from_slice(&encode_varint(ndx as i32));
+        }
+        AclWireEntry::Literal(acl) => {
+            out.extend_from_slice(&encode_varint(0));
+            let mut flags = 0u8;
+            if acl.user_obj.is_some() {
+                flags |= ACL_XMIT_USER_OBJ;
+            }
+            if acl.group_obj.is_some() {
+                flags |= ACL_XMIT_GROUP_OBJ;
+            }
+            if acl.mask_obj.is_some() {
+                flags |= ACL_XMIT_MASK_OBJ;
+            }
+            if acl.other_obj.is_some() {
+                flags |= ACL_XMIT_OTHER_OBJ;
+            }
+            if !acl.names.is_empty() {
+                flags |= ACL_XMIT_NAME_LIST;
+            }
+            out.push(flags);
+            if let Some(perm) = acl.user_obj {
+                encode_acl_perm(perm, "user_obj", out);
+            }
+            if let Some(perm) = acl.group_obj {
+                encode_acl_perm(perm, "group_obj", out);
+            }
+            if let Some(perm) = acl.mask_obj {
+                encode_acl_perm(perm, "mask_obj", out);
+            }
+            if let Some(perm) = acl.other_obj {
+                encode_acl_perm(perm, "other_obj", out);
+            }
+            if !acl.names.is_empty() {
+                assert!(
+                    acl.names.len() <= MAX_ACL_NAMED_ENTRIES,
+                    "ACL named-entry count {} exceeds MAX_ACL_NAMED_ENTRIES",
+                    acl.names.len()
+                );
+                out.extend_from_slice(&encode_varint(acl.names.len() as i32));
+                for named in &acl.names {
+                    encode_acl_id(named.id, out);
+                    assert!(
+                        named.access <= ACL_ACCESS_MAX,
+                        "ACL named access {} is outside 0..={ACL_ACCESS_MAX}",
+                        named.access
+                    );
+                    let mut xflags = 0u8;
+                    if named.name.is_some() {
+                        xflags |= ACL_NAME_FOLLOWS;
+                    }
+                    if named.principal == AclPrincipal::User {
+                        xflags |= ACL_NAME_IS_USER;
+                    }
+                    out.extend_from_slice(&encode_varint(i32::from((named.access << 2) | xflags)));
+                    if let Some(name) = &named.name {
+                        assert!(
+                            name.len() <= MAX_ACL_NAME_LEN,
+                            "ACL name length {} exceeds u8 wire encoding",
+                            name.len()
+                        );
+                        out.push(name.len() as u8);
+                        out.extend_from_slice(name.as_bytes());
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Decode a single file-list entry, or signal end-of-list if the entry
@@ -2057,9 +2450,33 @@ pub fn decode_file_list_entry(
         Vec::new()
     };
 
+    // --- 9.5 ACL (`-A` negotiated, skipped on symlinks) -------------------
+    // `flist.c::send_file_entry` calls `send_acl` after the checksum and
+    // before `send_xattr`. `receive_acl` skips `S_ISLNK` and always reads
+    // a default ACL for `S_ISDIR`. With `-A` off this branch consumes
+    // nothing, so every byte-pinned capture stays identical.
+    // `XMIT_SAME_MODE` decodes as mode zero, so a future recursive file list
+    // must resolve the inherited mode before deciding whether to consume the
+    // directory default-ACL slot. The current single-entry path cannot emit
+    // SAME_MODE and therefore cannot reach that ambiguity.
+    let acls = if options.preserve_acls && !is_symlink_mode(mode) {
+        let (access, consumed) = decode_acl_wire(&buf[cursor..])?;
+        cursor += consumed;
+        let default = if is_directory_mode(mode) {
+            let (entry, consumed) = decode_acl_wire(&buf[cursor..])?;
+            cursor += consumed;
+            Some(entry)
+        } else {
+            None
+        };
+        Some(FileListAcls { access, default })
+    } else {
+        None
+    };
+
     // --- 10. Xattr blob (`-X` negotiated) ---------------------------------
-    // Last field of the entry, sitting AFTER the checksum: measured on the
-    // wire (`04-xattr-wire-evidence.md` §2) and matching
+    // Last field of the entry, sitting AFTER checksum and ACL: measured
+    // on the wire (`04-xattr-wire-evidence.md` §2) and matching
     // `flist.c::send_file_entry`, which calls `send_xattr` at the very end
     // of the entry. Gated on the option alone, never on `mode` or on the
     // entry contents: with `-X` active even a file with no extended
@@ -2069,11 +2486,6 @@ pub fn decode_file_list_entry(
     //
     // With `-X` off this branch consumes nothing, so every byte-pinned
     // capture decodes exactly as it did before this codec existed.
-    //
-    // Note on ACLs: `-A` would insert its own blob between the checksum
-    // and this one (`send_acl` runs first, and skips symlinks). We never
-    // negotiate `-A`, so the two are adjacent here; whoever adds ACL
-    // support must slot it in before this block, not after.
     let xattrs = if options.preserve_xattrs {
         let (pairs, consumed) = decode_xattr_blob(&buf[cursor..])?;
         cursor += consumed;
@@ -2097,6 +2509,7 @@ pub fn decode_file_list_entry(
             checksum,
             symlink_target,
             xattrs,
+            acls,
         }),
         cursor,
     ))
@@ -2460,12 +2873,57 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
         out.extend_from_slice(&entry.checksum);
     }
 
+    // --- 9.5 ACL (`-A` negotiated, skipped on symlinks) -------------------
+    // Mirror of the decoder: after checksum, before xattr. A non-symlink
+    // under `-A` always emits an access ACL. Directories also emit a default
+    // ACL. Missing model fields are caller bugs: silently inventing an empty
+    // ACL here would turn a forgotten filesystem read into metadata loss.
+    // Symlinks emit zero ACL bytes even when the session negotiated `-A`.
+    if options.preserve_acls {
+        if is_symlink_mode(entry.mode) {
+            assert!(
+                entry.acls.is_none(),
+                "symlink entry {:?} carries ACL bytes, which rsync never puts on the wire",
+                entry.path
+            );
+        } else {
+            let acls = entry.acls.as_ref().unwrap_or_else(|| {
+                panic!(
+                    "entry {:?} negotiated -A but carries no access ACL",
+                    entry.path
+                )
+            });
+            encode_acl_wire(&acls.access, &mut out);
+            if is_directory_mode(entry.mode) {
+                let default = acls.default.as_ref().unwrap_or_else(|| {
+                    panic!(
+                        "directory entry {:?} negotiated -A but carries no default ACL",
+                        entry.path
+                    )
+                });
+                encode_acl_wire(default, &mut out);
+            } else {
+                assert!(
+                    acls.default.is_none(),
+                    "non-directory entry {:?} carries a default ACL that rsync would not send",
+                    entry.path
+                );
+            }
+        }
+    } else {
+        assert!(
+            entry.acls.is_none(),
+            "entry {:?} carries ACL data but the session did not negotiate -A",
+            entry.path
+        );
+    }
+
     // --- 10. Xattr blob (`-X` negotiated) ---------------------------------
-    // Mirror of the decoder: last field, after the checksum, keyed on the
-    // option alone. `None` under an xattr session means "this file has no
-    // extended attribute", which is still two bytes on the wire (`00 00`),
-    // because with `-X` active rsync makes the blob mandatory. Decoding
-    // that back therefore yields `Some(vec![])`, not `None`.
+    // Mirror of the decoder: last field, after checksum and ACL, keyed on
+    // the option alone. `None` under an xattr session means "this file has
+    // no extended attribute", which is still two bytes on the wire
+    // (`00 00`), because with `-X` active rsync makes the blob mandatory.
+    // Decoding that back therefore yields `Some(vec![])`, not `None`.
     if options.preserve_xattrs {
         encode_xattr_blob(entry.xattrs.as_deref().unwrap_or(&[]), &mut out);
     } else {
@@ -4995,6 +5453,7 @@ mod tests {
             preserve_uid: false,
             preserve_gid: false,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let (outcome, consumed) = decode_file_list_entry(&buf, &opts).unwrap();
@@ -5035,6 +5494,7 @@ mod tests {
             preserve_uid: false,
             preserve_gid: false,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let (outcome, _) = decode_file_list_entry(&buf, &opts).unwrap();
@@ -5084,6 +5544,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: Some("/tmp"),
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let (outcome, _consumed) = decode_file_list_entry(&buf, &opts).unwrap();
@@ -6287,6 +6748,12 @@ mod tests {
                     None
                 };
                 assert_eq!(decoded.xattrs, expected_xattrs, "xattrs drift");
+                let expected_acls = if opts.preserve_acls && !is_symlink_mode(entry.mode) {
+                    Some(entry.acls.clone().expect("-A entry must carry ACL model"))
+                } else {
+                    None
+                };
+                assert_eq!(decoded.acls, expected_acls, "acls drift");
             }
             other => panic!("expected Entry, got {other:?}"),
         }
@@ -6309,6 +6776,7 @@ mod tests {
             checksum: vec![0xAB; 16],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         }
     }
 
@@ -6325,6 +6793,15 @@ mod tests {
         assert!(!is_symlink_mode(0o100_644)); // S_IFREG
         assert!(!is_symlink_mode(0o040_755)); // S_IFDIR
         assert!(!is_symlink_mode(0)); // SAME_MODE sentinel
+    }
+
+    #[test]
+    fn is_directory_mode_matches_posix_s_isdir() {
+        assert!(is_directory_mode(S_IFDIR | 0o755));
+        assert!(is_directory_mode(0o040_755));
+        assert!(!is_directory_mode(0o100_644));
+        assert!(!is_directory_mode(S_IFLNK | 0o777));
+        assert!(!is_directory_mode(0));
     }
 
     #[test]
@@ -6350,6 +6827,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some(target),
             xattrs: None,
+            acls: None,
         };
         let opts = frozen_oracle_options_for_test(None);
         assert_flist_entry_round_trip(entry, &opts);
@@ -6379,6 +6857,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some(target.clone()),
             xattrs: None,
+            acls: None,
         };
         let opts = frozen_oracle_options_for_test(None);
         assert_eq!(opts.csum_len, 16, "pin assumes the production csum_len");
@@ -6472,6 +6951,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some(String::new()),
             xattrs: None,
+            acls: None,
         };
         let mut opts = frozen_oracle_options_for_test(None);
         opts.always_checksum = false;
@@ -6501,6 +6981,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some(String::new()),
             xattrs: None,
+            acls: None,
         };
         let mut opts = frozen_oracle_options_for_test(None);
         opts.always_checksum = false;
@@ -7427,6 +7908,7 @@ mod tests {
             checksum: vec![0; 16],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         };
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.preserve_uid = false;
@@ -7462,6 +7944,7 @@ mod tests {
             checksum: vec![],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         };
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.xfer_flags_as_varint = false;
@@ -7488,6 +7971,7 @@ mod tests {
             checksum: vec![],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         };
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.xfer_flags_as_varint = false;
@@ -7538,6 +8022,332 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
+    // ACL B1: wire codec and default-off negotiation.
+    //
+    // The 14-byte access-ACL blob was measured against rsync 3.2.7 on
+    // 2026-08-27 (`user:nobody:r--` after checksum). The encoder must
+    // reproduce those bytes; the decoder must round-trip them without
+    // resolving references.
+    // -------------------------------------------------------------------------
+
+    const MEASURED_ACL_NOBODY: &[u8] = &[
+        0x00, 0x10, 0x01, 0xc0, 0xfe, 0xff, 0x13, 0x06, 0x6e, 0x6f, 0x62, 0x6f, 0x64, 0x79,
+    ];
+
+    fn nobody_named_user() -> AclNamedEntry {
+        AclNamedEntry {
+            id: 65534,
+            principal: AclPrincipal::User,
+            access: 4,
+            name: Some("nobody".to_string()),
+        }
+    }
+
+    fn nobody_access_acl() -> FileListAcls {
+        FileListAcls {
+            access: AclWireEntry::Literal(RsyncAcl {
+                names: vec![nobody_named_user()],
+                ..RsyncAcl::empty()
+            }),
+            default: None,
+        }
+    }
+
+    fn acl_options_for_test<'a>(prev: Option<&'a str>) -> FileListDecodeOptions<'a> {
+        let mut opts = frozen_oracle_options_for_test(prev);
+        opts.preserve_acls = true;
+        opts
+    }
+
+    fn encoded_acl_blob(acls: FileListAcls) -> Vec<u8> {
+        let mut without = baseline_entry();
+        without.acls = None;
+        let base = encode_file_list_entry(&without, &frozen_oracle_options_for_test(None));
+
+        let mut with = baseline_entry();
+        with.acls = Some(acls);
+        let full = encode_file_list_entry(&with, &acl_options_for_test(None));
+
+        assert!(
+            full.starts_with(&base),
+            "the ACL blob must be appended after an otherwise identical entry"
+        );
+        full[base.len()..].to_vec()
+    }
+
+    #[test]
+    fn acl_blob_matches_measured_rsync_bytes() {
+        assert_eq!(encoded_acl_blob(nobody_access_acl()), MEASURED_ACL_NOBODY);
+    }
+
+    #[test]
+    fn acl_then_empty_xattr_matches_measured_ax_tail() {
+        let mut without = baseline_entry();
+        without.acls = None;
+        without.xattrs = None;
+        let base = encode_file_list_entry(&without, &frozen_oracle_options_for_test(None));
+
+        let mut with = baseline_entry();
+        with.acls = Some(nobody_access_acl());
+        with.xattrs = Some(vec![]);
+        let mut opts = acl_options_for_test(None);
+        opts.preserve_xattrs = true;
+        let full = encode_file_list_entry(&with, &opts);
+
+        assert_eq!(&full[..base.len()], &base[..]);
+        let mut expected = MEASURED_ACL_NOBODY.to_vec();
+        expected.extend_from_slice(&[0x00, 0x00]);
+        assert_eq!(&full[base.len()..], expected.as_slice());
+    }
+
+    #[test]
+    fn acl_literal_with_all_objects_and_named_user_and_group_round_trips() {
+        let acls = FileListAcls {
+            access: AclWireEntry::Literal(RsyncAcl {
+                user_obj: Some(6),
+                group_obj: Some(4),
+                mask_obj: Some(6),
+                other_obj: Some(4),
+                names: vec![
+                    nobody_named_user(),
+                    AclNamedEntry {
+                        id: 1000,
+                        principal: AclPrincipal::Group,
+                        access: 5,
+                        name: Some("staff".to_string()),
+                    },
+                ],
+            }),
+            default: None,
+        };
+        let mut entry = baseline_entry();
+        entry.acls = Some(acls);
+        assert_flist_entry_round_trip(entry, &acl_options_for_test(None));
+    }
+
+    #[test]
+    fn acl_nonzero_reference_round_trips_without_resolution() {
+        let mut entry = baseline_entry();
+        entry.acls = Some(FileListAcls {
+            access: AclWireEntry::Reference(3),
+            default: None,
+        });
+        assert_flist_entry_round_trip(entry, &acl_options_for_test(None));
+        let blob = encoded_acl_blob(FileListAcls {
+            access: AclWireEntry::Reference(3),
+            default: None,
+        });
+        assert_eq!(blob, encode_varint(4));
+    }
+
+    #[test]
+    fn acl_named_id_preserves_the_full_unsigned_32_bit_space() {
+        let mut entry = baseline_entry();
+        entry.acls = Some(FileListAcls {
+            access: AclWireEntry::Literal(RsyncAcl {
+                names: vec![AclNamedEntry {
+                    id: u32::MAX - 1,
+                    principal: AclPrincipal::User,
+                    access: 4,
+                    name: None,
+                }],
+                ..RsyncAcl::empty()
+            }),
+            default: None,
+        });
+        assert_flist_entry_round_trip(entry, &acl_options_for_test(None));
+    }
+
+    #[test]
+    #[should_panic(expected = "negotiated -A but carries no access ACL")]
+    fn acl_negotiated_without_access_model_panics_instead_of_losing_metadata() {
+        let entry = baseline_entry();
+        let _ = encode_file_list_entry(&entry, &acl_options_for_test(None));
+    }
+
+    #[test]
+    #[should_panic(expected = "non-directory entry")]
+    fn regular_entry_with_default_acl_panics_instead_of_dropping_it() {
+        let mut entry = baseline_entry();
+        entry.acls = Some(FileListAcls {
+            access: AclWireEntry::Literal(RsyncAcl::empty()),
+            default: Some(AclWireEntry::Literal(RsyncAcl::empty())),
+        });
+        let _ = encode_file_list_entry(&entry, &acl_options_for_test(None));
+    }
+
+    #[test]
+    fn directory_carries_access_and_default_acl() {
+        let acls = FileListAcls {
+            access: AclWireEntry::Literal(RsyncAcl {
+                names: vec![nobody_named_user()],
+                ..RsyncAcl::empty()
+            }),
+            default: Some(AclWireEntry::Literal(RsyncAcl {
+                user_obj: Some(7),
+                group_obj: Some(5),
+                mask_obj: Some(7),
+                other_obj: Some(0),
+                names: vec![],
+            })),
+        };
+        let mut entry = baseline_entry();
+        entry.mode = S_IFDIR | 0o755;
+        entry.checksum = vec![];
+        entry.acls = Some(acls);
+        let mut opts = acl_options_for_test(None);
+        opts.always_checksum = false;
+        opts.csum_len = 0;
+        assert_flist_entry_round_trip(entry, &opts);
+    }
+
+    #[test]
+    fn symlink_with_acls_negotiated_emits_zero_acl_bytes() {
+        let target = "rel/tgt.bin".to_string();
+        let mut entry = baseline_entry();
+        entry.mode = S_IFLNK | 0o777;
+        entry.checksum = vec![];
+        entry.symlink_target = Some(target.clone());
+        entry.acls = None;
+        entry.size = target.len() as i64;
+
+        let off = frozen_oracle_options_for_test(None);
+        let on = acl_options_for_test(None);
+        let off_bytes = encode_file_list_entry(&entry, &off);
+        let on_bytes = encode_file_list_entry(&entry, &on);
+        assert_eq!(
+            off_bytes, on_bytes,
+            "symlink entries must not grow when -A is negotiated"
+        );
+        assert_flist_entry_round_trip(entry.clone(), &on);
+
+        let mut ax_entry = entry;
+        ax_entry.xattrs = Some(vec![]);
+        let mut ax_opts = on;
+        ax_opts.preserve_xattrs = true;
+        let ax_bytes = encode_file_list_entry(&ax_entry, &ax_opts);
+        assert_eq!(
+            &ax_bytes[..on_bytes.len()],
+            &on_bytes[..],
+            "ACL must stay absent on a symlink even with -AX"
+        );
+        assert_eq!(&ax_bytes[on_bytes.len()..], &[0x00, 0x00]);
+        assert_flist_entry_round_trip(ax_entry, &ax_opts);
+    }
+
+    #[test]
+    fn truncated_acl_blob_is_recoverable_but_a_bogus_one_is_not() {
+        let opts = acl_options_for_test(None);
+        let mut entry = baseline_entry();
+        entry.acls = Some(nobody_access_acl());
+        let full = encode_file_list_entry(&entry, &opts);
+        let blob_starts = full.len() - MEASURED_ACL_NOBODY.len();
+        for cut in blob_starts..full.len() {
+            match decode_file_list_entry(&full[..cut], &opts) {
+                Err(RealWireError::TruncatedBuffer { .. }) => {}
+                other => panic!(
+                    "an ACL cut at byte {cut} of {} must be recoverable, got {other:?}",
+                    full.len()
+                ),
+            }
+        }
+        let (_, consumed) = decode_file_list_entry(&full, &opts).expect("complete ACL decodes");
+        assert_eq!(consumed, full.len());
+
+        for cut in 0..MEASURED_ACL_NOBODY.len() {
+            match decode_acl_wire(&MEASURED_ACL_NOBODY[..cut]) {
+                Err(RealWireError::TruncatedBuffer { .. }) => {}
+                other => panic!("ACL blob prefix {cut} must be TruncatedBuffer, got {other:?}"),
+            }
+        }
+
+        let mut bogus = full[..blob_starts].to_vec();
+        bogus.extend_from_slice(&encode_varint(0));
+        bogus.push(0x20);
+        match decode_file_list_entry(&bogus, &opts) {
+            Err(RealWireError::InvalidAclField { field, .. }) => {
+                assert_eq!(field, "flags");
+            }
+            other => panic!("reserved ACL flag bits must abort, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hostile_acl_fields_error_and_never_panic() {
+        let opts = acl_options_for_test(None);
+        let mut base = baseline_entry();
+        base.acls = Some(nobody_access_acl());
+        let prefix = {
+            let bytes = encode_file_list_entry(&base, &opts);
+            bytes[..bytes.len() - MEASURED_ACL_NOBODY.len()].to_vec()
+        };
+
+        let mut cases: Vec<(&str, Vec<u8>, &'static str)> = Vec::new();
+
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(-1));
+        cases.push(("negative ndx", b, "ndx"));
+
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(0));
+        b.push(ACL_XMIT_USER_OBJ);
+        b.extend_from_slice(&encode_varint(8));
+        cases.push(("user_obj out of range", b, "user_obj"));
+
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(0));
+        b.push(ACL_XMIT_NAME_LIST);
+        b.extend_from_slice(&encode_varint((MAX_ACL_NAMED_ENTRIES + 1) as i32));
+        cases.push(("count above ceiling", b, "count"));
+
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(0));
+        b.push(ACL_XMIT_NAME_LIST);
+        b.extend_from_slice(&encode_varint(-3));
+        cases.push(("negative count", b, "count"));
+
+        let mut b = prefix.clone();
+        b.extend_from_slice(&encode_varint(0));
+        b.push(ACL_XMIT_NAME_LIST);
+        b.extend_from_slice(&encode_varint(1));
+        b.extend_from_slice(&encode_varint(1000));
+        b.extend_from_slice(&encode_varint(i32::from(ACL_XBITS_MAX) + 1));
+        cases.push(("xbits out of range", b, "xbits"));
+
+        for (label, buf, field) in cases {
+            match decode_file_list_entry(&buf, &opts) {
+                Err(RealWireError::InvalidAclField {
+                    field: got_field, ..
+                }) => {
+                    assert_eq!(got_field, field, "{label}");
+                }
+                other => panic!("{label}: expected InvalidAclField({field}), got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn acl_default_off_adds_zero_bytes() {
+        let opts_off = frozen_oracle_options_for_test(None);
+        let mut off = baseline_entry();
+        off.acls = None;
+        let off_bytes = encode_file_list_entry(&off, &opts_off);
+
+        let mut on = baseline_entry();
+        on.acls = Some(nobody_access_acl());
+        let on_bytes = encode_file_list_entry(&on, &acl_options_for_test(None));
+        assert_eq!(on_bytes.len(), off_bytes.len() + MEASURED_ACL_NOBODY.len());
+        assert_eq!(&on_bytes[..off_bytes.len()], &off_bytes[..]);
+
+        let (outcome, consumed) = decode_file_list_entry(&off_bytes, &opts_off).expect("decode");
+        assert_eq!(consumed, off_bytes.len());
+        match outcome {
+            FileListDecodeOutcome::Entry(d) => assert!(d.acls.is_none()),
+            other => panic!("expected Entry, got {other:?}"),
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // B.2 Step 3: Byte-level pin against the frozen oracle's first
     // MSG_DATA payload (file list entry + checksum + end-of-flist +
     // NDX_FLIST_EOF marker, 67 bytes total). The expected bytes are taken
@@ -7570,6 +8380,7 @@ mod tests {
             ],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         }
     }
 
@@ -7585,6 +8396,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         }
     }

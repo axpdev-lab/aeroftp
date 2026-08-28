@@ -300,6 +300,12 @@ fuser = "0.17"
 # fixing the generic-icon-after-update bug. Already present transitively
 # via tauri/wry, so this adds no real build cost.
 gtk = "0.18"
+# AeroRsync ACL B2: POSIX.1e access ACLs, Linux fd-bound only.
+# posix-acl owns the safe model; acl-sys exposes acl_get_fd/acl_set_fd.
+# Optional: owned by feature `aerorsync`, so `--no-default-features` does
+# not link libacl. Do not use path-following helpers (exacl, getfacl/setfacl).
+posix-acl = { version = "1.2.0", optional = true }
+acl-sys = { version = "1.2.2", optional = true }
 
 [dev-dependencies]
 
@@ -320,7 +326,7 @@ test-vectors = []
 # file retain the legacy name for backward compatibility.
 # Disable with `--no-default-features` for leaner builds or when
 # debugging the classic binary-rsync path on Unix.
-aerorsync = ["dep:xxhash-rust"]
+aerorsync = ["dep:xxhash-rust", "dep:posix-acl", "dep:acl-sys"]
 
 # local-stt: local speech-to-text via whisper.cpp. Pulls in `whisper-rs`
 # (whisper.cpp Rust bindings) and `hound` (WAV decode). Default-on so

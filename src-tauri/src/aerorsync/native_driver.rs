@@ -44,10 +44,13 @@
 //!
 //! File-list checksums and delta-stream trailers have no length prefix.
 //! Their width must therefore follow the algorithm that won checksum
-//! negotiation. [`AerorsyncDriver::negotiated_file_checksum_len`] mirrors
-//! rsync 3.2.7 `checksum.c::csum_len_for_type`; assuming 16 made downloads
+//! negotiation. [`AerorsyncDriver::negotiated_file_checksum_len`] is the
+//! width of a supported [`FileChecksumKind`]; assuming 16 made downloads
 //! from `xxh64` and `xxh3` peers wait forever for eight bytes that were
-//! never coming.
+//! never coming. Named unsupported winners (`none`, `sha256`, `sha512`,
+//! `xxhash`, unknown names) and a non-empty disjoint advertisement are
+//! `NegotiationFailed` immediately after the preamble, before any
+//! file-list byte.
 
 use crate::aerorsync::engine_adapter::{
     apply_delta_streaming, BaselineSource, BlockStrongAlgo, DeltaEngineAdapter, DeltaPlanProducer,
@@ -65,7 +68,9 @@ use crate::aerorsync::real_wire::{
     MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead,
     SummaryFrame, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
 };
-use crate::aerorsync::remote_command::{RemoteCommandFlavor, RemoteCommandSpec};
+use crate::aerorsync::remote_command::{
+    metadata_flags_from_args, EffectiveMetadataFlags, RemoteCommandFlavor, RemoteCommandSpec,
+};
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
 use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionRole, SessionStats};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, AsyncWrite, SeekFrom};
@@ -135,17 +140,23 @@ enum FileChecksumKind {
 }
 
 impl FileChecksumKind {
-    fn from_negotiated_name(name: Option<&str>) -> Self {
+    fn try_from_negotiated_name(name: &str) -> Result<Self, AerorsyncError> {
         match name {
-            Some(XXH3_ALGO_NAME) => Self::Xxh3,
-            Some(XXH64_ALGO_NAME) => Self::Xxh64,
-            Some(MD5_ALGO_NAME) => Self::Md5,
-            Some(MD4_ALGO_NAME) => Self::Md4,
-            Some(SHA1_ALGO_NAME) => Self::Sha1,
-            // Preserve the historical xxh128 behavior for an absent or
-            // unsupported winner. The default production profile always
-            // negotiates one of the explicitly supported algorithms.
-            _ => Self::Xxh128,
+            XXH128_ALGO_NAME => Ok(Self::Xxh128),
+            XXH3_ALGO_NAME => Ok(Self::Xxh3),
+            XXH64_ALGO_NAME => Ok(Self::Xxh64),
+            MD5_ALGO_NAME => Ok(Self::Md5),
+            MD4_ALGO_NAME => Ok(Self::Md4),
+            SHA1_ALGO_NAME => Ok(Self::Sha1),
+            other => Err(unsupported_checksum_error(other)),
+        }
+    }
+
+    fn wire_len(self) -> usize {
+        match self {
+            Self::Xxh128 | Self::Md5 | Self::Md4 => A2_3_FILE_CHECKSUM_LEN,
+            Self::Xxh3 | Self::Xxh64 => 8,
+            Self::Sha1 => 20,
         }
     }
 
@@ -224,10 +235,9 @@ impl FileChecksumHasher {
 }
 
 /// Checksum algorithm names the download-side whole-file verify can
-/// recompute in-tree. Peers that negotiate anything else (sha256,
-/// sha512, none, ...) keep the pre-verify delta path untouched: the
-/// check is a deliberate no-op for unimplemented algorithms so a verify
-/// that assumed the wrong digest cannot silently disable delta forever.
+/// recompute in-tree. Named unsupported winners (sha256, sha512, none,
+/// xxhash, unknown names) are rejected at preamble time, so the verify
+/// path never has to guess a digest it cannot recompute.
 pub(crate) const XXH128_ALGO_NAME: &str = "xxh128";
 /// CLAUDE-AV-B3-14: md5 whole-file trailer, the practical fallback
 /// real rsync uses when xxh* is unavailable. Same 16-byte length as
@@ -606,6 +616,38 @@ fn wire_dump_server_response(received: &[u8], state: &str) {
     );
 }
 
+fn validate_command_metadata_flags(
+    command_spec: &RemoteCommandSpec,
+    args: &[String],
+) -> Result<(), AerorsyncError> {
+    if command_spec.flavor != RemoteCommandFlavor::WrapperParity {
+        if command_spec.preserve_acls || command_spec.preserve_xattrs {
+            return Err(AerorsyncError::new(
+                AerorsyncErrorKind::NegotiationFailed,
+                "the aerorsync_serve development flavor has no -A/-X metadata negotiation",
+            ));
+        }
+        return Ok(());
+    }
+    let effective = metadata_flags_from_args(args).ok_or_else(|| {
+        AerorsyncError::new(
+            AerorsyncErrorKind::NegotiationFailed,
+            "rsync server argv has no recognised compact flag bundle",
+        )
+    })?;
+    let requested = command_spec.requested_metadata_flags();
+    if effective != requested {
+        return Err(AerorsyncError::new(
+            AerorsyncErrorKind::NegotiationFailed,
+            format!(
+                "effective rsync server flags negotiate o/g/D/A/X as {:?}, but the session codec requested {:?}",
+                effective, requested
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// Real-wire rsync session driver. Parameterised on the raw-capable
 /// remote-shell transport so both mock and SSH paths share the machinery.
 pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
@@ -638,6 +680,17 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// and only agreed because all three were hard-coded off; now they all
     /// read from here, which reads from the spec.
     negotiated_xattrs: bool,
+
+    /// Whether this session asked the remote `rsync --server` for `-A`.
+    /// Twin of [`Self::negotiated_xattrs`]: command spec, session state
+    /// and file-list decode options must agree, or the stream desynchronises
+    /// by the ACL blob sitting between checksum and xattr.
+    negotiated_acls: bool,
+
+    /// Effective compact-flag metadata captured from the argv actually sent.
+    /// File-list decode options read owner/group from here instead of
+    /// hardcoding `-o -g`.
+    effective_metadata: EffectiveMetadataFlags,
 
     phase: AerorsyncSessionPhase,
     committed: bool,
@@ -776,6 +829,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             negotiated_checksum_algos: String::new(),
             negotiated_compression_algos: String::new(),
             negotiated_xattrs: false,
+            negotiated_acls: false,
+            effective_metadata: EffectiveMetadataFlags::product(false, false),
             phase: AerorsyncSessionPhase::PreConnect,
             committed: false,
             stream: None,
@@ -880,9 +935,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// confirming rolling hits against wire signatures. Must match how
     /// the peer (or we, on the download emit path) filled
     /// `SumBlock.strong`. xxh128, xxh3, xxh64, md5, md4, and sha1 are
-    /// recomputed in-tree; other winners (sha256/sha512/none, reachable
-    /// only through the env override) stay `Unknown` (safer than
-    /// rolling-only confirmation).
+    /// recomputed in-tree. Named unsupported winners are rejected at
+    /// preamble time; `Unknown` remains only as a defensive arm.
     pub(crate) fn block_strong_algo(&self) -> BlockStrongAlgo {
         match self.negotiated_checksum_algo() {
             Some(XXH128_ALGO_NAME) => BlockStrongAlgo::Xxh128 {
@@ -913,8 +967,36 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    fn file_checksum_kind(&self) -> FileChecksumKind {
-        FileChecksumKind::from_negotiated_name(self.negotiated_checksum_algo())
+    fn file_checksum_kind(&self) -> Result<FileChecksumKind, AerorsyncError> {
+        self.resolved_file_checksum_kind()
+    }
+
+    /// Single source of truth for the negotiated checksum codec.
+    ///
+    /// A named winner must be one of the six implemented algorithms.
+    /// Two non-empty advertisements with no intersection fail closed.
+    /// Only a genuinely empty peer string keeps the historical xxh128
+    /// compatibility used when the peer omitted the negotiated field.
+    fn resolved_file_checksum_kind(&self) -> Result<FileChecksumKind, AerorsyncError> {
+        match self.negotiated_checksum_algo() {
+            Some(name) => FileChecksumKind::try_from_negotiated_name(name),
+            None if self
+                .negotiated_checksum_algos
+                .split_whitespace()
+                .next()
+                .is_none() =>
+            {
+                Ok(FileChecksumKind::Xxh128)
+            }
+            None => Err(AerorsyncError::new(
+                AerorsyncErrorKind::NegotiationFailed,
+                format!(
+                    "checksum negotiation found no common algorithm (client {:?} vs server {:?}); \
+                     falling back",
+                    self.preamble_profile.checksum_algos, self.negotiated_checksum_algos
+                ),
+            )),
+        }
     }
     pub fn negotiated_checksum_algos(&self) -> &str {
         &self.negotiated_checksum_algos
@@ -949,20 +1031,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// CLAUDE-AV-B3-18: byte width of both the `--checksum` file-list
     /// digest and the whole-file delta trailer for the negotiated winner.
     ///
-    /// Mirrors rsync 3.2.7 `checksum.c::csum_len_for_type`. Unknown or
-    /// absent negotiation retains the historical 16-byte behavior instead
-    /// of guessing a new wire shape.
-    pub(crate) fn negotiated_file_checksum_len(&self) -> usize {
-        match self.negotiated_checksum_algo() {
-            Some(XXH3_ALGO_NAME | XXH64_ALGO_NAME | "xxhash") => 8,
-            Some(SHA1_ALGO_NAME) => 20,
-            Some("sha256") => 32,
-            Some("sha512") => 64,
-            Some("none") => 1,
-            // xxh128, md5, md4, and the absent-negotiation fallback all
-            // share the historical 16-byte width.
-            _ => A2_3_FILE_CHECKSUM_LEN,
-        }
+    /// Width follows the resolved [`FileChecksumKind`]. Named unsupported
+    /// winners and a non-empty disjoint advertisement error instead of
+    /// inventing a width that the digest implementation cannot keep.
+    /// An empty peer advertisement keeps the historical 16-byte xxh128
+    /// compatibility.
+    pub(crate) fn negotiated_file_checksum_len(&self) -> Result<usize, AerorsyncError> {
+        Ok(self.resolved_file_checksum_kind()?.wire_len())
     }
     pub fn negotiated_compression_algos(&self) -> &str {
         &self.negotiated_compression_algos
@@ -1317,6 +1392,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
         self.reject_symlink_entry_on_regular_upload(&source_entry)?;
+        crate::aerorsync::acl_fs::validate_outgoing_acls(command_spec.preserve_acls, &source_entry)
+            .map_err(|err| match err {
+                crate::aerorsync::acl_fs::AclFsError::Unsupported => {
+                    AerorsyncError::new(AerorsyncErrorKind::NegotiationFailed, err.to_string())
+                }
+                other => AerorsyncError::invalid_frame(other.to_string()),
+            })?;
         self.session_role = Some(SessionRole::Sender);
         self.remote_command_flavor = command_spec.flavor;
         self.open_raw_stream_internal(&command_spec).await?;
@@ -1329,7 +1411,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let comp_algos = self.preamble_profile.compression_algos.clone();
         self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
-        source_entry.checksum = self.file_checksum_kind().digest(source_data);
+        source_entry.checksum = self.file_checksum_kind()?.digest(source_data);
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
         if !self.upload_noop_transfer {
@@ -1357,6 +1439,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         R: AsyncRead + AsyncSeek + Unpin + Send,
     {
         self.reject_symlink_entry_on_regular_upload(&source_entry)?;
+        crate::aerorsync::acl_fs::validate_outgoing_acls(command_spec.preserve_acls, &source_entry)
+            .map_err(|err| match err {
+                crate::aerorsync::acl_fs::AclFsError::Unsupported => {
+                    AerorsyncError::new(AerorsyncErrorKind::NegotiationFailed, err.to_string())
+                }
+                other => AerorsyncError::invalid_frame(other.to_string()),
+            })?;
         self.session_role = Some(SessionRole::Sender);
         self.remote_command_flavor = command_spec.flavor;
         self.open_raw_stream_internal(&command_spec).await?;
@@ -1364,7 +1453,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let comp_algos = self.preamble_profile.compression_algos.clone();
         self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
-        let checksum_kind = self.file_checksum_kind();
+        let checksum_kind = self.file_checksum_kind()?;
         let mut checksum_hasher = checksum_kind.streaming_hasher();
         let mut checksum_buf = vec![0u8; STREAMING_READ_CHUNK_BYTES];
         loop {
@@ -1482,14 +1571,26 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         command_spec: &RemoteCommandSpec,
     ) -> Result<(), AerorsyncError> {
         self.check_cancel("open_raw_stream")?;
+        let request = command_spec.to_exec_request();
+        validate_command_metadata_flags(command_spec, &request.args)?;
+        if command_spec.preserve_acls {
+            crate::aerorsync::acl_fs::ensure_linux_acl_support().map_err(|err| {
+                AerorsyncError::new(AerorsyncErrorKind::NegotiationFailed, err.to_string())
+            })?;
+        }
         // The one place the spec is in hand and every production path goes
         // through. Capturing the choice here is what lets the codec and the
         // sender agree with the flags we actually sent the server.
-        self.negotiated_xattrs = command_spec.preserve_xattrs;
-        let stream = self
-            .transport
-            .open_raw_stream(command_spec.to_exec_request())
-            .await?;
+        let effective = if command_spec.flavor == RemoteCommandFlavor::WrapperParity {
+            metadata_flags_from_args(&request.args)
+                .unwrap_or_else(|| command_spec.requested_metadata_flags())
+        } else {
+            command_spec.requested_metadata_flags()
+        };
+        self.effective_metadata = effective;
+        self.negotiated_xattrs = effective.preserve_xattrs;
+        self.negotiated_acls = effective.preserve_acls;
+        let stream = self.transport.open_raw_stream(request).await?;
         self.stream = Some(stream);
         self.phase = AerorsyncSessionPhase::RawStreamOpen;
         Ok(())
@@ -1564,6 +1665,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     self.checksum_seed = preamble.checksum_seed;
                     self.negotiated_checksum_algos = preamble.checksum_algos;
                     self.negotiated_compression_algos = preamble.compression_algos;
+                    // Reject unsupported / disjoint checksum winners before
+                    // any leftover bytes are treated as file-list material.
+                    self.resolved_file_checksum_kind()?;
                     if preamble.consumed < scratch.len() {
                         self.mux_reader.feed(&scratch[preamble.consumed..]);
                     }
@@ -1613,23 +1717,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             // the varint path. If a legacy peer disagrees, decode will
             // surface a `RealWireError` which we translate.
             xfer_flags_as_varint: true,
-            // B.2: production dispatch invokes the server with `-c`
-            // (always_checksum) and `-o -g` (preserve owner/group).
-            // Mirror the oracle compat: each regular file entry carries
-            // the negotiated checksum + uid + gid varints (with names when
-            // XMIT_USER/GROUP_NAME_FOLLOWS gates them).
+            // `-c` is still always-checksum. Owner/group follow the compact
+            // bundle actually sent: product omits `-o -g`, capture keeps them.
             always_checksum: true,
             csum_len,
-            preserve_uid: true,
-            preserve_gid: true,
-            // Same negotiation as the `-X` in the server flag bundle, so
-            // it reads from the same field rather than being asserted
-            // independently. If this said `true` while the bundle omitted
-            // `-X`, the decoder would eat two bytes that are not on the
-            // wire and the file list would desynchronise; if it said
-            // `false` while the bundle sent `-X`, it would leave those two
-            // bytes behind and swallow the list terminator.
-            preserve_xattrs: self.negotiated_xattrs,
+            preserve_uid: self.effective_metadata.preserve_owner,
+            preserve_gid: self.effective_metadata.preserve_group,
+            preserve_acls: self.effective_metadata.preserve_acls,
+            preserve_xattrs: self.effective_metadata.preserve_xattrs,
             previous_name: None,
         }
     }
@@ -1667,7 +1762,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // A stock xxh64/xxh3 peer sends 8 bytes; assuming 16 consumed the
         // list terminator as checksum and then waited forever for another
         // MSG_DATA frame.
-        let opts = self.build_flist_options(self.negotiated_file_checksum_len());
+        let opts = self.build_flist_options(self.negotiated_file_checksum_len()?);
         let mut flist_buf: Vec<u8> = Vec::new();
         let mut entry_seen = false;
         let mut waiting_for_more = false;
@@ -1701,14 +1796,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     // overshoots. All three are recoverable by pulling
                     // another MSG_DATA frame off the wire.
                     //
-                    // X.2a: this list is a contract the xattr codec is
-                    // written against. `decode_xattr_blob` reports a blob
-                    // that straddles a frame boundary as `TruncatedBuffer`
-                    // precisely so it lands here, and reserves its own
-                    // `InvalidXattrField` / `XattrAbbrevUnsupported` /
-                    // `XattrDatumAboveInlineLimit` for shapes that must
-                    // abort. Widening this arm to swallow those would turn
-                    // a hostile blob into an unbounded frame-pull loop.
+                    // X.2a / ACL B1: this list is a contract the xattr and
+                    // ACL codecs are written against. A blob that straddles
+                    // a frame boundary is `TruncatedBuffer` so it lands
+                    // here; `InvalidXattrField`, `XattrAbbrevUnsupported`
+                    // and `InvalidAclField` abort. Widening this arm to
+                    // swallow those would turn a hostile blob into an
+                    // unbounded frame-pull loop.
                     // Retrying is safe because decoding restarts from the
                     // front of `flist_buf` and the codec keeps no state
                     // across calls.
@@ -2609,7 +2703,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
         // File-level trailers are unseeded even though per-block strong
         // digests use the negotiated checksum seed.
-        let file_checksum = self.file_checksum_kind().digest(source_data);
+        let file_checksum = self.file_checksum_kind()?.digest(source_data);
 
         let report = DeltaStreamReport {
             ops: wire_ops.clone(),
@@ -2725,7 +2819,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // whole-file checksum of the source. Both are populated from the same
         // chunk slice so the wire trailer matches what
         // `compute_xxh128_wire(source_data)` would have produced bulk.
-        let mut file_hasher = self.file_checksum_kind().streaming_hasher();
+        let mut file_hasher = self.file_checksum_kind()?.streaming_hasher();
         let mut ops: Vec<EngineDeltaOp> = Vec::new();
         let mut total_source_bytes: u64 = 0;
         let mut buf = vec![0u8; STREAMING_READ_CHUNK_BYTES];
@@ -2960,7 +3054,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let sum_head_count = self.sent_sum_head.as_ref().map(|h| h.count);
         // CLAUDE-AV-B3-18: like the file-list checksum, the delta trailer
         // has no length prefix and must follow the negotiated winner.
-        let file_checksum_len = self.negotiated_file_checksum_len();
+        let file_checksum_len = self.negotiated_file_checksum_len()?;
 
         // Stock rsync's sender frames every file transfer as
         // `write_ndx_and_attrs` (ndx + iflags) + `write_sum_head`
@@ -3131,7 +3225,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let sum_head_count = self.sent_sum_head.as_ref().map(|h| h.count);
         // CLAUDE-AV-B3-18: streaming and bulk receive paths must decode
         // the same negotiated-width trailer.
-        let file_checksum_len = self.negotiated_file_checksum_len();
+        let file_checksum_len = self.negotiated_file_checksum_len()?;
 
         // Consume the sender's `write_ndx_and_attrs` + `write_sum_head`
         // prefix (ndx + iflags + sum_head) that precedes the token
@@ -4050,6 +4144,19 @@ fn unsupported_compressor_error(chosen: &str) -> AerorsyncError {
     )
 }
 
+/// A checksum name we cannot drive is a **negotiation** outcome, not a
+/// malformed frame. Same pre-commit fallback semantics as
+/// [`unsupported_compressor_error`].
+fn unsupported_checksum_error(chosen: &str) -> AerorsyncError {
+    AerorsyncError::new(
+        AerorsyncErrorKind::NegotiationFailed,
+        format!(
+            "negotiation chose file checksum {chosen:?}, which this client does not \
+             implement; falling back"
+        ),
+    )
+}
+
 fn map_realwire_error(err: RealWireError, context: &'static str) -> AerorsyncError {
     AerorsyncError::new(
         AerorsyncErrorKind::InvalidFrame,
@@ -4072,7 +4179,8 @@ mod tests {
     use crate::aerorsync::fixtures::RealRsyncBaselineByteTranscript;
     use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
     use crate::aerorsync::real_wire::{
-        decode_client_preamble, encode_server_preamble, reassemble_msg_data, ServerPreamble,
+        decode_client_preamble, encode_client_preamble, encode_server_preamble,
+        reassemble_msg_data, ClientPreamble, ServerPreamble,
     };
 
     /// Mock adapter used by A2.2/A2.3 tests. Returns a configurable
@@ -4416,7 +4524,7 @@ mod tests {
         d.file_list.push(entry);
         d.session_role = Some(SessionRole::Receiver);
         d.open_raw_stream_internal(
-            &RemoteCommandSpec::download("/remote/download.bin").with_xattrs(true),
+            &RemoteCommandSpec::capture_download("/remote/download.bin").with_xattrs(true),
         )
         .await
         .unwrap();
@@ -4439,7 +4547,8 @@ mod tests {
         // desynchronise the stream, and they used to be wired
         // independently.
         for want_xattrs in [false, true] {
-            let spec = RemoteCommandSpec::upload("/remote/target.bin").with_xattrs(want_xattrs);
+            let spec =
+                RemoteCommandSpec::capture_upload("/remote/target.bin").with_xattrs(want_xattrs);
 
             // 1. the server flag bundle
             let sends_dash_x = spec
@@ -4473,6 +4582,125 @@ mod tests {
                 "datum section disagrees with the flag bundle"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn the_acl_decisions_all_follow_the_command_spec() {
+        for want_acls in [false, true] {
+            let spec = RemoteCommandSpec::capture_upload("/remote/target.bin").with_acls(want_acls);
+
+            let sends_dash_a = spec
+                .to_exec_request()
+                .args
+                .iter()
+                .any(|a| a.contains('A') && a.starts_with("-logDtp"));
+            assert_eq!(sends_dash_a, want_acls, "flag bundle disagrees");
+
+            let mut d = make_driver(mock_transport_with_raw_inbound(Vec::new()));
+            d.open_raw_stream_internal(&spec).await.expect("open");
+
+            assert_eq!(d.negotiated_acls, want_acls, "session state disagrees");
+            assert_eq!(
+                d.build_flist_options(16).preserve_acls,
+                want_acls,
+                "flist decode options disagree with the flag bundle"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn unresolved_acl_reference_is_rejected_before_wire_open() {
+        use crate::aerorsync::real_wire::{AclWireEntry, FileListAcls};
+
+        let spec = RemoteCommandSpec::capture_upload("/remote/target.bin").with_acls(true);
+        let mut entry = sample_file_list_entry("upload.bin");
+        entry.acls = Some(FileListAcls {
+            access: AclWireEntry::Reference(0),
+            default: None,
+        });
+        let mut d = make_driver(mock_transport_with_raw_inbound(Vec::new()));
+        let err = d
+            .drive_upload_through_delta(
+                spec,
+                entry,
+                b"payload-bytes",
+                &MockSigAdapter::default(),
+                &mut CollectingSink::default(),
+            )
+            .await
+            .expect_err("unresolved ACL reference must fail closed");
+        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
+        assert!(err.detail.contains("reference"));
+        assert!(
+            d.stream.is_none(),
+            "the remote stream must not open after an unresolved ACL reference"
+        );
+    }
+
+    #[test]
+    fn metadata_flag_override_mismatch_is_rejected_before_wire_open() {
+        let spec = RemoteCommandSpec::capture_upload("/remote/target.bin").with_acls(true);
+        let mut args = spec.to_exec_request().args;
+        let bundle = args
+            .iter_mut()
+            .find(|arg| arg.starts_with("-logDtp"))
+            .expect("compact bundle");
+        *bundle = crate::aerorsync::remote_command::OBSERVED_COMPACT_FLAGS.to_string();
+
+        let error = validate_command_metadata_flags(&spec, &args)
+            .expect_err("an override that strips -A must fail before wire open");
+        assert_eq!(error.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert!(error.detail.contains("A/X"));
+    }
+
+    #[test]
+    fn product_server_flag_override_cannot_insert_owner_group_or_devices() {
+        let spec = RemoteCommandSpec::upload("/remote/target.bin");
+        let mut args = spec.to_exec_request().args;
+        let bundle = args
+            .iter_mut()
+            .find(|arg| arg.starts_with('-') && !arg.starts_with("--"))
+            .expect("compact bundle");
+        *bundle = crate::aerorsync::remote_command::OBSERVED_COMPACT_FLAGS.to_string();
+        let error = validate_command_metadata_flags(&spec, &args)
+            .expect_err("inserting o/g/D into the product profile must fail before wire open");
+        assert_eq!(error.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert!(error.detail.contains("o/g/D"));
+    }
+
+    #[tokio::test]
+    async fn product_flist_options_come_from_effective_flags_not_constants() {
+        let mut product = make_driver(mock_transport_with_raw_inbound(Vec::new()));
+        product
+            .open_raw_stream_internal(&RemoteCommandSpec::upload("/remote/target.bin"))
+            .await
+            .expect("open product");
+        let product_opts = product.build_flist_options(16);
+        assert!(
+            !product_opts.preserve_uid && !product_opts.preserve_gid,
+            "product profile must not hardcode uid/gid"
+        );
+
+        let mut capture = make_driver(mock_transport_with_raw_inbound(Vec::new()));
+        capture
+            .open_raw_stream_internal(&RemoteCommandSpec::capture_upload("/remote/target.bin"))
+            .await
+            .expect("open capture");
+        let capture_opts = capture.build_flist_options(16);
+        assert!(
+            capture_opts.preserve_uid && capture_opts.preserve_gid,
+            "capture profile retains historical uid/gid"
+        );
+    }
+
+    #[test]
+    fn development_command_flavor_rejects_unrepresented_metadata_bits() {
+        let spec = RemoteCommandSpec::aerorsync_upload("/remote/target.bin").with_xattrs(true);
+        let args = spec.to_exec_request().args;
+        let error = validate_command_metadata_flags(&spec, &args)
+            .expect_err("a dev argv with no -X representation must fail before wire open");
+        assert_eq!(error.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert!(error.detail.contains("development flavor"));
     }
 
     #[test]
@@ -4534,6 +4762,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let (entry, mut cursor) =
@@ -4596,6 +4825,7 @@ mod tests {
             checksum: vec![0xAA; 16],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         }
     }
 
@@ -4636,6 +4866,7 @@ mod tests {
             checksum: vec![0xAA; 16],
             symlink_target: None,
             xattrs: None,
+            acls: None,
         }
     }
 
@@ -4665,6 +4896,7 @@ mod tests {
             checksum: vec![],
             symlink_target: Some(target.to_string()),
             xattrs: None,
+            acls: None,
         }
     }
 
@@ -5005,7 +5237,9 @@ mod tests {
                 compression_algos: "none".to_string(),
             });
             driver
-                .open_raw_stream_internal(&RemoteCommandSpec::download("/remote/target.bin"))
+                .open_raw_stream_internal(&RemoteCommandSpec::capture_download(
+                    "/remote/target.bin",
+                ))
                 .await
                 .unwrap();
             driver
@@ -5068,7 +5302,9 @@ mod tests {
                 compression_algos: "none".to_string(),
             });
             driver
-                .open_raw_stream_internal(&RemoteCommandSpec::download("/remote/target.bin"))
+                .open_raw_stream_internal(&RemoteCommandSpec::capture_download(
+                    "/remote/target.bin",
+                ))
                 .await
                 .unwrap();
             driver
@@ -5309,51 +5545,240 @@ mod tests {
         );
     }
 
-    /// CLAUDE-AV-B3-18: pin rsync 3.2.7
-    /// `checksum.c::csum_len_for_type` for every name the runtime override
-    /// can advertise. The xxh3 naming trap is intentional: `xxh3` is the
-    /// 64-bit, 8-byte variant, while `xxh128` is 16 bytes.
-    #[tokio::test]
-    async fn file_checksum_len_follows_the_negotiated_algorithm() {
-        let cases = [
-            ("xxh128", 16),
-            ("xxh3", 8),
-            ("xxh64", 8),
-            ("xxhash", 8),
-            ("md5", 16),
-            ("md4", 16),
-            ("sha1", 20),
-            ("sha256", 32),
-            ("sha512", 64),
-            ("none", 1),
-        ];
+    async fn resolve_checksum(
+        ours: &str,
+        theirs: &str,
+    ) -> Result<FileChecksumKind, AerorsyncError> {
+        let encoded = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07,
+            checksum_algos: theirs.to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0,
+            consumed: 0,
+        });
+        let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+        });
+        d.receive_server_preamble(&encoded).await.unwrap();
+        d.resolved_file_checksum_kind()
+    }
 
-        for (algorithm, expected_len) in cases {
-            let encoded = encode_server_preamble(&ServerPreamble {
-                protocol_version: 31,
-                compat_flags: 0x07,
-                checksum_algos: algorithm.to_string(),
-                compression_algos: "none".to_string(),
-                checksum_seed: 0,
-                consumed: 0,
-            });
-            let mut d = make_driver(mock_transport()).with_preamble_profile(PreambleProfile {
-                checksum_algos: algorithm.to_string(),
-                compression_algos: "none".to_string(),
-            });
-            d.receive_server_preamble(&encoded).await.unwrap();
+    fn assert_checksum_negotiation_failed(err: &AerorsyncError, named: &str) {
+        assert_eq!(err.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert!(
+            err.detail.contains(named),
+            "NegotiationFailed must name {named:?}: {}",
+            err.detail
+        );
+    }
+
+    /// Every name we advertise by default is a codec this client can drive.
+    #[tokio::test]
+    async fn default_checksum_advertisement_names_are_all_driveable() {
+        let default = PreambleProfile::default().checksum_algos;
+        for name in default.split_whitespace() {
+            let kind = resolve_checksum(&default, name)
+                .await
+                .unwrap_or_else(|err| panic!("{name} must be driveable, got {err:?}"));
             assert_eq!(
-                d.negotiated_file_checksum_len(),
+                kind.wire_len(),
+                match name {
+                    XXH128_ALGO_NAME | MD5_ALGO_NAME | MD4_ALGO_NAME => 16,
+                    XXH3_ALGO_NAME | XXH64_ALGO_NAME => 8,
+                    other => panic!("unexpected default checksum name {other}"),
+                },
+                "{name} wire width must follow the implemented codec"
+            );
+        }
+    }
+
+    /// sha1 is omitted from the default advertisement but remains a
+    /// first-class override winner.
+    #[tokio::test]
+    async fn sha1_override_winner_remains_driveable() {
+        let kind = resolve_checksum(SHA1_ALGO_NAME, SHA1_ALGO_NAME)
+            .await
+            .expect("sha1 must stay driveable");
+        assert_eq!(kind, FileChecksumKind::Sha1);
+        assert_eq!(kind.wire_len(), 20);
+    }
+
+    /// Named unsupported winners fail as NegotiationFailed. Widths from
+    /// rsync's `csum_len_for_type` are not a codec promise here.
+    #[tokio::test]
+    async fn named_unsupported_checksum_winners_fail_negotiation() {
+        for name in ["none", "sha256", "sha512", "xxhash", "bogus-csum"] {
+            let err = resolve_checksum(name, name)
+                .await
+                .expect_err(&format!("{name} must not be treated as a codec"));
+            assert_checksum_negotiation_failed(&err, name);
+        }
+    }
+
+    /// Two non-empty lists with no intersection fail closed instead of
+    /// silently assuming xxh128.
+    #[tokio::test]
+    async fn disjoint_non_empty_checksum_lists_fail_negotiation() {
+        let err = resolve_checksum("xxh128", "md5 md4")
+            .await
+            .expect_err("disjoint non-empty lists must fail");
+        assert_eq!(err.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert!(
+            err.detail.contains("no common algorithm"),
+            "disjoint lists must not be described as a named codec: {}",
+            err.detail
+        );
+    }
+
+    /// A peer that omitted the negotiated checksum string keeps the
+    /// historical xxh128 compatibility. This is not the same as two
+    /// non-empty lists missing each other.
+    #[tokio::test]
+    async fn empty_legacy_checksum_advertisement_keeps_xxh128() {
+        let kind = resolve_checksum(PreambleProfile::default().checksum_algos.as_str(), "")
+            .await
+            .expect("empty peer advertisement is the legacy compatibility path");
+        assert_eq!(kind, FileChecksumKind::Xxh128);
+        assert_eq!(kind.wire_len(), A2_3_FILE_CHECKSUM_LEN);
+
+        let d = make_driver(mock_transport());
+        assert_eq!(
+            d.negotiated_file_checksum_len()
+                .expect("absent negotiation"),
+            A2_3_FILE_CHECKSUM_LEN,
+            "absent negotiation must retain the historical fallback"
+        );
+    }
+
+    /// CLAUDE-AV-B3-18: supported winners keep their real wire widths.
+    /// The xxh3 naming trap is intentional: `xxh3` is the 64-bit,
+    /// 8-byte variant, while `xxh128` is 16 bytes.
+    #[tokio::test]
+    async fn file_checksum_len_follows_the_implemented_algorithm() {
+        let cases = [
+            (XXH128_ALGO_NAME, 16),
+            (XXH3_ALGO_NAME, 8),
+            (XXH64_ALGO_NAME, 8),
+            (MD5_ALGO_NAME, 16),
+            (MD4_ALGO_NAME, 16),
+            (SHA1_ALGO_NAME, 20),
+        ];
+        for (algorithm, expected_len) in cases {
+            let kind = resolve_checksum(algorithm, algorithm)
+                .await
+                .unwrap_or_else(|err| panic!("{algorithm} must resolve, got {err:?}"));
+            assert_eq!(
+                kind.wire_len(),
                 expected_len,
                 "{algorithm} must use a {expected_len}-byte file checksum"
             );
         }
+    }
 
-        let d = make_driver(mock_transport());
+    /// Unsupported checksum winners fail inside `perform_preamble_exchange`
+    /// after the client preamble and before any file-list bytes.
+    #[tokio::test]
+    async fn unsupported_checksum_winner_fails_before_file_list_bytes() {
+        let ours = "none";
+        let inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07,
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0,
+            consumed: 0,
+        });
+        let expected_client = encode_client_preamble(&ClientPreamble {
+            protocol_version: 31,
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+            consumed: 0,
+        });
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let last_raw_outbound = transport.last_raw_outbound.clone();
+        let mut d = make_driver(transport).with_preamble_profile(PreambleProfile {
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+        });
+        d.open_raw_stream_internal(&RemoteCommandSpec::capture_upload("/remote/target.bin"))
+            .await
+            .unwrap();
+        let err = d
+            .perform_preamble_exchange(31, ours, "none")
+            .await
+            .expect_err("none must fail after the preamble");
+        assert_checksum_negotiation_failed(&err, "none");
+        assert!(!d.committed(), "preamble rejection is pre-commit");
+        let guard = last_raw_outbound.lock().unwrap();
+        let outbound_arc = guard.as_ref().expect("raw stream must have opened");
+        let outbound = outbound_arc.lock().unwrap().clone();
         assert_eq!(
-            d.negotiated_file_checksum_len(),
-            A2_3_FILE_CHECKSUM_LEN,
-            "absent negotiation must retain the historical fallback"
+            outbound, expected_client,
+            "a rejected checksum winner must not emit file-list bytes"
+        );
+    }
+
+    /// The upload drive path uses the same preamble validator, so a
+    /// named unsupported winner never reaches file-list construction.
+    #[tokio::test]
+    async fn drive_upload_rejects_unsupported_checksum_before_file_list() {
+        let ours = "none";
+        let inbound = encode_server_preamble(&ServerPreamble {
+            protocol_version: 31,
+            compat_flags: 0x07,
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+            checksum_seed: 0,
+            consumed: 0,
+        });
+        let expected_client = encode_client_preamble(&ClientPreamble {
+            protocol_version: 31,
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+            consumed: 0,
+        });
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let last_raw_outbound = transport.last_raw_outbound.clone();
+        let mut d = make_driver(transport).with_preamble_profile(PreambleProfile {
+            checksum_algos: ours.to_string(),
+            compression_algos: "none".to_string(),
+        });
+        let err = d
+            .drive_upload_through_delta(
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
+                sample_file_list_entry("target.bin"),
+                b"payload",
+                &MockSigAdapter::default(),
+                &mut CollectingSink::default(),
+            )
+            .await
+            .expect_err("drive_upload must fail on checksum none");
+        assert_checksum_negotiation_failed(&err, "none");
+        assert!(!d.committed(), "unsupported checksum is pre-commit");
+        let guard = last_raw_outbound.lock().unwrap();
+        let outbound_arc = guard.as_ref().expect("raw stream must have opened");
+        let outbound = outbound_arc.lock().unwrap().clone();
+        assert_eq!(
+            outbound, expected_client,
+            "drive_upload must stop before file-list bytes"
+        );
+    }
+
+    #[test]
+    fn unsupported_checksum_error_stays_on_the_classic_fallback_allowlist() {
+        use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
+        let err = unsupported_checksum_error("none");
+        assert_eq!(err.kind, AerorsyncErrorKind::NegotiationFailed);
+        assert_eq!(
+            classify_fallback(&err, false),
+            FallbackVerdict::AttemptClassicSftpFallback
+        );
+        assert_eq!(
+            classify_fallback(&err, true),
+            FallbackVerdict::HardError,
+            "post-commit NegotiationFailed must not silently retry"
         );
     }
 
@@ -5430,7 +5855,7 @@ mod tests {
 
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -5483,6 +5908,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let mut expected_entry = sample_file_list_entry("target.bin");
@@ -5527,7 +5953,7 @@ mod tests {
             let transport = mock_transport_with_raw_inbound(Vec::new());
             let last_raw_outbound = transport.last_raw_outbound.clone();
             let mut d = make_driver(transport);
-            d.open_raw_stream_internal(&RemoteCommandSpec::upload("/remote/big.bin"))
+            d.open_raw_stream_internal(&RemoteCommandSpec::capture_upload("/remote/big.bin"))
                 .await
                 .expect("raw stream opens");
             d.write_data_frame(payload).await.expect("write_data_frame");
@@ -5600,7 +6026,7 @@ mod tests {
         let transport = mock_transport_with_raw_inbound(Vec::new());
         let last_raw_outbound = transport.last_raw_outbound.clone();
         let mut d = make_driver(transport).with_progress_sink(Some(sink));
-        d.open_raw_stream_internal(&RemoteCommandSpec::upload("/remote/big.bin"))
+        d.open_raw_stream_internal(&RemoteCommandSpec::capture_upload("/remote/big.bin"))
             .await
             .expect("raw stream opens");
 
@@ -5658,6 +6084,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry = sample_file_list_entry("target.bin");
@@ -5683,7 +6110,7 @@ mod tests {
 
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -5712,6 +6139,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let mut entry = sample_file_list_entry("target.bin");
@@ -5735,7 +6163,7 @@ mod tests {
             compression_algos: "none".to_string(),
         });
         d.session_role = Some(SessionRole::Receiver);
-        d.open_raw_stream_internal(&RemoteCommandSpec::download("/remote/target.bin"))
+        d.open_raw_stream_internal(&RemoteCommandSpec::capture_download("/remote/target.bin"))
             .await
             .unwrap();
         d.perform_preamble_exchange(31, XXH64_ALGO_NAME, "none")
@@ -5763,6 +6191,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry = sample_file_list_entry("target.bin");
@@ -5781,7 +6210,7 @@ mod tests {
 
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -5809,7 +6238,7 @@ mod tests {
 
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -5852,7 +6281,7 @@ mod tests {
 
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -5878,6 +6307,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry = sample_file_list_entry("target.bin");
@@ -5898,7 +6328,7 @@ mod tests {
 
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -5919,7 +6349,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -6193,7 +6623,7 @@ mod tests {
 
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -6241,6 +6671,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -6274,7 +6705,7 @@ mod tests {
         let destination_data = vec![0u8; 3584]; // 3.5 KiB: 3 full + 1 partial
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &destination_data,
                 &adapter,
                 &mut sink,
@@ -6419,7 +6850,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -6442,7 +6873,7 @@ mod tests {
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         d.drive_upload_through_delta(
-            RemoteCommandSpec::upload("/remote/target.bin"),
+            RemoteCommandSpec::capture_upload("/remote/target.bin"),
             sample_file_list_entry("target.bin"),
             b"already present",
             &MockSigAdapter::default(),
@@ -6472,7 +6903,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_upload_through_delta_streaming(
-            RemoteCommandSpec::upload("/remote/target.bin"),
+            RemoteCommandSpec::capture_upload("/remote/target.bin"),
             sample_file_list_entry("target.bin"),
             tokio::io::empty(),
             123,
@@ -6504,7 +6935,7 @@ mod tests {
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         d.drive_upload_through_delta(
-            RemoteCommandSpec::upload("/remote/target.bin"),
+            RemoteCommandSpec::capture_upload("/remote/target.bin"),
             sample_file_list_entry("target.bin"),
             b"already present",
             &MockSigAdapter::default(),
@@ -6542,7 +6973,7 @@ mod tests {
         let target = "../data/target.bin";
         let entry = symlink_file_list_entry("link.lnk", target);
         d.drive_upload_symlink(
-            RemoteCommandSpec::upload("/remote/link.lnk"),
+            RemoteCommandSpec::capture_upload("/remote/link.lnk"),
             entry.clone(),
             &mut sink,
         )
@@ -6587,6 +7018,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let mut flist_payload = encode_file_list_entry(&entry, &opts);
@@ -6631,7 +7063,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload_symlink(
-                RemoteCommandSpec::upload("/remote/link.lnk"),
+                RemoteCommandSpec::capture_upload("/remote/link.lnk"),
                 symlink_file_list_entry("link.lnk", "t.bin"),
                 &mut sink,
             )
@@ -6649,7 +7081,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload_symlink(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 live_file_list_entry("target.bin"),
                 &mut sink,
             )
@@ -6669,7 +7101,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload_through_delta(
-                RemoteCommandSpec::upload("/remote/link.lnk"),
+                RemoteCommandSpec::capture_upload("/remote/link.lnk"),
                 entry.clone(),
                 b"",
                 &MockSigAdapter::default(),
@@ -6682,7 +7114,7 @@ mod tests {
         let mut d = make_driver(mock_transport());
         let err = d
             .drive_upload_through_delta_streaming(
-                RemoteCommandSpec::upload("/remote/link.lnk"),
+                RemoteCommandSpec::capture_upload("/remote/link.lnk"),
                 entry,
                 std::io::Cursor::new(Vec::new()),
                 0,
@@ -6711,6 +7143,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let target = "../rel/target.bin";
@@ -6734,7 +7167,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/link.lnk"),
+            RemoteCommandSpec::capture_download("/remote/link.lnk"),
             &mut baseline,
             &mut writer,
             &MockSigAdapter::default(),
@@ -6815,6 +7248,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry = symlink_file_list_entry("link.lnk", "t/rel.bin");
@@ -6828,7 +7262,7 @@ mod tests {
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta(
-            RemoteCommandSpec::download("/remote/link.lnk"),
+            RemoteCommandSpec::capture_download("/remote/link.lnk"),
             b"",
             &MockSigAdapter::default(),
             &mut sink,
@@ -6877,7 +7311,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -6905,6 +7339,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -6924,7 +7359,7 @@ mod tests {
             MockSigAdapter::with_fixed_signatures(1024, vec![make_engine_sig(0, 0x11, 0x22, 1024)]);
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 b"abc",
                 &adapter,
                 &mut sink,
@@ -6951,7 +7386,7 @@ mod tests {
         let entry = sample_file_list_entry("target.bin");
         let outcome = d
             .drive_upload(
-                RemoteCommandSpec::upload("/workspace/upload/target.bin"),
+                RemoteCommandSpec::capture_upload("/workspace/upload/target.bin"),
                 entry,
                 &[],
                 &MockSigAdapter::default(),
@@ -7007,7 +7442,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 b"hello\0\0\0world",
                 &adapter,
@@ -7116,7 +7551,7 @@ mod tests {
                 make_driver(bulk_transport).with_preamble_profile(profile.clone());
             bulk_driver
                 .drive_upload_through_delta(
-                    RemoteCommandSpec::upload("/remote/target.bin"),
+                    RemoteCommandSpec::capture_upload("/remote/target.bin"),
                     sample_file_list_entry("target.bin"),
                     source,
                     &CurrentDeltaSyncBridge::new(),
@@ -7141,7 +7576,7 @@ mod tests {
             let mut stream_driver = make_driver(stream_transport).with_preamble_profile(profile);
             stream_driver
                 .drive_upload_through_delta_streaming(
-                    RemoteCommandSpec::upload("/remote/target.bin"),
+                    RemoteCommandSpec::capture_upload("/remote/target.bin"),
                     sample_file_list_entry("target.bin"),
                     std::io::Cursor::new(source.to_vec()),
                     source.len() as u64,
@@ -7207,7 +7642,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &payload,
                 &adapter,
@@ -7304,6 +7739,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7329,7 +7765,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &destination_data,
                 &adapter,
                 &mut sink,
@@ -7430,6 +7866,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7456,7 +7893,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &destination_data,
                 &adapter,
                 &mut sink,
@@ -7499,6 +7936,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7528,7 +7966,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &destination_data,
             &adapter,
             &mut sink,
@@ -7560,6 +7998,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7582,7 +8021,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &destination_data,
             &adapter,
             &mut sink,
@@ -7620,6 +8059,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7645,7 +8085,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &destination_data,
             &adapter,
             &mut sink,
@@ -7683,7 +8123,7 @@ mod tests {
         assert!(!d.committed(), "starts false");
         let _ = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/x"),
+                RemoteCommandSpec::capture_upload("/remote/x"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -7717,6 +8157,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7732,7 +8173,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -7757,6 +8198,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7772,7 +8214,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -7808,7 +8250,7 @@ mod tests {
         cancel_flag.store(true, Ordering::SeqCst);
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/x"),
+                RemoteCommandSpec::capture_upload("/remote/x"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -7845,6 +8287,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -7863,7 +8306,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -7893,7 +8336,8 @@ mod tests {
         d: &mut AerorsyncDriver<MockRemoteShellTransport>,
         sink: &mut CollectingSink,
     ) {
-        drive_upload_to_stub_with_spec(d, sink, RemoteCommandSpec::upload("/remote/x")).await;
+        drive_upload_to_stub_with_spec(d, sink, RemoteCommandSpec::capture_upload("/remote/x"))
+            .await;
     }
 
     async fn drive_aerorsync_upload_to_stub(
@@ -8183,6 +8627,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -8208,7 +8653,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -8350,6 +8795,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -8375,7 +8821,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -8410,6 +8856,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -8432,7 +8879,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let _ = d
             .drive_download(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -8473,7 +8920,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let res = d
             .drive_upload_through_delta(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -8511,6 +8958,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -8527,7 +8975,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let res = d
             .drive_download_through_delta(
-                RemoteCommandSpec::download("/remote/x"),
+                RemoteCommandSpec::capture_download("/remote/x"),
                 b"BLK0",
                 &adapter,
                 &mut sink,
@@ -8555,7 +9003,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload_through_delta(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &[],
                 &MockSigAdapter::default(),
@@ -8649,7 +9097,7 @@ mod tests {
         let bulk_adapter = CurrentDeltaSyncBridge::new();
         bulk_d
             .drive_upload_through_delta(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 source,
                 &bulk_adapter,
@@ -8674,7 +9122,7 @@ mod tests {
         let cursor = std::io::Cursor::new(source.to_vec());
         stream_d
             .drive_upload_through_delta_streaming(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 cursor,
                 source.len() as u64,
@@ -8896,7 +9344,7 @@ mod tests {
         let bulk_adapter = CurrentDeltaSyncBridge::new();
         bulk_d
             .drive_upload_through_delta(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 &source,
                 &bulk_adapter,
@@ -8922,7 +9370,7 @@ mod tests {
         let cursor = std::io::Cursor::new(source.clone());
         stream_d
             .drive_upload_through_delta_streaming(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 cursor,
                 source.len() as u64,
@@ -8997,7 +9445,7 @@ mod tests {
         let cursor = std::io::Cursor::new(source.clone());
         let err = d
             .drive_upload_through_delta_streaming(
-                RemoteCommandSpec::upload("/remote/target.bin"),
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
                 sample_file_list_entry("target.bin"),
                 cursor,
                 // Lie about the length: declared 200, actual 100.
@@ -9047,7 +9495,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_upload(
-                RemoteCommandSpec::upload("/remote/x"),
+                RemoteCommandSpec::capture_upload("/remote/x"),
                 sample_file_list_entry("target.bin"),
                 &big_raw,
                 &adapter,
@@ -9086,7 +9534,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let outcome = d
             .drive_download(
-                RemoteCommandSpec::download("/workspace/download/target.bin"),
+                RemoteCommandSpec::capture_download("/workspace/download/target.bin"),
                 &[],
                 &MockSigAdapter::default(),
                 &mut sink,
@@ -9248,6 +9696,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -9290,7 +9739,7 @@ mod tests {
 
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,
@@ -9329,6 +9778,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -9360,7 +9810,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,
@@ -9392,6 +9842,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -9416,7 +9867,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,
@@ -9453,6 +9904,7 @@ mod tests {
             preserve_uid: true,
             preserve_gid: true,
             previous_name: None,
+            preserve_acls: false,
             preserve_xattrs: false,
         };
         let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
@@ -9480,7 +9932,7 @@ mod tests {
         let mut sink = CollectingSink::default();
 
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,
@@ -9528,7 +9980,7 @@ mod tests {
 
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,
@@ -9573,7 +10025,7 @@ mod tests {
         let mut sink = CollectingSink::default();
         let err = d
             .drive_download_through_delta_streaming(
-                RemoteCommandSpec::download("/remote/target.bin"),
+                RemoteCommandSpec::capture_download("/remote/target.bin"),
                 &mut baseline,
                 &mut writer,
                 &adapter,
@@ -9624,7 +10076,7 @@ mod tests {
 
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
-            RemoteCommandSpec::download("/remote/target.bin"),
+            RemoteCommandSpec::capture_download("/remote/target.bin"),
             &mut baseline,
             &mut writer,
             &adapter,

@@ -409,10 +409,12 @@ pub fn is_transient_for_reconnect(err: &RsyncError) -> bool {
 /// Z.1.2 batch retry is safe in both cases because every file gets its
 /// own `.aerotmp` + atomic rename, so a reconnect+retry never observes
 /// a partial commit. The Kind tells us whether the failure is wire-level
-/// (TransportFailure / NegotiationFailed / UnsupportedVersion → safe)
+/// (TransportFailure / transient NegotiationFailed / UnsupportedVersion → safe)
 /// or a security / protocol fault (HostKeyRejected / InvalidFrame /
 /// IllegalStateTransition / PlannerRejected / UnexpectedMessage /
-/// Internal / RemoteError → must propagate).
+/// Internal / RemoteError → must propagate). Deterministic checksum
+/// negotiation refusals are also terminal: reconnecting cannot change either
+/// advertisement and would repeat the same pre-commit failure.
 ///
 /// The caller passes the message lowercased (Debug output of the kind
 /// enum is mixed-case, e.g. `TransportFailure`, but the substring match
@@ -433,6 +435,8 @@ pub(crate) fn is_transient_native_envelope(lower: &str) -> bool {
         "unexpectedmessage",
         "internal",
         "remoteerror",
+        "negotiation chose file checksum",
+        "checksum negotiation found no common algorithm",
     ];
     if DENY.iter().any(|needle| lower.contains(needle)) {
         return false;
@@ -470,6 +474,15 @@ mod is_transient_hard_rejection_tests {
             "native hard rejection (NegotiationFailed): kex blip".to_string(),
         );
         assert!(is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn hard_rejection_unsupported_checksum_is_not_transient() {
+        let err = RsyncError::HardRejection(
+            "native hard rejection (NegotiationFailed): negotiation chose file checksum \"none\", which this client does not implement; falling back"
+                .to_string(),
+        );
+        assert!(!is_transient_for_reconnect(&err));
     }
 
     #[test]
@@ -557,6 +570,26 @@ mod is_transient_hard_rejection_tests {
             stderr: "native fallback (NegotiationFailed): initial handshake blip".to_string(),
         };
         assert!(is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn transfer_failed_native_fallback_unsupported_checksum_is_not_transient() {
+        let err = RsyncError::TransferFailed {
+            exit: -1,
+            stderr: "native fallback (NegotiationFailed): negotiation chose file checksum \"none\", which this client does not implement; falling back"
+                .to_string(),
+        };
+        assert!(!is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn transfer_failed_native_fallback_disjoint_checksums_is_not_transient() {
+        let err = RsyncError::TransferFailed {
+            exit: -1,
+            stderr: "native fallback (NegotiationFailed): checksum negotiation found no common algorithm (client \"sha1\" vs server \"md5\"); falling back"
+                .to_string(),
+        };
+        assert!(!is_transient_for_reconnect(&err));
     }
 
     #[test]

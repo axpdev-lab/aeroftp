@@ -2280,7 +2280,7 @@ pub(crate) async fn perform_upload(
     // P1-T01: try the native delta wrapper before the classic provider path.
     // The wrapper gates eligibility internally (SFTP downcast + active SSH
     // handle + rsync availability). `None` means the session is not delta
-    // eligible (non-SFTP provider, password-only auth, no handle): fall
+    // eligible (non-SFTP provider, unusable auth/host-key state, no handle): fall
     // through silently to the classic upload. A `hard_error` (e.g. SSH
     // host-key mismatch) surfaces as `FileOutcome::Failed` without falling
     // back, so security failures never get masked by the classic path.

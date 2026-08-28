@@ -73,6 +73,7 @@ fn rsync_3_1_3_deflate_byte_oracle_matches_real_wire_decoder() {
         csum_len: 16,
         preserve_uid: true,
         preserve_gid: true,
+        preserve_acls: false,
         preserve_xattrs: false,
         previous_name: None,
     };
@@ -157,7 +158,7 @@ fn rsync_3_1_3_deflate_byte_oracle_matches_real_wire_decoder() {
 
 #[test]
 fn upload_remote_command_matches_capture() {
-    let spec = RemoteCommandSpec::upload("/workspace/upload/target.bin");
+    let spec = RemoteCommandSpec::capture_upload("/workspace/upload/target.bin");
     assert_eq!(spec.remote_role, SessionRole::Receiver);
     assert!(spec.emit_stats);
     assert_eq!(spec.to_command_line(), UPLOAD_REMOTE_COMMAND);
@@ -165,10 +166,20 @@ fn upload_remote_command_matches_capture() {
 
 #[test]
 fn download_remote_command_matches_capture() {
-    let spec = RemoteCommandSpec::download("/workspace/download/target.bin");
+    let spec = RemoteCommandSpec::capture_download("/workspace/download/target.bin");
     assert_eq!(spec.remote_role, SessionRole::Sender);
     assert!(!spec.emit_stats);
     assert_eq!(spec.to_command_line(), DOWNLOAD_REMOTE_COMMAND);
+}
+
+#[test]
+fn upload_remote_command_matches_product_profile() {
+    let spec = RemoteCommandSpec::upload("/workspace/upload/target.bin");
+    let line = spec.to_command_line();
+    assert_eq!(
+        line, "rsync --server -ltprcze.iLsfxCIvu --stats . /workspace/upload/target.bin",
+        "production upload command must pin the complete product policy"
+    );
 }
 
 #[test]
@@ -2815,7 +2826,12 @@ fn production_unsafe_surface_matches_the_documented_count() {
     // hardcoded exclusion list, so a new harness file is handled without
     // editing this test, and a production file can never be excluded by
     // being added to a list.
-    const DOCUMENTED: [(&str, usize); 2] = [("xattr_fs.rs", 10), ("delta_transport_impl.rs", 3)];
+    const DOCUMENTED: [(&str, usize); 4] = [
+        ("acl_fs.rs", 5),
+        ("delta_transport_impl.rs", 3),
+        ("streaming_writer.rs", 1),
+        ("xattr_fs.rs", 10),
+    ];
 
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync");
     let mut found: Vec<(String, usize)> = Vec::new();
@@ -2873,5 +2889,5 @@ fn production_unsafe_surface_matches_the_documented_count() {
     );
 
     let total: usize = found.iter().map(|(_, n)| n).sum();
-    assert_eq!(total, 13, "documented total in the parity docs is 13");
+    assert_eq!(total, 19, "documented total in the parity docs is 19");
 }
