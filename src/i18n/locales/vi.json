@@ -1153,10 +1153,10 @@
             "resumeForget": "Quên đích này",
             "resumeForgetConfirm": "Quên",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Ghi đè các token CSS đã xuất bản từ docs/UI-TOKENS.md bằng tệp ui-tokens.json trong thư mục cấu hình. Các thay đổi có hiệu lực khi tải lại; các mục không hợp lệ sẽ bị bỏ qua và được báo cáo trong Nhật ký hoạt động.",
+            "uiTokensDesc": "Ghi đè các token CSS đã xuất bản từ docs/UI-TOKENS.md bằng tệp ui-tokens.json trong thư mục cấu hình. Các thay đổi có hiệu lực khi tải lại; các mục không hợp lệ sẽ bị bỏ qua và được báo cáo trong Nhật ký hoạt động. Việc xóa các ghi đè chỉ ảnh hưởng đến ứng dụng đang chạy. Tệp không bao giờ bị sửa đổi.",
             "uiTokensOpenFile": "Mở ui-tokens.json",
             "uiTokensReload": "Tải lại",
-            "uiTokensReset": "Đặt lại về mặc định",
+            "uiTokensReset": "Xóa ghi đè",
             "uiTokensApplied": "Các ghi đè đã áp dụng: {count}",
             "uiTokensRejected": "Các mục bị từ chối: {count}"
         },

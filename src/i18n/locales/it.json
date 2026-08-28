@@ -1567,10 +1567,10 @@
             "resumeForget": "Dimentica questa destinazione",
             "resumeForgetConfirm": "Dimentica",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Sostituisci i token CSS pubblicati di docs/UI-TOKENS.md con un file ui-tokens.json nella cartella di configurazione. Le modifiche si applicano alla ricarica; le voci non valide vengono ignorate e riportate nel Registro attività.",
+            "uiTokensDesc": "Sostituisci i token CSS pubblicati di docs/UI-TOKENS.md con un file ui-tokens.json nella cartella di configurazione. Le modifiche si applicano alla ricarica; le voci non valide vengono ignorate e riportate nel Registro attività. La cancellazione degli override riguarda solo l'app in esecuzione. Il file non viene mai modificato.",
             "uiTokensOpenFile": "Apri ui-tokens.json",
             "uiTokensReload": "Ricarica",
-            "uiTokensReset": "Ripristina predefiniti",
+            "uiTokensReset": "Cancella override",
             "uiTokensApplied": "Sostituzioni applicate: {count}",
             "uiTokensRejected": "Voci rifiutate: {count}"
         },

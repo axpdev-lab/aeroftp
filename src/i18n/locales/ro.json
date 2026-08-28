@@ -1153,10 +1153,10 @@
             "resumeForget": "Uită această destinație",
             "resumeForgetConfirm": "Uită",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Suprascrieți tokenurile CSS publicate din docs/UI-TOKENS.md cu un fișier ui-tokens.json din folderul de configurare. Modificările se aplică la reîncărcare; intrările invalide sunt omise și raportate în Jurnalul de activitate.",
+            "uiTokensDesc": "Suprascrieți tokenurile CSS publicate din docs/UI-TOKENS.md cu un fișier ui-tokens.json din folderul de configurare. Modificările se aplică la reîncărcare; intrările invalide sunt omise și raportate în Jurnalul de activitate. Ștergerea suprascrierilor afectează doar aplicația în execuție. Fișierul nu este modificat niciodată.",
             "uiTokensOpenFile": "Deschide ui-tokens.json",
             "uiTokensReload": "Reîncarcă",
-            "uiTokensReset": "Resetare la valori implicite",
+            "uiTokensReset": "Șterge suprascrierile",
             "uiTokensApplied": "Suprascrieri aplicate: {count}",
             "uiTokensRejected": "Intrări respinse: {count}"
         },

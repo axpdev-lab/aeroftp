@@ -1153,10 +1153,10 @@
             "resumeForget": "Zaboravi ovo odredište",
             "resumeForgetConfirm": "Zaboravi",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Nadjačajte objavljene CSS tokene iz docs/UI-TOKENS.md datotekom ui-tokens.json u konfiguracijskoj mapi. Promjene se primjenjuju pri ponovnom učitavanju; nevaljani unosi se preskaču i prijavljuju u Dnevniku aktivnosti.",
+            "uiTokensDesc": "Nadjačajte objavljene CSS tokene iz docs/UI-TOKENS.md datotekom ui-tokens.json u konfiguracijskoj mapi. Promjene se primjenjuju pri ponovnom učitavanju; nevaljani unosi se preskaču i prijavljuju u Dnevniku aktivnosti. Čišćenje zamjena utječe samo na pokrenutu aplikaciju. Datoteka se nikada ne mijenja.",
             "uiTokensOpenFile": "Otvori ui-tokens.json",
             "uiTokensReload": "Ponovno učitaj",
-            "uiTokensReset": "Vrati na zadano",
+            "uiTokensReset": "Očisti zamjene",
             "uiTokensApplied": "Primijenjena nadjačavanja: {count}",
             "uiTokensRejected": "Odbijeni unosi: {count}"
         },

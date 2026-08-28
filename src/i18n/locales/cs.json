@@ -1153,10 +1153,10 @@
             "resumeForget": "Zapomenout tento cíl",
             "resumeForgetConfirm": "Zapomenout",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Přepište publikované CSS tokeny z docs/UI-TOKENS.md souborem ui-tokens.json ve složce s konfigurací. Změny se projeví po znovunačtení; neplatné položky se přeskočí a nahlásí v Protokolu aktivit.",
+            "uiTokensDesc": "Přepište publikované CSS tokeny z docs/UI-TOKENS.md souborem ui-tokens.json ve složce s konfigurací. Změny se projeví po znovunačtení; neplatné položky se přeskočí a nahlásí v Protokolu aktivit. Vymazání přepsání ovlivní pouze běžící aplikaci. Soubor se nikdy nemění.",
             "uiTokensOpenFile": "Otevřít ui-tokens.json",
             "uiTokensReload": "Znovu načíst",
-            "uiTokensReset": "Obnovit výchozí hodnoty",
+            "uiTokensReset": "Vymazat přepsání",
             "uiTokensApplied": "Použitá přepsání: {count}",
             "uiTokensRejected": "Odmítnuté položky: {count}"
         },

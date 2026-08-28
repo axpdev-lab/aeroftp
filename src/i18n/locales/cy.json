@@ -1153,10 +1153,10 @@
             "resumeForget": "Anghofio'r gyrchfan hon",
             "resumeForgetConfirm": "Anghofio",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Diysgrifiwch y tocynnau CSS cyhoeddedig o docs/UI-TOKENS.md gyda ffeil ui-tokens.json yn y ffolder ffurfweddu. Mae newidiadau'n dod i rym wrth ail-lwytho; mae cofnodion annilys yn cael eu hepgor a'u hadrodd yn y Log Gweithgaredd.",
+            "uiTokensDesc": "Diysgrifiwch y tocynnau CSS cyhoeddedig o docs/UI-TOKENS.md gyda ffeil ui-tokens.json yn y ffolder ffurfweddu. Mae newidiadau'n dod i rym wrth ail-lwytho; mae cofnodion annilys yn cael eu hepgor a'u hadrodd yn y Log Gweithgaredd. Mae clirio'r diystyriadau'n effeithio ar yr ap sy'n rhedeg yn unig. Nid yw'r ffeil byth yn cael ei newid.",
             "uiTokensOpenFile": "Agor ui-tokens.json",
             "uiTokensReload": "Ail-lwytho",
-            "uiTokensReset": "Ailosod i'r rhagosodiadau",
+            "uiTokensReset": "Clirio'r diystyriadau",
             "uiTokensApplied": "Diysgrifiadau a gymhwyswyd: {count}",
             "uiTokensRejected": "Cofnodion a wrthodwyd: {count}"
         },

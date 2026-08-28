@@ -1153,10 +1153,10 @@
             "resumeForget": "Deze bestemming vergeten",
             "resumeForgetConfirm": "Vergeten",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Overschrijf de gepubliceerde CSS-tokens uit docs/UI-TOKENS.md met een ui-tokens.json-bestand in de configuratiemap. Wijzigingen worden toegepast bij herladen; ongeldige vermeldingen worden overgeslagen en gemeld in het Activiteitenlog.",
+            "uiTokensDesc": "Overschrijf de gepubliceerde CSS-tokens uit docs/UI-TOKENS.md met een ui-tokens.json-bestand in de configuratiemap. Wijzigingen worden toegepast bij herladen; ongeldige vermeldingen worden overgeslagen en gemeld in het Activiteitenlog. Het wissen van de overschrijvingen heeft alleen invloed op de actieve app. Het bestand wordt nooit gewijzigd.",
             "uiTokensOpenFile": "ui-tokens.json openen",
             "uiTokensReload": "Herladen",
-            "uiTokensReset": "Terugzetten naar standaardwaarden",
+            "uiTokensReset": "Overschrijvingen wissen",
             "uiTokensApplied": "Toegepaste overschrijvingen: {count}",
             "uiTokensRejected": "Afgewezen vermeldingen: {count}"
         },

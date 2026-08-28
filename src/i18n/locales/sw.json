@@ -1153,10 +1153,10 @@
             "resumeForget": "Sahau lengwa hili",
             "resumeForgetConfirm": "Sahau",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Batilisha tokeni za CSS zilizochapishwa kutoka docs/UI-TOKENS.md kwa faili ya ui-tokens.json katika folda ya usanidi. Mabadiliko hutekelezwa unapopakia upya; ingizo batili hurukwa na kuripotiwa kwenye Kumbukumbu ya Shughuli.",
+            "uiTokensDesc": "Batilisha tokeni za CSS zilizochapishwa kutoka docs/UI-TOKENS.md kwa faili ya ui-tokens.json katika folda ya usanidi. Mabadiliko hutekelezwa unapopakia upya; ingizo batili hurukwa na kuripotiwa kwenye Kumbukumbu ya Shughuli. Kufuta mabadiliko huathiri programu inayoendeshwa pekee. Faili haibadilishwi kamwe.",
             "uiTokensOpenFile": "Fungua ui-tokens.json",
             "uiTokensReload": "Pakia upya",
-            "uiTokensReset": "Weka upya kwa chaguo-msingi",
+            "uiTokensReset": "Futa mabadiliko",
             "uiTokensApplied": "Mabadiliko yaliyotumika: {count}",
             "uiTokensRejected": "Maingizo yaliyokataliwa: {count}"
         },

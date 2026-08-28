@@ -1153,10 +1153,10 @@
             "resumeForget": "Cél elfelejtése",
             "resumeForgetConfirm": "Elfelejtés",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "A docs/UI-TOKENS.md fájlban közzétett CSS tokeneket felülírhatja a konfigurációs mappában található ui-tokens.json fájllal. A módosítások újratöltéskor lépnek életbe; az érvénytelen bejegyzések kimaradnak, és a Tevékenységnaplóban jelennek meg.",
+            "uiTokensDesc": "A docs/UI-TOKENS.md fájlban közzétett CSS tokeneket felülírhatja a konfigurációs mappában található ui-tokens.json fájllal. A módosítások újratöltéskor lépnek életbe; az érvénytelen bejegyzések kimaradnak, és a Tevékenységnaplóban jelennek meg. A felülbírálások törlése csak a futó alkalmazásra van hatással. A fájl soha nem módosul.",
             "uiTokensOpenFile": "ui-tokens.json megnyitása",
             "uiTokensReload": "Újratöltés",
-            "uiTokensReset": "Visszaállítás alapértelmezettre",
+            "uiTokensReset": "Felülbírálások törlése",
             "uiTokensApplied": "Alkalmazott felülírások: {count}",
             "uiTokensRejected": "Elutasított bejegyzések: {count}"
         },

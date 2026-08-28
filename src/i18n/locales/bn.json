@@ -1153,10 +1153,10 @@
             "resumeForget": "এই গন্তব্য ভুলে যান",
             "resumeForgetConfirm": "ভুলে যান",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "কনফিগ ফোল্ডারে ui-tokens.json ফাইল দিয়ে docs/UI-TOKENS.md-এর প্রকাশিত CSS টোকেন ওভাররাইড করুন। রিলোডের সময় পরিবর্তন প্রযোজ্য হয়; অবৈধ এন্ট্রি বাদ দেওয়া হয় এবং অ্যাক্টিভিটি লগে রিপোর্ট করা হয়।",
+            "uiTokensDesc": "কনফিগ ফোল্ডারে ui-tokens.json ফাইল দিয়ে docs/UI-TOKENS.md-এর প্রকাশিত CSS টোকেন ওভাররাইড করুন। রিলোডের সময় পরিবর্তন প্রযোজ্য হয়; অবৈধ এন্ট্রি বাদ দেওয়া হয় এবং অ্যাক্টিভিটি লগে রিপোর্ট করা হয়। ওভাররাইড মুছে ফেলা কেবল চলমান অ্যাপে প্রভাব ফেলে। ফাইলটি কখনও পরিবর্তন করা হয় না।",
             "uiTokensOpenFile": "ui-tokens.json খুলুন",
             "uiTokensReload": "রিলোড",
-            "uiTokensReset": "ডিফল্টে রিসেট করুন",
+            "uiTokensReset": "ওভাররাইড মুছুন",
             "uiTokensApplied": "প্রয়োগকৃত ওভাররাইড: {count}",
             "uiTokensRejected": "প্রত্যাখ্যাত এন্ট্রি: {count}"
         },

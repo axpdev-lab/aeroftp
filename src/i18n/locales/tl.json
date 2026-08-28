@@ -1153,10 +1153,10 @@
             "resumeForget": "Kalimutan ang patutunguhang ito",
             "resumeForgetConfirm": "Kalimutan",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "I-override ang mga naka-publish na CSS token mula sa docs/UI-TOKENS.md gamit ang ui-tokens.json file sa config folder. Ang mga pagbabago ay magkakabisa sa pag-reload; ang mga hindi wastong entry ay nilalaktawan at iniulat sa Log ng Aktibidad.",
+            "uiTokensDesc": "I-override ang mga naka-publish na CSS token mula sa docs/UI-TOKENS.md gamit ang ui-tokens.json file sa config folder. Ang mga pagbabago ay magkakabisa sa pag-reload; ang mga hindi wastong entry ay nilalaktawan at iniulat sa Log ng Aktibidad. Ang pag-clear ng mga override ay nakakaapekto lamang sa tumatakbong app. Hindi kailanman binabago ang file.",
             "uiTokensOpenFile": "Buksan ang ui-tokens.json",
             "uiTokensReload": "I-reload",
-            "uiTokensReset": "I-reset sa mga default",
+            "uiTokensReset": "I-clear ang mga override",
             "uiTokensApplied": "Mga na-apply na override: {count}",
             "uiTokensRejected": "Mga tinanggihang entry: {count}"
         },

@@ -1153,10 +1153,10 @@
             "resumeForget": "Ahaztu helburu hau",
             "resumeForgetConfirm": "Ahaztu",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Gainidatzi docs/UI-TOKENS.md fitxategiko CSS token argitaratuak konfigurazio-karpetako ui-tokens.json fitxategi batekin. Aldaketak berriz kargatzean aplikatzen dira; balio gabeko sarrerak saltatzen dira eta Jarduera erregistroan jakinarazten dira.",
+            "uiTokensDesc": "Gainidatzi docs/UI-TOKENS.md fitxategiko CSS token argitaratuak konfigurazio-karpetako ui-tokens.json fitxategi batekin. Aldaketak berriz kargatzean aplikatzen dira; balio gabeko sarrerak saltatzen dira eta Jarduera erregistroan jakinarazten dira. Gainidazketak garbitzeak martxan dagoen aplikazioari baino ez dio eragiten. Fitxategia ez da inoiz aldatzen.",
             "uiTokensOpenFile": "Ireki ui-tokens.json",
             "uiTokensReload": "Berriz kargatu",
-            "uiTokensReset": "Berrezarri lehenetsiak",
+            "uiTokensReset": "Garbitu gainidazketak",
             "uiTokensApplied": "Aplikatutako gainidatziak: {count}",
             "uiTokensRejected": "Baztertutako sarrerak: {count}"
         },

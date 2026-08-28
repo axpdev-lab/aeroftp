@@ -1153,10 +1153,10 @@
             "resumeForget": "Olvidar este destino",
             "resumeForgetConfirm": "Olvidar",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "Sobrescribe los tokens CSS publicados de docs/UI-TOKENS.md con un archivo ui-tokens.json en la carpeta de configuración. Los cambios se aplican al recargar; las entradas no válidas se omiten y se notifican en el Registro de actividad.",
+            "uiTokensDesc": "Sobrescribe los tokens CSS publicados de docs/UI-TOKENS.md con un archivo ui-tokens.json en la carpeta de configuración. Los cambios se aplican al recargar; las entradas no válidas se omiten y se notifican en el Registro de actividad. Borrar las anulaciones afecta solo a la aplicación en ejecución. El archivo nunca se modifica.",
             "uiTokensOpenFile": "Abrir ui-tokens.json",
             "uiTokensReload": "Recargar",
-            "uiTokensReset": "Restablecer valores predeterminados",
+            "uiTokensReset": "Borrar anulaciones",
             "uiTokensApplied": "Sobrescrituras aplicadas: {count}",
             "uiTokensRejected": "Entradas rechazadas: {count}"
         },

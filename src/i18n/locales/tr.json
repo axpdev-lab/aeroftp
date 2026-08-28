@@ -1153,10 +1153,10 @@
             "resumeForget": "Bu hedefi unut",
             "resumeForgetConfirm": "Unut",
             "uiTokensTitle": "UI tokens",
-            "uiTokensDesc": "docs/UI-TOKENS.md dosyasındaki yayınlanmış CSS belirteçlerini yapılandırma klasöründeki bir ui-tokens.json dosyasıyla geçersiz kılın. Değişiklikler yeniden yüklemede uygulanır; geçersiz girdiler atlanır ve Etkinlik Günlüğünde raporlanır.",
+            "uiTokensDesc": "docs/UI-TOKENS.md dosyasındaki yayınlanmış CSS belirteçlerini yapılandırma klasöründeki bir ui-tokens.json dosyasıyla geçersiz kılın. Değişiklikler yeniden yüklemede uygulanır; geçersiz girdiler atlanır ve Etkinlik Günlüğünde raporlanır. Geçersiz kılmaları temizlemek yalnızca çalışan uygulamayı etkiler. Dosya hiçbir zaman değiştirilmez.",
             "uiTokensOpenFile": "ui-tokens.json dosyasını aç",
             "uiTokensReload": "Yeniden Yükle",
-            "uiTokensReset": "Varsayılanlara sıfırla",
+            "uiTokensReset": "Geçersiz kılmaları temizle",
             "uiTokensApplied": "Uygulanan geçersiz kılmalar: {count}",
             "uiTokensRejected": "Reddedilen girdiler: {count}"
         },
