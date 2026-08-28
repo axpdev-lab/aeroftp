@@ -947,7 +947,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 478,
+    "name_matched_count": 479,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1061,6 +1061,7 @@
       "bridge_source_meta",
       "bridge_identify",
       "get_dependencies",
+      "ensure_ui_tokens_file",
       "debug_test_connectivity",
       "debug_test_known_hosts",
       "debug_test_aerovault_roundtrip",
@@ -1320,7 +1321,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 370,
+    "name_unmatched_count": 371,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1586,6 +1587,8 @@
       "get_dependencies",
       "check_crate_versions",
       "get_system_info",
+      "read_ui_tokens_file",
+      "ensure_ui_tokens_file",
       "debug_test_connectivity",
       "debug_test_vault_roundtrip",
       "debug_test_known_hosts",
@@ -2175,6 +2178,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 848
+    "count": 850
   }
 }
