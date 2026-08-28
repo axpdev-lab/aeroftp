@@ -58816,6 +58816,11 @@ fn inventory_name_tokens(name: &str) -> std::collections::BTreeSet<String> {
         .collect()
 }
 
+/// Shape of the inventory document. Bump it when the layout changes, so
+/// `--check` can say "unexpected schema version" instead of reporting every
+/// renamed field as missing.
+const INVENTORY_SCHEMA_VERSION: u64 = 1;
+
 /// Build the authoritative command/tool inventory document from the in-code
 /// registries: the clap command table, `mcp::tools::tool_definitions`, the CLI
 /// agent-tool set, and the build-time-generated Tauri (GUI) command list.
@@ -58894,7 +58899,7 @@ fn build_inventory_doc() -> serde_json::Value {
     let mcp_aliases = ns_remote + ns_server;
 
     json!({
-        "schema_version": 1,
+        "schema_version": INVENTORY_SCHEMA_VERSION,
         "app_version": env!("CARGO_PKG_VERSION"),
         "counts": {
             "cli_subcommands": subs.len(),
@@ -58954,6 +58959,203 @@ fn build_inventory_doc() -> serde_json::Value {
                 .collect::<Vec<_>>()
         }
     })
+}
+
+/// Check an inventory document against its own internal invariants: every
+/// reported figure must equal the length of the list it summarises, and every
+/// partition must cover its total exactly once. Returns one message per
+/// violation, naming the invariant and the numbers that broke it, and an empty
+/// vector when the document is coherent.
+///
+/// This is the invariant set `inventory_counts_are_internally_consistent`
+/// asserts, expressed as a non-panicking function so `cmd_inventory --check`
+/// can apply it to the committed artifact on disk as well. Comparing `counts`
+/// alone cannot see a snapshot that is stale or hand-edited inside its lists:
+/// the counts still match the live ones, so the drift gate reports OK while
+/// the artifact contradicts itself.
+///
+/// A missing or wrongly typed field is itself a violation; the checks that
+/// depend on it are then skipped rather than reported a second time.
+fn inventory_doc_inconsistencies(doc: &serde_json::Value) -> Vec<String> {
+    fn node<'a>(doc: &'a serde_json::Value, path: &[&str]) -> Option<&'a serde_json::Value> {
+        let mut cur = doc;
+        for key in path {
+            cur = cur.get(key)?;
+        }
+        Some(cur)
+    }
+    fn count(problems: &mut Vec<String>, doc: &serde_json::Value, path: &[&str]) -> Option<u64> {
+        let value = node(doc, path).and_then(serde_json::Value::as_u64);
+        if value.is_none() {
+            problems.push(format!(
+                "`{}` is missing or not a non-negative integer",
+                path.join(".")
+            ));
+        }
+        value
+    }
+    fn list_len(problems: &mut Vec<String>, doc: &serde_json::Value, path: &[&str]) -> Option<u64> {
+        let value = node(doc, path)
+            .and_then(serde_json::Value::as_array)
+            .map(|a| a.len() as u64);
+        if value.is_none() {
+            problems.push(format!("`{}` is missing or not a list", path.join(".")));
+        }
+        value
+    }
+    // Report only when both sides could be read: an unreadable field is already
+    // its own violation.
+    fn expect_eq(
+        problems: &mut Vec<String>,
+        left: (&str, Option<u64>),
+        right: (&str, Option<u64>),
+    ) {
+        if let (Some(l), Some(r)) = (left.1, right.1) {
+            if l != r {
+                problems.push(format!("{} is {l} but {} is {r}", left.0, right.0));
+            }
+        }
+    }
+
+    let mut problems: Vec<String> = Vec::new();
+
+    // The layout gate comes first and stops the pass: on a document written to
+    // a different schema every field lookup below would fail, and seven
+    // "missing field" lines hide the one fact that explains them all.
+    match node(doc, &["schema_version"]).and_then(serde_json::Value::as_u64) {
+        Some(INVENTORY_SCHEMA_VERSION) => {}
+        Some(other) => {
+            problems.push(format!(
+                "`schema_version` is {other}, this binary reads {INVENTORY_SCHEMA_VERSION}"
+            ));
+            return problems;
+        }
+        None => {
+            problems.push("`schema_version` is missing or not a non-negative integer".to_string());
+            return problems;
+        }
+    }
+
+    let cli = count(&mut problems, doc, &["counts", "cli_subcommands"]);
+    let mcp_total = count(&mut problems, doc, &["counts", "mcp_tools_total"]);
+    let mcp_primary = count(&mut problems, doc, &["counts", "mcp_tools_primary"]);
+    let mcp_aliases = count(&mut problems, doc, &["counts", "mcp_tools_aliases"]);
+    let namespaces: Vec<Option<u64>> = ["aeroftp_", "remote_", "server_", "other"]
+        .iter()
+        .map(|ns| count(&mut problems, doc, &["counts", "mcp_by_namespace", ns]))
+        .collect();
+    let agent = count(&mut problems, doc, &["counts", "agent_tools"]);
+    let tauri = count(&mut problems, doc, &["counts", "tauri_commands"]);
+    let matched = count(&mut problems, doc, &["parity", "name_matched_count"]);
+    let unmatched = count(&mut problems, doc, &["parity", "name_unmatched_count"]);
+
+    let cli_list = list_len(&mut problems, doc, &["cli", "subcommands"]);
+    let mcp_list = list_len(&mut problems, doc, &["mcp", "tools"]);
+    let agent_list = list_len(&mut problems, doc, &["agent", "tools"]);
+    let tauri_list = list_len(&mut problems, doc, &["tauri", "commands"]);
+    let unmatched_list = list_len(&mut problems, doc, &["parity", "name_unmatched"]);
+
+    // Each section repeats its own figure next to its list; those are part of
+    // the published artifact and drift independently of `counts`.
+    let cli_section = count(&mut problems, doc, &["cli", "count"]);
+    let mcp_section = count(&mut problems, doc, &["mcp", "count"]);
+    let agent_section = count(&mut problems, doc, &["agent", "count"]);
+    let tauri_section = count(&mut problems, doc, &["tauri", "count"]);
+
+    // Every reported figure is backed by the list it summarises.
+    expect_eq(
+        &mut problems,
+        ("`counts.cli_subcommands`", cli),
+        ("the `cli.subcommands` list length", cli_list),
+    );
+    expect_eq(
+        &mut problems,
+        ("`counts.mcp_tools_total`", mcp_total),
+        ("the `mcp.tools` list length", mcp_list),
+    );
+    expect_eq(
+        &mut problems,
+        ("`counts.agent_tools`", agent),
+        ("the `agent.tools` list length", agent_list),
+    );
+    expect_eq(
+        &mut problems,
+        ("`counts.tauri_commands`", tauri),
+        ("the `tauri.commands` list length", tauri_list),
+    );
+    expect_eq(
+        &mut problems,
+        ("`parity.name_unmatched_count`", unmatched),
+        ("the `parity.name_unmatched` list length", unmatched_list),
+    );
+
+    // Both MCP partitions cover the same total exactly once: no tool counted
+    // twice, none dropped.
+    expect_eq(
+        &mut problems,
+        (
+            "the sum of the `counts.mcp_by_namespace` buckets",
+            namespaces.iter().copied().sum(),
+        ),
+        ("`counts.mcp_tools_total`", mcp_total),
+    );
+    expect_eq(
+        &mut problems,
+        (
+            "`counts.mcp_tools_primary` + `counts.mcp_tools_aliases`",
+            match (mcp_primary, mcp_aliases) {
+                (Some(p), Some(a)) => Some(p + a),
+                _ => None,
+            },
+        ),
+        ("`counts.mcp_tools_total`", mcp_total),
+    );
+
+    // The name-overlap diff partitions the Tauri surface the same way.
+    expect_eq(
+        &mut problems,
+        (
+            "`parity.name_matched_count` + `parity.name_unmatched_count`",
+            match (matched, unmatched) {
+                (Some(m), Some(u)) => Some(m + u),
+                _ => None,
+            },
+        ),
+        ("`counts.tauri_commands`", tauri),
+    );
+
+    expect_eq(
+        &mut problems,
+        ("`cli.count`", cli_section),
+        ("the `cli.subcommands` list length", cli_list),
+    );
+    expect_eq(
+        &mut problems,
+        ("`mcp.count`", mcp_section),
+        ("the `mcp.tools` list length", mcp_list),
+    );
+    expect_eq(
+        &mut problems,
+        ("`agent.count`", agent_section),
+        ("the `agent.tools` list length", agent_list),
+    );
+    expect_eq(
+        &mut problems,
+        ("`tauri.count`", tauri_section),
+        ("the `tauri.commands` list length", tauri_list),
+    );
+
+    // A near-empty Tauri surface means the build-time generated command list
+    // never made it into the document; the real surface is in the hundreds.
+    if let Some(t) = tauri {
+        if t <= 500 {
+            problems.push(format!(
+                "`counts.tauri_commands` is {t}: the generated Tauri surface looks empty"
+            ));
+        }
+    }
+
+    problems
 }
 
 /// Render the inventory document as a human-readable Markdown table + lists.
@@ -59036,6 +59238,24 @@ fn cmd_inventory(markdown: bool, check: Option<&str>) -> i32 {
                 return 10;
             }
         };
+        // Check the artifact against its own invariants before comparing it to
+        // anything. A snapshot whose counts contradict its own lists is stale or
+        // hand-edited, and a counts-only comparison reports it as OK because the
+        // counts are exactly the part that still matches.
+        let problems = inventory_doc_inconsistencies(&snap);
+        if !problems.is_empty() {
+            eprintln!(
+                "inventory --check: {path} is internally inconsistent ({} violation{})",
+                problems.len(),
+                if problems.len() == 1 { "" } else { "s" }
+            );
+            for problem in &problems {
+                eprintln!("  - {problem}");
+            }
+            eprintln!("Regenerate: aeroftp-cli inventory > docs/COMMAND-INVENTORY.json");
+            return 12;
+        }
+
         if snap.get("counts") == doc.get("counts") {
             println!("inventory --check: OK (counts match {path})");
             return 0;
@@ -59070,81 +59290,136 @@ fn cmd_inventory(markdown: bool, check: Option<&str>) -> i32 {
 
 #[cfg(test)]
 mod inventory_tests {
-    use super::build_inventory_doc;
+    use super::{build_inventory_doc, inventory_doc_inconsistencies};
+
+    /// `build_inventory_doc` calls `Cli::command()`, and clap building the full
+    /// command tree for this large enum overflows the default 2 MB test stack
+    /// (same reason `dispatcher_allowlist_matches_clap_subcommands` spawns a
+    /// wide-stack thread). Run the body on a 32 MB stack.
+    fn on_a_wide_stack<T: Send + 'static>(
+        name: &str,
+        body: impl FnOnce() -> T + Send + 'static,
+    ) -> T {
+        std::thread::Builder::new()
+            .name(name.to_string())
+            .stack_size(32 * 1024 * 1024)
+            .spawn(body)
+            .expect("spawn wide-stack thread")
+            .join()
+            .expect("wide-stack test panicked")
+    }
+
+    fn committed_snapshot() -> serde_json::Value {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../docs/COMMAND-INVENTORY.json"
+        );
+        let raw = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("cannot read the committed inventory at {path}: {e}"));
+        serde_json::from_str(&raw)
+            .unwrap_or_else(|e| panic!("the committed inventory at {path} is not valid JSON: {e}"))
+    }
 
     #[test]
     fn inventory_counts_are_internally_consistent() {
-        // `build_inventory_doc` calls `Cli::command()`, and clap building the
-        // full command tree for this large enum overflows the default 2 MB test
-        // stack (same reason `dispatcher_allowlist_matches_clap_subcommands`
-        // spawns a wide-stack thread). Run the body on a 32 MB stack.
-        std::thread::Builder::new()
-            .name("inventory-consistency".to_string())
-            .stack_size(32 * 1024 * 1024)
-            .spawn(|| {
-                let doc = build_inventory_doc();
-                let c = &doc["counts"];
+        let problems = on_a_wide_stack("inventory-consistency", || {
+            inventory_doc_inconsistencies(&build_inventory_doc())
+        });
+        assert!(
+            problems.is_empty(),
+            "the built inventory contradicts itself: {problems:#?}"
+        );
+    }
 
-                // CLI list length matches the reported subcommand count.
-                assert_eq!(
-                    c["cli_subcommands"].as_u64().unwrap(),
-                    doc["cli"]["subcommands"].as_array().unwrap().len() as u64
-                );
+    /// The invariants above are worth little if they only ever see the document
+    /// held in memory: the artifact people cite is the one on disk, and that is
+    /// the one `--check` reads. This is the same assertion, pointed at the file.
+    #[test]
+    fn committed_inventory_snapshot_is_internally_consistent() {
+        let problems = inventory_doc_inconsistencies(&committed_snapshot());
+        assert!(
+            problems.is_empty(),
+            "docs/COMMAND-INVENTORY.json contradicts itself: {problems:#?}"
+        );
+    }
 
-                // The MCP namespace buckets sum to the total, and the
-                // primary/alias split partitions the same total (no tool
-                // counted twice or dropped).
-                let total = c["mcp_tools_total"].as_u64().unwrap();
-                let ns = &c["mcp_by_namespace"];
-                let ns_sum = ns["aeroftp_"].as_u64().unwrap()
-                    + ns["remote_"].as_u64().unwrap()
-                    + ns["server_"].as_u64().unwrap()
-                    + ns["other"].as_u64().unwrap();
-                assert_eq!(ns_sum, total, "namespace buckets must sum to the MCP total");
-                assert_eq!(
-                    c["mcp_tools_primary"].as_u64().unwrap()
-                        + c["mcp_tools_aliases"].as_u64().unwrap(),
-                    total,
-                    "primary + aliases must partition the MCP total"
-                );
-                assert_eq!(
-                    total,
-                    doc["mcp"]["tools"].as_array().unwrap().len() as u64,
-                    "MCP tool list length must match the total"
-                );
+    /// The defect this check exists for: a snapshot whose `counts` still match
+    /// the live ones while its lists no longer do. The old counts-only
+    /// comparison printed "OK (counts match)" for exactly this file.
+    #[test]
+    fn a_truncated_list_is_caught_even_though_the_counts_still_match() {
+        let mut snap = committed_snapshot();
+        let dropped = snap["tauri"]["commands"]
+            .as_array_mut()
+            .expect("tauri.commands is a list")
+            .pop()
+            .expect("tauri.commands is not empty");
 
-                // Agent list length matches its count.
-                assert_eq!(
-                    c["agent_tools"].as_u64().unwrap(),
-                    doc["agent"]["tools"].as_array().unwrap().len() as u64
-                );
+        let problems = inventory_doc_inconsistencies(&snap);
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.contains("`counts.tauri_commands`")
+                    && p.contains("the `tauri.commands` list length")),
+            "dropping {dropped} from tauri.commands must break the count/list invariant: {problems:#?}"
+        );
+        // `counts` is untouched, which is precisely why the drift comparison
+        // could not see this.
+        assert_eq!(snap["counts"], committed_snapshot()["counts"]);
+    }
 
-                // Tauri command list length matches its count, and the parity
-                // partition (gui-only + worklist) covers every command exactly
-                // once with nothing dropped or double-counted.
-                let tauri_total = c["tauri_commands"].as_u64().unwrap();
-                assert_eq!(
-                    tauri_total,
-                    doc["tauri"]["commands"].as_array().unwrap().len() as u64,
-                    "Tauri command list length must match the count"
-                );
-                assert!(tauri_total > 500, "the generated Tauri surface looks empty");
-                let p = &doc["parity"];
-                assert_eq!(
-                    p["name_matched_count"].as_u64().unwrap()
-                        + p["name_unmatched_count"].as_u64().unwrap(),
-                    tauri_total,
-                    "matched + unmatched must partition the Tauri command total"
-                );
-                assert_eq!(
-                    p["name_unmatched_count"].as_u64().unwrap(),
-                    p["name_unmatched"].as_array().unwrap().len() as u64,
-                    "unmatched length must match its count"
-                );
-            })
-            .expect("spawn inventory consistency test")
-            .join()
-            .expect("inventory consistency test panicked");
+    /// A figure that disappears is drift too, and must be named rather than
+    /// silently read as zero.
+    #[test]
+    fn a_missing_figure_is_a_named_violation() {
+        let mut snap = committed_snapshot();
+        snap["counts"]
+            .as_object_mut()
+            .expect("counts is an object")
+            .remove("mcp_tools_primary")
+            .expect("counts.mcp_tools_primary was present");
+
+        let problems = inventory_doc_inconsistencies(&snap);
+        assert!(
+            problems
+                .iter()
+                .any(|p| p == "`counts.mcp_tools_primary` is missing or not a non-negative integer"),
+            "a removed figure must be reported by name: {problems:#?}"
+        );
+    }
+
+    /// A broken partition is reported with both numbers, so the CI line explains
+    /// itself without opening the code.
+    #[test]
+    fn a_broken_partition_reports_both_numbers() {
+        let mut snap = committed_snapshot();
+        let primary = snap["counts"]["mcp_tools_primary"].as_u64().unwrap();
+        snap["counts"]["mcp_tools_primary"] = serde_json::json!(primary + 1);
+
+        let problems = inventory_doc_inconsistencies(&snap);
+        let total = snap["counts"]["mcp_tools_total"].as_u64().unwrap();
+        let aliases = snap["counts"]["mcp_tools_aliases"].as_u64().unwrap();
+        assert!(
+            problems.contains(&format!(
+                "`counts.mcp_tools_primary` + `counts.mcp_tools_aliases` is {} but `counts.mcp_tools_total` is {total}",
+                primary + 1 + aliases
+            )),
+            "the partition violation must carry both sides: {problems:#?}"
+        );
+    }
+
+    /// An artifact written to another layout says so once, instead of burying
+    /// the reader under one "missing field" line per renamed key.
+    #[test]
+    fn an_unexpected_schema_version_stops_the_pass() {
+        let mut snap = committed_snapshot();
+        snap["schema_version"] = serde_json::json!(2);
+
+        let problems = inventory_doc_inconsistencies(&snap);
+        assert_eq!(
+            problems,
+            vec!["`schema_version` is 2, this binary reads 1".to_string()]
+        );
     }
 }
 
