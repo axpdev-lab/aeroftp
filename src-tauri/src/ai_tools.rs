@@ -1734,11 +1734,7 @@ fn load_provider_extra_options(
         .iter()
         .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(server_id))
     {
-        if let Some(options) = profile.get("options").and_then(|v| v.as_object()) {
-            for (k, v) in options {
-                crate::profile_loader::insert_profile_option(&mut extra, k, v);
-            }
-        }
+        crate::profile_loader::apply_profile_options(&mut extra, profile);
     }
 
     Ok(extra)

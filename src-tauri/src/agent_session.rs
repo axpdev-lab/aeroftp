@@ -65,6 +65,17 @@ fn flatten_options(options: Option<&Value>) -> HashMap<String, String> {
     out
 }
 
+/// Stamp the saved record id last so an options-borne `profile_id` cannot
+/// win (CWE-639). `or_insert` would leave a value already present in
+/// `extras` — the opposite of `apply_profile_options`.
+fn extras_for_connect(profile: &ProfileSummary) -> HashMap<String, String> {
+    let mut extra = profile.extras.clone();
+    if !profile.id.is_empty() {
+        extra.insert("profile_id".to_string(), profile.id.clone());
+    }
+    extra
+}
+
 #[derive(Debug)]
 pub enum LookupError {
     /// Vault isn't open in the current process. Caller should ask the
@@ -916,12 +927,7 @@ async fn connect_provider(profile: &ProfileSummary) -> ConnectOutcome {
         return ConnectOutcome::Unsupported;
     };
 
-    let mut extra = profile.extras.clone();
-    if !profile.id.is_empty() {
-        extra
-            .entry("profile_id".to_string())
-            .or_insert_with(|| profile.id.clone());
-    }
+    let mut extra = extras_for_connect(profile);
 
     // Azure stores its container under `options.bucket` in the desktop
     // schema (the UI shares the bucket field across S3/Azure), but the
@@ -1034,6 +1040,7 @@ pub async fn build_agent_connect_payload(query: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn canonicalize_collapses_slashes_and_strips_trailing() {
@@ -1499,6 +1506,37 @@ mod tests {
     fn flatten_options_handles_missing_blob() {
         assert!(flatten_options(None).is_empty());
         assert!(flatten_options(Some(&Value::Null)).is_empty());
+    }
+
+    #[test]
+    fn flatten_options_drops_options_borne_profile_id() {
+        let v = json!({
+            "profile_id": "srv_attacker",
+            "profileId": "srv_attacker_camel",
+            "bucket": "ok",
+        });
+        let m = flatten_options(Some(&v));
+        assert!(!m.contains_key("profile_id"));
+        assert_eq!(m.get("bucket"), Some(&"ok".to_string()));
+    }
+
+    #[test]
+    fn extras_for_connect_overwrites_options_borne_profile_id() {
+        let profile = ProfileSummary {
+            id: "srv_real".to_string(),
+            name: "real".to_string(),
+            protocol: "jottacloud".to_string(),
+            host: String::new(),
+            username: String::new(),
+            port: None,
+            initial_path: "/".to_string(),
+            extras: HashMap::from([("profile_id".to_string(), "srv_attacker".to_string())]),
+        };
+        let extra = extras_for_connect(&profile);
+        assert_eq!(
+            extra.get("profile_id").map(String::as_str),
+            Some("srv_real")
+        );
     }
 
     #[test]

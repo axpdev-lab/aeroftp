@@ -2429,19 +2429,23 @@ impl StorageProvider for FilenProvider {
             )
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        if let Ok(resp) = self.send_retry(request).await {
-            let parsed: Result<UserInfoResponse, _> = resp.json().await;
-            if let Ok(body) = parsed {
-                if let Some(data) = body.data {
-                    return Ok(StorageInfo {
-                        total: data.max_storage,
-                        used: data.storage_used,
-                        free: data.max_storage.saturating_sub(data.storage_used),
-                        versioning_bytes: self.versioned_storage_bytes().await,
-                    });
+        let rest_err = match self.send_retry(request).await {
+            Ok(resp) => match resp.json::<UserInfoResponse>().await {
+                Ok(body) => {
+                    if let Some(data) = body.data {
+                        return Ok(StorageInfo {
+                            total: data.max_storage,
+                            used: data.storage_used,
+                            free: data.max_storage.saturating_sub(data.storage_used),
+                            versioning_bytes: self.versioned_storage_bytes().await,
+                        });
+                    }
+                    ProviderError::Other("No user info data".to_string())
                 }
-            }
-        }
+                Err(e) => ProviderError::Other(format!("user info parse: {e}")),
+            },
+            Err(e) => e,
+        };
 
         if self.statfs_cli_enabled() {
             if let Ok((used, total)) = statfs::filen_statfs_query().await {
@@ -2454,7 +2458,7 @@ impl StorageProvider for FilenProvider {
             }
         }
 
-        Err(ProviderError::Other("No user info data".to_string()))
+        Err(rest_err)
     }
 
     fn supports_share_links(&self) -> bool {

@@ -1574,12 +1574,11 @@ impl StorageProvider for JottacloudProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            // A name that only exists in Trash 404s on the live mountpoint.
-            // Retry as a Trash-to-Trash move rather than telling the user the
-            // folder is gone (#397).
-            if status.as_u16() == 404 {
-                return self.rename_in_trash(&resolved_from, &resolved_to).await;
-            }
+            // A live 404 is "not found here", not "exists only in Trash".
+            // Retrying as a Trash-to-Trash rename can move a homonym in
+            // Trash and return Ok while the live object was never touched
+            // (F-652-2). Trash-only rename is `rename_in_trash`, called
+            // by a dedicated surface, not inferred from this status.
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
                 "Rename {} → {} failed ({}): {}",
@@ -1944,6 +1943,37 @@ impl JottacloudProvider {
         }
     }
 
+    /// True when the root `<file>` carries a non-empty `deleted` attribute.
+    /// A live object at the original path 200s without it; using that
+    /// object's size/md5 for cphash would restore the wrong bytes (F-652-3).
+    fn jfs_root_file_is_tombstone(xml: &str) -> bool {
+        use quick_xml::events::Event;
+        use quick_xml::Reader;
+
+        let mut reader = Reader::from_str(xml);
+        let mut buf = Vec::new();
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+                    if e.name().as_ref() != b"file" {
+                        return false;
+                    }
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"deleted"
+                            && !super::xml_text::attr_value(&attr).is_empty()
+                        {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                Ok(Event::Eof) | Err(_) => return false,
+                _ => {}
+            }
+            buf.clear();
+        }
+    }
+
     /// Relative path under the live mountpoint: strip
     /// `/{user}/{device}/{mount}` from the trash `<abspath>` (the original
     /// parent) and append the entry name. Root-level items stay `/{name}`.
@@ -2104,6 +2134,12 @@ impl JottacloudProvider {
         let looks_like_file = Self::jfs_root_element(&xml).as_deref() == Some("file");
 
         let resp = if looks_like_file {
+            if !Self::jfs_root_file_is_tombstone(&xml) {
+                return Err(ProviderError::ServerError(format!(
+                    "Restore refused for {}: original path is a live object, not a deleted tombstone",
+                    clean
+                )));
+            }
             let (size, md5, created, modified) =
                 Self::parse_jfs_file_revision(&xml).ok_or_else(|| {
                     ProviderError::ServerError(format!(
@@ -2643,6 +2679,23 @@ mod tests {
             JottacloudProvider::jfs_root_element(xml).as_deref(),
             Some("file")
         );
+        assert!(
+            JottacloudProvider::jfs_root_file_is_tombstone(xml),
+            "Ehud tombstone carries deleted="
+        );
+        let live = r#"<file name="ehud-397-0420.txt">
+            <currentRevision>
+                <size>99</size>
+                <md5>bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb</md5>
+                <created>2026-08-29-T14:00:00Z</created>
+                <modified>2026-08-29-T14:00:00Z</modified>
+            </currentRevision>
+        </file>"#;
+        assert!(
+            !JottacloudProvider::jfs_root_file_is_tombstone(live),
+            "live object at the original path must not feed cphash"
+        );
+        assert!(JottacloudProvider::parse_jfs_file_revision(live).is_some());
     }
 
     #[test]

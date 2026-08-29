@@ -103,6 +103,12 @@ pub fn insert_profile_option(
     value: &serde_json::Value,
 ) {
     let normalized_key = canonicalize_profile_option_key(key);
+    // Credential identity is the saved record's `id`, never an options
+    // field a caller can choose (CWE-639). Skip here so every surface
+    // that goes through this helper (CLI, MCP, agent, AI tools) agrees.
+    if normalized_key == "profile_id" {
+        return;
+    }
 
     if let Some(string_value) = value.as_str() {
         extra.insert(normalized_key, string_value.to_string());
@@ -637,7 +643,8 @@ mod tests {
 
 #[cfg(test)]
 mod provider_id_reach_tests {
-    use super::apply_profile_options;
+    use super::{apply_profile_options, insert_profile_option};
+    use serde_json::json;
     use std::collections::HashMap;
 
     /// The MCP pool, a scheduler and a benchmark all build `extra` from a saved
@@ -707,5 +714,15 @@ mod provider_id_reach_tests {
             extra.get("profile_id").map(String::as_str),
             Some("srv_real")
         );
+    }
+
+    #[test]
+    fn insert_profile_option_drops_options_borne_profile_id() {
+        let mut extra = HashMap::new();
+        insert_profile_option(&mut extra, "profile_id", &json!("srv_attacker"));
+        insert_profile_option(&mut extra, "profileId", &json!("srv_attacker_camel"));
+        insert_profile_option(&mut extra, "bucket", &json!("ok"));
+        assert!(!extra.contains_key("profile_id"));
+        assert_eq!(extra.get("bucket").map(String::as_str), Some("ok"));
     }
 }
