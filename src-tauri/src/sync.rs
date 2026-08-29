@@ -1218,9 +1218,32 @@ pub(crate) fn orphan_delete_guard(
     local_scan: &ScanCompleteness,
     remote_scan: &ScanCompleteness,
 ) -> Result<(), String> {
+    orphan_delete_guard_over(
+        direction,
+        locals.is_empty(),
+        remotes.is_empty(),
+        local_scan,
+        remote_scan,
+    )
+}
+
+/// The same policy, over the facts it actually uses.
+///
+/// [`orphan_delete_guard`] only ever asks its two slices whether they are
+/// empty, and a caller holding maps instead of entry vectors would otherwise
+/// have to materialise vectors to ask the same question, or copy the policy.
+/// Copying it is how the CLI came to plan deletes without this guard at all
+/// while the core and the DAG both had it.
+pub fn orphan_delete_guard_over(
+    direction: SyncDirection,
+    locals_empty: bool,
+    remotes_empty: bool,
+    local_scan: &ScanCompleteness,
+    remote_scan: &ScanCompleteness,
+) -> Result<(), String> {
     let (source_scan, source_empty, dest_nonempty) = match direction {
-        SyncDirection::Upload => (local_scan, locals.is_empty(), !remotes.is_empty()),
-        SyncDirection::Download => (remote_scan, remotes.is_empty(), !locals.is_empty()),
+        SyncDirection::Upload => (local_scan, locals_empty, !remotes_empty),
+        SyncDirection::Download => (remote_scan, remotes_empty, !locals_empty),
         SyncDirection::Both => return Ok(()),
     };
     if !source_scan.is_complete() {
@@ -3053,15 +3076,181 @@ pub struct SyncErrorInfo {
     pub file_path: Option<String>,
 }
 
+/// Is this an FTP status code, rather than the same digits inside a sentence?
+///
+/// The text arriving here is usually an error that has already been wrapped, so
+/// it reads "Path not found: 553 Can't open that file". Anchoring on the start
+/// of the string alone would never match and would silently disable the rule.
+///
+/// Accepting the digits after any colon is not safe either: "upload stalled:
+/// 553 bytes" is a byte count, and treating it as a reply code would make a
+/// transient failure permanent and take away a retry that belongs. Nothing in
+/// the shape of the text separates the two, and "553" is not special: any
+/// three-digit number can appear as a count.
+///
+/// So the prefix has to be one WE produce. `ProviderError`'s Display labels are
+/// a closed set defined in `providers::types`, and prose from anywhere else
+/// does not match one. An unrecognised prefix fails closed, leaving the error
+/// retryable, which is the safe direction: not preventing a refusal costs a
+/// wasted attempt, wrongly preventing a retry costs a transfer.
+///
+/// This puts a requirement on the providers that they cannot see from where
+/// they stand: whatever a provider writes after its `ProviderError` label, the
+/// server's reply has to come FIRST, with nothing of ours in between. It has
+/// been broken once, by `providers::ftp`'s own error messages starting to name
+/// the operation ahead of the reply, and the only symptom was that this
+/// function quietly stopped recognising anything. Nothing failed, because
+/// failing closed here means going back to the old behaviour.
+///
+/// The contract is invisible from both ends: a provider has no reason to think
+/// anyone parses the SHAPE of its message, and this function cannot tell that
+/// the shape changed. It is written down at both ends for that reason, and the
+/// test that guards it compares a wrapped message against the same failure
+/// unwrapped, because asserting an expected value here only measures what we
+/// already believed.
+fn mentions_ftp_status(lowered: &str, code_and_space: &str) -> bool {
+    if lowered.starts_with(code_and_space) {
+        return true;
+    }
+    // Lowercased forms of the `#[error("...: {0}")]` labels in
+    // `providers::types::ProviderError`. Anything else that ends in ": " is
+    // someone's sentence, not our wrapper.
+    const OUR_LABELS: &[&str] = &[
+        "connection failed: ",
+        "authentication failed: ",
+        "path not found: ",
+        "permission denied: ",
+        "file too large: ",
+        "path already exists: ",
+        "directory not empty: ",
+        "invalid path: ",
+        "invalid configuration: ",
+        "operation not supported: ",
+        "transfer failed: ",
+        "network error: ",
+        "parse error: ",
+        "server error: ",
+        "io error: ",
+        "connection lost: ",
+        "read-only endpoint: ",
+        "unknown error: ",
+    ];
+    OUR_LABELS.iter().any(|label| {
+        lowered
+            .find(label)
+            .is_some_and(|at| lowered[at + label.len()..].starts_with(code_and_space))
+    })
+}
+
+/// A token that opens with a filesystem root, and so is a name somebody chose
+/// rather than anything a server said.
+///
+/// The test is where the token STARTS, not whether it contains a separator.
+/// `i/o error` contains a slash and is a reason, not a path, and the disk-error
+/// branch matches on exactly that string: a rule written as "contains a slash"
+/// would silently take `i/o error` out of every message and move those failures
+/// to `Unknown`, which is retryable. The narrower rule was checked against that
+/// case before being kept.
+fn looks_like_a_path(token: &str) -> bool {
+    if token.starts_with('/')
+        || token.starts_with("./")
+        || token.starts_with("../")
+        || token.starts_with("~/")
+    {
+        return true;
+    }
+    // A Windows path: `c:\\users\\...`, already lowercased by the caller.
+    let mut chars = token.chars();
+    match (chars.next(), chars.next(), chars.next()) {
+        (Some(drive), Some(':'), Some('\\')) | (Some(drive), Some(':'), Some('/')) => {
+            drive.is_ascii_alphabetic()
+        }
+        _ => false,
+    }
+}
+
+/// The part of an error message that is safe to classify: everything except the
+/// paths.
+///
+/// Classification here is done by searching the message for words, and a
+/// message contains two kinds of text with opposite properties. The reason is
+/// the server's or the operating system's, and its vocabulary is what these
+/// branches are looking for. The path is a name the USER chose, and it can
+/// contain any word at all, including every word this function keys on.
+///
+/// So a directory decided the retry. Measured, before this existed:
+/// `uploading /srv/quota-reports/x.csv: connection reset` matched `quota` and
+/// came out non-retryable, where the same failure without the path came out
+/// `Network` and retryable. `/srv/oauth/token.json` did the same through `auth`
+/// inside `oauth`. A transient error paired with an ordinary folder name
+/// stopped being retried at all, and the executors break on `!retryable`, so
+/// the file was silently left behind by the sync.
+///
+/// The exposure arrived with the messages that now name the path they were
+/// working on, which is a real improvement to what the user reads and, in the
+/// same string, an entrance for this. Both halves live on the same line, and
+/// only the classifier needs the path gone: `raw` is still what the caller is
+/// shown, so nothing the user reads loses anything.
+///
+/// The caller's own `file_path` is dropped as well when it appears as a whole
+/// token, because a relative path is not recognisable by shape and the caller
+/// is the authority on what it was operating on.
+fn classification_text(raw: &str, file_path: Option<&str>) -> String {
+    let named = file_path.unwrap_or_default().to_lowercase();
+    // The caller's path is removed as a SUBSTRING, before anything is split on
+    // whitespace, because a path may contain spaces and most of them do. Token
+    // by token, `/srv/My Quota/x.csv` arrives as `/srv/my` and `quota/x.csv)`:
+    // the first is dropped for its leading slash and the second is not, since
+    // it neither starts like a path nor equals the whole path. `quota` survived
+    // and the third branch matched it, so the defect this function exists to
+    // remove came straight back on any path with a space in it.
+    //
+    // What this does NOT cover is stated rather than papered over. The path in
+    // the message is not always the one the caller named: the upload executor
+    // passes `entry.local_path` while the message may carry the remote one, and
+    // a spaced path matching no `file_path` has no shape to recognise. Widening
+    // the shape rule to catch those would delete reasons along with paths, and
+    // `i/o error` is the standing proof that such a rule can look right and be
+    // silently wrong. Classifying on typed data instead of on rendered text is
+    // the real fix and is tracked separately.
+    let lowered = raw.to_lowercase();
+    let stripped = if named.is_empty() {
+        lowered
+    } else {
+        lowered.replace(&named, " ")
+    };
+    stripped
+        .split_whitespace()
+        .filter(|token| {
+            // Trailing punctuation is the sentence's, not the path's, and
+            // `doing()` closes with a bracket, so `quota/report.csv)` has to
+            // compare equal to the path the caller named.
+            let bare = token.trim_end_matches([':', ',', ';', '.', ')', '"', '\'']);
+            !looks_like_a_path(bare) && (named.is_empty() || bare != named)
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Classify a raw error message into a structured SyncErrorInfo
 pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
-    let lower = raw.to_lowercase();
+    let lower = classification_text(raw, file_path);
 
     let (kind, retryable) = if lower.contains("timeout") || lower.contains("timed out") {
         (SyncErrorKind::Timeout, true)
     } else if lower.contains("rate limit")
         || lower.contains("too many requests")
-        || lower.contains("429")
+        // A whole token, unlike the bare `contains` this used to be: every
+        // other status needle here carries a trailing space and this one did
+        // not, so it matched inside any longer number, `11429` and a timestamp
+        // included. It is the mildest of the family because rate limiting is
+        // retryable, so a false positive costs an extra attempt rather than
+        // removing one, and it is the only one that can be tightened without
+        // the measurement the others are waiting for: `429 Too Many Requests`
+        // has it as a token in every form anyone sends.
+        || lower
+            .split_whitespace()
+            .any(|token| token.trim_matches(|c: char| !c.is_ascii_alphanumeric()) == "429")
     {
         (SyncErrorKind::RateLimit, true)
     } else if lower.contains("quota")
@@ -3089,10 +3278,66 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
     } else if lower.contains("not found")
         || lower.contains("no such file")
         || lower.contains("404 ")
-        || lower.contains("550 ")
     {
-        // 550 can be either permission or not-found; prefer permission if already matched
+        // The `550` that used to be listed here could never fire: the
+        // permission branch above holds the same needle and runs first, so no
+        // message reached this one. The comment beside it said "prefer
+        // permission if already matched", describing an intention the code had
+        // no way to express, and the dead alternative made the branch look like
+        // it had a second entrance. On FTP a missing path is therefore reached
+        // by TEXT and never by status code, which is worth knowing when reading
+        // `message_names_a_missing_path`: that vocabulary is the only door, not
+        // one of two.
+        //
+        // The remaining status needles here are bare `contains` and that is
+        // known rather than overlooked. `552`, `403`, `550`, `404`, `401` and
+        // `530` all match three digits anywhere in the message, so a byte count
+        // such as "wrote 550 of 1024 bytes" classifies as permission denied and
+        // permanent: six of them lead to non-retryable, which is the direction
+        // that loses work. It is the same shape as "553 bytes", which is why
+        // `mentions_ftp_status` exists.
+        //
+        // They are NOT anchored the way 553 is, and the reason is a missing
+        // measurement rather than a judgement. This function classifies for
+        // every provider, `mentions_ftp_status` anchors on our own
+        // `ProviderError` labels, and nobody has established which shape the
+        // error strings of the other providers actually arrive in. Anchoring
+        // without that would silently switch off classifications that work
+        // today, six times over, and the failure would look like a clean green.
+        // Collecting those shapes is the work this is waiting on.
+        //
+        // 553 is FTP's "requested action not taken, file name not allowed",
+        // which servers return for a STOR into a directory that does not exist
+        // ("553 Can't open that file: No such file or directory"). It reached
+        // the fallthrough below and was classified Unknown, which is
+        // retryable, so a permanent failure was attempted three times before
+        // being reported. The retry is decided here and nowhere else: the
+        // transfer executors break on `!err_info.retryable`.
+        //
+        // Only 553 is added, not "every 5xx". This function classifies errors
+        // from every provider, and in HTTP a 5xx is exactly the case worth
+        // retrying: 500, 502 and 503 are transient by definition and several
+        // providers return them under load. A blanket rule would make those
+        // permanent and remove retry where it belongs. 553 is safe to name
+        // because it is not an HTTP status at all.
         (SyncErrorKind::PathNotFound, false)
+    } else if mentions_ftp_status(&lower, "553 ") {
+        // A 553 is a permanent negative reply, and it was falling through to
+        // the Unknown arm below, which is retryable: a failure that can never
+        // succeed was attempted three times, every time.
+        //
+        // The kind stays Unknown on purpose. RFC 959 spends 553 on "file name
+        // not allowed", servers use it for a STOR into a directory that is not
+        // there, and the two are not the same thing: calling every 553 a
+        // missing path would state something the reply does not say. A 553
+        // whose text DOES name a missing path is caught by the branch above and
+        // keeps the more precise kind. What is certain here is only that it is
+        // permanent, and that is what is recorded.
+        //
+        // Only 553 is named, not "every 5xx". This classifier serves every
+        // provider and in HTTP a 5xx is the retryable case: a general rule
+        // would take retry away from every HTTP backend under load.
+        (SyncErrorKind::Unknown, false)
     } else if lower.contains("invalid path")
         || lower.contains("not a writable file")
         || lower.contains("parent directory is missing")
@@ -5240,6 +5485,379 @@ mod tests {
         assert!(!err.retryable);
     }
 
+    /// The test that decides whether the 553 rule earns its place.
+    ///
+    /// An earlier pair of tests used "553 Can't open that file: No such file or
+    /// directory" and its wrapped form. Both passed with the rule deleted,
+    /// because both contain "no such file" or "not found" and match an earlier
+    /// branch: a rule with no test holding it alive. This one uses a 553 that
+    /// contains none of the other vocabulary, so it fails without the rule.
+    ///
+    /// The wording is not measured. The repo's vsftpd fixture could not be
+    /// started here (the Docker client is older than the daemon requires), so
+    /// which text a given server sends is unverified; what is asserted is only
+    /// that a reply carrying this status is permanent, which is true of 553
+    /// under every reading.
+    /// `429` must be a code, not three digits inside a longer number.
+    ///
+    /// It was the only status needle in this function with no boundary at all,
+    /// while every sibling carries a trailing space, so it fired on `11429` and
+    /// on any timestamp that happened to contain those digits. It is also the
+    /// mildest of the family, because rate limiting is retryable: a false
+    /// positive here adds an attempt rather than removing one, which is why it
+    /// is the one that could be fixed without the survey the others need.
+    #[test]
+    fn a_rate_limit_code_is_a_code_and_not_a_substring_of_a_number() {
+        for message in [
+            "Transfer failed: wrote 11429 bytes before the connection reset",
+            "Transfer failed: at 1764429000 the connection reset",
+        ] {
+            let got = classify_sync_error(message, None);
+            assert_ne!(
+                format!("{:?}", got.kind),
+                "RateLimit",
+                "{message:?} was read as rate limiting because of digits inside a number"
+            );
+        }
+        for message in ["429 Too Many Requests", "HTTP 429", "rejected (429)"] {
+            let got = classify_sync_error(message, None);
+            assert_eq!(
+                format!("{:?}", got.kind),
+                "RateLimit",
+                "{message:?} stopped being recognised: the tightening went too far"
+            );
+        }
+    }
+
+    /// On FTP a missing path is reached by TEXT, never by the status code.
+    ///
+    /// The not-found branch used to list `550` as an alternative and it could
+    /// never fire, because the permission branch above holds the same needle
+    /// and runs first. Removing it changed no behaviour, and this records the
+    /// fact it was hiding: every `550` is permission denied here, whatever the
+    /// reply says, so `message_names_a_missing_path` is the ONLY door to a
+    /// missing path on this protocol rather than one of two. That is worth
+    /// pinning, because it is what makes over-tightening that vocabulary
+    /// expensive.
+    #[test]
+    fn a_550_is_always_permission_denied_here_whatever_the_text_says() {
+        for message in [
+            "Server error: 550 Failed to change directory.",
+            "Server error: 550 No such file or directory",
+            "Path not found: 550 /nope: No such file or directory",
+        ] {
+            let got = classify_sync_error(message, None);
+            assert_eq!(
+                format!("{:?}", got.kind),
+                "PermissionDenied",
+                "{message:?}: the not-found branch is not reachable by status on FTP"
+            );
+        }
+    }
+
+    /// Every `ProviderError` label that can precede a reply is one the status
+    /// reader knows.
+    ///
+    /// `mentions_ftp_status` decides that a bare "553" is a status code and not
+    /// a byte count by requiring one of our own Display labels in front of it,
+    /// and it holds that list by hand. A hand-copied mirror of an enum is true
+    /// on the day it is written and nothing keeps it true: add a variant with a
+    /// `": {0}"` label tomorrow and a 553 behind it stops being recognised. No
+    /// test goes red, because the function fails closed and closed means the
+    /// old behaviour, so the loss is a fix that quietly stops applying.
+    ///
+    /// The guard is the `match` below and not the assertions. It has no
+    /// wildcard arm, so adding a variant to `ProviderError` fails the build
+    /// here and whoever adds it has to say which kind it is. The assertions
+    /// then check that the answer agrees with the list.
+    ///
+    /// The five that carry no reply are not an oversight: `NotConnected`,
+    /// `Cancelled` and `Timeout` take no payload at all, and `RestrictedChar`
+    /// spells its own sentence with no label to anchor to. `Other` renders its
+    /// payload bare, which the leading-status check catches instead.
+    #[test]
+    fn every_provider_error_that_can_carry_a_reply_is_known_to_the_status_reader() {
+        use crate::providers::types::ProviderError as PE;
+
+        /// Exhaustive on purpose: no `_` arm, so a new variant breaks the build.
+        fn carries_a_reply_behind_a_label(e: &PE) -> bool {
+            match e {
+                PE::ConnectionFailed(_)
+                | PE::AuthenticationFailed(_)
+                | PE::NotFound(_)
+                | PE::PermissionDenied(_)
+                | PE::FileTooLarge(_)
+                | PE::AlreadyExists(_)
+                | PE::DirectoryNotEmpty(_)
+                | PE::InvalidPath(_)
+                | PE::InvalidConfig(_)
+                | PE::NotSupported(_)
+                | PE::TransferFailed(_)
+                | PE::NetworkError(_)
+                | PE::ParseError(_)
+                | PE::ServerError(_)
+                | PE::IoError(_)
+                | PE::ConnectionLost(_)
+                | PE::ReadOnly(_)
+                | PE::Unknown(_) => true,
+                // Renders the payload with no label; the leading-status check
+                // in `mentions_ftp_status` is what recognises this one.
+                PE::Other(_) => true,
+                PE::NotConnected | PE::Cancelled | PE::Timeout => false,
+                PE::RestrictedChar { .. } => false,
+            }
+        }
+
+        let reply = "553 Could not create file".to_string();
+        let every_variant = vec![
+            PE::NotConnected,
+            PE::ConnectionFailed(reply.clone()),
+            PE::AuthenticationFailed(reply.clone()),
+            PE::NotFound(reply.clone()),
+            PE::PermissionDenied(reply.clone()),
+            PE::FileTooLarge(reply.clone()),
+            PE::AlreadyExists(reply.clone()),
+            PE::DirectoryNotEmpty(reply.clone()),
+            PE::InvalidPath(reply.clone()),
+            PE::InvalidConfig(reply.clone()),
+            PE::NotSupported(reply.clone()),
+            PE::Cancelled,
+            PE::TransferFailed(reply.clone()),
+            PE::Timeout,
+            PE::NetworkError(reply.clone()),
+            PE::ParseError(reply.clone()),
+            PE::ServerError(reply.clone()),
+            PE::IoError(std::io::Error::other(reply.clone())),
+            PE::ConnectionLost(reply.clone()),
+            PE::RestrictedChar {
+                ch_display: "?".to_string(),
+                provider: "test".to_string(),
+            },
+            PE::ReadOnly(reply.clone()),
+            PE::Unknown(reply.clone()),
+            PE::Other(reply.clone()),
+        ];
+        assert_eq!(
+            every_variant.len(),
+            23,
+            "the list stopped covering every variant; the match above is what fails the build, this only says how many were meant"
+        );
+
+        for error in &every_variant {
+            let rendered = error.to_string().to_lowercase();
+            let found = mentions_ftp_status(&rendered, "553 ");
+            assert_eq!(
+                found,
+                carries_a_reply_behind_a_label(error),
+                "{rendered:?}: the status reader and the variant disagree, so OUR_LABELS has drifted from the enum"
+            );
+        }
+    }
+
+    /// A folder name must not decide whether a failed file is retried.
+    ///
+    /// `classify_sync_error` reads words out of the whole message, and since
+    /// the messages started naming the path they were working on, that message
+    /// contains a name the user chose. Every word these branches key on is a
+    /// legal directory name, and the two that bite hardest sit ABOVE the
+    /// transient branches in the chain: `quota` is third and `auth` is ninth,
+    /// while `connection` is twelfth. So an ordinary folder turned a transient
+    /// failure into a permanent one, and the executors stop on `!retryable`,
+    /// which means the file was quietly left behind rather than retried.
+    ///
+    /// Each row is the same failure twice, once with a loaded path and once
+    /// bare. The verdicts have to agree: whatever the classification is, the
+    /// folder name must not be what produced it.
+    #[test]
+    fn a_folder_name_does_not_decide_the_classification() {
+        // (loaded message, the same failure with no path, the path argument)
+        let cases: &[(&str, &str, Option<&str>)] = &[
+            // Branch 3, `quota`, above every transient branch: this is the one
+            // that loses the retry outright.
+            (
+                "Transfer failed: connection reset (while uploading /srv/quota-reports/x.csv)",
+                "Transfer failed: connection reset",
+                Some("/srv/quota-reports/x.csv"),
+            ),
+            // Branch 9, `auth`, matching INSIDE `oauth`. It needs no folder
+            // called "auth": `oauth`, `authors` and `authorized_keys` all do it.
+            (
+                "Transfer failed: connection reset (while uploading /srv/oauth/token.json)",
+                "Transfer failed: connection reset",
+                Some("/srv/oauth/token.json"),
+            ),
+            // Branch 9 again, this time swallowing a real 553 before it can
+            // reach the branch that exists to catch it.
+            (
+                "Server error: 553 Can't open that file (while listing /srv/login)",
+                "Server error: 553 Can't open that file",
+                None,
+            ),
+            // Branch 10, `locked`. The mildest of the three: it added retries
+            // rather than removing them, which is why it was the easiest to
+            // dismiss and the least worth dismissing.
+            (
+                "Transfer failed: broken pipe (while uploading /var/locked/f.txt)",
+                "Transfer failed: broken pipe",
+                Some("/var/locked/f.txt"),
+            ),
+            // A path with a SPACE in it, which is the common case and the one
+            // that survived the first version of the stripping: split on
+            // whitespace it arrives as `/srv/my` and `quota/x.csv)`, and only
+            // the first half looks like a path.
+            (
+                "Transfer failed: connection reset (while uploading /srv/My Quota/x.csv)",
+                "Transfer failed: connection reset",
+                Some("/srv/My Quota/x.csv"),
+            ),
+            // The path is not always at the end: only FTP composes with
+            // `doing()`, and other providers put it wherever their sentence
+            // needs it. The stripping is by token, so position does not matter.
+            (
+                "Cannot read /srv/quota-archive/x while syncing: connection reset",
+                "Cannot read while syncing: connection reset",
+                None,
+            ),
+            // A relative path has no shape to recognise, so the caller's own
+            // `file_path` is what removes it.
+            (
+                "Transfer failed: connection reset (while uploading quota/report.csv)",
+                "Transfer failed: connection reset",
+                Some("quota/report.csv"),
+            ),
+        ];
+        for (loaded, bare, path) in cases {
+            let with = classify_sync_error(loaded, *path);
+            let without = classify_sync_error(bare, None);
+            assert_eq!(
+                (format!("{:?}", with.kind), with.retryable),
+                (format!("{:?}", without.kind), without.retryable),
+                "the path changed the verdict for {loaded:?}"
+            );
+        }
+    }
+
+    /// The reasons still classify: the stripping did not take the words too.
+    ///
+    /// This is the other side of the boundary and it is the half that a fix
+    /// like this gets wrong. `i/o error` contains a slash, so a rule phrased as
+    /// "drop anything with a separator" would delete the reason along with the
+    /// path and send those failures to `Unknown`, which is retryable, with
+    /// every test above still green.
+    #[test]
+    fn stripping_paths_leaves_the_reasons_intact() {
+        let cases: &[(&str, Option<&str>, SyncErrorKind, bool)] = &[
+            (
+                "Transfer failed: i/o error (while uploading /home/a/b.txt)",
+                Some("/home/a/b.txt"),
+                SyncErrorKind::DiskError,
+                false,
+            ),
+            // The word still decides when it is the SERVER saying it.
+            (
+                "Quota exceeded: 552 Insufficient storage",
+                Some("/home/a/b.txt"),
+                SyncErrorKind::QuotaExceeded,
+                false,
+            ),
+            (
+                "Authentication failed: 530 Login incorrect",
+                Some("/home/a/b.txt"),
+                SyncErrorKind::Auth,
+                false,
+            ),
+            // And a 553 behind a wrapper still reaches its own branch with a
+            // path in the message.
+            (
+                "Transfer failed: 553 Could not create file (while uploading /srv/data/x)",
+                Some("/srv/data/x"),
+                SyncErrorKind::Unknown,
+                false,
+            ),
+        ];
+        for (message, path, kind, retryable) in cases {
+            let got = classify_sync_error(message, *path);
+            assert_eq!(
+                (format!("{:?}", got.kind), got.retryable),
+                (format!("{kind:?}"), *retryable),
+                "{message:?} classified wrongly"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bare_553_is_permanent_even_when_the_text_says_nothing_else() {
+        let err = classify_sync_error("553 Could not create file", None);
+        assert!(
+            !err.retryable,
+            "a 553 is a permanent negative reply and must not be retried"
+        );
+    }
+
+    /// A 553 that also names a missing path keeps the more precise kind: the
+    /// branch above it answers first, and the 553 rule does not overwrite it.
+    #[test]
+    fn a_553_that_names_a_missing_path_stays_a_missing_path() {
+        let err = classify_sync_error("553 Can't open that file: No such file or directory", None);
+        assert!(!err.retryable);
+        assert_eq!(err.kind, SyncErrorKind::PathNotFound);
+    }
+
+    /// The digits must be a status, not a coincidence.
+    ///
+    /// An earlier version of this test used only "stalled after 553 bytes",
+    /// with no colon, and passed while the rule still matched "stalled: 553
+    /// bytes". A boundary test that checks one side of the boundary is not a
+    /// boundary test.
+    #[test]
+    fn digits_inside_a_sentence_are_not_a_status_code() {
+        for prose in [
+            "upload stalled after 553 bytes",
+            "upload stalled: 553 bytes",
+            "short read: 553 bytes remaining",
+            "retry budget: 553 attempts",
+        ] {
+            let err = classify_sync_error(prose, None);
+            assert!(
+                err.retryable,
+                "{prose}: this is a count, not a reply code, and the failure may be transient"
+            );
+        }
+    }
+
+    /// And the wrapped forms that ARE a reply code must still be caught, for
+    /// every label the provider error type can put in front of them.
+    #[test]
+    fn a_status_behind_one_of_our_own_labels_is_still_a_status() {
+        for wrapped in [
+            "553 Could not create file",
+            "Transfer failed: 553 Could not create file",
+            "Server error: 553 Could not create file",
+            "Path not found: 553 Can't open that file",
+        ] {
+            let err = classify_sync_error(wrapped, None);
+            assert!(!err.retryable, "{wrapped}: this is a permanent reply");
+        }
+    }
+
+    /// The rule names 553 and not "every 5xx" on purpose: this classifier
+    /// serves every provider, and an HTTP 5xx is the retryable case. Making
+    /// them permanent would remove retry exactly where it belongs.
+    #[test]
+    fn http_server_errors_stay_retryable() {
+        for raw in [
+            "500 Internal Server Error",
+            "502 Bad Gateway",
+            "503 Service Unavailable",
+        ] {
+            let err = classify_sync_error(raw, None);
+            assert!(
+                err.retryable,
+                "{raw} is transient and must keep its retries"
+            );
+        }
+    }
+
     #[test]
     fn test_classify_sync_error_rate_limit() {
         let err = classify_sync_error("429 Too Many Requests", None);
@@ -5513,6 +6131,90 @@ mod tests {
             mtime: mtime.map(str::to_string),
             checksum_alg: checksum_hex.map(|_| "sha256".to_string()),
             checksum_hex: checksum_hex.map(str::to_string),
+        }
+    }
+
+    /// The fact-shaped form must decide exactly what the vector-shaped one
+    /// decides, on the same seven cases.
+    ///
+    /// `orphan_delete_guard` is now a shell that derives the facts and calls
+    /// this; the frozen test above proves the shell, and this proves the
+    /// policy. If the two ever disagree, one of them is a second copy of the
+    /// rule, which is how the CLI came to plan deletes with no guard at all
+    /// while the core and the DAG both had one.
+    #[test]
+    fn the_fact_shaped_guard_decides_the_same_seven_cases() {
+        use crate::sync_core::ScanCompleteness;
+        let complete = ScanCompleteness::default();
+        let incomplete = ScanCompleteness {
+            list_errors: 1,
+            truncated: false,
+        };
+        let truncated = ScanCompleteness {
+            list_errors: 0,
+            truncated: true,
+        };
+        let lfile = [local_entry(10, None, None)];
+        let rfile = [remote_entry(10, None, None)];
+
+        // (direction, locals, remotes, local_scan, remote_scan)
+        let cases: &[(
+            SyncDirection,
+            &[_],
+            &[_],
+            &ScanCompleteness,
+            &ScanCompleteness,
+        )] = &[
+            (
+                SyncDirection::Download,
+                &lfile,
+                &rfile,
+                &complete,
+                &complete,
+            ),
+            (
+                SyncDirection::Download,
+                &lfile,
+                &rfile,
+                &complete,
+                &incomplete,
+            ),
+            (
+                SyncDirection::Download,
+                &lfile,
+                &rfile,
+                &complete,
+                &truncated,
+            ),
+            (SyncDirection::Download, &lfile, &[], &complete, &complete),
+            (SyncDirection::Download, &[], &[], &complete, &complete),
+            (SyncDirection::Upload, &lfile, &rfile, &complete, &complete),
+            (SyncDirection::Upload, &[], &rfile, &complete, &complete),
+            // Both never deletes orphans, and must short-circuit before any
+            // other fact is consulted.
+            (SyncDirection::Both, &[], &rfile, &incomplete, &incomplete),
+        ];
+
+        for (direction, locals, remotes, local_scan, remote_scan) in cases {
+            let from_vectors =
+                orphan_delete_guard(*direction, locals, remotes, local_scan, remote_scan);
+            let from_facts = orphan_delete_guard_over(
+                *direction,
+                locals.is_empty(),
+                remotes.is_empty(),
+                local_scan,
+                remote_scan,
+            );
+            // Byte-identical, not merely both-Err: the message carries the
+            // listing-error count and the truncation clause, and it is what
+            // someone reads to find out why a delete did not happen.
+            assert_eq!(
+                from_vectors,
+                from_facts,
+                "the two shapes disagree on {direction:?} (locals empty: {}, remotes empty: {})",
+                locals.is_empty(),
+                remotes.is_empty()
+            );
         }
     }
 

@@ -6469,12 +6469,7 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
 }
 
 fn provider_error_message_looks_not_found(message: &str) -> bool {
-    let msg = message.to_ascii_lowercase();
-    msg.contains("no such file")
-        || msg.contains("not found")
-        || msg.contains("does not exist")
-        || msg.contains("file not exists")
-        || msg.contains("404")
+    ftp_client_gui_lib::providers::types::message_names_a_missing_path(message)
 }
 
 /// Reject a target file/folder name containing a character the active
@@ -8067,25 +8062,6 @@ fn print_profile_banner_once(name: &str, details: String, quiet: bool) {
     }
     if !PROFILE_INFO_PRINTED.swap(true, Ordering::Relaxed) {
         eprintln!("Using profile: {} ({})", name, details);
-    }
-}
-
-async fn maybe_hydrate_ftp_stat_size(
-    provider: &mut dyn StorageProvider,
-    path: &str,
-    entry: &mut RemoteEntry,
-) {
-    if entry.is_dir || entry.size > 0 {
-        return;
-    }
-    if !matches!(
-        provider.provider_type(),
-        ProviderType::Ftp | ProviderType::Ftps
-    ) {
-        return;
-    }
-    if let Ok(size) = provider.size(path).await {
-        entry.size = size;
     }
 }
 
@@ -15060,8 +15036,7 @@ async fn stat_tui_session_via_cli_handler(
     let provider = session.provider_mut();
 
     match provider.stat(&resolved_path).await {
-        Ok(mut entry) => {
-            maybe_hydrate_ftp_stat_size(provider, &resolved_path, &mut entry).await;
+        Ok(entry) => {
             let result_path = entry.path.clone();
             let result = cli_tui::worker::TuiStatResult {
                 name: sanitize_filename(&entry.name),
@@ -30114,28 +30089,6 @@ async fn collect_cli_list_entries(
         Err(err) => return Err(CliListError::Provider(err)),
     };
 
-    // FTP/FTPS disambiguation: some servers reply to LIST/MLSD on a missing
-    // directory with an empty listing instead of a 550 error, which collapses
-    // a missing path into an indistinguishable "empty directory" (exit 0).
-    // When the listing is empty and the user supplied an explicit non-root
-    // path, run a follow-up stat to confirm. If the path does not exist,
-    // surface NotFound with the correct exit code.
-    if entries.is_empty()
-        && !options.path.is_empty()
-        && options.path != "/"
-        && options.path != "."
-        && matches!(
-            provider.provider_type(),
-            ProviderType::Ftp | ProviderType::Ftps
-        )
-    {
-        if let Err(ProviderError::NotFound(_)) = provider.stat(&effective_path).await {
-            return Err(CliListError::Provider(ProviderError::NotFound(
-                options.path.to_string(),
-            )));
-        }
-    }
-
     // Filter hidden files
     let mut entries: Vec<RemoteEntry> = if options.all {
         entries
@@ -31706,52 +31659,6 @@ async fn cmd_put(
         }
     };
 
-    // Pre-flight: on FTP/FTPS only, check that the remote parent directory
-    // exists. If it does not, surface an explicit error pointing at the exact
-    // missing segment, since these backends reply with a generic "553 Can't
-    // open that file: No such file or directory" that hides which parent
-    // segment is the culprit and triggers three retries of pure noise.
-    //
-    // Skipped on object-storage protocols (S3, Azure) and on every other
-    // backend, where: (a) prefixes are virtual and stat() of an empty prefix
-    // returns NotFound even after a successful mkdir, producing false
-    // positives that block the natural mkdir+put workflow, and (b) native
-    // error messages from those backends already point at the missing path.
-    let needs_parent_check = matches!(
-        provider.provider_type(),
-        ProviderType::Ftp | ProviderType::Ftps
-    );
-    let parent = parent_remote_path(remote_path);
-    if needs_parent_check && !parent.is_empty() && parent != "/" {
-        match provider.stat(&parent).await {
-            Ok(entry) if !entry.is_dir => {
-                print_error(
-                    format,
-                    &format!(
-                        "Parent path '{}' exists but is not a directory, upload aborted.",
-                        parent
-                    ),
-                    2,
-                );
-                let _ = provider.disconnect().await;
-                return 2;
-            }
-            Err(ProviderError::NotFound(_)) => {
-                print_error(
-                    format,
-                    &format!(
-                        "Parent directory '{}' does not exist on the remote. Create it first with: aeroftp-cli mkdir -p '{}'",
-                        parent, parent
-                    ),
-                    2,
-                );
-                let _ = provider.disconnect().await;
-                return 2;
-            }
-            _ => {} // stat OK (dir) or non-definitive error, proceed.
-        }
-    }
-
     let start = Instant::now();
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
 
@@ -32067,31 +31974,30 @@ async fn cmd_put_recursive(
     // not exist yet (put -r into /a/b/c with no /a) MKDs remote_base against
     // a missing parent, swallows the 550, and then stalls on the first STOR
     // into the non-existent directory on FTP/FTPS instead of erroring.
-    // Mirrors the single-file put parent check: on FTP/FTPS an ancestor that
-    // cannot be created aborts the whole command with the MKD error. FTP maps
-    // every MKD failure (including "already exists") to a generic ServerError,
-    // so an existing ancestor is confirmed via stat rather than error text.
-    // On other backends the ancestor creation stays best-effort: their mkdir
+    // On FTP/FTPS an ancestor that cannot be created aborts the whole command
+    // with the MKD error. On other backends it stays best-effort: their mkdir
     // semantics differ (virtual prefixes, bucket components) and their native
     // put errors already point at the missing path.
+    //
+    // This used to confirm an existing ancestor with a follow-up `stat`,
+    // because FTP mapped every MKD failure onto one generic ServerError and
+    // "it is already there" could not be told from "you may not". The provider
+    // reports `AlreadyExists` now, so the answer is read rather than guessed.
     if resolved_remote_base != "/" {
         let strict_ancestors = matches!(ptype, ProviderType::Ftp | ProviderType::Ftps);
         for ancestor in benchmark_mkdir_ladder(&resolved_remote_base) {
             match provider.mkdir(&ancestor).await {
-                Ok(()) => {}
-                Err(mkd_err) if strict_ancestors => match provider.stat(&ancestor).await {
-                    Ok(entry) if entry.is_dir => {}
-                    _ => {
-                        let code = provider_error_to_exit_code(&mkd_err);
-                        print_error(
-                            format,
-                            &format!("Cannot create remote directory '{}': {}", ancestor, mkd_err),
-                            code,
-                        );
-                        let _ = provider.disconnect().await;
-                        return code;
-                    }
-                },
+                Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
+                Err(mkd_err) if strict_ancestors => {
+                    let code = provider_error_to_exit_code(&mkd_err);
+                    print_error(
+                        format,
+                        &format!("Cannot create remote directory '{}': {}", ancestor, mkd_err),
+                        code,
+                    );
+                    let _ = provider.disconnect().await;
+                    return code;
+                }
                 Err(_) => {}
             }
         }
@@ -38412,8 +38318,7 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
 
     let path = &resolve_cli_remote_path(&initial_path, path);
     match provider.stat(path).await {
-        Ok(mut entry) => {
-            maybe_hydrate_ftp_stat_size(provider.as_mut(), path, &mut entry).await;
+        Ok(entry) => {
             match format {
                 OutputFormat::Text => {
                     println!("  Name:        {}", entry.name);
@@ -39614,28 +39519,6 @@ async fn cmd_lsjson(
 
             if is_root_list {
                 is_root_list = false;
-                // FTP/FTPS may answer a missing directory with an empty
-                // listing instead of an error, collapsing "missing" into
-                // "empty". Confirm with a follow-up stat (mirrors `ls`).
-                if entries.is_empty()
-                    && !path.is_empty()
-                    && path != "/"
-                    && path != "."
-                    && matches!(
-                        provider.provider_type(),
-                        ProviderType::Ftp | ProviderType::Ftps
-                    )
-                {
-                    if let Err(ProviderError::NotFound(_)) = provider.stat(&dir_path).await {
-                        print_error(
-                            format,
-                            &format!("lsjson failed: Path not found: {}", path),
-                            2,
-                        );
-                        let _ = provider.disconnect().await;
-                        return 2;
-                    }
-                }
             }
 
             for e in entries {
@@ -45708,6 +45591,48 @@ async fn cmd_sync(
                 ),
                 4,
             );
+            let _ = provider.disconnect().await;
+            return 4.into();
+        }
+    }
+
+    // The block above refuses a delete pass when the scan reported ERRORS. It
+    // cannot see the other half of the same danger: a listing that succeeded
+    // and came back empty. FTP produced exactly that for a directory that does
+    // not exist, so a mistyped path was indistinguishable from an emptied one,
+    // and nothing here noticed because there was no error to count.
+    //
+    // The core (`sync.rs`) and the DAG both consult the shared guard for this;
+    // this path did not, so the one surface a person drives by hand was the one
+    // without the protection. Calling the shared guard rather than restating
+    // the rule is the point: a fourth copy of the policy is how the third one
+    // came to be missing.
+    //
+    // Kept even though the FTP defect above is fixed in the same change: it is
+    // depth, not redundancy. Any provider that answers an empty listing where
+    // it should answer an error would otherwise walk the same path.
+    if delete && !dry_run && reconcile_plan.is_none() {
+        let sync_direction = match direction {
+            "download" => ftp_client_gui_lib::sync::SyncDirection::Download,
+            "upload" => ftp_client_gui_lib::sync::SyncDirection::Upload,
+            _ => ftp_client_gui_lib::sync::SyncDirection::Both,
+        };
+        let local_scan = ftp_client_gui_lib::sync_core::ScanCompleteness {
+            list_errors: local_scan_errors,
+            truncated: local_scan_truncated,
+        };
+        let remote_scan = ftp_client_gui_lib::sync_core::ScanCompleteness {
+            list_errors: remote_scan_errors,
+            truncated: remote_scan_truncated,
+        };
+        if let Err(reason) = ftp_client_gui_lib::sync::orphan_delete_guard_over(
+            sync_direction,
+            local_map.is_empty(),
+            remote_map.is_empty(),
+            &local_scan,
+            &remote_scan,
+        ) {
+            print_error(format, &format!("refusing --delete: {reason}"), 4);
             let _ = provider.disconnect().await;
             return 4.into();
         }
@@ -66620,8 +66545,8 @@ async fn main() {
 fn is_retryable_exit(code: i32) -> bool {
     // Non-retryable categories (stable across retries, burning attempts is pure noise):
     //   0  success
-    //   2  not found (missing path or missing parent: caught by the new 553
-    //      preflight in `cmd_put`)
+    //   2  not found (missing path or missing parent: the provider classifies
+    //      a 553 naming a missing path as NotFound, so it maps to 2 here)
     //   5  invalid usage / config
     //   6  authentication failed
     //   7  operation not supported
