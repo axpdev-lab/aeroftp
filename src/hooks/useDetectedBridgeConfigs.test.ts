@@ -12,8 +12,9 @@
 // to the backend all said the code was fine. The probe itself is a Tauri round
 // trip and still is not covered here: only a live run proves that end.
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
+    detectBridgeConfigBounded,
     detectedBridgeConfigsSoFar,
     loadDetectedBridgeConfigs,
     subscribeDetectedBridgeConfigs,
@@ -183,5 +184,34 @@ describe('results arrive in pieces', () => {
         unsubscribe();
         await loadDetectedBridgeConfigs(async id => (id === 'ssh' ? '/home/me/.ssh/config' : null));
         expect(seen).toEqual([]);
+    });
+});
+
+describe('detectBridgeConfigBounded', () => {
+    beforeEach(resetDetectedBridgeConfigsCache);
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('answers from the sweep when it already knows, without probing again', async () => {
+        await loadDetectedBridgeConfigs(async id => (id === 'ssh' ? '/home/me/.ssh/config' : null));
+        let probed = false;
+        const path = await detectBridgeConfigBounded('ssh', async () => { probed = true; return null; });
+        expect(path).toBe('/home/me/.ssh/config');
+        expect(probed).toBe(false);
+    });
+
+    it('gives up instead of spinning forever when the probe never answers', async () => {
+        // The panel shows "Detecting..." until this resolves, and its browse
+        // button lives behind that spinner: a probe that hangs used to strand
+        // the user there with nothing to click.
+        vi.useFakeTimers();
+        const pending = detectBridgeConfigBounded('rclone', () => new Promise(() => { /* never */ }), 6000);
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(await pending).toBe('');
+    });
+
+    it('reports a real answer as itself, and a failure as no config', async () => {
+        expect(await detectBridgeConfigBounded('ssh', async () => '/home/me/.ssh/config')).toBe('/home/me/.ssh/config');
+        expect(await detectBridgeConfigBounded('lftp', async () => null)).toBe('');
+        expect(await detectBridgeConfigBounded('putty', async () => { throw new Error('nope'); })).toBe('');
     });
 });

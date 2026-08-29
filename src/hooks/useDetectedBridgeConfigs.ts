@@ -113,6 +113,44 @@ export function loadDetectedBridgeConfigs(
     return inFlight;
 }
 
+/**
+ * How long a single-source probe may take before the UI stops waiting on it.
+ * Not a cancellation: the backend call runs on, we simply stop letting it hold
+ * a spinner. Six seconds is far above a normal answer (a path lookup, or one
+ * `rclone config file` spawn) and far below a user's patience.
+ */
+export const BRIDGE_PROBE_TIMEOUT_MS = 6000;
+
+/**
+ * The config path for ONE source, for a caller that has a spinner on screen:
+ * the sweep's answer when it already has one, otherwise a probe that gives up
+ * rather than spinning forever. Resolves to '' for "no config here", which is
+ * also what a timeout looks like, because both mean the same thing to the user:
+ * pick the file by hand.
+ *
+ * A hanging probe used to leave BridgeSourcePanel on an eternal "Detecting..."
+ * with no way to reach the browse button.
+ */
+export function detectBridgeConfigBounded(
+    source: string,
+    probe: BridgeConfigProbe = tauriProbe,
+    timeoutMs: number = BRIDGE_PROBE_TIMEOUT_MS,
+): Promise<string> {
+    const known = (cache ?? partial)[source];
+    if (known) return Promise.resolve(known);
+    return new Promise<string>(resolve => {
+        let settled = false;
+        const finish = (value: string) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(value);
+        };
+        const timer = setTimeout(() => finish(''), timeoutMs);
+        probe(source).then(path => finish(path || '')).catch(() => finish(''));
+    });
+}
+
 /** What the sweep has found so far, empty before it starts. */
 export function detectedBridgeConfigsSoFar(): DetectedBridgeConfigs {
     return cache ?? { ...partial };
