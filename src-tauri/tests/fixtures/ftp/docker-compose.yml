@@ -17,7 +17,13 @@ services:
     ports:
       - "127.0.0.1:2123:21"
       - "127.0.0.1:30000-30009:30000-30009"
-    restart: "no"
+    # `on-failure` rather than `no`: this fixture has been observed to exit on
+    # its own mid-run (SIGSEGV, container status 139), and with no restart
+    # policy every test after that point fails with "Connection refused". Five
+    # red tests read as a regression in the code under test, which is the most
+    # expensive way to present an absent server. Restarting turns it into at
+    # worst one flaky test instead of a wall.
+    restart: "on-failure"
     healthcheck:
       test: ["CMD", "sh", "-c", "pgrep vsftpd"]
       interval: 2s

@@ -1218,9 +1218,32 @@ pub(crate) fn orphan_delete_guard(
     local_scan: &ScanCompleteness,
     remote_scan: &ScanCompleteness,
 ) -> Result<(), String> {
+    orphan_delete_guard_over(
+        direction,
+        locals.is_empty(),
+        remotes.is_empty(),
+        local_scan,
+        remote_scan,
+    )
+}
+
+/// The same policy, over the facts it actually uses.
+///
+/// [`orphan_delete_guard`] only ever asks its two slices whether they are
+/// empty, and a caller holding maps instead of entry vectors would otherwise
+/// have to materialise vectors to ask the same question, or copy the policy.
+/// Copying it is how the CLI came to plan deletes without this guard at all
+/// while the core and the DAG both had it.
+pub fn orphan_delete_guard_over(
+    direction: SyncDirection,
+    locals_empty: bool,
+    remotes_empty: bool,
+    local_scan: &ScanCompleteness,
+    remote_scan: &ScanCompleteness,
+) -> Result<(), String> {
     let (source_scan, source_empty, dest_nonempty) = match direction {
-        SyncDirection::Upload => (local_scan, locals.is_empty(), !remotes.is_empty()),
-        SyncDirection::Download => (remote_scan, remotes.is_empty(), !locals.is_empty()),
+        SyncDirection::Upload => (local_scan, locals_empty, !remotes_empty),
+        SyncDirection::Download => (remote_scan, remotes_empty, !locals_empty),
         SyncDirection::Both => return Ok(()),
     };
     if !source_scan.is_complete() {
@@ -3053,6 +3076,20 @@ pub struct SyncErrorInfo {
     pub file_path: Option<String>,
 }
 
+/// Is this an FTP status code, rather than the same digits inside a sentence?
+///
+/// A status opens the server's reply, but by the time the text reaches here it
+/// has usually been wrapped by an error type, so it reads "Path not found: 553
+/// Can't open that file". Anchoring on the start of the string alone would
+/// therefore never match and would silently disable the rule; accepting the
+/// digits anywhere would match "failed after 553 bytes" and turn a transient
+/// failure into a permanent one, removing a legitimate retry. Requiring the
+/// start of the string or a `": "` prefix accepts both real shapes and neither
+/// false one.
+fn mentions_ftp_status(lowered: &str, code_and_space: &str) -> bool {
+    lowered.starts_with(code_and_space) || lowered.contains(&format!(": {code_and_space}"))
+}
+
 /// Classify a raw error message into a structured SyncErrorInfo
 pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
     let lower = raw.to_lowercase();
@@ -3091,8 +3128,40 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
         || lower.contains("404 ")
         || lower.contains("550 ")
     {
-        // 550 can be either permission or not-found; prefer permission if already matched
+        // 550 can be either permission or not-found; prefer permission if already matched.
+        //
+        // 553 is FTP's "requested action not taken, file name not allowed",
+        // which servers return for a STOR into a directory that does not exist
+        // ("553 Can't open that file: No such file or directory"). It reached
+        // the fallthrough below and was classified Unknown, which is
+        // retryable, so a permanent failure was attempted three times before
+        // being reported. The retry is decided here and nowhere else: the
+        // transfer executors break on `!err_info.retryable`.
+        //
+        // Only 553 is added, not "every 5xx". This function classifies errors
+        // from every provider, and in HTTP a 5xx is exactly the case worth
+        // retrying: 500, 502 and 503 are transient by definition and several
+        // providers return them under load. A blanket rule would make those
+        // permanent and remove retry where it belongs. 553 is safe to name
+        // because it is not an HTTP status at all.
         (SyncErrorKind::PathNotFound, false)
+    } else if mentions_ftp_status(&lower, "553 ") {
+        // A 553 is a permanent negative reply, and it was falling through to
+        // the Unknown arm below, which is retryable: a failure that can never
+        // succeed was attempted three times, every time.
+        //
+        // The kind stays Unknown on purpose. RFC 959 spends 553 on "file name
+        // not allowed", servers use it for a STOR into a directory that is not
+        // there, and the two are not the same thing: calling every 553 a
+        // missing path would state something the reply does not say. A 553
+        // whose text DOES name a missing path is caught by the branch above and
+        // keeps the more precise kind. What is certain here is only that it is
+        // permanent, and that is what is recorded.
+        //
+        // Only 553 is named, not "every 5xx". This classifier serves every
+        // provider and in HTTP a 5xx is the retryable case: a general rule
+        // would take retry away from every HTTP backend under load.
+        (SyncErrorKind::Unknown, false)
     } else if lower.contains("invalid path")
         || lower.contains("not a writable file")
         || lower.contains("parent directory is missing")
@@ -5240,6 +5309,67 @@ mod tests {
         assert!(!err.retryable);
     }
 
+    /// The test that decides whether the 553 rule earns its place.
+    ///
+    /// An earlier pair of tests used "553 Can't open that file: No such file or
+    /// directory" and its wrapped form. Both passed with the rule deleted,
+    /// because both contain "no such file" or "not found" and match an earlier
+    /// branch: a rule with no test holding it alive. This one uses a 553 that
+    /// contains none of the other vocabulary, so it fails without the rule.
+    ///
+    /// The wording is not measured. The repo's vsftpd fixture could not be
+    /// started here (the Docker client is older than the daemon requires), so
+    /// which text a given server sends is unverified; what is asserted is only
+    /// that a reply carrying this status is permanent, which is true of 553
+    /// under every reading.
+    #[test]
+    fn a_bare_553_is_permanent_even_when_the_text_says_nothing_else() {
+        let err = classify_sync_error("553 Could not create file", None);
+        assert!(
+            !err.retryable,
+            "a 553 is a permanent negative reply and must not be retried"
+        );
+    }
+
+    /// A 553 that also names a missing path keeps the more precise kind: the
+    /// branch above it answers first, and the 553 rule does not overwrite it.
+    #[test]
+    fn a_553_that_names_a_missing_path_stays_a_missing_path() {
+        let err = classify_sync_error("553 Can't open that file: No such file or directory", None);
+        assert!(!err.retryable);
+        assert_eq!(err.kind, SyncErrorKind::PathNotFound);
+    }
+
+    /// The digits must be a status, not a coincidence: "553 " inside a sentence
+    /// is not a reply code, and treating it as one would take a legitimate
+    /// retry away from a transient failure.
+    #[test]
+    fn digits_inside_a_sentence_are_not_a_status_code() {
+        let err = classify_sync_error("upload stalled after 553 bytes", None);
+        assert!(
+            err.retryable,
+            "this is a byte count, not a reply code, and the failure may be transient"
+        );
+    }
+
+    /// The rule names 553 and not "every 5xx" on purpose: this classifier
+    /// serves every provider, and an HTTP 5xx is the retryable case. Making
+    /// them permanent would remove retry exactly where it belongs.
+    #[test]
+    fn http_server_errors_stay_retryable() {
+        for raw in [
+            "500 Internal Server Error",
+            "502 Bad Gateway",
+            "503 Service Unavailable",
+        ] {
+            let err = classify_sync_error(raw, None);
+            assert!(
+                err.retryable,
+                "{raw} is transient and must keep its retries"
+            );
+        }
+    }
+
     #[test]
     fn test_classify_sync_error_rate_limit() {
         let err = classify_sync_error("429 Too Many Requests", None);
@@ -5513,6 +5643,90 @@ mod tests {
             mtime: mtime.map(str::to_string),
             checksum_alg: checksum_hex.map(|_| "sha256".to_string()),
             checksum_hex: checksum_hex.map(str::to_string),
+        }
+    }
+
+    /// The fact-shaped form must decide exactly what the vector-shaped one
+    /// decides, on the same seven cases.
+    ///
+    /// `orphan_delete_guard` is now a shell that derives the facts and calls
+    /// this; the frozen test above proves the shell, and this proves the
+    /// policy. If the two ever disagree, one of them is a second copy of the
+    /// rule, which is how the CLI came to plan deletes with no guard at all
+    /// while the core and the DAG both had one.
+    #[test]
+    fn the_fact_shaped_guard_decides_the_same_seven_cases() {
+        use crate::sync_core::ScanCompleteness;
+        let complete = ScanCompleteness::default();
+        let incomplete = ScanCompleteness {
+            list_errors: 1,
+            truncated: false,
+        };
+        let truncated = ScanCompleteness {
+            list_errors: 0,
+            truncated: true,
+        };
+        let lfile = [local_entry(10, None, None)];
+        let rfile = [remote_entry(10, None, None)];
+
+        // (direction, locals, remotes, local_scan, remote_scan)
+        let cases: &[(
+            SyncDirection,
+            &[_],
+            &[_],
+            &ScanCompleteness,
+            &ScanCompleteness,
+        )] = &[
+            (
+                SyncDirection::Download,
+                &lfile,
+                &rfile,
+                &complete,
+                &complete,
+            ),
+            (
+                SyncDirection::Download,
+                &lfile,
+                &rfile,
+                &complete,
+                &incomplete,
+            ),
+            (
+                SyncDirection::Download,
+                &lfile,
+                &rfile,
+                &complete,
+                &truncated,
+            ),
+            (SyncDirection::Download, &lfile, &[], &complete, &complete),
+            (SyncDirection::Download, &[], &[], &complete, &complete),
+            (SyncDirection::Upload, &lfile, &rfile, &complete, &complete),
+            (SyncDirection::Upload, &[], &rfile, &complete, &complete),
+            // Both never deletes orphans, and must short-circuit before any
+            // other fact is consulted.
+            (SyncDirection::Both, &[], &rfile, &incomplete, &incomplete),
+        ];
+
+        for (direction, locals, remotes, local_scan, remote_scan) in cases {
+            let from_vectors =
+                orphan_delete_guard(*direction, locals, remotes, local_scan, remote_scan);
+            let from_facts = orphan_delete_guard_over(
+                *direction,
+                locals.is_empty(),
+                remotes.is_empty(),
+                local_scan,
+                remote_scan,
+            );
+            // Byte-identical, not merely both-Err: the message carries the
+            // listing-error count and the truncation clause, and it is what
+            // someone reads to find out why a delete did not happen.
+            assert_eq!(
+                from_vectors,
+                from_facts,
+                "the two shapes disagree on {direction:?} (locals empty: {}, remotes empty: {})",
+                locals.is_empty(),
+                remotes.is_empty()
+            );
         }
     }
 

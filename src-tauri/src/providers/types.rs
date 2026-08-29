@@ -1666,6 +1666,30 @@ impl RemoteEntry {
     }
 }
 
+/// Does this message say the path is not there?
+///
+/// Two readers of this question existed with different vocabularies: the FTP
+/// provider recognised "no such directory" and "cannot find", the CLI's
+/// exit-code mapping recognised "does not exist", "file not exists" and "404",
+/// and neither was a superset of the other. In a codebase where the same
+/// question answered in two places is the defect being removed, a second
+/// vocabulary is the same defect in miniature, so there is one list and both
+/// ask it.
+pub fn message_names_a_missing_path(message: &str) -> bool {
+    let lowered = message.to_ascii_lowercase();
+    [
+        "no such file",
+        "no such directory",
+        "not found",
+        "does not exist",
+        "file not exists",
+        "cannot find",
+        "404",
+    ]
+    .iter()
+    .any(|needle| lowered.contains(needle))
+}
+
 /// Provider error type
 #[derive(Error, Debug)]
 #[allow(dead_code)]
