@@ -158,7 +158,24 @@ fn is_not_a_listing_row(line: &str) -> bool {
         return true;
     }
     // A recursive listing announces each directory as `/path/to/dir:`.
-    if trimmed.ends_with(':') && !trimmed.contains(char::is_whitespace) {
+    //
+    // The absence of whitespace alone is not the test, and relying on it was a
+    // false positive with teeth: `/pub/my files:` is an ordinary header and was
+    // being counted as a row we failed to read. On its own that was invisible,
+    // because an unread count was only logged; now that an all-unreadable
+    // listing is refused, an EMPTY directory in a recursive listing would come
+    // back as a parse error, since its header is the only line there is. The
+    // machinery built to notice unreadable rows would have been the thing that
+    // broke reading them.
+    //
+    // An absolute header is accepted with spaces and all, because no listing
+    // row can be confused with it: a Unix row opens with a mode string and a
+    // DOS row with a date, and neither can start with a separator. The
+    // whitespace-free form stays for relative headers, which have nothing else
+    // to distinguish them.
+    if trimmed.ends_with(':')
+        && (trimmed.starts_with('/') || !trimmed.contains(char::is_whitespace))
+    {
         return true;
     }
     // The `.` and `..` rows that `LIST -a` adds. They parse as far as the name
@@ -577,6 +594,54 @@ mod tests {
         );
         assert_eq!(partial.entries.len(), 1);
         assert_eq!(partial.unreadable, 1);
+    }
+
+    /// A recursive header whose path contains spaces is still a header.
+    ///
+    /// It was classified as an unreadable row because the only test was the
+    /// absence of whitespace. Harmless while unread rows were merely logged,
+    /// and harmful the moment an all-unreadable listing became an error: the
+    /// header of an EMPTY directory is the only line in it, so a legitimately
+    /// empty folder would have been reported as a listing we could not parse.
+    ///
+    /// The rows below the divider are the ones that must NOT be swept up by the
+    /// widened rule, because a rule written to recognise one thing catching
+    /// another that looks like it from where the rule sits is the shape this
+    /// branch has already hit twice.
+    #[test]
+    fn a_recursive_header_with_spaces_is_not_an_unreadable_row() {
+        for header in [
+            "/pub/my files:",
+            "/srv/data/quarterly reports 2026:",
+            "/pub:",
+            "subdir:",
+        ] {
+            let listing = read_listing([header], "/");
+            assert_eq!(
+                listing.unreadable, 0,
+                "{header:?} is a recursive header, not a row we failed to read"
+            );
+            assert!(listing.entries.is_empty(), "{header:?} is not an entry");
+        }
+
+        // ---- and what the rule must still refuse to swallow ----
+        // A row that really is unreadable and happens to end in a colon. It
+        // has EIGHT fields, not nine: the first version of this line had nine
+        // and the Unix parser read it correctly, so the assertion failed and
+        // the case proved nothing about the header rule. The count is the
+        // point, not the colon.
+        let short = read_listing(["-rw-r--r-- 1 user group 123 Jan 20 oops:"], "/");
+        assert_eq!(
+            short.unreadable, 1,
+            "a short row is unreadable whatever its last character"
+        );
+        // A perfectly good entry whose NAME ends in a colon stays an entry.
+        let named = read_listing(
+            ["-rw-r--r--    1 user     group         123 Jan 20 10:00 notes:"],
+            "/",
+        );
+        assert_eq!(named.entries.len(), 1, "a file called `notes:` is a file");
+        assert_eq!(named.unreadable, 0);
     }
 
     #[test]
