@@ -140,10 +140,23 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
         extra.insert("provider_id".to_string(), provider_id.to_string());
     }
 
+    if let Some(opts) = profile.get("options").and_then(|v| v.as_object()) {
+        for (k, v) in opts {
+            let normalized = canonicalize_profile_option_key(k);
+            // Credential identity is the saved record's `id`, never an
+            // options field a caller can choose (CWE-639).
+            if normalized == "profile_id" {
+                continue;
+            }
+            insert_profile_option(extra, k, v);
+        }
+    }
+
     // Issue #214: bind Jottacloud (and OAuth) per-profile vault keys.
     // ProviderFactory reads extra["profile_id"] to call with_profile_id;
     // without it the connect path looks at the legacy singleton and an
-    // imported `jottacloud_refresh_<id>` blob is invisible.
+    // imported `jottacloud_refresh_<id>` blob is invisible. Stamped LAST
+    // so options cannot override it.
     if let Some(id) = profile
         .get("id")
         .and_then(|v| v.as_str())
@@ -151,12 +164,6 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
         .filter(|s| !s.is_empty())
     {
         extra.insert("profile_id".to_string(), id.to_string());
-    }
-
-    if let Some(opts) = profile.get("options").and_then(|v| v.as_object()) {
-        for (k, v) in opts {
-            insert_profile_option(extra, k, v);
-        }
     }
 }
 
@@ -684,6 +691,21 @@ mod provider_id_reach_tests {
         assert_eq!(
             extra.get("profile_id").map(String::as_str),
             Some("srv_1771799399856_swqija1mi")
+        );
+    }
+
+    #[test]
+    fn options_cannot_override_the_saved_profile_id() {
+        let profile = serde_json::json!({
+            "id": "srv_real",
+            "protocol": "jottacloud",
+            "options": { "profile_id": "srv_attacker", "profileId": "srv_attacker_camel" }
+        });
+        let mut extra: HashMap<String, String> = HashMap::new();
+        apply_profile_options(&mut extra, &profile);
+        assert_eq!(
+            extra.get("profile_id").map(String::as_str),
+            Some("srv_real")
         );
     }
 }

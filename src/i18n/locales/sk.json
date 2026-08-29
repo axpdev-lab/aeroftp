@@ -3433,7 +3433,7 @@
             "showHashes": "Zobraziť hashe",
             "fuzzyCutoff": "Fuzzy prah",
             "fuzzyCutoffHint": "prázdne = predvolené hodnoty podľa typu (obrázky 10, text 3, ostatné 100)",
-            "title": "Hľadač duplikátov",
+            "title": "Vyhľadávač duplikátov",
             "scanning": "Hľadanie duplikátov...",
             "summary": "{groups} skupín, {files} duplicitných súborov, {size} zbytočných",
             "noDuplicates": "Žiadne duplikáty nenájdené",

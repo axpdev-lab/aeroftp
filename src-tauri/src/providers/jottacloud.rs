@@ -1899,6 +1899,69 @@ impl JottacloudProvider {
         Ok(entries)
     }
 
+    /// JFS destination path for a restore: out of Trash onto the live
+    /// mountpoint (Archive/Sync/…). Shared with the tests so they call the
+    /// same builder `restore_from_trash` uses, not a reconstructed literal.
+    fn restore_dest_jfs(&self, clean: &str) -> String {
+        let encoded_to: String = clean
+            .split('/')
+            .map(|s| crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s))
+            .collect::<Vec<_>>()
+            .join("/");
+        format!(
+            "/{}/{}/{}/{}",
+            self.username, self.config.device, self.config.mountpoint, encoded_to
+        )
+    }
+
+    /// JFS destination path for a rename that stays inside Trash.
+    fn rename_in_trash_dest_jfs(&self, to_clean: &str) -> String {
+        let encoded_to: String = to_clean
+            .split('/')
+            .map(|s| crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s))
+            .collect::<Vec<_>>()
+            .join("/");
+        format!(
+            "/{}/{}/{}/{}",
+            self.username, self.config.device, TRASH_MOUNTPOINT, encoded_to
+        )
+    }
+
+    /// `(file_mv_url, dir_mvdir_url)` for a move whose source lives in Trash.
+    /// Directory form has a trailing slash on the source, matching `rename()`
+    /// and rclone's Jottacloud backend; without it `mvDir` 404s (#397).
+    fn trash_move_urls(&self, from_in_trash: &str, dest_jfs: &str) -> (String, String) {
+        let dest_q = urlencoding::encode(dest_jfs);
+        let src = self.trash_url(from_in_trash);
+        let file_url = format!("{}?mv={}", src, dest_q);
+        let dir_src = if src.ends_with('/') {
+            src.clone()
+        } else {
+            format!("{src}/")
+        };
+        let dir_url = format!("{dir_src}?mvDir={dest_q}");
+        (file_url, dir_url)
+    }
+
+    /// POST `?mv=`, and only on HTTP 404 retry `?mvDir=` with the trailing
+    /// slash. Any other failure is the real error; retrying 500s as a
+    /// directory move hid that.
+    async fn post_trash_move(
+        &mut self,
+        file_url: &str,
+        dir_url: &str,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let resp = self.post_command_with_retry(file_url).await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            jotta_log(&format!(
+                "Trash file-move 404, retrying as dir: {}",
+                dir_url
+            ));
+            return self.post_command_with_retry(dir_url).await;
+        }
+        Ok(resp)
+    }
+
     /// Restore an item from trash to its original location.
     ///
     /// JFS `?restore=true` on a Trash URL is the documented form and is
@@ -1909,28 +1972,11 @@ impl JottacloudProvider {
     /// `?mvDir=` folder), which is the same shape as `rename`.
     pub async fn restore_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let clean = path.trim_start_matches('/');
-        let encoded_to: String = clean
-            .split('/')
-            .map(|s| crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s))
-            .collect::<Vec<_>>()
-            .join("/");
-        let dest = format!(
-            "/{}/{}/{}/{}",
-            self.username, self.config.device, self.config.mountpoint, encoded_to
-        );
-        let dest_q = urlencoding::encode(&dest);
-        let file_url = format!("{}?mv={}", self.trash_url(clean), dest_q);
+        let dest = self.restore_dest_jfs(clean);
+        let (file_url, dir_url) = self.trash_move_urls(clean, &dest);
         jotta_log(&format!("Restoring from trash via move: {}", file_url));
 
-        let mut resp = self.post_command_with_retry(&file_url).await?;
-        if !resp.status().is_success() {
-            let dir_url = format!("{}?mvDir={}", self.trash_url(clean), dest_q);
-            jotta_log(&format!(
-                "Restore file-move failed, retrying as dir: {}",
-                dir_url
-            ));
-            resp = self.post_command_with_retry(&dir_url).await?;
-        }
+        let resp = self.post_trash_move(&file_url, &dir_url).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1954,24 +2000,11 @@ impl JottacloudProvider {
     pub async fn rename_in_trash(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_clean = from.trim_start_matches('/');
         let to_clean = to.trim_start_matches('/');
-        let encoded_to: String = to_clean
-            .split('/')
-            .map(|s| crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s))
-            .collect::<Vec<_>>()
-            .join("/");
-        let dest = format!(
-            "/{}/{}/{}/{}",
-            self.username, self.config.device, TRASH_MOUNTPOINT, encoded_to
-        );
-        let dest_q = urlencoding::encode(&dest);
-        let file_url = format!("{}?mv={}", self.trash_url(from_clean), dest_q);
+        let dest = self.rename_in_trash_dest_jfs(to_clean);
+        let (file_url, dir_url) = self.trash_move_urls(from_clean, &dest);
         jotta_log(&format!("Rename in trash: {}", file_url));
 
-        let mut resp = self.post_command_with_retry(&file_url).await?;
-        if !resp.status().is_success() {
-            let dir_url = format!("{}?mvDir={}", self.trash_url(from_clean), dest_q);
-            resp = self.post_command_with_retry(&dir_url).await?;
-        }
+        let resp = self.post_trash_move(&file_url, &dir_url).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2318,28 +2351,49 @@ mod tests {
     }
 
     #[test]
-    fn restore_move_target_is_the_live_mountpoint() {
-        // Restore is a move out of Trash onto Archive, not ?restore=true.
+    fn restore_from_trash_builds_live_mountpoint_urls_and_dir_slash() {
+        // Calls the same builders restore_from_trash uses (not a reconstructed
+        // dest). Directory fallback must have a trailing slash on the Trash
+        // source; the file form must not.
         let p = test_provider();
-        let dest = format!(
-            "/{}/{}/{}/{}",
-            p.username, p.config.device, p.config.mountpoint, "photo.jpg"
-        );
-        assert_eq!(dest, "/user123/Jotta/Archive/photo.jpg");
+        let dest = p.restore_dest_jfs("photos");
+        assert_eq!(dest, "/user123/Jotta/Archive/photos");
+        let (file_url, dir_url) = p.trash_move_urls("photos", &dest);
         assert!(
-            !p.trash_url("/photo.jpg").contains("Archive"),
-            "source stays on Trash"
+            file_url.contains("/Jotta/Trash/photos?mv="),
+            "file form: {file_url}"
         );
+        assert!(
+            !file_url.contains("/Trash/photos/?mv="),
+            "file form must not grow a slash: {file_url}"
+        );
+        assert!(
+            dir_url.contains("/Jotta/Trash/photos/?mvDir="),
+            "dir form needs trailing slash: {dir_url}"
+        );
+        assert!(
+            file_url.contains("Jotta%2FArchive%2Fphotos")
+                || file_url.contains("%2Fuser123%2FJotta%2FArchive%2Fphotos"),
+            "dest is the live mountpoint: {file_url}"
+        );
+        assert!(!file_url.contains("?restore="));
+        assert!(!p.trash_url("photos").contains("Archive"));
     }
 
     #[test]
-    fn rename_in_trash_keeps_the_trash_mountpoint() {
+    fn rename_in_trash_builds_urls_that_stay_on_trash() {
         let p = test_provider();
-        let dest = format!(
-            "/{}/{}/{}/{}",
-            p.username, p.config.device, TRASH_MOUNTPOINT, "renamed"
-        );
+        let dest = p.rename_in_trash_dest_jfs("renamed");
         assert_eq!(dest, "/user123/Jotta/Trash/renamed");
+        let (file_url, dir_url) = p.trash_move_urls("old", &dest);
+        assert!(file_url.contains("/Jotta/Trash/old?mv="), "{file_url}");
+        assert!(dir_url.contains("/Jotta/Trash/old/?mvDir="), "{dir_url}");
+        assert!(
+            file_url.contains("Jotta%2FTrash%2Frenamed")
+                || file_url.contains("%2Fuser123%2FJotta%2FTrash%2Frenamed"),
+            "dest stays in Trash: {file_url}"
+        );
+        assert!(!file_url.contains("Archive"));
     }
 
     #[test]
