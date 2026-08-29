@@ -1677,17 +1677,96 @@ impl RemoteEntry {
 /// ask it.
 pub fn message_names_a_missing_path(message: &str) -> bool {
     let lowered = message.to_ascii_lowercase();
-    [
+    if [
         "no such file",
         "no such directory",
         "not found",
         "does not exist",
         "file not exists",
         "cannot find",
-        "404",
     ]
     .iter()
     .any(|needle| lowered.contains(needle))
+    {
+        return true;
+    }
+    // `404` has to be a word of its own, not three digits anywhere in the text.
+    //
+    // The needle came from the CLI, where it read messages we had composed. It
+    // now also reads raw server replies, and FTP servers quote the path inside
+    // the reply: "550 /public_html/404.html: Permission denied" contains those
+    // digits, so a refusal for permission came back as a file that is not
+    // there. That is the mistake the caller three lines up warns against, made
+    // by the vocabulary it calls, and `404.html` is a canonical file on exactly
+    // the web hosting that FTP serves.
+    //
+    // Nothing real is lost by tightening it. Both CLI call sites list "not
+    // found" alongside it, so the ordinary HTTP body is already matched by the
+    // words; what only the digits can catch is "http 404" or "status: 404",
+    // and those are a word of their own. The path-embedded form is the only
+    // case dropped, and dropping it is the fix.
+    //
+    // The general shape is the one running through this branch: a message
+    // carries the server's reason and the user's path, every keyword is a legal
+    // path component, and matching over the whole string cannot tell which half
+    // spoke. Here the boundary is enough because the needle is a single token.
+    lowered
+        .split_whitespace()
+        .any(|token| token.trim_matches(|c: char| !c.is_ascii_alphanumeric()) == "404")
+}
+
+#[cfg(test)]
+mod missing_path_vocabulary_tests {
+    use super::message_names_a_missing_path;
+
+    /// A path that merely contains "404" is not a missing path.
+    ///
+    /// The needle was written for messages we composed ourselves and is now
+    /// also applied to raw FTP replies, which quote the path back: FTP servers
+    /// answer "550 /public_html/404.html: Permission denied", and reading those
+    /// digits as a verdict turns a refusal for permission into a file that is
+    /// not there. `404.html` is a standard file on the web hosting FTP exists
+    /// to serve, so this is the ordinary case and not a contrived one.
+    ///
+    /// The rows below the divider are what the needle is FOR, and they are here
+    /// because tightening a match is how a rule gets silently switched off. The
+    /// same care was owed to the 553 anchor and to the slash in `i/o error`.
+    #[test]
+    fn digits_inside_a_path_are_not_a_missing_path() {
+        for message in [
+            "550 /public_html/404.html: Permission denied",
+            "550 /var/www/404/index.html: Permission denied",
+            "553 Can't open /srv/404.html: Permission denied",
+        ] {
+            assert!(
+                !message_names_a_missing_path(message),
+                "{message:?} was read as a missing path because of the digits in the path"
+            );
+        }
+
+        // ---- and the cases the needle exists to catch still match ----
+        for message in [
+            "HTTP 404",
+            "404 Not Found",
+            "status: 404",
+            "server returned (404)",
+            "error 404.",
+        ] {
+            assert!(
+                message_names_a_missing_path(message),
+                "{message:?} stopped being recognised: the tightening went too far"
+            );
+        }
+
+        // The word-based needles are untouched and still carry the common case.
+        for message in [
+            "550 No such file or directory",
+            "404 Not Found",
+            "The specified key does not exist",
+        ] {
+            assert!(message_names_a_missing_path(message), "{message:?}");
+        }
+    }
 }
 
 /// Provider error type

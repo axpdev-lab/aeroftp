@@ -526,12 +526,11 @@ impl FtpProvider {
     /// the connection pointing somewhere else.
     async fn cwd_into(&mut self, target: &str) -> Result<String, ProviderError> {
         let stream = self.stream_mut()?;
-        let saved = stream
-            .pwd()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("pwd: {e}")))?;
+        let saved = stream.pwd().await.map_err(|e| {
+            ProviderError::ServerError(format!("{e} (while asking the server where we are)"))
+        })?;
         if let Err(e) = stream.cwd(target).await {
-            return Err(Self::classify_cwd_failure(target, &e));
+            return Err(Self::classify_cwd_failure("entering", target, &e));
         }
         // The mirror follows the server immediately, so it is never a lie even
         // if the restore below fails.
@@ -580,6 +579,45 @@ impl FtpProvider {
         format!("{reply} (while {operation} {path})")
     }
 
+    /// The part of a server reply that is the reason, with the path taken out.
+    ///
+    /// FTP servers quote back the path they were given, so the reply carries
+    /// both a reason the server chose and a name the user chose, and the
+    /// missing-path vocabulary reads the two as one string. Every word it looks
+    /// for is a legal path component: `550 /public_html/404.html: Permission
+    /// denied` was read as a missing file, and a refusal for permission came
+    /// back as a file that is not there. That is the exact mistake the doc
+    /// comment below warns about, arriving through the vocabulary rather than
+    /// through the status.
+    ///
+    /// The path we sent is what the server is quoting, so it is removed here,
+    /// where it is known, rather than guessed at from the shape of the text.
+    /// This is the same split as `sync::classification_text` and for the same
+    /// reason: only the reason is evidence, and the name never was.
+    ///
+    /// It is not a complete separation and does not need to be. A server may
+    /// echo a path it resolved differently from the one we sent, and then the
+    /// removal does nothing; the vocabulary's own token boundary still keeps
+    /// `404.html` from counting. The reply the CALLER is shown is untouched:
+    /// only the reading of it changes.
+    fn reason_without_the_path(reply: &str, path: &str) -> String {
+        // A one-character path carries no information and removing it damages
+        // the text instead: a failed CWD to "/" would take every slash out of
+        // the reply.
+        //
+        // No test covers this and that is deliberate rather than an omission.
+        // None of the current needles contains a separator, so today the
+        // mangling changes no verdict and any test would pass with the guard
+        // deleted. It is here against the needle somebody adds later, and it is
+        // said out loud so nobody reads it as a checked rule: the class it
+        // belongs to is `i/o error` in `sync::looks_like_a_path`, where a rule
+        // written to remove noise removed the signal instead.
+        if path.len() < 2 {
+            return reply.to_string();
+        }
+        reply.replace(path, " ")
+    }
+
     /// Decide what a refused CWD means, without claiming more than the reply says.
     ///
     /// The reply carries two independent facts and they must not be collapsed:
@@ -615,23 +653,24 @@ impl FtpProvider {
     /// them; doing it here would fix this caller and leave the rest, which is
     /// the "patch the case, not the predicate" mistake this branch removed
     /// elsewhere. It is on the register.
-    fn classify_cwd_failure(target: &str, err: &FtpError) -> ProviderError {
+    fn classify_cwd_failure(operation: &str, target: &str, err: &FtpError) -> ProviderError {
         let FtpError::UnexpectedResponse(ref response) = err else {
-            return ProviderError::ServerError(Self::doing("entering", target, err));
+            return ProviderError::ServerError(Self::doing(operation, target, err));
         };
         let text = response.to_string();
         if response.status != Status::FileUnavailable {
-            return ProviderError::ServerError(Self::doing("entering", target, &text));
+            return ProviderError::ServerError(Self::doing(operation, target, &text));
         }
         // A 550 on CWD is not only "it is not there": it is also what a server
         // sends for a directory you may not enter. Reading every one as
         // NotFound turns an inaccessible directory into a nonexistent one,
         // which is the mistake this change already made once on mkdir and had
         // corrected by a live server.
-        if super::types::message_names_a_missing_path(&text) {
-            ProviderError::NotFound(Self::doing("entering", target, &text))
+        if super::types::message_names_a_missing_path(&Self::reason_without_the_path(&text, target))
+        {
+            ProviderError::NotFound(Self::doing(operation, target, &text))
         } else {
-            ProviderError::InvalidPath(Self::doing("entering", target, &text))
+            ProviderError::InvalidPath(Self::doing(operation, target, &text))
         }
     }
 
@@ -648,9 +687,17 @@ impl FtpProvider {
                 self.current_path = saved.to_string();
                 Ok(())
             }
-            Err(e) => Err(ProviderError::ServerError(format!(
-                "could not restore the working directory to {saved}: {e}"
-            ))),
+            // The same command as `cwd_into`, so the same classification. It
+            // used to compose a sentence of its own, which put our words ahead
+            // of the reply (the order `doing` exists to avoid) and made every
+            // failure a retryable `ServerError`, including a 550 that will
+            // never succeed. Sharing the classifier also brings this site
+            // inside the test table, which a private string never was.
+            Err(e) => Err(Self::classify_cwd_failure(
+                "restoring the working directory to",
+                saved,
+                &e,
+            )),
         }
     }
 
@@ -672,7 +719,7 @@ impl FtpProvider {
             return None;
         }
         let text = response.to_string();
-        super::types::message_names_a_missing_path(&text)
+        super::types::message_names_a_missing_path(&Self::reason_without_the_path(&text, path))
             .then(|| ProviderError::NotFound(Self::doing(operation, path, &text)))
     }
 
@@ -2221,7 +2268,8 @@ mod tests {
             (500, "500 Unknown command", "ServerError"),
         ];
         for (code, body, expected) in cases {
-            let got = FtpProvider::classify_cwd_failure("/target", &cwd_reply(*code, body));
+            let got =
+                FtpProvider::classify_cwd_failure("entering", "/target", &cwd_reply(*code, body));
             let actual = match got {
                 ProviderError::NotFound(_) => "NotFound",
                 ProviderError::InvalidPath(_) => "InvalidPath",
@@ -2244,13 +2292,75 @@ mod tests {
     }
 
     /// A failure that is not a reply at all keeps the transport error.
+    /// The path the server quotes back must not be read as the reason.
+    ///
+    /// End to end through the real classifier, with the path that triggers it:
+    /// a permission refusal on `/public_html/404.html` is permanent and is NOT
+    /// a missing file. Reporting it as missing sends the user to recreate a
+    /// file that is already there instead of to fix the permissions, which is
+    /// the whole thesis of this branch stated backwards.
+    #[test]
+    fn a_path_quoted_back_by_the_server_is_not_the_reason() {
+        let target = "/public_html/404.html";
+        let got = FtpProvider::classify_cwd_failure(
+            "entering",
+            target,
+            &cwd_reply(550, "550 /public_html/404.html: Permission denied"),
+        );
+        assert!(
+            matches!(got, ProviderError::InvalidPath(_)),
+            "the digits in the path made a refusal into a missing file: {got:?}"
+        );
+        // And the reply still reaches the reader whole, path included.
+        assert!(got.to_string().contains("/public_html/404.html"));
+
+        // The case the token boundary CANNOT reach, and the only reason the
+        // path removal exists as a separate defence: the needle words are
+        // ordinary directory names. `/var/www/not found/report.pdf` carries
+        // "not found" as a whole phrase, and no boundary rule can tell that
+        // occurrence from the server saying it. Only knowing which path we
+        // sent does.
+        let worded = FtpProvider::classify_cwd_failure(
+            "entering",
+            "/var/www/not found/report.pdf",
+            &cwd_reply(550, "550 /var/www/not found/report.pdf: Permission denied"),
+        );
+        assert!(
+            matches!(worded, ProviderError::InvalidPath(_)),
+            "a folder called \"not found\" made a refusal into a missing file: {worded:?}"
+        );
+
+        // A file named exactly after the code, where the boundary rule is what
+        // fails: the token IS "404".
+        let named = FtpProvider::classify_cwd_failure(
+            "entering",
+            "404",
+            &cwd_reply(550, "550 404: Permission denied"),
+        );
+        assert!(
+            matches!(named, ProviderError::InvalidPath(_)),
+            "a file named 404 made a refusal into a missing file: {named:?}"
+        );
+
+        // The same shape when the reply really is about a missing path.
+        let missing = FtpProvider::classify_cwd_failure(
+            "entering",
+            target,
+            &cwd_reply(550, "550 /public_html/404.html: No such file or directory"),
+        );
+        assert!(
+            matches!(missing, ProviderError::NotFound(_)),
+            "the removal took the reason with it: {missing:?}"
+        );
+    }
+
     #[test]
     fn a_cwd_that_never_got_a_reply_is_not_a_path_verdict() {
         let err = FtpError::ConnectionError(std::io::Error::new(
             std::io::ErrorKind::TimedOut,
             "timed out",
         ));
-        let got = FtpProvider::classify_cwd_failure("/target", &err);
+        let got = FtpProvider::classify_cwd_failure("entering", "/target", &err);
         assert!(
             matches!(got, ProviderError::ServerError(_)),
             "a transport failure became {got:?}, which claims something about the path"
@@ -2385,11 +2495,16 @@ mod tests {
         let cases: Vec<(&str, ProviderError)> = vec![
             (
                 "entering",
-                FtpProvider::classify_cwd_failure(path, &cwd_reply(550, "550 Permission denied")),
+                FtpProvider::classify_cwd_failure(
+                    "entering",
+                    path,
+                    &cwd_reply(550, "550 Permission denied"),
+                ),
             ),
             (
                 "entering",
                 FtpProvider::classify_cwd_failure(
+                    "entering",
                     path,
                     &cwd_reply(421, "421 Service not available"),
                 ),
@@ -2397,8 +2512,21 @@ mod tests {
             (
                 "entering",
                 FtpProvider::classify_cwd_failure(
+                    "entering",
                     path,
                     &cwd_reply(550, "550 /x: No such file or directory"),
+                ),
+            ),
+            // Reachable only since `restore_cwd` started sharing the
+            // classifier. As its own private string it named the operation and
+            // the path correctly and no test could confirm it, which is how it
+            // kept the wrong word order for as long as it did.
+            (
+                "restoring the working directory to",
+                FtpProvider::classify_cwd_failure(
+                    "restoring the working directory to",
+                    path,
+                    &cwd_reply(550, "550 Failed to change directory."),
                 ),
             ),
             (
