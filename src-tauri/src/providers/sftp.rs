@@ -2115,7 +2115,7 @@ impl StorageProvider for SftpProvider {
         for entry in entries {
             if entry.is_symlink {
                 self.delete(&entry.path).await?;
-            } else if entry.is_dir {
+            } else if entry.is_walkable_dir() {
                 // Use Box::pin to avoid infinite recursion type issues
                 Box::pin(self.rmdir_recursive(&entry.path)).await?;
             } else {

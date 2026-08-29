@@ -2845,7 +2845,7 @@ impl StorageProvider for FilenProvider {
                         if crate::providers::matches_find_pattern(&entry.name, pattern) {
                             results.push(entry.clone());
                         }
-                        if entry.is_dir && results.len() < 500 {
+                        if entry.is_walkable_dir() && results.len() < 500 {
                             next_dirs.push(entry.path.clone());
                         }
                     }

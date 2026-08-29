@@ -712,7 +712,7 @@ impl GitHubProvider {
 
         let entries = self.list(path).await?;
         for entry in entries {
-            if entry.is_dir {
+            if entry.is_walkable_dir() {
                 Box::pin(self.delete_directory_recursive(&entry.path, commit_message)).await?;
             } else {
                 self.delete_file(&entry.path, commit_message).await?;

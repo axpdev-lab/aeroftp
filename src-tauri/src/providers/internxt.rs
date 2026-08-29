@@ -2017,7 +2017,7 @@ impl StorageProvider for InternxtProvider {
                 format!("{}/{}", resolved, entry.name)
             };
 
-            if entry.is_dir {
+            if entry.is_walkable_dir() {
                 // Box the recursive future to avoid infinite type
                 Box::pin(self.rmdir_recursive(&child_path)).await?;
             } else {
