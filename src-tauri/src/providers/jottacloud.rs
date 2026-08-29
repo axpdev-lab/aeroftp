@@ -1899,19 +1899,84 @@ impl JottacloudProvider {
         Ok(entries)
     }
 
-    /// JFS destination path for a restore: out of Trash onto the live
-    /// mountpoint (Archive/Sync/…). Shared with the tests so they call the
-    /// same builder `restore_from_trash` uses, not a reconstructed literal.
-    fn restore_dest_jfs(&self, clean: &str) -> String {
-        let encoded_to: String = clean
-            .split('/')
-            .map(|s| crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s))
-            .collect::<Vec<_>>()
-            .join("/");
-        format!(
-            "/{}/{}/{}/{}",
-            self.username, self.config.device, self.config.mountpoint, encoded_to
-        )
+    /// File restore URL: rclone's `cphash` on the original mountpoint object.
+    /// The Trash listing is a virtual view; GET of the live path still 200s
+    /// with a deleted tombstone. `?mv=` against `/Trash/name` 404s;
+    /// `?restore=true` against `/Trash/name` and against the original path
+    /// both 500 (Ehud, #397).
+    fn restore_cphash_url(&self, from_in_trash: &str) -> String {
+        format!("{}?cphash=true", self.jfs_url(from_in_trash))
+    }
+
+    /// Directory restore: `?restore=true` on the original path, with a
+    /// trailing-slash form for the 404-only folder retry.
+    fn restore_from_trash_dir_urls(&self, from_in_trash: &str) -> (String, String) {
+        let src = self.jfs_url(from_in_trash);
+        let file_url = format!("{src}?restore=true");
+        let dir_src = if src.ends_with('/') {
+            src.clone()
+        } else {
+            format!("{src}/")
+        };
+        let dir_url = format!("{dir_src}?restore=true");
+        (file_url, dir_url)
+    }
+
+    /// size, md5, created, modified from a JFS `<file>` tombstone.
+    fn parse_jfs_file_revision(xml: &str) -> Option<(u64, String, String, String)> {
+        use quick_xml::events::Event;
+        use quick_xml::Reader;
+
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let mut in_revision = false;
+        let mut tag = String::new();
+        let mut size: u64 = 0;
+        let mut md5 = String::new();
+        let mut created = String::new();
+        let mut modified = String::new();
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    if name == "currentRevision" {
+                        in_revision = true;
+                    }
+                    tag = name;
+                }
+                Ok(Event::End(ref e)) => {
+                    if e.name().as_ref() == b"currentRevision" {
+                        in_revision = false;
+                    }
+                    tag.clear();
+                }
+                Ok(Event::Text(ref e)) if in_revision => {
+                    let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                    match tag.as_str() {
+                        "size" => size = text.parse().unwrap_or(0),
+                        "md5" => md5 = text,
+                        "created" if created.is_empty() => created = text,
+                        "modified" if modified.is_empty() => modified = text,
+                        _ => {}
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(_) => break,
+                _ => {}
+            }
+            buf.clear();
+        }
+        if md5.is_empty() {
+            return None;
+        }
+        if created.is_empty() {
+            created = modified.clone();
+        }
+        if modified.is_empty() {
+            modified = created.clone();
+        }
+        Some((size, md5, created, modified))
     }
 
     /// JFS destination path for a rename that stays inside Trash.
@@ -1964,19 +2029,70 @@ impl JottacloudProvider {
 
     /// Restore an item from trash to its original location.
     ///
-    /// JFS `?restore=true` on a Trash URL is the documented form and is
-    /// what we used to send. Live accounts (Ehud, #397, v4.1.7 and v4.1.8)
-    /// answer that with HTTP 500. JaFS never found a working restore query
-    /// either. What does work is a server-side move out of the Trash
-    /// mountpoint back onto the profile's live mountpoint (`?mv=` file,
-    /// `?mvDir=` folder), which is the same shape as `rename`.
+    /// Files: GET the original-mountpoint tombstone, then POST `?cphash=true`
+    /// with JSize/JMd5/JCreated/JModified — rclone's restore of a trashed
+    /// destination. `?restore=true` 500s on both the Trash view and the
+    /// original path; `?mv=` against `/Trash/name` 404s.
+    /// Folders: `?restore=true` on the original path, 404-only slash retry.
     pub async fn restore_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let clean = path.trim_start_matches('/');
-        let dest = self.restore_dest_jfs(clean);
-        let (file_url, dir_url) = self.trash_move_urls(clean, &dest);
-        jotta_log(&format!("Restoring from trash via move: {}", file_url));
+        let src = self.jfs_url(clean);
+        let get = self.get_with_retry(&src).await?;
+        if !get.status().is_success() {
+            let status = get.status();
+            let body = get.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Restore GET tombstone failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+        let xml = get.text().await.unwrap_or_default();
+        let looks_like_file = xml.contains("<file");
 
-        let resp = self.post_trash_move(&file_url, &dir_url).await?;
+        let resp = if looks_like_file {
+            let (size, md5, created, modified) =
+                Self::parse_jfs_file_revision(&xml).ok_or_else(|| {
+                    ProviderError::ServerError(format!(
+                        "Restore tombstone for {} has no md5/size",
+                        clean
+                    ))
+                })?;
+            let url = self.restore_cphash_url(clean);
+            jotta_log(&format!(
+                "Restoring from trash via cphash: {} (size={} md5={})",
+                url, size, md5
+            ));
+            self.refresh_if_needed().await?;
+            let request = self
+                .client
+                .post(&url)
+                .header(AUTHORIZATION, self.auth_header())
+                .header(CONTENT_LENGTH, "0")
+                .header("JSize", size.to_string())
+                .header("JMd5", md5)
+                .header("JCreated", created)
+                .header("JModified", modified)
+                .build()
+                .map_err(|e| {
+                    ProviderError::ConnectionFailed(format!("Build restore request failed: {}", e))
+                })?;
+            send_with_retry(&self.client, request, &HttpRetryConfig::default())
+                .await
+                .map_err(|e| {
+                    ProviderError::ConnectionFailed(format!("Restore request failed: {}", e))
+                })?
+        } else {
+            let (file_url, dir_url) = self.restore_from_trash_dir_urls(clean);
+            jotta_log(&format!("Restoring folder from trash: {}", file_url));
+            let resp = self.post_command_with_retry(&file_url).await?;
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                jotta_log(&format!("Restore file 404, retrying as dir: {}", dir_url));
+                self.post_command_with_retry(&dir_url).await?
+            } else {
+                resp
+            }
+        };
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2090,6 +2206,7 @@ impl JottacloudProvider {
         let mut current_name = String::new();
         let mut current_size: u64 = 0;
         let mut current_modified = String::new();
+        let mut current_deleted_at = String::new();
         let mut current_state = String::new();
         let mut current_tag = String::new();
 
@@ -2116,12 +2233,17 @@ impl JottacloudProvider {
                                         && depth == root_depth.unwrap() + 1)) =>
                         {
                             let mut name = String::new();
+                            let mut deleted_at = String::new();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
                                     name = crate::restricted_chars::decode_leaf(
                                         ProviderType::Jottacloud,
                                         &super::xml_text::attr_value(&attr),
                                     );
+                                }
+                                if attr.key.as_ref() == b"deleted" {
+                                    deleted_at =
+                                        Self::parse_jotta_time(&super::xml_text::attr_value(&attr));
                                 }
                             }
                             if !name.is_empty() {
@@ -2130,7 +2252,11 @@ impl JottacloudProvider {
                                     path: format!("/{}", name),
                                     is_dir: true,
                                     size: 0,
-                                    modified: None,
+                                    modified: if deleted_at.is_empty() {
+                                        None
+                                    } else {
+                                        Some(deleted_at)
+                                    },
                                     permissions: None,
                                     owner: None,
                                     group: None,
@@ -2147,6 +2273,7 @@ impl JottacloudProvider {
                             current_name.clear();
                             current_size = 0;
                             current_modified.clear();
+                            current_deleted_at.clear();
                             current_state.clear();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
@@ -2154,6 +2281,10 @@ impl JottacloudProvider {
                                         ProviderType::Jottacloud,
                                         &super::xml_text::attr_value(&attr),
                                     );
+                                }
+                                if attr.key.as_ref() == b"deleted" {
+                                    current_deleted_at =
+                                        Self::parse_jotta_time(&super::xml_text::attr_value(&attr));
                                 }
                             }
                         }
@@ -2173,12 +2304,17 @@ impl JottacloudProvider {
                             || (root_depth.is_some() && depth == root_depth.unwrap()))
                     {
                         let mut name = String::new();
+                        let mut deleted_at = String::new();
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
                                 name = crate::restricted_chars::decode_leaf(
                                     ProviderType::Jottacloud,
                                     &super::xml_text::attr_value(&attr),
                                 );
+                            }
+                            if attr.key.as_ref() == b"deleted" {
+                                deleted_at =
+                                    Self::parse_jotta_time(&super::xml_text::attr_value(&attr));
                             }
                         }
                         if !name.is_empty() {
@@ -2187,7 +2323,11 @@ impl JottacloudProvider {
                                 path: format!("/{}", name),
                                 is_dir: true,
                                 size: 0,
-                                modified: None,
+                                modified: if deleted_at.is_empty() {
+                                    None
+                                } else {
+                                    Some(deleted_at)
+                                },
                                 permissions: None,
                                 owner: None,
                                 group: None,
@@ -2213,16 +2353,19 @@ impl JottacloudProvider {
                             in_revision = false;
                             // In trash, show all files (not just COMPLETED)
                             if !current_name.is_empty() {
+                                let deleted_or_modified = if !current_deleted_at.is_empty() {
+                                    Some(current_deleted_at.clone())
+                                } else if current_modified.is_empty() {
+                                    None
+                                } else {
+                                    Some(current_modified.clone())
+                                };
                                 entries.push(RemoteEntry {
                                     name: current_name.clone(),
                                     path: format!("/{}", current_name),
                                     is_dir: false,
                                     size: current_size,
-                                    modified: if current_modified.is_empty() {
-                                        None
-                                    } else {
-                                        Some(current_modified.clone())
-                                    },
+                                    modified: deleted_or_modified,
                                     permissions: None,
                                     owner: None,
                                     group: None,
@@ -2351,33 +2494,82 @@ mod tests {
     }
 
     #[test]
-    fn restore_from_trash_builds_live_mountpoint_urls_and_dir_slash() {
-        // Calls the same builders restore_from_trash uses (not a reconstructed
-        // dest). Directory fallback must have a trailing slash on the Trash
-        // source; the file form must not.
+    fn restore_from_trash_posts_cphash_on_the_original_mountpoint() {
+        // File restore is rclone cphash on the original object, not a
+        // move out of the Trash view and not ?restore=true (both live-failed).
         let p = test_provider();
-        let dest = p.restore_dest_jfs("photos");
-        assert_eq!(dest, "/user123/Jotta/Archive/photos");
-        let (file_url, dir_url) = p.trash_move_urls("photos", &dest);
+        let url = p.restore_cphash_url("ehud-397-0420.txt");
         assert!(
-            file_url.contains("/Jotta/Trash/photos?mv="),
-            "file form: {file_url}"
+            url.contains("/Jotta/Archive/ehud-397-0420.txt?cphash=true"),
+            "cphash: {url}"
         );
         assert!(
-            !file_url.contains("/Trash/photos/?mv="),
-            "file form must not grow a slash: {file_url}"
+            !url.contains("/Trash/"),
+            "must not post at Trash view: {url}"
+        );
+        assert!(!url.contains("?mv="));
+        assert!(!url.contains("?restore="));
+        let (bare, slashed) = p.restore_from_trash_dir_urls("aeroftp-scratch-397");
+        assert!(
+            bare.contains("/Jotta/Archive/aeroftp-scratch-397?restore=true"),
+            "{bare}"
         );
         assert!(
-            dir_url.contains("/Jotta/Trash/photos/?mvDir="),
-            "dir form needs trailing slash: {dir_url}"
+            slashed.contains("/Jotta/Archive/aeroftp-scratch-397/?restore=true"),
+            "{slashed}"
         );
+        let xml = r#"<file name="ehud-397-0420.txt" deleted="2026-08-29-T13:45:33Z">
+            <currentRevision>
+                <size>28</size>
+                <md5>9a6924f78982f7e759f371f08fb5d57e</md5>
+                <created>2026-08-29-T13:44:54Z</created>
+                <modified>2026-08-29-T13:44:54Z</modified>
+            </currentRevision>
+        </file>"#;
+        let (size, md5, created, modified) =
+            JottacloudProvider::parse_jfs_file_revision(xml).expect("revision");
+        assert_eq!(size, 28);
+        assert_eq!(md5, "9a6924f78982f7e759f371f08fb5d57e");
+        assert!(created.contains("13:44:54"), "{created}");
+        assert!(modified.contains("13:44:54"), "{modified}");
+    }
+
+    #[test]
+    fn parse_trash_xml_uses_the_deleted_attribute_not_revision_mtime() {
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="aeroftp-scratch-397" deleted="2026-08-29-T08:02:08Z" contextType="TRASH">
+      <abspath>/user123/Jotta/Archive</abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="ehud-397-0420.txt" uuid="b363c7f6-53aa-49a3-a587-9cd346666a52" deleted="2026-08-29-T13:45:33Z" contextType="TRASH">
+      <abspath>/user123/Jotta/Archive</abspath>
+      <currentRevision>
+        <modified>2026-08-29-T13:44:54Z</modified>
+        <size>28</size>
+      </currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        assert_eq!(entries.len(), 2, "{entries:?}");
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.name, "aeroftp-scratch-397");
+        let folder_deleted = folder.modified.as_deref().expect("folder deleted-at");
         assert!(
-            file_url.contains("Jotta%2FArchive%2Fphotos")
-                || file_url.contains("%2Fuser123%2FJotta%2FArchive%2Fphotos"),
-            "dest is the live mountpoint: {file_url}"
+            folder_deleted.contains("2026-08-29") && folder_deleted.contains("08:02"),
+            "folder deleted attr, not missing: {folder_deleted}"
         );
-        assert!(!file_url.contains("?restore="));
-        assert!(!p.trash_url("photos").contains("Archive"));
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.name, "ehud-397-0420.txt");
+        assert_eq!(file.size, 28);
+        let file_deleted = file.modified.as_deref().expect("file deleted-at");
+        assert!(
+            file_deleted.contains("13:45"),
+            "deleted attr wins over revision mtime 13:44: {file_deleted}"
+        );
+        assert!(!file_deleted.contains("13:44"), "{file_deleted}");
     }
 
     #[test]
