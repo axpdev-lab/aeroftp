@@ -14,7 +14,9 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+    detectedBridgeConfigsSoFar,
     loadDetectedBridgeConfigs,
+    subscribeDetectedBridgeConfigs,
     orderBridgeSourcesByDetection,
     resetDetectedBridgeConfigsCache,
     shortenConfigPath,
@@ -122,5 +124,64 @@ describe('loadDetectedBridgeConfigs', () => {
             return found[id] ?? null;
         };
         expect(await loadDetectedBridgeConfigs(flaky)).toEqual({ ssh: found.ssh });
+    });
+});
+
+describe('results arrive in pieces', () => {
+    beforeEach(resetDetectedBridgeConfigsCache);
+
+    /** Probe that answers `fast` immediately and never answers for `hangs`. */
+    const hangingProbe = (found: Record<string, string>, hangs: string) =>
+        async (id: string): Promise<string | null> => {
+            if (id === hangs) return new Promise<string | null>(() => { /* never settles */ });
+            return found[id] ?? null;
+        };
+
+    it('publishes a detection before the sweep is over', async () => {
+        // The assertion is the TIMING, not the content: a version that
+        // collected everything and published once at the end would satisfy
+        // "ssh was seen" just as well, while leaving the picker blank for as
+        // long as the slowest probe takes. So the sweep is held open on a
+        // probe that has not answered yet, and the update has to arrive anyway.
+        const seen: Record<string, string>[] = [];
+        subscribeDetectedBridgeConfigs(found => seen.push(found));
+
+        let release: (() => void) | undefined;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const sweep = loadDetectedBridgeConfigs(async id => {
+            if (id === 'ssh') return '/home/me/.ssh/config';
+            if (id === 'restic') { await held; return null; }
+            return null;
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 0));
+        // restic has not answered, so the sweep cannot have finished.
+        expect(seen).toEqual([{ ssh: '/home/me/.ssh/config' }]);
+
+        release?.();
+        await sweep;
+    });
+
+    it('a probe that never answers does not bury the ones that did', async () => {
+        // rclone shells out to a binary; if that binary hangs, the promise from
+        // loadDetectedBridgeConfigs never resolves. The other fourteen tools
+        // must still reach the picker, so the answer cannot be final-only.
+        const updates: Record<string, string>[] = [];
+        subscribeDetectedBridgeConfigs(found => updates.push(found));
+        void loadDetectedBridgeConfigs(hangingProbe({ ssh: '/home/me/.ssh/config' }, 'rclone'));
+
+        // Let the workers drain everything that can answer.
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(updates[updates.length - 1]).toEqual({ ssh: '/home/me/.ssh/config' });
+        expect(detectedBridgeConfigsSoFar()).toEqual({ ssh: '/home/me/.ssh/config' });
+    });
+
+    it('stops talking to a listener that unsubscribed', async () => {
+        const seen: Record<string, string>[] = [];
+        const unsubscribe = subscribeDetectedBridgeConfigs(found => seen.push(found));
+        unsubscribe();
+        await loadDetectedBridgeConfigs(async id => (id === 'ssh' ? '/home/me/.ssh/config' : null));
+        expect(seen).toEqual([]);
     });
 });

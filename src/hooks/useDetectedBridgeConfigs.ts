@@ -44,9 +44,33 @@ const tauriProbe: BridgeConfigProbe = source =>
 let cache: DetectedBridgeConfigs | null = null;
 let inFlight: Promise<DetectedBridgeConfigs> | null = null;
 
+// What the running sweep has found so far, and who wants to hear about it.
+// Results are published as they land rather than only at the end, for two
+// reasons. A probe that never answers (rclone shelling out to a binary that
+// hangs) would otherwise hold the entire answer hostage: with a final-only
+// result the other fourteen tools stay invisible forever. And the dialog this
+// feeds is currently on a machine where the page has a few healthy seconds to
+// be read, so an answer that arrives in pieces is worth more than a complete
+// one that arrives last.
+let partial: DetectedBridgeConfigs = {};
+type Listener = (found: DetectedBridgeConfigs) => void;
+const listeners = new Set<Listener>();
+
+function publish(): void {
+    const snapshot = { ...partial };
+    listeners.forEach(listener => listener(snapshot));
+}
+
+/** Hear about detections as they land. Returns the unsubscribe function. */
+export function subscribeDetectedBridgeConfigs(listener: Listener): () => void {
+    listeners.add(listener);
+    return () => {
+        listeners.delete(listener);
+    };
+}
+
 async function probeAll(probe: BridgeConfigProbe): Promise<DetectedBridgeConfigs> {
     const queue = GENERIC_BRIDGE_SOURCES.map(s => s.id);
-    const found: DetectedBridgeConfigs = {};
 
     const worker = async (): Promise<void> => {
         for (;;) {
@@ -54,7 +78,10 @@ async function probeAll(probe: BridgeConfigProbe): Promise<DetectedBridgeConfigs
             if (id === undefined) return;
             try {
                 const path = await probe(id);
-                if (path) found[id] = path;
+                if (path) {
+                    partial[id] = path;
+                    publish();
+                }
             } catch {
                 // A source we cannot probe is simply not reported as found.
                 // The tool stays in the list and stays pickable by hand.
@@ -63,12 +90,14 @@ async function probeAll(probe: BridgeConfigProbe): Promise<DetectedBridgeConfigs
     };
 
     await Promise.all(Array.from({ length: Math.min(PROBE_CONCURRENCY, queue.length) }, worker));
-    return found;
+    return { ...partial };
 }
 
 /**
  * The detected configs, probing at most once per app run. Concurrent callers
- * share the sweep in progress instead of starting a second one.
+ * share the sweep in progress instead of starting a second one. The promise
+ * resolves when every probe has answered; a consumer that cannot wait for the
+ * slowest one subscribes instead.
  */
 export function loadDetectedBridgeConfigs(
     probe: BridgeConfigProbe = tauriProbe,
@@ -84,10 +113,17 @@ export function loadDetectedBridgeConfigs(
     return inFlight;
 }
 
-/** Test seam: forget both the cached answer and any sweep in progress. */
+/** What the sweep has found so far, empty before it starts. */
+export function detectedBridgeConfigsSoFar(): DetectedBridgeConfigs {
+    return cache ?? { ...partial };
+}
+
+/** Test seam: forget the cached answer, any sweep in progress, and listeners. */
 export function resetDetectedBridgeConfigsCache(): void {
     cache = null;
     inFlight = null;
+    partial = {};
+    listeners.clear();
 }
 
 export interface DetectedBridgeConfigsState {
@@ -101,13 +137,19 @@ export interface DetectedBridgeConfigsState {
  * turns true, so a caller that never opens the picker pays nothing.
  */
 export function useDetectedBridgeConfigs(enabled: boolean): DetectedBridgeConfigsState {
-    const [detected, setDetected] = useState<DetectedBridgeConfigs>(() => cache ?? {});
+    const [detected, setDetected] = useState<DetectedBridgeConfigs>(detectedBridgeConfigsSoFar);
     const [probing, setProbing] = useState(false);
 
     useEffect(() => {
         if (!enabled) return;
         let cancelled = false;
         setProbing(true);
+        // Subscribe first, then start (or join) the sweep: a result that lands
+        // between the two calls would otherwise be missed.
+        const unsubscribe = subscribeDetectedBridgeConfigs(found => {
+            if (!cancelled) setDetected(found);
+        });
+        setDetected(detectedBridgeConfigsSoFar());
         void loadDetectedBridgeConfigs().then(result => {
             if (cancelled) return;
             setDetected(result);
@@ -115,6 +157,7 @@ export function useDetectedBridgeConfigs(enabled: boolean): DetectedBridgeConfig
         });
         return () => {
             cancelled = true;
+            unsubscribe();
         };
     }, [enabled]);
 
