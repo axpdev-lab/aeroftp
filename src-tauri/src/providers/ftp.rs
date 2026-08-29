@@ -556,8 +556,28 @@ impl FtpProvider {
     /// It is one function rather than a `format!` at each site so the shape
     /// cannot drift apart per call, which is how half these messages lost the
     /// path in the first place.
+    /// The server's reply comes FIRST, and what we were doing follows it.
+    ///
+    /// The obvious order, "listing /srv/data: 550 ...", puts our words between
+    /// the `ProviderError` label and the reply, and something downstream
+    /// depends on those two touching: `sync::mentions_ftp_status` decides that
+    /// a bare "553" is a status code rather than a byte count by checking that
+    /// one of our own Display labels is immediately followed by it. With the
+    /// operation wedged in between, "Transfer failed: uploading /x: 553 ..."
+    /// stopped matching, and the 553 rule this branch exists to add was
+    /// silently switched off by this branch's own message change: no failure,
+    /// no warning, the errors simply went back to being retried forever.
+    ///
+    /// Putting the reply first keeps that adjacency intact and needs no
+    /// loosening of the anchor, which is the part that makes it safe. Both
+    /// facts are still there, which is what was actually asked for.
+    ///
+    /// So the order is load-bearing: do not move the reply out of first
+    /// position to make the sentence read better. The test that catches it
+    /// says THAT it broke and not WHY, and the suite stayed green through the
+    /// whole time this was broken once already.
     fn doing(operation: &str, path: &str, reply: impl std::fmt::Display) -> String {
-        format!("{operation} {path}: {reply}")
+        format!("{reply} (while {operation} {path})")
     }
 
     /// Decide what a refused CWD means, without claiming more than the reply says.
