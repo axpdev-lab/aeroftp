@@ -2588,11 +2588,12 @@ mod tests {
             "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt",
             "/",
         ),
-        // DEFECT: runs of spaces inside a name are collapsed to one.
+        // Runs of spaces inside a name, Unix and DOS.
         (
             "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt",
             "/",
         ),
+        ("01-23-24  10:30AM  12345  my  file.txt", "/"),
         (
             "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target",
             "/",
@@ -2705,7 +2706,9 @@ LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt" @ "/"
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt" @ "/"
   name="my report.txt" path="/my report.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt" @ "/"
-  name="a b.txt" path="/a b.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="a  b.txt" path="/a  b.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+LIST "01-23-24  10:30AM  12345  my  file.txt" @ "/"
+  name="my  file.txt" path="/my  file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target" @ "/"
   name="link" path="/link" dir=false size=7 sym=true link=Some("target") perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling" @ "/"

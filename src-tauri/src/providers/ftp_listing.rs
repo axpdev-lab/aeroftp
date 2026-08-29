@@ -16,6 +16,40 @@
 
 use super::types::RemoteEntry;
 
+/// Byte offset where whitespace-separated field `n` (0-based) begins.
+///
+/// The name has to be sliced out of the original line, not rebuilt from tokens.
+/// Rebuilding joins with a single space, so a name containing two spaces comes
+/// back with one, and every later operation addressed by that name (stat,
+/// download, delete, rename) targets a path that does not exist. The bytes were
+/// on the wire; only the reassembly was losing them.
+fn field_start(line: &str, n: usize) -> Option<usize> {
+    let mut seen = 0usize;
+    let mut in_field = false;
+    for (offset, ch) in line.char_indices() {
+        if ch.is_whitespace() {
+            in_field = false;
+        } else if !in_field {
+            if seen == n {
+                return Some(offset);
+            }
+            in_field = true;
+            seen += 1;
+        }
+    }
+    None
+}
+
+/// The tail of the line from field `n` onward, verbatim.
+///
+/// Only a trailing CR or LF is trimmed. A trailing space is a legal, if
+/// hostile, filename, and trimming it would reintroduce the same class of
+/// defect from the other end.
+fn field_tail(line: &str, n: usize) -> Option<&str> {
+    let start = field_start(line, n)?;
+    Some(line[start..].trim_end_matches(['\r', '\n']))
+}
+
 pub(crate) fn parse_listing(line: &str, base_path: &str) -> Option<RemoteEntry> {
     // Dispatch on the shape of the first token, and try ONE parser.
     //
@@ -91,8 +125,9 @@ pub(crate) fn parse_unix_listing(line: &str, base_path: &str) -> Option<RemoteEn
     // Get size (might be in different position depending on format)
     let size: u64 = parts[4].parse().unwrap_or(0);
 
-    // Name is everything after the 8th part (to handle spaces in names)
-    let name = parts[8..].join(" ");
+    // Sliced from the original line rather than rejoined from tokens, so a
+    // name containing runs of spaces keeps them.
+    let name = field_tail(line, 8)?.to_string();
 
     // Handle symlinks (name -> target)
     let (actual_name, link_target) = if is_symlink && name.contains(" -> ") {
@@ -169,7 +204,7 @@ pub(crate) fn parse_dos_listing(line: &str, base_path: &str) -> Option<RemoteEnt
             Err(_) => return None,
         }
     };
-    let name = parts[3..].join(" ");
+    let name = field_tail(line, 3)?.to_string();
 
     // Skip . and .. entries
     if name == "." || name == ".." {
