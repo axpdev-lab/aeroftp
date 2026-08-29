@@ -1,0 +1,19 @@
+# MLSD/MLST fixture. See the Dockerfile for why this exists alongside the
+# vsftpd one.
+#
+#   cd src-tauri/tests/fixtures/ftp-mlsd
+#   docker compose up -d --build          # control on :2199, PASV 30100-30109
+#   cd ../../.. && cargo test --test integration_ftp_mlsd -- --ignored --nocapture
+#   cd tests/fixtures/ftp-mlsd && docker compose down -v
+#
+# Credentials are fixture-only and intentionally hardcoded, as in the vsftpd
+# fixture beside it.
+
+services:
+  ftp-mlsd:
+    build: .
+    container_name: aeroftp-ftp-mlsd-fixture
+    ports:
+      - "127.0.0.1:2199:21"
+      - "127.0.0.1:30100-30109:30100-30109"
+    restart: "on-failure"

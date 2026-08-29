@@ -390,6 +390,18 @@ impl FtpProvider {
             // MLST answers 550 for a missing path instantly (no data channel), so
             // we fail fast with a clear NotFound instead of hanging. Only probe an
             // explicit target; a current-directory listing is known to exist.
+            //
+            // That sentence describes what this was FOR, and until now the code
+            // did not do it: every 550 came back as `InvalidPath`, including
+            // the ones whose text said "No such file or directory". The comment
+            // was right and unimplemented, which is a shape worth naming: a
+            // stated intent is not a checked one.
+            //
+            // It survived because this branch cannot run without a server that
+            // advertises MLST, and until a pyftpdlib fixture existed there was
+            // none in the lab. The identical defect in `cwd_into` was found and
+            // fixed two branches ago, two hundred lines away, because THAT path
+            // runs against every server.
             if self.mlst_supported {
                 if let Some(ref target) = list_path {
                     let probe = {
@@ -401,7 +413,19 @@ impl FtpProvider {
                         Err(FtpError::UnexpectedResponse(response))
                             if response.status == Status::FileUnavailable =>
                         {
-                            return Err(ProviderError::InvalidPath(response.to_string()));
+                            // The same classifier a refused CWD goes through,
+                            // rather than a second copy of the same rule. FTP
+                            // spends 550 on both "it is not there" and "you may
+                            // not", the split is by text, and the text has to
+                            // be read with the path taken out of it: all of
+                            // that is already decided, already tested, and must
+                            // not be decided twice. Sharing it also puts this
+                            // arm inside the table that covers the other one.
+                            return Err(Self::classify_cwd_failure(
+                                "listing",
+                                target,
+                                &FtpError::UnexpectedResponse(response),
+                            ));
                         }
                         // MLST is only an anti-hang preflight. A transient failure
                         // (or a server that falsely advertises it) must not replace
