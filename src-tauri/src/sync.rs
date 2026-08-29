@@ -3240,7 +3240,17 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
         (SyncErrorKind::Timeout, true)
     } else if lower.contains("rate limit")
         || lower.contains("too many requests")
-        || lower.contains("429")
+        // A whole token, unlike the bare `contains` this used to be: every
+        // other status needle here carries a trailing space and this one did
+        // not, so it matched inside any longer number, `11429` and a timestamp
+        // included. It is the mildest of the family because rate limiting is
+        // retryable, so a false positive costs an extra attempt rather than
+        // removing one, and it is the only one that can be tightened without
+        // the measurement the others are waiting for: `429 Too Many Requests`
+        // has it as a token in every form anyone sends.
+        || lower
+            .split_whitespace()
+            .any(|token| token.trim_matches(|c: char| !c.is_ascii_alphanumeric()) == "429")
     {
         (SyncErrorKind::RateLimit, true)
     } else if lower.contains("quota")
@@ -3268,9 +3278,33 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
     } else if lower.contains("not found")
         || lower.contains("no such file")
         || lower.contains("404 ")
-        || lower.contains("550 ")
     {
-        // 550 can be either permission or not-found; prefer permission if already matched.
+        // The `550` that used to be listed here could never fire: the
+        // permission branch above holds the same needle and runs first, so no
+        // message reached this one. The comment beside it said "prefer
+        // permission if already matched", describing an intention the code had
+        // no way to express, and the dead alternative made the branch look like
+        // it had a second entrance. On FTP a missing path is therefore reached
+        // by TEXT and never by status code, which is worth knowing when reading
+        // `message_names_a_missing_path`: that vocabulary is the only door, not
+        // one of two.
+        //
+        // The remaining status needles here are bare `contains` and that is
+        // known rather than overlooked. `552`, `403`, `550`, `404`, `401` and
+        // `530` all match three digits anywhere in the message, so a byte count
+        // such as "wrote 550 of 1024 bytes" classifies as permission denied and
+        // permanent: six of them lead to non-retryable, which is the direction
+        // that loses work. It is the same shape as "553 bytes", which is why
+        // `mentions_ftp_status` exists.
+        //
+        // They are NOT anchored the way 553 is, and the reason is a missing
+        // measurement rather than a judgement. This function classifies for
+        // every provider, `mentions_ftp_status` anchors on our own
+        // `ProviderError` labels, and nobody has established which shape the
+        // error strings of the other providers actually arrive in. Anchoring
+        // without that would silently switch off classifications that work
+        // today, six times over, and the failure would look like a clean green.
+        // Collecting those shapes is the work this is waiting on.
         //
         // 553 is FTP's "requested action not taken, file name not allowed",
         // which servers return for a STOR into a directory that does not exist
@@ -5464,6 +5498,63 @@ mod tests {
     /// which text a given server sends is unverified; what is asserted is only
     /// that a reply carrying this status is permanent, which is true of 553
     /// under every reading.
+    /// `429` must be a code, not three digits inside a longer number.
+    ///
+    /// It was the only status needle in this function with no boundary at all,
+    /// while every sibling carries a trailing space, so it fired on `11429` and
+    /// on any timestamp that happened to contain those digits. It is also the
+    /// mildest of the family, because rate limiting is retryable: a false
+    /// positive here adds an attempt rather than removing one, which is why it
+    /// is the one that could be fixed without the survey the others need.
+    #[test]
+    fn a_rate_limit_code_is_a_code_and_not_a_substring_of_a_number() {
+        for message in [
+            "Transfer failed: wrote 11429 bytes before the connection reset",
+            "Transfer failed: at 1764429000 the connection reset",
+        ] {
+            let got = classify_sync_error(message, None);
+            assert_ne!(
+                format!("{:?}", got.kind),
+                "RateLimit",
+                "{message:?} was read as rate limiting because of digits inside a number"
+            );
+        }
+        for message in ["429 Too Many Requests", "HTTP 429", "rejected (429)"] {
+            let got = classify_sync_error(message, None);
+            assert_eq!(
+                format!("{:?}", got.kind),
+                "RateLimit",
+                "{message:?} stopped being recognised: the tightening went too far"
+            );
+        }
+    }
+
+    /// On FTP a missing path is reached by TEXT, never by the status code.
+    ///
+    /// The not-found branch used to list `550` as an alternative and it could
+    /// never fire, because the permission branch above holds the same needle
+    /// and runs first. Removing it changed no behaviour, and this records the
+    /// fact it was hiding: every `550` is permission denied here, whatever the
+    /// reply says, so `message_names_a_missing_path` is the ONLY door to a
+    /// missing path on this protocol rather than one of two. That is worth
+    /// pinning, because it is what makes over-tightening that vocabulary
+    /// expensive.
+    #[test]
+    fn a_550_is_always_permission_denied_here_whatever_the_text_says() {
+        for message in [
+            "Server error: 550 Failed to change directory.",
+            "Server error: 550 No such file or directory",
+            "Path not found: 550 /nope: No such file or directory",
+        ] {
+            let got = classify_sync_error(message, None);
+            assert_eq!(
+                format!("{:?}", got.kind),
+                "PermissionDenied",
+                "{message:?}: the not-found branch is not reachable by status on FTP"
+            );
+        }
+    }
+
     /// Every `ProviderError` label that can precede a reply is one the status
     /// reader knows.
     ///
