@@ -3197,7 +3197,29 @@ fn looks_like_a_path(token: &str) -> bool {
 /// is the authority on what it was operating on.
 fn classification_text(raw: &str, file_path: Option<&str>) -> String {
     let named = file_path.unwrap_or_default().to_lowercase();
-    raw.to_lowercase()
+    // The caller's path is removed as a SUBSTRING, before anything is split on
+    // whitespace, because a path may contain spaces and most of them do. Token
+    // by token, `/srv/My Quota/x.csv` arrives as `/srv/my` and `quota/x.csv)`:
+    // the first is dropped for its leading slash and the second is not, since
+    // it neither starts like a path nor equals the whole path. `quota` survived
+    // and the third branch matched it, so the defect this function exists to
+    // remove came straight back on any path with a space in it.
+    //
+    // What this does NOT cover is stated rather than papered over. The path in
+    // the message is not always the one the caller named: the upload executor
+    // passes `entry.local_path` while the message may carry the remote one, and
+    // a spaced path matching no `file_path` has no shape to recognise. Widening
+    // the shape rule to catch those would delete reasons along with paths, and
+    // `i/o error` is the standing proof that such a rule can look right and be
+    // silently wrong. Classifying on typed data instead of on rendered text is
+    // the real fix and is tracked separately.
+    let lowered = raw.to_lowercase();
+    let stripped = if named.is_empty() {
+        lowered
+    } else {
+        lowered.replace(&named, " ")
+    };
+    stripped
         .split_whitespace()
         .filter(|token| {
             // Trailing punctuation is the sentence's, not the path's, and
@@ -5442,6 +5464,105 @@ mod tests {
     /// which text a given server sends is unverified; what is asserted is only
     /// that a reply carrying this status is permanent, which is true of 553
     /// under every reading.
+    /// Every `ProviderError` label that can precede a reply is one the status
+    /// reader knows.
+    ///
+    /// `mentions_ftp_status` decides that a bare "553" is a status code and not
+    /// a byte count by requiring one of our own Display labels in front of it,
+    /// and it holds that list by hand. A hand-copied mirror of an enum is true
+    /// on the day it is written and nothing keeps it true: add a variant with a
+    /// `": {0}"` label tomorrow and a 553 behind it stops being recognised. No
+    /// test goes red, because the function fails closed and closed means the
+    /// old behaviour, so the loss is a fix that quietly stops applying.
+    ///
+    /// The guard is the `match` below and not the assertions. It has no
+    /// wildcard arm, so adding a variant to `ProviderError` fails the build
+    /// here and whoever adds it has to say which kind it is. The assertions
+    /// then check that the answer agrees with the list.
+    ///
+    /// The five that carry no reply are not an oversight: `NotConnected`,
+    /// `Cancelled` and `Timeout` take no payload at all, and `RestrictedChar`
+    /// spells its own sentence with no label to anchor to. `Other` renders its
+    /// payload bare, which the leading-status check catches instead.
+    #[test]
+    fn every_provider_error_that_can_carry_a_reply_is_known_to_the_status_reader() {
+        use crate::providers::types::ProviderError as PE;
+
+        /// Exhaustive on purpose: no `_` arm, so a new variant breaks the build.
+        fn carries_a_reply_behind_a_label(e: &PE) -> bool {
+            match e {
+                PE::ConnectionFailed(_)
+                | PE::AuthenticationFailed(_)
+                | PE::NotFound(_)
+                | PE::PermissionDenied(_)
+                | PE::FileTooLarge(_)
+                | PE::AlreadyExists(_)
+                | PE::DirectoryNotEmpty(_)
+                | PE::InvalidPath(_)
+                | PE::InvalidConfig(_)
+                | PE::NotSupported(_)
+                | PE::TransferFailed(_)
+                | PE::NetworkError(_)
+                | PE::ParseError(_)
+                | PE::ServerError(_)
+                | PE::IoError(_)
+                | PE::ConnectionLost(_)
+                | PE::ReadOnly(_)
+                | PE::Unknown(_) => true,
+                // Renders the payload with no label; the leading-status check
+                // in `mentions_ftp_status` is what recognises this one.
+                PE::Other(_) => true,
+                PE::NotConnected | PE::Cancelled | PE::Timeout => false,
+                PE::RestrictedChar { .. } => false,
+            }
+        }
+
+        let reply = "553 Could not create file".to_string();
+        let every_variant = vec![
+            PE::NotConnected,
+            PE::ConnectionFailed(reply.clone()),
+            PE::AuthenticationFailed(reply.clone()),
+            PE::NotFound(reply.clone()),
+            PE::PermissionDenied(reply.clone()),
+            PE::FileTooLarge(reply.clone()),
+            PE::AlreadyExists(reply.clone()),
+            PE::DirectoryNotEmpty(reply.clone()),
+            PE::InvalidPath(reply.clone()),
+            PE::InvalidConfig(reply.clone()),
+            PE::NotSupported(reply.clone()),
+            PE::Cancelled,
+            PE::TransferFailed(reply.clone()),
+            PE::Timeout,
+            PE::NetworkError(reply.clone()),
+            PE::ParseError(reply.clone()),
+            PE::ServerError(reply.clone()),
+            PE::IoError(std::io::Error::other(reply.clone())),
+            PE::ConnectionLost(reply.clone()),
+            PE::RestrictedChar {
+                ch_display: "?".to_string(),
+                provider: "test".to_string(),
+            },
+            PE::ReadOnly(reply.clone()),
+            PE::Unknown(reply.clone()),
+            PE::Other(reply.clone()),
+        ];
+        assert_eq!(
+            every_variant.len(),
+            23,
+            "the list stopped covering every variant; the match above is what fails the build, this only says how many were meant"
+        );
+
+        for error in &every_variant {
+            let rendered = error.to_string().to_lowercase();
+            let found = mentions_ftp_status(&rendered, "553 ");
+            assert_eq!(
+                found,
+                carries_a_reply_behind_a_label(error),
+                "{rendered:?}: the status reader and the variant disagree, so OUR_LABELS has drifted from the enum"
+            );
+        }
+    }
+
     /// A folder name must not decide whether a failed file is retried.
     ///
     /// `classify_sync_error` reads words out of the whole message, and since
@@ -5488,6 +5609,15 @@ mod tests {
                 "Transfer failed: broken pipe (while uploading /var/locked/f.txt)",
                 "Transfer failed: broken pipe",
                 Some("/var/locked/f.txt"),
+            ),
+            // A path with a SPACE in it, which is the common case and the one
+            // that survived the first version of the stripping: split on
+            // whitespace it arrives as `/srv/my` and `quota/x.csv)`, and only
+            // the first half looks like a path.
+            (
+                "Transfer failed: connection reset (while uploading /srv/My Quota/x.csv)",
+                "Transfer failed: connection reset",
+                Some("/srv/My Quota/x.csv"),
             ),
             // The path is not always at the end: only FTP composes with
             // `doing()`, and other providers put it wherever their sentence
