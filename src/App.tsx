@@ -746,6 +746,10 @@ const App: React.FC = () => {
   });
   const [showMigrationWizard, setShowMigrationWizard] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
+  // Sub-tab for the Appearance pane. The Settings panel stays mounted, so its
+  // sub-tab remembers the last visit: the status bar language chip has to name
+  // the pane it means, or it lands wherever the user was last.
+  const [settingsInitialAppearanceSubTab, setSettingsInitialAppearanceSubTab] = useState<'interface' | 'theme' | 'icons' | 'backgrounds' | undefined>(undefined);
   // Path of a .aeroftp-keystore opened via OS file association: routes the
   // Settings panel to the Backup tab with the file preloaded (issue #214 pt.4a).
   const [settingsInitialKeystorePath, setSettingsInitialKeystorePath] = useState<string | undefined>(undefined);
@@ -16300,10 +16304,11 @@ const App: React.FC = () => {
         <ShortcutsDialog isOpen={showShortcutsDialog} onClose={() => setShowShortcutsDialog(false)} />
         <SettingsPanel
           isOpen={showSettingsPanel}
-          onClose={() => { setShowSettingsPanel(false); setSettingsInitialTab(undefined); setSettingsInitialKeystorePath(undefined); }}
+          onClose={() => { setShowSettingsPanel(false); setSettingsInitialTab(undefined); setSettingsInitialAppearanceSubTab(undefined); setSettingsInitialKeystorePath(undefined); }}
           onOpenCloudPanel={() => setShowCloudPanel(true)}
           onActivityLog={{ logRaw: humanLog.logRaw }}
           initialTab={settingsInitialTab}
+          initialAppearanceSubTab={settingsInitialAppearanceSubTab}
           initialKeystoreImportPath={settingsInitialKeystorePath}
           onServersChanged={() => setServersRefreshKey(k => k + 1)}
           theme={theme}
@@ -18913,6 +18918,11 @@ const App: React.FC = () => {
 
         {showStatusBar && (
           <StatusBar
+            onOpenLanguageSettings={() => {
+              setSettingsInitialTab('ui');
+              setSettingsInitialAppearanceSubTab('interface');
+              setShowSettingsPanel(true);
+            }}
             isConnected={isConnected}
             gitHubStatus={isConnected && (getActiveProviderProtocol() === 'github' || getActiveProviderProtocol() === 'gitlab') && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' ? (
               <GitHubWriteModeIndicator
