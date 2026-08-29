@@ -25,7 +25,7 @@ const RCLONE_CRYPT_KEY: [u8; 32] = [
 
 /// Reveal an rclone-obscured password.
 /// Format: base64url(IV_16bytes || AES-256-CTR(plaintext))
-fn reveal_obscured(obscured: &str) -> Result<String, String> {
+pub(crate) fn reveal_obscured(obscured: &str) -> Result<String, String> {
     use aes::cipher::{KeyIvInit, StreamCipher};
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
@@ -56,7 +56,7 @@ fn reveal_obscured(obscured: &str) -> Result<String, String> {
 
 /// Obscure a plaintext password using rclone's AES-256-CTR scheme.
 /// Output: base64url(random_IV_16 || AES-256-CTR(plaintext))
-fn obscure_password(plaintext: &str) -> Result<String, String> {
+pub(crate) fn obscure_password(plaintext: &str) -> Result<String, String> {
     use aes::cipher::{KeyIvInit, StreamCipher};
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;

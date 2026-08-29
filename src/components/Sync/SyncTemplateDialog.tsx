@@ -25,11 +25,16 @@ import {
 import { useTranslation } from '../../i18n';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import {
+    overlayLivePlanOnTemplate,
     settingsFromAerosyncScript,
     settingsFromLegacyScript,
     settingsFromTemplate,
     type ImportedSyncSettings,
+    type LivePlanExport,
 } from '../../utils/syncTemplateApply';
+import { TabStateStoreContext } from '../AeroSync/tabStateStore';
+import type { AeroSyncCanarySelection, AeroSyncVerifyPolicy } from '../AeroSync/types';
+import type { CompressionMode } from '../../types';
 
 interface SyncTemplateDialogProps {
     isOpen: boolean;
@@ -69,6 +74,23 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
+    const tabState = React.useContext(TabStateStoreContext);
+
+    const livePlanFromStore = (): LivePlanExport => {
+        const canaryOn = tabState?.get('plan.canaryMode', false) === true;
+        const verify = tabState?.get<AeroSyncVerifyPolicy | undefined>('plan.verifyPolicy', undefined);
+        const compression = tabState?.get<CompressionMode | undefined>('plan.compressionMode', undefined);
+        return {
+            compressionMode: compression,
+            verifyPolicy: verify,
+            canary: canaryOn
+                ? {
+                    percent: tabState?.get('plan.canaryPercent', 10) ?? 10,
+                    selection: tabState?.get<AeroSyncCanarySelection>('plan.canarySelection', 'random') ?? 'random',
+                }
+                : null,
+        };
+    };
     const [mode, setMode] = useState<'export' | 'import'>('export');
     const [exporting, setExporting] = useState(false);
     const [importing, setImporting] = useState(false);
@@ -151,7 +173,14 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
             // exported a Mirror script with no excludes at all.
             excludePatterns: excludePatterns.length > 0 ? excludePatterns : null,
         });
-        await writeTextFile(filePath, jsonContent);
+        // The command serialises the named preset. Stamp the live Plan-tab
+        // knobs (compression, verify, canary) so they survive import (#514).
+        let toWrite = jsonContent;
+        try {
+            const parsed = JSON.parse(jsonContent) as SyncTemplate;
+            toWrite = `${JSON.stringify(overlayLivePlanOnTemplate(parsed, livePlanFromStore()), null, 2)}\n`;
+        } catch { /* keep the backend document if it is not JSON */ }
+        await writeTextFile(filePath, toWrite);
         setResult({ success: true, message: t('syncPanel.templateExported') });
         return true;
     };
@@ -331,6 +360,17 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                 const template = await invoke<SyncTemplate>('import_sync_template_cmd', {
                     jsonContent: content,
                 });
+                // Rust serde drops unknown fields. Re-apply verify_policy /
+                // canary / compression from the file so a 4.1.9 export
+                // round-trips through an older deserializer (#514).
+                try {
+                    const raw = JSON.parse(content) as SyncTemplate;
+                    if (raw.profile) {
+                        if (raw.profile.verify_policy) template.profile.verify_policy = raw.profile.verify_policy;
+                        if (raw.profile.canary) template.profile.canary = raw.profile.canary;
+                        if (raw.profile.compression_mode) template.profile.compression_mode = raw.profile.compression_mode;
+                    }
+                } catch { /* keep the backend parse */ }
                 setImportPreview(template);
                 setImportedScript(null);
                 setImportedAerosyncScript(null);

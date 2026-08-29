@@ -95,7 +95,10 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
   { name: 'pCloud Drive', logoId: 'pcloud',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
+    // trash omitted: pCloud refuses trash endpoints to OAuth tokens
+    // (result 1000 "Log in required."), so the GUI no longer offers View Trash
+    // (#397 / #642). Help must match that, not advertise a button the app hides.
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
     advanced: ['checksum'] },
   { name: 'MEGA (API)', logoId: 'mega',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],

@@ -3433,7 +3433,7 @@
             "showHashes": "显示哈希",
             "fuzzyCutoff": "模糊阈值",
             "fuzzyCutoffHint": "留空 = 按类型的默认值（图片 10，文本 3，其他 100）",
-            "title": "查找重复文件",
+            "title": "重复文件查找器",
             "scanning": "正在扫描重复文件...",
             "summary": "{groups} 组，{files} 个重复文件，{size} 浪费空间",
             "noDuplicates": "未找到重复文件",

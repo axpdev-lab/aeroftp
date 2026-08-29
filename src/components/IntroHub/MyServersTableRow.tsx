@@ -242,13 +242,17 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         };
     })();
     const filesSuffix = q?.fileCount != null ? ` · ${q.fileCount} ${t('browser.files')}` : '';
+    const versioningBytes = q?.versioningBytes && q.versioningBytes > 0 ? q.versioningBytes : 0;
+    const versioningTitle = versioningBytes > 0
+        ? `\n${t('introHub.storageVersioning', { size: formatBytes(versioningBytes) })}`
+        : '';
     const quotaTitle = quotaSupported && usedKnown && eff.total > 0
         ? `${t('introHub.storageUsedOf', {
             used: formatBytes(eff.used),
             total: formatBytes(eff.total),
-        })}${filesSuffix}`
+        })}${filesSuffix}${versioningTitle}`
         : quotaSupported && usedKnown
-            ? `${formatBytes(eff.used)} ${t('statusBar.usedNoCap')}${filesSuffix}`
+            ? `${formatBytes(eff.used)} ${t('statusBar.usedNoCap')}${filesSuffix}${versioningTitle}`
             : t('introHub.storageQuotaUnavailable');
     const cellClass = `px-3 ${rowPadY} align-middle border-b border-gray-100 dark:border-gray-700/50`;
 
@@ -292,6 +296,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 draggable: true,
                 onDragStart: handleRowDragStart,
                 onDragEnd,
+                'data-server-id': server.id,
             }
             : { className };
 
@@ -316,6 +321,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                         // elsewhere (#453, "some rows won't drag anymore").
                         className={`${cellClass} select-none text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-500 ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         title={dragDisabledTitle || (isDraggable ? t('introHub.table.dragToReorder') : undefined)}
+                        data-server-id={server.id}
                     >
                         <div className="flex items-center justify-end gap-1.5">
                             {isSelected && (
@@ -328,9 +334,9 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                                 </span>
                             )}
                             {isDraggable ? (
-                                <GripVertical size={isCompact ? 12 : 14} className="text-gray-400 opacity-0 group-hover:opacity-70" />
+                                <GripVertical size={isCompact ? 14 : 16} className="text-gray-400" />
                             ) : dragDisabledTitle ? (
-                                <GripVertical size={isCompact ? 12 : 14} className="text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-0 group-hover:opacity-70" />
+                                <GripVertical size={isCompact ? 14 : 16} className="text-gray-300 dark:text-gray-600 cursor-not-allowed" />
                             ) : null}
                             <span>{index + 1}</span>
                         </div>

@@ -3433,7 +3433,7 @@
             "showHashes": "Dangos yr hashiau",
             "fuzzyCutoff": "Trothwy niwlog",
             "fuzzyCutoffHint": "gwag = rhagosodiadau fesul math (delweddau 10, testun 3, eraill 100)",
-            "title": "Dod o Hyd i Ddyblygu",
+            "title": "Chwiliwr dyblygiadau",
             "scanning": "Yn sganio am ddyblygu...",
             "summary": "{groups} grŵp, {files} ffeil ddyblyg, {size} yn cael ei wastraffu",
             "noDuplicates": "Dim dyblygu wedi'u canfod",

@@ -3433,7 +3433,7 @@
             "showHashes": "Hashes tonen",
             "fuzzyCutoff": "Fuzzy-drempel",
             "fuzzyCutoffHint": "leeg = standaardwaarden per type (afbeeldingen 10, tekst 3, overig 100)",
-            "title": "Duplicaten zoeken",
+            "title": "Duplicatenzoeker",
             "scanning": "Zoeken naar duplicaten...",
             "summary": "{groups} groepen, {files} dubbele bestanden, {size} verspild",
             "noDuplicates": "Geen duplicaten gevonden",

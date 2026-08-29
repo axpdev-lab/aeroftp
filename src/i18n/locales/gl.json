@@ -3433,7 +3433,7 @@
             "showHashes": "Amosar os hash",
             "fuzzyCutoff": "Limiar difuso",
             "fuzzyCutoffHint": "baleiro = valores predeterminados por tipo (imaxes 10, texto 3, outros 100)",
-            "title": "Atopar duplicados",
+            "title": "Buscador de duplicados",
             "scanning": "Escaneando duplicados...",
             "summary": "{groups} grupos, {files} ficheiros duplicados, {size} desperdiciado",
             "noDuplicates": "Non se atoparon duplicados",

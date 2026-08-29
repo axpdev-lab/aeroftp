@@ -297,10 +297,11 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             </div>
 
             {/* Re-mounted Sync/* dialogs, surfaced from the AeroSync
-                header. They share the same path context and stay
-                self-contained: state lives inside each dialog. */}
+                header. Templates read the same tab store so export keeps
+                the live Plan knobs (#514). */}
             {isConnectedRemote && (
                 <>
+                    <TabStateStoreContext.Provider value={tabState}>
                     <SyncTemplateDialog
                         isOpen={showTemplates}
                         onClose={() => setShowTemplates(false)}
@@ -310,6 +311,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         excludePatterns={excludePatterns}
                         onApplyImport={applyImportedSettings}
                     />
+                    </TabStateStoreContext.Provider>
                     <MultiPathEditor
                         isOpen={showMultiPath}
                         onClose={() => setShowMultiPath(false)}

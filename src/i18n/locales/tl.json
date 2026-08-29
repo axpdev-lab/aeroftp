@@ -3433,7 +3433,7 @@
             "showHashes": "Ipakita ang mga hash",
             "fuzzyCutoff": "Fuzzy na threshold",
             "fuzzyCutoffHint": "walang laman = mga default kada uri (mga larawan 10, teksto 3, iba pa 100)",
-            "title": "Hanapin ang mga Duplikado",
+            "title": "Tagahanap ng mga Duplikado",
             "scanning": "Naghahanap ng mga duplikado...",
             "summary": "{groups} grupo, {files} duplikadong file, {size} nasayang",
             "noDuplicates": "Walang nahanap na duplikado",

@@ -563,15 +563,32 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     // (permissions), so the shape that breaks this is one refactor away and the
     // failure is silent: the header would name the new file while the toggles
     // still showed, and wrote, the old one's attributes.
-    //
-    // Keyed on identity alone, deliberately. `attrs` is also written by a
-    // successful toggle with what the backend re-read from disk, and rerunning
-    // this on any prop change would overwrite that with the stale prop value.
     useEffect(() => {
         setAttrs({ isReadonly: file.is_readonly, isHidden: file.is_hidden });
         setAttrError(null);
         setPendingAttr(null);
     }, [file.path]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Hydrate attrs when get_file_properties fills is_readonly/is_hidden on the
+    // SAME file. The first paint of a local Properties dialog has neither flag
+    // (App.tsx opens with name/path/size only, then merges the detail). The
+    // path-keyed effect above therefore seeds `undefined`, and the toggles
+    // (`attrs.isReadonly != null`) never appear. On Windows there are also no
+    // unix mode rows, so the Permissions tab of a local folder is empty
+    // (#347, Ehud 2026-08-29). Do not overwrite a value a toggle already
+    // confirmed from disk.
+    useEffect(() => {
+        setAttrs((prev) => {
+            const nextReadonly = prev.isReadonly == null && file.is_readonly != null
+                ? file.is_readonly
+                : prev.isReadonly;
+            const nextHidden = prev.isHidden == null && file.is_hidden != null
+                ? file.is_hidden
+                : prev.isHidden;
+            if (nextReadonly === prev.isReadonly && nextHidden === prev.isHidden) return prev;
+            return { isReadonly: nextReadonly, isHidden: nextHidden };
+        });
+    }, [file.is_readonly, file.is_hidden]);
 
     const toggleAttribute = async (which: 'readOnly' | 'hidden', next: boolean) => {
         if (!onAttributeChange || pendingAttr) return;

@@ -1552,9 +1552,17 @@ impl StorageProvider for JottacloudProvider {
             "/{}/{}/{}/{}",
             self.username, self.config.device, self.config.mountpoint, encoded_to_path
         );
+        // JFS: files take `mv`, directories take `mvDir` (and a trailing slash
+        // on the source). `?mv=` on a folder 404s (#397).
+        let is_dir = self.stat(&resolved_from).await.map(|e| e.is_dir).unwrap_or(false);
+        let mut from_url = self.jfs_url(&resolved_from);
+        if is_dir && !from_url.ends_with('/') {
+            from_url.push('/');
+        }
         let url = format!(
-            "{}?mv={}",
-            self.jfs_url(&resolved_from),
+            "{}?{}={}",
+            from_url,
+            if is_dir { "mvDir" } else { "mv" },
             urlencoding::encode(&to_jfs)
         );
 
@@ -1562,6 +1570,12 @@ impl StorageProvider for JottacloudProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
+            // A name that only exists in Trash 404s on the live mountpoint.
+            // Retry as a Trash-to-Trash move rather than telling the user the
+            // folder is gone (#397).
+            if status.as_u16() == 404 {
+                return self.rename_in_trash(&resolved_from, &resolved_to).await;
+            }
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
                 "Rename {} → {} failed ({}): {}",
@@ -1882,13 +1896,34 @@ impl JottacloudProvider {
     }
 
     /// Restore an item from trash to its original location.
-    /// POST /jfs/{username}/{device}/Trash/{path}?restore=true
+    ///
+    /// JFS `?restore=true` on a Trash URL is the documented form and is
+    /// what we used to send. Live accounts (Ehud, #397, v4.1.7 and v4.1.8)
+    /// answer that with HTTP 500. JaFS never found a working restore query
+    /// either. What does work is a server-side move out of the Trash
+    /// mountpoint back onto the profile's live mountpoint (`?mv=` file,
+    /// `?mvDir=` folder), which is the same shape as `rename`.
     pub async fn restore_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let clean = path.trim_start_matches('/');
-        let url = format!("{}?restore=true", self.trash_url(clean));
-        jotta_log(&format!("Restoring from trash: {}", url));
+        let encoded_to: String = clean
+            .split('/')
+            .map(|s| crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s))
+            .collect::<Vec<_>>()
+            .join("/");
+        let dest = format!(
+            "/{}/{}/{}/{}",
+            self.username, self.config.device, self.config.mountpoint, encoded_to
+        );
+        let dest_q = urlencoding::encode(&dest);
+        let file_url = format!("{}?mv={}", self.trash_url(clean), dest_q);
+        jotta_log(&format!("Restoring from trash via move: {}", file_url));
 
-        let resp = self.post_command_with_retry(&url).await?;
+        let mut resp = self.post_command_with_retry(&file_url).await?;
+        if !resp.status().is_success() {
+            let dir_url = format!("{}?mvDir={}", self.trash_url(clean), dest_q);
+            jotta_log(&format!("Restore file-move failed, retrying as dir: {}", dir_url));
+            resp = self.post_command_with_retry(&dir_url).await?;
+        }
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1901,6 +1936,47 @@ impl JottacloudProvider {
         }
 
         jotta_log(&format!("Restored from trash: {}", clean));
+        Ok(())
+    }
+
+    /// Rename an item that already lives in Trash.
+    ///
+    /// Regular `rename` posts `?mv=` against the live mountpoint URL, so a
+    /// folder that only exists in Trash 404s (#397). Keep the destination
+    /// inside the Trash mountpoint.
+    pub async fn rename_in_trash(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_clean = from.trim_start_matches('/');
+        let to_clean = to.trim_start_matches('/');
+        let encoded_to: String = to_clean
+            .split('/')
+            .map(|s| crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s))
+            .collect::<Vec<_>>()
+            .join("/");
+        let dest = format!(
+            "/{}/{}/{}/{}",
+            self.username, self.config.device, TRASH_MOUNTPOINT, encoded_to
+        );
+        let dest_q = urlencoding::encode(&dest);
+        let file_url = format!("{}?mv={}", self.trash_url(from_clean), dest_q);
+        jotta_log(&format!("Rename in trash: {}", file_url));
+
+        let mut resp = self.post_command_with_retry(&file_url).await?;
+        if !resp.status().is_success() {
+            let dir_url = format!("{}?mvDir={}", self.trash_url(from_clean), dest_q);
+            resp = self.post_command_with_retry(&dir_url).await?;
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Rename in trash {} → {} failed ({}): {}",
+                from_clean,
+                to_clean,
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
         Ok(())
     }
 
@@ -2232,6 +2308,31 @@ mod tests {
         );
         // The mountpoint the profile browses never appears in a trash URL.
         assert!(!p.trash_url("/photo.jpg").contains("Archive"));
+    }
+
+    #[test]
+    fn restore_move_target_is_the_live_mountpoint() {
+        // Restore is a move out of Trash onto Archive, not ?restore=true.
+        let p = test_provider();
+        let dest = format!(
+            "/{}/{}/{}/{}",
+            p.username, p.config.device, p.config.mountpoint, "photo.jpg"
+        );
+        assert_eq!(dest, "/user123/Jotta/Archive/photo.jpg");
+        assert!(
+            !p.trash_url("/photo.jpg").contains("Archive"),
+            "source stays on Trash"
+        );
+    }
+
+    #[test]
+    fn rename_in_trash_keeps_the_trash_mountpoint() {
+        let p = test_provider();
+        let dest = format!(
+            "/{}/{}/{}/{}",
+            p.username, p.config.device, TRASH_MOUNTPOINT, "renamed"
+        );
+        assert_eq!(dest, "/user123/Jotta/Trash/renamed");
     }
 
     #[test]

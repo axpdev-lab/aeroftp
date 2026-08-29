@@ -3433,7 +3433,7 @@
             "showHashes": "Mostrar los hash",
             "fuzzyCutoff": "Umbral difuso",
             "fuzzyCutoffHint": "vacío = valores por defecto según el tipo (imágenes 10, texto 3, otros 100)",
-            "title": "Buscar duplicados",
+            "title": "Buscador de duplicados",
             "scanning": "Buscando duplicados...",
             "summary": "{groups} grupos, {files} archivos duplicados, {size} desperdiciados",
             "noDuplicates": "No se encontraron duplicados",

@@ -3433,7 +3433,7 @@
             "showHashes": "Mostra els hash",
             "fuzzyCutoff": "Llindar difús",
             "fuzzyCutoffHint": "buit = valors per defecte segons el tipus (imatges 10, text 3, altres 100)",
-            "title": "Trobar duplicats",
+            "title": "Cercador de duplicats",
             "scanning": "Cercant duplicats...",
             "summary": "{groups} grups, {files} fitxers duplicats, {size} desaprofitat",
             "noDuplicates": "No s'han trobat duplicats",

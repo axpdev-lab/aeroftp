@@ -3398,7 +3398,7 @@
             "showHashes": "ハッシュを表示",
             "fuzzyCutoff": "あいまい一致のしきい値",
             "fuzzyCutoffHint": "空欄 = 種類ごとの既定値（画像 10、テキスト 3、その他 100）",
-            "title": "重複を検索",
+            "title": "重複ファインダー",
             "scanning": "重複をスキャン中...",
             "summary": "{groups} グループ、{files} 件の重複ファイル、{size} の無駄",
             "noDuplicates": "重複は見つかりませんでした",

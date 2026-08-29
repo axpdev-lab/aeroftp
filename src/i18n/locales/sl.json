@@ -3433,7 +3433,7 @@
             "showHashes": "Pokaži zgoščene vrednosti",
             "fuzzyCutoff": "Mehki prag",
             "fuzzyCutoffHint": "prazno = privzete vrednosti po vrsti (slike 10, besedilo 3, drugo 100)",
-            "title": "Poišči podvojene",
+            "title": "Iskalnik podvojenih",
             "scanning": "Iskanje podvojenih...",
             "summary": "{groups} skupin, {files} podvojenih datotek, {size} zapravljen",
             "noDuplicates": "Ni najdenih podvojenih",

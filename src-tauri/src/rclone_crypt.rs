@@ -175,6 +175,22 @@ pub fn derive_keys(password: &str, salt: &str) -> Result<([u8; 32], [u8; 32]), S
     Ok((name_key, data_key))
 }
 
+/// If `value` is an rclone-obscured secret (`rclone obscure` / `rclone.conf`
+/// password / password2), return the revealed plaintext. Otherwise return
+/// `value` unchanged. Closed: a string that is not valid rclone-obscure is
+/// never modified (#600: Ehud pasted rclone.conf password1/password2).
+fn maybe_rclone_reveal(value: &str) -> String {
+    if value.is_empty() {
+        return String::new();
+    }
+    match crate::rclone_import::reveal_obscured(value) {
+        // Empty reveal is rclone `password2 = obscure("")`: omitted salt,
+        // which must collapse to the default salt — not stay as the blob.
+        Ok(plain) if plain != value && plain.chars().all(|c| !c.is_control()) => plain,
+        _ => value.to_string(),
+    }
+}
+
 /// Derive data_key (32 bytes), name_key (32 bytes), and name_tweak (16 bytes).
 ///
 /// Rclone derives 80 bytes in this order: data key, name key, then EME tweak.
@@ -182,6 +198,8 @@ pub fn derive_keys_with_tweak(
     password: &str,
     salt: &str,
 ) -> Result<RcloneCryptKeyMaterial, String> {
+    let password = maybe_rclone_reveal(password);
+    let salt = maybe_rclone_reveal(salt);
     // scrypt 0.11 limits Params::len to <=64 for password-hash metadata, but
     // the raw scrypt() function accepts rclone's 80-byte output buffer.
     let params = ScryptParams::new(SCRYPT_LOG_N, SCRYPT_R, SCRYPT_P, SCRYPT_PARAMS_LEN)
@@ -1496,6 +1514,32 @@ mod tests {
         assert_eq!(
             encrypt_name(&name_key, &name_tweak, "file.txt").unwrap(),
             "h5p2oibs3erqnaspobsargglqs"
+        );
+    }
+
+    #[test]
+    fn derive_keys_accepts_rclone_obscured_password_and_salt() {
+        // rclone.conf stores password / password2 already obscured. Pasting
+        // those into AeroFTP used to scrypt the ciphertext (#600).
+        let obscured_pw = "LZ9RxVK9L7SryViTF1LcFaIhT4Pe_wQkOD3Gud9FnQ";
+        let from_obscured = derive_keys_with_tweak(obscured_pw, "").unwrap();
+        let from_plain = derive_keys_with_tweak("testpassword123", "").unwrap();
+        assert_eq!(from_obscured.0, from_plain.0);
+        assert_eq!(from_obscured.1, from_plain.1);
+        assert_eq!(from_obscured.2, from_plain.2);
+    }
+
+    #[test]
+    fn obscured_empty_password2_is_the_default_salt() {
+        // rclone.conf often still writes `password2 = obscure("")` when the
+        // user left salt blank. That must not become a 22-char fake salt.
+        let obscured_empty = crate::rclone_import::obscure_password("").unwrap();
+        let with_blob = derive_keys_with_tweak("triage-password-600", &obscured_empty).unwrap();
+        let omitted = derive_keys_with_tweak("triage-password-600", "").unwrap();
+        assert_eq!(with_blob.0, omitted.0);
+        assert_eq!(
+            encrypt_name(&with_blob.0, &with_blob.2, "folder").unwrap(),
+            "785v69hnpanb9p84bhrlki9lp0"
         );
     }
 

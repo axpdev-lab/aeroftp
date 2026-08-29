@@ -3433,7 +3433,7 @@
             "showHashes": "Sýna tætigildi",
             "fuzzyCutoff": "Óskýr þröskuldur",
             "fuzzyCutoffHint": "autt = sjálfgefin gildi eftir gerð (myndir 10, texti 3, annað 100)",
-            "title": "Finna Tvírit",
+            "title": "Tvíritaleitari",
             "scanning": "Skanna eftir tvíritum...",
             "summary": "{groups} hópar, {files} tvíritaskrár, {size} sóað",
             "noDuplicates": "Engin tvírit fundust",
