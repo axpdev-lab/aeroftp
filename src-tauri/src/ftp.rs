@@ -42,6 +42,11 @@ pub struct RemoteFile {
     pub is_dir: bool,
     pub modified: Option<String>,
     pub permissions: Option<String>,
+    /// Where a symlink points. This side used to discard it and leave the
+    /// `name -> target` arrow inside `path`; PR-D needs it to align the
+    /// symlink contract across surfaces, and a surface with no data cannot
+    /// honour a contract.
+    pub link_target: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -827,129 +832,41 @@ impl FtpManager {
     }
 
     /// Parse FTP listing string into RemoteFile
+    /// Parse one listing row, through the shared parser in
+    /// `crate::providers::ftp_listing`.
+    ///
+    /// This used to be a second, drifted copy of that parser. The copies had
+    /// grown ten differences, and this side was the worse of the two: its DOS
+    /// dialect had no date guard, it matched `<DIR>` anywhere in the row, it
+    /// dropped symlink targets while leaving the arrow in the path, it kept
+    /// the `.` and `..` rows, and above all it had no way to FAIL. Any row it
+    /// did not understand became an entry anyway, with `is_dir` guessed from
+    /// whether the name contained a dot, so `total 12` at the head of an `ls`
+    /// listing arrived as a directory. An entry that is missing makes an
+    /// operation do nothing; an invented directory makes it do something.
+    ///
+    /// A row that is not a listing row is now an error, which the caller
+    /// already skips, instead of an invention.
     fn parse_ftp_listing(&self, listing: &str) -> Result<RemoteFile> {
         if listing.trim().is_empty() {
             return Err(FtpManagerError::InvalidPath("Empty listing".to_string()).into());
         }
-
-        debug!("Parsing FTP listing: {}", listing);
-
-        // Try to parse Unix-style listing first
-        if let Some(file) = self.parse_unix_listing(listing) {
-            debug!("Parsed as Unix: {} (is_dir: {})", file.name, file.is_dir);
-            return Ok(file);
-        }
-
-        // Try to parse DOS-style listing
-        if let Some(file) = self.parse_dos_listing(listing) {
-            debug!("Parsed as DOS: {} (is_dir: {})", file.name, file.is_dir);
-            return Ok(file);
-        }
-
-        // Fallback: treat as simple filename
-        // Check if it might be a directory (no extension, common dir indicators)
-        let name = listing.trim().to_string();
-        let is_likely_dir = !name.contains('.') || name == "." || name == "..";
-
-        debug!(
-            "Fallback parsing: {} (guessed is_dir: {})",
-            name, is_likely_dir
-        );
-
-        let path = if self.current_path.ends_with('/') {
-            format!("{}{}", self.current_path, name)
-        } else {
-            format!("{}/{}", self.current_path, name)
-        };
-
+        let entry = crate::providers::ftp_listing::parse_listing(listing, &self.current_path)
+            .ok_or_else(|| {
+                FtpManagerError::InvalidPath(format!("Unrecognised listing row: {listing}"))
+            })?;
         Ok(RemoteFile {
-            name,
-            path,
-            size: None,
-            is_dir: is_likely_dir,
-            modified: None,
-            permissions: None,
-        })
-    }
-
-    fn parse_unix_listing(&self, listing: &str) -> Option<RemoteFile> {
-        let parts: Vec<&str> = listing.split_whitespace().collect();
-        if parts.len() < 9 {
-            return None;
-        }
-
-        let permissions = parts[0];
-        let is_dir = permissions.starts_with('d');
-        let is_symlink = permissions.starts_with('l');
-
-        // Join all parts from index 8 onwards to handle filenames with spaces
-        // Unix listing format: permissions links owner group size month day time/year name...
-        let name = parts[8..].join(" ");
-        let size = parts.get(4).and_then(|s| s.parse().ok());
-
-        let modified = if parts.len() >= 8 {
-            Some(format!("{} {} {}", parts[5], parts[6], parts[7]))
-        } else {
-            None
-        };
-
-        let path = if self.current_path.ends_with('/') {
-            format!("{}{}", self.current_path, name)
-        } else {
-            format!("{}/{}", self.current_path, name)
-        };
-
-        let actual_name = if is_symlink && name.contains(" -> ") {
-            name.split(" -> ").next()?.to_string()
-        } else {
-            name
-        };
-
-        Some(RemoteFile {
-            name: actual_name,
-            path,
-            size,
-            is_dir,
-            modified,
-            permissions: Some(permissions.to_string()),
-        })
-    }
-
-    fn parse_dos_listing(&self, listing: &str) -> Option<RemoteFile> {
-        let parts: Vec<&str> = listing.split_whitespace().collect();
-        if parts.len() < 4 {
-            return None;
-        }
-
-        let is_dir = parts.contains(&"<DIR>");
-        let size = if is_dir {
-            None
-        } else {
-            parts.get(2).and_then(|s| s.parse().ok())
-        };
-
-        // DOS format: date time <DIR>/size name...
-        // Find the filename start (after date, time, and either <DIR> or size)
-        let name_start_idx = 3;
-        let name = if parts.len() > name_start_idx {
-            parts[name_start_idx..].join(" ")
-        } else {
-            parts.last()?.to_string()
-        };
-
-        let path = if self.current_path.ends_with('/') {
-            format!("{}{}", self.current_path, name)
-        } else {
-            format!("{}/{}", self.current_path, name)
-        };
-
-        Some(RemoteFile {
-            name,
-            path,
-            size,
-            is_dir,
-            modified: Some(format!("{} {}", parts[0], parts[1])),
-            permissions: None,
+            name: entry.name,
+            path: entry.path,
+            // `RemoteEntry.size` is a plain `u64`, so an unknown size arrives
+            // here as 0 and cannot be told from an empty file. That is a real
+            // loss against the old code on this side, and it is the reason the
+            // shared type is queued to grow an explicit "unknown".
+            size: Some(entry.size),
+            is_dir: entry.is_dir,
+            modified: entry.modified,
+            permissions: entry.permissions,
+            link_target: entry.link_target,
         })
     }
 }
@@ -958,4 +875,103 @@ impl Default for FtpManager {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[cfg(test)]
+mod charac_tests {
+    use super::*;
+
+    // Characterisation battery for the LEGACY listing parser, the twin of the
+    // one in providers/ftp.rs. Same input rows, so the two baselines can be
+    // diffed row by row and every behaviour change the convergence causes is
+    // enumerated rather than discovered. Pins today's behaviour, defects
+    // included.
+
+    const CHARAC_ROWS: &[&str] = &[
+        "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects",
+        "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt",
+        "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt",
+        "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt",
+        "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target",
+        "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling",
+        "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt",
+        "-rw-r--r-- 1 user group 123 Jan 20 10:00",
+        "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .",
+        "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ..",
+        "",
+        "total 12",
+        "01-23-24  10:30AM       <DIR>          folder",
+        "01-23-24  10:30AM           12345      file.txt",
+        "01-23-2024  10:30AM         12345      file.txt",
+        "01-23-24  10:30AM           12345      my file.txt",
+        "01-23-24 10:30AM 12345 a b c d e f",
+        "not-a-date 10:30AM <DIR> folder",
+        "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 .",
+    ];
+
+    fn charac_table() -> String {
+        let m = FtpManager::new();
+        let mut out = String::new();
+        for line in CHARAC_ROWS {
+            let rendered = match m.parse_ftp_listing(line) {
+                Err(e) => format!("<err: {e}>"),
+                Ok(f) => format!(
+                    "name={:?} path={:?} dir={} size={:?} perms={:?} mod={:?}",
+                    f.name, f.path, f.is_dir, f.size, f.permissions, f.modified
+                ),
+            };
+            out.push_str(&format!("LIST {line:?}\n  {rendered}\n"));
+        }
+        out
+    }
+
+    #[test]
+    fn charac_legacy_listing_parser_behaviour_is_unchanged() {
+        let actual = charac_table();
+        assert_eq!(
+            actual.trim(),
+            CHARAC_BASELINE.trim(),
+            "\nthe legacy listing parser changed behaviour\n--- ACTUAL ---\n{actual}\n--- EXPECTED ---\n{}\n",
+            CHARAC_BASELINE
+        );
+    }
+
+    const CHARAC_BASELINE: &str = r#"LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects"
+  name="projects" path="/projects" dir=true size=Some(4096) perms=Some("drwxr-xr-x") mod=Some("Jan 20 10:00")
+LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt"
+  name="notes.txt" path="/notes.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
+LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt"
+  name="my report.txt" path="/my report.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
+LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt"
+  name="a b.txt" path="/a b.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
+LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target"
+  name="link" path="/link" dir=false size=Some(7) perms=Some("lrwxrwxrwx") mod=Some("Jan 20 10:00")
+LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling"
+  name="dangling" path="/dangling" dir=false size=Some(7) perms=Some("lrwxrwxrwx") mod=Some("Jan 20 10:00")
+LIST "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt"
+  name="odd.txt" path="/odd.txt" dir=false size=Some(0) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
+LIST "-rw-r--r-- 1 user group 123 Jan 20 10:00"
+  <err: Invalid path: Unrecognised listing row: -rw-r--r-- 1 user group 123 Jan 20 10:00>
+LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ."
+  <err: Invalid path: Unrecognised listing row: drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .>
+LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .."
+  <err: Invalid path: Unrecognised listing row: drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ..>
+LIST ""
+  <err: Invalid path: Empty listing>
+LIST "total 12"
+  <err: Invalid path: Unrecognised listing row: total 12>
+LIST "01-23-24  10:30AM       <DIR>          folder"
+  name="folder" path="/folder" dir=true size=Some(0) perms=None mod=Some("01-23-24 10:30AM")
+LIST "01-23-24  10:30AM           12345      file.txt"
+  name="file.txt" path="/file.txt" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
+LIST "01-23-2024  10:30AM         12345      file.txt"
+  name="file.txt" path="/file.txt" dir=false size=Some(12345) perms=None mod=Some("01-23-2024 10:30AM")
+LIST "01-23-24  10:30AM           12345      my file.txt"
+  name="my file.txt" path="/my file.txt" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
+LIST "01-23-24 10:30AM 12345 a b c d e f"
+  name="f" path="/f" dir=false size=Some(0) perms=Some("01-23-24") mod=Some("c d e")
+LIST "not-a-date 10:30AM <DIR> folder"
+  <err: Invalid path: Unrecognised listing row: not-a-date 10:30AM <DIR> folder>
+LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ."
+  <err: Invalid path: Unrecognised listing row: drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 .>"#;
 }

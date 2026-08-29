@@ -303,275 +303,15 @@ impl FtpProvider {
         ))
     }
 
-    /// Parse FTP listing into RemoteEntry
+    // The parsers themselves live in `super::ftp_listing`, shared with the
+    // legacy `crate::ftp::FtpManager`. These stay as thin methods so the call
+    // sites below read unchanged.
     fn parse_listing(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
-        // Try Unix format first, then DOS format
-        self.parse_unix_listing(line, base_path)
-            .or_else(|| self.parse_dos_listing(line, base_path))
+        super::ftp_listing::parse_listing(line, base_path)
     }
 
-    /// Shape check for the leading token of a DOS-style listing row:
-    /// `MM-DD-YY` or `MM-DD-YYYY`, all digits.
-    fn is_dos_date(token: &str) -> bool {
-        let mut fields = token.split('-');
-        let valid = match (fields.next(), fields.next(), fields.next()) {
-            (Some(month), Some(day), Some(year)) => {
-                [month, day].iter().all(|f| f.len() == 2)
-                    && (year.len() == 2 || year.len() == 4)
-                    && [month, day, year]
-                        .iter()
-                        .all(|f| f.bytes().all(|b| b.is_ascii_digit()))
-            }
-            _ => false,
-        };
-        valid && fields.next().is_none()
-    }
-
-    fn join_remote_path(base_path: &str, name: &str) -> String {
-        if name.starts_with('/') {
-            return name.to_string();
-        }
-
-        let trimmed_base = base_path.trim_end_matches('/');
-        if trimmed_base.is_empty() {
-            format!("/{}", name.trim_start_matches('/'))
-        } else {
-            format!("{}/{}", trimmed_base, name.trim_start_matches('/'))
-        }
-    }
-
-    fn normalize_mlsd_name(name: &str) -> String {
-        let trimmed = name.trim_end_matches('/');
-        std::path::Path::new(trimmed)
-            .file_name()
-            .map(|value| value.to_string_lossy().to_string())
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| name.to_string())
-    }
-
-    /// Parse Unix-style listing (ls -l format)
-    fn parse_unix_listing(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 9 {
-            return None;
-        }
-
-        let permissions = parts[0];
-        let is_dir = permissions.starts_with('d');
-        let is_symlink = permissions.starts_with('l');
-
-        // Get size (might be in different position depending on format)
-        let size: u64 = parts[4].parse().unwrap_or(0);
-
-        // Name is everything after the 8th part (to handle spaces in names)
-        let name = parts[8..].join(" ");
-
-        // Handle symlinks (name -> target)
-        let (actual_name, link_target) = if is_symlink && name.contains(" -> ") {
-            let parts: Vec<&str> = name.splitn(2, " -> ").collect();
-            (
-                parts[0].to_string(),
-                Some(parts.get(1).unwrap_or(&"").to_string()),
-            )
-        } else {
-            (name, None)
-        };
-
-        // Skip . and .. entries
-        if actual_name == "." || actual_name == ".." {
-            return None;
-        }
-
-        let path = Self::join_remote_path(base_path, &actual_name);
-
-        // Parse date (parts[5..8] typically contain month day time/year)
-        let modified = if parts.len() >= 8 {
-            Some(format!("{} {} {}", parts[5], parts[6], parts[7]))
-        } else {
-            None
-        };
-
-        Some(RemoteEntry {
-            name: actual_name,
-            path,
-            is_dir,
-            size,
-            modified,
-            permissions: Some(permissions.to_string()),
-            owner: Some(parts[2].to_string()),
-            group: Some(parts[3].to_string()),
-            is_symlink,
-            link_target,
-            mime_type: None,
-            metadata: Default::default(),
-        })
-    }
-
-    /// Parse DOS-style listing (Windows FTP servers)
-    fn parse_dos_listing(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
-        // DOS format: 01-23-24  10:30AM       <DIR>          folder_name
-        // Or:         01-23-24  10:30AM           12345      file.txt
-
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 4 {
-            return None;
-        }
-
-        // A DOS row always opens with a `MM-DD-YY[YY]` date. Requiring the
-        // shape keeps this parser from resurrecting a Unix line that
-        // parse_unix_listing already rejected (e.g. the "." / ".." rows that
-        // `LIST -a` adds): a Unix permissions field never looks like a date.
-        if !Self::is_dos_date(parts[0]) {
-            return None;
-        }
-
-        // In the DOS format parts[2] is always either "<DIR>" or the numeric
-        // size. Requiring that alone is NOT enough: on a server that renders
-        // owner/group as numeric ids (vsftpd's default text_userdb_names=NO)
-        // the Unix "." row `drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 .` has a
-        // numeric parts[2] (the uid) and would otherwise become a bogus file
-        // named "1001 4096 Jul 21 09:41 ." that recursive delete then DELEs,
-        // which the server answers with `550 Delete operation failed`.
-        let is_dir = parts[2] == "<DIR>";
-        let size: u64 = if is_dir {
-            0
-        } else {
-            match parts[2].parse() {
-                Ok(value) => value,
-                Err(_) => return None,
-            }
-        };
-        let name = parts[3..].join(" ");
-
-        // Skip . and .. entries
-        if name == "." || name == ".." {
-            return None;
-        }
-
-        let path = Self::join_remote_path(base_path, &name);
-
-        let modified = Some(format!("{} {}", parts[0], parts[1]));
-
-        Some(RemoteEntry {
-            name,
-            path,
-            is_dir,
-            size,
-            modified,
-            permissions: None,
-            owner: None,
-            group: None,
-            is_symlink: false,
-            link_target: None,
-            mime_type: None,
-            metadata: Default::default(),
-        })
-    }
-
-    /// Parse MLSD/MLST line (RFC 3659 machine-readable format)
-    /// Format: "fact1=val1;fact2=val2; filename"
     fn parse_mlsd_entry(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
-        // Split on first space after semicolons to get facts and filename
-        let (facts_str, name) = line.split_once(' ')?;
-        let raw_name = name.trim();
-        let name = Self::normalize_mlsd_name(raw_name);
-
-        if name == "." || name == ".." {
-            return None;
-        }
-
-        let mut is_dir = false;
-        let mut is_symlink = false;
-        let mut size: u64 = 0;
-        let mut modified: Option<String> = None;
-        let mut permissions: Option<String> = None;
-        let mut owner: Option<String> = None;
-        let mut group: Option<String> = None;
-
-        for fact in facts_str.split(';') {
-            let fact = fact.trim();
-            if fact.is_empty() {
-                continue;
-            }
-            let (key, value) = match fact.split_once('=') {
-                Some((k, v)) => (k.to_lowercase(), v),
-                None => continue,
-            };
-
-            match key.as_str() {
-                "type" => {
-                    let v_lower = value.to_lowercase();
-                    is_dir = v_lower == "dir" || v_lower == "cdir" || v_lower == "pdir";
-                    is_symlink = v_lower == "os.unix=symlink" || v_lower == "os.unix=slink";
-                }
-                "size" | "sizd" => {
-                    size = value.parse().unwrap_or(0);
-                }
-                "modify" => {
-                    // YYYYMMDDHHMMSS[.sss] → format nicely
-                    modified = Some(Self::format_mlsd_time(value));
-                }
-                "unix.mode" => {
-                    permissions = Some(value.to_string());
-                }
-                "unix.owner" | "unix.uid" => {
-                    owner = Some(value.to_string());
-                }
-                "unix.group" | "unix.gid" => {
-                    group = Some(value.to_string());
-                }
-                "perm"
-                    // MLSD perm facts (e.g. "rwcedf") - store as metadata
-                    if permissions.is_none() => {
-                        permissions = Some(value.to_string());
-                    }
-                _ => {}
-            }
-        }
-
-        // Skip cdir/pdir (current/parent directory entries)
-        if facts_str.to_lowercase().contains("type=cdir")
-            || facts_str.to_lowercase().contains("type=pdir")
-        {
-            return None;
-        }
-
-        let path = Self::join_remote_path(base_path, raw_name);
-
-        Some(RemoteEntry {
-            name,
-            path,
-            is_dir,
-            size,
-            modified,
-            permissions,
-            owner,
-            group,
-            is_symlink,
-            link_target: None,
-            mime_type: None,
-            metadata: Default::default(),
-        })
-    }
-
-    /// Format MLSD timestamp (YYYYMMDDHHMMSS) to readable form.
-    /// Appends 'Z' suffix because MLSD timestamps are always UTC per RFC 3659.
-    fn format_mlsd_time(ts: &str) -> String {
-        if ts.len() >= 14 {
-            format!(
-                "{}-{}-{} {}:{}:{}Z",
-                &ts[0..4],
-                &ts[4..6],
-                &ts[6..8],
-                &ts[8..10],
-                &ts[10..12],
-                &ts[12..14]
-            )
-        } else if ts.len() >= 8 {
-            format!("{}-{}-{}", &ts[0..4], &ts[4..6], &ts[6..8])
-        } else {
-            ts.to_string()
-        }
+        super::ftp_listing::parse_mlsd_entry(line, base_path)
     }
 
     fn is_stale_data_connection_error(err: &ProviderError) -> bool {
@@ -2163,9 +1903,17 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_parse_unix_listing() {
-        let provider = FtpProvider::new(FtpConfig {
+    // ── Characterisation battery for the listing parser ────────────────────
+    //
+    // These exist to prove that moving the parser into a shared module changes
+    // NOTHING. They pin today's behaviour, defects included: where the parser
+    // is wrong the baseline records the wrong answer, marked DEFECT. Changing
+    // an expectation here to make it look right would destroy the only
+    // evidence that the move preserved behaviour. Fixes belong to a later
+    // change, which will edit this baseline deliberately and say why.
+
+    fn charac_provider() -> FtpProvider {
+        FtpProvider::new(FtpConfig {
             host: "test".to_string(),
             port: 21,
             username: "user".to_string(),
@@ -2173,10 +1921,195 @@ mod tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
-        });
+        })
+    }
 
+    const CHARAC_LIST_ROWS: &[(&str, &str)] = &[
+        (
+            "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects",
+            "/",
+        ),
+        (
+            "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt",
+            "/",
+        ),
+        (
+            "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt",
+            "/",
+        ),
+        // DEFECT: runs of spaces inside a name are collapsed to one.
+        (
+            "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt",
+            "/",
+        ),
+        (
+            "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target",
+            "/",
+        ),
+        (
+            "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling",
+            "/",
+        ),
+        // DEFECT: an unparseable size becomes 0, indistinguishable from empty.
+        (
+            "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt",
+            "/",
+        ),
+        // DEFECT: fewer than nine tokens is dropped in silence.
+        ("-rw-r--r-- 1 user group 123 Jan 20 10:00", "/"),
+        (
+            "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .",
+            "/",
+        ),
+        (
+            "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ..",
+            "/",
+        ),
+        (
+            "-rw-r--r--    1 user     group         123 Jan 20 10:00 f.txt",
+            "/scope",
+        ),
+        (
+            "-rw-r--r--    1 user     group         123 Jan 20 10:00 f.txt",
+            "/scope/",
+        ),
+        ("", "/"),
+        ("total 12", "/"),
+        ("01-23-24  10:30AM       <DIR>          folder", "/"),
+        ("01-23-24  10:30AM           12345      file.txt", "/"),
+        ("01-23-2024  10:30AM         12345      file.txt", "/"),
+        ("01-23-24  10:30AM           12345      my file.txt", "/"),
+        // DEFECT: a DOS row with a long enough name reaches nine tokens and is
+        // taken by the Unix parser first, because the dispatch tries Unix and
+        // only falls back when it fails.
+        ("01-23-24 10:30AM 12345 a b c d e f", "/"),
+        ("not-a-date 10:30AM <DIR> folder", "/"),
+        // The DOS parser's guard: a Unix row with numeric owner/group must not
+        // be resurrected as a DOS file.
+        ("drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 .", "/"),
+    ];
+
+    const CHARAC_MLSD_ROWS: &[(&str, &str)] = &[
+        ("type=dir;modify=20260120100000; projects", "/home"),
+        (
+            "type=file;size=123;modify=20260120100000; notes.txt",
+            "/home",
+        ),
+        (
+            "type=file;size=123;modify=20260120100000; my report.txt",
+            "/home",
+        ),
+        (
+            "type=file;size=????;modify=20260120100000; odd.txt",
+            "/home",
+        ),
+        ("type=cdir;modify=20260101000000; .", "/"),
+        ("type=pdir;modify=20260101000000; ..", "/"),
+        ("type=file;size=1; /absolute/path/name.txt", "/"),
+        ("no-facts-here", "/"),
+    ];
+
+    fn charac_table() -> String {
+        let p = charac_provider();
+        let mut out = String::new();
+        for (line, base) in CHARAC_LIST_ROWS {
+            let rendered = match p.parse_listing(line, base) {
+                None => "<none>".to_string(),
+                Some(e) => format!(
+                    "name={:?} path={:?} dir={} size={} sym={} link={:?} perms={:?} owner={:?} group={:?} mod={:?}",
+                    e.name, e.path, e.is_dir, e.size, e.is_symlink, e.link_target,
+                    e.permissions, e.owner, e.group, e.modified
+                ),
+            };
+            out.push_str(&format!("LIST {line:?} @ {base:?}\n  {rendered}\n"));
+        }
+        for (line, base) in CHARAC_MLSD_ROWS {
+            let rendered = match p.parse_mlsd_entry(line, base) {
+                None => "<none>".to_string(),
+                Some(e) => format!(
+                    "name={:?} path={:?} dir={} size={} mod={:?}",
+                    e.name, e.path, e.is_dir, e.size, e.modified
+                ),
+            };
+            out.push_str(&format!("MLSD {line:?} @ {base:?}\n  {rendered}\n"));
+        }
+        out
+    }
+
+    #[test]
+    fn charac_listing_parser_behaviour_is_unchanged() {
+        let actual = charac_table();
+        assert_eq!(
+            actual.trim(),
+            CHARAC_BASELINE.trim(),
+            "\nthe listing parser changed behaviour\n--- ACTUAL ---\n{actual}\n--- EXPECTED ---\n{}\n",
+            CHARAC_BASELINE
+        );
+    }
+
+    const CHARAC_BASELINE: &str = r#"LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects" @ "/"
+  name="projects" path="/projects" dir=true size=4096 sym=false link=None perms=Some("drwxr-xr-x") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt" @ "/"
+  name="notes.txt" path="/notes.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt" @ "/"
+  name="my report.txt" path="/my report.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt" @ "/"
+  name="a b.txt" path="/a b.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target" @ "/"
+  name="link" path="/link" dir=false size=7 sym=true link=Some("target") perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling" @ "/"
+  name="dangling" path="/dangling" dir=false size=7 sym=true link=None perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+LIST "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt" @ "/"
+  name="odd.txt" path="/odd.txt" dir=false size=0 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+LIST "-rw-r--r-- 1 user group 123 Jan 20 10:00" @ "/"
+  <none>
+LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ." @ "/"
+  <none>
+LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .." @ "/"
+  <none>
+LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 f.txt" @ "/scope"
+  name="f.txt" path="/scope/f.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 f.txt" @ "/scope/"
+  name="f.txt" path="/scope/f.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+LIST "" @ "/"
+  <none>
+LIST "total 12" @ "/"
+  <none>
+LIST "01-23-24  10:30AM       <DIR>          folder" @ "/"
+  name="folder" path="/folder" dir=true size=0 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+LIST "01-23-24  10:30AM           12345      file.txt" @ "/"
+  name="file.txt" path="/file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+LIST "01-23-2024  10:30AM         12345      file.txt" @ "/"
+  name="file.txt" path="/file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-2024 10:30AM")
+LIST "01-23-24  10:30AM           12345      my file.txt" @ "/"
+  name="my file.txt" path="/my file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+LIST "01-23-24 10:30AM 12345 a b c d e f" @ "/"
+  name="f" path="/f" dir=false size=0 sym=false link=None perms=Some("01-23-24") owner=Some("12345") group=Some("a") mod=Some("c d e")
+LIST "not-a-date 10:30AM <DIR> folder" @ "/"
+  <none>
+LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ." @ "/"
+  <none>
+MLSD "type=dir;modify=20260120100000; projects" @ "/home"
+  name="projects" path="/home/projects" dir=true size=0 mod=Some("2026-01-20 10:00:00Z")
+MLSD "type=file;size=123;modify=20260120100000; notes.txt" @ "/home"
+  name="notes.txt" path="/home/notes.txt" dir=false size=123 mod=Some("2026-01-20 10:00:00Z")
+MLSD "type=file;size=123;modify=20260120100000; my report.txt" @ "/home"
+  name="my report.txt" path="/home/my report.txt" dir=false size=123 mod=Some("2026-01-20 10:00:00Z")
+MLSD "type=file;size=????;modify=20260120100000; odd.txt" @ "/home"
+  name="odd.txt" path="/home/odd.txt" dir=false size=0 mod=Some("2026-01-20 10:00:00Z")
+MLSD "type=cdir;modify=20260101000000; ." @ "/"
+  <none>
+MLSD "type=pdir;modify=20260101000000; .." @ "/"
+  <none>
+MLSD "type=file;size=1; /absolute/path/name.txt" @ "/"
+  name="name.txt" path="/absolute/path/name.txt" dir=false size=1 mod=None
+MLSD "no-facts-here" @ "/"
+  <none>"#;
+
+    #[test]
+    fn test_parse_unix_listing() {
         let line = "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects";
-        let entry = provider.parse_unix_listing(line, "/").unwrap();
+        let entry = super::super::ftp_listing::parse_unix_listing(line, "/").unwrap();
 
         assert_eq!(entry.name, "projects");
         assert!(entry.is_dir);
@@ -2324,18 +2257,8 @@ mod tests {
 
     #[test]
     fn test_parse_dos_listing() {
-        let provider = FtpProvider::new(FtpConfig {
-            host: "test".to_string(),
-            port: 21,
-            username: "user".to_string(),
-            password: "pass".to_string().into(),
-            tls_mode: FtpTlsMode::None,
-            verify_cert: true,
-            initial_path: None,
-        });
-
         let line = "01-20-26  10:00AM       <DIR>          Projects";
-        let entry = provider.parse_dos_listing(line, "/").unwrap();
+        let entry = super::super::ftp_listing::parse_dos_listing(line, "/").unwrap();
 
         assert_eq!(entry.name, "Projects");
         assert!(entry.is_dir);

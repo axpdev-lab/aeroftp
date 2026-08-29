@@ -702,6 +702,7 @@ async fn aerovault_overlay_list(
                         is_dir: true,
                         modified: None,
                         permissions: None,
+                        link_target: None,
                     });
                 }
                 continue;
@@ -715,6 +716,7 @@ async fn aerovault_overlay_list(
                 is_dir: entry.is_dir,
                 modified: Some(entry.modified),
                 permissions: None,
+                link_target: None,
             });
         }
     } else {
@@ -763,6 +765,7 @@ async fn aerovault_overlay_list(
                         is_dir: true,
                         modified: None,
                         permissions: None,
+                        link_target: None,
                     });
                 }
                 continue;
@@ -790,6 +793,7 @@ async fn aerovault_overlay_list(
                 is_dir,
                 modified,
                 permissions: None,
+                link_target: None,
             });
         }
     }
