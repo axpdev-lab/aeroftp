@@ -1922,7 +1922,53 @@ impl JottacloudProvider {
         (file_url, dir_url)
     }
 
+    /// Name of the first element in a JFS response (`file`, `folder`, …).
+    /// A substring test cannot be used: a folder listing contains `<files>`
+    /// and a `<file>` child per entry, which made non-empty folders take the
+    /// cphash branch with a child's JSize/JMd5.
+    fn jfs_root_element(xml: &str) -> Option<String> {
+        use quick_xml::events::Event;
+        use quick_xml::Reader;
+
+        let mut reader = Reader::from_str(xml);
+        let mut buf = Vec::new();
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+                    return Some(String::from_utf8_lossy(e.name().as_ref()).to_string());
+                }
+                Ok(Event::Eof) | Err(_) => return None,
+                _ => {}
+            }
+            buf.clear();
+        }
+    }
+
+    /// Relative path under the live mountpoint: strip
+    /// `/{user}/{device}/{mount}` from the trash `<abspath>` (the original
+    /// parent) and append the entry name. Root-level items stay `/{name}`.
+    fn trash_relative_path(abspath: &str, name: &str) -> String {
+        let parts: Vec<&str> = abspath
+            .trim_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
+        // 0 user, 1 device, 2 mountpoint, 3… original parent under that mount.
+        let parent = if parts.len() > 3 {
+            parts[3..].join("/")
+        } else {
+            String::new()
+        };
+        if parent.is_empty() {
+            format!("/{name}")
+        } else {
+            format!("/{parent}/{name}")
+        }
+    }
+
     /// size, md5, created, modified from a JFS `<file>` tombstone.
+    /// Only the root `<file>`'s `currentRevision` counts: a folder listing
+    /// carries child files whose revisions must not leak into cphash.
     fn parse_jfs_file_revision(xml: &str) -> Option<(u64, String, String, String)> {
         use quick_xml::events::Event;
         use quick_xml::Reader;
@@ -1930,6 +1976,8 @@ impl JottacloudProvider {
         let mut reader = Reader::from_str(xml);
         reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
+        let mut depth: u32 = 0;
+        let mut root_is_file = false;
         let mut in_revision = false;
         let mut tag = String::new();
         let mut size: u64 = 0;
@@ -1939,8 +1987,12 @@ impl JottacloudProvider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => {
+                    depth += 1;
                     let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    if name == "currentRevision" {
+                    if depth == 1 {
+                        root_is_file = name == "file";
+                    }
+                    if root_is_file && depth == 2 && name == "currentRevision" {
                         in_revision = true;
                     }
                     tag = name;
@@ -1949,6 +2001,7 @@ impl JottacloudProvider {
                     if e.name().as_ref() == b"currentRevision" {
                         in_revision = false;
                     }
+                    depth = depth.saturating_sub(1);
                     tag.clear();
                 }
                 Ok(Event::Text(ref e)) if in_revision => {
@@ -1967,7 +2020,7 @@ impl JottacloudProvider {
             }
             buf.clear();
         }
-        if md5.is_empty() {
+        if !root_is_file || md5.is_empty() {
             return None;
         }
         if created.is_empty() {
@@ -2048,7 +2101,7 @@ impl JottacloudProvider {
             )));
         }
         let xml = get.text().await.unwrap_or_default();
-        let looks_like_file = xml.contains("<file");
+        let looks_like_file = Self::jfs_root_element(&xml).as_deref() == Some("file");
 
         let resp = if looks_like_file {
             let (size, md5, created, modified) =
@@ -2207,8 +2260,12 @@ impl JottacloudProvider {
         let mut current_size: u64 = 0;
         let mut current_modified = String::new();
         let mut current_deleted_at = String::new();
+        let mut current_abspath = String::new();
         let mut current_state = String::new();
         let mut current_tag = String::new();
+        let mut pending_folder_name = String::new();
+        let mut pending_folder_deleted = String::new();
+        let mut pending_folder_abspath = String::new();
 
         loop {
             match reader.read_event_into(&mut buf) {
@@ -2232,39 +2289,20 @@ impl JottacloudProvider {
                                     || (root_depth.is_some()
                                         && depth == root_depth.unwrap() + 1)) =>
                         {
-                            let mut name = String::new();
-                            let mut deleted_at = String::new();
+                            pending_folder_name.clear();
+                            pending_folder_deleted.clear();
+                            pending_folder_abspath.clear();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
-                                    name = crate::restricted_chars::decode_leaf(
+                                    pending_folder_name = crate::restricted_chars::decode_leaf(
                                         ProviderType::Jottacloud,
                                         &super::xml_text::attr_value(&attr),
                                     );
                                 }
                                 if attr.key.as_ref() == b"deleted" {
-                                    deleted_at =
+                                    pending_folder_deleted =
                                         Self::parse_jotta_time(&super::xml_text::attr_value(&attr));
                                 }
-                            }
-                            if !name.is_empty() {
-                                entries.push(RemoteEntry {
-                                    name: name.clone(),
-                                    path: format!("/{}", name),
-                                    is_dir: true,
-                                    size: 0,
-                                    modified: if deleted_at.is_empty() {
-                                        None
-                                    } else {
-                                        Some(deleted_at)
-                                    },
-                                    permissions: None,
-                                    owner: None,
-                                    group: None,
-                                    is_symlink: false,
-                                    link_target: None,
-                                    metadata: HashMap::new(),
-                                    mime_type: None,
-                                });
                             }
                             child_folder_depth = Some(depth);
                         }
@@ -2274,6 +2312,7 @@ impl JottacloudProvider {
                             current_size = 0;
                             current_modified.clear();
                             current_deleted_at.clear();
+                            current_abspath.clear();
                             current_state.clear();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
@@ -2320,7 +2359,7 @@ impl JottacloudProvider {
                         if !name.is_empty() {
                             entries.push(RemoteEntry {
                                 name: name.clone(),
-                                path: format!("/{}", name),
+                                path: Self::trash_relative_path("", &name),
                                 is_dir: true,
                                 size: 0,
                                 modified: if deleted_at.is_empty() {
@@ -2346,6 +2385,32 @@ impl JottacloudProvider {
                             in_folders_section = false;
                         }
                         "folder" if child_folder_depth == Some(depth) => {
+                            if !pending_folder_name.is_empty() {
+                                entries.push(RemoteEntry {
+                                    name: pending_folder_name.clone(),
+                                    path: Self::trash_relative_path(
+                                        &pending_folder_abspath,
+                                        &pending_folder_name,
+                                    ),
+                                    is_dir: true,
+                                    size: 0,
+                                    modified: if pending_folder_deleted.is_empty() {
+                                        None
+                                    } else {
+                                        Some(pending_folder_deleted.clone())
+                                    },
+                                    permissions: None,
+                                    owner: None,
+                                    group: None,
+                                    is_symlink: false,
+                                    link_target: None,
+                                    metadata: HashMap::new(),
+                                    mime_type: None,
+                                });
+                            }
+                            pending_folder_name.clear();
+                            pending_folder_deleted.clear();
+                            pending_folder_abspath.clear();
                             child_folder_depth = None;
                         }
                         "file" if in_file => {
@@ -2362,7 +2427,10 @@ impl JottacloudProvider {
                                 };
                                 entries.push(RemoteEntry {
                                     name: current_name.clone(),
-                                    path: format!("/{}", current_name),
+                                    path: Self::trash_relative_path(
+                                        &current_abspath,
+                                        &current_name,
+                                    ),
                                     is_dir: false,
                                     size: current_size,
                                     modified: deleted_or_modified,
@@ -2386,7 +2454,13 @@ impl JottacloudProvider {
                 }
                 Ok(Event::Text(ref e)) => {
                     let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
-                    if in_revision && in_file {
+                    if current_tag.as_str() == "abspath" {
+                        if in_file && !in_revision {
+                            current_abspath = text;
+                        } else if child_folder_depth == Some(depth.saturating_sub(1)) {
+                            pending_folder_abspath = text;
+                        }
+                    } else if in_revision && in_file {
                         match current_tag.as_str() {
                             "size" => {
                                 current_size = text.parse().unwrap_or(0);
@@ -2532,6 +2606,29 @@ mod tests {
         assert_eq!(md5, "9a6924f78982f7e759f371f08fb5d57e");
         assert!(created.contains("13:44:54"), "{created}");
         assert!(modified.contains("13:44:54"), "{modified}");
+
+        let folder_xml = r#"<folder name="aeroftp-scratch-397">
+            <files>
+                <file name="child.txt">
+                    <currentRevision>
+                        <size>99</size>
+                        <md5>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</md5>
+                    </currentRevision>
+                </file>
+            </files>
+        </folder>"#;
+        assert_eq!(
+            JottacloudProvider::jfs_root_element(folder_xml).as_deref(),
+            Some("folder")
+        );
+        assert!(
+            JottacloudProvider::parse_jfs_file_revision(folder_xml).is_none(),
+            "child revision must not leak into a folder restore"
+        );
+        assert_eq!(
+            JottacloudProvider::jfs_root_element(xml).as_deref(),
+            Some("file")
+        );
     }
 
     #[test]
@@ -2556,6 +2653,7 @@ mod tests {
         assert_eq!(entries.len(), 2, "{entries:?}");
         let folder = entries.iter().find(|e| e.is_dir).expect("folder");
         assert_eq!(folder.name, "aeroftp-scratch-397");
+        assert_eq!(folder.path, "/aeroftp-scratch-397");
         let folder_deleted = folder.modified.as_deref().expect("folder deleted-at");
         assert!(
             folder_deleted.contains("2026-08-29") && folder_deleted.contains("08:02"),
@@ -2563,6 +2661,7 @@ mod tests {
         );
         let file = entries.iter().find(|e| !e.is_dir).expect("file");
         assert_eq!(file.name, "ehud-397-0420.txt");
+        assert_eq!(file.path, "/ehud-397-0420.txt");
         assert_eq!(file.size, 28);
         let file_deleted = file.modified.as_deref().expect("file deleted-at");
         assert!(
@@ -2570,6 +2669,32 @@ mod tests {
             "deleted attr wins over revision mtime 13:44: {file_deleted}"
         );
         assert!(!file_deleted.contains("13:44"), "{file_deleted}");
+    }
+
+    #[test]
+    fn parse_trash_xml_keeps_the_original_parent_from_abspath() {
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="vacation" deleted="2026-08-29-T08:02:08Z">
+      <abspath>/user123/Jotta/Archive/photos</abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="img.jpg" deleted="2026-08-29-T13:45:33Z">
+      <abspath>/user123/Jotta/Archive/photos/vacation</abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.path, "/photos/vacation");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/photos/vacation/img.jpg");
+        assert_eq!(
+            JottacloudProvider::trash_relative_path("/user123/Jotta/Archive", "root.txt"),
+            "/root.txt"
+        );
     }
 
     #[test]
