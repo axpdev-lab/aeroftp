@@ -489,6 +489,54 @@ impl FtpProvider {
         super::ftp_listing::warn_unreadable_rows(&listing, &format!("LIST {base_path}"));
         let entries = listing.entries;
 
+        // A listing whose every row was unreadable is not an empty directory,
+        // and saying so is the same defect as the one below with the sides
+        // swapped: there, "missing" and "empty" arrived identical; here, "we
+        // could not read a single row" would be handed over as "there is
+        // nothing here". A value that means "we do not know" must not be
+        // returned as an ordinary, specific answer.
+        //
+        // It also fixes what the safety net SAYS. A fully unreadable source
+        // listing is already refused by `sync::orphan_delete_guard_over`,
+        // through the arm for a source that is empty while the destination is
+        // not, so no delete goes through. But that arm reports "source side is
+        // empty", sending the reader to look for a remote that has been wiped
+        // instead of at a listing format we cannot parse. The guard was right
+        // and its diagnosis was wrong. Failing here instead makes the scan
+        // count a listing error, so the guard refuses through its FIRST arm and
+        // names the real reason.
+        //
+        // That counter is the third thing this repairs. `ScanCompleteness`
+        // increments `list_errors` only on an `Err`, so a listing that returned
+        // `Ok` with every row discarded was counted as complete: the
+        // bookkeeping was blind exactly where the reading had been blindest.
+        // The principle is already written one level up, at the directory
+        // granularity, in `sync_core::scan`: a listing that did not happen
+        // leaves its files "simply absent from results, which reads exactly
+        // like a deletion downstream, so count it instead of only warning".
+        // Rows dropped from a listing that did happen are the same sentence a
+        // level down.
+        //
+        // Only when NOTHING was read. If a single row parsed, the listing is
+        // returned as before, with the count logged. That case is not covered
+        // and is not safe, and it is recorded rather than half-solved: a
+        // partially unreadable listing keeps a non-empty result, so neither arm
+        // of the guard fires and the missing rows read downstream as deletions.
+        // Closing it needs the provider to report completeness alongside its
+        // entries, which is a change to a trait 31 providers implement.
+        //
+        // The offending row is deliberately NOT in this message. It is raw
+        // server text, `classify_sync_error` reads error messages by searching
+        // them for words, and a stray "550" or "no such file" inside a row we
+        // failed to parse would steer the classification. It is in the warning
+        // above, which nothing classifies.
+        if entries.is_empty() && listing.unreadable > 0 {
+            return Err(ProviderError::ParseError(format!(
+                "LIST {base_path}: none of the {} row(s) could be read (see the log for the first)",
+                listing.unreadable
+            )));
+        }
+
         // FTP answers a LIST against a directory that does not exist with a
         // successful, empty listing, so "missing" and "empty" arrive identical.
         // WebDAV says "not found" and S3 is entitled to answer empty (a prefix

@@ -524,6 +524,61 @@ mod tests {
     /// `total 12` and every `.` would be reported as an unreadable row and a
     /// recursive listing would become a wall of warnings about lines that were
     /// never entries.
+    /// A listing where nothing could be read is distinguishable from an empty
+    /// one, which is what lets the caller refuse to call it empty.
+    ///
+    /// No real server has been observed producing this: the lab servers parse
+    /// cleanly, so the condition is constructed here rather than waited for.
+    /// Waiting for it would be waiting for something that by construction does
+    /// not arrive.
+    #[test]
+    fn a_listing_read_by_nobody_is_not_an_empty_listing() {
+        // Rows that look like entries and cannot be read: eight fields, so the
+        // Unix parser tries and fails rather than skipping them as headers.
+        let unreadable = [
+            "-rw-r--r-- 1 user group 123 Jan 20 10:00",
+            "drwxr-xr-x 2 user group 4096 Jan 20 10:00",
+        ];
+        let nothing_read = read_listing(unreadable, "/srv");
+        assert!(nothing_read.entries.is_empty());
+        assert_eq!(
+            nothing_read.unreadable, 2,
+            "the rows have to be COUNTED, not just dropped: the count is the \
+             only thing that tells this apart from an empty directory"
+        );
+
+        // A genuinely empty directory: the two rows `LIST -a` always adds and
+        // nothing else. These are not entries and must not be counted as
+        // unreadable, or every empty directory would look like a parse failure.
+        let really_empty = read_listing(
+            [
+                "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .",
+                "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ..",
+                "total 8",
+            ],
+            "/srv",
+        );
+        assert!(really_empty.entries.is_empty());
+        assert_eq!(
+            really_empty.unreadable, 0,
+            "an empty directory must not be mistaken for an unreadable one: \
+             that would turn every empty folder into an error"
+        );
+
+        // And the partial case, which the caller deliberately does NOT refuse:
+        // one row read, one not. It is recorded here so the untested half is
+        // visible rather than absent.
+        let partial = read_listing(
+            [
+                "-rw-r--r--    1 user     group         123 Jan 20 10:00 real.txt",
+                "-rw-r--r-- 1 user group 123 Jan 20 10:00",
+            ],
+            "/srv",
+        );
+        assert_eq!(partial.entries.len(), 1);
+        assert_eq!(partial.unreadable, 1);
+    }
+
     #[test]
     fn lines_that_were_never_entries_are_not_reported_as_unreadable() {
         let lines = [
