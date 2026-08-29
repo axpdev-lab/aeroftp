@@ -1548,9 +1548,8 @@ mod tests {
         let Ok(workdir) = std::env::var("AEROFTP_600_WORKDIR") else {
             return;
         };
-        let rclone_cipher = format!(
-            "{workdir}/cipher/785v69hnpanb9p84bhrlki9lp0/h5p2oibs3erqnaspobsargglqs"
-        );
+        let rclone_cipher =
+            format!("{workdir}/cipher/785v69hnpanb9p84bhrlki9lp0/h5p2oibs3erqnaspobsargglqs");
         let data = std::fs::read(&rclone_cipher)
             .unwrap_or_else(|e| panic!("read rclone ciphertext {rclone_cipher}: {e}"));
         let (name_key, data_key, name_tweak) =

@@ -6070,16 +6070,8 @@ mod tests {
     #[test]
     fn template_serde_keeps_verify_policy_and_canary() {
         let profile = SyncProfile::mirror();
-        let mut template = export_sync_template(
-            "Knobs",
-            "",
-            &profile,
-            "/tmp/a",
-            "/remote/a",
-            &[],
-            None,
-        )
-        .unwrap();
+        let mut template =
+            export_sync_template("Knobs", "", &profile, "/tmp/a", "/remote/a", &[], None).unwrap();
         template.profile.verify_policy = Some(VerifyPolicy::Full);
         template.profile.canary = Some(CanaryConfig {
             percent: 15,

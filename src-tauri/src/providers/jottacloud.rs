@@ -1554,7 +1554,11 @@ impl StorageProvider for JottacloudProvider {
         );
         // JFS: files take `mv`, directories take `mvDir` (and a trailing slash
         // on the source). `?mv=` on a folder 404s (#397).
-        let is_dir = self.stat(&resolved_from).await.map(|e| e.is_dir).unwrap_or(false);
+        let is_dir = self
+            .stat(&resolved_from)
+            .await
+            .map(|e| e.is_dir)
+            .unwrap_or(false);
         let mut from_url = self.jfs_url(&resolved_from);
         if is_dir && !from_url.ends_with('/') {
             from_url.push('/');
@@ -1921,7 +1925,10 @@ impl JottacloudProvider {
         let mut resp = self.post_command_with_retry(&file_url).await?;
         if !resp.status().is_success() {
             let dir_url = format!("{}?mvDir={}", self.trash_url(clean), dest_q);
-            jotta_log(&format!("Restore file-move failed, retrying as dir: {}", dir_url));
+            jotta_log(&format!(
+                "Restore file-move failed, retrying as dir: {}",
+                dir_url
+            ));
             resp = self.post_command_with_retry(&dir_url).await?;
         }
 
