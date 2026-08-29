@@ -2429,21 +2429,18 @@ impl StorageProvider for FilenProvider {
             )
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        match self.send_retry(request).await {
-            Ok(resp) => {
-                let parsed: Result<UserInfoResponse, _> = resp.json().await;
-                if let Ok(body) = parsed {
-                    if let Some(data) = body.data {
-                        return Ok(StorageInfo {
-                            total: data.max_storage,
-                            used: data.storage_used,
-                            free: data.max_storage.saturating_sub(data.storage_used),
-                            versioning_bytes: self.versioned_storage_bytes().await,
-                        });
-                    }
+        if let Ok(resp) = self.send_retry(request).await {
+            let parsed: Result<UserInfoResponse, _> = resp.json().await;
+            if let Ok(body) = parsed {
+                if let Some(data) = body.data {
+                    return Ok(StorageInfo {
+                        total: data.max_storage,
+                        used: data.storage_used,
+                        free: data.max_storage.saturating_sub(data.storage_used),
+                        versioning_bytes: self.versioned_storage_bytes().await,
+                    });
                 }
             }
-            Err(_) => {}
         }
 
         if self.statfs_cli_enabled() {
