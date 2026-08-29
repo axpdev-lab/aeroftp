@@ -72,6 +72,122 @@ pub(crate) fn parse_listing(line: &str, base_path: &str) -> Option<RemoteEntry> 
     }
 }
 
+/// Why a line produced no entry.
+///
+/// The distinction between the last two is the whole point. A server's listing
+/// carries lines that are not entries and never were (the `total 12` header of
+/// `ls`, the `path:` headers of a recursive listing, the `.` and `..` rows),
+/// and it can also carry a row we simply could not read. Today both vanish
+/// identically: `parse_listing` returns `None` and both callers drop it, so a
+/// server whose dialect we do not understand produces a short listing and no
+/// signal at all. That is the same shape as a missing directory listing as an
+/// empty one, one level down.
+///
+/// Reporting both would be as bad in the other direction: every `total 12` and
+/// every `.` would become a warning, and a recursive listing would turn into a
+/// wall of noise about lines that are not entries. So there are two outcomes,
+/// and the classification lives here rather than in each caller, because
+/// leaving each caller to filter for itself is exactly what the shared module
+/// was extracted to stop.
+pub(crate) enum LineProblem {
+    /// Not a listing row: skipped, not counted, not reported.
+    NotARow,
+    /// It had the shape of a row and could not be read: counted and reported.
+    Unreadable,
+}
+
+/// Read one line, saying which of the three it was.
+pub(crate) fn read_listing_line(line: &str, base_path: &str) -> Result<RemoteEntry, LineProblem> {
+    if let Some(entry) = parse_listing(line, base_path) {
+        return Ok(entry);
+    }
+    if is_not_a_listing_row(line) {
+        Err(LineProblem::NotARow)
+    } else {
+        Err(LineProblem::Unreadable)
+    }
+}
+
+/// Lines a listing carries that are not entries.
+///
+/// Kept beside the parsers, not in the callers: the legacy caller had three
+/// hand-rolled versions of these checks and the provider had none, which is how
+/// the two sides came to disagree about what a listing contains.
+fn is_not_a_listing_row(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    // `ls` writes a block-count header before the entries.
+    if trimmed.starts_with("total ") || trimmed.starts_with("Total ") {
+        return true;
+    }
+    // A recursive listing announces each directory as `/path/to/dir:`.
+    if trimmed.ends_with(':') && !trimmed.contains(char::is_whitespace) {
+        return true;
+    }
+    // The `.` and `..` rows that `LIST -a` adds. They parse as far as the name
+    // and are then dropped inside the parsers, so the name has to be recovered
+    // the same way the parser would have built it.
+    let first = trimmed.split_whitespace().next().unwrap_or("");
+    let name_field = if is_dos_date(first) { 3 } else { 8 };
+    matches!(field_tail(trimmed, name_field), Some("." | ".."))
+}
+
+/// Read a whole listing, and say what could not be read.
+///
+/// Both callers used `filter_map`, which drops a `None` with no trace, so a
+/// server whose rows we cannot parse produced a short listing and no signal.
+/// Returning the count and the first offending row here, rather than leaving
+/// each caller to notice for itself, is the same reason the parsers were
+/// shared: two callers noticing separately is two callers noticing
+/// differently.
+pub(crate) struct Listing {
+    pub entries: Vec<RemoteEntry>,
+    /// Rows that looked like entries and could not be read. Lines that were
+    /// never entries (headers, `.`, `..`) are not counted.
+    pub unreadable: usize,
+    /// The first of them, verbatim, so a report can name it.
+    pub first_unreadable: Option<String>,
+}
+
+pub(crate) fn read_listing<'a>(
+    lines: impl IntoIterator<Item = &'a str>,
+    base_path: &str,
+) -> Listing {
+    let mut out = Listing {
+        entries: Vec::new(),
+        unreadable: 0,
+        first_unreadable: None,
+    };
+    for line in lines {
+        match read_listing_line(line, base_path) {
+            Ok(entry) => out.entries.push(entry),
+            Err(LineProblem::NotARow) => {}
+            Err(LineProblem::Unreadable) => {
+                out.unreadable += 1;
+                if out.first_unreadable.is_none() {
+                    out.first_unreadable = Some(line.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// One line per listing, never one per row.
+///
+/// A recursive walk over a server we cannot parse would otherwise emit a
+/// warning for every row of every directory, and a log nobody can read is the
+/// same as no log.
+pub(crate) fn warn_unreadable_rows(listing: &Listing, context: &str) {
+    if let (n, Some(first)) = (listing.unreadable, listing.first_unreadable.as_deref()) {
+        if n > 0 {
+            tracing::warn!("{context}: {n} listing row(s) could not be parsed; first was: {first}");
+        }
+    }
+}
+
 /// Shape check for the leading token of a DOS-style listing row:
 /// `MM-DD-YY` or `MM-DD-YYYY`, all digits.
 pub(crate) fn is_dos_date(token: &str) -> bool {
@@ -334,5 +450,106 @@ pub(crate) fn format_mlsd_time(ts: &str) -> String {
         format!("{}-{}-{}", &ts[0..4], &ts[4..6], &ts[6..8])
     } else {
         ts.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The two outcomes are the whole point of D3(b), and they are what makes
+    /// removing the caller-side filters safe. Without the distinction, every
+    /// `total 12` and every `.` would be reported as an unreadable row and a
+    /// recursive listing would become a wall of warnings about lines that were
+    /// never entries.
+    #[test]
+    fn lines_that_were_never_entries_are_not_reported_as_unreadable() {
+        let lines = [
+            "total 12",
+            "Total 12",
+            "",
+            "/pub/data:",
+            "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .",
+            "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ..",
+            "-rw-r--r--    1 user     group         123 Jan 20 10:00 real.txt",
+        ];
+        let listing = read_listing(lines, "/");
+        assert_eq!(listing.entries.len(), 1, "only one of these is an entry");
+        assert_eq!(
+            listing.unreadable, 0,
+            "none of the others is an unreadable row: they are not rows at all"
+        );
+        assert!(listing.first_unreadable.is_none());
+    }
+
+    /// And a row that did look like one and could not be read is counted and
+    /// kept, so the next server we cannot parse arrives as a report with the
+    /// offending line in hand instead of a listing that is quietly short.
+    ///
+    /// What this can and cannot see is worth stating. The Unix parser accepts
+    /// any row of nine or more whitespace-separated tokens whose first token is
+    /// not a DOS date, without checking that the fields look like a mode, a
+    /// link count or a size. So a line of nine words becomes an entry rather
+    /// than an unreadable row, and this report never sees it. What it does see
+    /// is the short rows, which is precisely the class that motivated it: a
+    /// server omitting a column produces eight tokens and vanishes today.
+    /// Making the Unix parser validate its fields is a behaviour change of its
+    /// own and is not in this one.
+    #[test]
+    fn a_row_that_looked_like_one_and_failed_is_counted_and_named() {
+        let lines = [
+            "-rw-r--r--    1 user     group         123 Jan 20 10:00 real.txt",
+            "-rw-r--r-- 1 user group 123 Jan 20 10:00",
+            "?????? nonsense",
+        ];
+        let listing = read_listing(lines, "/");
+        assert_eq!(listing.entries.len(), 1);
+        assert_eq!(
+            listing.unreadable, 2,
+            "a row one column short is exactly the case this reports"
+        );
+        assert_eq!(
+            listing.first_unreadable.as_deref(),
+            Some("-rw-r--r-- 1 user group 123 Jan 20 10:00"),
+            "the report has to name a line someone can look at"
+        );
+    }
+
+    /// The dispatcher decides on the shape of the first token, so a DOS row
+    /// long enough to reach nine tokens no longer becomes a Unix entry with the
+    /// date in its permissions.
+    #[test]
+    fn a_long_dos_row_is_not_taken_by_the_unix_parser() {
+        let entry = parse_listing("01-23-24 10:30AM 12345 a b c d e f", "/").expect("a DOS row");
+        assert_eq!(entry.name, "a b c d e f");
+        assert_eq!(entry.size, 12345);
+        assert!(entry.permissions.is_none(), "a DOS row carries no mode");
+    }
+
+    /// The name is sliced from the line, so runs of spaces survive. A name that
+    /// comes back altered addresses a path that does not exist.
+    #[test]
+    fn runs_of_spaces_in_a_name_survive() {
+        let unix = parse_listing(
+            "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt",
+            "/",
+        )
+        .expect("a Unix row");
+        assert_eq!(unix.name, "a  b.txt");
+
+        let dos = parse_listing("01-23-24  10:30AM  12345  my  file.txt", "/").expect("a DOS row");
+        assert_eq!(dos.name, "my  file.txt");
+    }
+
+    /// Only CR and LF are trimmed: a trailing space is a legal filename, and
+    /// trimming it would be the same defect from the other end.
+    #[test]
+    fn a_trailing_space_in_a_name_is_kept_but_a_line_ending_is_not() {
+        let entry = parse_listing(
+            "-rw-r--r--    1 user     group         123 Jan 20 10:00 trailing \r\n",
+            "/",
+        )
+        .expect("a Unix row");
+        assert_eq!(entry.name, "trailing ");
     }
 }

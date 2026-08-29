@@ -235,28 +235,34 @@ impl FtpManager {
             .context("List operation timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
 
-        let mut remote_files = Vec::new();
-
-        for file_str in &files {
-            let trimmed = file_str.trim();
-            // Skip non-listing lines that FTP servers may include
-            if trimmed.is_empty() || trimmed.starts_with("total ") || trimmed.starts_with("Total ")
-            {
-                continue;
-            }
-            // Skip directory header lines (e.g. "/path/to/dir:" from recursive LIST)
-            if trimmed.ends_with(':') && !trimmed.contains(' ') {
-                debug!("Skipping directory header line: {}", trimmed);
-                continue;
-            }
-            if let Ok(file) = self.parse_ftp_listing(trimmed) {
-                // Skip . and .. for cleaner UX - use "Up" button for navigation
-                if file.name == "." || file.name == ".." {
-                    continue;
-                }
-                remote_files.push(file);
-            }
-        }
+        // The three filters that used to stand here (blank and `total ` lines,
+        // `path:` headers, and `.` / `..` by name) are gone: the shared module
+        // classifies them, so both implementations agree about what a listing
+        // contains instead of each deciding for itself. Keeping them would also
+        // have made every one of those lines a reported "unreadable row" now
+        // that unreadable rows are reported, turning a recursive listing into a
+        // wall of warnings about lines that were never entries.
+        let listing = crate::providers::ftp_listing::read_listing(
+            files.iter().map(String::as_str),
+            &self.current_path,
+        );
+        crate::providers::ftp_listing::warn_unreadable_rows(
+            &listing,
+            &format!("LIST {}", self.current_path),
+        );
+        let mut remote_files: Vec<RemoteFile> = listing
+            .entries
+            .into_iter()
+            .map(|entry| RemoteFile {
+                name: entry.name,
+                path: entry.path,
+                size: Some(entry.size),
+                is_dir: entry.is_dir,
+                modified: entry.modified,
+                permissions: entry.permissions,
+                link_target: entry.link_target,
+            })
+            .collect();
 
         // Sort: directories first, then files, both alphabetically
         remote_files.sort_by(|a, b| match (a.is_dir, b.is_dir) {

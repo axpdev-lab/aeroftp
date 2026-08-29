@@ -303,13 +303,8 @@ impl FtpProvider {
         ))
     }
 
-    // The parsers themselves live in `super::ftp_listing`, shared with the
-    // legacy `crate::ftp::FtpManager`. These stay as thin methods so the call
-    // sites below read unchanged.
-    fn parse_listing(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
-        super::ftp_listing::parse_listing(line, base_path)
-    }
-
+    // `parse_listing` is reached through `ftp_listing::read_listing` now, which
+    // also reports the rows it could not read. MLSD still comes through here.
     fn parse_mlsd_entry(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
         super::ftp_listing::parse_mlsd_entry(line, base_path)
     }
@@ -489,10 +484,10 @@ impl FtpProvider {
                 .map_err(|e| ProviderError::ServerError(e.to_string()))?
         };
 
-        let entries: Vec<RemoteEntry> = lines
-            .iter()
-            .filter_map(|line| self.parse_listing(line, &base_path))
-            .collect();
+        let listing =
+            super::ftp_listing::read_listing(lines.iter().map(String::as_str), &base_path);
+        super::ftp_listing::warn_unreadable_rows(&listing, &format!("LIST {base_path}"));
+        let entries = listing.entries;
 
         // FTP answers a LIST against a directory that does not exist with a
         // successful, empty listing, so "missing" and "empty" arrive identical.
@@ -2665,7 +2660,7 @@ mod tests {
         let p = charac_provider();
         let mut out = String::new();
         for (line, base) in CHARAC_LIST_ROWS {
-            let rendered = match p.parse_listing(line, base) {
+            let rendered = match super::super::ftp_listing::parse_listing(line, base) {
                 None => "<none>".to_string(),
                 Some(e) => format!(
                     "name={:?} path={:?} dir={} size={} sym={} link={:?} perms={:?} owner={:?} group={:?} mod={:?}",
@@ -2777,16 +2772,6 @@ MLSD "no-facts-here" @ "/"
         // KEEP the dotfile (so rmdir_recursive removes it and the final RMD
         // succeeds) and DROP `.`/`..` (so it never issues `DELE .`, the regression
         // that 550'd ordinary populated directories in the earlier attempt).
-        let provider = FtpProvider::new(FtpConfig {
-            host: "test".to_string(),
-            port: 21,
-            username: "user".to_string(),
-            password: "pass".to_string().into(),
-            tls_mode: FtpTlsMode::None,
-            verify_cert: true,
-            initial_path: None,
-        });
-
         let listing = [
             "drwx------    2 ftp      ftp          4096 Jun 13 15:17 .",
             "drwxr-xr-x    3 ftp      ftp          4096 Jun 13 15:17 ..",
@@ -2795,7 +2780,7 @@ MLSD "no-facts-here" @ "/"
         ];
         let names: Vec<String> = listing
             .iter()
-            .filter_map(|line| provider.parse_listing(line, "/scope"))
+            .filter_map(|line| super::super::ftp_listing::parse_listing(line, "/scope"))
             .map(|entry| entry.name)
             .collect();
 
@@ -2810,16 +2795,6 @@ MLSD "no-facts-here" @ "/"
         // resurrected as a bogus file ("1001 4096 Jul 21 09:41 .") that
         // recursive delete tried to DELE: the server answered
         // `550 Delete operation failed` and the whole delete aborted.
-        let provider = FtpProvider::new(FtpConfig {
-            host: "test".to_string(),
-            port: 21,
-            username: "user".to_string(),
-            password: "pass".to_string().into(),
-            tls_mode: FtpTlsMode::None,
-            verify_cert: true,
-            initial_path: None,
-        });
-
         let listing = [
             "drwxr-xr-x    2 1001     1001         4096 Jul 21 09:41 .",
             "drwxr-xr-x    3 1001     1001         4096 Jul 21 09:41 ..",
@@ -2827,7 +2802,7 @@ MLSD "no-facts-here" @ "/"
         ];
         let names: Vec<String> = listing
             .iter()
-            .filter_map(|line| provider.parse_listing(line, "/scope"))
+            .filter_map(|line| super::super::ftp_listing::parse_listing(line, "/scope"))
             .map(|entry| entry.name)
             .collect();
 
