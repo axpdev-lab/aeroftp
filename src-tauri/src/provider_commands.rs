@@ -726,6 +726,11 @@ pub struct ProviderConnectionParams {
     /// Optional saved-provider preset id (`nextcloud`, `koofr`, `custom-webdav`, `megacmd`, ...).
     #[serde(default, alias = "providerId")]
     pub provider_id: Option<String>,
+    /// Saved server profile id. Threaded into `ProviderConfig.extra["profile_id"]`
+    /// so Jottacloud (and OAuth) bind the per-profile vault key instead of the
+    /// legacy singleton. Absent for unsaved / ad-hoc connects.
+    #[serde(default, alias = "profileId")]
+    pub profile_id: Option<String>,
     /// Host/URL (FTP server, WebDAV URL, or S3 endpoint)
     pub server: String,
     /// Port (optional, defaults based on protocol)
@@ -884,6 +889,14 @@ impl ProviderConnectionParams {
             .filter(|s| !s.is_empty())
         {
             extra.insert("provider_id".to_string(), provider_id.to_string());
+        }
+        if let Some(profile_id) = self
+            .profile_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            extra.insert("profile_id".to_string(), profile_id.to_string());
         }
 
         if let Some(ref provider_id) = self.provider_id {
@@ -13275,6 +13288,7 @@ mod tests {
         ProviderConnectionParams {
             protocol: "s3".to_string(),
             provider_id: None,
+            profile_id: None,
             server: "http://localhost".to_string(),
             port: Some(3900),
             username: "access".to_string(),

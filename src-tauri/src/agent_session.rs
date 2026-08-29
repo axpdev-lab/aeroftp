@@ -917,6 +917,11 @@ async fn connect_provider(profile: &ProfileSummary) -> ConnectOutcome {
     };
 
     let mut extra = profile.extras.clone();
+    if !profile.id.is_empty() {
+        extra
+            .entry("profile_id".to_string())
+            .or_insert_with(|| profile.id.clone());
+    }
 
     // Azure stores its container under `options.bucket` in the desktop
     // schema (the UI shares the bucket field across S3/Azure), but the

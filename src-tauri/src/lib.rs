@@ -17643,6 +17643,16 @@ pub async fn import_server_profiles_core_filtered(
                         ) {
                             cred_errors.push(format!("{} jotta: {}", profile_id, e));
                         }
+                        // Legacy singleton: connect paths that do not thread
+                        // extra.profile_id still call load_persisted_refresh_token
+                        // with an empty id and only read `jottacloud_refresh`.
+                        // Dual-write so an imported profile reconnects without
+                        // burning a new Personal Login Token. Last writer wins
+                        // when two Jotta profiles share a device (same pre-#214
+                        // singleton behaviour).
+                        if let Err(e) = store.store("jottacloud_refresh", jotta_json) {
+                            cred_errors.push(format!("{} jotta singleton: {}", profile_id, e));
+                        }
                     }
                 }
                 // Restore the BYO OAuth app client_id/client_secret into their

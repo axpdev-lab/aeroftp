@@ -140,6 +140,19 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
         extra.insert("provider_id".to_string(), provider_id.to_string());
     }
 
+    // Issue #214: bind Jottacloud (and OAuth) per-profile vault keys.
+    // ProviderFactory reads extra["profile_id"] to call with_profile_id;
+    // without it the connect path looks at the legacy singleton and an
+    // imported `jottacloud_refresh_<id>` blob is invisible.
+    if let Some(id) = profile
+        .get("id")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        extra.insert("profile_id".to_string(), id.to_string());
+    }
+
     if let Some(opts) = profile.get("options").and_then(|v| v.as_object()) {
         for (k, v) in opts {
             insert_profile_option(extra, k, v);
@@ -657,5 +670,20 @@ mod provider_id_reach_tests {
         let swift = crate::providers::swift::SwiftConfig::from_provider_config(&config)
             .expect("swift config");
         assert!(swift.allow_cleartext_storage_endpoint);
+    }
+
+    #[test]
+    fn a_saved_profile_carries_its_id_into_extra() {
+        let profile = serde_json::json!({
+            "id": "srv_1771799399856_swqija1mi",
+            "protocol": "jottacloud",
+            "options": {}
+        });
+        let mut extra: HashMap<String, String> = HashMap::new();
+        apply_profile_options(&mut extra, &profile);
+        assert_eq!(
+            extra.get("profile_id").map(String::as_str),
+            Some("srv_1771799399856_swqija1mi")
+        );
     }
 }

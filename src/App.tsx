@@ -6710,6 +6710,7 @@ const App: React.FC = () => {
     const providerParams = {
       protocol,
       provider_id: effectiveParams.providerId || null,
+      profile_id: effectiveParams.savedServerId || null,
       server: effectiveParams.server,
       port: effectiveParams.port,
       username: effectiveParams.username,
@@ -8650,6 +8651,7 @@ const App: React.FC = () => {
           // Non-FTP: use provider_connect (SFTP, WebDAV, S3, MEGA, Azure, Filen, Koofr, etc.)
           const providerParams = {
             protocol,
+            profile_id: cloudServer.id || null,
             server: cloudServer.host,
             port: cloudServer.port || (protocol === 'sftp' ? 22 : 443),
             username: cloudServer.username || '',
