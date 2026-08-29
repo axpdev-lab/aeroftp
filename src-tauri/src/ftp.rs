@@ -250,6 +250,29 @@ impl FtpManager {
             &listing,
             &format!("LIST {}", self.current_path),
         );
+
+        // The same refusal the provider makes, in the second place the class
+        // lives. A listing whose every row failed to parse is not an empty
+        // directory, and handing one over as empty is a value meaning "we do
+        // not know" dressed as a specific answer.
+        //
+        // Putting it only in the provider would have been this branch's own
+        // lesson ignored: a defence belongs where the class is, not where it
+        // was noticed. There is no design reason for the two implementations to
+        // disagree about this, and they were extracted onto a shared parser
+        // precisely so they would stop deciding such things separately.
+        //
+        // The offending row is left to the warning above and kept out of the
+        // error: it is raw server text, and `sync::classify_sync_error` reads
+        // error messages by searching them for words.
+        if listing.entries.is_empty() && listing.unreadable > 0 {
+            return Err(FtpManagerError::OperationFailed(format!(
+                "LIST {}: none of the {} row(s) could be read (see the log for the first)",
+                self.current_path, listing.unreadable
+            ))
+            .into());
+        }
+
         let mut remote_files: Vec<RemoteFile> = listing
             .entries
             .into_iter()
