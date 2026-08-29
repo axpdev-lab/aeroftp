@@ -77,7 +77,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     const tabState = React.useContext(TabStateStoreContext);
 
     const livePlanFromStore = (): LivePlanExport => {
-        const canaryOn = tabState?.get('plan.canaryMode', false) === true;
+        const canaryOn = tabState?.get<boolean>('plan.canaryMode', false) === true;
         const verify = tabState?.get<AeroSyncVerifyPolicy | undefined>('plan.verifyPolicy', undefined);
         const compression = tabState?.get<CompressionMode | undefined>('plan.compressionMode', undefined);
         return {
