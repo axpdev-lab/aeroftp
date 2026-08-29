@@ -2243,8 +2243,8 @@ impl JottacloudProvider {
 
         let mut entries = Vec::new();
         let mut reader = Reader::from_str(xml);
-        // trim_text(true) is SAFE here: entry names arrive as attributes
-        // (xml_text::attr_value), never as Text events; only scalars do.
+        // Names arrive as attributes. `<abspath>` is Text + GeneralRef and
+        // is accumulated (then trimmed once) rather than assigned per chunk.
         reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
 
@@ -2389,7 +2389,7 @@ impl JottacloudProvider {
                                 entries.push(RemoteEntry {
                                     name: pending_folder_name.clone(),
                                     path: Self::trash_relative_path(
-                                        &pending_folder_abspath,
+                                        pending_folder_abspath.trim(),
                                         &pending_folder_name,
                                     ),
                                     is_dir: true,
@@ -2428,7 +2428,7 @@ impl JottacloudProvider {
                                 entries.push(RemoteEntry {
                                     name: current_name.clone(),
                                     path: Self::trash_relative_path(
-                                        &current_abspath,
+                                        current_abspath.trim(),
                                         &current_name,
                                     ),
                                     is_dir: false,
@@ -2453,14 +2453,19 @@ impl JottacloudProvider {
                     current_tag.clear();
                 }
                 Ok(Event::Text(ref e)) => {
-                    let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
                     if current_tag.as_str() == "abspath" {
+                        // Accumulate, do not assign: an `<abspath>` with an
+                        // entity arrives as Text + GeneralRef + Text, and
+                        // assigning the last chunk silently truncates the
+                        // original parent (the shape we just closed).
+                        let chunk = String::from_utf8_lossy(e.as_ref());
                         if in_file && !in_revision {
-                            current_abspath = text;
+                            current_abspath.push_str(&chunk);
                         } else if child_folder_depth == Some(depth.saturating_sub(1)) {
-                            pending_folder_abspath = text;
+                            pending_folder_abspath.push_str(&chunk);
                         }
                     } else if in_revision && in_file {
+                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
                         match current_tag.as_str() {
                             "size" => {
                                 current_size = text.parse().unwrap_or(0);
@@ -2472,6 +2477,15 @@ impl JottacloudProvider {
                                 current_modified = Self::parse_jotta_time(&text);
                             }
                             _ => {}
+                        }
+                    }
+                }
+                Ok(Event::GeneralRef(ref e)) if current_tag.as_str() == "abspath" => {
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        if in_file && !in_revision {
+                            current_abspath.push_str(&ch);
+                        } else if child_folder_depth == Some(depth.saturating_sub(1)) {
+                            pending_folder_abspath.push_str(&ch);
                         }
                     }
                 }
@@ -2695,6 +2709,31 @@ mod tests {
             JottacloudProvider::trash_relative_path("/user123/Jotta/Archive", "root.txt"),
             "/root.txt"
         );
+    }
+
+    #[test]
+    fn parse_trash_xml_accumulates_and_decodes_abspath_entities() {
+        // `<abspath>…a&amp;b…</abspath>` is Text("…a") + GeneralRef("amp") +
+        // Text("b…"). Assigning each Text overwrites the prefix and drops
+        // the entity, so restore would hit `/b/x.txt` instead of `/a&b/x.txt`.
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="vacation">
+      <abspath>/user123/Jotta/Archive/photos/a&amp;b</abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="x.txt">
+      <abspath>/user123/Jotta/Archive/photos/a&amp;b</abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.path, "/photos/a&b/vacation");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/photos/a&b/x.txt");
     }
 
     #[test]
