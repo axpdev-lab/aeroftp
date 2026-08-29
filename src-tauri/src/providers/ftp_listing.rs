@@ -17,8 +17,25 @@
 use super::types::RemoteEntry;
 
 pub(crate) fn parse_listing(line: &str, base_path: &str) -> Option<RemoteEntry> {
-    // Try Unix format first, then DOS format
-    parse_unix_listing(line, base_path).or_else(|| parse_dos_listing(line, base_path))
+    // Dispatch on the shape of the first token, and try ONE parser.
+    //
+    // Trying Unix and falling back to DOS made the FAILURE of the first parser
+    // the criterion for choosing the second, and a DOS row whose name has
+    // enough words to reach nine whitespace tokens satisfies the Unix parser:
+    // the date lands in the permissions field, the size in the owner field, and
+    // the caller receives a confident entry describing a file that does not
+    // exist, while the real one is nowhere in the listing. A wrong entry is
+    // worse than a dropped one, because an operation acts on it.
+    //
+    // `is_dos_date` already existed for this and could only ever guard the
+    // inside of the DOS parser, where it arrived too late to decide anything.
+    // A Unix permissions field cannot satisfy it, so no Unix row changes route.
+    let first = line.split_whitespace().next()?;
+    if is_dos_date(first) {
+        parse_dos_listing(line, base_path)
+    } else {
+        parse_unix_listing(line, base_path)
+    }
 }
 
 /// Shape check for the leading token of a DOS-style listing row:

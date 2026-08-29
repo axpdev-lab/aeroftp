@@ -969,7 +969,7 @@ LIST "01-23-2024  10:30AM         12345      file.txt"
 LIST "01-23-24  10:30AM           12345      my file.txt"
   name="my file.txt" path="/my file.txt" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
 LIST "01-23-24 10:30AM 12345 a b c d e f"
-  name="f" path="/f" dir=false size=Some(0) perms=Some("01-23-24") mod=Some("c d e")
+  name="a b c d e f" path="/a b c d e f" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
 LIST "not-a-date 10:30AM <DIR> folder"
   <err: Invalid path: Unrecognised listing row: not-a-date 10:30AM <DIR> folder>
 LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ."

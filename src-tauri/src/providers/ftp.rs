@@ -2735,7 +2735,7 @@ LIST "01-23-2024  10:30AM         12345      file.txt" @ "/"
 LIST "01-23-24  10:30AM           12345      my file.txt" @ "/"
   name="my file.txt" path="/my file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
 LIST "01-23-24 10:30AM 12345 a b c d e f" @ "/"
-  name="f" path="/f" dir=false size=0 sym=false link=None perms=Some("01-23-24") owner=Some("12345") group=Some("a") mod=Some("c d e")
+  name="a b c d e f" path="/a b c d e f" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
 LIST "not-a-date 10:30AM <DIR> folder" @ "/"
   <none>
 LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ." @ "/"
