@@ -1,12 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-// Pins the two pure decisions behind the bridge picker's autodetect: which
-// tools come first, and how their config path is shown. The probe loop itself
-// is a Tauri round trip and is not covered here.
+// Pins the bridge picker's autodetect: which tools come first, how their
+// config path is shown, and the sweep's contract with its consumers.
+//
+// That last group exists because of a live failure the first version's gates
+// could not see. The sweep used to live inside the effect behind a per-mount
+// ref; under StrictMode the first pass was discarded by its own cleanup and
+// the second returned early on the surviving ref, so the picker never showed
+// a single detection in the running app while tsc, vitest and a by-hand call
+// to the backend all said the code was fine. The probe itself is a Tauri round
+// trip and still is not covered here: only a live run proves that end.
 
-import { describe, it, expect } from 'vitest';
-import { orderBridgeSourcesByDetection, shortenConfigPath } from './useDetectedBridgeConfigs';
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+    loadDetectedBridgeConfigs,
+    orderBridgeSourcesByDetection,
+    resetDetectedBridgeConfigsCache,
+    shortenConfigPath,
+} from './useDetectedBridgeConfigs';
 import { GENERIC_BRIDGE_SOURCES } from '../components/bridge/bridgeSources';
 
 const ids = (list: { id: string }[]) => list.map(s => s.id);
@@ -52,5 +64,63 @@ describe('shortenConfigPath', () => {
     it('returns short paths untouched rather than prefixing an ellipsis to nothing', () => {
         expect(shortenConfigPath('/etc/s3cfg')).toBe('/etc/s3cfg');
         expect(shortenConfigPath('.lftprc')).toBe('.lftprc');
+    });
+});
+
+describe('loadDetectedBridgeConfigs', () => {
+    beforeEach(resetDetectedBridgeConfigsCache);
+
+    const found: Record<string, string> = {
+        rclone: '/home/me/.config/rclone/rclone.conf',
+        ssh: '/home/me/.ssh/config',
+    };
+    const probeInstalled = async (id: string) => found[id] ?? null;
+
+    it('reports the tools that have a config here and omits the rest', async () => {
+        expect(await loadDetectedBridgeConfigs(probeInstalled)).toEqual(found);
+    });
+
+    it('serves a consumer that arrives while the sweep is still running', async () => {
+        // The live failure this pins: the dialog mounts, the sweep starts, the
+        // mount is thrown away and redone (StrictMode does exactly this), and
+        // the second consumer must still receive the answer. The first version
+        // guarded the sweep with a per-mount ref, so the second consumer got
+        // nothing at all and the picker stayed blank in the running app while
+        // every gate here was green.
+        let release: (() => void) | undefined;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        let calls = 0;
+        const slowProbe = async (id: string) => {
+            calls += 1;
+            await gate;
+            return found[id] ?? null;
+        };
+
+        const first = loadDetectedBridgeConfigs(slowProbe);
+        const second = loadDetectedBridgeConfigs(slowProbe);
+        release?.();
+
+        expect(await second).toEqual(found);
+        expect(await first).toEqual(await second);
+        // One sweep, not two: the late consumer joined it.
+        expect(calls).toBe(GENERIC_BRIDGE_SOURCES.length);
+    });
+
+    it('probes once per app run, then answers from the cache', async () => {
+        let calls = 0;
+        const counting = async (id: string) => { calls += 1; return found[id] ?? null; };
+        await loadDetectedBridgeConfigs(counting);
+        await loadDetectedBridgeConfigs(counting);
+        expect(calls).toBe(GENERIC_BRIDGE_SOURCES.length);
+    });
+
+    it('keeps going when one probe throws', async () => {
+        // rclone shells out to `rclone config file`; a machine without rclone
+        // must cost that one row, not the whole list.
+        const flaky = async (id: string) => {
+            if (id === 'rclone') throw new Error('rclone not installed');
+            return found[id] ?? null;
+        };
+        expect(await loadDetectedBridgeConfigs(flaky)).toEqual({ ssh: found.ssh });
     });
 });
