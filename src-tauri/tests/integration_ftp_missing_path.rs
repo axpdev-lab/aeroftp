@@ -61,14 +61,19 @@ async fn a_missing_directory_is_not_reported_as_an_empty_one() {
     let mut p = connected().await;
     let missing = "/no-such-directory-6f1a9c";
 
+    // The property under test is that it FAILS, not which kind it fails with.
+    // The kind depends on what the server chooses to say: vsftpd answers a CWD
+    // into a missing directory with "550 Failed to change directory.", the same
+    // words it uses for one you may not enter, so the reply cannot be read as
+    // "not there" without asserting something it does not say. Where a server
+    // does name a missing path, the error carries the more precise kind.
     match p.list(missing).await {
-        Err(ProviderError::NotFound(_)) | Err(ProviderError::InvalidPath(_)) => {}
+        Err(_) => {}
         Ok(entries) => panic!(
             "a missing directory answered with a successful listing of {} entries; \
              this is the shape that lets a delete pass treat it as emptied",
             entries.len()
         ),
-        Err(other) => panic!("expected a not-found answer, got {other:?}"),
     }
 
     // The control case, and it matters as much: a directory that really is

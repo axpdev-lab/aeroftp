@@ -460,12 +460,23 @@ impl FtpProvider {
             let stream = self.stream_mut()?;
             let listed = stream.list(Some("-a")).await;
             let restored = self.restore_cwd(&saved_cwd).await;
-            let lines = listed.map_err(|e| ProviderError::ServerError(e.to_string()))?;
-            // Only now: a listing that worked is worth nothing if the connection
-            // was left somewhere else, because every later relative operation
-            // would quietly address the wrong directory.
-            restored?;
-            lines
+            // Both are reported when both fail. Propagating the listing error
+            // first would swallow the restore failure exactly when it matters
+            // most: the two fail together whenever the data connection drops,
+            // and of the pair it is the unrestored directory that outlives the
+            // call and misdirects everything after it.
+            match (listed, restored) {
+                (Ok(lines), Ok(())) => lines,
+                (Err(list_err), Ok(())) => {
+                    return Err(ProviderError::ServerError(list_err.to_string()))
+                }
+                (Ok(_), Err(restore_err)) => return Err(restore_err),
+                (Err(list_err), Err(restore_err)) => {
+                    return Err(ProviderError::ServerError(format!(
+                        "{list_err}; and {restore_err}"
+                    )))
+                }
+            }
         } else {
             let stream = self.stream_mut()?;
             stream
@@ -517,10 +528,32 @@ impl FtpProvider {
             .map_err(|e| ProviderError::ServerError(format!("pwd: {e}")))?;
         match stream.cwd(target).await {
             Ok(()) => {}
-            Err(FtpError::UnexpectedResponse(response))
-                if response.status == Status::FileUnavailable =>
-            {
-                return Err(ProviderError::NotFound(format!("path not found: {target}")));
+            // A 550 on CWD is not only "it is not there": it is also what a
+            // server sends for a directory you may not enter. Reading every one
+            // as NotFound turns an inaccessible directory into a nonexistent
+            // one, which is the mistake this change already made once on mkdir
+            // and had corrected by a live server. The reply is only read as a
+            // missing path when it says so, and its own text is kept rather
+            // than replaced with a sentence of ours.
+            Err(FtpError::UnexpectedResponse(response)) => {
+                let text = response.to_string();
+                //
+                // The fallback is `InvalidPath`, not `ServerError`, and the
+                // difference is not cosmetic: `ServerError` maps to exit 10,
+                // which `is_retryable_exit` treats as retryable, so a directory
+                // that will never be enterable would be attempted three times.
+                // That is the same defect this change removes from the 553
+                // path, reintroduced two functions away. `InvalidPath` is
+                // permanent on both retry paths, says only that the path did
+                // not work, and is already what the MLST preflight above
+                // returns for the same status.
+                return if response.status == Status::FileUnavailable
+                    && super::types::message_names_a_missing_path(&text)
+                {
+                    Err(ProviderError::NotFound(format!("{target}: {text}")))
+                } else {
+                    Err(ProviderError::InvalidPath(format!("{target}: {text}")))
+                };
             }
             Err(e) => return Err(ProviderError::ServerError(e.to_string())),
         }

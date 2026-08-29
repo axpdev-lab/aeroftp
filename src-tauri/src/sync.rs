@@ -3078,16 +3078,53 @@ pub struct SyncErrorInfo {
 
 /// Is this an FTP status code, rather than the same digits inside a sentence?
 ///
-/// A status opens the server's reply, but by the time the text reaches here it
-/// has usually been wrapped by an error type, so it reads "Path not found: 553
-/// Can't open that file". Anchoring on the start of the string alone would
-/// therefore never match and would silently disable the rule; accepting the
-/// digits anywhere would match "failed after 553 bytes" and turn a transient
-/// failure into a permanent one, removing a legitimate retry. Requiring the
-/// start of the string or a `": "` prefix accepts both real shapes and neither
-/// false one.
+/// The text arriving here is usually an error that has already been wrapped, so
+/// it reads "Path not found: 553 Can't open that file". Anchoring on the start
+/// of the string alone would never match and would silently disable the rule.
+///
+/// Accepting the digits after any colon is not safe either: "upload stalled:
+/// 553 bytes" is a byte count, and treating it as a reply code would make a
+/// transient failure permanent and take away a retry that belongs. Nothing in
+/// the shape of the text separates the two, and "553" is not special: any
+/// three-digit number can appear as a count.
+///
+/// So the prefix has to be one WE produce. `ProviderError`'s Display labels are
+/// a closed set defined in `providers::types`, and prose from anywhere else
+/// does not match one. An unrecognised prefix fails closed, leaving the error
+/// retryable, which is the safe direction: not preventing a refusal costs a
+/// wasted attempt, wrongly preventing a retry costs a transfer.
 fn mentions_ftp_status(lowered: &str, code_and_space: &str) -> bool {
-    lowered.starts_with(code_and_space) || lowered.contains(&format!(": {code_and_space}"))
+    if lowered.starts_with(code_and_space) {
+        return true;
+    }
+    // Lowercased forms of the `#[error("...: {0}")]` labels in
+    // `providers::types::ProviderError`. Anything else that ends in ": " is
+    // someone's sentence, not our wrapper.
+    const OUR_LABELS: &[&str] = &[
+        "connection failed: ",
+        "authentication failed: ",
+        "path not found: ",
+        "permission denied: ",
+        "file too large: ",
+        "path already exists: ",
+        "directory not empty: ",
+        "invalid path: ",
+        "invalid configuration: ",
+        "operation not supported: ",
+        "transfer failed: ",
+        "network error: ",
+        "parse error: ",
+        "server error: ",
+        "io error: ",
+        "connection lost: ",
+        "read-only endpoint: ",
+        "unknown error: ",
+    ];
+    OUR_LABELS.iter().any(|label| {
+        lowered
+            .find(label)
+            .is_some_and(|at| lowered[at + label.len()..].starts_with(code_and_space))
+    })
 }
 
 /// Classify a raw error message into a structured SyncErrorInfo
@@ -5340,16 +5377,41 @@ mod tests {
         assert_eq!(err.kind, SyncErrorKind::PathNotFound);
     }
 
-    /// The digits must be a status, not a coincidence: "553 " inside a sentence
-    /// is not a reply code, and treating it as one would take a legitimate
-    /// retry away from a transient failure.
+    /// The digits must be a status, not a coincidence.
+    ///
+    /// An earlier version of this test used only "stalled after 553 bytes",
+    /// with no colon, and passed while the rule still matched "stalled: 553
+    /// bytes". A boundary test that checks one side of the boundary is not a
+    /// boundary test.
     #[test]
     fn digits_inside_a_sentence_are_not_a_status_code() {
-        let err = classify_sync_error("upload stalled after 553 bytes", None);
-        assert!(
-            err.retryable,
-            "this is a byte count, not a reply code, and the failure may be transient"
-        );
+        for prose in [
+            "upload stalled after 553 bytes",
+            "upload stalled: 553 bytes",
+            "short read: 553 bytes remaining",
+            "retry budget: 553 attempts",
+        ] {
+            let err = classify_sync_error(prose, None);
+            assert!(
+                err.retryable,
+                "{prose}: this is a count, not a reply code, and the failure may be transient"
+            );
+        }
+    }
+
+    /// And the wrapped forms that ARE a reply code must still be caught, for
+    /// every label the provider error type can put in front of them.
+    #[test]
+    fn a_status_behind_one_of_our_own_labels_is_still_a_status() {
+        for wrapped in [
+            "553 Could not create file",
+            "Transfer failed: 553 Could not create file",
+            "Server error: 553 Could not create file",
+            "Path not found: 553 Can't open that file",
+        ] {
+            let err = classify_sync_error(wrapped, None);
+            assert!(!err.retryable, "{wrapped}: this is a permanent reply");
+        }
     }
 
     /// The rule names 553 and not "every 5xx" on purpose: this classifier
