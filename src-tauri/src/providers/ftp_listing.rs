@@ -72,6 +72,41 @@ pub(crate) fn parse_listing(line: &str, base_path: &str) -> Option<RemoteEntry> 
     }
 }
 
+/// Read a size field, saying whether it was readable.
+///
+/// Three parsers answered this question three ways: two produced `0` without
+/// saying so, and the DOS one rejected the whole row. `0` is not neutral, it
+/// drives skip and overwrite decisions and cannot be told from an empty file;
+/// and a rejected row is worse still in the context that matters, because a
+/// file that vanishes from a SOURCE listing makes its counterpart on the
+/// destination an orphan, and orphans get deleted.
+///
+/// So the entry is kept with `0` and the fact is reported, and all three agree.
+/// `RemoteEntry.size` is a `u64` and still cannot say "unknown"; closing that
+/// is a change to the shared type and is queued separately.
+fn read_size(token: &str) -> (u64, bool) {
+    match token.parse() {
+        Ok(value) => (value, true),
+        Err(_) => (0, false),
+    }
+}
+
+/// Marker put on an entry whose size could not be read.
+///
+/// It travels with the entry rather than through a channel beside it, so a
+/// consumer that cares can see it and the listing can count it without parsing
+/// anything twice. `RemoteEntry.size` is a `u64` and cannot hold "unknown"
+/// itself; until it can, this is where the fact lives instead of nowhere.
+pub(crate) const SIZE_UNREADABLE: &str = "ftp.size_unreadable";
+
+fn mark_size_unreadable(entry: &mut RemoteEntry, size_read: bool) {
+    if !size_read {
+        entry
+            .metadata
+            .insert(SIZE_UNREADABLE.to_string(), "1".to_string());
+    }
+}
+
 /// Why a line produced no entry.
 ///
 /// The distinction between the last two is the whole point. A server's listing
@@ -149,6 +184,12 @@ pub(crate) struct Listing {
     pub unreadable: usize,
     /// The first of them, verbatim, so a report can name it.
     pub first_unreadable: Option<String>,
+    /// Entries kept with a size of 0 because the field could not be read. They
+    /// are NOT dropped: in a delete-enabled sync a file missing from the source
+    /// listing makes its counterpart an orphan, so absence is the dangerous
+    /// side here and a wrong zero is the lesser one. Counted so the zero is not
+    /// silent.
+    pub unreadable_sizes: usize,
 }
 
 pub(crate) fn read_listing<'a>(
@@ -159,10 +200,16 @@ pub(crate) fn read_listing<'a>(
         entries: Vec::new(),
         unreadable: 0,
         first_unreadable: None,
+        unreadable_sizes: 0,
     };
     for line in lines {
         match read_listing_line(line, base_path) {
-            Ok(entry) => out.entries.push(entry),
+            Ok(entry) => {
+                if entry.metadata.contains_key(SIZE_UNREADABLE) {
+                    out.unreadable_sizes += 1;
+                }
+                out.entries.push(entry);
+            }
             Err(LineProblem::NotARow) => {}
             Err(LineProblem::Unreadable) => {
                 out.unreadable += 1;
@@ -239,7 +286,7 @@ pub(crate) fn parse_unix_listing(line: &str, base_path: &str) -> Option<RemoteEn
     let is_symlink = permissions.starts_with('l');
 
     // Get size (might be in different position depending on format)
-    let size: u64 = parts[4].parse().unwrap_or(0);
+    let (size, size_read) = read_size(parts[4]);
 
     // Sliced from the original line rather than rejoined from tokens, so a
     // name containing runs of spaces keeps them.
@@ -270,7 +317,7 @@ pub(crate) fn parse_unix_listing(line: &str, base_path: &str) -> Option<RemoteEn
         None
     };
 
-    Some(RemoteEntry {
+    let mut entry = RemoteEntry {
         name: actual_name,
         path,
         is_dir,
@@ -283,7 +330,9 @@ pub(crate) fn parse_unix_listing(line: &str, base_path: &str) -> Option<RemoteEn
         link_target,
         mime_type: None,
         metadata: Default::default(),
-    })
+    };
+    mark_size_unreadable(&mut entry, size_read);
+    Some(entry)
 }
 
 /// Parse DOS-style listing (Windows FTP servers)
@@ -312,13 +361,19 @@ pub(crate) fn parse_dos_listing(line: &str, base_path: &str) -> Option<RemoteEnt
     // named "1001 4096 Jul 21 09:41 ." that recursive delete then DELEs,
     // which the server answers with `550 Delete operation failed`.
     let is_dir = parts[2] == "<DIR>";
+    let mut size_read = true;
     let size: u64 = if is_dir {
         0
     } else {
-        match parts[2].parse() {
-            Ok(value) => value,
-            Err(_) => return None,
-        }
+        // Until the dispatcher landed, this rejection was the only thing
+        // keeping Unix rows out of the DOS parser: a `.` row from a server
+        // rendering numeric uids has a numeric `parts[2]` and was accepted as a
+        // bogus DOS file, which recursive delete then tried to DELE. The
+        // dispatch now decides on `is_dos_date`, so a Unix row cannot arrive
+        // here and the strict check is no longer holding that door shut.
+        let (value, read) = read_size(parts[2]);
+        size_read = read;
+        value
     };
     let name = field_tail(line, 3)?.to_string();
 
@@ -331,7 +386,7 @@ pub(crate) fn parse_dos_listing(line: &str, base_path: &str) -> Option<RemoteEnt
 
     let modified = Some(format!("{} {}", parts[0], parts[1]));
 
-    Some(RemoteEntry {
+    let mut entry = RemoteEntry {
         name,
         path,
         is_dir,
@@ -344,7 +399,9 @@ pub(crate) fn parse_dos_listing(line: &str, base_path: &str) -> Option<RemoteEnt
         link_target: None,
         mime_type: None,
         metadata: Default::default(),
-    })
+    };
+    mark_size_unreadable(&mut entry, size_read);
+    Some(entry)
 }
 
 /// Parse MLSD/MLST line (RFC 3659 machine-readable format)
@@ -362,6 +419,7 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
     let mut is_dir = false;
     let mut is_symlink = false;
     let mut size: u64 = 0;
+    let mut size_read = true;
     let mut modified: Option<String> = None;
     let mut permissions: Option<String> = None;
     let mut owner: Option<String> = None;
@@ -384,7 +442,9 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
                 is_symlink = v_lower == "os.unix=symlink" || v_lower == "os.unix=slink";
             }
             "size" | "sizd" => {
-                size = value.parse().unwrap_or(0);
+                let (parsed, read) = read_size(value);
+                size = parsed;
+                size_read = read;
             }
             "modify" => {
                 // YYYYMMDDHHMMSS[.sss] → format nicely
@@ -417,7 +477,7 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
 
     let path = join_remote_path(base_path, raw_name);
 
-    Some(RemoteEntry {
+    let mut entry = RemoteEntry {
         name,
         path,
         is_dir,
@@ -430,7 +490,9 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
         link_target: None,
         mime_type: None,
         metadata: Default::default(),
-    })
+    };
+    mark_size_unreadable(&mut entry, size_read);
+    Some(entry)
 }
 
 /// Format MLSD timestamp (YYYYMMDDHHMMSS) to readable form.
@@ -513,6 +575,53 @@ mod tests {
             Some("-rw-r--r-- 1 user group 123 Jan 20 10:00"),
             "the report has to name a line someone can look at"
         );
+    }
+
+    /// The three parsers used to answer the same question three ways: two
+    /// produced a silent `0`, and the DOS one rejected the row outright. They
+    /// agree now, and the direction is deliberate.
+    ///
+    /// Keeping the entry is the safer half, not the lazier one. In a sync with
+    /// `--delete`, a file that vanishes from the SOURCE listing makes its
+    /// counterpart on the destination an orphan, and orphans are deleted. So a
+    /// wrong `0` costs a bad skip, while a dropped row costs a deletion.
+    #[test]
+    fn an_unreadable_size_keeps_the_entry_and_says_so() {
+        let cases = [
+            "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt",
+            "01-23-24  10:30AM  ????  odd.txt",
+        ];
+        for line in cases {
+            let entry = parse_listing(line, "/")
+                .unwrap_or_else(|| panic!("the row must be kept, not dropped: {line}"));
+            assert_eq!(entry.size, 0);
+            assert!(
+                entry.metadata.contains_key(SIZE_UNREADABLE),
+                "a zero that is not a zero has to be marked: {line}"
+            );
+        }
+
+        // A size that reads fine carries no marker, or the marker would mean
+        // nothing.
+        let good = parse_listing("01-23-24  10:30AM  12345  file.txt", "/").expect("a DOS row");
+        assert_eq!(good.size, 12345);
+        assert!(!good.metadata.contains_key(SIZE_UNREADABLE));
+    }
+
+    /// And the listing counts them, so the zeros are visible without anyone
+    /// inspecting an entry.
+    #[test]
+    fn the_listing_counts_the_sizes_it_could_not_read() {
+        let listing = read_listing(
+            [
+                "-rw-r--r--    1 user     group         123 Jan 20 10:00 good.txt",
+                "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt",
+            ],
+            "/",
+        );
+        assert_eq!(listing.entries.len(), 2, "both are kept");
+        assert_eq!(listing.unreadable_sizes, 1);
+        assert_eq!(listing.unreadable, 0, "neither row failed to parse");
     }
 
     /// The dispatcher decides on the shape of the first token, so a DOS row

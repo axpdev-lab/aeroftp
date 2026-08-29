@@ -899,6 +899,7 @@ mod charac_tests {
         "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt",
         "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt",
         "01-23-24  10:30AM  12345  my  file.txt",
+        "01-23-24  10:30AM  ????  odd.txt",
         "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target",
         "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling",
         "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt",
@@ -953,6 +954,8 @@ LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt"
   name="a  b.txt" path="/a  b.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
 LIST "01-23-24  10:30AM  12345  my  file.txt"
   name="my  file.txt" path="/my  file.txt" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
+LIST "01-23-24  10:30AM  ????  odd.txt"
+  name="odd.txt" path="/odd.txt" dir=false size=Some(0) perms=None mod=Some("01-23-24 10:30AM")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target"
   name="link" path="/link" dir=false size=Some(7) perms=Some("lrwxrwxrwx") mod=Some("Jan 20 10:00")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling"
