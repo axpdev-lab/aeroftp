@@ -4187,6 +4187,14 @@ pub struct SyncTemplateProfile {
     pub parallel_streams: u8,
     #[serde(default)]
     pub compression_mode: crate::transfer_pool::CompressionMode,
+    /// Plan-tab verify policy. Absent on templates exported before the
+    /// schema grew it; `import_sync_template_cmd` must keep it when present
+    /// (#514).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verify_policy: Option<VerifyPolicy>,
+    /// Plan-tab canary trial. Absent when canary was off, or on older files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canary: Option<CanaryConfig>,
 }
 
 /// What an export should exclude: the caller's list when it has one, the
@@ -4238,6 +4246,8 @@ pub fn export_sync_template(
             delete_orphans: profile.delete_orphans,
             parallel_streams: profile.parallel_streams,
             compression_mode: profile.compression_mode.clone(),
+            verify_policy: Some(profile.verify_policy.clone()),
+            canary: None,
         },
         exclude_patterns: exclude_patterns.to_vec(),
         schedule: schedule.cloned(),
@@ -6053,6 +6063,36 @@ mod tests {
         assert_eq!(template.path_patterns.len(), 1);
         assert!(template.schedule.is_none());
         assert!(template.created_by.contains("AeroFTP"));
+        assert_eq!(template.profile.verify_policy, Some(profile.verify_policy));
+        assert!(template.profile.canary.is_none());
+    }
+
+    #[test]
+    fn template_serde_keeps_verify_policy_and_canary() {
+        let profile = SyncProfile::mirror();
+        let mut template = export_sync_template(
+            "Knobs",
+            "",
+            &profile,
+            "/tmp/a",
+            "/remote/a",
+            &[],
+            None,
+        )
+        .unwrap();
+        template.profile.verify_policy = Some(VerifyPolicy::Full);
+        template.profile.canary = Some(CanaryConfig {
+            percent: 15,
+            selection: "newest".to_string(),
+        });
+        let json = serde_json::to_string(&template).unwrap();
+        assert!(json.contains("\"verify_policy\":\"full\""));
+        assert!(json.contains("\"percent\":15"));
+        let back: SyncTemplate = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.profile.verify_policy, Some(VerifyPolicy::Full));
+        let canary = back.profile.canary.expect("canary must survive import");
+        assert_eq!(canary.percent, 15);
+        assert_eq!(canary.selection, "newest");
     }
 
     #[test]
