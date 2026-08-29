@@ -1577,8 +1577,20 @@ impl StorageProvider for JottacloudProvider {
             // A live 404 is "not found here", not "exists only in Trash".
             // Retrying as a Trash-to-Trash rename can move a homonym in
             // Trash and return Ok while the live object was never touched
-            // (F-652-2). Trash-only rename is `rename_in_trash`, called
-            // by a dedicated surface, not inferred from this status.
+            // (F-652-2), so the status is reported as it came.
+            //
+            // A Trash-to-Trash rename exists as `rename_in_trash`, but
+            // NOTHING calls it yet: there is no Tauri command and no button
+            // in JottacloudTrashManager, so it must not be described as
+            // reachable.
+            //
+            // Keeping it is a DECLARED exception to the house rule "remove
+            // dead code immediately" (CLAUDE.md). The reason: issue #397
+            // reports this exact operation failing for a user, and this is
+            // its implementation with its tests. Deleting it would throw away
+            // the only answer to that report and make whoever takes #397
+            // write it again. The exception lasts as long as the reason: if
+            // #397 does not wire it during this release cycle, it goes.
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
                 "Rename {} → {} failed ({}): {}",
@@ -2281,7 +2293,16 @@ impl JottacloudProvider {
         let mut reader = Reader::from_str(xml);
         // Names arrive as attributes. `<abspath>` is Text + GeneralRef and
         // is accumulated (then trimmed once) rather than assigned per chunk.
-        reader.config_mut().trim_text(true);
+        //
+        // Trimming is left OFF here on purpose: quick-xml trims every Text
+        // EVENT, not the node, so an entity splits `Photos &amp; Videos` into
+        // three events whose own edges carry the spaces. Trimming per event
+        // welds the pieces into `Photos&Videos`, and the single trim applied
+        // when the path is derived cannot put back what was already dropped.
+        // The scalars that need it (`size`, `state`, `modified`) trim
+        // themselves below, where a whitespace-only event is also harmless
+        // because it never matches their tag.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
 
         let mut depth: u32 = 0;
@@ -2787,6 +2808,27 @@ mod tests {
         assert_eq!(folder.path, "/photos/a&b/vacation");
         let file = entries.iter().find(|e| !e.is_dir).expect("file");
         assert_eq!(file.path, "/photos/a&b/x.txt");
+    }
+
+    #[test]
+    fn parse_trash_xml_keeps_spaces_around_an_entity_in_abspath() {
+        // The accumulation is not enough on its own: quick-xml trims every
+        // Text EVENT, not the node, so `Photos &amp; Videos` arrives as
+        // Text("...Photos ") trimmed to "...Photos", GeneralRef -> "&",
+        // Text(" Videos") trimmed to "Videos", and the pieces weld into
+        // "Photos&Videos". The folder exists under its real name, so a
+        // restore would GET a path that is not there.
+        let xml = r#"<mountPoint name="Trash">
+  <files>
+    <file name="x.txt">
+      <abspath>/user123/Jotta/Archive/Photos &amp; Videos</abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/Photos & Videos/x.txt");
     }
 
     #[test]
