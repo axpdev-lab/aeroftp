@@ -526,41 +526,68 @@ impl FtpProvider {
             .pwd()
             .await
             .map_err(|e| ProviderError::ServerError(format!("pwd: {e}")))?;
-        match stream.cwd(target).await {
-            Ok(()) => {}
-            // A 550 on CWD is not only "it is not there": it is also what a
-            // server sends for a directory you may not enter. Reading every one
-            // as NotFound turns an inaccessible directory into a nonexistent
-            // one, which is the mistake this change already made once on mkdir
-            // and had corrected by a live server. The reply is only read as a
-            // missing path when it says so, and its own text is kept rather
-            // than replaced with a sentence of ours.
-            Err(FtpError::UnexpectedResponse(response)) => {
-                let text = response.to_string();
-                //
-                // The fallback is `InvalidPath`, not `ServerError`, and the
-                // difference is not cosmetic: `ServerError` maps to exit 10,
-                // which `is_retryable_exit` treats as retryable, so a directory
-                // that will never be enterable would be attempted three times.
-                // That is the same defect this change removes from the 553
-                // path, reintroduced two functions away. `InvalidPath` is
-                // permanent on both retry paths, says only that the path did
-                // not work, and is already what the MLST preflight above
-                // returns for the same status.
-                return if response.status == Status::FileUnavailable
-                    && super::types::message_names_a_missing_path(&text)
-                {
-                    Err(ProviderError::NotFound(format!("{target}: {text}")))
-                } else {
-                    Err(ProviderError::InvalidPath(format!("{target}: {text}")))
-                };
-            }
-            Err(e) => return Err(ProviderError::ServerError(e.to_string())),
+        if let Err(e) = stream.cwd(target).await {
+            return Err(Self::classify_cwd_failure(target, &e));
         }
         // The mirror follows the server immediately, so it is never a lie even
         // if the restore below fails.
         self.current_path = target.to_string();
         Ok(saved)
+    }
+
+    /// Decide what a refused CWD means, without claiming more than the reply says.
+    ///
+    /// The reply carries two independent facts and they must not be collapsed:
+    /// the status code says whether the refusal is permanent, and the text says
+    /// whether it is about a path that is not there. Reading only one of them
+    /// is how this function was wrong twice in the same place, in opposite
+    /// directions, and neither error was caught by the person writing it.
+    ///
+    /// The first version answered `ServerError` for every refusal. That maps to
+    /// exit 10, which `is_retryable_exit` treats as retryable, so a directory
+    /// that will never be enterable was attempted three times: a permanent
+    /// failure dressed as a temporary one.
+    ///
+    /// The correction overshot. It answered `InvalidPath`, exit 5 and permanent
+    /// on both retry paths, for every status rather than for 550, so a `421
+    /// Service not available, closing control connection` or a `450 Requested
+    /// file action not taken` became permanent. Those are the replies a server
+    /// sends when it is overloaded or closing an idle session, which is exactly
+    /// the moment a client should retry, and RFC 959 section 4.2 says so in the
+    /// code itself: 4yz is "Transient Negative Completion", the action "may be
+    /// requested again", while 5yz is permanent and the user "is discouraged
+    /// from repeating the exact request". The class digit is the server's own
+    /// statement about retrying, so overruling it is not a judgement call.
+    ///
+    /// Only 550 is read as a statement about the path, and the split inside it
+    /// is by text because FTP spends 550 on both "it is not there" and "you may
+    /// not enter". Every other status keeps `ServerError` and the server's own
+    /// words. That is deliberately unambitious: a 530 is permanent too, but it
+    /// is about the session and not the path, and answering `InvalidPath` there
+    /// would trade a wrong retry for a false statement, which is the worse of
+    /// the two. Turning the 4yz/5yz contract into retry behaviour belongs where
+    /// retrying is decided, once, for every FTP call site, not here for one of
+    /// them; doing it here would fix this caller and leave the rest, which is
+    /// the "patch the case, not the predicate" mistake this branch removed
+    /// elsewhere. It is on the register.
+    fn classify_cwd_failure(target: &str, err: &FtpError) -> ProviderError {
+        let FtpError::UnexpectedResponse(ref response) = err else {
+            return ProviderError::ServerError(format!("{target}: {err}"));
+        };
+        let text = response.to_string();
+        if response.status != Status::FileUnavailable {
+            return ProviderError::ServerError(format!("{target}: {text}"));
+        }
+        // A 550 on CWD is not only "it is not there": it is also what a server
+        // sends for a directory you may not enter. Reading every one as
+        // NotFound turns an inaccessible directory into a nonexistent one,
+        // which is the mistake this change already made once on mkdir and had
+        // corrected by a live server.
+        if super::types::message_names_a_missing_path(&text) {
+            ProviderError::NotFound(format!("{target}: {text}"))
+        } else {
+            ProviderError::InvalidPath(format!("{target}: {text}"))
+        }
     }
 
     /// Put the working directory back, and report it if that fails.
@@ -2103,6 +2130,86 @@ async fn ftp_download_one_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cwd_reply(code: u32, body: &str) -> FtpError {
+        FtpError::UnexpectedResponse(suppaftp::types::Response::new(
+            suppaftp::Status::from(code),
+            body.as_bytes().to_vec(),
+        ))
+    }
+
+    /// The retry contract of a refused CWD, one row per status.
+    ///
+    /// This table exists because the same line was wrong twice in opposite
+    /// directions and nothing failed either time: the classification lived
+    /// inside an `async fn` that needs a live socket, so no unit test could
+    /// reach it and the live tests only ever exercised 550. A rule no test can
+    /// see is a rule that gets rewritten by whoever touches it next.
+    ///
+    /// The two 4yz rows are the ones that were being answered `InvalidPath`,
+    /// exit 5, permanent: a server closing an idle control connection (421) or
+    /// briefly refusing an action (450) would have been reported as a path that
+    /// does not work, and never retried.
+    #[test]
+    fn a_refused_cwd_is_only_permanent_when_the_status_says_so() {
+        let cases: &[(u32, &str, &str)] = &[
+            // 550, and the text names a missing path: the one case that is
+            // genuinely about a path that is not there.
+            (550, "550 /nope: No such file or directory", "NotFound"),
+            // 550 without that vocabulary: permanent, but we do not get to say
+            // it is missing. A directory you may not enter reaches here.
+            (550, "550 Permission denied", "InvalidPath"),
+            (550, "550 Failed to change directory.", "InvalidPath"),
+            // Transient. The server is telling us to come back, and a
+            // permanent answer here silences the retry that would succeed.
+            (
+                421,
+                "421 Service not available, closing control connection",
+                "ServerError",
+            ),
+            (450, "450 Requested file action not taken", "ServerError"),
+            // Permanent, but about the session and not the path. Kept as
+            // ServerError on purpose: a wrong retry costs two round trips, a
+            // false statement about the path costs the reader's trust.
+            (530, "530 Not logged in", "ServerError"),
+            (500, "500 Unknown command", "ServerError"),
+        ];
+        for (code, body, expected) in cases {
+            let got = FtpProvider::classify_cwd_failure("/target", &cwd_reply(*code, body));
+            let actual = match got {
+                ProviderError::NotFound(_) => "NotFound",
+                ProviderError::InvalidPath(_) => "InvalidPath",
+                ProviderError::ServerError(_) => "ServerError",
+                ref other => panic!("{code}: unexpected variant {other:?}"),
+            };
+            assert_eq!(
+                actual, *expected,
+                "CWD {code} ({body:?}) classified as {actual}, expected {expected}"
+            );
+            // Whatever the verdict, the server's own words survive it. A
+            // classification that replaces the reply with a sentence of ours
+            // leaves the user with our guess and no way back to the fact.
+            let rendered = got.to_string();
+            assert!(
+                rendered.contains(body) && rendered.contains("/target"),
+                "CWD {code}: the reply or the target was dropped from {rendered:?}"
+            );
+        }
+    }
+
+    /// A failure that is not a reply at all keeps the transport error.
+    #[test]
+    fn a_cwd_that_never_got_a_reply_is_not_a_path_verdict() {
+        let err = FtpError::ConnectionError(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "timed out",
+        ));
+        let got = FtpProvider::classify_cwd_failure("/target", &err);
+        assert!(
+            matches!(got, ProviderError::ServerError(_)),
+            "a transport failure became {got:?}, which claims something about the path"
+        );
+    }
 
     /// The TLS connector must build without a process-level rustls
     /// `CryptoProvider` installed. `aws-lc-rs` and `ring` are both in the
