@@ -235,28 +235,57 @@ impl FtpManager {
             .context("List operation timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
 
-        let mut remote_files = Vec::new();
+        // The three filters that used to stand here (blank and `total ` lines,
+        // `path:` headers, and `.` / `..` by name) are gone: the shared module
+        // classifies them, so both implementations agree about what a listing
+        // contains instead of each deciding for itself. Keeping them would also
+        // have made every one of those lines a reported "unreadable row" now
+        // that unreadable rows are reported, turning a recursive listing into a
+        // wall of warnings about lines that were never entries.
+        let listing = crate::providers::ftp_listing::read_listing(
+            files.iter().map(String::as_str),
+            &self.current_path,
+        );
+        crate::providers::ftp_listing::warn_unreadable_rows(
+            &listing,
+            &format!("LIST {}", self.current_path),
+        );
 
-        for file_str in &files {
-            let trimmed = file_str.trim();
-            // Skip non-listing lines that FTP servers may include
-            if trimmed.is_empty() || trimmed.starts_with("total ") || trimmed.starts_with("Total ")
-            {
-                continue;
-            }
-            // Skip directory header lines (e.g. "/path/to/dir:" from recursive LIST)
-            if trimmed.ends_with(':') && !trimmed.contains(' ') {
-                debug!("Skipping directory header line: {}", trimmed);
-                continue;
-            }
-            if let Ok(file) = self.parse_ftp_listing(trimmed) {
-                // Skip . and .. for cleaner UX - use "Up" button for navigation
-                if file.name == "." || file.name == ".." {
-                    continue;
-                }
-                remote_files.push(file);
-            }
+        // The same refusal the provider makes, in the second place the class
+        // lives. A listing whose every row failed to parse is not an empty
+        // directory, and handing one over as empty is a value meaning "we do
+        // not know" dressed as a specific answer.
+        //
+        // Putting it only in the provider would have been this branch's own
+        // lesson ignored: a defence belongs where the class is, not where it
+        // was noticed. There is no design reason for the two implementations to
+        // disagree about this, and they were extracted onto a shared parser
+        // precisely so they would stop deciding such things separately.
+        //
+        // The offending row is left to the warning above and kept out of the
+        // error: it is raw server text, and `sync::classify_sync_error` reads
+        // error messages by searching them for words.
+        if listing.entries.is_empty() && listing.unreadable > 0 {
+            return Err(FtpManagerError::OperationFailed(format!(
+                "LIST {}: none of the {} row(s) could be read (see the log for the first)",
+                self.current_path, listing.unreadable
+            ))
+            .into());
         }
+
+        let mut remote_files: Vec<RemoteFile> = listing
+            .entries
+            .into_iter()
+            .map(|entry| RemoteFile {
+                name: entry.name,
+                path: entry.path,
+                size: Some(entry.size),
+                is_dir: entry.is_dir,
+                modified: entry.modified,
+                permissions: entry.permissions,
+                link_target: entry.link_target,
+            })
+            .collect();
 
         // Sort: directories first, then files, both alphabetically
         remote_files.sort_by(|a, b| match (a.is_dir, b.is_dir) {
@@ -667,78 +696,6 @@ impl FtpManager {
         Ok(())
     }
 
-    /// Delete a folder recursively (with all contents) - iterative approach
-    pub async fn delete_folder_recursive(&mut self, path: &str) -> Result<()> {
-        let _ = self.stream.as_ref().ok_or(FtpManagerError::NotConnected)?;
-
-        info!("Deleting folder recursively: {}", path);
-
-        let original_path = self.current_path.clone();
-
-        let target_path = if path.starts_with('/') {
-            path.to_string()
-        } else {
-            format!("{}/{}", original_path, path)
-        };
-
-        if let Err(e) = self.change_dir(&target_path).await {
-            warn!("Cannot access directory {}: {}", target_path, e);
-            self.current_path = original_path;
-            return Err(e);
-        }
-
-        let mut dirs_to_process: Vec<String> = vec![target_path.clone()];
-
-        while let Some(current_dir) = dirs_to_process.pop() {
-            if let Err(e) = self.change_dir(&current_dir).await {
-                warn!("Cannot navigate to directory {}: {}", current_dir, e);
-                continue;
-            }
-
-            let files = match self.list_files().await {
-                Ok(f) => f,
-                Err(e) => {
-                    warn!("Cannot list files in {}: {}", current_dir, e);
-                    continue;
-                }
-            };
-
-            let mut sub_dirs: Vec<String> = Vec::new();
-
-            for file in files {
-                let file_path = format!("{}/{}", current_dir, file.name);
-
-                if file.is_dir {
-                    sub_dirs.push(file_path.clone());
-                } else if let Err(e) = self.remove(&file_path).await {
-                    warn!("Failed to delete file {}: {}", file_path, e);
-                }
-            }
-
-            for sub_dir in sub_dirs {
-                dirs_to_process.push(sub_dir);
-            }
-
-            if let Err(e) = self.change_dir("..").await {
-                warn!("Cannot navigate to parent directory: {}", e);
-            }
-
-            if let Err(e) = self.remove_dir(&current_dir).await {
-                debug!(
-                    "Could not delete directory {} (may have subdirs): {}",
-                    current_dir, e
-                );
-            }
-        }
-
-        let _ = self.change_dir(&original_path).await;
-
-        let _ = self.remove_dir(&target_path).await;
-
-        info!("Folder deleted recursively: {}", target_path);
-        Ok(())
-    }
-
     /// Rename a file or directory
     pub async fn rename(&mut self, from: &str, to: &str) -> Result<()> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
@@ -892,6 +849,8 @@ mod charac_tests {
         "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt",
         "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt",
         "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt",
+        "01-23-24  10:30AM  12345  my  file.txt",
+        "01-23-24  10:30AM  ????  odd.txt",
         "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target",
         "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling",
         "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt",
@@ -943,7 +902,11 @@ LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt"
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt"
   name="my report.txt" path="/my report.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt"
-  name="a b.txt" path="/a b.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
+  name="a  b.txt" path="/a  b.txt" dir=false size=Some(123) perms=Some("-rw-r--r--") mod=Some("Jan 20 10:00")
+LIST "01-23-24  10:30AM  12345  my  file.txt"
+  name="my  file.txt" path="/my  file.txt" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
+LIST "01-23-24  10:30AM  ????  odd.txt"
+  name="odd.txt" path="/odd.txt" dir=false size=Some(0) perms=None mod=Some("01-23-24 10:30AM")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target"
   name="link" path="/link" dir=false size=Some(7) perms=Some("lrwxrwxrwx") mod=Some("Jan 20 10:00")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling"
@@ -969,7 +932,7 @@ LIST "01-23-2024  10:30AM         12345      file.txt"
 LIST "01-23-24  10:30AM           12345      my file.txt"
   name="my file.txt" path="/my file.txt" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
 LIST "01-23-24 10:30AM 12345 a b c d e f"
-  name="f" path="/f" dir=false size=Some(0) perms=Some("01-23-24") mod=Some("c d e")
+  name="a b c d e f" path="/a b c d e f" dir=false size=Some(12345) perms=None mod=Some("01-23-24 10:30AM")
 LIST "not-a-date 10:30AM <DIR> folder"
   <err: Invalid path: Unrecognised listing row: not-a-date 10:30AM <DIR> folder>
 LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ."

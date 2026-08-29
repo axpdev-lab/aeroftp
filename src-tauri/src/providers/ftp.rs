@@ -303,13 +303,8 @@ impl FtpProvider {
         ))
     }
 
-    // The parsers themselves live in `super::ftp_listing`, shared with the
-    // legacy `crate::ftp::FtpManager`. These stay as thin methods so the call
-    // sites below read unchanged.
-    fn parse_listing(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
-        super::ftp_listing::parse_listing(line, base_path)
-    }
-
+    // `parse_listing` is reached through `ftp_listing::read_listing` now, which
+    // also reports the rows it could not read. MLSD still comes through here.
     fn parse_mlsd_entry(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
         super::ftp_listing::parse_mlsd_entry(line, base_path)
     }
@@ -489,10 +484,58 @@ impl FtpProvider {
                 .map_err(|e| ProviderError::ServerError(e.to_string()))?
         };
 
-        let entries: Vec<RemoteEntry> = lines
-            .iter()
-            .filter_map(|line| self.parse_listing(line, &base_path))
-            .collect();
+        let listing =
+            super::ftp_listing::read_listing(lines.iter().map(String::as_str), &base_path);
+        super::ftp_listing::warn_unreadable_rows(&listing, &format!("LIST {base_path}"));
+        let entries = listing.entries;
+
+        // A listing whose every row was unreadable is not an empty directory,
+        // and saying so is the same defect as the one below with the sides
+        // swapped: there, "missing" and "empty" arrived identical; here, "we
+        // could not read a single row" would be handed over as "there is
+        // nothing here". A value that means "we do not know" must not be
+        // returned as an ordinary, specific answer.
+        //
+        // It also fixes what the safety net SAYS. A fully unreadable source
+        // listing is already refused by `sync::orphan_delete_guard_over`,
+        // through the arm for a source that is empty while the destination is
+        // not, so no delete goes through. But that arm reports "source side is
+        // empty", sending the reader to look for a remote that has been wiped
+        // instead of at a listing format we cannot parse. The guard was right
+        // and its diagnosis was wrong. Failing here instead makes the scan
+        // count a listing error, so the guard refuses through its FIRST arm and
+        // names the real reason.
+        //
+        // That counter is the third thing this repairs. `ScanCompleteness`
+        // increments `list_errors` only on an `Err`, so a listing that returned
+        // `Ok` with every row discarded was counted as complete: the
+        // bookkeeping was blind exactly where the reading had been blindest.
+        // The principle is already written one level up, at the directory
+        // granularity, in `sync_core::scan`: a listing that did not happen
+        // leaves its files "simply absent from results, which reads exactly
+        // like a deletion downstream, so count it instead of only warning".
+        // Rows dropped from a listing that did happen are the same sentence a
+        // level down.
+        //
+        // Only when NOTHING was read. If a single row parsed, the listing is
+        // returned as before, with the count logged. That case is not covered
+        // and is not safe, and it is recorded rather than half-solved: a
+        // partially unreadable listing keeps a non-empty result, so neither arm
+        // of the guard fires and the missing rows read downstream as deletions.
+        // Closing it needs the provider to report completeness alongside its
+        // entries, which is a change to a trait 31 providers implement.
+        //
+        // The offending row is deliberately NOT in this message. It is raw
+        // server text, `classify_sync_error` reads error messages by searching
+        // them for words, and a stray "550" or "no such file" inside a row we
+        // failed to parse would steer the classification. It is in the warning
+        // above, which nothing classifies.
+        if entries.is_empty() && listing.unreadable > 0 {
+            return Err(ProviderError::ParseError(format!(
+                "LIST {base_path}: none of the {} row(s) could be read (see the log for the first)",
+                listing.unreadable
+            )));
+        }
 
         // FTP answers a LIST against a directory that does not exist with a
         // successful, empty listing, so "missing" and "empty" arrive identical.
@@ -2588,11 +2631,13 @@ mod tests {
             "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt",
             "/",
         ),
-        // DEFECT: runs of spaces inside a name are collapsed to one.
+        // Runs of spaces inside a name, Unix and DOS.
         (
             "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt",
             "/",
         ),
+        ("01-23-24  10:30AM  12345  my  file.txt", "/"),
+        ("01-23-24  10:30AM  ????  odd.txt", "/"),
         (
             "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target",
             "/",
@@ -2664,7 +2709,7 @@ mod tests {
         let p = charac_provider();
         let mut out = String::new();
         for (line, base) in CHARAC_LIST_ROWS {
-            let rendered = match p.parse_listing(line, base) {
+            let rendered = match super::super::ftp_listing::parse_listing(line, base) {
                 None => "<none>".to_string(),
                 Some(e) => format!(
                     "name={:?} path={:?} dir={} size={} sym={} link={:?} perms={:?} owner={:?} group={:?} mod={:?}",
@@ -2705,7 +2750,11 @@ LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt" @ "/"
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 my report.txt" @ "/"
   name="my report.txt" path="/my report.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt" @ "/"
-  name="a b.txt" path="/a b.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+  name="a  b.txt" path="/a  b.txt" dir=false size=123 sym=false link=None perms=Some("-rw-r--r--") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
+LIST "01-23-24  10:30AM  12345  my  file.txt" @ "/"
+  name="my  file.txt" path="/my  file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
+LIST "01-23-24  10:30AM  ????  odd.txt" @ "/"
+  name="odd.txt" path="/odd.txt" dir=false size=0 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target" @ "/"
   name="link" path="/link" dir=false size=7 sym=true link=Some("target") perms=Some("lrwxrwxrwx") owner=Some("user") group=Some("group") mod=Some("Jan 20 10:00")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling" @ "/"
@@ -2735,7 +2784,7 @@ LIST "01-23-2024  10:30AM         12345      file.txt" @ "/"
 LIST "01-23-24  10:30AM           12345      my file.txt" @ "/"
   name="my file.txt" path="/my file.txt" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
 LIST "01-23-24 10:30AM 12345 a b c d e f" @ "/"
-  name="f" path="/f" dir=false size=0 sym=false link=None perms=Some("01-23-24") owner=Some("12345") group=Some("a") mod=Some("c d e")
+  name="a b c d e f" path="/a b c d e f" dir=false size=12345 sym=false link=None perms=None owner=None group=None mod=Some("01-23-24 10:30AM")
 LIST "not-a-date 10:30AM <DIR> folder" @ "/"
   <none>
 LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ." @ "/"
@@ -2774,16 +2823,6 @@ MLSD "no-facts-here" @ "/"
         // KEEP the dotfile (so rmdir_recursive removes it and the final RMD
         // succeeds) and DROP `.`/`..` (so it never issues `DELE .`, the regression
         // that 550'd ordinary populated directories in the earlier attempt).
-        let provider = FtpProvider::new(FtpConfig {
-            host: "test".to_string(),
-            port: 21,
-            username: "user".to_string(),
-            password: "pass".to_string().into(),
-            tls_mode: FtpTlsMode::None,
-            verify_cert: true,
-            initial_path: None,
-        });
-
         let listing = [
             "drwx------    2 ftp      ftp          4096 Jun 13 15:17 .",
             "drwxr-xr-x    3 ftp      ftp          4096 Jun 13 15:17 ..",
@@ -2792,7 +2831,7 @@ MLSD "no-facts-here" @ "/"
         ];
         let names: Vec<String> = listing
             .iter()
-            .filter_map(|line| provider.parse_listing(line, "/scope"))
+            .filter_map(|line| super::super::ftp_listing::parse_listing(line, "/scope"))
             .map(|entry| entry.name)
             .collect();
 
@@ -2807,16 +2846,6 @@ MLSD "no-facts-here" @ "/"
         // resurrected as a bogus file ("1001 4096 Jul 21 09:41 .") that
         // recursive delete tried to DELE: the server answered
         // `550 Delete operation failed` and the whole delete aborted.
-        let provider = FtpProvider::new(FtpConfig {
-            host: "test".to_string(),
-            port: 21,
-            username: "user".to_string(),
-            password: "pass".to_string().into(),
-            tls_mode: FtpTlsMode::None,
-            verify_cert: true,
-            initial_path: None,
-        });
-
         let listing = [
             "drwxr-xr-x    2 1001     1001         4096 Jul 21 09:41 .",
             "drwxr-xr-x    3 1001     1001         4096 Jul 21 09:41 ..",
@@ -2824,7 +2853,7 @@ MLSD "no-facts-here" @ "/"
         ];
         let names: Vec<String> = listing
             .iter()
-            .filter_map(|line| provider.parse_listing(line, "/scope"))
+            .filter_map(|line| super::super::ftp_listing::parse_listing(line, "/scope"))
             .map(|entry| entry.name)
             .collect();
 
