@@ -1570,7 +1570,7 @@ impl StorageProvider for AzureProvider {
         }
         let entries = self.list(path).await?;
         for entry in entries {
-            if entry.is_dir {
+            if entry.is_walkable_dir() {
                 Box::pin(self.rmdir_recursive(&entry.path)).await?;
             } else {
                 self.delete(&entry.path).await?;

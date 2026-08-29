@@ -2349,7 +2349,7 @@ impl StorageProvider for SftpProvider {
                 let remote_entry =
                     Self::metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
 
-                if remote_entry.is_dir {
+                if remote_entry.is_walkable_dir() {
                     dirs_to_scan.push(entry_path.clone());
                 }
 
@@ -3472,6 +3472,55 @@ async fn sftp_download_one_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Characterisation: what makes the `find` walk safe today is not the
+    /// contract, it is the shape of the data.
+    ///
+    /// `find` reads its entries from `read_dir`, whose attributes carry the
+    /// entry's OWN mode (lstat semantics; the `list` path says so at the point
+    /// where it spends an LSTAT only when the server omits the type bits). A
+    /// symlink therefore arrives with `S_IFLNK`, `metadata_to_entry` derives
+    /// `is_dir` from `S_IFDIR`, and the answer is false: the walk cannot
+    /// descend into a link, and `is_walkable_dir()` there is exactly `is_dir`.
+    ///
+    /// This test passes today and proves nothing new. It exists for the day
+    /// somebody makes `find` resolve the target the way `list` does: at that
+    /// moment `is_dir` becomes true for a symlink to a directory, the guard
+    /// stops being cosmetic and starts carrying weight, and this assertion
+    /// goes red instead of leaving the change to be discovered by a user whose
+    /// recursive search followed a link to an ancestor.
+    #[test]
+    fn a_symlink_from_readdir_is_not_a_directory() {
+        use russh_sftp::protocol::FileAttributes;
+
+        const S_IFLNK: u32 = 0o120000;
+        const S_IFDIR: u32 = 0o040000;
+
+        let link = FileAttributes {
+            permissions: Some(S_IFLNK | 0o777),
+            ..Default::default()
+        };
+        let entry = SftpProvider::metadata_to_entry("link".into(), "/link".into(), &link);
+        assert!(
+            !entry.is_dir,
+            "readdir reports a symlink's own mode, so is_dir must be false"
+        );
+        assert!(
+            !entry.is_walkable_dir(),
+            "and the contract refuses the descent either way"
+        );
+
+        let dir = FileAttributes {
+            permissions: Some(S_IFDIR | 0o755),
+            ..Default::default()
+        };
+        let real = SftpProvider::metadata_to_entry("d".into(), "/d".into(), &dir);
+        assert!(real.is_dir);
+        assert!(
+            real.is_walkable_dir(),
+            "a real directory is still walked into"
+        );
+    }
 
     #[test]
     fn pd_pipe1_flag_is_off_by_default_and_capped() {

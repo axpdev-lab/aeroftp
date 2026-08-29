@@ -1349,7 +1349,7 @@ impl StorageProvider for FtpProvider {
 
         // Delete contents first
         for entry in entries {
-            if entry.is_dir {
+            if entry.is_walkable_dir() {
                 // Use Box::pin for recursive async call
                 Box::pin(self.rmdir_recursive(&entry.path)).await?;
             } else {
@@ -1453,7 +1453,7 @@ impl StorageProvider for FtpProvider {
             self.current_path = saved;
 
             for entry in entries {
-                if entry.is_dir {
+                if entry.is_walkable_dir() {
                     dirs_to_scan.push(entry.path.clone());
                 }
 

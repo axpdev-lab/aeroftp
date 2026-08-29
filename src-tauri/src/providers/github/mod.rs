@@ -1579,7 +1579,7 @@ impl StorageProvider for GitHubProvider {
         }
         let entries = self.list(path).await?;
         for entry in entries {
-            if entry.is_dir {
+            if entry.is_walkable_dir() {
                 // Box the recursive future to avoid infinite type.
                 Box::pin(self.rmdir_recursive(&entry.path)).await?;
             } else {

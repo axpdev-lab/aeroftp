@@ -3818,7 +3818,7 @@ impl StorageProvider for WebDavProvider {
             };
 
             for entry in entries {
-                if entry.is_dir {
+                if entry.is_walkable_dir() {
                     dirs_to_scan.push(entry.path.clone());
                 }
 
