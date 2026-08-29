@@ -468,12 +468,16 @@ impl FtpProvider {
             match (listed, restored) {
                 (Ok(lines), Ok(())) => lines,
                 (Err(list_err), Ok(())) => {
-                    return Err(ProviderError::ServerError(list_err.to_string()))
+                    return Err(ProviderError::ServerError(Self::doing(
+                        "listing", &base_path, list_err,
+                    )))
                 }
                 (Ok(_), Err(restore_err)) => return Err(restore_err),
                 (Err(list_err), Err(restore_err)) => {
-                    return Err(ProviderError::ServerError(format!(
-                        "{list_err}; and {restore_err}"
+                    return Err(ProviderError::ServerError(Self::doing(
+                        "listing",
+                        &base_path,
+                        format!("{list_err}; and {restore_err}"),
                     )))
                 }
             }
@@ -535,6 +539,27 @@ impl FtpProvider {
         Ok(saved)
     }
 
+    /// Say what we were doing and to what, then quote the server verbatim.
+    ///
+    /// Two axes, and only one of them is ever in doubt. The OPERATION and the
+    /// PATH are ours: we always know which call we made and what we made it
+    /// against, so leaving them out is a defect and not caution. The CAUSE is
+    /// the server's, and often it will not say: `550 Failed to change
+    /// directory.` does not distinguish a missing directory from one we may
+    /// not enter. Naming a cause the reply does not support sends the user to
+    /// fix the wrong thing, which is worse than not naming it.
+    ///
+    /// So the shape is: precise about what we know, verbatim about what we do
+    /// not. "listing /srv/data: 550 Failed to change directory." is more useful
+    /// than "server error" and more honest than "not found".
+    ///
+    /// It is one function rather than a `format!` at each site so the shape
+    /// cannot drift apart per call, which is how half these messages lost the
+    /// path in the first place.
+    fn doing(operation: &str, path: &str, reply: impl std::fmt::Display) -> String {
+        format!("{operation} {path}: {reply}")
+    }
+
     /// Decide what a refused CWD means, without claiming more than the reply says.
     ///
     /// The reply carries two independent facts and they must not be collapsed:
@@ -572,11 +597,11 @@ impl FtpProvider {
     /// elsewhere. It is on the register.
     fn classify_cwd_failure(target: &str, err: &FtpError) -> ProviderError {
         let FtpError::UnexpectedResponse(ref response) = err else {
-            return ProviderError::ServerError(format!("{target}: {err}"));
+            return ProviderError::ServerError(Self::doing("entering", target, err));
         };
         let text = response.to_string();
         if response.status != Status::FileUnavailable {
-            return ProviderError::ServerError(format!("{target}: {text}"));
+            return ProviderError::ServerError(Self::doing("entering", target, &text));
         }
         // A 550 on CWD is not only "it is not there": it is also what a server
         // sends for a directory you may not enter. Reading every one as
@@ -584,9 +609,9 @@ impl FtpProvider {
         // which is the mistake this change already made once on mkdir and had
         // corrected by a live server.
         if super::types::message_names_a_missing_path(&text) {
-            ProviderError::NotFound(format!("{target}: {text}"))
+            ProviderError::NotFound(Self::doing("entering", target, &text))
         } else {
-            ProviderError::InvalidPath(format!("{target}: {text}"))
+            ProviderError::InvalidPath(Self::doing("entering", target, &text))
         }
     }
 
@@ -616,7 +641,7 @@ impl FtpProvider {
     /// Everything that is not clearly about a missing path is left alone: a
     /// permission error must not be reported as a missing file, and a command
     /// the server simply refuses must not become one either.
-    fn classify_missing_path(err: &FtpError) -> Option<ProviderError> {
+    fn classify_missing_path(operation: &str, path: &str, err: &FtpError) -> Option<ProviderError> {
         let FtpError::UnexpectedResponse(ref response) = err else {
             return None;
         };
@@ -627,7 +652,8 @@ impl FtpProvider {
             return None;
         }
         let text = response.to_string();
-        super::types::message_names_a_missing_path(&text).then_some(ProviderError::NotFound(text))
+        super::types::message_names_a_missing_path(&text)
+            .then(|| ProviderError::NotFound(Self::doing(operation, path, &text)))
     }
 
     /// Classify a STOR failure instead of calling everything a transfer error.
@@ -643,11 +669,11 @@ impl FtpProvider {
     /// which made the message good and the retries stop on that surface alone.
     /// Classifying it here does both for every caller, and the preflight goes
     /// away in the same change.
-    fn map_store_error(err: FtpError) -> ProviderError {
-        if let Some(missing) = Self::classify_missing_path(&err) {
+    fn map_store_error(path: &str, err: FtpError) -> ProviderError {
+        if let Some(missing) = Self::classify_missing_path("uploading", path, &err) {
             return missing;
         }
-        ProviderError::TransferFailed(err.to_string())
+        ProviderError::TransferFailed(Self::doing("uploading", path, err))
     }
 
     /// Tell a directory that is empty from one that is not there.
@@ -1003,7 +1029,7 @@ impl StorageProvider for FtpProvider {
             let stream = self.stream_mut()?;
             match stream.size(remote_path).await {
                 Ok(size) => size as u64,
-                Err(err) => match Self::classify_missing_path(&err) {
+                Err(err) => match Self::classify_missing_path("downloading", remote_path, &err) {
                     Some(missing) => return Err(missing),
                     None => 0,
                 },
@@ -1213,9 +1239,9 @@ impl StorageProvider for FtpProvider {
                     Ok(()) => Err(ProviderError::AlreadyExists(path.to_string())),
                     // The directory is not there, so the mkdir failed for its
                     // own reason and that is what the caller gets.
-                    Err(ProviderError::NotFound(_)) => {
-                        Err(ProviderError::ServerError(response.to_string()))
-                    }
+                    Err(ProviderError::NotFound(_)) => Err(ProviderError::ServerError(
+                        Self::doing("creating", path, response),
+                    )),
                     // Anything else is about the probe, not about the mkdir,
                     // and one of those is the probe having entered the
                     // directory and failed to come back out. Collapsing that
@@ -1405,7 +1431,7 @@ impl StorageProvider for FtpProvider {
         // for. Any other SIZE failure keeps the previous fallback.
         let total_size = match stream.size(remote_path).await {
             Ok(size) => size as u64,
-            Err(err) => match Self::classify_missing_path(&err) {
+            Err(err) => match Self::classify_missing_path("resuming", remote_path, &err) {
                 Some(missing) => return Err(missing),
                 None => 0,
             },
@@ -1879,7 +1905,7 @@ impl FtpProvider {
         let mut data_stream = stream
             .put_with_stream(remote_path)
             .await
-            .map_err(Self::map_store_error)?;
+            .map_err(|e| Self::map_store_error(remote_path, e))?;
 
         // Write in 64KB chunks for optimal throughput
         let mut chunk = [0u8; 65536];
@@ -2280,27 +2306,104 @@ mod tests {
     #[test]
     fn a_store_into_a_missing_directory_is_not_found_not_a_transfer_failure() {
         use suppaftp::types::Response;
-        let missing = FtpProvider::map_store_error(FtpError::UnexpectedResponse(Response::new(
-            Status::BadFilename,
-            b"Can't open that file: No such file or directory".to_vec(),
-        )));
+        let missing = FtpProvider::map_store_error(
+            "/srv/out/report.txt",
+            FtpError::UnexpectedResponse(Response::new(
+                Status::BadFilename,
+                b"Can't open that file: No such file or directory".to_vec(),
+            )),
+        );
         assert!(
             matches!(missing, ProviderError::NotFound(_)),
             "553 with 'no such file' is a missing path: {missing:?}"
         );
 
-        let denied = FtpProvider::map_store_error(FtpError::UnexpectedResponse(Response::new(
-            Status::FileUnavailable,
-            b"Permission denied".to_vec(),
-        )));
+        let denied = FtpProvider::map_store_error(
+            "/srv/out/report.txt",
+            FtpError::UnexpectedResponse(Response::new(
+                Status::FileUnavailable,
+                b"Permission denied".to_vec(),
+            )),
+        );
         assert!(
             matches!(denied, ProviderError::TransferFailed(_)),
             "a refusal that is not about a missing path must not become NotFound: {denied:?}"
         );
 
         // A transport failure is not a classification question at all.
-        let broken = FtpProvider::map_store_error(FtpError::BadResponse);
+        let broken = FtpProvider::map_store_error("/srv/out/report.txt", FtpError::BadResponse);
         assert!(matches!(broken, ProviderError::TransferFailed(_)));
+
+        // Whatever the verdict, the message says what we were doing and to
+        // what. All three of these used to render as the server's reply alone,
+        // so the user was told a STOR had failed without being told which file.
+        for e in [&missing, &denied, &broken] {
+            let rendered = e.to_string();
+            assert!(
+                rendered.contains("uploading") && rendered.contains("/srv/out/report.txt"),
+                "the operation or the path is missing from {rendered:?}"
+            );
+        }
+    }
+
+    /// Every classified FTP failure names the operation and the path.
+    ///
+    /// The two axes are not equally knowable and the distinction is the whole
+    /// rule. The operation and the path are OURS: we always know which call we
+    /// made and against what, so omitting them is our defect. The cause is the
+    /// server's, and it often will not say: `550 Failed to change directory.`
+    /// does not tell a missing directory from one we may not enter, and
+    /// inventing the difference sends the user to fix the wrong thing.
+    ///
+    /// So this asserts the half we always owe, and deliberately asserts nothing
+    /// about the cause. It is a table over the classifiers rather than an
+    /// assertion inside each test because the shape has to hold for all of
+    /// them: it was already true in some messages and quietly absent in others.
+    #[test]
+    fn a_classified_failure_says_what_we_were_doing_and_to_what() {
+        let path = "/srv/data/quarterly";
+        let cases: Vec<(&str, ProviderError)> = vec![
+            (
+                "entering",
+                FtpProvider::classify_cwd_failure(path, &cwd_reply(550, "550 Permission denied")),
+            ),
+            (
+                "entering",
+                FtpProvider::classify_cwd_failure(
+                    path,
+                    &cwd_reply(421, "421 Service not available"),
+                ),
+            ),
+            (
+                "entering",
+                FtpProvider::classify_cwd_failure(
+                    path,
+                    &cwd_reply(550, "550 /x: No such file or directory"),
+                ),
+            ),
+            (
+                "uploading",
+                FtpProvider::map_store_error(path, FtpError::BadResponse),
+            ),
+            (
+                "uploading",
+                FtpProvider::map_store_error(
+                    path,
+                    cwd_reply(553, "553 Can't open that file: No such file or directory"),
+                ),
+            ),
+        ];
+        for (operation, error) in cases {
+            let rendered = error.to_string();
+            assert!(
+                rendered.contains(operation),
+                "no operation in {rendered:?}: the user is told a call failed, not which one"
+            );
+            assert!(
+                rendered.contains(path),
+                "no path in {rendered:?}: the user is told what failed, not what it was about"
+            );
+        }
     }
 
     // ── Characterisation battery for the listing parser ────────────────────
