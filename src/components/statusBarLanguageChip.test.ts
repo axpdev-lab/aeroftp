@@ -3,8 +3,8 @@
 //
 // The status bar language chip exists because AeroFTP ships 47 interface
 // languages, starts in English by design, and hides the selector in
-// Settings > Appearance > Interface. A SourceForge reviewer on 2026-08-28
-// listed "I want more languages" as a con of a build that already had his.
+// Settings > Appearance > Interface. A public review of 4.1.8 asked for more
+// interface languages, on a build that already shipped 47 of them.
 //
 // The chip is only useful if the whole chain holds: it renders, it opens
 // Settings, and Settings lands on the pane with the language list. That last
