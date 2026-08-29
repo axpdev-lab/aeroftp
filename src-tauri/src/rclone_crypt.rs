@@ -1544,6 +1544,32 @@ mod tests {
     }
 
     #[test]
+    fn live_rclone_1743_file_roundtrip_when_env_set() {
+        let Ok(workdir) = std::env::var("AEROFTP_600_WORKDIR") else {
+            return;
+        };
+        let rclone_cipher = format!(
+            "{workdir}/cipher/785v69hnpanb9p84bhrlki9lp0/h5p2oibs3erqnaspobsargglqs"
+        );
+        let data = std::fs::read(&rclone_cipher)
+            .unwrap_or_else(|e| panic!("read rclone ciphertext {rclone_cipher}: {e}"));
+        let (name_key, data_key, name_tweak) =
+            derive_keys_with_tweak("triage-password-600", "").unwrap();
+        let pt = decrypt_file_content(&data, &data_key).expect("AeroFTP decrypt of rclone 1.74.3");
+        assert_eq!(pt, b"hello-from-rclone-1743\n");
+
+        let aero_pt = b"hello-from-aeroftp-600\n";
+        let aero_ct = encrypt_file_content(aero_pt, &data_key).expect("AeroFTP encrypt");
+        let enc_name = encrypt_name(&name_key, &name_tweak, "aero.txt")
+            .unwrap()
+            .to_lowercase();
+        let aero_dir = format!("{workdir}/cipher-aero");
+        std::fs::create_dir_all(&aero_dir).unwrap();
+        std::fs::write(format!("{aero_dir}/{enc_name}"), &aero_ct).unwrap();
+        std::fs::write(format!("{workdir}/aero-enc-name"), enc_name.as_bytes()).unwrap();
+    }
+
+    #[test]
     fn name_decrypt_rejects_invalid_base32() {
         let key = [0u8; 32];
         let iv = [0u8; 16];
