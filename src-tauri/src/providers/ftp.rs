@@ -456,6 +456,20 @@ impl FtpProvider {
                     // reason. Returning early without it would leave the
                     // provider permanently SLOW instead of permanently STUCK,
                     // which is better and is not the point.
+                    // Said, and said DIFFERENTLY from the failure path below,
+                    // which logs the same flag being set. Two identical lines
+                    // would give a log that cannot tell a server which REFUSES
+                    // from one which goes SILENT, and separating those two is
+                    // most of what this work has been about. Without any line at
+                    // all, the log would show "disabling MLSD" when MLSD errors
+                    // and show nothing when it expires, while the effect on the
+                    // provider is the same.
+                    tracing::debug!(
+                        "[FTP] MLSD produced nothing for {} within {}s. Disabling MLSD for this \
+                         provider: it answered the command and then went silent.",
+                        base_path,
+                        LIST_BUDGET.as_secs()
+                    );
                     self.mlsd_broken = true;
                     self.mlsd_supported = false;
                     return Err(self.listing_timed_out(&base_path));
