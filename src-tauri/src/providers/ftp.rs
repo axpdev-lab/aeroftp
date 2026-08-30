@@ -487,7 +487,8 @@ impl FtpProvider {
                 Err(err) => {
                     let provider_err = ProviderError::ServerError(err.to_string());
                     tracing::debug!(
-                        "[FTP] MLSD failed for {}: {}. Disabling MLSD fallback for this session.",
+                        "[FTP] MLSD failed for {}: {}. Disabling MLSD for this provider: the \
+                         flag outlives the session and is re-read on reconnect.",
                         base_path,
                         provider_err
                     );
