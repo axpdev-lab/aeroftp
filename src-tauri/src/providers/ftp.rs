@@ -1352,7 +1352,7 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
         // Download using retr_as_stream
-        let mut data_stream = stream
+        let data_stream = stream
             .retr_as_stream(remote_path)
             .await
             .map_err(|e| Self::classify_data_failure("reading", remote_path, e))?;
@@ -1360,35 +1360,10 @@ impl StorageProvider for FtpProvider {
         // H2: Read with size cap to prevent OOM
         let mut data = Vec::new();
         let limit_usize = (limit + 1) as usize;
-        let mut watch_control = ControlWatch::Quiet;
+        let mut channel = DataChannel::new(self, data_stream, "reading", remote_path);
         loop {
             let mut buf = [0u8; 8192];
-            let step = {
-                let control = self
-                    .stream
-                    .as_ref()
-                    .ok_or(ProviderError::NotConnected)?
-                    .get_ref();
-                Self::read_watching_control(&mut data_stream, control, &mut buf, &mut watch_control)
-                    .await
-            };
-            // The deadline expiring is an early exit too, and it leaves exactly
-            // the state `abandon_transfer` exists for.
-            let step = match step {
-                Ok(step) => step,
-                Err(err) => {
-                    let _ = self.abandon_transfer(data_stream).await;
-                    return Err(err);
-                }
-            };
-            let n = match step {
-                DataStep::Read(n) => n,
-                DataStep::ControlRefused => {
-                    let refusal = self.read_queued_refusal().await?;
-                    let _ = self.abandon_transfer(data_stream).await;
-                    return Err(Self::classify_data_failure("reading", remote_path, refusal));
-                }
-            };
+            let n = channel.read(&mut buf).await?;
             if n == 0 {
                 break;
             }
@@ -1397,6 +1372,7 @@ impl StorageProvider for FtpProvider {
                 break;
             }
         }
+        let data_stream = channel.finish()?;
         let bytes_read = data.len();
 
         // Finalize the stream
@@ -1714,7 +1690,7 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
 
         // Retrieve from offset
-        let mut data_stream = stream
+        let data_stream = stream
             .retr_as_stream(remote_path)
             .await
             .map_err(|e| Self::classify_data_failure("resuming", remote_path, e))?;
@@ -1736,38 +1712,9 @@ impl StorageProvider for FtpProvider {
         // Stream chunks from FTP data stream directly to disk
         let mut transferred = offset;
         let mut buf = vec![0u8; 64 * 1024]; // 64 KB chunks
-        let mut watch_control = ControlWatch::Quiet;
+        let mut channel = DataChannel::new(self, data_stream, "resuming", remote_path);
         loop {
-            let step = {
-                let control = self
-                    .stream
-                    .as_ref()
-                    .ok_or(ProviderError::NotConnected)?
-                    .get_ref();
-                Self::read_watching_control(&mut data_stream, control, &mut buf, &mut watch_control)
-                    .await
-            };
-            // The deadline expiring is an early exit too, and it leaves exactly
-            // the state `abandon_transfer` exists for.
-            let step = match step {
-                Ok(step) => step,
-                Err(err) => {
-                    let _ = self.abandon_transfer(data_stream).await;
-                    return Err(err);
-                }
-            };
-            let n = match step {
-                DataStep::Read(n) => n,
-                DataStep::ControlRefused => {
-                    let refusal = self.read_queued_refusal().await?;
-                    let _ = self.abandon_transfer(data_stream).await;
-                    return Err(Self::classify_data_failure(
-                        "resuming",
-                        remote_path,
-                        refusal,
-                    ));
-                }
-            };
+            let n = channel.read(&mut buf).await?;
             if n == 0 {
                 break;
             }
@@ -1781,6 +1728,7 @@ impl StorageProvider for FtpProvider {
             }
         }
 
+        let data_stream = channel.finish()?;
         file.flush().await.map_err(ProviderError::IoError)?;
 
         let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
@@ -2032,56 +1980,26 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
 
-        let mut data_stream = stream
+        let data_stream = stream
             .retr_as_stream(path)
             .await
             .map_err(|e| Self::classify_data_failure("reading a range of", path, e))?;
 
-        // Read exactly `len` bytes (or until EOF if file is shorter)
+        // Read exactly `len` bytes (or until EOF if file is shorter).
+        //
+        // The destination IS the read buffer here, a moving slice of it, which
+        // is why the channel takes the slice per read instead of owning one.
         let mut buf = vec![0u8; len as usize];
         let mut total_read = 0usize;
-        let mut watch_control = ControlWatch::Quiet;
+        let mut channel = DataChannel::new(self, data_stream, "reading a range of", path);
         while total_read < len as usize {
-            let step = {
-                let control = self
-                    .stream
-                    .as_ref()
-                    .ok_or(ProviderError::NotConnected)?
-                    .get_ref();
-                Self::read_watching_control(
-                    &mut data_stream,
-                    control,
-                    &mut buf[total_read..],
-                    &mut watch_control,
-                )
-                .await
-            };
-            // The deadline expiring is an early exit too, and it leaves exactly
-            // the state `abandon_transfer` exists for.
-            let step = match step {
-                Ok(step) => step,
-                Err(err) => {
-                    let _ = self.abandon_transfer(data_stream).await;
-                    return Err(err);
-                }
-            };
-            let n = match step {
-                DataStep::Read(n) => n,
-                DataStep::ControlRefused => {
-                    let refusal = self.read_queued_refusal().await?;
-                    let _ = self.abandon_transfer(data_stream).await;
-                    return Err(Self::classify_data_failure(
-                        "reading a range of",
-                        path,
-                        refusal,
-                    ));
-                }
-            };
+            let n = channel.read(&mut buf[total_read..]).await?;
             if n == 0 {
                 break;
             }
             total_read += n;
         }
+        let data_stream = channel.finish()?;
         buf.truncate(total_read);
 
         // Bounded FTP reads intentionally stop before EOF. Some servers will report an
@@ -2287,7 +2205,127 @@ impl FtpProvider {
         }
         verdict
     }
+}
 
+/// One data channel, driven a read at a time, that cannot be left behind.
+///
+/// The loop stays with the caller, because the four sites that already do this
+/// work do not agree on what a chunk is: three of them read into a buffer of
+/// their own and copy it somewhere, while `read_range` reads straight into
+/// `&mut buf[total_read..]`, a moving slice of its own destination. A primitive
+/// that owned the buffer would fit three of them and break the fourth, so the
+/// caller passes the slice it wants and keeps its own body.
+///
+/// What moves in here is everything that decides: the deadline, the control
+/// watch, what an expiry means, and the exit. It owns the data stream because
+/// `abandon_transfer` consumes one, and a borrow could not give it away.
+///
+/// **What happens when the caller does NOT close.** Handing the loop back opens
+/// a door that a closure would have kept shut: the caller's body is full of `?`,
+/// and an early return there drops this value without running any cleanup,
+/// because dropping a future does not execute what follows the await. That is
+/// the same shape as the executor dropping a download mid-RETR, which is how a
+/// session ends up answering the next question with the previous answer.
+/// `Drop` cannot abort: aborting has to speak on the wire and `Drop` is not
+/// async. So it does the one thing it can do synchronously, and takes the
+/// session away. The next operation dials again instead of inheriting a channel
+/// whose state nobody knows. A session that is thrown away costs a reconnect; a
+/// session in an unknown state costs a wrong answer delivered as a right one.
+struct DataChannel<'p, S> {
+    provider: &'p mut FtpProvider,
+    /// `None` once the stream has been handed back or given away.
+    data: Option<S>,
+    watch: ControlWatch,
+    /// Named in the error, so a failure says which operation was in flight.
+    operation: &'static str,
+    path: String,
+    /// Set by every exit this type controls. If it is still false at `Drop`,
+    /// the caller left by a path this type never saw.
+    settled: bool,
+}
+
+impl<'p, S> DataChannel<'p, S>
+where
+    S: tokio::io::AsyncRead + Unpin + 'static,
+{
+    fn new(provider: &'p mut FtpProvider, data: S, operation: &'static str, path: &str) -> Self {
+        Self {
+            provider,
+            data: Some(data),
+            watch: ControlWatch::Quiet,
+            operation,
+            path: path.to_string(),
+            settled: false,
+        }
+    }
+
+    /// One read into the caller's slice. `Ok(0)` is end of stream.
+    ///
+    /// Every failure closes the channel before returning, so a caller that
+    /// propagates with `?` has already had its session dealt with.
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, ProviderError> {
+        let step = {
+            let Self {
+                provider,
+                data,
+                watch,
+                ..
+            } = self;
+            let control = provider
+                .stream
+                .as_ref()
+                .ok_or(ProviderError::NotConnected)?
+                .get_ref();
+            let data = data.as_mut().ok_or(ProviderError::NotConnected)?;
+            FtpProvider::read_watching_control(data, control, buf, watch).await
+        };
+        match step {
+            Ok(DataStep::Read(n)) => Ok(n),
+            // The server refused while we waited for bytes that were never
+            // coming. Its reply is still unread, and reading it is bounded.
+            Ok(DataStep::ControlRefused) => {
+                let refusal = self.provider.read_queued_refusal().await?;
+                let (operation, path) = (self.operation, self.path.clone());
+                self.abandon().await;
+                Err(FtpProvider::classify_data_failure(
+                    operation, &path, refusal,
+                ))
+            }
+            Err(err) => {
+                self.abandon().await;
+                Err(err)
+            }
+        }
+    }
+
+    /// Give the channel away and let the session survive if the server agrees.
+    async fn abandon(&mut self) {
+        self.settled = true;
+        if let Some(data) = self.data.take() {
+            let _ = self.provider.abandon_transfer(data).await;
+        }
+    }
+
+    /// The transfer ended on its own terms: hand the stream back so the caller
+    /// finalises it exactly as it did before.
+    fn finish(mut self) -> Result<S, ProviderError> {
+        self.settled = true;
+        self.data.take().ok_or(ProviderError::NotConnected)
+    }
+}
+
+impl<'p, S> Drop for DataChannel<'p, S> {
+    fn drop(&mut self) {
+        if !self.settled {
+            // Nothing here can await, so the session cannot be closed politely.
+            // It is taken instead: the next operation re-dials rather than
+            // reusing a channel whose state nobody established.
+            self.provider.stream = None;
+        }
+    }
+}
+
+impl FtpProvider {
     /// Read the refusal the server has queued, without waiting for one that
     /// may not be there.
     ///
@@ -2494,7 +2532,7 @@ impl FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
         // Download using retr_as_stream: stream directly to disk (no full-file RAM buffer)
-        let mut data_stream = stream
+        let data_stream = stream
             .retr_as_stream(remote_path)
             .await
             .map_err(|e| Self::classify_data_failure("downloading", remote_path, e))?;
@@ -2505,49 +2543,13 @@ impl FtpProvider {
 
         let mut chunk = vec![0u8; self.buffer_size];
         let mut transferred: u64 = 0;
-        let mut watch_control = ControlWatch::Quiet;
+        let mut channel = DataChannel::new(self, data_stream, "downloading", remote_path);
 
         loop {
-            let step = {
-                let control = self
-                    .stream
-                    .as_ref()
-                    .ok_or(ProviderError::NotConnected)?
-                    .get_ref();
-                Self::read_watching_control(
-                    &mut data_stream,
-                    control,
-                    &mut chunk,
-                    &mut watch_control,
-                )
-                .await
-            };
-            // The deadline expiring is an early exit too, and it leaves exactly
-            // the state `abandon_transfer` exists for.
-            let step = match step {
-                Ok(step) => step,
-                Err(err) => {
-                    let _ = self.abandon_transfer(data_stream).await;
-                    return Err(err);
-                }
-            };
-            let n = match step {
-                DataStep::Read(0) => break,
-                DataStep::Read(n) => n,
-                // The server refused while we were waiting for bytes that were
-                // never going to come. Its reply is still unread in the socket,
-                // so it is read HERE, outside the select, where cancelling it
-                // is not a possibility.
-                DataStep::ControlRefused => {
-                    let refusal = self.read_queued_refusal().await?;
-                    let _ = self.abandon_transfer(data_stream).await;
-                    return Err(Self::classify_data_failure(
-                        "downloading",
-                        remote_path,
-                        refusal,
-                    ));
-                }
-            };
+            let n = channel.read(&mut chunk).await?;
+            if n == 0 {
+                break;
+            }
             atomic
                 .write_all(&chunk[..n])
                 .await
@@ -2559,6 +2561,7 @@ impl FtpProvider {
             }
         }
 
+        let data_stream = channel.finish()?;
         atomic.commit().await.map_err(ProviderError::IoError)?;
 
         // Finalize the stream - need to get stream again after the borrow
