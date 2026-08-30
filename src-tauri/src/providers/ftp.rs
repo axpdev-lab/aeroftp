@@ -2455,10 +2455,17 @@ impl FtpProvider {
                 Ok(refusal @ FtpError::UnexpectedResponse(_)) => {
                     return Self::classify_data_failure(operation, path, refusal)
                 }
-                // Anything else means the collection produced no complete reply,
-                // and `read_response_in` is not cancellation-safe: it may have
-                // been dropped mid-line. The error is still the best thing to
-                // report, but the session cannot be handed on.
+                // EVERYTHING else, and the catch-all is the point rather than a
+                // shorthand. `BadResponse` says the collection produced nothing
+                // readable; a connection error says something else again; a
+                // variant added by a future version of the crate says something
+                // nobody here has considered. What they share is not a meaning,
+                // it is the ABSENCE of one: none of them establishes that the
+                // control channel is aligned, and `read_response_in` is not
+                // cancellation-safe, so it may have been dropped mid-line.
+                // The default is therefore to discard, because the safe side is
+                // the one that does not assume. The error is still the best
+                // thing to report; the session is not.
                 Ok(other) => {
                     self.stream = None;
                     return Self::classify_data_failure(operation, path, other);
