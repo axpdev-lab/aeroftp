@@ -121,6 +121,18 @@ const SEGMENTED_DOWNLOAD_SUB_READ_SIZE: u64 = 64 * 1024 * 1024;
 /// below is therefore a starting point that wants measuring on a real link, not
 /// a tuned value, and the direction of doubt is stated: too small costs speed
 /// on every large download, too large costs memory on every concurrent one.
+///
+/// One caveat belongs here rather than in whoever reads it later. This is a
+/// ceiling only while the floor below it does not win: `segmented_sub_read_size`
+/// raises the per-segment share back up to `SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE`
+/// when the division falls under it, so the aggregate stays inside the budget
+/// only while `segments * MIN_CHUNK_SIZE` still fits, that is up to 128
+/// segments. Past that the floor wins and the peak grows with the count again.
+/// The count is clamped to 16 in `provider_segmented_effective_count`, eight
+/// times clear of that edge, so today the ceiling is real. It stops being real
+/// if that clamp is raised or if `max_workers` is allowed to exceed it, and
+/// that constant lives in another function, which is why the dependency is
+/// written down here and asserted in `segmented_planned_peak_bytes`.
 const SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET: u64 = 128 * 1024 * 1024;
 
 /// Bytes a single `read_range` may ask for, given how many windows are running.
@@ -145,7 +157,18 @@ pub fn segmented_planned_peak_bytes(file_size: u64, requested: u32, max_workers:
         return 0;
     }
     let window = file_size / segments as u64;
-    segmented_sub_read_size(segments, window) * segments as u64
+    let peak = segmented_sub_read_size(segments, window) * segments as u64;
+    // The budget is a ceiling only while the minimum-chunk floor does not
+    // overrule it, which it starts doing past 128 segments. Fail loudly here if
+    // the clamp that keeps us clear of that edge ever moves, rather than
+    // letting the peak quietly grow with the segment count again.
+    debug_assert!(
+        peak <= SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET,
+        "the aggregate budget no longer holds: {segments} segments plan {peak} bytes, \
+         over the {SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET} budget, because the minimum chunk \
+         size now overrules the share"
+    );
+    peak
 }
 
 /// Effective segment count after the anti-fragmentation rule
@@ -1903,6 +1926,42 @@ mod tests {
                 "{segments} segments planned a {sub}-byte request, under the floor"
             );
         }
+    }
+
+    /// Where the budget stops being a ceiling, stated instead of discovered.
+    ///
+    /// The floor overrules the share, so the aggregate stays inside the budget
+    /// only while `segments * MIN_CHUNK_SIZE` still fits: at 128 segments the
+    /// product is exactly the budget, and past that the floor wins and the peak
+    /// grows with the count again. The segment count is clamped to 16 elsewhere,
+    /// so the margin today is eightfold. This test exists because that clamp is
+    /// in another function: it pins where the edge is, so raising the clamp past
+    /// it fails here rather than silently uncapping every large download.
+    #[test]
+    fn the_budget_holds_only_while_the_floor_does_not_overrule_it() {
+        let aggregate = |segments: usize| {
+            segmented_sub_read_size(segments, 4 * 1024 * 1024 * 1024) * segments as u64
+        };
+
+        assert_eq!(
+            aggregate(128),
+            SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET,
+            "128 segments is the last count the budget still bounds"
+        );
+        assert!(
+            aggregate(129) > SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET,
+            "past the edge the floor is supposed to win; if it does not, the \
+             arithmetic this note describes has changed"
+        );
+
+        // The count the code actually reaches, and the distance to the edge.
+        let clamped = provider_segmented_effective_count(4 * 1024 * 1024 * 1024, 64);
+        assert!(
+            clamped as u64 * SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE
+                <= SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET / 8,
+            "the clamp no longer keeps the segment count clear of the edge: \
+             {clamped} segments"
+        );
     }
 
     use super::*;
