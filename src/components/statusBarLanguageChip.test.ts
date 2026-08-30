@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 import STATUS_BAR from './StatusBar.tsx?raw';
 import SETTINGS_PANEL from './SettingsPanel.tsx?raw';
 import APP from '../App.tsx?raw';
+import EN from '../i18n/locales/en.json';
 
 /** The chip's JSX block, from its guard to the end of the button. */
 const chipBlock = (src: string): string => {
@@ -29,15 +30,29 @@ const chipBlock = (src: string): string => {
 };
 
 describe('status bar language chip', () => {
-    it('shows the language code and nothing that needs translating', () => {
+    it('shows the language code and adds no new translated key', () => {
         const chip = chipBlock(STATUS_BAR);
-        // The label is the language's own code, the tooltip is the nativeName
-        // that AVAILABLE_LANGUAGES already carries. A `t('...')` in here would
-        // mean a new key in all 47 locale files for a chip whose entire content
-        // is language data.
+        // The visible label is the language's own code. The accessible name
+        // does use a translated word, but only one that already exists in all
+        // 47 locale files, so this chip still adds nothing to translate.
         expect(chip).toContain('{language}');
-        expect(chip).toContain('title={languageNativeName}');
-        expect(chip).not.toContain("t('");
+        expect(chip).toContain('aria-label={languageLabel}');
+
+        const keysUsed = [...STATUS_BAR.matchAll(/t\('([^']+)'\)/g)].map(m => m[1]);
+        const languageChipKeys = keysUsed.filter(k => k.includes('language'));
+        expect(languageChipKeys).toEqual(['common.language']);
+        // And that key is real: a typo here would render the raw key id.
+        expect(EN.translations.common.language).toBeTruthy();
+    });
+
+    it('always has an accessible name, even for a code that is not in the list', () => {
+        // `AVAILABLE_LANGUAGES.find(...)` returns undefined for an unknown
+        // code, and an undefined aria-label silently falls back to the button
+        // text, which is just "it" or "de". The fallback is the part nobody
+        // exercises, because it only shows up in the case that already went
+        // wrong.
+        const source = STATUS_BAR.slice(STATUS_BAR.indexOf('const languageLabel'));
+        expect(source.slice(0, 200)).toContain('?? language.toUpperCase()');
     });
 
     it('carries no flag', () => {

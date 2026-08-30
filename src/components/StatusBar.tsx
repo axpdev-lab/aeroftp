@@ -125,7 +125,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 }) => {
     const t = useTranslation();
     const { language } = useI18n();
+    // Name for the language chip. `common.language` already exists in all 47
+    // locale files, so this stays a chip that adds no key, and the fallback
+    // matters more than it looks: an aria-label that is undefined for an
+    // unknown code leaves the button named by its own text, and nobody tests
+    // the rare case in which a label goes missing.
     const languageNativeName = AVAILABLE_LANGUAGES.find(l => l.code === language)?.nativeName;
+    const languageLabel = `${t('common.language')}: ${languageNativeName ?? language.toUpperCase()}`;
     const { thresholds: quotaThresholds } = useStorageThresholds();
     const [aiStatus, setAiStatus] = useState<AIStatus>('idle');
 
@@ -533,8 +539,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     <button
                         onClick={onOpenLanguageSettings}
                         className="flex items-center px-1.5 py-0.5 rounded transition-colors hover:bg-gray-200 dark:hover:bg-gray-700 uppercase font-medium tracking-wide"
-                        title={languageNativeName}
-                        aria-label={languageNativeName}
+                        title={languageLabel}
+                        aria-label={languageLabel}
                     >
                         {language}
                     </button>
