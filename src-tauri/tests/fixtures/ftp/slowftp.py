@@ -182,6 +182,18 @@ class Session(threading.Thread):
             except OSError:
                 pass
         self.pending_silent = []
+        # And the listener this path opened in order to accept. Closing what was
+        # accepted and leaving open what was opened to accept it is the same
+        # omission this function was written to fix, one object further out: the
+        # listener survives until the control session ends or the next PASV
+        # overwrites the reference, so several data operations on one session
+        # accumulate them. Measured: 2 sockets before, 4 after one cycle.
+        if self.data_sock is not None:
+            try:
+                self.data_sock.close()
+            except OSError:
+                pass
+            self.data_sock = None
 
     def wait_watching_control(self, seconds):
         """Sleep, but keep taking commands that arrive meanwhile.
@@ -318,7 +330,17 @@ class Session(threading.Thread):
         looking like it exercised the broken one.
         """
         self.data_sock.settimeout(20)
-        c, _ = self.data_sock.accept()
+        try:
+            c, _ = self.data_sock.accept()
+        except (socket.timeout, TimeoutError, OSError):
+            # A client that asks for PASV and then never connects is a legitimate
+            # thing for a server to survive. Letting this propagate killed the
+            # session thread, which is the same failure this file keeps meeting:
+            # the fixture dies and everything after it looks like a server that
+            # stopped answering. Treated as "no data channel", which the callers
+            # already know how to hold and release.
+            log("nobody connected to the data port, treating as no data channel")
+            return None
         self.counters.bump("data_accepted")
         if self.tls and self.prot_private:
             if self.cfg.pasv_no_accept == "tls-silent":

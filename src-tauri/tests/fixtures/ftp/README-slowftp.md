@@ -26,7 +26,7 @@ exercised by calling two of our own operations against one server. This fixture
 serves the dotfiles only when the client asks with `-a`, so the difference is
 visible instead of assumed. Both operations verified against one running server:
 
-```
+```text
 aeroftp-cli ls    ->  LIST                    2 entries, no dotfiles
 aeroftp-cli rm -r ->  CWD /sub
                       LIST -a                 4 entries, dotfiles included
@@ -65,7 +65,7 @@ instance for the next attempt.
 
 So the stall belongs on `RETR`:
 
-```
+```text
 --retr-stall N       hold the data channel open and silent for N seconds,
                      to outlast the per-file download timeout
 --retr-before-stall  bytes handed over before the stall (default 4096)
@@ -211,7 +211,7 @@ shipped it once.
 
 Two ways to close it, use whichever the harness can reach:
 
-```
+```text
 --status-file PATH      the fixture rewrites PATH with what it did:
                         {"abor_read": 1, "stor_bytes": 0}
 SITE STATUS             the same counters in-band: 211 abor_read=1 stor_bytes=0
@@ -252,7 +252,7 @@ The path where a client is meant to *peek* at the control channel and consume a
 reply only once it has decided to fail. Mid-`RETR`, after N bytes of data, the
 server sends a refusal on the control channel unasked:
 
-```
+```text
 550 SLOWFTP-INJECTED unsolicited refusal at 4096 bytes
 ```
 
@@ -266,7 +266,7 @@ the read happens entirely on the client's side of the socket. It is caught by
 what comes next. So the assertion is a question with a known answer, asked
 afterwards, on a file whose size cannot coincide with anything else in play:
 
-```
+```text
 --file-size 40961      ->  SIZE must answer exactly "213 40961"
 ```
 
@@ -312,7 +312,7 @@ live: the answer was in our own socket buffer and nobody was looking at it.
 Live, the control channel held **55** unread bytes. This fixture speaks
 plaintext, so the same refusal queues **26**:
 
-```
+```text
 "550 Failed to open file.\r\n"                     26 bytes
 inside a TLS 1.2 AES-GCM record: 5 + 8 + 26 + 16 = 55 bytes
 ```
@@ -332,7 +332,7 @@ itself, which is a different fault entirely.
 Measured, not assumed. Against this fixture in `--refuse-before-data
 --pasv-no-accept tls-silent`, our own client fails **correctly in 0.113s**:
 
-```
+```text
 Error: Download failed: Invalid path: [550] 550 Failed to open file.
 ```
 
@@ -372,7 +372,7 @@ disabling the check. A CA plus a leaf (`CA:FALSE`, `subjectAltName=IP:127.0.0.1`
 works; a bare self-signed `openssl req -x509` does not, rustls rejects it with
 `CaUsedAsEndEntity`:
 
-```
+```text
 AEROFTP_PASSWORD=<pw> SSL_CERT_FILE=<ca.pem> \
   aeroftp-cli --tls explicit get ftp://<user>@127.0.0.1:PORT/...
 ```
@@ -439,7 +439,7 @@ When two ends disagree, the end you are not measuring is the one to believe.
 
 ## The plumbing options
 
-```
+```text
 --port N          where to listen (default 2130)
 --lines N         how many files the listing contains
 --hang N          seconds MLSD stays silent in the mlsd-hang position
