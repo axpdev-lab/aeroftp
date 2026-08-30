@@ -2499,11 +2499,21 @@ impl FtpProvider {
                 // "aligned" in exactly the case it was added to catch, and a
                 // fixture sending the two in separate writes would make that
                 // green. Segmentation is not ours to control.
-                // The cost is bounded and that is why it is acceptable here: a
-                // queued `421` reaches the next command as a reply it did not
-                // expect, and `421` is never among any command's expected codes,
-                // so it surfaces as an error rather than as data. This is not
-                // the phantom-files class.
+                // THE COST IS NOT BOUNDED, and an earlier version of this
+                // comment said it was. Measured, not reasoned: a server
+                // answering `RETR` with `550` and `421` in ONE write leaves
+                // nothing on the socket, and the next command, a `PWD`, receives
+                // "421 Service not available" as ITS OWN reply. An operation
+                // fails citing an answer caused by the command before it, which
+                // IS the phantom-files class, the one this whole line of work
+                // exists to remove.
+                // The first version of that claim checked the VALUE (an error,
+                // not data) and not the ATTRIBUTION (the error of the wrong
+                // command), which is the same mistake in prose that the code is
+                // here to prevent on the wire.
+                // Tracked separately rather than patched here: the fix is not a
+                // comment, and it does not belong in a change about bounding the
+                // open.
                 //
                 // Both are named rather than claimed closed: a condition that
                 // looks total has been wrong four times, and each time it was
