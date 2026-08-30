@@ -1,0 +1,86 @@
+# The listing tests that need a server speaking MLSD and MLST.
+#
+# They exist as a workflow rather than as instructions in a README because the
+# tests are `#[ignore]`, and an ignored test that no job runs is a defence that
+# is present and never fires. The branch they cover is the one most FTP servers
+# take, and a defect lived on it unnoticed precisely because nothing exercised
+# it. Running them by hand would leave that true.
+#
+# The docker fixture follows the shape delta-sync-integration.yml already uses.
+
+name: FTP MLSD listing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/providers/ftp.rs'
+      - 'src-tauri/src/providers/ftp_listing.rs'
+      - 'src-tauri/src/providers/types.rs'
+      - 'src-tauri/tests/integration_ftp_mlsd.rs'
+      - 'src-tauri/tests/fixtures/ftp-mlsd/**'
+      - '.github/workflows/ftp-mlsd.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/providers/ftp.rs'
+      - 'src-tauri/src/providers/ftp_listing.rs'
+      - 'src-tauri/src/providers/types.rs'
+      - 'src-tauri/tests/integration_ftp_mlsd.rs'
+      - 'src-tauri/tests/fixtures/ftp-mlsd/**'
+      - '.github/workflows/ftp-mlsd.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mlsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # It pulls a base image from Docker Hub, which this repo has seen time
+      # out before (see aerorsync-protocol.yml).
+      - name: Build and start the MLSD fixture
+        timeout-minutes: 10
+        working-directory: src-tauri/tests/fixtures/ftp-mlsd
+        run: docker compose up -d --build
+
+      # A control connection that answers is the only readiness signal that
+      # means anything here: the container being up says the process started,
+      # not that it is serving.
+      - name: Wait for the fixture to answer
+        run: |
+          for i in $(seq 1 30); do
+            if printf 'QUIT\r\n' | timeout 3 nc 127.0.0.1 2199 | grep -q '^220'; then
+              echo "fixture answering after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "the fixture never answered on 2199"
+          exit 1
+
+      - name: Listing tests against an MLSD server
+        timeout-minutes: 15
+        working-directory: src-tauri
+        run: cargo test --test integration_ftp_mlsd -- --ignored --nocapture
+
+      - name: Dump fixture logs on failure
+        if: failure()
+        working-directory: src-tauri/tests/fixtures/ftp-mlsd
+        run: |
+          docker logs aeroftp-ftp-mlsd-fixture || true
+          docker compose ps
+
+      - name: Teardown
+        if: always()
+        working-directory: src-tauri/tests/fixtures/ftp-mlsd
+        run: docker compose down -v
