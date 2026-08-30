@@ -558,3 +558,38 @@ on the download path. That is the same shape as the crash documented above, a
 guard placed on a path an earlier branch returns before reaching, and it was
 introduced by the fix for that crash. Both openings now go through
 `hold_unserved()`, which is the one place that holds and releases.
+
+## Testing attribution: does the next command read the previous one's reply?
+
+`mlsd-hang` is documented above as the position that forces a reconnection and a
+second data channel. It serves a second purpose that is not obvious from that
+description, so it is stated here rather than left to be rediscovered: it is also
+how you make a reply arrive **late enough to be misattributed**.
+
+The server accepts `MLSD` and then says nothing for `--hang` seconds before
+answering `425`. Set `--hang` longer than the deadline under test and the client
+abandons the listing while the `425` is still owed. The reply then arrives on a
+connection where the next question has already been asked.
+
+Measured with `--hang 6` and a probe that gives up after 2s:
+
+```text
+MLSD sent, abandoned after 2s
+PWD sent           (its own correct answer is 257)
+PWD received       425 Cannot open data connection.
+                   257 "/" is the current directory
+```
+
+The `257` is there, one place too late. Every reply from that point belongs to
+the previous question.
+
+**The assertion is on attribution, not duration.** A test here should not check
+how long anything took: it should ask a question with a known answer and check
+that it got *that* answer. `PWD` and a `SIZE` on a file of a distinctive size
+both work; a listing does not, because an empty result and a misattributed one
+can look alike.
+
+Note that the deadline has to be shorter than `--hang`, and `--hang` now defaults
+to 420 for the reasons in the defaults audit above. For this scenario set it
+explicitly to something just above the deadline you are testing, so the reply is
+late but the test is not slow.
