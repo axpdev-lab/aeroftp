@@ -436,3 +436,25 @@ Python evaluates the `%` expression before calling `rd()`, so the timestamp was
 taken before the blocking read rather than after it. The reading was resolved by
 timestamping the **server** log, which showed the hold running its full 8.0s.
 When two ends disagree, the end you are not measuring is the one to believe.
+
+## The plumbing options, and one of them is load-bearing
+
+```
+--port N        where to listen (default 2130)
+--lines N       how many files the listing contains
+--hang N        seconds MLSD stays silent in the mlsd-hang position
+--stor-stop-hold N   see below
+```
+
+`--stor-stop-hold` does more than its name says, and that is worth knowing
+before setting it. It was added for the `stop` half of a refused `STOR`, where
+it is how long the server keeps a socket open after it stops reading. It is now
+**also** how long the server holds a `LIST`, `RETR` or `STOR` pending when
+`--pasv-no-accept tls-silent` leaves no usable data channel, which is the hang
+this fixture exists to produce.
+
+So lowering it to shorten a `STOR` test also shortens every deliberate hang, and
+a client that then returns looks like a client that recovered. The name is
+narrower than the behaviour: it is documented rather than renamed because tests
+are already being written against these flags, and a rename would break them for
+a cosmetic gain.
