@@ -135,6 +135,26 @@ class Session(threading.Thread):
             % (self.cfg.unsolicited_code, sent))
         return True
 
+    def release_pending(self):
+        """End a deliberate hang by closing the sockets nobody ever answered.
+
+        Holding the handler is not enough: the client is stuck in a TLS
+        handshake on the DATA socket, and letting the server-side wait expire
+        does nothing to it. Measured: the handler released after 6s and the
+        client was still waiting at 40. So the hold has to end the way the
+        client can observe, which is the socket closing.
+
+        The closure is an EOF, which elsewhere in this fixture is the accident
+        to avoid. Here it is the intended end of a bounded hang, and the
+        difference is only that it happens when the option says it should.
+        """
+        for s in self.pending_silent:
+            try:
+                s.close()
+            except OSError:
+                pass
+        self.pending_silent = []
+
     def wait_watching_control(self, seconds):
         """Sleep, but keep taking commands that arrive meanwhile.
 
@@ -300,8 +320,9 @@ class Session(threading.Thread):
             # session thread, which is the same failure as the broken
             # pipe: the fixture dies and the client gets a prompt EOF
             # instead of the wait it is supposed to see.
-            log("no data channel by design, holding %ss" % self.cfg.stor_stop_hold)
-            self.wait_watching_control(self.cfg.stor_stop_hold)
+            log("no data channel by design, holding %ss" % self.cfg.pending_hold)
+            self.wait_watching_control(self.cfg.pending_hold)
+            self.release_pending()
             return
         try:
             per_row = self.cfg.list_delay
@@ -410,8 +431,9 @@ class Session(threading.Thread):
                     # session thread, which is the same failure as the broken
                     # pipe: the fixture dies and the client gets a prompt EOF
                     # instead of the wait it is supposed to see.
-                    log("no data channel by design, holding %ss" % self.cfg.stor_stop_hold)
-                    self.wait_watching_control(self.cfg.stor_stop_hold)
+                    log("no data channel by design, holding %ss" % self.cfg.pending_hold)
+                    self.wait_watching_control(self.cfg.pending_hold)
+                    self.release_pending()
                     continue
                 total = 0
                 refused = False
@@ -507,8 +529,9 @@ class Session(threading.Thread):
                     # session thread, which is the same failure as the broken
                     # pipe: the fixture dies and the client gets a prompt EOF
                     # instead of the wait it is supposed to see.
-                    log("no data channel by design, holding %ss" % self.cfg.stor_stop_hold)
-                    self.wait_watching_control(self.cfg.stor_stop_hold)
+                    log("no data channel by design, holding %ss" % self.cfg.pending_hold)
+                    self.wait_watching_control(self.cfg.pending_hold)
+                    self.release_pending()
                     continue
                 try:
                     sent = 0
@@ -612,7 +635,14 @@ def main():
                         "(0 = as fast as possible). Needed on loopback, where otherwise the "
                         "client finishes writing before the refusal can matter")
     p.add_argument("--stor-stop-hold", type=float, default=30.0,
-                   help="CASE B: seconds the stopped socket is held open before closing")
+                   help="CASE B only: seconds the STOPPED socket is held open after the "
+                        "server stops reading a refused STOR")
+    p.add_argument("--pending-hold", type=float, default=30.0,
+                   help="seconds a LIST, RETR or STOR is held pending when tls-silent "
+                        "leaves no usable data channel. Separate from --stor-stop-hold on "
+                        "purpose: one is how long a stopped socket lingers, the other is how "
+                        "long a deliberate hang lasts, and wanting one short and the other "
+                        "long is legitimate")
     p.add_argument("--late-final", type=float, default=0.0,
                    help="after the data channel closes, wait this long before sending the "
                         "closing 226, WITHOUT closing the control connection, so the reply "

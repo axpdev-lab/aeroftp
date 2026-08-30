@@ -437,24 +437,40 @@ taken before the blocking read rather than after it. The reading was resolved by
 timestamping the **server** log, which showed the hold running its full 8.0s.
 When two ends disagree, the end you are not measuring is the one to believe.
 
-## The plumbing options, and one of them is load-bearing
+## The plumbing options
 
 ```
---port N        where to listen (default 2130)
---lines N       how many files the listing contains
---hang N        seconds MLSD stays silent in the mlsd-hang position
---stor-stop-hold N   see below
+--port N          where to listen (default 2130)
+--lines N         how many files the listing contains
+--hang N          seconds MLSD stays silent in the mlsd-hang position
+--stor-stop-hold N   seconds a STOPPED socket lingers after the server stops
+                     reading a refused STOR
+--pending-hold N     seconds a LIST, RETR or STOR is held pending when
+                     tls-silent leaves no usable data channel
 ```
 
-`--stor-stop-hold` does more than its name says, and that is worth knowing
-before setting it. It was added for the `stop` half of a refused `STOR`, where
-it is how long the server keeps a socket open after it stops reading. It is now
-**also** how long the server holds a `LIST`, `RETR` or `STOR` pending when
-`--pasv-no-accept tls-silent` leaves no usable data channel, which is the hang
-this fixture exists to produce.
+**The last two were one option, and separating them was worth doing.** One
+number governed both how long a stopped socket lingers and how long a deliberate
+hang lasts. Those are different scenarios with different natural durations, and
+wanting one short and the other long is ordinary. The way it broke was the worst
+kind: lowering it to shorten a `STOR` test also shortened every deliberate hang,
+and a client that then returned looked like a client that had recovered, which
+is a false green on a test you believe is measuring a hang.
 
-So lowering it to shorten a `STOR` test also shortens every deliberate hang, and
-a client that then returns looks like a client that recovered. The name is
-narrower than the behaviour: it is documented rather than renamed because tests
-are already being written against these flags, and a rename would break them for
-a cosmetic gain.
+Verified independent: `--pending-hold 6 --stor-stop-hold 60` holds each hang 6s,
+and `--stor-stop-hold 6 --pending-hold 60` lingers 6s on the stopped socket.
+
+### `--pending-hold` ends the hang by closing, and that is deliberate
+
+Holding the handler is not enough. The client is stuck in a TLS handshake on the
+data socket, and letting a server-side wait expire does nothing to it: measured,
+the handler released after 6s and the client was still waiting at 40. So the
+hold ends the only way the client can observe, by closing the socket.
+
+That closure is an EOF, which everywhere else in this file is the accident to
+avoid. The difference is that here it happens exactly when the option says it
+should, instead of when a garbage collector decides.
+
+One consequence to expect when reading a timing: a client that is released this
+way may reconnect and hit the same wall again. Against `--pending-hold 6` our
+client takes about 12s in total, which is two hangs of 6s and not one of 12.
