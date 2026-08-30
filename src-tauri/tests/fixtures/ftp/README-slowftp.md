@@ -484,11 +484,28 @@ command, because the client retries. Against this fixture with
 | command | openings the server saw | total |
 |---|---|---|
 | `ls` | 2 | 10.2s |
-| `get` | 6 | 32.4s |
+| `get`, default `--retries 3` | 6 | 32.4s |
 
-So a per-opening budget of N seconds is worth up to 6N on a download. Anyone
-sizing such a budget against a user's patience should size it for the total, not
-for one attempt.
+The six is not a constant. Counted against the same permanent stall:
+
+| `--retries` | openings |
+|---|---|
+| `0` | 2 |
+| `1` | 2 |
+| `2` | 4 |
+| `3` | 6 |
+| `5` | 10 |
+
+So `openings = 2 x max(1, --retries)`: two openings per attempt, multiplied by
+the caller's own retry setting. A per-opening budget of N seconds is therefore
+worth `2 x retries x N` to the person waiting, which at the default is 6N and at
+`--retries 10` is 20N.
+
+That matters more than the single number: the multiplier is a knob the caller
+turns, so a budget sized against a user's patience cannot be sized once. The
+budget is still the right mechanism and belongs where it is, since it is what
+turns an unbounded wait into a bounded one; what cannot be read off the constant
+or its call sites is what it is being multiplied by.
 
 ### The bound was missing on exactly the path that needed it most
 
