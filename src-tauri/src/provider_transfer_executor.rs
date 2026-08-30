@@ -1954,13 +1954,36 @@ mod tests {
              arithmetic this note describes has changed"
         );
 
-        // The count the code actually reaches, and the distance to the edge.
-        let clamped = provider_segmented_effective_count(4 * 1024 * 1024 * 1024, 64);
+        // The count the code actually reaches, held a declared distance from
+        // that edge rather than merely inside it.
+        //
+        // This assertion is a tripwire, and it is deliberately strung at the
+        // current value, so it fires at the first movement. That means it
+        // fires LONG BEFORE anything breaks: the edge is 128 segments, and a
+        // clamp of 24 would still plan well inside the budget while failing
+        // here. So the message has to say that it is the declared margin that
+        // was crossed and not the budget, and print both numbers, or it sends
+        // whoever raised the clamp for a good reason looking for a fault that
+        // is not there.
+        //
+        // The margin is stated against the edge and not against the budget on
+        // purpose. Both are eight times the same arithmetic today, but raising
+        // the budget alone would widen the permitted clamp by itself, with
+        // nobody having decided to; written this way the widening at least
+        // reads as a change to how far from the edge we insist on staying.
+        const EDGE_SEGMENTS: u64 =
+            SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET / SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE;
+        const DECLARED_MARGIN: u64 = 8;
+        let clamped = provider_segmented_effective_count(4 * 1024 * 1024 * 1024, 64) as u64;
         assert!(
-            clamped as u64 * SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE
-                <= SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET / 8,
-            "the clamp no longer keeps the segment count clear of the edge: \
-             {clamped} segments"
+            clamped * DECLARED_MARGIN <= EDGE_SEGMENTS,
+            "the segment count is no longer {DECLARED_MARGIN} times clear of the edge: \
+             {clamped} segments against an edge of {EDGE_SEGMENTS}. This is the declared \
+             margin, NOT the budget: a peak of {} bytes is still inside the {} byte budget, \
+             and nothing is broken. Either restore the margin or decide, in writing, that \
+             a smaller one is the one being defended.",
+            clamped * SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE,
+            SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET
         );
     }
 
