@@ -179,6 +179,56 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # The three steps below are copied from the `mlsd` job, deliberately and
+      # in full. This job was added beside that one and inherits nothing from
+      # it: without them `cargo` reaches `glib-sys`, cannot find `glib-2.0`, and
+      # fails with exit 101 before a single test runs, which is what happened on
+      # the first attempt. The fixture had started correctly; the build never
+      # got to it.
+      #
+      # Copying only the install would have been worse than copying nothing,
+      # because the failure would have moved instead of going away: that mirror
+      # serves about 45 kB/s, `libwebkit2gtk-4.1-0` alone took 12m02s once and
+      # was still fetching at 23m02s when a job cap killed it. The lane would
+      # have become slow and intermittent rather than red, which is harder to
+      # diagnose than a clean failure.
+      #
+      # The cache KEY is the sibling's, not a new one. The package list is
+      # identical, so a separate key would pay the same 61.5 MB twice and the
+      # two jobs would never help each other; sharing it means whichever runs
+      # first fills it for the other.
+      - name: apt archive cache key
+        id: apt-archive-key
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache apt archives
+        timeout-minutes: 10
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/apt-archives
+          key: apt-ftp-mlsd-${{ runner.os }}-${{ steps.apt-archive-key.outputs.week }}
+          restore-keys: |
+            apt-ftp-mlsd-${{ runner.os }}-
+
+      - name: Install system dependencies
+        timeout-minutes: 12
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 2
+          retry_wait_seconds: 15
+          command: |
+            set -euo pipefail
+            sudo dpkg --configure -a || true
+            mkdir -p "$HOME/apt-archives/partial"
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              -o Dir::Cache::archives="$HOME/apt-archives/" \
+              -o APT::Keep-Downloaded-Packages=true \
+              libwebkit2gtk-4.1-dev \
+              libappindicator3-dev \
+              librsvg2-dev
+
       # 420s of hanging, not 90: the fixture must outlast the 300s budget under
       # test. At the old default of 90 the fixture gave up first, and a test that
       # believed it was measuring the cap measured the fixture and passed.
