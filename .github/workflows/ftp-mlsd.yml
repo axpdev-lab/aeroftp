@@ -46,6 +46,17 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # The test target links the Tauri crate, so the GTK/WebKit stack has to be
+      # present or the glib-sys build script fails before a single test runs.
+      # Same list as delta-sync-integration.yml, minus what only that lane needs.
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev
+
       # It pulls a base image from Docker Hub, which this repo has seen time
       # out before (see aerorsync-protocol.yml).
       - name: Build and start the MLSD fixture
