@@ -2272,8 +2272,31 @@ impl FtpProvider {
         };
         match tokio::time::timeout(ABORT_BUDGET, stream.abort(data_stream)).await {
             Ok(Ok(())) => SessionAfterAbandon::Reusable,
-            // It refused, or it did not answer in time. Either way its idea of
-            // this connection no longer matches ours, so it is not reused.
+            // 225, "no transfer to abort": there was nothing to stop, because
+            // the refusal that ended it has already been read. `abort` reports
+            // this as an error only because 225 is not in the two codes it
+            // waits for, and by the time it looks at the code it has already
+            // done the work that matters. Its order is `ABOR`, drop the stream,
+            // CLEAR the connection flag, and only then read the reply; and the
+            // reader consumes the line before deciding whether to accept it. So
+            // the flag is down, the line is gone, and the control channel is
+            // aligned: the session is clean and throwing it away would cost a
+            // reconnect, with a fresh TLS handshake, for every missing file on
+            // the pooled providers behind the GUI, the MCP server and the TUI.
+            //
+            // That cost would have been introduced here, by reading any error
+            // from `abort` as a broken session, and it was nearly recorded as a
+            // limitation of the crate instead. Both servers in the lab answer
+            // 225 to a bare ABOR, measured: "225 No transfer to abort." and
+            // "225 No transfer to ABOR."
+            Ok(Err(FtpError::UnexpectedResponse(reply)))
+                if reply.status == Status::DataConnectionOpen =>
+            {
+                SessionAfterAbandon::Reusable
+            }
+            // It refused for another reason, or it did not answer in time.
+            // Either way its idea of this connection no longer matches ours,
+            // so it is not reused.
             _ => {
                 self.stream = None;
                 SessionAfterAbandon::Discarded
@@ -2697,10 +2720,9 @@ async fn ftp_download_one_range(
 
     let mut data_stream = {
         let stream = worker.stream_mut()?;
-        stream
-            .retr_as_stream(&remote_path)
-            .await
-            .map_err(|e| FtpProvider::classify_data_failure("checksumming", &remote_path, e))?
+        stream.retr_as_stream(&remote_path).await.map_err(|e| {
+            FtpProvider::classify_data_failure("downloading a range of", &remote_path, e)
+        })?
     };
 
     let mut out = tokio::fs::OpenOptions::new()
