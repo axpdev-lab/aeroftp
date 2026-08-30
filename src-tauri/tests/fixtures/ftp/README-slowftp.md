@@ -446,7 +446,7 @@ When two ends disagree, the end you are not measuring is the one to believe.
 --stor-stop-hold N   seconds a STOPPED socket lingers after the server stops
                      reading a refused STOR
 --pending-hold N     seconds a LIST, RETR or STOR is held pending when
-                     tls-silent leaves no usable data channel
+                     tls-silent leaves no usable data channel (default 120)
 ```
 
 **The last two were one option, and separating them was worth doing.** One
@@ -459,6 +459,19 @@ is a false green on a test you believe is measuring a hang.
 
 Verified independent: `--pending-hold 6 --stor-stop-hold 60` holds each hang 6s,
 and `--stor-stop-hold 6 --pending-hold 60` lingers 6s on the stopped socket.
+
+### The default is long on purpose
+
+`--pending-hold` defaults to **120 seconds**, which is far longer than any
+deadline likely to be under test. That is the point. If the hold and the
+deadline are close, the outcome is decided by a few milliseconds: sometimes the
+deadline fires, sometimes this fixture's EOF arrives first, and the test passes
+either way without saying which one it measured.
+
+Worse, that collision is invisible in the test. A default does not appear in the
+command line, so the number that decided the race is absent from the file
+someone reads to understand the test. It defaults long so that whatever is under
+test wins the race, and a deliberately short hold has to be asked for.
 
 ### `--pending-hold` ends the hang by closing, and that is deliberate
 

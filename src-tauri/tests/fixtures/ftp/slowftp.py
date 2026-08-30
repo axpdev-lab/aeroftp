@@ -689,12 +689,14 @@ def main():
     p.add_argument("--stor-stop-hold", type=float, default=30.0,
                    help="CASE B only: seconds the STOPPED socket is held open after the "
                         "server stops reading a refused STOR")
-    p.add_argument("--pending-hold", type=float, default=30.0,
+    p.add_argument("--pending-hold", type=float, default=120.0,
                    help="seconds a LIST, RETR or STOR is held pending when tls-silent "
                         "leaves no usable data channel. Separate from --stor-stop-hold on "
                         "purpose: one is how long a stopped socket lingers, the other is how "
-                        "long a deliberate hang lasts, and wanting one short and the other "
-                        "long is legitimate")
+                        "long a deliberate hang lasts. Defaults LONG (120) so that whatever "
+                        "deadline is under test wins the race by default: a hold equal to "
+                        "that deadline decides the outcome by a few milliseconds and passes "
+                        "either way without saying which won")
     p.add_argument("--late-final", type=float, default=0.0,
                    help="after the data channel closes, wait this long before sending the "
                         "closing 226, WITHOUT closing the control connection, so the reply "
