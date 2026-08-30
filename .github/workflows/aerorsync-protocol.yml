@@ -320,9 +320,27 @@ jobs:
           RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_MD4: /tmp/aerorsync-lane/local_MD4.bin
           RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_SHA1: /tmp/aerorsync-lane/local_SHA1.bin
         # --test-threads=1: the checksum override is a process-global env var.
+        #
+        # The count check is not belt-and-braces. This selects tests BY NAME and
+        # only the ignored ones, and `cargo test` prints "test result: ok" and
+        # exits 0 when a filter matches nothing. So renaming the module, or
+        # removing `#[ignore]` from these tests to make them run more often,
+        # would turn this lane green having executed NOTHING, and the second one
+        # looks like an improvement while doing it. `set -o pipefail` matters for
+        # the same reason: without it the exit status would be tee's, not cargo's.
         run: |
+          set -o pipefail
           cargo test --features aerorsync --lib aerorsync::live_tests -- \
-            --ignored --nocapture --test-threads=1
+            --ignored --nocapture --test-threads=1 | tee /tmp/aerorsync-live.log
+          ran=$(grep -oE '^test result: ok\. [0-9]+ passed' /tmp/aerorsync-live.log \
+                | grep -oE '[0-9]+' | head -1)
+          echo "aerorsync live tests executed: ${ran:-none}"
+          if [ -z "${ran}" ] || [ "${ran}" -lt 8 ]; then
+            echo "::error::this lane executed ${ran:-0} live tests, expected at least 8."
+            echo "::error::a green here with fewer tests means the filter stopped matching,"
+            echo "::error::not that the protocol got simpler. Fix the filter, not this check."
+            exit 1
+          fi
       - name: Tear down harness
         if: always()
         working-directory: src-tauri/src/aerorsync/capture
