@@ -135,6 +135,34 @@ class Session(threading.Thread):
             % (self.cfg.unsolicited_code, sent))
         return True
 
+    def hold_unserved(self, what):
+        """Hold an opening that was announced and never accepted, then release it.
+
+        There are two ways this fixture leaves a client waiting on a data
+        channel, and only one of them had a bound. When `accept_data()` runs and
+        returns nothing, the `if c is None` guard holds and releases. But RETR
+        takes an earlier branch that never calls `accept_data()` at all, so that
+        guard was unreachable there and `--pending-hold` bounded nothing on the
+        download path: measured, a `get` sat for the full 400s ceiling while a
+        `ls` against the same fixture came back in two holds.
+
+        That is the same shape as the crash this file already documents: a guard
+        placed on a path an earlier branch returns before reaching. It was
+        introduced by the fix for that crash, which is worth saying plainly.
+
+        Here the client is parked in the listening socket's backlog rather than
+        on an accepted socket, so the release is closing the listener.
+        """
+        log("%s: holding the unserved opening %ss" % (what, self.cfg.pending_hold))
+        self.wait_watching_control(self.cfg.pending_hold)
+        if self.data_sock is not None:
+            try:
+                self.data_sock.close()
+            except OSError:
+                pass
+            self.data_sock = None
+        self.release_pending()
+
     def release_pending(self):
         """End a deliberate hang by closing the sockets nobody ever answered.
 
@@ -516,11 +544,13 @@ class Session(threading.Thread):
                     self.send("550 Failed to open file.")
                     log("RETR refused up front; data channel deliberately not served")
                     if self.cfg.pasv_no_accept != "none":
+                        self.hold_unserved("RETR refused up front")
                         continue  # do not touch the data channel at all
                 self.send("150 Opening BINARY mode data connection.")
                 if self.cfg.pasv_no_accept != "none":
                     log("RETR: data channel announced but not served (%s)"
                         % self.cfg.pasv_no_accept)
+                    self.hold_unserved("RETR")
                     continue
                 c = self.accept_data()
                 if c is None:

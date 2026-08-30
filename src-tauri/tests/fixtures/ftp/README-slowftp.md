@@ -474,3 +474,31 @@ should, instead of when a garbage collector decides.
 One consequence to expect when reading a timing: a client that is released this
 way may reconnect and hit the same wall again. Against `--pending-hold 6` our
 client takes about 12s in total, which is two hangs of 6s and not one of 12.
+
+## How many openings a client attempts, measured
+
+A deadline on opening a data channel bounds one opening. It does not bound a
+command, because the client retries. Against this fixture with
+`--pasv-no-accept tls-silent --pending-hold 5`:
+
+| command | openings the server saw | total |
+|---|---|---|
+| `ls` | 2 | 10.2s |
+| `get` | 6 | 32.4s |
+
+So a per-opening budget of N seconds is worth up to 6N on a download. Anyone
+sizing such a budget against a user's patience should size it for the total, not
+for one attempt.
+
+### The bound was missing on exactly the path that needed it most
+
+This was measured, not assumed, and the first measurement was the interesting
+one: `get` sat for the full 400s ceiling having announced **one** opening, while
+`ls` against the same fixture came back after two holds.
+
+`RETR` takes an earlier branch that never calls `accept_data()`, so the
+`if c is None` guard was unreachable there and `--pending-hold` bounded nothing
+on the download path. That is the same shape as the crash documented above, a
+guard placed on a path an earlier branch returns before reaching, and it was
+introduced by the fix for that crash. Both openings now go through
+`hold_unserved()`, which is the one place that holds and releases.
