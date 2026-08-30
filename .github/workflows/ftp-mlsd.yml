@@ -19,6 +19,7 @@ on:
       - 'src-tauri/src/providers/types.rs'
       - 'src-tauri/tests/integration_ftp_mlsd.rs'
       - 'src-tauri/tests/fixtures/ftp-mlsd/**'
+      - 'src-tauri/tests/fixtures/ftp/**'
       - '.github/workflows/ftp-mlsd.yml'
   pull_request:
     branches: [main]
@@ -28,6 +29,7 @@ on:
       - 'src-tauri/src/providers/types.rs'
       - 'src-tauri/tests/integration_ftp_mlsd.rs'
       - 'src-tauri/tests/fixtures/ftp-mlsd/**'
+      - 'src-tauri/tests/fixtures/ftp/**'
       - '.github/workflows/ftp-mlsd.yml'
   workflow_dispatch:
 
@@ -158,3 +160,82 @@ jobs:
         if: always()
         working-directory: src-tauri/tests/fixtures/ftp-mlsd
         run: docker compose down -v
+
+  # A listing that times out must not hand the session on. This runs the guard
+  # for that as its own job rather than inside `mlsd`, because it needs a
+  # different server: `slowftp.py --feat mlsd-hang` accepts MLSD and then says
+  # nothing, which the docker fixture above cannot do.
+  listing-timeout:
+    runs-on: ubuntu-latest
+    # The test itself waits out LIST_BUDGET, which is 300s and not injectable,
+    # and a cold Tauri build precedes it. 90 is the same cap the job above uses
+    # for the same shape of work, and it is not tight: the wait is five minutes
+    # of the ninety.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # 420s of hanging, not 90: the fixture must outlast the 300s budget under
+      # test. At the old default of 90 the fixture gave up first, and a test that
+      # believed it was measuring the cap measured the fixture and passed.
+      - name: Start the hanging-MLSD fixture
+        working-directory: src-tauri/tests/fixtures/ftp
+        run: |
+          python3 slowftp.py --port 2140 --feat mlsd-hang --hang 420 \
+            > /tmp/slowftp-mlsd-hang.log 2>&1 &
+          echo $! > /tmp/slowftp.pid
+
+      # The banner, not the process: a pid says the interpreter started, not that
+      # it is serving. 20 iterations worst case is 20 x (3s read + 1s sleep) =
+      # 80s, comfortably inside the two-minute cap, so the loop finishes before
+      # the cap and the step cannot die mute.
+      - name: Wait for the fixture to answer
+        timeout-minutes: 2
+        run: |
+          for i in $(seq 1 20); do
+            if exec 3<>/dev/tcp/127.0.0.1/2140 2>/dev/null \
+               && read -r -t 3 -u 3 banner \
+               && [[ "$banner" == 220* ]]; then
+              echo "fixture answering after ${i}s: $banner"
+              exec 3<&- 3>&-
+              exit 0
+            fi
+            exec 3<&- 3>&- 2>/dev/null || true
+            sleep 1
+          done
+          echo "the fixture never answered on 2140"
+          exit 1
+
+      # The count is checked because this selects by NAME with `--lib`, the shape
+      # that prints "test result: ok" and exits 0 when the filter matches
+      # nothing. Exactly one, not "at least one": this step promises to run one
+      # named test, so a second arriving here is a change to what the job does
+      # and should be said out loud. The sibling aerorsync lane uses `-lt`
+      # instead, and correctly: it collects a whole module, which may grow.
+      - name: The session must not survive a timed-out listing
+        timeout-minutes: 40
+        working-directory: src-tauri
+        run: |
+          set -o pipefail
+          cargo test --lib providers::ftp::live_listing_timeout -- \
+            --ignored --nocapture | tee /tmp/listing-timeout.log
+          ran=$(grep -oE '^test result: ok\. [0-9]+ passed' /tmp/listing-timeout.log \
+                | grep -oE '[0-9]+' | head -1 || true)
+          echo "live listing-timeout tests executed: ${ran:-none}"
+          if [ "${ran:-0}" -ne 1 ]; then
+            echo "::error::expected exactly 1 test, ran ${ran:-0}: the filter stopped matching,"
+            echo "::error::which is a green that executed nothing. Fix the filter, not this check."
+            exit 1
+          fi
+
+      - name: Fixture log on failure
+        if: failure()
+        run: cat /tmp/slowftp-mlsd-hang.log || true
+
+      - name: Teardown
+        if: always()
+        run: kill "$(cat /tmp/slowftp.pid)" 2>/dev/null || true

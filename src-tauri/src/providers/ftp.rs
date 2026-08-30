@@ -4304,3 +4304,91 @@ mod data_channel_watch_tests {
         assert_eq!(&left[..seen], b"226", "the completion reply was consumed");
     }
 }
+
+/// Live regression for the one thing a timed-out listing must not do: hand the
+/// session on.
+///
+/// **Why this cannot be a unit test.** The defect is a relation between two
+/// commands on one control channel, so it needs a server that accepts `MLSD`
+/// and then says nothing. `slowftp.py --feat mlsd-hang` is that server.
+///
+/// **What it asserts, and what it deliberately does not.** Not the duration: a
+/// released client re-dials, so the elapsed time is multiplied by the retry
+/// count and says nothing. Not that the listing failed: it fails either way.
+/// It asserts ATTRIBUTION, which is the only thing that separates the two
+/// worlds. Without the fix the session survives with the listing's reply still
+/// owed, and the next command collects it: measured, a `PWD` receives
+/// "425 Cannot open data connection." and the `257` it was owed arrives one
+/// place later. With the fix the session is gone, so the same `PWD` can only
+/// report `NotConnected`.
+///
+/// The probe is a `PWD` and not a `LIST` on purpose: an empty listing and a
+/// misattributed one look alike, so the assertion could not tell them apart,
+/// while `PWD` has one known right answer and anything else is unambiguous.
+///
+/// **It takes five minutes, and that is declared rather than discovered.**
+/// `LIST_BUDGET` is 300s and is not injectable, so the wait is real. The fixture
+/// hangs for 420s by default, chosen to outlast it: at the earlier default of
+/// 90s the fixture gave up first, and a test that believed it was measuring the
+/// cap was measuring the fixture, and passed. If this is ever wanted faster the
+/// way is to make the budget injectable, never to shorten it, because a
+/// production constant lowered for the convenience of a test turns the measured
+/// thing into one that resembles it.
+///
+/// ```bash
+/// cd src-tauri/tests/fixtures/ftp
+/// ./slowftp.py --port 2140 --feat mlsd-hang --hang 420 &
+/// cd ../../.. && cargo test --lib providers::ftp::live_listing_timeout -- --ignored --nocapture
+/// ```
+#[cfg(test)]
+mod live_listing_timeout {
+    use super::*;
+
+    fn fixture_port() -> u16 {
+        std::env::var("AEROFTP_MLSD_HANG_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(2140)
+    }
+
+    #[tokio::test]
+    #[ignore = "live: needs slowftp.py --feat mlsd-hang, and waits out LIST_BUDGET"]
+    async fn a_listing_that_timed_out_does_not_hand_the_session_on() {
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port: fixture_port(),
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        });
+        provider
+            .connect()
+            .await
+            .expect("the mlsd-hang fixture must be up");
+
+        let started = std::time::Instant::now();
+        let listing = provider.list("/").await;
+        eprintln!(
+            "MEASURED listing after {:?}: {listing:?}",
+            started.elapsed()
+        );
+        assert!(
+            listing.is_err(),
+            "a server that accepts MLSD and never answers must not produce a listing"
+        );
+
+        // The whole test is this line. The listing failed in both worlds; only
+        // here do they differ.
+        match provider.pwd().await {
+            Err(ProviderError::NotConnected) => {}
+            other => panic!(
+                "after a timed-out listing the session must not be reusable, so this PWD should \
+                 have found no session at all. Got {other:?}. If that mentions 425 or a data \
+                 connection, the session was kept and the PWD collected the listing's reply \
+                 instead of its own, which is the defect this guards."
+            ),
+        }
+    }
+}
