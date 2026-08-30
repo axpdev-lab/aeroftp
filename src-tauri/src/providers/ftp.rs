@@ -2450,21 +2450,39 @@ impl FtpProvider {
         };
         if queued > 0 {
             match self.read_queued_refusal().await {
-                // A reply was parsed, so it was consumed whole and the control
-                // channel is aligned again: the session survives.
-                Ok(refusal @ FtpError::UnexpectedResponse(_)) => {
-                    return Self::classify_data_failure(operation, path, refusal)
+                // A reply was parsed AND it is FINAL. Parsed alone is not
+                // enough, and that distinction is the whole of this arm: a
+                // `1xx` is preliminary and another reply follows it, so
+                // consuming it and keeping the session leaves the completion in
+                // the pipe for the next command to read as its own. That is the
+                // phantom-files class, entering through the branch that exists
+                // to prevent it. A `3xx` is intermediate for the same reason,
+                // and an unexpected `2xx` in this position is strange enough
+                // that guessing is worse than dialling again.
+                // `4xx` and `5xx` are the only replies that are both final and
+                // legitimately here: after one of those, nothing more is owed
+                // for that command, so the control channel really is aligned.
+                Ok(FtpError::UnexpectedResponse(reply))
+                    if (400..600).contains(&reply.status.code()) =>
+                {
+                    return Self::classify_data_failure(
+                        operation,
+                        path,
+                        FtpError::UnexpectedResponse(reply),
+                    )
                 }
                 // EVERYTHING else, and the catch-all is the point rather than a
-                // shorthand. `BadResponse` says the collection produced nothing
-                // readable; a connection error says something else again; a
-                // variant added by a future version of the crate says something
-                // nobody here has considered. What they share is not a meaning,
-                // it is the ABSENCE of one: none of them establishes that the
-                // control channel is aligned, and `read_response_in` is not
-                // cancellation-safe, so it may have been dropped mid-line.
-                // The default is therefore to discard, because the safe side is
-                // the one that does not assume. The error is still the best
+                // shorthand. It now holds two kinds of case. Some say nothing
+                // about alignment: `BadResponse` means the collection produced
+                // nothing readable, a connection error means something else
+                // again, and a variant added by a later crate version means
+                // something nobody here has considered. Others say the wrong
+                // thing: a parsed but non-final reply proves the channel is
+                // mid-exchange rather than aligned. Neither group establishes
+                // that the session can be handed on, and `read_response_in` is
+                // not cancellation-safe, so it may also have been dropped
+                // mid-line. The default discards because the safe side is the
+                // one that makes the smaller claim. The error is still the best
                 // thing to report; the session is not.
                 Ok(other) => {
                     self.stream = None;
