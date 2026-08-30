@@ -1127,9 +1127,35 @@ impl StorageProvider for FtpProvider {
         Ok(())
     }
 
+    /// Close the session without waiting for a goodbye that may never come.
+    ///
+    /// `quit()` sends QUIT and then READS the reply, with no deadline, and this
+    /// is called through `reconnect_after_data_error` from seven places, all of
+    /// them after something has already gone wrong on the wire. On a server
+    /// that has stopped answering, the remedy meant to throw a poisoned
+    /// connection away hung on the goodbye instead: the cure was the disease.
+    ///
+    /// The `let _ =` that used to stand here reads as a defence and is not one.
+    /// It discards the RESULT, not the WAIT: if the reply never arrives the
+    /// await never returns and the discard is never reached. A line that looks
+    /// careful in exactly the case where it is not is worse than an obviously
+    /// bare one, because a reader scanning for risk skips it.
+    ///
+    /// The stream is taken out of the struct first, so the QUIT frees nothing
+    /// on this side: it is a courtesy to the server, and a courtesy is not
+    /// worth an unbounded wait. Under the budget it is attempted; past it the
+    /// connection is simply dropped. The same shape, and the same five seconds,
+    /// as `FtpManager::disconnect`, which has bounded this since long before
+    /// tonight.
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
+        const GOODBYE_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
         if let Some(mut stream) = self.stream.take() {
-            let _ = stream.quit().await;
+            if tokio::time::timeout(GOODBYE_BUDGET, stream.quit())
+                .await
+                .is_err()
+            {
+                tracing::debug!("[FTP] QUIT went unanswered; dropping the connection");
+            }
         }
         Ok(())
     }
@@ -1310,7 +1336,7 @@ impl StorageProvider for FtpProvider {
         // H2: Read with size cap to prevent OOM
         let mut data = Vec::new();
         let limit_usize = (limit + 1) as usize;
-        let mut watch_control = true;
+        let mut watch_control = ControlWatch::Quiet;
         loop {
             let mut buf = [0u8; 8192];
             let step = {
@@ -1320,7 +1346,16 @@ impl StorageProvider for FtpProvider {
                     .ok_or(ProviderError::NotConnected)?
                     .get_ref();
                 Self::read_watching_control(&mut data_stream, control, &mut buf, &mut watch_control)
-                    .await?
+                    .await
+            };
+            // The deadline expiring is an early exit too, and it leaves exactly
+            // the state `abandon_transfer` exists for.
+            let step = match step {
+                Ok(step) => step,
+                Err(err) => {
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(err);
+                }
             };
             let n = match step {
                 DataStep::Read(n) => n,
@@ -1331,6 +1366,7 @@ impl StorageProvider for FtpProvider {
                         .await
                         .err()
                         .unwrap_or(FtpError::BadResponse);
+                    let _ = self.abandon_transfer(data_stream).await;
                     return Err(Self::classify_data_failure("reading", remote_path, refusal));
                 }
             };
@@ -1681,7 +1717,7 @@ impl StorageProvider for FtpProvider {
         // Stream chunks from FTP data stream directly to disk
         let mut transferred = offset;
         let mut buf = vec![0u8; 64 * 1024]; // 64 KB chunks
-        let mut watch_control = true;
+        let mut watch_control = ControlWatch::Quiet;
         loop {
             let step = {
                 let control = self
@@ -1690,7 +1726,16 @@ impl StorageProvider for FtpProvider {
                     .ok_or(ProviderError::NotConnected)?
                     .get_ref();
                 Self::read_watching_control(&mut data_stream, control, &mut buf, &mut watch_control)
-                    .await?
+                    .await
+            };
+            // The deadline expiring is an early exit too, and it leaves exactly
+            // the state `abandon_transfer` exists for.
+            let step = match step {
+                Ok(step) => step,
+                Err(err) => {
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(err);
+                }
             };
             let n = match step {
                 DataStep::Read(n) => n,
@@ -1701,6 +1746,7 @@ impl StorageProvider for FtpProvider {
                         .await
                         .err()
                         .unwrap_or(FtpError::BadResponse);
+                    let _ = self.abandon_transfer(data_stream).await;
                     return Err(Self::classify_data_failure(
                         "resuming",
                         remote_path,
@@ -1980,7 +2026,7 @@ impl StorageProvider for FtpProvider {
         // Read exactly `len` bytes (or until EOF if file is shorter)
         let mut buf = vec![0u8; len as usize];
         let mut total_read = 0usize;
-        let mut watch_control = true;
+        let mut watch_control = ControlWatch::Quiet;
         while total_read < len as usize {
             let step = {
                 let control = self
@@ -1994,7 +2040,16 @@ impl StorageProvider for FtpProvider {
                     &mut buf[total_read..],
                     &mut watch_control,
                 )
-                .await?
+                .await
+            };
+            // The deadline expiring is an early exit too, and it leaves exactly
+            // the state `abandon_transfer` exists for.
+            let step = match step {
+                Ok(step) => step,
+                Err(err) => {
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(err);
+                }
             };
             let n = match step {
                 DataStep::Read(n) => n,
@@ -2005,6 +2060,7 @@ impl StorageProvider for FtpProvider {
                         .await
                         .err()
                         .unwrap_or(FtpError::BadResponse);
+                    let _ = self.abandon_transfer(data_stream).await;
                     return Err(Self::classify_data_failure(
                         "reading a range of",
                         path,
@@ -2080,6 +2136,70 @@ fn canonical_hash_key(server_algo: &str) -> String {
 /// lacked it.
 const DATA_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1800);
 
+/// How long the data may stay silent AFTER the server has spoken on control.
+///
+/// Reading the first byte of a reply only works in the clear. Under FTPS the
+/// control channel carries TLS records, and a record opens with a ContentType
+/// in 0x14..0x18 while ASCII `4` and `5` are 0x34 and 0x35: the sets do not
+/// intersect, so no server can put a reply's digits there. That is the
+/// protocol, not an observation, and it means the classification below cannot
+/// work on an encrypted control channel. Without this, an FTPS user got the
+/// full 1800 seconds, which is what the connection did before any of this.
+///
+/// What survives encryption is the READINESS. The server spoke, even if what it
+/// said is unreadable from this side of the TLS layer, and during a healthy
+/// transfer it has no reason to: the preliminary reply was consumed when the
+/// data channel opened, and the completion reply comes after the data are done.
+///
+/// So a reply arriving mid-transfer SHORTENS the deadline instead of ending the
+/// wait, and the deadline is inactivity rather than a grace period. That is
+/// what makes it safe. A transfer finishing normally keeps delivering the bytes
+/// already in flight, each one resets the timer, and this never fires; it fires
+/// only when the server has spoken AND the data have stopped, which are never
+/// both true in a healthy transfer. Arming on readiness alone would cut short a
+/// transfer that was ending well.
+///
+/// The asymmetry of the number is the thing to hold on to: too long only delays
+/// an error, too short truncates a transfer that was succeeding. In doubt, up.
+const DATA_IDLE_AFTER_CONTROL_SPOKE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The state a session was left in by `abandon_transfer`.
+///
+/// The way out has two levels and they end in opposite places, and a caller
+/// that carries on afterwards has to know which. That caller is not
+/// hypothetical: `list_inner_opts` disables MLSD when it fails and then
+/// CONTINUES, in the same call, to the LIST branch, which opens a second data
+/// channel. On that path "give up" does not mean "the operation is over", it
+/// means "try the other way", and a session quietly discarded would turn a
+/// server that advertises MLSD without honouring it from "falls back to LIST
+/// and works" into `NotConnected`.
+///
+/// So the outcome of the CLEANUP is reported, which is not the same as the
+/// reason for the exit. The reason is deliberately not distinguished: the state
+/// to repair is identical whatever caused it, and a caller that cares about the
+/// cause knows it before calling. Where the session ended up is the one thing
+/// only this function knows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionAfterAbandon {
+    /// The server took the abort. The control session is clean and the next
+    /// command can use it.
+    Reusable,
+    /// The server refused the abort or did not answer in time, and the
+    /// connection was dropped. Anything that carries on must dial again first.
+    Discarded,
+}
+
+/// What is known about the control channel while a transfer is running.
+enum ControlWatch {
+    /// Nothing heard: race the readiness against the data read.
+    Quiet,
+    /// The server has spoken and what it said could not be read, either because
+    /// the channel is encrypted or because the reply was not a refusal. The
+    /// socket stays readable, so racing it again would spin the loop; the
+    /// deadline shortens instead and the data get the last word.
+    Spoke,
+}
+
 /// What one turn of a data-reading loop produced.
 enum DataStep {
     /// Bytes from the data channel; `0` is end of stream.
@@ -2090,6 +2210,77 @@ enum DataStep {
 }
 
 impl FtpProvider {
+    /// The one way out of a data transfer that has failed.
+    ///
+    /// Leaving a data loop early drops the `DataStream` and never calls
+    /// `finalize`, so inside `suppaftp` the private `data_connection_open`
+    /// stays true and the completion reply stays unread on the control
+    /// channel. What happens next depends on what the caller does next, and
+    /// one of the two is bad: another data command trips
+    /// `guard_multiple_data_connections` and is recognised as a stale
+    /// connection, which reconnects and works, while a CONTROL command reads
+    /// the stale `226 Transfer complete` as its own reply and fails saying the
+    /// previous operation succeeded. An error that names the success of
+    /// something else is the worst kind of message to hand a user.
+    ///
+    /// Those exits were rare before this change and are not any more: a
+    /// deadline and a refusal were added to five loops. A defect made common by
+    /// a change belongs to that change.
+    ///
+    /// TWO LEVELS, and the second is not belt and braces. `abort()` is the
+    /// crate's own way out: ABOR, then drop the stream in that order, then the
+    /// flag cleared and 426 or 226 consumed. But it reads those replies with
+    /// `read_response_in`, WHICH HAS NO TIMEOUT, and every exit handled here
+    /// happens exactly when the server may have stopped answering. Called bare,
+    /// the cure hangs for the reason the disease does. So it gets a budget, and
+    /// a server that will not even answer ABOR has a session that cannot be
+    /// trusted: it is dropped rather than reused, and the next command dials a
+    /// fresh one.
+    ///
+    /// WHAT THIS DOES NOT COVER, said here because a function that looks
+    /// complete is read as complete. It runs on exits that RETURN. A future
+    /// dropped from outside never reaches it: dropping an async fn runs the
+    /// destructors of its locals and none of the code that follows. The
+    /// transfer executor wraps a download in `tokio::time::timeout` and lets
+    /// the future fall on expiry, so on that path the session is left exactly
+    /// as this function exists to prevent, and the retry that follows reuses
+    /// the same connection. Moving that deadline inside the data loop would
+    /// turn it into an ordinary error return and bring it back through here,
+    /// which is where the shared data-loop primitive will put it anyway.
+    ///
+    /// One function rather than five copies, because `DataStream` implements
+    /// both `AsyncRead` and `AsyncWrite`, so the same way out serves RETR and
+    /// STOR, and because a shared data-loop primitive is being built on top of
+    /// these call sites: five copies would have to be unified and re-reviewed
+    /// one by one.
+    async fn abandon_transfer<S>(&mut self, data_stream: S) -> SessionAfterAbandon
+    where
+        S: tokio::io::AsyncRead + Unpin + 'static,
+    {
+        // Five seconds, and the asymmetry here points the OPPOSITE way to the
+        // one on the transfer deadlines above, which is worth saying because
+        // the two constants sit near each other and a reader who assumes they
+        // share a rule will think one of them is wrong.
+        //
+        // On a transfer deadline, too short truncates something that was
+        // succeeding, so in doubt it goes up. Here, too short discards a session
+        // that would have cleaned itself and costs one reconnect; too long makes
+        // somebody wait who has already been waiting. So in doubt it goes down.
+        const ABORT_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+        let Some(stream) = self.stream.as_mut() else {
+            return SessionAfterAbandon::Discarded;
+        };
+        match tokio::time::timeout(ABORT_BUDGET, stream.abort(data_stream)).await {
+            Ok(Ok(())) => SessionAfterAbandon::Reusable,
+            // It refused, or it did not answer in time. Either way its idea of
+            // this connection no longer matches ours, so it is not reused.
+            _ => {
+                self.stream = None;
+                SessionAfterAbandon::Discarded
+            }
+        }
+    }
+
     /// Read from the data channel while watching the control channel.
     ///
     /// A transfer that can never succeed used to wait for ever. Measured: a
@@ -2122,46 +2313,65 @@ impl FtpProvider {
         data: &mut S,
         control: &tokio::net::TcpStream,
         buf: &mut [u8],
-        watch_control: &mut bool,
+        watch: &mut ControlWatch,
     ) -> Result<DataStep, ProviderError>
     where
         S: tokio::io::AsyncRead + Unpin,
     {
-        if !*watch_control {
-            return Self::read_with_deadline(data, buf).await;
+        if matches!(watch, ControlWatch::Spoke) {
+            // The server has already spoken and the data are the only thing
+            // left to wait for. Silence now means the transfer is over one way
+            // or another, so the short deadline applies and its expiry is a
+            // refusal to be read, not a plain timeout.
+            return match Self::read_with_deadline(data, buf, DATA_IDLE_AFTER_CONTROL_SPOKE).await {
+                Err(ProviderError::TransferFailed(_)) => Ok(DataStep::ControlRefused),
+                other => other,
+            };
         }
         tokio::select! {
             biased;
             _ = control.readable() => {
+                // Non-blocking on purpose: `readable()` can wake spuriously,
+                // and an awaiting `peek` would then stall the data loop it was
+                // meant to protect.
                 let mut probe = [0u8; 1];
-                // Ready, so this returns at once; and it does not consume.
-                match control.peek(&mut probe).await {
-                    Ok(1) if probe[0] == b'4' || probe[0] == b'5' => Ok(DataStep::ControlRefused),
-                    // A completion reply, or nothing readable after all: stop
-                    // watching so the loop cannot spin on a socket that stays
-                    // ready, and let the data channel finish normally.
+                let mut got = tokio::io::ReadBuf::new(&mut probe);
+                let peeked = std::future::poll_fn(|cx| control.poll_peek(cx, &mut got))
+                    .await
+                    .unwrap_or(0);
+                let first = got.filled().first().copied();
+                match first {
+                    Some(b'4') | Some(b'5') if peeked > 0 => Ok(DataStep::ControlRefused),
+                    // Anything else: a completion reply, a TLS record whose
+                    // content cannot be read, or a spurious wake. The server
+                    // spoke or may have; either way the classification is not
+                    // available and the deadline takes over.
                     _ => {
-                        *watch_control = false;
-                        Self::read_with_deadline(data, buf).await
+                        *watch = ControlWatch::Spoke;
+                        Self::read_with_deadline(data, buf, DATA_IDLE_AFTER_CONTROL_SPOKE).await
                     }
                 }
             }
-            step = Self::read_with_deadline(data, buf) => step,
+            step = Self::read_with_deadline(data, buf, DATA_IDLE_TIMEOUT) => step,
         }
     }
 
     /// One data read that cannot wait for ever.
-    async fn read_with_deadline<S>(data: &mut S, buf: &mut [u8]) -> Result<DataStep, ProviderError>
+    async fn read_with_deadline<S>(
+        data: &mut S,
+        buf: &mut [u8],
+        idle: std::time::Duration,
+    ) -> Result<DataStep, ProviderError>
     where
         S: tokio::io::AsyncRead + Unpin,
     {
         use tokio::io::AsyncReadExt;
-        match tokio::time::timeout(DATA_IDLE_TIMEOUT, data.read(buf)).await {
+        match tokio::time::timeout(idle, data.read(buf)).await {
             Ok(Ok(n)) => Ok(DataStep::Read(n)),
             Ok(Err(e)) => Err(ProviderError::TransferFailed(e.to_string())),
             Err(_) => Err(ProviderError::TransferFailed(format!(
                 "no data arrived for {}s",
-                DATA_IDLE_TIMEOUT.as_secs()
+                idle.as_secs()
             ))),
         }
     }
@@ -2197,7 +2407,7 @@ impl FtpProvider {
 
         let mut chunk = vec![0u8; self.buffer_size];
         let mut transferred: u64 = 0;
-        let mut watch_control = true;
+        let mut watch_control = ControlWatch::Quiet;
 
         loop {
             let step = {
@@ -2212,7 +2422,16 @@ impl FtpProvider {
                     &mut chunk,
                     &mut watch_control,
                 )
-                .await?
+                .await
+            };
+            // The deadline expiring is an early exit too, and it leaves exactly
+            // the state `abandon_transfer` exists for.
+            let step = match step {
+                Ok(step) => step,
+                Err(err) => {
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(err);
+                }
             };
             let n = match step {
                 DataStep::Read(0) => break,
@@ -2228,6 +2447,7 @@ impl FtpProvider {
                         .await
                         .err()
                         .unwrap_or(FtpError::BadResponse);
+                    let _ = self.abandon_transfer(data_stream).await;
                     return Err(Self::classify_data_failure(
                         "downloading",
                         remote_path,
@@ -3462,7 +3682,7 @@ mod data_channel_watch_tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         let mut buf = [0u8; 64];
-        let mut watch = true;
+        let mut watch = ControlWatch::Quiet;
         let step = tokio::time::timeout(
             std::time::Duration::from_secs(5),
             FtpProvider::read_watching_control(
@@ -3481,8 +3701,8 @@ mod data_channel_watch_tests {
             "a 550 sitting unread in the control socket has to stop the wait"
         );
         assert!(
-            watch,
-            "a refusal must not switch the watch off: the caller still has to read the reply"
+            matches!(watch, ControlWatch::Quiet),
+            "a refusal must not move the watch on: the caller still has to read the reply"
         );
     }
 
@@ -3507,7 +3727,7 @@ mod data_channel_watch_tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         let mut buf = [0u8; 64];
-        let mut watch = true;
+        let mut watch = ControlWatch::Quiet;
         let step = tokio::time::timeout(
             std::time::Duration::from_secs(5),
             FtpProvider::read_watching_control(
@@ -3528,8 +3748,9 @@ mod data_channel_watch_tests {
             }
         }
         assert!(
-            !watch,
-            "after a non-refusal the watch has to stop, or the loop spins on a ready socket"
+            matches!(watch, ControlWatch::Spoke),
+            "after a non-refusal the watch must record that the server spoke: the socket stays \
+             readable, so racing it again would spin, and the shortened deadline takes over"
         );
 
         // And the reply is still there for the finalizer: peek did not eat it.
