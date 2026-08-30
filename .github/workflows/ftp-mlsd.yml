@@ -114,8 +114,16 @@ jobs:
       # lane that waits for a service installs `netcat-openbsd` first, which
       # says plainly that `nc` cannot be assumed on this runner; removing the
       # dependency is better than adding the install.
+      # Three minutes, not two, and the arithmetic is the reason. The loop runs
+      # 30 iterations, and its worst case is one where the port is OPEN and
+      # silent: `read -t 3` waits its full three seconds and the `sleep 1`
+      # follows, so 30 x 4s is 120s, which is exactly what two minutes allows.
+      # The cap and the loop would finish together, and if the cap won the step
+      # would die MUTE, without the line written to say what happened. That
+      # worst case is not hypothetical: it is precisely the state the stalling
+      # fixture creates.
       - name: Wait for the fixture to answer
-        timeout-minutes: 2
+        timeout-minutes: 3
         run: |
           for i in $(seq 1 30); do
             if exec 3<>/dev/tcp/127.0.0.1/2199 2>/dev/null \
