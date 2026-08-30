@@ -34,7 +34,8 @@ be saying "the fixture closed", which is the earlier trap wearing a new face.
 import argparse, os, select, socket, ssl, threading, time, sys
 
 def log(msg):
-    sys.stderr.write("[slowftp] %s\n" % msg); sys.stderr.flush()
+    sys.stderr.write("[slowftp] %s\n" % msg)
+    sys.stderr.flush()
 
 class Counters:
     """What the fixture actually DID, in a form a test can assert on.
@@ -106,6 +107,7 @@ class Session(threading.Thread):
         self.cwd = "/"
         self.tls = False
         self.prot_private = False
+        self.pending_silent = []
 
     def send(self, line):
         self.f.write((line + "\r\n").encode())
@@ -229,7 +231,8 @@ class Session(threading.Thread):
                         the contrast that shows the other two ARE hangs.
         """
         mode = self.cfg.pasv_no_accept
-        s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s = socket.socket()
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
         if mode == "refuse":
@@ -242,7 +245,8 @@ class Session(threading.Thread):
             # its own and connect() would return, which is a different case.
             filler = socket.socket()
             try:
-                filler.settimeout(1); filler.connect(("127.0.0.1", port))
+                filler.settimeout(1)
+                filler.connect(("127.0.0.1", port))
             except Exception:
                 pass
             self.data_sock = s
@@ -270,6 +274,11 @@ class Session(threading.Thread):
         self.counters.bump("data_accepted")
         if self.tls and self.prot_private:
             if self.cfg.pasv_no_accept == "tls-silent":
+                # Keep a reference. Dropping this socket has it garbage
+                # collected and closed, so the client gets EOF on its handshake
+                # and fails FAST, which is the opposite of what this mode is for
+                # and still looks like a working fixture.
+                self.pending_silent.append(c)
                 log("data channel accepted, TLS handshake deliberately NOT answered")
                 return None  # held open, silent: the live hang
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -285,6 +294,15 @@ class Session(threading.Thread):
         it a 226. Delivering that debt late is what plants the stale reply.
         """
         c = self.accept_data()
+        if c is None:
+            # tls-silent: there is no usable data channel by design.
+            # Touching it here raised AttributeError and killed the
+            # session thread, which is the same failure as the broken
+            # pipe: the fixture dies and the client gets a prompt EOF
+            # instead of the wait it is supposed to see.
+            log("no data channel by design, holding %ss" % self.cfg.stor_stop_hold)
+            self.wait_watching_control(self.cfg.stor_stop_hold)
+            return
         try:
             per_row = self.cfg.list_delay
             if self.cfg.list_total and lines:
@@ -297,7 +315,9 @@ class Session(threading.Thread):
             except (BrokenPipeError, ConnectionResetError):
                 log("LIST: client dropped the data channel, still owing a reply")
         finally:
-            c.close(); self.data_sock.close(); self.data_sock = None
+            c.close()
+            self.data_sock.close()
+            self.data_sock = None
         if self.cfg.late_final:
             log("data done, holding the 226 for %ss (client has probably given up)"
                 % self.cfg.late_final)
@@ -383,6 +403,15 @@ class Session(threading.Thread):
                 # in a PR body.
                 self.send("150 Ok to send data.")
                 c = self.accept_data()
+                if c is None:
+                    # tls-silent: there is no usable data channel by design.
+                    # Touching it here raised AttributeError and killed the
+                    # session thread, which is the same failure as the broken
+                    # pipe: the fixture dies and the client gets a prompt EOF
+                    # instead of the wait it is supposed to see.
+                    log("no data channel by design, holding %ss" % self.cfg.stor_stop_hold)
+                    self.wait_watching_control(self.cfg.stor_stop_hold)
+                    continue
                 total = 0
                 refused = False
                 try:
@@ -425,7 +454,9 @@ class Session(threading.Thread):
                 except (BrokenPipeError, ConnectionResetError):
                     log("STOR: client dropped the data channel after %d bytes" % total)
                 finally:
-                    c.close(); self.data_sock.close(); self.data_sock = None
+                    c.close()
+                    self.data_sock.close()
+                    self.data_sock = None
                 log("STOR: %d bytes read, refused=%s" % (total, refused))
                 self.counters.set_stor_bytes(total)
                 if not refused:
@@ -469,13 +500,23 @@ class Session(threading.Thread):
                         % self.cfg.pasv_no_accept)
                     continue
                 c = self.accept_data()
+                if c is None:
+                    # tls-silent: there is no usable data channel by design.
+                    # Touching it here raised AttributeError and killed the
+                    # session thread, which is the same failure as the broken
+                    # pipe: the fixture dies and the client gets a prompt EOF
+                    # instead of the wait it is supposed to see.
+                    log("no data channel by design, holding %ss" % self.cfg.stor_stop_hold)
+                    self.wait_watching_control(self.cfg.stor_stop_hold)
+                    continue
                 try:
                     sent = 0
                     injected = False
                     chunk = b"x" * 1024
                     while sent < self.cfg.retr_before_stall:
                         n = min(len(chunk), self.cfg.retr_before_stall - sent)
-                        c.sendall(chunk[:n]); sent += n
+                        c.sendall(chunk[:n])
+                        sent += n
                         injected = self.maybe_inject(sent, injected)
                     self.poll_control()
                     if self.cfg.retr_stall:
@@ -486,7 +527,9 @@ class Session(threading.Thread):
                     try:
                         while rest > 0:
                             n = min(len(chunk), rest)
-                            c.sendall(chunk[:n]); rest -= n; sent += n
+                            c.sendall(chunk[:n])
+                            rest -= n
+                            sent += n
                             injected = self.maybe_inject(sent, injected)
                     except (BrokenPipeError, ConnectionResetError):
                         # The client gave up and dropped its end of the DATA
@@ -498,13 +541,16 @@ class Session(threading.Thread):
                         # accidental one, and it silently removes the case.
                         log("RETR: client dropped the data channel, still owing a reply")
                 finally:
-                    c.close(); self.data_sock.close(); self.data_sock = None
+                    c.close()
+                    self.data_sock.close()
+                    self.data_sock = None
                 if self.cfg.late_final:
                     log("RETR data done, holding the 226 for %ss" % self.cfg.late_final)
                     time.sleep(self.cfg.late_final)
                 self.send("226 Transfer complete.")
             elif cmd in ("QUIT",):
-                self.send("221 Goodbye."); return
+                self.send("221 Goodbye.")
+                return
             elif cmd == "SITE" and arg.strip().upper() == "STATUS":
                 # In-band twin of --status-file, for a test that can send a raw
                 # command but cannot read a file (or the other way round).
@@ -572,8 +618,10 @@ def main():
                         "is still owed when the next command asks its own question")
     cfg = p.parse_args()
     counters = Counters(cfg.status_file)
-    srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(("127.0.0.1", cfg.port)); srv.listen(5)
+    srv = socket.socket()
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", cfg.port))
+    srv.listen(5)
     log("listening on 127.0.0.1:%d feat=%s delay=%ss total=%ss late_final=%ss lines=%d"
         % (cfg.port, cfg.feat, cfg.list_delay, cfg.list_total, cfg.late_final, cfg.lines))
     while True:

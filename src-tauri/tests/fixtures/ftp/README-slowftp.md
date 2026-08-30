@@ -373,8 +373,14 @@ works; a bare self-signed `openssl req -x509` does not, rustls rejects it with
 `CaUsedAsEndEntity`:
 
 ```
-SSL_CERT_FILE=<ca.pem> aeroftp-cli --tls explicit get ftp://u:p@127.0.0.1:PORT/...
+AEROFTP_PASSWORD=<pw> SSL_CERT_FILE=<ca.pem> \
+  aeroftp-cli --tls explicit get ftp://<user>@127.0.0.1:PORT/...
 ```
+
+The password goes in the environment (or `--password-stdin`), not in the URL.
+The client warns about a URL-embedded password every time it sees one, and a
+documented example is the fastest way for that habit to spread out of a fixture
+and into a real profile.
 
 Under TLS the `ABOR` case does not work: `MSG_PEEK` cannot see through TLS
 framing, so `poll_control` returns early and `abor_read` stays `0`. Declared
