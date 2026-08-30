@@ -2270,37 +2270,50 @@ impl FtpProvider {
         let Some(stream) = self.stream.as_mut() else {
             return SessionAfterAbandon::Discarded;
         };
-        match tokio::time::timeout(ABORT_BUDGET, stream.abort(data_stream)).await {
-            Ok(Ok(())) => SessionAfterAbandon::Reusable,
+        let outcome = tokio::time::timeout(ABORT_BUDGET, stream.abort(data_stream)).await;
+        let verdict = Self::session_after_abort(outcome.as_ref().ok());
+        if matches!(verdict, SessionAfterAbandon::Discarded) {
+            self.stream = None;
+        }
+        verdict
+    }
+
+    /// Decide whether a session survives, from what `abort` said about it.
+    ///
+    /// `None` means the abort never finished inside its budget.
+    ///
+    /// Split out from the caller because it is the only part that decides
+    /// anything, and inside the caller it could not be reached without a live
+    /// socket, a pooled provider and two operations in a row. A branch that
+    /// changes behaviour and cannot be reached by a test is where a regression
+    /// hides; "not testable" and "not testable without extracting four lines"
+    /// are different claims, and only the first is a limit.
+    fn session_after_abort(abort: Option<&Result<(), FtpError>>) -> SessionAfterAbandon {
+        match abort {
+            Some(Ok(())) => SessionAfterAbandon::Reusable,
             // 225, "no transfer to abort": there was nothing to stop, because
-            // the refusal that ended it has already been read. `abort` reports
-            // this as an error only because 225 is not in the two codes it
-            // waits for, and by the time it looks at the code it has already
-            // done the work that matters. Its order is `ABOR`, drop the stream,
-            // CLEAR the connection flag, and only then read the reply; and the
-            // reader consumes the line before deciding whether to accept it. So
-            // the flag is down, the line is gone, and the control channel is
-            // aligned: the session is clean and throwing it away would cost a
-            // reconnect, with a fresh TLS handshake, for every missing file on
-            // the pooled providers behind the GUI, the MCP server and the TUI.
+            // the refusal that ended the transfer has already been read.
+            // `abort` calls that an error only because 225 is not one of the
+            // two codes it waits for, and by the time it looks at the code it
+            // has already done the work that matters. Its order is ABOR, drop
+            // the stream, CLEAR the connection flag, and only then read the
+            // reply; and the reader consumes the line before deciding whether
+            // to accept it. So the flag is down, the line is gone, and the
+            // control channel is aligned: the session is clean.
             //
-            // That cost would have been introduced here, by reading any error
-            // from `abort` as a broken session, and it was nearly recorded as a
-            // limitation of the crate instead. Both servers in the lab answer
-            // 225 to a bare ABOR, measured: "225 No transfer to abort." and
-            // "225 No transfer to ABOR."
-            Ok(Err(FtpError::UnexpectedResponse(reply)))
+            // Throwing it away would cost a reconnect, with a fresh TLS
+            // handshake, for every missing file on the pooled providers behind
+            // the GUI, the MCP server and the TUI. Both servers in the lab
+            // answer 225 to a bare ABOR, measured: "225 No transfer to abort."
+            // and "225 No transfer to ABOR."
+            Some(Err(FtpError::UnexpectedResponse(reply)))
                 if reply.status == Status::DataConnectionOpen =>
             {
                 SessionAfterAbandon::Reusable
             }
-            // It refused for another reason, or it did not answer in time.
-            // Either way its idea of this connection no longer matches ours,
-            // so it is not reused.
-            _ => {
-                self.stream = None;
-                SessionAfterAbandon::Discarded
-            }
+            // Refused for another reason, or never answered. Either way the
+            // server's idea of this connection no longer matches ours.
+            _ => SessionAfterAbandon::Discarded,
         }
     }
 
@@ -3679,6 +3692,63 @@ mod data_channel_watch_tests {
         let client = TcpStream::connect(addr).await.unwrap();
         let (server, _) = l.accept().await.unwrap();
         (client, server)
+    }
+
+    /// A session is only thrown away when the server's idea of it has actually
+    /// diverged from ours.
+    ///
+    /// The row that matters is 225. After a refusal has been read there is no
+    /// transfer left to abort and servers say so with that code, measured as
+    /// "225 No transfer to abort." on pyftpdlib and "225 No transfer to ABOR."
+    /// on vsftpd. `abort` reports it as an error, because it waits for 226 or
+    /// 426, and reading that as a broken session would discard a connection
+    /// that is perfectly usable: by then `abort` has already cleared the
+    /// connection flag and its reader has already consumed the line, so the
+    /// control channel is aligned. The cost of getting this wrong is a
+    /// reconnect, with a fresh TLS handshake, for every missing file on a
+    /// pooled provider, which is the commonest case this branch touches.
+    ///
+    /// The rows below it are what must NOT be swept along: another refusal is
+    /// still a refusal, a malformed reply is still one, and an abort that never
+    /// finished says nothing at all. Widening the first row to "any error means
+    /// the session is fine" would keep connections whose state is unknown.
+    #[test]
+    fn only_a_server_that_disagrees_costs_the_session() {
+        use suppaftp::types::Response;
+        let verdict =
+            |r: Option<&Result<(), FtpError>>| format!("{:?}", FtpProvider::session_after_abort(r));
+
+        assert_eq!(verdict(Some(&Ok(()))), "Reusable", "a clean abort keeps it");
+
+        let nothing_to_abort = Err(FtpError::UnexpectedResponse(Response::new(
+            Status::DataConnectionOpen,
+            b"225 No transfer to abort.".to_vec(),
+        )));
+        assert_eq!(
+            verdict(Some(&nothing_to_abort)),
+            "Reusable",
+            "225 means there was nothing to stop, not that the session is broken"
+        );
+
+        // ---- and the rows that must still cost the session ----
+        let refused = Err(FtpError::UnexpectedResponse(Response::new(
+            Status::NotImplemented,
+            b"502 Command not implemented.".to_vec(),
+        )));
+        assert_eq!(
+            verdict(Some(&refused)),
+            "Discarded",
+            "a refusal that is not 225 leaves the connection in an unknown state"
+        );
+
+        let malformed = Err(FtpError::BadResponse);
+        assert_eq!(verdict(Some(&malformed)), "Discarded");
+
+        assert_eq!(
+            verdict(None),
+            "Discarded",
+            "an abort that never finished tells us nothing, so the session goes"
+        );
     }
 
     /// The reply the server already sent ends the wait, instead of the wait
