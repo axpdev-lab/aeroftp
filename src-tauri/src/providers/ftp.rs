@@ -2419,25 +2419,20 @@ impl<'p, S> Drop for DataChannel<'p, S> {
 }
 
 impl FtpProvider {
-    /// A cap on OPENING a data channel, which is where the wait actually lives.
+    /// A total cap on a listing, whose expiry every caller must handle.
     ///
-    /// Measured on `main`: a `RETR` against a server that refuses hangs before
-    /// the read loop is ever entered, inside the data connection's TLS
-    /// handshake. `read_watching_control` guards the loop, and the loop is not
-    /// reached. Two awaits in `data_command` are unbounded, and BOTH need this:
-    /// the passive connect, which is the only one of the two on a plaintext
-    /// session, and the TLS upgrade, which is the one that was measured.
+    /// The expiry is `Ok(None)` and NOT an error, and that is the whole shape.
+    /// An earlier version returned it as an `FtpError`, which made it
+    /// indistinguishable from a reply the server had actually sent: the three
+    /// listing sites treated it as one more server failure and carried on using
+    /// a session whose listing reply was still owed. `MLSD` fell through to
+    /// `LIST` on it, the `-a` path called `restore_cwd` on it, and the late
+    /// reply answered the wrong command.
     ///
-    /// Returns `Ok(None)` when the budget expires, so the caller can realign
-    /// with the borrow of the control stream already released. Realignment is
-    /// deliberately NOT done here: the future being dropped is the crate's, and
-    /// the drop has to happen before anything else touches the session.
-    /// A total cap on a listing, shaped so every caller keeps its own handling.
-    ///
-    /// The expiry is returned as an `FtpError`, not as a separate variant, so the
-    /// three listing sites match on it exactly as they already match on a server
-    /// that refused: `MLSD` still marks itself broken and falls through to
-    /// `LIST`, which gets its own cap, and `LIST` still maps to a `ServerError`.
+    /// As `Ok(None)` the compiler forces each of the three to say what it does,
+    /// and all three take the session. Nothing here is matched on the text of a
+    /// message, which is what the existing reconnect guard does and why it never
+    /// fired for this.
     async fn list_with_cap(
         fut: impl std::future::Future<Output = suppaftp::FtpResult<Vec<String>>>,
     ) -> suppaftp::FtpResult<Option<Vec<String>>> {
@@ -2471,6 +2466,20 @@ impl FtpProvider {
         ))
     }
 
+    /// A cap on OPENING a data channel, which is where the wait actually lives.
+    ///
+    /// Measured on `main`: a `RETR` against a server that refuses hangs before
+    /// the read loop is ever entered, inside the data connection's TLS
+    /// handshake. `read_watching_control` guards the loop, and the loop is not
+    /// reached. Two awaits in `data_command` are unbounded, and BOTH need this:
+    /// the passive connect, which is the only one of the two on a plaintext
+    /// session, and the TLS upgrade, which is the one that was measured.
+    ///
+    /// Returns `Ok(None)` when the budget expires, so the caller can realign
+    /// with the borrow of the control stream already released. Realignment is
+    /// deliberately NOT done here: the future being dropped is the crate's, and
+    /// the drop has to happen before anything else touches the session.
+    ///
     /// Bounds, and does nothing else. The failure is handed back RAW so each
     /// caller keeps the mapping it already had: `STOR` classifies with
     /// `map_store_error` and the others with `classify_data_failure`, and a
