@@ -332,8 +332,14 @@ jobs:
           set -o pipefail
           cargo test --features aerorsync --lib aerorsync::live_tests -- \
             --ignored --nocapture --test-threads=1 | tee /tmp/aerorsync-live.log
+          # `|| true` is load-bearing: GitHub runs a step with no `shell:` as
+          # `bash -e {0}`, and under -e an assignment from a pipeline that
+          # matches nothing ends the script right here, silently. The check
+          # would still fail, but with no message, which is the exact shape
+          # this step exists to remove. `shell: bash` does NOT fix it: that is
+          # `bash -eo pipefail`, so -e is still on.
           ran=$(grep -oE '^test result: ok\. [0-9]+ passed' /tmp/aerorsync-live.log \
-                | grep -oE '[0-9]+' | head -1)
+                | grep -oE '[0-9]+' | head -1 || true)
           echo "aerorsync live tests executed: ${ran:-none}"
           if [ -z "${ran}" ] || [ "${ran}" -lt 8 ]; then
             echo "::error::this lane executed ${ran:-0} live tests, expected at least 8."
