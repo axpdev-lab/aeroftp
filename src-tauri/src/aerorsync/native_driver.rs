@@ -61,15 +61,17 @@ use crate::aerorsync::real_wire::{
     compress_zstd_literal_stream, decode_delta_stream, decode_file_list_entry, decode_item_flags,
     decode_ndx, decode_server_preamble, decode_sum_block, decode_sum_head, decode_summary_frame,
     decode_varint, decompress_zstd_literal_stream_boundaries, encode_client_preamble,
-    encode_delta_stream, encode_file_list_entry, encode_file_list_terminator, encode_item_flags,
-    encode_ndx, encode_sum_block, encode_sum_head, encode_summary_frame,
+    encode_delta_op, encode_delta_stream, encode_file_list_entry, encode_file_list_terminator,
+    encode_item_flags, encode_ndx, encode_sum_block, encode_sum_head, encode_summary_frame,
     encode_xattr_datum_section, is_symlink_mode, resolve_xattr_datum_section, ClientPreamble,
-    DeltaOp, DeltaStreamReport, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry,
-    MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead,
-    SummaryFrame, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
+    DeflateLiteralStreamEncoder, DeltaOp, DeltaStreamReport, DeltaStreamState,
+    FileListDecodeOptions, FileListDecodeOutcome, FileListEntry, MuxHeader, MuxPoll,
+    MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
+    ZstdLiteralStreamEncoder, MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF, TOKEN_END_FLAG,
 };
 use crate::aerorsync::remote_command::{
-    metadata_flags_from_args, EffectiveMetadataFlags, RemoteCommandFlavor, RemoteCommandSpec,
+    always_checksum_from_args, metadata_flags_from_args, EffectiveMetadataFlags,
+    RemoteCommandFlavor, RemoteCommandSpec,
 };
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
 use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionRole, SessionStats};
@@ -422,6 +424,41 @@ enum LiteralCompression {
     Unsupported(String),
 }
 
+/// Stateful compressor used by the bounded upload path. Unlike the legacy
+/// slice-of-slices helpers, this owns only the codec history and one literal's
+/// output at a time, so callers can write each result before reading the next
+/// source slab.
+enum StreamingLiteralEncoder {
+    Zstd(ZstdLiteralStreamEncoder),
+    Deflate(DeflateLiteralStreamEncoder),
+    None,
+}
+
+impl StreamingLiteralEncoder {
+    fn new(compression: LiteralCompression) -> Result<Self, AerorsyncError> {
+        match compression {
+            LiteralCompression::Zstd => ZstdLiteralStreamEncoder::new()
+                .map(Self::Zstd)
+                .map_err(|e| map_realwire_error(e, "zstd streaming encoder")),
+            LiteralCompression::Deflate => Ok(Self::Deflate(DeflateLiteralStreamEncoder::new())),
+            LiteralCompression::None => Ok(Self::None),
+            LiteralCompression::Unsupported(name) => Err(unsupported_compressor_error(&name)),
+        }
+    }
+
+    fn compress_literal(&mut self, literal: &[u8]) -> Result<Vec<u8>, AerorsyncError> {
+        match self {
+            Self::Zstd(encoder) => encoder
+                .compress_literal(literal)
+                .map_err(|e| map_realwire_error(e, "zstd compress streaming literal")),
+            Self::Deflate(encoder) => encoder
+                .compress_literal(literal)
+                .map_err(|e| map_realwire_error(e, "deflate compress streaming literal")),
+            Self::None => Ok(literal.to_vec()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SignatureHeader {
     Transfer {
@@ -692,6 +729,14 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// hardcoding `-o -g`.
     effective_metadata: EffectiveMetadataFlags,
 
+    /// Whether the effective server argv contains the user-facing `-c`
+    /// option and therefore carries a whole-file checksum in each regular
+    /// file-list entry. Product transfers use `-I` instead: an explicitly
+    /// requested file is never quick-check skipped, while its integrity is
+    /// still verified by the checksum trailer computed during the delta pass.
+    /// Capture/oracle profiles retain `-c` and the historical two-pass shape.
+    file_list_checksum_enabled: bool,
+
     phase: AerorsyncSessionPhase,
     committed: bool,
 
@@ -761,8 +806,13 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// for xxh128 / md5 / md4, 8 for xxh3 / xxh64, 20 for sha1).
     received_file_checksum: Option<Vec<u8>>,
     /// Upload path: delta ops emitted on the wire, in emission order.
-    /// Kept for test visibility: production callers should ignore this.
+    /// Kept as a bounded diagnostic sample for test visibility: production
+    /// callers should ignore this. The streaming path caps both entries and
+    /// payload bytes so observability cannot reintroduce file-sized memory.
+    #[cfg(test)]
     emitted_delta_ops: Vec<DeltaOp>,
+    #[cfg(test)]
+    emitted_delta_capture_bytes: usize,
     /// Upload path: total MSG_DATA payload bytes written. The numerator
     /// of the progress indicator; A4 exposes it to the UI.
     sent_data_bytes: u64,
@@ -831,6 +881,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             negotiated_xattrs: false,
             negotiated_acls: false,
             effective_metadata: EffectiveMetadataFlags::product(false, false),
+            file_list_checksum_enabled: true,
             phase: AerorsyncSessionPhase::PreConnect,
             committed: false,
             stream: None,
@@ -849,7 +900,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             sender_phase_markers_seen: 0,
             reconstructed: None,
             received_file_checksum: None,
+            #[cfg(test)]
             emitted_delta_ops: Vec::new(),
+            #[cfg(test)]
+            emitted_delta_capture_bytes: 0,
             sent_data_bytes: 0,
             received_summary: None,
             session_stats: SessionStats::default(),
@@ -1079,6 +1133,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     pub fn received_file_checksum(&self) -> Option<&[u8]> {
         self.received_file_checksum.as_deref()
     }
+    #[cfg(test)]
     pub fn emitted_delta_ops(&self) -> &[DeltaOp] {
         &self.emitted_delta_ops
     }
@@ -1411,7 +1466,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let comp_algos = self.preamble_profile.compression_algos.clone();
         self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
-        source_entry.checksum = self.file_checksum_kind()?.digest(source_data);
+        source_entry.checksum = if self.file_list_checksum_enabled {
+            self.file_checksum_kind()?.digest(source_data)
+        } else {
+            Vec::new()
+        };
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
         if !self.upload_noop_transfer {
@@ -1453,26 +1512,30 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let comp_algos = self.preamble_profile.compression_algos.clone();
         self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
-        let checksum_kind = self.file_checksum_kind()?;
-        let mut checksum_hasher = checksum_kind.streaming_hasher();
-        let mut checksum_buf = vec![0u8; STREAMING_READ_CHUNK_BYTES];
-        loop {
-            let n = source_reader.read(&mut checksum_buf).await.map_err(|e| {
+        if self.file_list_checksum_enabled {
+            let checksum_kind = self.file_checksum_kind()?;
+            let mut checksum_hasher = checksum_kind.streaming_hasher();
+            let mut checksum_buf = vec![0u8; STREAMING_READ_CHUNK_BYTES];
+            loop {
+                let n = source_reader.read(&mut checksum_buf).await.map_err(|e| {
+                    AerorsyncError::transport(format!(
+                        "drive_upload_inner_streaming: checksum read failed: {e}"
+                    ))
+                })?;
+                if n == 0 {
+                    break;
+                }
+                checksum_hasher.update(&checksum_buf[..n]);
+            }
+            source_entry.checksum = checksum_hasher.finish();
+            source_reader.seek(SeekFrom::Start(0)).await.map_err(|e| {
                 AerorsyncError::transport(format!(
-                    "drive_upload_inner_streaming: checksum read failed: {e}"
+                    "drive_upload_inner_streaming: source rewind failed: {e}"
                 ))
             })?;
-            if n == 0 {
-                break;
-            }
-            checksum_hasher.update(&checksum_buf[..n]);
+        } else {
+            source_entry.checksum.clear();
         }
-        source_entry.checksum = checksum_hasher.finish();
-        source_reader.seek(SeekFrom::Start(0)).await.map_err(|e| {
-            AerorsyncError::transport(format!(
-                "drive_upload_inner_streaming: source rewind failed: {e}"
-            ))
-        })?;
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
         if !self.upload_noop_transfer {
@@ -1590,6 +1653,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.effective_metadata = effective;
         self.negotiated_xattrs = effective.preserve_xattrs;
         self.negotiated_acls = effective.preserve_acls;
+        self.file_list_checksum_enabled =
+            if command_spec.flavor == RemoteCommandFlavor::WrapperParity {
+                always_checksum_from_args(&request.args).unwrap_or(true)
+            } else {
+                // The test-only aerorsync_serve flavor preserves its legacy
+                // checksum-bearing file-list contract.
+                true
+            };
         let stream = self.transport.open_raw_stream(request).await?;
         self.stream = Some(stream);
         self.phase = AerorsyncSessionPhase::RawStreamOpen;
@@ -1717,9 +1788,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             // the varint path. If a legacy peer disagrees, decode will
             // surface a `RealWireError` which we translate.
             xfer_flags_as_varint: true,
-            // `-c` is still always-checksum. Owner/group follow the compact
-            // bundle actually sent: product omits `-o -g`, capture keeps them.
-            always_checksum: true,
+            // Must follow the effective argv. Reading `-c` from the command
+            // once at stream-open keeps the file-list codec aligned with
+            // environment overrides as well as product/capture profiles.
+            always_checksum: self.file_list_checksum_enabled,
             csum_len,
             preserve_uid: self.effective_metadata.preserve_owner,
             preserve_gid: self.effective_metadata.preserve_group,
@@ -1921,6 +1993,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// enough to tick the bar smoothly, well under `MSG_DATA_MAX`; russh
     /// re-chunks to SSH packet size on the wire regardless, so the only cost is
     /// one 4-byte mux header per frame (negligible on a multi-MB delta).
+    #[cfg(test)]
     const PROGRESS_CHUNK: usize = 1024 * 1024;
 
     /// Send the upload delta `payload`, reporting wire-byte progress as it goes.
@@ -1932,6 +2005,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// frames and reports the running wire bytes after each, so the flagship
     /// progress bar fills during the actual network send instead of jumping to
     /// 100% at the end.
+    #[cfg(test)]
     async fn write_delta_with_progress(&mut self, payload: &[u8]) -> Result<(), AerorsyncError> {
         if self.progress_sink.is_none() {
             return self.write_data_frame(payload).await;
@@ -2705,8 +2779,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // digests use the negotiated checksum seed.
         let file_checksum = self.file_checksum_kind()?.digest(source_data);
 
+        #[cfg(test)]
+        let captured_wire_ops = wire_ops.clone();
         let report = DeltaStreamReport {
-            ops: wire_ops.clone(),
+            ops: wire_ops,
             file_checksum,
         };
         let delta_bytes = encode_delta_stream(&report);
@@ -2743,14 +2819,94 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // byte of delta material. Once the server starts receiving the
         // delta stream, we no longer can transparently fall back.
         self.committed = true;
-        self.emitted_delta_ops = wire_ops;
+        #[cfg(test)]
+        {
+            self.emitted_delta_ops = captured_wire_ops;
+        }
         self.write_data_frame(&payload).await?;
 
         self.phase = AerorsyncSessionPhase::DeltaSent;
         Ok(())
     }
 
-    /// P3-T01 W1.2 / W1.3: streaming-source twin of
+    #[cfg(test)]
+    const STREAMING_OP_CAPTURE_MAX_ENTRIES: usize = 4096;
+    #[cfg(test)]
+    const STREAMING_OP_CAPTURE_MAX_BYTES: usize = STREAMING_READ_CHUNK_BYTES;
+
+    /// Compress and encode a bounded batch of engine ops directly into the
+    /// next mux payload. `ops` is drained by the caller after every source
+    /// slab, so neither raw literals nor encoded wire records survive the
+    /// subsequent network write.
+    fn append_streaming_delta_ops(
+        &mut self,
+        ops: impl IntoIterator<Item = EngineDeltaOp>,
+        encoder: &mut StreamingLiteralEncoder,
+        wire_state: &mut DeltaStreamState,
+        payload: &mut Vec<u8>,
+    ) -> Result<(), AerorsyncError> {
+        for op in ops {
+            match op {
+                EngineDeltaOp::Literal(raw) => {
+                    if raw.is_empty() {
+                        continue;
+                    }
+                    self.session_stats.literal_bytes = self
+                        .session_stats
+                        .literal_bytes
+                        .saturating_add(raw.len() as u64);
+                    let compressed = encoder.compress_literal(&raw)?;
+                    for chunk in compressed.chunks(MAX_DELTA_LITERAL_LEN) {
+                        if chunk.is_empty() {
+                            continue;
+                        }
+                        let wire_op = DeltaOp::Literal {
+                            compressed_payload: chunk.to_vec(),
+                        };
+                        payload.extend_from_slice(&encode_delta_op(&wire_op, wire_state));
+                        #[cfg(test)]
+                        {
+                            self.capture_streaming_wire_op(&wire_op);
+                        }
+                    }
+                }
+                EngineDeltaOp::CopyBlock(idx) => {
+                    self.session_stats.copy_blocks =
+                        self.session_stats.copy_blocks.saturating_add(1);
+                    let wire_op = DeltaOp::CopyRun {
+                        start_token_index: idx as i32,
+                        run_length: 1,
+                    };
+                    payload.extend_from_slice(&encode_delta_op(&wire_op, wire_state));
+                    #[cfg(test)]
+                    {
+                        self.capture_streaming_wire_op(&wire_op);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn capture_streaming_wire_op(&mut self, op: &DeltaOp) {
+        if self.emitted_delta_ops.len() >= Self::STREAMING_OP_CAPTURE_MAX_ENTRIES {
+            return;
+        }
+        let payload_len = match op {
+            DeltaOp::Literal { compressed_payload } => compressed_payload.len(),
+            DeltaOp::CopyRun { .. } => 0,
+        };
+        if self.emitted_delta_capture_bytes.saturating_add(payload_len)
+            > Self::STREAMING_OP_CAPTURE_MAX_BYTES
+        {
+            return;
+        }
+        self.emitted_delta_capture_bytes += payload_len;
+        self.emitted_delta_ops.push(op.clone());
+    }
+
+    /// P3-T01 W1.2 / W1.3, completed for #658: streaming-source twin of
     /// [`send_delta_phase_single_file`]. The engine plan is produced
     /// chunk-by-chunk (`RollingDeltaPlanProducer` for
     /// `block_size != 0`, fixed-slab chunking for `block_size == 0`)
@@ -2759,9 +2915,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     ///
     /// ## Wire-byte parity vs. the bulk path
     ///
-    /// - For `block_size != 0`: byte-identical with
-    ///   [`send_delta_phase_single_file`] for any source length
-    ///   (pinned by `streaming_send_matches_bulk_send_*`).
+    /// - For `block_size != 0` and source `<= STREAMING_READ_CHUNK_BYTES`:
+    ///   byte-identical with [`send_delta_phase_single_file`] (pinned by
+    ///   `streaming_send_matches_bulk_send_*`).
+    /// - For `block_size != 0` and source `> STREAMING_READ_CHUNK_BYTES`:
+    ///   protocol-equivalent. Flushing pending unmatched literals after each
+    ///   slab changes literal/codec boundaries while preserving reconstructed
+    ///   plaintext and the whole-file trailer (pinned by
+    ///   `streaming_send_multi_chunk_round_trips_protocol_equivalent`).
     /// - For `block_size == 0` and source `<= STREAMING_READ_CHUNK_BYTES`:
     ///   byte-identical (single literal in both paths).
     /// - For `block_size == 0` and source `> STREAMING_READ_CHUNK_BYTES`:
@@ -2777,7 +2938,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     ///   contiguous-allocation failure mode that gated the bulk path
     ///   on multi-GiB uploads with no baseline.
     ///
-    /// ## Memory bound (W1.3)
+    /// ## Memory bound (#658)
     ///
     /// Resident memory during the function is bounded by:
     ///
@@ -2785,9 +2946,12 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// - `STREAMING_READ_CHUNK_BYTES` for the in-flight literal slab
     ///   (`chunk_acc` for `block_size == 0`, the producer's window for
     ///   `block_size != 0`)
-    /// - the accumulated op vector, whose size is proportional to
-    ///   `source_len` (true multi-frame streaming of zstd + wire is
-    ///   post-P3-T01 scope).
+    /// - one source slab's engine ops and compressed output
+    /// - one mux payload, flushed after every source slab
+    ///
+    /// No source, op, compressed, delta-stream, or mux-payload collection is
+    /// proportional to `source_len`. This is the production invariant that
+    /// prevents a new incompressible 25+ GiB upload from being OOM-killed.
     ///
     /// `source_len` MUST equal the byte count drained from
     /// `source_reader`; mismatches abort the upload with
@@ -2803,119 +2967,121 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         R: AsyncRead + Unpin + Send,
     {
         self.phase = AerorsyncSessionPhase::DeltaSending;
-
-        // Identical sig-derivation as the bulk path. `wire_sigs_to_engine`
-        // depends only on `received_signatures` + `received_sum_head`,
-        // which the preceding signature phase already populated.
         let engine_sigs = self.wire_sigs_to_engine()?;
         let block_size = self
             .received_sum_head
             .as_ref()
             .map(|h| h.block_length as usize)
             .unwrap_or(0);
-
-        // Drive the producer + negotiated file hasher chunk-by-chunk. The producer
-        // owns the rolling window; the hasher accumulates a streaming
-        // whole-file checksum of the source. Both are populated from the same
-        // chunk slice so the wire trailer matches what
-        // `compute_xxh128_wire(source_data)` would have produced bulk.
         let mut file_hasher = self.file_checksum_kind()?.streaming_hasher();
-        let mut ops: Vec<EngineDeltaOp> = Vec::new();
-        let mut total_source_bytes: u64 = 0;
-        let mut buf = vec![0u8; STREAMING_READ_CHUNK_BYTES];
-
-        if block_size == 0 {
-            // Whole-file case: the receiver has no baseline to diff
-            // against (`block_size == 0` is rsync's "send everything as
-            // one literal" sentinel). The producer would silently emit
-            // zero ops here, so we materialise the literal explicitly.
-            //
-            // P3-T01 W1.3: emit one `EngineDeltaOp::Literal` per
-            // `STREAMING_READ_CHUNK_BYTES`-bounded slab instead of one
-            // big literal covering `source_len`. Reasons:
-            //
-            //   1. Avoids a single contiguous `Vec<u8>` allocation of
-            //      `source_len` bytes. On a 4 GiB upload with no
-            //      baseline the bulk path would request a 4 GiB
-            //      contiguous reservation from the allocator, which
-            //      fails on fragmented heaps even when total free RAM
-            //      is plentiful.
-            //   2. Keeps the per-op working set aligned with the read
-            //      chunk size, so the producer-driven (`block_size != 0`)
-            //      and whole-file (`block_size == 0`) branches share
-            //      the same bound on op-level allocation.
-            //   3. Wire-equivalent for sources `<= STREAMING_READ_CHUNK_BYTES`
-            //      (single literal, byte-identical to bulk). Above that
-            //      threshold the wire bytes diverge from bulk because
-            //      the session-wide zstd `CCtx` flushes between literals;
-            //      the receiver's session-wide `ZSTD_DCtx` concatenates
-            //      the payloads transparently per stock rsync's
-            //      `send_zstd_token` semantics, so the divergence is
-            //      *protocol-equivalent* even though it is not
-            //      byte-identical. Pinned by
-            //      `streaming_send_matches_bulk_send_whole_file_no_baseline`
-            //      (small source: byte-identical) and
-            //      `streaming_send_block_size_zero_chunks_large_source`
-            //      (large source: chunked, multiple engine literals).
-            //
-            // Memory bound: O(STREAMING_READ_CHUNK_BYTES) for `chunk_acc`
-            // plus the read buffer plus one in-flight literal in `ops`
-            // until zstd compression. The full op vector still grows
-            // proportionally to `source_len`; lifting that requires
-            // streaming the zstd encoder + wire emission, scoped
-            // post-P3-T01 (see W1.2 docstring).
-            let mut chunk_acc: Vec<u8> = Vec::new();
-            loop {
-                let n = source_reader.read(&mut buf).await.map_err(|e| {
-                    AerorsyncError::transport(format!(
-                        "send_delta_phase_streaming: source read failed: {e}"
-                    ))
-                })?;
-                if n == 0 {
-                    break;
-                }
-                file_hasher.update(&buf[..n]);
-                total_source_bytes += n as u64;
-
-                let mut to_consume: &[u8] = &buf[..n];
-                while !to_consume.is_empty() {
-                    if chunk_acc.capacity() == 0 {
-                        chunk_acc.reserve_exact(STREAMING_READ_CHUNK_BYTES);
-                    }
-                    let space_left = STREAMING_READ_CHUNK_BYTES.saturating_sub(chunk_acc.len());
-                    let take = to_consume.len().min(space_left);
-                    chunk_acc.extend_from_slice(&to_consume[..take]);
-                    to_consume = &to_consume[take..];
-                    if chunk_acc.len() >= STREAMING_READ_CHUNK_BYTES {
-                        ops.push(EngineDeltaOp::Literal(std::mem::take(&mut chunk_acc)));
-                    }
-                }
-            }
-            if !chunk_acc.is_empty() {
-                ops.push(EngineDeltaOp::Literal(chunk_acc));
-            }
-        } else {
-            // CLAUDE-AV-B3-15: wire sigs are truncated xxh128 (or other
-            // negotiated) prefixes, not SHA-256. Thread the session algo.
-            let mut producer = RollingDeltaPlanProducer::with_strong_algo(
+        let mut encoder = StreamingLiteralEncoder::new(self.literal_compression())?;
+        let mut wire_state = DeltaStreamState::new();
+        let mut producer = (block_size != 0).then(|| {
+            RollingDeltaPlanProducer::with_strong_algo(
                 block_size,
                 engine_sigs,
                 self.block_strong_algo(),
-            );
-            loop {
-                let n = source_reader.read(&mut buf).await.map_err(|e| {
-                    AerorsyncError::transport(format!(
-                        "send_delta_phase_streaming: source read failed: {e}"
-                    ))
-                })?;
-                if n == 0 {
-                    break;
-                }
-                file_hasher.update(&buf[..n]);
-                producer.drive_chunk(&buf[..n], &mut ops);
-                total_source_bytes += n as u64;
+            )
+        });
+        let echo_head = *self.received_sum_head.as_ref().ok_or_else(|| {
+            AerorsyncError::invalid_frame(
+                "send_delta_phase_streaming: missing received sum_head: signature phase didn't run",
+            )
+        })?;
+
+        // Start the logical delta payload with the same receiver echo as the
+        // bulk path. It remains in the first mux frame together with the first
+        // tokens for small files, preserving historical wire bytes there.
+        let mut payload = Vec::with_capacity(STREAMING_READ_CHUNK_BYTES + 1024);
+        payload.extend_from_slice(&encode_ndx(
+            self.last_received_ndx,
+            &mut self.outbound_ndx_state,
+        ));
+        payload.extend_from_slice(&encode_item_flags(self.last_iflags));
+        payload.extend_from_slice(&self.xattr_datum_section_bytes());
+        payload.extend_from_slice(&encode_sum_head(&echo_head));
+
+        self.committed = true;
+        #[cfg(test)]
+        {
+            self.emitted_delta_ops.clear();
+            self.emitted_delta_capture_bytes = 0;
+        }
+        self.session_stats.copy_blocks = 0;
+        self.session_stats.literal_bytes = 0;
+        self.last_progress_report = 0;
+
+        let mut total_source_bytes: u64 = 0;
+        let mut buf = vec![0u8; STREAMING_READ_CHUNK_BYTES];
+        let mut producer_finalized = false;
+
+        loop {
+            let n = source_reader.read(&mut buf).await.map_err(|e| {
+                AerorsyncError::transport(format!(
+                    "send_delta_phase_streaming: source read failed: {e}"
+                ))
+            })?;
+            if n == 0 {
+                break;
             }
-            producer.finalize(&mut ops);
+            let observed_source_bytes =
+                total_source_bytes.checked_add(n as u64).ok_or_else(|| {
+                    AerorsyncError::invalid_frame(
+                        "send_delta_phase_streaming: source byte count overflow",
+                    )
+                })?;
+            if observed_source_bytes > source_len {
+                return Err(AerorsyncError::invalid_frame(format!(
+                    "send_delta_phase_streaming: source exceeded declared source_len {source_len} (observed at least {observed_source_bytes} bytes)"
+                )));
+            }
+            total_source_bytes = observed_source_bytes;
+            file_hasher.update(&buf[..n]);
+            let declared_last_slab = total_source_bytes == source_len;
+
+            let mut slab_ops = Vec::new();
+            if let Some(producer) = producer.as_mut() {
+                producer.drive_chunk(&buf[..n], &mut slab_ops);
+                if declared_last_slab {
+                    // Preserve the legacy single-literal boundary on the last
+                    // declared slab; this keeps <=4 MiB transfers byte-exact.
+                    producer.finalize(&mut slab_ops);
+                    producer_finalized = true;
+                } else {
+                    // A no-match baseline otherwise grows `literal_buf` to the
+                    // complete file. Splitting here is protocol-equivalent and
+                    // keeps the rolling window intact for the next slab.
+                    producer.flush_pending_literal(&mut slab_ops);
+                }
+            } else {
+                slab_ops.push(EngineDeltaOp::Literal(buf[..n].to_vec()));
+            }
+            self.append_streaming_delta_ops(slab_ops, &mut encoder, &mut wire_state, &mut payload)?;
+
+            // This write before the next source read is the causal #658
+            // invariant: every generation becomes unreachable before another
+            // 4 MiB slab enters memory. Mux frame boundaries are transparent to
+            // the rsync application stream.
+            if !declared_last_slab {
+                if !payload.is_empty() {
+                    self.write_data_frame(&payload).await?;
+                    payload.clear();
+                }
+                self.report_wire_progress(total_source_bytes, source_len);
+            }
+        }
+
+        if !producer_finalized {
+            if let Some(producer) = producer.as_mut() {
+                let mut tail_ops = Vec::new();
+                producer.finalize(&mut tail_ops);
+                self.append_streaming_delta_ops(
+                    tail_ops,
+                    &mut encoder,
+                    &mut wire_state,
+                    &mut payload,
+                )?;
+            }
         }
 
         if total_source_bytes != source_len {
@@ -2923,112 +3089,15 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 "send_delta_phase_streaming: declared source_len {source_len} != bytes read {total_source_bytes}"
             )));
         }
-
-        self.session_stats.copy_blocks = ops
-            .iter()
-            .filter(|op| matches!(op, EngineDeltaOp::CopyBlock(_)))
-            .count() as u64;
         self.session_stats.matched_bytes = self
             .session_stats
             .copy_blocks
             .saturating_mul(block_size as u64);
-        self.session_stats.literal_bytes = ops
-            .iter()
-            .filter_map(|op| match op {
-                EngineDeltaOp::Literal(bytes) => Some(bytes.len() as u64),
-                EngineDeltaOp::CopyBlock(_) => None,
-            })
-            .sum();
-
-        // From here on the encoding/wire-emission path is byte-for-byte
-        // identical to `send_delta_phase_single_file`. Any divergence
-        // would break the `streaming_send_matches_bulk_send_*` parity
-        // pin below: kept in lockstep on purpose.
-        let pending_raw: Vec<&[u8]> = ops
-            .iter()
-            .filter_map(|op| match op {
-                EngineDeltaOp::Literal(raw) => Some(raw.as_slice()),
-                EngineDeltaOp::CopyBlock(_) => None,
-            })
-            .collect();
-
-        // Second encode path (streaming upload); same dispatch as the
-        // bulk one above.
-        let compression = self.literal_compression();
-        let compressed_blobs: Vec<Vec<u8>> = if pending_raw.is_empty() {
-            pending_raw.iter().map(|p| p.to_vec()).collect()
-        } else {
-            match &compression {
-                LiteralCompression::Zstd => compress_zstd_literal_stream(&pending_raw)
-                    .map_err(|e| map_realwire_error(e, "zstd compress literal stream"))?,
-                LiteralCompression::Deflate => {
-                    crate::aerorsync::real_wire::compress_deflate_literal_stream(&pending_raw)
-                        .map_err(|e| map_realwire_error(e, "deflate compress literal stream"))?
-                }
-                LiteralCompression::None => pending_raw.iter().map(|p| p.to_vec()).collect(),
-                LiteralCompression::Unsupported(name) => {
-                    return Err(unsupported_compressor_error(name));
-                }
-            }
-        };
-
-        let mut wire_ops: Vec<DeltaOp> = Vec::with_capacity(ops.len() + compressed_blobs.len());
-        let mut blob_idx: usize = 0;
-        for op in &ops {
-            match op {
-                EngineDeltaOp::Literal(_) => {
-                    let blob = &compressed_blobs[blob_idx];
-                    blob_idx += 1;
-                    if blob.is_empty() {
-                        continue;
-                    }
-                    for chunk in blob.chunks(MAX_DELTA_LITERAL_LEN) {
-                        wire_ops.push(DeltaOp::Literal {
-                            compressed_payload: chunk.to_vec(),
-                        });
-                    }
-                }
-                EngineDeltaOp::CopyBlock(idx) => {
-                    wire_ops.push(DeltaOp::CopyRun {
-                        start_token_index: *idx as i32,
-                        run_length: 1,
-                    });
-                }
-            }
-        }
-
         let file_checksum = file_hasher.finish();
-
-        let report = DeltaStreamReport {
-            ops: wire_ops.clone(),
-            file_checksum,
-        };
-        let delta_bytes = encode_delta_stream(&report);
-
-        let echo_head = *self.received_sum_head.as_ref().ok_or_else(|| {
-            AerorsyncError::invalid_frame(
-                "send_delta_phase_streaming: missing received sum_head: signature phase didn't run",
-            )
-        })?;
-        let mut payload = Vec::with_capacity(8 + delta_bytes.len());
-        payload.extend_from_slice(&encode_ndx(
-            self.last_received_ndx,
-            &mut self.outbound_ndx_state,
-        ));
-        payload.extend_from_slice(&encode_item_flags(self.last_iflags));
-        // X.2b: the xattr datum section, when the peer's iflags asked for
-        // one. Empty (zero bytes appended) on every path that does not
-        // negotiate `-X`, so the byte-pinned delta shape is unchanged.
-        payload.extend_from_slice(&self.xattr_datum_section_bytes());
-        payload.extend_from_slice(&encode_sum_head(&echo_head));
-        payload.extend_from_slice(&delta_bytes);
-
-        self.committed = true;
-        self.emitted_delta_ops = wire_ops;
-        // Fix A: report wire-byte progress to the GUI sink (if any) as the
-        // delta payload streams out. Byte-identical to write_data_frame when
-        // no sink is attached (AeroSync / CLI).
-        self.write_delta_with_progress(&payload).await?;
+        payload.push(TOKEN_END_FLAG);
+        payload.extend_from_slice(&file_checksum);
+        self.write_data_frame(&payload).await?;
+        self.report_wire_progress(source_len, source_len);
 
         self.phase = AerorsyncSessionPhase::DeltaSent;
         Ok(())
@@ -4680,6 +4749,10 @@ mod tests {
             !product_opts.preserve_uid && !product_opts.preserve_gid,
             "product profile must not hardcode uid/gid"
         );
+        assert!(
+            !product_opts.always_checksum,
+            "product profile must use one-pass -I file lists"
+        );
 
         let mut capture = make_driver(mock_transport_with_raw_inbound(Vec::new()));
         capture
@@ -4690,6 +4763,10 @@ mod tests {
         assert!(
             capture_opts.preserve_uid && capture_opts.preserve_gid,
             "capture profile retains historical uid/gid"
+        );
+        assert!(
+            capture_opts.always_checksum,
+            "capture profile retains byte-pinned -c file lists"
         );
     }
 
@@ -4750,6 +4827,14 @@ mod tests {
         outbound: &[u8],
         checksum_len: usize,
     ) -> (Vec<u8>, Vec<u8>) {
+        let (entry, report) = decode_upload_entry_and_delta_report(outbound, checksum_len);
+        (entry.checksum, report.file_checksum)
+    }
+
+    fn decode_upload_entry_and_delta_report(
+        outbound: &[u8],
+        checksum_len: usize,
+    ) -> (FileListEntry, DeltaStreamReport) {
         let client = decode_client_preamble(outbound).expect("decode outbound client preamble");
         let app = reassemble_msg_data(&outbound[client.consumed..])
             .expect("reassemble outbound MSG_DATA")
@@ -4787,12 +4872,12 @@ mod tests {
         cursor += consumed;
         let (report, _) = decode_delta_stream(&app[cursor..], checksum_len, Some(head.count))
             .expect("decode outbound delta stream");
-        (entry.checksum, report.file_checksum)
+        (entry, report)
     }
 
-    /// Build a `FileListEntry` that the encoder/decoder will round-trip
-    /// under `build_flist_options` (varint flags, always_checksum on,
-    /// preserve_uid/gid on with SAME_UID/SAME_GID gating uid/gid out).
+    /// Build a `FileListEntry` that the capture-profile encoder/decoder will
+    /// round-trip (varint flags, always_checksum on, preserve_uid/gid on with
+    /// SAME_UID/SAME_GID gating uid/gid out).
     /// The flags include `XMIT_LONG_NAME` so the suffix length is encoded
     /// as a varint: which the path length (9 chars) still fits in.
     fn sample_file_list_entry(path: &str) -> FileListEntry {
@@ -4801,9 +4886,9 @@ mod tests {
         //        XMIT_SAME_GID (0x0010)
         //: the "all same" upload case where only the name and size are
         // transmitted. Matches a minimum-viable shape; the 16-byte
-        // checksum is required because B.2 turned `always_checksum` on
-        // in `build_flist_options` to mirror the oracle (`-c` always
-        // active in production dispatch).
+        // checksum is required because capture constructors keep `-c` for
+        // byte-identical frozen oracles. Product dispatch uses `-I` and clears
+        // this placeholder before encoding the file list.
         const XMIT_SAME_MODE: u32 = 0x0002;
         const XMIT_SAME_UID: u32 = 0x0008;
         const XMIT_SAME_GID: u32 = 0x0010;
@@ -4826,6 +4911,187 @@ mod tests {
             symlink_target: None,
             xattrs: None,
             acls: None,
+        }
+    }
+
+    /// Two-pass synthetic source used by the #658 causal regression. The
+    /// checksum pass may consume it freely. On the delta pass, the second read
+    /// fails unless the transport capture grew after the first read returned.
+    /// The pre-fix implementation reads the entire source before its first
+    /// delta write and therefore fails this reader deterministically.
+    struct IncrementalWriteProbeReader {
+        len: u64,
+        pos: u64,
+        pass: u8,
+        delta_outbound_baseline: Option<usize>,
+        outbound:
+            std::sync::Arc<std::sync::Mutex<Option<crate::aerorsync::mock::RawOutboundBuffer>>>,
+        observed_incremental_write: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    /// Product one-pass probe: reading is supported, any rewind is a hard
+    /// failure. This makes the absence of the old whole-file checksum pass a
+    /// causal invariant rather than a timing assertion.
+    struct NoSeekReader {
+        inner: std::io::Cursor<Vec<u8>>,
+        seek_attempted: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    /// Product one-pass probe for a source that grows after its declared end.
+    /// The third read is a sentinel error: a fail-fast implementation returns
+    /// `InvalidFrame` after the second read and never reaches it.
+    struct GrowingSourceProbeReader {
+        declared_chunk_len: usize,
+        read_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl AsyncRead for NoSeekReader {
+        fn poll_read(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+            read_buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            std::pin::Pin::new(&mut self.inner).poll_read(cx, read_buf)
+        }
+    }
+
+    impl AsyncSeek for NoSeekReader {
+        fn start_seek(
+            self: std::pin::Pin<&mut Self>,
+            _position: std::io::SeekFrom,
+        ) -> std::io::Result<()> {
+            self.seek_attempted
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Err(std::io::Error::other(
+                "product upload attempted a forbidden checksum rewind",
+            ))
+        }
+
+        fn poll_complete(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<u64>> {
+            std::task::Poll::Ready(Ok(self.inner.position()))
+        }
+    }
+
+    impl AsyncRead for GrowingSourceProbeReader {
+        fn poll_read(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            read_buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            use std::sync::atomic::Ordering;
+
+            let call = self.read_calls.fetch_add(1, Ordering::SeqCst);
+            let len = match call {
+                0 => self.declared_chunk_len,
+                1 => 1,
+                _ => {
+                    return std::task::Poll::Ready(Err(std::io::Error::other(
+                        "reader was polled after source growth should have failed fast",
+                    )))
+                }
+            };
+            assert!(read_buf.remaining() >= len);
+            read_buf.initialize_unfilled_to(len).fill(0xA5);
+            read_buf.advance(len);
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    impl AsyncSeek for GrowingSourceProbeReader {
+        fn start_seek(
+            self: std::pin::Pin<&mut Self>,
+            _position: std::io::SeekFrom,
+        ) -> std::io::Result<()> {
+            Err(std::io::Error::other(
+                "product source-growth probe must remain one-pass",
+            ))
+        }
+
+        fn poll_complete(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<u64>> {
+            std::task::Poll::Ready(Ok(0))
+        }
+    }
+
+    impl IncrementalWriteProbeReader {
+        fn outbound_len(&self) -> usize {
+            let guard = self.outbound.lock().unwrap();
+            guard
+                .as_ref()
+                .map(|buffer| buffer.lock().unwrap().len())
+                .unwrap_or(0)
+        }
+    }
+
+    impl AsyncRead for IncrementalWriteProbeReader {
+        fn poll_read(
+            mut self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            read_buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            if self.pos >= self.len {
+                return std::task::Poll::Ready(Ok(()));
+            }
+            if self.pass > 0 {
+                let current = self.outbound_len();
+                if let Some(baseline) = self.delta_outbound_baseline {
+                    if current <= baseline {
+                        return std::task::Poll::Ready(Err(std::io::Error::other(
+                            "delta source was read again before the first incremental wire write",
+                        )));
+                    }
+                    self.observed_incremental_write
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                } else {
+                    self.delta_outbound_baseline = Some(current);
+                }
+            }
+
+            let n = read_buf.remaining().min((self.len - self.pos) as usize);
+            let start = self.pos;
+            let dst = read_buf.initialize_unfilled_to(n);
+            for (offset, byte) in dst.iter_mut().enumerate() {
+                let index = start + offset as u64;
+                *byte = index
+                    .wrapping_mul(0x9E37_79B1)
+                    .rotate_left(13)
+                    .to_le_bytes()[0];
+            }
+            read_buf.advance(n);
+            self.pos += n as u64;
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    impl AsyncSeek for IncrementalWriteProbeReader {
+        fn start_seek(
+            mut self: std::pin::Pin<&mut Self>,
+            position: std::io::SeekFrom,
+        ) -> std::io::Result<()> {
+            match position {
+                std::io::SeekFrom::Start(0) => {
+                    self.pos = 0;
+                    self.pass = self.pass.saturating_add(1);
+                    self.delta_outbound_baseline = None;
+                    Ok(())
+                }
+                _ => Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "probe reader only supports rewind",
+                )),
+            }
+        }
+
+        fn poll_complete(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<u64>> {
+            std::task::Poll::Ready(Ok(self.pos))
         }
     }
 
@@ -4907,10 +5173,8 @@ mod tests {
     /// legitimately drops below the source length. xorshift64 with a
     /// fixed seed keeps the run reproducible without new dependencies.
     ///
-    /// Only the `#[cfg(ci_lane3)]` live tests call this; without that
-    /// cfg (the default CI check job) the helper would trip `-D dead_code`
-    /// after the Y-RSC.8 removal of the module-wide allow.
-    #[cfg(ci_lane3)]
+    /// Also used by the one-pass unit pin, so ordinary CI exercises the same
+    /// deterministic high-entropy generator as the live lane.
     fn incompressible_payload(seed: u64, len: usize) -> Vec<u8> {
         let mut state = seed | 1;
         (0..len)
@@ -6496,10 +6760,10 @@ mod tests {
     /// [`driver_upload_live_lane_3_real_rsync_byte_identical`] that
     /// drives the **streaming** entry point
     /// `drive_upload_through_delta_streaming` against the real rsync
-    /// 3.2.7 sshd container. Pin: producer-driven plan + xxh3 streaming
-    /// trailer reach `phase = Complete` and produce `bytes_sent >=
-    /// source.len()` exactly like the bulk path. Same Docker harness
-    /// (`127.0.0.1:2224`), same skip-graceful behaviour.
+    /// 3.2.7 sshd container. #658 keeps this payload above two read slabs so
+    /// the test crosses real incremental zstd + mux writes before verifying
+    /// the receiver's final summary. Same Docker harness (`127.0.0.1:2224`),
+    /// same skip-graceful behaviour.
     #[cfg(ci_lane3)]
     #[tokio::test]
     async fn driver_upload_streaming_live_lane_3_real_rsync_byte_identical() {
@@ -6507,7 +6771,8 @@ mod tests {
         use crate::aerorsync::ssh_transport::{
             SshHostKeyPolicy, SshRemoteShellTransport, SshTransportConfig,
         };
-        use crate::aerorsync::transport::RemoteExecRequest;
+        use crate::aerorsync::transport::{RemoteExecRequest, RemoteShellTransport};
+        use sha2::{Digest, Sha256};
 
         if tokio::net::TcpStream::connect("127.0.0.1:2224")
             .await
@@ -6519,7 +6784,8 @@ mod tests {
             return;
         }
 
-        let source_data: Vec<u8> = incompressible_payload(0xA380_5EED_0002, 1024);
+        let source_data: Vec<u8> =
+            incompressible_payload(0xA380_5EED_0002, STREAMING_READ_CHUNK_BYTES * 2 + 8192);
         let source_len = source_data.len() as u64;
 
         let key_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -6548,50 +6814,182 @@ mod tests {
             auth_agent: false,
         };
 
+        let run_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let remote_dir = format!("/workspace/lane3-streaming-force-transfer-{run_id}");
+        let remote_path = format!("{remote_dir}/lane3-streaming.bin");
+        assert!(bench_reset_remote_dir(&remote_dir).await);
+
+        // Same size + same mtime + different content is the case where
+        // dropping `-c` without replacing it by `-I` silently skips. Seed a
+        // zero baseline with exactly those metadata so this live test proves
+        // product force-transfer semantics against stock rsync.
+        const SOURCE_MTIME: i64 = 1_700_000_000;
+        let seed_transport = SshRemoteShellTransport::new(ssh_config.clone());
+        let seed = seed_transport
+            .exec(RemoteExecRequest {
+                program: "sh".into(),
+                args: vec![
+                    "-c".into(),
+                    format!(
+                        "head -c {source_len} /dev/zero > '{remote_path}' && \
+                         touch -d '@{SOURCE_MTIME}' '{remote_path}'"
+                    ),
+                ],
+                environment: Vec::new(),
+            })
+            .await
+            .expect("seed same-size/same-mtime remote baseline");
+        assert_eq!(seed.exit_code, 0, "remote baseline seed failed");
+
         let transport = SshRemoteShellTransport::new(ssh_config);
         let cancel = CancelHandle::inert();
         let mut driver = AerorsyncDriver::new(transport, cancel);
         let adapter = CurrentDeltaSyncBridge::new();
         let mut sink = CollectingSink::default();
 
-        let remote_path = format!(
-            "/workspace/lane3-streaming-{}.bin",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        );
-        let entry = live_file_list_entry("lane3-streaming.bin");
-        let entry = FileListEntry {
-            size: source_len as i64,
-            ..entry
-        };
+        let mut entry = live_file_list_entry("lane3-streaming.bin");
+        entry.size = source_len as i64;
+        entry.mtime = SOURCE_MTIME;
+        entry.mtime_nsec = Some(0);
         let spec = RemoteCommandSpec::upload(&remote_path);
 
         let cursor = std::io::Cursor::new(source_data.clone());
-        let upload_res = driver
-            .drive_upload_through_delta_streaming(
-                spec, entry, cursor, source_len, &adapter, &mut sink,
-            )
-            .await;
-        assert!(
-            upload_res.is_ok(),
-            "drive_upload_through_delta_streaming failed against real rsync: {upload_res:?}"
-        );
+        let transfer_result = async {
+            driver
+                .drive_upload_through_delta_streaming(
+                    spec, entry, cursor, source_len, &adapter, &mut sink,
+                )
+                .await?;
+            driver.finish_session(&mut sink).await
+        }
+        .await;
+        let completed_phase = driver.phase();
+        let bytes_sent = driver.session_stats().bytes_sent;
+        let remote_hash = if transfer_result.is_ok() {
+            bench_remote_sha256(&remote_path).await
+        } else {
+            None
+        };
+        let cleanup_ok = bench_reset_remote_dir(&remote_dir).await;
 
-        let finish_res = driver.finish_session(&mut sink).await;
+        transfer_result.expect("streaming upload + finish against real rsync");
+        assert_eq!(completed_phase, AerorsyncSessionPhase::Complete);
         assert!(
-            finish_res.is_ok(),
-            "finish_session (streaming) failed against real rsync: {finish_res:?}"
-        );
-        assert_eq!(driver.phase(), AerorsyncSessionPhase::Complete);
-        let stats = driver.session_stats();
-        assert!(
-            stats.bytes_sent >= source_len,
+            bytes_sent >= source_len,
             "bytes_sent {} < source len {}: summary frame parse probably stale",
-            stats.bytes_sent,
+            bytes_sent,
             source_len
         );
+        let local_hash = hex::encode(Sha256::digest(&source_data));
+        assert_eq!(remote_hash.as_deref(), Some(local_hash.as_str()));
+        assert!(cleanup_ok, "clean live force-transfer directory");
+    }
+
+    /// Manual #658 acceptance for the reported condition, not only its size:
+    /// a physically allocated, incompressible 5 GB or 25.2 GB file is streamed
+    /// through the real stock-rsync fixture and verified by SHA-256 on both
+    /// ends. Running both sizes with the same RSS sampler demonstrates whether
+    /// resident memory stays flat as input grows 5x.
+    ///
+    /// The operator supplies `AEROFTP_ISSUE_658_SOURCE_PATH`; keeping dataset
+    /// generation outside the test makes disk allocation and cleanup explicit.
+    /// Ignored so ordinary lane-3 CI stays fast and space-safe.
+    #[cfg(ci_lane3)]
+    #[tokio::test]
+    #[ignore = "manual #658 5/25.2 GB incompressible upload against real rsync"]
+    async fn driver_upload_streaming_live_issue_658_incompressible() {
+        use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
+        use crate::aerorsync::ssh_transport::SshRemoteShellTransport;
+
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
+            eprintln!("lane 3 Docker harness unavailable: skipping #658 acceptance");
+            return;
+        }
+        let Some(ssh_config) = bench_ssh_config() else {
+            return;
+        };
+        const REMOTE_DIR: &str = "/workspace/issue-658-large-acceptance";
+        assert!(bench_reset_remote_dir(REMOTE_DIR).await);
+
+        let source_path = std::path::PathBuf::from(
+            std::env::var_os("AEROFTP_ISSUE_658_SOURCE_PATH")
+                .expect("set AEROFTP_ISSUE_658_SOURCE_PATH to a physical #658 dataset"),
+        );
+        let metadata = std::fs::metadata(&source_path).expect("stat #658 source dataset");
+        let source_len = metadata.len();
+        assert!(
+            matches!(source_len, 5_000_000_000 | 25_200_000_000),
+            "#658 acceptance dataset must be exactly 5 GB or 25.2 GB, got {source_len}"
+        );
+        let hash_path = source_path.clone();
+        let local_hash = tokio::task::spawn_blocking(move || {
+            let output = std::process::Command::new("sha256sum")
+                .arg("--")
+                .arg(hash_path)
+                .output()
+                .expect("run local sha256sum for #658 source");
+            assert!(output.status.success(), "local sha256sum failed");
+            String::from_utf8(output.stdout)
+                .expect("local sha256sum output is UTF-8")
+                .split_whitespace()
+                .next()
+                .expect("local sha256sum emitted a digest")
+                .to_owned()
+        })
+        .await
+        .expect("join local SHA-256 task");
+        let source = tokio::fs::File::open(&source_path)
+            .await
+            .expect("open #658 source dataset for upload");
+
+        let transport = SshRemoteShellTransport::new(ssh_config);
+        let mut driver = AerorsyncDriver::new(transport, CancelHandle::inert());
+        let mut entry = live_file_list_entry("issue-658-incompressible.bin");
+        entry.size = source_len as i64;
+        let remote_path = format!("{REMOTE_DIR}/issue-658-{source_len}.bin");
+        let transfer_result = async {
+            driver
+                .drive_upload_through_delta_streaming(
+                    RemoteCommandSpec::upload(&remote_path),
+                    entry,
+                    source,
+                    source_len,
+                    &CurrentDeltaSyncBridge::new(),
+                    &mut CollectingSink::default(),
+                )
+                .await?;
+            driver.finish_session(&mut CollectingSink::default()).await
+        }
+        .await;
+        let completed_phase = driver.phase();
+        let sent_data_bytes = driver.sent_data_bytes();
+        let remote_hash = if transfer_result.is_ok() {
+            bench_remote_sha256(&remote_path).await
+        } else {
+            None
+        };
+
+        // Reclaim the physically allocated remote copy before surfacing any
+        // assertion, including a content mismatch or protocol failure.
+        let cleanup_ok = bench_reset_remote_dir(REMOTE_DIR).await;
+        transfer_result.expect("incompressible #658 delta upload and finish");
+        assert_eq!(completed_phase, AerorsyncSessionPhase::Complete);
+        assert!(
+            sent_data_bytes >= source_len,
+            "incompressible wire bytes {sent_data_bytes} unexpectedly below logical bytes {source_len}"
+        );
+        assert_eq!(
+            remote_hash.as_deref(),
+            Some(local_hash.as_str()),
+            "remote SHA-256 must match the physical source dataset"
+        );
+        assert!(cleanup_ok, "clean remote #658 acceptance directory");
     }
 
     // ---- A2.2 tests ------------------------------------------------------
@@ -9275,12 +9673,14 @@ mod tests {
         assert_send_parity(&source, head, blocks).await;
     }
 
-    /// Source long enough to span multiple `STREAMING_READ_CHUNK_BYTES`
-    /// reads so the chunk-boundary invariant is exercised on the
-    /// rolling window seam. Memory budget: `~5 MiB` worth of source on
-    /// the heap, fine for CI.
+    /// Source long enough to span multiple reads: incremental emission may
+    /// introduce protocol-equivalent literal/codec/mux boundaries, so the
+    /// invariant is reconstructed plaintext + whole-file trailer, not byte
+    /// identity with the intentionally bulk legacy path.
     #[tokio::test]
-    async fn streaming_send_matches_bulk_send_multi_chunk() {
+    async fn streaming_send_multi_chunk_round_trips_protocol_equivalent() {
+        use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
+
         let head = SumHead {
             count: 1,
             block_length: 1024,
@@ -9294,7 +9694,148 @@ mod tests {
         let source: Vec<u8> = (0..len as u32)
             .map(|i| (i.wrapping_mul(2654435761) >> 24) as u8)
             .collect();
-        assert_send_parity(&source, head, blocks).await;
+
+        let inbound = build_streaming_parity_inbound(head, blocks);
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let last = transport.last_raw_outbound.clone();
+        let mut driver = make_driver(transport);
+        let mut sink = CollectingSink::default();
+        driver
+            .drive_upload_through_delta_streaming(
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
+                sample_file_list_entry("target.bin"),
+                std::io::Cursor::new(source.clone()),
+                source.len() as u64,
+                &CurrentDeltaSyncBridge::new(),
+                &mut sink,
+            )
+            .await
+            .expect("multi-slab streaming upload");
+
+        let outbound = {
+            let guard = last.lock().unwrap();
+            let bytes = guard
+                .as_ref()
+                .expect("raw stream opened")
+                .lock()
+                .unwrap()
+                .clone();
+            bytes
+        };
+        let (_, report) = decode_upload_entry_and_delta_report(&outbound, 16);
+        assert!(
+            report
+                .ops
+                .iter()
+                .all(|op| matches!(op, DeltaOp::Literal { .. })),
+            "synthetic disjoint baseline must reconstruct from literals only"
+        );
+        let compressed: Vec<&[u8]> = report
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DeltaOp::Literal { compressed_payload } => Some(compressed_payload.as_slice()),
+                DeltaOp::CopyRun { .. } => None,
+            })
+            .collect();
+        let reconstructed =
+            crate::aerorsync::real_wire::decompress_zstd_literal_stream(&compressed)
+                .expect("streaming zstd literals decode");
+        assert_eq!(reconstructed, source);
+        assert_eq!(report.file_checksum, FileChecksumKind::Md5.digest(&source));
+    }
+
+    /// #658 regression: the second delta-source read is permitted only after
+    /// the first slab has appeared on the raw transport. This fails on the
+    /// v4.1.8 implementation before any RSS measurement is needed: that code
+    /// consumes every slab into file-sized op/compression/wire vectors first.
+    #[tokio::test]
+    async fn streaming_send_writes_each_slab_before_reading_the_next() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let head = SumHead {
+            count: 0,
+            block_length: 0,
+            checksum_length: 0,
+            remainder_length: 0,
+        };
+        let inbound = build_streaming_parity_inbound(head, Vec::new());
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let outbound = transport.last_raw_outbound.clone();
+        let observed = std::sync::Arc::new(AtomicBool::new(false));
+        let source_len = (STREAMING_READ_CHUNK_BYTES * 2 + 8192) as u64;
+        let reader = IncrementalWriteProbeReader {
+            len: source_len,
+            pos: 0,
+            pass: 0,
+            delta_outbound_baseline: None,
+            outbound,
+            observed_incremental_write: observed.clone(),
+        };
+        let mut entry = sample_file_list_entry("target.bin");
+        entry.size = source_len as i64;
+        let mut driver = make_driver(transport);
+        driver
+            .drive_upload_through_delta_streaming(
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
+                entry,
+                reader,
+                source_len,
+                &CurrentDeltaSyncBridge::new(),
+                &mut CollectingSink::default(),
+            )
+            .await
+            .expect("the next source slab must follow an incremental wire write");
+        assert!(
+            observed.load(Ordering::SeqCst),
+            "probe must observe the first delta frame before the second slab read"
+        );
+    }
+
+    /// Large-file startup pin: product dispatch uses `-I`, so the source is
+    /// first touched by the delta pass and is never rewound. The capture
+    /// profile deliberately retains the historical `-c` two-pass contract.
+    #[tokio::test]
+    async fn product_streaming_upload_reads_the_source_exactly_once() {
+        use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let head = SumHead {
+            count: 0,
+            block_length: 0,
+            checksum_length: 0,
+            remainder_length: 0,
+        };
+        let inbound = build_streaming_parity_inbound(head, Vec::new());
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let seek_attempted = std::sync::Arc::new(AtomicBool::new(false));
+        let source = incompressible_payload(0x6580_1EAD, 64 * 1024 + 17);
+        let source_len = source.len() as u64;
+        let reader = NoSeekReader {
+            inner: std::io::Cursor::new(source),
+            seek_attempted: seek_attempted.clone(),
+        };
+        let mut entry = sample_file_list_entry("target.bin");
+        entry.size = source_len as i64;
+        let mut driver = make_driver(transport);
+
+        driver
+            .drive_upload_through_delta_streaming(
+                RemoteCommandSpec::upload("/remote/target.bin"),
+                entry,
+                reader,
+                source_len,
+                &CurrentDeltaSyncBridge::new(),
+                &mut CollectingSink::default(),
+            )
+            .await
+            .expect("product upload must not seek before streaming the source");
+
+        assert!(!seek_attempted.load(Ordering::SeqCst));
+        assert!(
+            driver.file_list()[0].checksum.is_empty(),
+            "a no-`-c` file list must not carry a checksum field"
+        );
     }
 
     /// P3-T01 W1.3: `block_size == 0` chunked-literal pin.
@@ -9425,9 +9966,9 @@ mod tests {
         );
     }
 
-    /// Sanity: declared `source_len` mismatch aborts with InvalidFrame
-    /// rather than emitting half a delta phase on the wire. Guards
-    /// against silent corruption when the file changes during read.
+    /// Sanity: a declared `source_len` mismatch aborts with InvalidFrame and
+    /// never emits END_FLAG/checksum, so the receiver cannot commit a partial
+    /// file. Incremental slabs may already be on the wire by design.
     #[tokio::test]
     async fn streaming_send_rejects_source_len_mismatch() {
         let head = SumHead {
@@ -9457,6 +9998,55 @@ mod tests {
             .expect_err("must abort on length mismatch");
         assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
         assert_eq!(d.phase(), AerorsyncSessionPhase::Failed);
+    }
+
+    /// A source that grows after its declared end must fail on the first
+    /// overlong read. Waiting for EOF can become an unbounded wait when an
+    /// active log or recording is still being appended to.
+    #[tokio::test]
+    async fn streaming_send_rejects_source_growth_before_reading_again() {
+        use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let head = SumHead {
+            count: 0,
+            block_length: 0,
+            checksum_length: 0,
+            remainder_length: 0,
+        };
+        let inbound = build_streaming_parity_inbound(head, Vec::new());
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let read_calls = std::sync::Arc::new(AtomicUsize::new(0));
+        let source_len = 128u64;
+        let reader = GrowingSourceProbeReader {
+            declared_chunk_len: source_len as usize,
+            read_calls: read_calls.clone(),
+        };
+        let mut entry = sample_file_list_entry("target.bin");
+        entry.size = source_len as i64;
+        let mut driver = make_driver(transport);
+        let err = driver
+            .drive_upload_through_delta_streaming(
+                RemoteCommandSpec::upload("/remote/target.bin"),
+                entry,
+                reader,
+                source_len,
+                &CurrentDeltaSyncBridge::new(),
+                &mut CollectingSink::default(),
+            )
+            .await
+            .expect_err("a growing source must fail at its first overlong read");
+
+        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
+        assert!(err
+            .to_string()
+            .contains("source exceeded declared source_len"));
+        assert_eq!(
+            read_calls.load(Ordering::SeqCst),
+            2,
+            "the driver must not poll a still-growing source after detecting overflow"
+        );
+        assert_eq!(driver.phase(), AerorsyncSessionPhase::Failed);
     }
 
     #[tokio::test]
@@ -10146,6 +10736,45 @@ mod tests {
             Err(e) => {
                 eprintln!("[bench] remote reset of {dir} failed: {e}: skipping");
                 false
+            }
+        }
+    }
+
+    /// Read one remote file digest through the same SSH fixture used by the
+    /// acceptance test. `sha256sum` receives the path as a distinct argv item;
+    /// no shell interpolation is involved.
+    #[cfg(ci_lane3)]
+    async fn bench_remote_sha256(path: &str) -> Option<String> {
+        use crate::aerorsync::transport::{RemoteExecRequest, RemoteShellTransport};
+        let mut cfg = bench_ssh_config()?;
+        // sha256sum is silent until it has read the complete file. The normal
+        // 120 s inactivity timeout is appropriate for protocol I/O but too
+        // short for a 25.2 GB digest on a throttled/container filesystem.
+        // libssh2 also uses `connect_timeout_ms` as its session-wide blocking
+        // timeout, so both knobs must cover this intentionally silent command.
+        cfg.connect_timeout_ms = 600_000;
+        cfg.io_timeout_ms = 600_000;
+        let transport = crate::aerorsync::ssh_transport::SshRemoteShellTransport::new(cfg);
+        let request = RemoteExecRequest {
+            program: "sha256sum".into(),
+            args: vec!["--".into(), path.into()],
+            environment: Vec::new(),
+        };
+        match transport.exec(request).await {
+            Ok(output) if output.exit_code == 0 => String::from_utf8(output.stdout)
+                .ok()
+                .and_then(|line| line.split_whitespace().next().map(str::to_owned)),
+            Ok(output) => {
+                eprintln!(
+                    "[bench] remote SHA-256 of {path} exited {}: {}",
+                    output.exit_code,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
+                None
+            }
+            Err(error) => {
+                eprintln!("[bench] remote SHA-256 of {path} failed: {error}");
+                None
             }
         }
     }

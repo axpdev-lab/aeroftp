@@ -663,6 +663,19 @@ impl RollingDeltaPlanProducer {
         }
     }
 
+    /// Bound an incremental caller's unmatched literal run without changing
+    /// rolling-window state. Splitting a literal at an arbitrary boundary is
+    /// delta-equivalent: the receiver concatenates adjacent literals, while
+    /// the producer can continue matching across the same source window.
+    ///
+    /// The default producer never calls this itself so bulk/parity users keep
+    /// their historical op boundaries. The native upload wire path calls it
+    /// after each source slab to prevent a no-match baseline from retaining
+    /// the complete file in `literal_buf`.
+    pub(crate) fn flush_pending_literal(&mut self, out: &mut Vec<EngineDeltaOp>) {
+        self.flush_literal(out);
+    }
+
     /// Linear scan over candidates with matching rolling checksum. Returns
     /// the signature index (not the block index) of the first hit.
     ///

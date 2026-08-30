@@ -4062,39 +4062,54 @@ pub fn decompress_deflate_literal_stream_boundaries(
 /// of its `Z_SYNC_FLUSH` tail exactly as rsync puts it on the wire.
 ///
 /// Available only when the `aerorsync` feature is enabled.
-pub fn compress_deflate_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, RealWireError> {
-    use flate2::{Compress, Compression, FlushCompress};
+pub struct DeflateLiteralStreamEncoder {
+    deflater: flate2::Compress,
+    staging: Vec<u8>,
+}
 
-    // Level 6 is rsync's default (`compression_level` defaults to 6 in
-    // options.c when `-z` is given without `--compress-level`).
-    // `false` = raw deflate, matching `deflateInit2(..., -15, ...)`.
-    let mut deflater = Compress::new_with_window_bits(Compression::new(6), false, 15);
-    let mut out: Vec<Vec<u8>> = Vec::new();
+impl DeflateLiteralStreamEncoder {
+    pub fn new() -> Self {
+        Self {
+            // Level 6 is rsync's default (`compression_level` defaults to 6
+            // in options.c when `-z` is given without `--compress-level`).
+            // `false` = raw deflate, matching `deflateInit2(..., -15, ...)`.
+            deflater: flate2::Compress::new_with_window_bits(
+                flate2::Compression::new(6),
+                false,
+                15,
+            ),
+            staging: vec![0u8; 32 * 1024],
+        }
+    }
 
-    for payload in payloads {
+    /// Compress one logical literal while retaining the file-wide deflate
+    /// history for the next call. The returned bytes are one bounded literal,
+    /// not an accumulated file payload.
+    pub fn compress_literal(&mut self, payload: &[u8]) -> Result<Vec<u8>, RealWireError> {
+        use flate2::FlushCompress;
+
         if payload.is_empty() {
-            continue;
+            return Ok(Vec::new());
         }
         let mut produced: Vec<u8> = Vec::new();
-        let mut staging = vec![0u8; 32 * 1024];
         let mut consumed_total = 0usize;
 
         loop {
-            let before_in = deflater.total_in();
-            let before_out = deflater.total_out();
-            deflater
+            let before_in = self.deflater.total_in();
+            let before_out = self.deflater.total_out();
+            self.deflater
                 .compress(
                     &payload[consumed_total..],
-                    &mut staging,
+                    &mut self.staging,
                     FlushCompress::Sync,
                 )
                 .map_err(|e| RealWireError::DeflateDecompressionFailed {
                     reason: format!("deflate: {e}"),
                 })?;
-            let read = (deflater.total_in() - before_in) as usize;
-            let wrote = (deflater.total_out() - before_out) as usize;
+            let read = (self.deflater.total_in() - before_in) as usize;
+            let wrote = (self.deflater.total_out() - before_out) as usize;
             consumed_total += read;
-            produced.extend_from_slice(&staging[..wrote]);
+            produced.extend_from_slice(&self.staging[..wrote]);
 
             if consumed_total >= payload.len() && wrote == 0 {
                 break;
@@ -4110,7 +4125,25 @@ pub fn compress_deflate_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>
         if produced.ends_with(&DEFLATE_SYNC_FLUSH_TAIL) {
             produced.truncate(produced.len() - DEFLATE_SYNC_FLUSH_TAIL.len());
         }
-        out.push(produced);
+        Ok(produced)
+    }
+}
+
+impl Default for DeflateLiteralStreamEncoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub fn compress_deflate_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, RealWireError> {
+    let mut encoder = DeflateLiteralStreamEncoder::new();
+    let mut out: Vec<Vec<u8>> = Vec::new();
+
+    for payload in payloads {
+        if payload.is_empty() {
+            continue;
+        }
+        out.push(encoder.compress_literal(payload)?);
     }
     Ok(out)
 }
@@ -4124,41 +4157,46 @@ pub fn compress_deflate_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>
 /// emitting an empty token, see token.c:691 `if (nb)` guard).
 ///
 /// Available only when `aerorsync` is enabled.
-pub fn compress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, RealWireError> {
-    use zstd::zstd_safe::zstd_sys::ZSTD_EndDirective;
-    use zstd::zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
+pub struct ZstdLiteralStreamEncoder {
+    ctx: zstd::zstd_safe::CCtx<'static>,
+    staging: Vec<u8>,
+}
 
-    let mut ctx = CCtx::create();
-    // Match rsync's negotiated default level. `send_zstd_token` honours
-    // `--compress-level` via `ZSTD_c_compressionLevel` set in `setup_zstd`
-    // (token.c:608+). Default 3 is the rsync default for `--zstd` without
-    // an explicit level. Round-trip semantics are insensitive to the
-    // exact level: any level decodes via the same DCtx loop.
-    ctx.set_parameter(CParameter::CompressionLevel(3))
-        .map_err(|code| RealWireError::ZstdDecompressionFailed {
-            reason: format!(
-                "set CompressionLevel: {}",
-                zstd::zstd_safe::get_error_name(code)
-            ),
-        })?;
+impl ZstdLiteralStreamEncoder {
+    pub fn new() -> Result<Self, RealWireError> {
+        use zstd::zstd_safe::CParameter;
 
-    let staging_capacity = CCtx::out_size().max(1 << 14);
-    let mut staging: Vec<u8> = vec![0u8; staging_capacity];
+        let mut ctx = zstd::zstd_safe::CCtx::create();
+        ctx.set_parameter(CParameter::CompressionLevel(3))
+            .map_err(|code| RealWireError::ZstdDecompressionFailed {
+                reason: format!(
+                    "set CompressionLevel: {}",
+                    zstd::zstd_safe::get_error_name(code)
+                ),
+            })?;
+        let staging_capacity = zstd::zstd_safe::CCtx::out_size().max(1 << 14);
+        Ok(Self {
+            ctx,
+            staging: vec![0u8; staging_capacity],
+        })
+    }
 
-    let mut blobs: Vec<Vec<u8>> = Vec::with_capacity(payloads.len());
-    for payload in payloads {
+    /// Compress one logical literal while retaining the session-wide zstd
+    /// context. At most this literal's compressed bytes are materialised.
+    pub fn compress_literal(&mut self, payload: &[u8]) -> Result<Vec<u8>, RealWireError> {
+        use zstd::zstd_safe::zstd_sys::ZSTD_EndDirective;
+        use zstd::zstd_safe::{InBuffer, OutBuffer};
+
         if payload.is_empty() {
-            continue;
+            return Ok(Vec::new());
         }
         let mut blob: Vec<u8> = Vec::new();
         let mut input = InBuffer::around(payload);
 
-        // Continue mode: feed the payload until the encoder has read
-        // every byte. May or may not produce output bytes during this
-        // pass (zstd buffers internally until block boundaries).
         while input.pos < payload.len() {
-            let mut output = OutBuffer::around(&mut staging[..]);
-            ctx.compress_stream2(&mut output, &mut input, ZSTD_EndDirective::ZSTD_e_continue)
+            let mut output = OutBuffer::around(&mut self.staging[..]);
+            self.ctx
+                .compress_stream2(&mut output, &mut input, ZSTD_EndDirective::ZSTD_e_continue)
                 .map_err(|code| RealWireError::ZstdDecompressionFailed {
                     reason: format!(
                         "compress_stream2 Continue: {}",
@@ -4168,16 +4206,12 @@ pub fn compress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, 
             blob.extend_from_slice(output.as_slice());
         }
 
-        // Flush mode: drain the encoder so this payload's bytes land in
-        // a DEFLATED_DATA-shippable block. Loop until `compress_stream2`
-        // returns 0 (no more buffered bytes pending). MUST NOT use
-        // `EndDirective::End`: the receiver's `recv_zstd_token` does
-        // not expect a frame epilogue.
         let empty: &[u8] = &[];
         loop {
             let mut empty_in = InBuffer::around(empty);
-            let mut output = OutBuffer::around(&mut staging[..]);
-            let remaining = ctx
+            let mut output = OutBuffer::around(&mut self.staging[..]);
+            let remaining = self
+                .ctx
                 .compress_stream2(&mut output, &mut empty_in, ZSTD_EndDirective::ZSTD_e_flush)
                 .map_err(|code| RealWireError::ZstdDecompressionFailed {
                     reason: format!(
@@ -4190,8 +4224,18 @@ pub fn compress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, 
                 break;
             }
         }
+        Ok(blob)
+    }
+}
 
-        blobs.push(blob);
+pub fn compress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, RealWireError> {
+    let mut encoder = ZstdLiteralStreamEncoder::new()?;
+    let mut blobs: Vec<Vec<u8>> = Vec::with_capacity(payloads.len());
+    for payload in payloads {
+        if payload.is_empty() {
+            continue;
+        }
+        blobs.push(encoder.compress_literal(payload)?);
     }
 
     Ok(blobs)
