@@ -14,7 +14,7 @@ use std::sync::Arc;
 use suppaftp::tokio::{AsyncRustlsConnector, AsyncRustlsFtpStream};
 use suppaftp::types::FileType;
 use suppaftp::{FtpError, Status};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
 use super::checksum_matrix;
@@ -804,10 +804,93 @@ impl FtpProvider {
     /// Classifying it here does both for every caller, and the preflight goes
     /// away in the same change.
     fn map_store_error(path: &str, err: FtpError) -> ProviderError {
-        if let Some(missing) = Self::classify_missing_path("uploading", path, &err) {
+        Self::classify_data_failure("uploading", path, err)
+    }
+
+    /// What a refused data command means: the same two axes as a refused CWD.
+    ///
+    /// STOR and RETR both answered `TransferFailed` for every failure, which is
+    /// exit 4 and retryable, so a permanent refusal was attempted three times.
+    /// Measured against vsftpd 3.0.5: a `put` into a directory that does not
+    /// exist is refused with `553 Could not create file.` and a `get` of a file
+    /// that is not there with `550 Failed to open file.`, both instantly, and
+    /// both were then retried twice more for nothing.
+    ///
+    /// The STATUS decides permanence, not the text. RFC 959 section 4.2 makes
+    /// 5yz permanent and 4yz transient, which is the rule already applied to
+    /// CWD on this branch; applying it here rather than naming the two new
+    /// replies is the difference between fixing the predicate and patching the
+    /// case. And the two replies are exactly why: NEITHER names a missing path.
+    /// "Could not create file" and "Failed to open file" say the operation did
+    /// not happen, and a server sends them both for a path that is absent and
+    /// for one it will not let you touch. Adding them to the missing-path
+    /// vocabulary would state something the server did not, which is the defect
+    /// removed from the 550 on CWD two commits ago.
+    ///
+    /// So a permanent refusal becomes `InvalidPath`: non-retryable on both
+    /// paths, and saying only that the path did not work. `NotFound` stays for
+    /// the replies that do name a missing path, and 4yz keeps `TransferFailed`
+    /// and its retry, because there the server has asked to be tried again.
+    fn classify_data_failure(operation: &str, path: &str, err: FtpError) -> ProviderError {
+        if let Some(missing) = Self::classify_missing_path(operation, path, &err) {
             return missing;
         }
-        ProviderError::TransferFailed(Self::doing("uploading", path, err))
+        if let FtpError::UnexpectedResponse(ref response) = err {
+            let code = response.status as u32;
+            if (500..600).contains(&code) {
+                let text = response.to_string();
+                return ProviderError::InvalidPath(Self::doing(operation, path, &text));
+            }
+        }
+        ProviderError::TransferFailed(Self::doing(operation, path, err))
+    }
+
+    /// Turn a permanent upload refusal into one the user can act on.
+    ///
+    /// The CLI used to check the parent BEFORE every upload and say "Parent
+    /// directory '...' does not exist on the remote. Create it first with:
+    /// aeroftp-cli mkdir -p '...'". That check was removed with four others
+    /// when the provider started classifying these failures itself, and for
+    /// four of them the reasoning held. For this one it did not: a classifier
+    /// reads a reply, and what was lost was not a classification but a
+    /// SENTENCE THE USER COULD ACT ON. `553 Could not create file.` is
+    /// accurate and tells nobody what to do next.
+    ///
+    /// It is asked AFTER the failure, not before it, and that is the whole
+    /// difference from the check that was removed. A preflight pays on every
+    /// upload, including the overwhelming majority that succeed; this pays only
+    /// when one has already failed permanently, so the fast path is untouched.
+    /// It also lands in the provider rather than in the CLI, so the GUI and the
+    /// MCP server get the same sentence, which the removed check never gave
+    /// them.
+    ///
+    /// The probe is `confirm_directory_exists`, the same CWD pair `mkdir` uses,
+    /// so there is one way in this file to ask whether a directory is there. If
+    /// the parent turns out to exist, the refusal was about something else and
+    /// the original error is returned untouched: we do not trade a true vague
+    /// answer for a false specific one. The same if the probe itself fails,
+    /// because then we know nothing new.
+    async fn name_the_missing_parent(
+        &mut self,
+        remote_path: &str,
+        err: ProviderError,
+    ) -> ProviderError {
+        // Only a permanent refusal is worth a round trip, and only when there
+        // is a parent to ask about.
+        if !matches!(err, ProviderError::InvalidPath(_)) {
+            return err;
+        }
+        let parent = match remote_path.rsplit_once('/') {
+            Some((p, _)) if !p.is_empty() && p != "/" => p.to_string(),
+            _ => return err,
+        };
+        match self.confirm_directory_exists(&parent).await {
+            Err(ProviderError::NotFound(_)) => ProviderError::NotFound(format!(
+                "parent directory {parent} does not exist on the remote; create it first with: \
+                 aeroftp-cli mkdir -p '{parent}' (the server refused the upload with: {err})"
+            )),
+            _ => err,
+        }
     }
 
     /// Tell a directory that is empty from one that is not there.
@@ -1068,9 +1151,35 @@ impl StorageProvider for FtpProvider {
         Ok(())
     }
 
+    /// Close the session without waiting for a goodbye that may never come.
+    ///
+    /// `quit()` sends QUIT and then READS the reply, with no deadline, and this
+    /// is called through `reconnect_after_data_error` from seven places, all of
+    /// them after something has already gone wrong on the wire. On a server
+    /// that has stopped answering, the remedy meant to throw a poisoned
+    /// connection away hung on the goodbye instead: the cure was the disease.
+    ///
+    /// The `let _ =` that used to stand here reads as a defence and is not one.
+    /// It discards the RESULT, not the WAIT: if the reply never arrives the
+    /// await never returns and the discard is never reached. A line that looks
+    /// careful in exactly the case where it is not is worse than an obviously
+    /// bare one, because a reader scanning for risk skips it.
+    ///
+    /// The stream is taken out of the struct first, so the QUIT frees nothing
+    /// on this side: it is a courtesy to the server, and a courtesy is not
+    /// worth an unbounded wait. Under the budget it is attempted; past it the
+    /// connection is simply dropped. The same shape, and the same five seconds,
+    /// as `FtpManager::disconnect`, which has bounded this since long before
+    /// tonight.
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
+        const GOODBYE_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
         if let Some(mut stream) = self.stream.take() {
-            let _ = stream.quit().await;
+            if tokio::time::timeout(GOODBYE_BUDGET, stream.quit())
+                .await
+                .is_err()
+            {
+                tracing::debug!("[FTP] QUIT went unanswered; dropping the connection");
+            }
         }
         Ok(())
     }
@@ -1216,7 +1325,6 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        use tokio::io::AsyncReadExt;
         let limit = super::MAX_DOWNLOAD_TO_BYTES;
 
         // PD-FTP-1: dial the connection so an in-memory read works on a
@@ -1247,17 +1355,40 @@ impl StorageProvider for FtpProvider {
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(|e| Self::classify_data_failure("reading", remote_path, e))?;
 
         // H2: Read with size cap to prevent OOM
         let mut data = Vec::new();
         let limit_usize = (limit + 1) as usize;
+        let mut watch_control = ControlWatch::Quiet;
         loop {
             let mut buf = [0u8; 8192];
-            let n = data_stream
-                .read(&mut buf)
-                .await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let step = {
+                let control = self
+                    .stream
+                    .as_ref()
+                    .ok_or(ProviderError::NotConnected)?
+                    .get_ref();
+                Self::read_watching_control(&mut data_stream, control, &mut buf, &mut watch_control)
+                    .await
+            };
+            // The deadline expiring is an early exit too, and it leaves exactly
+            // the state `abandon_transfer` exists for.
+            let step = match step {
+                Ok(step) => step,
+                Err(err) => {
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(err);
+                }
+            };
+            let n = match step {
+                DataStep::Read(n) => n,
+                DataStep::ControlRefused => {
+                    let refusal = self.read_queued_refusal().await?;
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(Self::classify_data_failure("reading", remote_path, refusal));
+                }
+            };
             if n == 0 {
                 break;
             }
@@ -1313,7 +1444,7 @@ impl StorageProvider for FtpProvider {
                     .await?;
                 self.upload_single(local_path, remote_path, None).await
             }
-            Err(err) => Err(err),
+            Err(err) => Err(self.name_the_missing_parent(remote_path, err).await),
         }
     }
 
@@ -1547,7 +1678,7 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt as _};
+        use tokio::io::{AsyncSeekExt, AsyncWriteExt as _};
 
         // PD-FTP-1: the transfer executor calls `resume_download()` instead of
         // `download()` whenever a retry carries a partial offset, so a resumed
@@ -1586,7 +1717,7 @@ impl StorageProvider for FtpProvider {
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(|e| Self::classify_data_failure("resuming", remote_path, e))?;
 
         // H3: Stream directly to file instead of buffering entire file in memory
         let mut file = tokio::fs::OpenOptions::new()
@@ -1605,11 +1736,38 @@ impl StorageProvider for FtpProvider {
         // Stream chunks from FTP data stream directly to disk
         let mut transferred = offset;
         let mut buf = vec![0u8; 64 * 1024]; // 64 KB chunks
+        let mut watch_control = ControlWatch::Quiet;
         loop {
-            let n = data_stream
-                .read(&mut buf)
-                .await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let step = {
+                let control = self
+                    .stream
+                    .as_ref()
+                    .ok_or(ProviderError::NotConnected)?
+                    .get_ref();
+                Self::read_watching_control(&mut data_stream, control, &mut buf, &mut watch_control)
+                    .await
+            };
+            // The deadline expiring is an early exit too, and it leaves exactly
+            // the state `abandon_transfer` exists for.
+            let step = match step {
+                Ok(step) => step,
+                Err(err) => {
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(err);
+                }
+            };
+            let n = match step {
+                DataStep::Read(n) => n,
+                DataStep::ControlRefused => {
+                    let refusal = self.read_queued_refusal().await?;
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(Self::classify_data_failure(
+                        "resuming",
+                        remote_path,
+                        refusal,
+                    ));
+                }
+            };
             if n == 0 {
                 break;
             }
@@ -1847,8 +2005,6 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         len: u64,
     ) -> Result<Vec<u8>, ProviderError> {
-        use tokio::io::AsyncReadExt;
-
         const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
         if len > MAX_READ_RANGE {
             return Err(ProviderError::Other(format!(
@@ -1879,16 +2035,48 @@ impl StorageProvider for FtpProvider {
         let mut data_stream = stream
             .retr_as_stream(path)
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(|e| Self::classify_data_failure("reading a range of", path, e))?;
 
         // Read exactly `len` bytes (or until EOF if file is shorter)
         let mut buf = vec![0u8; len as usize];
         let mut total_read = 0usize;
+        let mut watch_control = ControlWatch::Quiet;
         while total_read < len as usize {
-            let n = data_stream
-                .read(&mut buf[total_read..])
+            let step = {
+                let control = self
+                    .stream
+                    .as_ref()
+                    .ok_or(ProviderError::NotConnected)?
+                    .get_ref();
+                Self::read_watching_control(
+                    &mut data_stream,
+                    control,
+                    &mut buf[total_read..],
+                    &mut watch_control,
+                )
                 .await
-                .map_err(|e| ProviderError::TransferFailed(format!("Range read failed: {}", e)))?;
+            };
+            // The deadline expiring is an early exit too, and it leaves exactly
+            // the state `abandon_transfer` exists for.
+            let step = match step {
+                Ok(step) => step,
+                Err(err) => {
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(err);
+                }
+            };
+            let n = match step {
+                DataStep::Read(n) => n,
+                DataStep::ControlRefused => {
+                    let refusal = self.read_queued_refusal().await?;
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(Self::classify_data_failure(
+                        "reading a range of",
+                        path,
+                        refusal,
+                    ));
+                }
+            };
             if n == 0 {
                 break;
             }
@@ -1942,7 +2130,350 @@ fn canonical_hash_key(server_algo: &str) -> String {
     .to_string()
 }
 
+/// How long a data transfer may go without a single byte arriving.
+///
+/// INACTIVITY, not total duration. A cap on the whole transfer would kill a
+/// legitimate multi-gigabyte download on a slow line, which is a worse defect
+/// than the one being removed and one we would hear about from a user rather
+/// than find ourselves.
+///
+/// The value and the shape both follow what this codebase already does:
+/// `providers::filen` and `providers::mega_native` build their HTTP clients
+/// with `read_timeout(1800)`, which is reqwest's between-reads limit. FTP was
+/// the only transfer path in the tree with no deadline of any kind, so this is
+/// not a new mechanism, it is the existing one reaching the provider that
+/// lacked it.
+const DATA_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1800);
+
+/// How long the data may stay silent AFTER the server has spoken on control.
+///
+/// Reading the first byte of a reply only works in the clear. Under FTPS the
+/// control channel carries TLS records, and a record opens with a ContentType
+/// in 0x14..0x18 while ASCII `4` and `5` are 0x34 and 0x35: the sets do not
+/// intersect, so no server can put a reply's digits there. That is the
+/// protocol, not an observation, and it means the classification below cannot
+/// work on an encrypted control channel. Without this, an FTPS user got the
+/// full 1800 seconds, which is what the connection did before any of this.
+///
+/// What survives encryption is the READINESS. The server spoke, even if what it
+/// said is unreadable from this side of the TLS layer, and during a healthy
+/// transfer it has no reason to: the preliminary reply was consumed when the
+/// data channel opened, and the completion reply comes after the data are done.
+///
+/// So a reply arriving mid-transfer SHORTENS the deadline instead of ending the
+/// wait, and the deadline is inactivity rather than a grace period. That is
+/// what makes it safe. A transfer finishing normally keeps delivering the bytes
+/// already in flight, each one resets the timer, and this never fires; it fires
+/// only when the server has spoken AND the data have stopped, which are never
+/// both true in a healthy transfer. Arming on readiness alone would cut short a
+/// transfer that was ending well.
+///
+/// The asymmetry of the number is the thing to hold on to: too long only delays
+/// an error, too short truncates a transfer that was succeeding. In doubt, up.
+const DATA_IDLE_AFTER_CONTROL_SPOKE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The state a session was left in by `abandon_transfer`.
+///
+/// The way out has two levels and they end in opposite places, and a caller
+/// that carries on afterwards has to know which. That caller is not
+/// hypothetical: `list_inner_opts` disables MLSD when it fails and then
+/// CONTINUES, in the same call, to the LIST branch, which opens a second data
+/// channel. On that path "give up" does not mean "the operation is over", it
+/// means "try the other way", and a session quietly discarded would turn a
+/// server that advertises MLSD without honouring it from "falls back to LIST
+/// and works" into `NotConnected`.
+///
+/// So the outcome of the CLEANUP is reported, which is not the same as the
+/// reason for the exit. The reason is deliberately not distinguished: the state
+/// to repair is identical whatever caused it, and a caller that cares about the
+/// cause knows it before calling. Where the session ended up is the one thing
+/// only this function knows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionAfterAbandon {
+    /// The server took the abort. The control session is clean and the next
+    /// command can use it.
+    Reusable,
+    /// The server refused the abort or did not answer in time, and the
+    /// connection was dropped. Anything that carries on must dial again first.
+    Discarded,
+}
+
+/// What is known about the control channel while a transfer is running.
+enum ControlWatch {
+    /// Nothing heard: race the readiness against the data read.
+    Quiet,
+    /// The server has spoken and what it said could not be read, either because
+    /// the channel is encrypted or because the reply was not a refusal. The
+    /// socket stays readable, so racing it again would spin the loop; the
+    /// deadline shortens instead and the data get the last word.
+    Spoke,
+}
+
+/// What one turn of a data-reading loop produced.
+#[derive(Debug)]
+enum DataStep {
+    /// Bytes from the data channel; `0` is end of stream.
+    Read(usize),
+    /// The server sent a negative reply on the CONTROL channel while we were
+    /// waiting for data. The reply is still in the socket, unread.
+    ControlRefused,
+}
+
 impl FtpProvider {
+    /// The one way out of a data transfer that has failed.
+    ///
+    /// Leaving a data loop early drops the `DataStream` and never calls
+    /// `finalize`, so inside `suppaftp` the private `data_connection_open`
+    /// stays true and the completion reply stays unread on the control
+    /// channel. What happens next depends on what the caller does next, and
+    /// one of the two is bad: another data command trips
+    /// `guard_multiple_data_connections` and is recognised as a stale
+    /// connection, which reconnects and works, while a CONTROL command reads
+    /// the stale `226 Transfer complete` as its own reply and fails saying the
+    /// previous operation succeeded. An error that names the success of
+    /// something else is the worst kind of message to hand a user.
+    ///
+    /// Those exits were rare before this change and are not any more: a
+    /// deadline and a refusal were added to five loops. A defect made common by
+    /// a change belongs to that change.
+    ///
+    /// TWO LEVELS, and the second is not belt and braces. `abort()` is the
+    /// crate's own way out: ABOR, then drop the stream in that order, then the
+    /// flag cleared and 426 or 226 consumed. But it reads those replies with
+    /// `read_response_in`, WHICH HAS NO TIMEOUT, and every exit handled here
+    /// happens exactly when the server may have stopped answering. Called bare,
+    /// the cure hangs for the reason the disease does. So it gets a budget, and
+    /// a server that will not even answer ABOR has a session that cannot be
+    /// trusted: it is dropped rather than reused, and the next command dials a
+    /// fresh one.
+    ///
+    /// WHAT THIS DOES NOT COVER, said here because a function that looks
+    /// complete is read as complete. It runs on exits that RETURN. A future
+    /// dropped from outside never reaches it: dropping an async fn runs the
+    /// destructors of its locals and none of the code that follows. The
+    /// transfer executor wraps a download in `tokio::time::timeout` and lets
+    /// the future fall on expiry, so on that path the session is left exactly
+    /// as this function exists to prevent, and the retry that follows reuses
+    /// the same connection. Moving that deadline inside the data loop would
+    /// turn it into an ordinary error return and bring it back through here,
+    /// which is where the shared data-loop primitive will put it anyway.
+    ///
+    /// One function rather than five copies, because `DataStream` implements
+    /// both `AsyncRead` and `AsyncWrite`, so the same way out serves RETR and
+    /// STOR, and because a shared data-loop primitive is being built on top of
+    /// these call sites: five copies would have to be unified and re-reviewed
+    /// one by one.
+    async fn abandon_transfer<S>(&mut self, data_stream: S) -> SessionAfterAbandon
+    where
+        S: tokio::io::AsyncRead + Unpin + 'static,
+    {
+        // Five seconds, and the asymmetry here points the OPPOSITE way to the
+        // one on the transfer deadlines above, which is worth saying because
+        // the two constants sit near each other and a reader who assumes they
+        // share a rule will think one of them is wrong.
+        //
+        // On a transfer deadline, too short truncates something that was
+        // succeeding, so in doubt it goes up. Here, too short discards a session
+        // that would have cleaned itself and costs one reconnect; too long makes
+        // somebody wait who has already been waiting. So in doubt it goes down.
+        const ABORT_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+        let Some(stream) = self.stream.as_mut() else {
+            return SessionAfterAbandon::Discarded;
+        };
+        let outcome = tokio::time::timeout(ABORT_BUDGET, stream.abort(data_stream)).await;
+        let verdict = Self::session_after_abort(outcome.as_ref().ok());
+        if matches!(verdict, SessionAfterAbandon::Discarded) {
+            self.stream = None;
+        }
+        verdict
+    }
+
+    /// Read the refusal the server has queued, without waiting for one that
+    /// may not be there.
+    ///
+    /// Reached only after a peek has seen bytes on the control channel, so a
+    /// reply is expected. Expected is not guaranteed: a partial line, or a TLS
+    /// record carrying something other than a complete reply, leaves
+    /// `read_response_in` waiting, and it has no deadline of its own. Every
+    /// wait on this path is bounded now, including the one that reports why the
+    /// other ones ended.
+    ///
+    /// One function rather than four copies at the sites that need it.
+    async fn read_queued_refusal(&mut self) -> Result<FtpError, ProviderError> {
+        const REFUSAL_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+        let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
+        let read = stream.read_response_in(&[Status::ClosingDataConnection]);
+        Ok(match tokio::time::timeout(REFUSAL_BUDGET, read).await {
+            // A refusal, which is what this path exists to report.
+            Ok(Err(err)) => err,
+            // A positive reply, or nothing at all in time: neither is a
+            // refusal, and neither is worth waiting past its budget for.
+            _ => FtpError::BadResponse,
+        })
+    }
+
+    /// Decide whether a session survives, from what `abort` said about it.
+    ///
+    /// `None` means the abort never finished inside its budget.
+    ///
+    /// Split out from the caller because it is the only part that decides
+    /// anything, and inside the caller it could not be reached without a live
+    /// socket, a pooled provider and two operations in a row. A branch that
+    /// changes behaviour and cannot be reached by a test is where a regression
+    /// hides; "not testable" and "not testable without extracting four lines"
+    /// are different claims, and only the first is a limit.
+    fn session_after_abort(abort: Option<&Result<(), FtpError>>) -> SessionAfterAbandon {
+        match abort {
+            Some(Ok(())) => SessionAfterAbandon::Reusable,
+            // 225, "no transfer to abort": there was nothing to stop, because
+            // the refusal that ended the transfer has already been read.
+            // `abort` calls that an error only because 225 is not one of the
+            // two codes it waits for, and by the time it looks at the code it
+            // has already done the work that matters. Its order is ABOR, drop
+            // the stream, CLEAR the connection flag, and only then read the
+            // reply; and the reader consumes the line before deciding whether
+            // to accept it. So the flag is down, the line is gone, and the
+            // control channel is aligned: the session is clean.
+            //
+            // Throwing it away would cost a reconnect, with a fresh TLS
+            // handshake, for every missing file on the pooled providers behind
+            // the GUI, the MCP server and the TUI. Both servers in the lab
+            // answer 225 to a bare ABOR, measured: "225 No transfer to abort."
+            // and "225 No transfer to ABOR."
+            Some(Err(FtpError::UnexpectedResponse(reply)))
+                if reply.status == Status::DataConnectionOpen =>
+            {
+                SessionAfterAbandon::Reusable
+            }
+            // Refused for another reason, or never answered. Either way the
+            // server's idea of this connection no longer matches ours.
+            _ => SessionAfterAbandon::Discarded,
+        }
+    }
+
+    /// Read from the data channel while watching the control channel.
+    ///
+    /// A transfer that can never succeed used to wait for ever. Measured: a
+    /// `get` of a missing file over a real network left the control socket with
+    /// 55 unread bytes in `Recv-Q` and the data socket open with nothing ever
+    /// arriving, and neither socket had a timer armed, so no kernel event could
+    /// ever end it. The server had already said 550. The answer was inside our
+    /// own process, in our own socket buffer, and nobody was looking at it,
+    /// because reading the data channel means not reading the control channel.
+    ///
+    /// On loopback the same code returns in two seconds, because there the data
+    /// socket closes at once and the wait ends by itself. Same server, same
+    /// version, opposite outcome, decided by who closes first: a fixture cannot
+    /// exercise this, which is worth knowing before trusting a green test here.
+    ///
+    /// ONLY THE READINESS IS RACED, and that is a constraint rather than a
+    /// detail. `readable()` and `peek()` take `&self` and consume nothing:
+    /// `peek` is MSG_PEEK, so losing the race costs exactly nothing and the
+    /// bytes stay where they were. `read_response_in` is NOT cancellation-safe
+    /// (it reads lines from a `BufReader`, and dropping it mid-line leaves the
+    /// control channel misaligned), so it must never appear inside the select.
+    /// Moving it in here would look like a simplification and would replace a
+    /// control channel we ignore with a control channel we corrupt.
+    ///
+    /// A reply is only acted on when it is a refusal. 4yz and 5yz end the wait;
+    /// 2yz is the ordinary completion reply, which arrives on this channel too
+    /// and must be left alone for `finalize_retr_stream` to consume, or the
+    /// tail of a perfectly good transfer would be thrown away.
+    async fn read_watching_control<S>(
+        data: &mut S,
+        control: &tokio::net::TcpStream,
+        buf: &mut [u8],
+        watch: &mut ControlWatch,
+    ) -> Result<DataStep, ProviderError>
+    where
+        S: tokio::io::AsyncRead + Unpin,
+    {
+        if matches!(watch, ControlWatch::Spoke) {
+            // The server is believed to have spoken and the data are the only
+            // thing left to wait for, so the short deadline applies.
+            let step = Self::read_with_deadline(data, buf, DATA_IDLE_AFTER_CONTROL_SPOKE).await;
+            let Err(ProviderError::TransferFailed(_)) = step else {
+                return step;
+            };
+            // The deadline expired. Whether that is a refusal waiting to be
+            // read or an ordinary timeout is decided by LOOKING, not assumed.
+            //
+            // Treating every expiry here as a refusal was a way back into the
+            // defect this function exists to remove: `readable()` can wake
+            // spuriously, `poll_peek` then returns nothing, and this state is
+            // entered with no reply queued at all. The caller would go on to
+            // read a reply that was never sent, on a channel with no deadline,
+            // and wait for ever. A remedy for an unbounded wait must not open
+            // one where it claims to close them.
+            //
+            // The check is another peek, so it consumes nothing and works on an
+            // encrypted channel too: bytes waiting mean the server spoke, even
+            // when what it said cannot be read from this side.
+            let mut probe = [0u8; 1];
+            let mut got = tokio::io::ReadBuf::new(&mut probe);
+            // Polled exactly once and always Ready: "is there something now",
+            // never "wait until there is".
+            let queued = std::future::poll_fn(|cx| {
+                std::task::Poll::Ready(match control.poll_peek(cx, &mut got) {
+                    std::task::Poll::Ready(Ok(bytes)) => bytes,
+                    _ => 0,
+                })
+            })
+            .await;
+            return if queued > 0 {
+                Ok(DataStep::ControlRefused)
+            } else {
+                step
+            };
+        }
+        tokio::select! {
+            biased;
+            _ = control.readable() => {
+                // Non-blocking on purpose: `readable()` can wake spuriously,
+                // and an awaiting `peek` would then stall the data loop it was
+                // meant to protect.
+                let mut probe = [0u8; 1];
+                let mut got = tokio::io::ReadBuf::new(&mut probe);
+                let peeked = std::future::poll_fn(|cx| control.poll_peek(cx, &mut got))
+                    .await
+                    .unwrap_or(0);
+                let first = got.filled().first().copied();
+                match first {
+                    Some(b'4') | Some(b'5') if peeked > 0 => Ok(DataStep::ControlRefused),
+                    // Anything else: a completion reply, a TLS record whose
+                    // content cannot be read, or a spurious wake. The server
+                    // spoke or may have; either way the classification is not
+                    // available and the deadline takes over.
+                    _ => {
+                        *watch = ControlWatch::Spoke;
+                        Self::read_with_deadline(data, buf, DATA_IDLE_AFTER_CONTROL_SPOKE).await
+                    }
+                }
+            }
+            step = Self::read_with_deadline(data, buf, DATA_IDLE_TIMEOUT) => step,
+        }
+    }
+
+    /// One data read that cannot wait for ever.
+    async fn read_with_deadline<S>(
+        data: &mut S,
+        buf: &mut [u8],
+        idle: std::time::Duration,
+    ) -> Result<DataStep, ProviderError>
+    where
+        S: tokio::io::AsyncRead + Unpin,
+    {
+        use tokio::io::AsyncReadExt;
+        match tokio::time::timeout(idle, data.read(buf)).await {
+            Ok(Ok(n)) => Ok(DataStep::Read(n)),
+            Ok(Err(e)) => Err(ProviderError::TransferFailed(e.to_string())),
+            Err(_) => Err(ProviderError::TransferFailed(format!(
+                "no data arrived for {}s",
+                idle.as_secs()
+            ))),
+        }
+    }
+
     /// One single-stream RETR attempt. Factored out of the trait `download` so
     /// it can be retried once after reconnecting a clean control session
     /// (reused-session recovery). `on_progress` is owned; the retry passes
@@ -1966,7 +2497,7 @@ impl FtpProvider {
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(|e| Self::classify_data_failure("downloading", remote_path, e))?;
 
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
@@ -1974,15 +2505,49 @@ impl FtpProvider {
 
         let mut chunk = vec![0u8; self.buffer_size];
         let mut transferred: u64 = 0;
+        let mut watch_control = ControlWatch::Quiet;
 
         loop {
-            let n = data_stream
-                .read(&mut chunk)
+            let step = {
+                let control = self
+                    .stream
+                    .as_ref()
+                    .ok_or(ProviderError::NotConnected)?
+                    .get_ref();
+                Self::read_watching_control(
+                    &mut data_stream,
+                    control,
+                    &mut chunk,
+                    &mut watch_control,
+                )
                 .await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            if n == 0 {
-                break;
-            }
+            };
+            // The deadline expiring is an early exit too, and it leaves exactly
+            // the state `abandon_transfer` exists for.
+            let step = match step {
+                Ok(step) => step,
+                Err(err) => {
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(err);
+                }
+            };
+            let n = match step {
+                DataStep::Read(0) => break,
+                DataStep::Read(n) => n,
+                // The server refused while we were waiting for bytes that were
+                // never going to come. Its reply is still unread in the socket,
+                // so it is read HERE, outside the select, where cancelling it
+                // is not a possibility.
+                DataStep::ControlRefused => {
+                    let refusal = self.read_queued_refusal().await?;
+                    let _ = self.abandon_transfer(data_stream).await;
+                    return Err(Self::classify_data_failure(
+                        "downloading",
+                        remote_path,
+                        refusal,
+                    ));
+                }
+            };
             atomic
                 .write_all(&chunk[..n])
                 .await
@@ -2225,10 +2790,9 @@ async fn ftp_download_one_range(
 
     let mut data_stream = {
         let stream = worker.stream_mut()?;
-        stream
-            .retr_as_stream(&remote_path)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
+        stream.retr_as_stream(&remote_path).await.map_err(|e| {
+            FtpProvider::classify_data_failure("downloading a range of", &remote_path, e)
+        })?
     };
 
     let mut out = tokio::fs::OpenOptions::new()
@@ -2522,12 +3086,26 @@ mod tests {
                 b"Permission denied".to_vec(),
             )),
         );
+        // The property this row exists for, unchanged: a refusal that says
+        // nothing about a missing path must not be reported as one.
         assert!(
-            matches!(denied, ProviderError::TransferFailed(_)),
+            !matches!(denied, ProviderError::NotFound(_)),
             "a refusal that is not about a missing path must not become NotFound: {denied:?}"
         );
+        // The variant DID change, from `TransferFailed` to `InvalidPath`, and
+        // this row is updated deliberately rather than relaxed. It used to pin
+        // the variant while its own message named the property, which is a
+        // narrower claim than intended: a 550 is permanent under RFC 959, so
+        // `TransferFailed` (exit 4, retryable) had it tried three times for
+        // nothing. Asserting the exit-code family rather than the variant is
+        // what the row was always about.
+        assert!(
+            matches!(denied, ProviderError::InvalidPath(_)),
+            "a permanent 5yz refusal must be non-retryable, not a retryable transfer failure: {denied:?}"
+        );
 
-        // A transport failure is not a classification question at all.
+        // A transport failure is not a classification question at all: no
+        // status code, so nothing to call permanent, and it stays retryable.
         let broken = FtpProvider::map_store_error("/srv/out/report.txt", FtpError::BadResponse);
         assert!(matches!(broken, ProviderError::TransferFailed(_)));
 
@@ -3153,5 +3731,251 @@ mod danger {
                 SignatureScheme::ED448,
             ]
         }
+    }
+}
+
+#[cfg(test)]
+mod data_channel_watch_tests {
+    use super::*;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::{TcpListener, TcpStream};
+
+    /// A data channel that is open and will never deliver a byte, which is the
+    /// shape measured on the wire: 388 bytes sent, nothing ever received, the
+    /// socket left open by both ends.
+    async fn silent_pair() -> (TcpStream, TcpStream) {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        let client = TcpStream::connect(addr).await.unwrap();
+        let (server, _) = l.accept().await.unwrap();
+        (client, server)
+    }
+
+    /// A wait that simply ended is not a refusal, and must not be reported as
+    /// one.
+    ///
+    /// `readable()` is allowed to wake without anything to read. The peek then
+    /// returns nothing, and the watch moves to `Spoke` believing the server has
+    /// spoken when it has not. If the shortened deadline that follows is read
+    /// as a refusal, the caller goes to collect a reply that was never sent.
+    ///
+    /// That is the defect this whole change exists to remove, reintroduced by
+    /// the remedy: an unbounded wait, opened at the point that claims to close
+    /// them. So the expiry is decided by looking at the control channel again,
+    /// not by assuming what put the watch into `Spoke`.
+    ///
+    /// The clock is virtual, so the thirty seconds pass at once.
+    #[tokio::test(start_paused = true)]
+    async fn a_deadline_that_simply_expired_is_not_a_refusal() {
+        let (mut data, _data_peer_kept_open) = silent_pair().await;
+        let (control, _control_peer_says_nothing) = silent_pair().await;
+
+        let mut buf = [0u8; 64];
+        // Entered as though a spurious wake had already happened: nothing was
+        // ever sent on the control channel.
+        let mut watch = ControlWatch::Spoke;
+
+        let step =
+            FtpProvider::read_watching_control(&mut data, &control, &mut buf, &mut watch).await;
+
+        match step {
+            Err(ProviderError::TransferFailed(msg)) => {
+                assert!(
+                    msg.contains("no data arrived"),
+                    "the timeout should be reported as itself: {msg:?}"
+                );
+            }
+            Ok(DataStep::ControlRefused) => panic!(
+                "an expired deadline with an empty control channel was called a refusal; the \
+                 caller would then wait for a reply that was never sent"
+            ),
+            other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    /// The same expiry IS a refusal when the server really did speak.
+    ///
+    /// The other side of the boundary: without this row, the fix above could be
+    /// "never report a refusal" and still pass.
+    #[tokio::test(start_paused = true)]
+    async fn a_deadline_that_expired_on_a_queued_reply_is_a_refusal() {
+        let (mut data, _data_peer_kept_open) = silent_pair().await;
+        let (control, mut control_peer) = silent_pair().await;
+
+        control_peer
+            .write_all(b"550 Failed to open file.\r\n")
+            .await
+            .unwrap();
+        control_peer.flush().await.unwrap();
+        // Real time, so the bytes actually arrive before the virtual clock runs.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let mut buf = [0u8; 64];
+        let mut watch = ControlWatch::Spoke;
+
+        let step =
+            FtpProvider::read_watching_control(&mut data, &control, &mut buf, &mut watch).await;
+
+        assert!(
+            matches!(step, Ok(DataStep::ControlRefused)),
+            "a reply waiting unread on the control channel is a refusal to be collected"
+        );
+    }
+
+    /// A session is only thrown away when the server's idea of it has actually
+    /// diverged from ours.
+    ///
+    /// The row that matters is 225. After a refusal has been read there is no
+    /// transfer left to abort and servers say so with that code, measured as
+    /// "225 No transfer to abort." on pyftpdlib and "225 No transfer to ABOR."
+    /// on vsftpd. `abort` reports it as an error, because it waits for 226 or
+    /// 426, and reading that as a broken session would discard a connection
+    /// that is perfectly usable: by then `abort` has already cleared the
+    /// connection flag and its reader has already consumed the line, so the
+    /// control channel is aligned. The cost of getting this wrong is a
+    /// reconnect, with a fresh TLS handshake, for every missing file on a
+    /// pooled provider, which is the commonest case this branch touches.
+    ///
+    /// The rows below it are what must NOT be swept along: another refusal is
+    /// still a refusal, a malformed reply is still one, and an abort that never
+    /// finished says nothing at all. Widening the first row to "any error means
+    /// the session is fine" would keep connections whose state is unknown.
+    #[test]
+    fn only_a_server_that_disagrees_costs_the_session() {
+        use suppaftp::types::Response;
+        let verdict =
+            |r: Option<&Result<(), FtpError>>| format!("{:?}", FtpProvider::session_after_abort(r));
+
+        assert_eq!(verdict(Some(&Ok(()))), "Reusable", "a clean abort keeps it");
+
+        let nothing_to_abort = Err(FtpError::UnexpectedResponse(Response::new(
+            Status::DataConnectionOpen,
+            b"225 No transfer to abort.".to_vec(),
+        )));
+        assert_eq!(
+            verdict(Some(&nothing_to_abort)),
+            "Reusable",
+            "225 means there was nothing to stop, not that the session is broken"
+        );
+
+        // ---- and the rows that must still cost the session ----
+        let refused = Err(FtpError::UnexpectedResponse(Response::new(
+            Status::NotImplemented,
+            b"502 Command not implemented.".to_vec(),
+        )));
+        assert_eq!(
+            verdict(Some(&refused)),
+            "Discarded",
+            "a refusal that is not 225 leaves the connection in an unknown state"
+        );
+
+        let malformed = Err(FtpError::BadResponse);
+        assert_eq!(verdict(Some(&malformed)), "Discarded");
+
+        assert_eq!(
+            verdict(None),
+            "Discarded",
+            "an abort that never finished tells us nothing, so the session goes"
+        );
+    }
+
+    /// The reply the server already sent ends the wait, instead of the wait
+    /// outliving the process.
+    ///
+    /// This cannot be reproduced against the docker fixture: on loopback the
+    /// data socket closes at once, the read returns, and the control reply is
+    /// found two seconds later by the ordinary path. The defect needs a data
+    /// channel that stays open and silent, so the test builds one rather than
+    /// pretending a passing fixture proves anything.
+    #[tokio::test]
+    async fn a_refusal_already_in_the_socket_ends_the_wait() {
+        let (mut data_client, _data_server_kept_open) = silent_pair().await;
+        let (control_client, mut control_server) = silent_pair().await;
+
+        // The 550 arrives while nobody is reading the control channel: exactly
+        // the 55 unread bytes seen in Recv-Q on the real failure.
+        control_server
+            .write_all(b"550 Failed to open file.\r\n")
+            .await
+            .unwrap();
+        control_server.flush().await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let mut buf = [0u8; 64];
+        let mut watch = ControlWatch::Quiet;
+        let step = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            FtpProvider::read_watching_control(
+                &mut data_client,
+                &control_client,
+                &mut buf,
+                &mut watch,
+            ),
+        )
+        .await
+        .expect("the wait did not end: the control reply was not noticed")
+        .expect("watching the control channel must not fail");
+
+        assert!(
+            matches!(step, DataStep::ControlRefused),
+            "a 550 sitting unread in the control socket has to stop the wait"
+        );
+        assert!(
+            matches!(watch, ControlWatch::Quiet),
+            "a refusal must not move the watch on: the caller still has to read the reply"
+        );
+    }
+
+    /// A completion reply must NOT abort the transfer.
+    ///
+    /// 226 arrives on the same channel, and treating it like a refusal would
+    /// throw away the tail of a transfer that was working. The watch switches
+    /// itself off instead, so the loop cannot spin on a socket that stays
+    /// readable, and the reply is left in place for `finalize_retr_stream`.
+    #[tokio::test]
+    async fn a_completion_reply_is_left_alone_and_the_data_keeps_flowing() {
+        let (mut data_client, mut data_server) = silent_pair().await;
+        let (control_client, mut control_server) = silent_pair().await;
+
+        control_server
+            .write_all(b"226 Transfer complete.\r\n")
+            .await
+            .unwrap();
+        control_server.flush().await.unwrap();
+        data_server.write_all(b"tail-of-the-file").await.unwrap();
+        data_server.flush().await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let mut buf = [0u8; 64];
+        let mut watch = ControlWatch::Quiet;
+        let step = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            FtpProvider::read_watching_control(
+                &mut data_client,
+                &control_client,
+                &mut buf,
+                &mut watch,
+            ),
+        )
+        .await
+        .expect("a completion reply must not stall the read")
+        .expect("watching the control channel must not fail");
+
+        match step {
+            DataStep::Read(n) => assert_eq!(&buf[..n], b"tail-of-the-file"),
+            DataStep::ControlRefused => {
+                panic!("226 was treated as a refusal: the tail of a good transfer would be lost")
+            }
+        }
+        assert!(
+            matches!(watch, ControlWatch::Spoke),
+            "after a non-refusal the watch must record that the server spoke: the socket stays \
+             readable, so racing it again would spin, and the shortened deadline takes over"
+        );
+
+        // And the reply is still there for the finalizer: peek did not eat it.
+        let mut left = [0u8; 3];
+        let seen = control_client.peek(&mut left).await.unwrap();
+        assert_eq!(&left[..seen], b"226", "the completion reply was consumed");
     }
 }
