@@ -34,7 +34,7 @@ be saying "the fixture closed", which is the earlier trap wearing a new face.
 import argparse, os, select, socket, ssl, threading, time, sys
 
 def log(msg):
-    sys.stderr.write("[slowftp] %s\n" % msg)
+    sys.stderr.write("[slowftp %.2f] %s\n" % (time.time() % 1000, msg))
     sys.stderr.flush()
 
 class Counters:
@@ -322,6 +322,7 @@ class Session(threading.Thread):
             log("data done, holding the 226 for %ss (client has probably given up)"
                 % self.cfg.late_final)
             self.wait_watching_control(self.cfg.late_final)
+            log("hold finished, the 226 goes out now")
 
     def run(self):
         try:

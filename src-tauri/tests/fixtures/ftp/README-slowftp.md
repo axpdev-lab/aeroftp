@@ -399,3 +399,40 @@ This is #655's own warning arriving from the opposite side. There: "on loopback
 the same code returns in two seconds, a fixture cannot exercise this". Here: in
 plaintext the fix works, so the fixture cannot exercise the gap. Twice the same
 limit, and both times the risk was publishing a green obtained on the wrong path.
+
+## Every option has been exercised where its mechanism runs
+
+Not merely switched on. A mode enabled on a path that returns before its
+mechanism executes is untested, and looks tested. That is how the `tls-silent`
+crash survived review here: it had only been run on the `RETR` path together
+with `--refuse-before-data`, which returns before `accept_data()` is ever
+called, so the mode was on and its code never ran.
+
+| option | exercised by | evidence |
+|---|---|---|
+| `--feat` (3 positions) | `ls` on each | correct entries, and the reconnection path taken |
+| include_hidden | `ls` and `rm -r` on one server | `LIST` vs `CWD` + `LIST -a` |
+| `--list-delay` | slow `ls` | 5 rows at 1s took 5.1s, all 5 arrived |
+| `--list-total` | slow `ls` | 10 rows over a 6s budget took 6.1s |
+| `--late-final` | raw probe on `LIST` | `226` arrived at 8.0s, server held 8.0s |
+| `--retr-stall` | `get -r` | the stale-reply desync |
+| `--abor-silent` | raw probe mid-transfer | `abor_read` 1, no reply for 8s |
+| `--stor-refuse-after` | `put`, both halves | 300000 bytes drained / 65536 then stopped |
+| `--stor-read-rate` | `put` throttled | made the drain case measurable at all |
+| `--unsolicited-refusal-after` | raw probe mid-`RETR` | injected at 4096 bytes, `unsolicited_sent` 1 |
+| `--pasv-no-accept` (3 modes) | raw probe | silent, hung, refused: three different failures |
+| `--tls-cert` | our own client | plaintext 0.116s vs FTPS to the ceiling |
+
+### One of those checks was wrong, and the fixture was right
+
+Measuring `--late-final` first suggested the `226` arrived immediately, which
+would have made this file's central claim false. The fault was in the probe:
+
+```python
+print("226 at %.1fs" % (time.time() - t0), rd())   # wrong
+```
+
+Python evaluates the `%` expression before calling `rd()`, so the timestamp was
+taken before the blocking read rather than after it. The reading was resolved by
+timestamping the **server** log, which showed the hold running its full 8.0s.
+When two ends disagree, the end you are not measuring is the one to believe.
