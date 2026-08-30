@@ -2462,8 +2462,32 @@ impl FtpProvider {
                 // `4xx` and `5xx` are the only replies that are both final and
                 // legitimately here: after one of those, nothing more is owed
                 // for that command, so the control channel really is aligned.
+                //
+                // `421` is excluded and it is the fourth narrowing of this arm.
+                // It is a `4xx`, final, and legitimately here, so every earlier
+                // version of this condition kept the session; but it says
+                // "service not available, CLOSING CONTROL CONNECTION". The
+                // server is announcing that the channel is going away, and the
+                // next command would take a session already closed. It is the
+                // only status in this range that carries that meaning: `426`
+                // closes the DATA connection and `221` is a `2xx`, outside it.
+                //
+                // ON WHICH PROPERTY IS THIS ONE STILL SILENT? Each version of
+                // this condition was right about the property it was chosen for
+                // and said nothing about the next: any error at all was mute on
+                // whether a whole reply arrived, the VARIANT was mute on
+                // finality, the STATUS CLASS was mute on the connection
+                // surviving. This one is mute on WHOSE reply it is. FTP carries
+                // no request identifier, so a reply queued here could in
+                // principle belong to an earlier command whose answer came late,
+                // and consuming it as ours would leave our own reply still
+                // owed. Nothing in reach distinguishes them, so it is named
+                // rather than claimed closed: a condition that looks total has
+                // been wrong four times, and each time it was total with
+                // respect to one property.
                 Ok(FtpError::UnexpectedResponse(reply))
-                    if (400..600).contains(&reply.status.code()) =>
+                    if (400..600).contains(&reply.status.code())
+                        && reply.status != Status::NotAvailable =>
                 {
                     return Self::classify_data_failure(
                         operation,
