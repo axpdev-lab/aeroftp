@@ -1728,8 +1728,13 @@ impl StorageProvider for FtpProvider {
             }
         }
 
-        let data_stream = channel.finish()?;
+        // The channel is released AFTER the local flush, not before: its `Drop`
+        // is the only thing that poisons the session, and a flush that fails
+        // between the two would otherwise drop an unfinalised stream while
+        // leaving the session alive, with the `226` unread for the next command
+        // to collect as its own answer.
         file.flush().await.map_err(ProviderError::IoError)?;
+        let data_stream = channel.finish()?;
 
         let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
         stream
@@ -2561,8 +2566,12 @@ impl FtpProvider {
             }
         }
 
-        let data_stream = channel.finish()?;
+        // Released after the commit, for the reason given in `resume_download`:
+        // `commit` renames and fsyncs, so it fails on a full disk or across
+        // devices, and until the channel is given up its `Drop` is what keeps
+        // that failure from leaving a live session with an unread `226`.
         atomic.commit().await.map_err(ProviderError::IoError)?;
+        let data_stream = channel.finish()?;
 
         // Finalize the stream - need to get stream again after the borrow
         let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
