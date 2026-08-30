@@ -3356,11 +3356,35 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
         (SyncErrorKind::Auth, false)
     } else if lower.contains("locked") || lower.contains("in use") {
         (SyncErrorKind::FileLocked, true)
-    } else if lower.contains("disk full")
-        || lower.contains("no space")
-        || lower.contains("i/o error")
-        || lower.contains("broken pipe")
-    {
+    } else if crate::providers::types::is_session_closed_error_message(&lower) {
+        // The peer tore the session down mid-flight. That question already has
+        // an answer in this tree: `is_session_closed_error_message` is the list
+        // the reconnect path consults, so it is asked here rather than answered
+        // a second time with a different list.
+        //
+        // This branch sits above the disk one on purpose. "broken pipe" used to
+        // fall into it, filed under "Disk full or I/O error" together with the
+        // genuinely local ones, and a broken pipe is not a disk: it is a write
+        // to a socket whose peer has gone. Filed as a disk error it came out
+        // non-retryable, so the single most ordinary way a server drops a
+        // transfer, an idle timeout or a NAT eviction, was the one failure the
+        // executors refused to retry even once.
+        (SyncErrorKind::Network, true)
+    } else if lower.contains("disk full") || lower.contains("no space") {
+        // Only symptoms of an actual disk belong here. "i/o error" used to be
+        // in this list and is not one: it is the label a wrapper prints in
+        // front of the real error. quick-xml renders "I/O error: {e}" and is
+        // the parser behind WebDAV, S3, Azure and Swift, and zip renders
+        // "i/o error: {e}". So a connection dying mid-response arrived here as
+        // "I/O error: Connection reset by peer" and was declared a permanent
+        // disk failure on four providers at once.
+        //
+        // Dropping the wrapper label does not lose the disk cases: they say so
+        // themselves through the needles that remain, wrapped or not. What it
+        // gives up is a guess about errors that name no cause, and those now
+        // land in Unknown, which is retryable. That direction is deliberate.
+        // Calling a dead socket permanent loses the file in silence; calling a
+        // full disk retryable spends a few retries and then reports it.
         (SyncErrorKind::DiskError, false)
     } else if lower.contains("connection")
         || lower.contains("network")
@@ -5754,14 +5778,81 @@ mod tests {
     /// "drop anything with a separator" would delete the reason along with the
     /// path and send those failures to `Unknown`, which is retryable, with
     /// every test above still green.
+    /// Every message the reconnect path calls a dead session must be retryable
+    /// here, and none of them may be filed as a disk error.
+    ///
+    /// The corpus is `SESSION_CLOSED_NEEDLES` itself, not a copy of it. A copy
+    /// is what this test exists to prevent: the tree held four separate lists
+    /// deciding whether a connection was gone, and they disagreed. "broken
+    /// pipe" was in every one of them EXCEPT this taxonomy, where it sat under
+    /// "Disk full or I/O error" and came out non-retryable, so the executors,
+    /// which break on `!retryable`, refused to retry the most ordinary way a
+    /// server drops a transfer. Deriving the corpus from the real list means a
+    /// needle added there is checked here without anyone remembering to.
+    #[test]
+    fn a_closed_session_is_never_a_permanent_failure() {
+        let needles = crate::providers::types::SESSION_CLOSED_NEEDLES;
+        assert!(
+            needles.len() >= 18,
+            "read only {} needles: the list moved, or it was not read at all",
+            needles.len()
+        );
+
+        let mut refused = Vec::new();
+        let mut called_disk = Vec::new();
+        for needle in needles {
+            let info = classify_sync_error(needle, None);
+            if matches!(info.kind, SyncErrorKind::DiskError) {
+                called_disk.push(*needle);
+            }
+            if !info.retryable {
+                refused.push((*needle, info.kind));
+            }
+        }
+        assert!(
+            refused.is_empty(),
+            "{} of {} closed-session messages are classified as permanent, so a \
+             transfer that hits one is abandoned without a retry: {refused:?}",
+            refused.len(),
+            needles.len()
+        );
+        assert!(
+            called_disk.is_empty(),
+            "a dropped connection is not a disk problem, but {called_disk:?} is \
+             filed as one, which is also how it became non-retryable"
+        );
+    }
+
     #[test]
     fn stripping_paths_leaves_the_reasons_intact() {
         let cases: &[(&str, Option<&str>, SyncErrorKind, bool)] = &[
+            // A real disk symptom, which names itself and survives the strip.
             (
-                "Transfer failed: i/o error (while uploading /home/a/b.txt)",
+                "Transfer failed: no space left on device (while uploading /home/a/b.txt)",
                 Some("/home/a/b.txt"),
                 SyncErrorKind::DiskError,
                 false,
+            ),
+            // This row used to expect DiskError, and that expectation was the
+            // defect written down: "i/o error" is the label a wrapper prints in
+            // front of the real error, not a symptom of a disk. quick-xml, the
+            // parser behind WebDAV, S3, Azure and Jottacloud, renders
+            // "I/O error: {e}", so a socket dying mid-response was declared a
+            // permanent disk failure and abandoned without a retry. Naming no
+            // cause now means Unknown, which is retryable.
+            (
+                "Transfer failed: i/o error (while uploading /home/a/b.txt)",
+                Some("/home/a/b.txt"),
+                SyncErrorKind::Unknown,
+                true,
+            ),
+            // And the case that motivated the change: the wrapper in front of a
+            // dead socket must reach the transport branch, not the disk one.
+            (
+                "I/O error: Connection reset by peer (os error 104)",
+                None,
+                SyncErrorKind::Network,
+                true,
             ),
             // The word still decides when it is the SERVER saying it.
             (

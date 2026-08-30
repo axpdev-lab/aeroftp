@@ -1892,37 +1892,52 @@ impl ProviderError {
     }
 }
 
-/// Heuristic check for transport-level errors that indicate the session
-/// was closed by the peer (server idle timeout, NAT eviction, network
-/// blip), as opposed to a logical "path not found" or permission error.
+/// Message fragments that mean the peer tore the session down: a server idle
+/// timeout, a NAT eviction, a network blip, as opposed to a logical "path not
+/// found" or a permission error.
 ///
-/// Used to upgrade misclassified errors (e.g. russh returning a generic
-/// error string when the SFTP channel is dead) into [`ProviderError::ConnectionLost`]
+/// This is a `const` and not a literal inside the function below so that other
+/// layers can be checked against the real list instead of against a copy. A
+/// copy is how this tree came to hold four different opinions about what a dead
+/// connection looks like, and the copies did not agree: the sync taxonomy filed
+/// "broken pipe" as a disk error and refused to retry it.
+pub const SESSION_CLOSED_NEEDLES: &[&str] = &[
+    "session closed",
+    "channel closed",
+    "channel is closed",
+    "stream closed",
+    "broken pipe",
+    "connection reset",
+    "connection aborted",
+    "connection closed",
+    "unexpected eof",
+    "early eof",
+    // What `std` itself prints for these kinds, which is not what the OS
+    // prints and not what anyone writing this list by hand guessed:
+    // ErrorKind::UnexpectedEof renders "unexpected end of file", and
+    // ErrorKind::NotConnected renders "not connected", which also subsumes the
+    // OS wording "transport endpoint is not connected". Verified by printing
+    // them, and pinned by a test that iterates the kinds rather than a copy of
+    // these strings.
+    "unexpected end of file",
+    "not connected",
+    "epipe",
+    "econnreset",
+    "econnaborted",
+    "the remote host closed the connection",
+    "operation timed out",
+    "ssh disconnect",
+    "remote disconnected",
+];
+
+/// True when the message says the session was closed by the peer.
+///
+/// Used to upgrade misclassified errors (e.g. russh returning a generic error
+/// string when the SFTP channel is dead) into [`ProviderError::ConnectionLost`]
 /// so the command layer can attempt a silent reconnect.
 pub fn is_session_closed_error_message(msg: &str) -> bool {
     let m = msg.to_lowercase();
-    [
-        "session closed",
-        "channel closed",
-        "channel is closed",
-        "stream closed",
-        "broken pipe",
-        "connection reset",
-        "connection aborted",
-        "connection closed",
-        "unexpected eof",
-        "early eof",
-        "transport endpoint is not connected",
-        "epipe",
-        "econnreset",
-        "econnaborted",
-        "the remote host closed the connection",
-        "operation timed out",
-        "ssh disconnect",
-        "remote disconnected",
-    ]
-    .iter()
-    .any(|p| m.contains(p))
+    SESSION_CLOSED_NEEDLES.iter().any(|p| m.contains(p))
 }
 
 /// Storage quota information
@@ -2096,6 +2111,43 @@ impl TransferProgressInfo {
 
 #[cfg(test)]
 mod tests {
+    /// The needles must match the strings `std` actually prints for a socket
+    /// that has died, not the ones they sound like.
+    ///
+    /// The corpus is the `ErrorKind` set itself and the text comes from
+    /// `Error::from(kind).to_string()`, so `std` is the authority on its own
+    /// wording rather than a list someone typed. That mattered: the list held
+    /// "unexpected eof" while `std` prints "unexpected end of file", and it
+    /// held the OS wording "transport endpoint is not connected" while `std`
+    /// prints "not connected". Both gaps were invisible to a reader and to
+    /// every test written from the same guesses.
+    #[test]
+    fn the_needles_match_what_std_prints_for_a_dead_socket() {
+        use std::io::{Error, ErrorKind};
+
+        let kinds = [
+            ErrorKind::BrokenPipe,
+            ErrorKind::ConnectionReset,
+            ErrorKind::ConnectionAborted,
+            ErrorKind::NotConnected,
+            ErrorKind::UnexpectedEof,
+        ];
+        let mut missed = Vec::new();
+        for kind in kinds {
+            let text = Error::from(kind).to_string();
+            if !is_session_closed_error_message(&text) {
+                missed.push(format!("{kind:?} prints {text:?}"));
+            }
+        }
+        assert!(
+            missed.is_empty(),
+            "{} of {} socket error kinds print something no needle matches, so \
+             the layer above cannot tell the connection is gone: {missed:?}",
+            missed.len(),
+            kinds.len()
+        );
+    }
+
     use super::*;
     use std::collections::HashMap;
 
