@@ -443,6 +443,11 @@ impl FtpProvider {
                 Self::list_with_cap(stream.mlsd(list_path.as_deref())).await
             };
 
+            let mlsd_result = match mlsd_result {
+                Ok(Some(lines)) => Ok(lines),
+                Ok(None) => return Err(self.listing_timed_out(&base_path)),
+                Err(err) => Err(err),
+            };
             match mlsd_result {
                 Ok(lines) => {
                     let entries: Vec<RemoteEntry> = lines
@@ -478,6 +483,13 @@ impl FtpProvider {
             let saved_cwd = self.cwd_into(&base_path).await?;
             let stream = self.stream_mut()?;
             let listed = Self::list_with_cap(stream.list(Some("-a"))).await;
+            // Restoring the directory on a session whose listing timed out is
+            // the exact defect this guards: the late reply would answer the
+            // `CWD` instead. So the expiry is handled before anything else
+            // touches the stream.
+            if matches!(listed, Ok(None)) {
+                return Err(self.listing_timed_out(&base_path));
+            }
             let restored = self.restore_cwd(&saved_cwd).await;
             // Both are reported when both fail. Propagating the listing error
             // first would swallow the restore failure exactly when it matters
@@ -485,13 +497,15 @@ impl FtpProvider {
             // and of the pair it is the unrestored directory that outlives the
             // call and misdirects everything after it.
             match (listed, restored) {
-                (Ok(lines), Ok(())) => lines,
+                (Ok(Some(lines)), Ok(())) => lines,
+                // Unreachable: the expiry returned above.
+                (Ok(None), _) => return Err(self.listing_timed_out(&base_path)),
                 (Err(list_err), Ok(())) => {
                     return Err(ProviderError::ServerError(Self::doing(
                         "listing", &base_path, list_err,
                     )))
                 }
-                (Ok(_), Err(restore_err)) => return Err(restore_err),
+                (Ok(Some(_)), Err(restore_err)) => return Err(restore_err),
                 (Err(list_err), Err(restore_err)) => {
                     return Err(ProviderError::ServerError(Self::doing(
                         "listing",
@@ -502,9 +516,11 @@ impl FtpProvider {
             }
         } else {
             let stream = self.stream_mut()?;
-            Self::list_with_cap(stream.list(list_path.as_deref()))
-                .await
-                .map_err(|e| ProviderError::ServerError(e.to_string()))?
+            match Self::list_with_cap(stream.list(list_path.as_deref())).await {
+                Ok(Some(lines)) => lines,
+                Ok(None) => return Err(self.listing_timed_out(&base_path)),
+                Err(e) => return Err(ProviderError::ServerError(e.to_string())),
+            }
         };
 
         let listing =
@@ -2395,14 +2411,35 @@ impl FtpProvider {
     /// `LIST`, which gets its own cap, and `LIST` still maps to a `ServerError`.
     async fn list_with_cap(
         fut: impl std::future::Future<Output = suppaftp::FtpResult<Vec<String>>>,
-    ) -> suppaftp::FtpResult<Vec<String>> {
+    ) -> suppaftp::FtpResult<Option<Vec<String>>> {
         match tokio::time::timeout(LIST_BUDGET, fut).await {
-            Ok(result) => result,
-            Err(_) => Err(FtpError::ConnectionError(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                format!("no listing within {}s", LIST_BUDGET.as_secs()),
-            ))),
+            Ok(result) => result.map(Some),
+            Err(_) => Ok(None),
         }
+    }
+
+    /// The session cannot survive a listing that timed out, and returning the
+    /// expiry as an ordinary error was not enough to say so.
+    ///
+    /// The dropped future was inside `read_response_in`, which is not
+    /// cancellation-safe, and the reply to `MLSD` or `LIST` is still owed. Every
+    /// caller here goes on to use the same session: `MLSD` falls through to
+    /// `LIST` by design, and the `-a` path calls `restore_cwd` on that stream,
+    /// so the late listing reply would be read as the answer to the `CWD`.
+    ///
+    /// The reconnect that looks like it would cover this does not fire.
+    /// `is_stale_data_connection_error` matches on SUBSTRINGS of the message,
+    /// and none of its six covers a timeout phrased here, so widening that list
+    /// would silence the symptom and keep the mechanism that produced the hole.
+    /// The session is taken instead, which costs a re-dial on a path that has
+    /// already spent the whole budget.
+    fn listing_timed_out(&mut self, path: &str) -> ProviderError {
+        self.stream = None;
+        ProviderError::TransferFailed(format!(
+            "Listing {} produced nothing within {}s",
+            path,
+            LIST_BUDGET.as_secs()
+        ))
     }
 
     /// Bounds, and does nothing else. The failure is handed back RAW so each
