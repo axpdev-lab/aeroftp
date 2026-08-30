@@ -445,7 +445,21 @@ impl FtpProvider {
 
             let mlsd_result = match mlsd_result {
                 Ok(Some(lines)) => Ok(lines),
-                Ok(None) => return Err(self.listing_timed_out(&base_path)),
+                Ok(None) => {
+                    // The session goes, but this flag is PROVIDER state and
+                    // outlives it: `connect` re-reads it as
+                    // `mlsd_supported = server_supports_mlsd && !mlsd_broken`,
+                    // so it is what stops the next attempt from paying the whole
+                    // budget again. A server that advertises MLSD and then never
+                    // answers it is exactly the server this flag exists for, and
+                    // the ordinary failure path below sets it for the same
+                    // reason. Returning early without it would leave the
+                    // provider permanently SLOW instead of permanently STUCK,
+                    // which is better and is not the point.
+                    self.mlsd_broken = true;
+                    self.mlsd_supported = false;
+                    return Err(self.listing_timed_out(&base_path));
+                }
                 Err(err) => Err(err),
             };
             match mlsd_result {
