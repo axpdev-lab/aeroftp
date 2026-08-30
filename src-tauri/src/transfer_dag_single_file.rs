@@ -2375,8 +2375,9 @@ mod tests {
         assert!(res.is_err(), "a cancelled transfer must return an error");
         let msg = res.unwrap_err().to_string().to_lowercase();
         assert!(
-            msg.contains("cancel"),
-            "error should mention cancellation, got: {msg}"
+            crate::transfer_dag::error::message_names_a_cancellation(&msg),
+            "the error must be one PRODUCTION would classify as cancelled, not \
+             merely one containing the letters: got {msg}"
         );
         assert!(
             !*completed.lock().unwrap(),
@@ -2490,8 +2491,9 @@ mod tests {
         assert!(res.is_err(), "a cancelled multipart upload must fail");
         let msg = res.unwrap_err().to_string().to_lowercase();
         assert!(
-            msg.contains("cancel"),
-            "error should mention cancellation, got: {msg}"
+            crate::transfer_dag::error::message_names_a_cancellation(&msg),
+            "the error must be one PRODUCTION would classify as cancelled, not \
+             merely one containing the letters: got {msg}"
         );
         assert!(
             part_started.load(Ordering::SeqCst) >= 1,

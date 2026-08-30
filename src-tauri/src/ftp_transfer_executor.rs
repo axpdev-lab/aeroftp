@@ -279,7 +279,8 @@ impl TransferExecutor for FtpDownloadExecutor {
                 Err(error) => {
                     last_error = error;
 
-                    if self.cancel_token.is_cancelled() || last_error.contains("cancelled by user")
+                    if self.cancel_token.is_cancelled()
+                        || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
                     {
                         break;
                     }
@@ -301,7 +302,9 @@ impl TransferExecutor for FtpDownloadExecutor {
             }
         }
 
-        let failure = if self.cancel_token.is_cancelled() || last_error.contains("cancelled") {
+        let failure = if self.cancel_token.is_cancelled()
+            || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
+        {
             TransferFailure::new(
                 TransferFailureKind::Cancelled,
                 "Transfer cancelled by user",
@@ -535,7 +538,8 @@ impl TransferExecutor for FtpUploadExecutor {
                 Err(error) => {
                     last_error = error;
 
-                    if self.cancel_token.is_cancelled() || last_error.contains("cancelled by user")
+                    if self.cancel_token.is_cancelled()
+                        || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
                     {
                         break;
                     }
@@ -557,7 +561,9 @@ impl TransferExecutor for FtpUploadExecutor {
             }
         }
 
-        let failure = if self.cancel_token.is_cancelled() || last_error.contains("cancelled") {
+        let failure = if self.cancel_token.is_cancelled()
+            || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
+        {
             TransferFailure::new(
                 TransferFailureKind::Cancelled,
                 "Transfer cancelled by user",
