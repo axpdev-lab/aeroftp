@@ -1552,9 +1552,21 @@ impl StorageProvider for JottacloudProvider {
             "/{}/{}/{}/{}",
             self.username, self.config.device, self.config.mountpoint, encoded_to_path
         );
+        // JFS: files take `mv`, directories take `mvDir` (and a trailing slash
+        // on the source). `?mv=` on a folder 404s (#397).
+        let is_dir = self
+            .stat(&resolved_from)
+            .await
+            .map(|e| e.is_dir)
+            .unwrap_or(false);
+        let mut from_url = self.jfs_url(&resolved_from);
+        if is_dir && !from_url.ends_with('/') {
+            from_url.push('/');
+        }
         let url = format!(
-            "{}?mv={}",
-            self.jfs_url(&resolved_from),
+            "{}?{}={}",
+            from_url,
+            if is_dir { "mvDir" } else { "mv" },
             urlencoding::encode(&to_jfs)
         );
 
@@ -1562,6 +1574,23 @@ impl StorageProvider for JottacloudProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
+            // A live 404 is "not found here", not "exists only in Trash".
+            // Retrying as a Trash-to-Trash rename can move a homonym in
+            // Trash and return Ok while the live object was never touched
+            // (F-652-2), so the status is reported as it came.
+            //
+            // A Trash-to-Trash rename exists as `rename_in_trash`, but
+            // NOTHING calls it yet: there is no Tauri command and no button
+            // in JottacloudTrashManager, so it must not be described as
+            // reachable.
+            //
+            // Keeping it is a DECLARED exception to the house rule "remove
+            // dead code immediately" (CLAUDE.md). The reason: issue #397
+            // reports this exact operation failing for a user, and this is
+            // its implementation with its tests. Deleting it would throw away
+            // the only answer to that report and make whoever takes #397
+            // write it again. The exception lasts as long as the reason: if
+            // #397 does not wire it during this release cycle, it goes.
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
                 "Rename {} → {} failed ({}): {}",
@@ -1881,14 +1910,290 @@ impl JottacloudProvider {
         Ok(entries)
     }
 
+    /// File restore URL: rclone's `cphash` on the original mountpoint object.
+    /// The Trash listing is a virtual view; GET of the live path still 200s
+    /// with a deleted tombstone. `?mv=` against `/Trash/name` 404s;
+    /// `?restore=true` against `/Trash/name` and against the original path
+    /// both 500 (Ehud, #397).
+    fn restore_cphash_url(&self, from_in_trash: &str) -> String {
+        format!("{}?cphash=true", self.jfs_url(from_in_trash))
+    }
+
+    /// Directory restore: `?restore=true` on the original path, with a
+    /// trailing-slash form for the 404-only folder retry.
+    fn restore_from_trash_dir_urls(&self, from_in_trash: &str) -> (String, String) {
+        let src = self.jfs_url(from_in_trash);
+        let file_url = format!("{src}?restore=true");
+        let dir_src = if src.ends_with('/') {
+            src.clone()
+        } else {
+            format!("{src}/")
+        };
+        let dir_url = format!("{dir_src}?restore=true");
+        (file_url, dir_url)
+    }
+
+    /// Name of the first element in a JFS response (`file`, `folder`, …).
+    /// A substring test cannot be used: a folder listing contains `<files>`
+    /// and a `<file>` child per entry, which made non-empty folders take the
+    /// cphash branch with a child's JSize/JMd5.
+    fn jfs_root_element(xml: &str) -> Option<String> {
+        use quick_xml::events::Event;
+        use quick_xml::Reader;
+
+        let mut reader = Reader::from_str(xml);
+        let mut buf = Vec::new();
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+                    return Some(String::from_utf8_lossy(e.name().as_ref()).to_string());
+                }
+                Ok(Event::Eof) | Err(_) => return None,
+                _ => {}
+            }
+            buf.clear();
+        }
+    }
+
+    /// True when the root `<file>` carries a non-empty `deleted` attribute.
+    /// A live object at the original path 200s without it; using that
+    /// object's size/md5 for cphash would restore the wrong bytes (F-652-3).
+    fn jfs_root_file_is_tombstone(xml: &str) -> bool {
+        use quick_xml::events::Event;
+        use quick_xml::Reader;
+
+        let mut reader = Reader::from_str(xml);
+        let mut buf = Vec::new();
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+                    if e.name().as_ref() != b"file" {
+                        return false;
+                    }
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"deleted"
+                            && !super::xml_text::attr_value(&attr).is_empty()
+                        {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                Ok(Event::Eof) | Err(_) => return false,
+                _ => {}
+            }
+            buf.clear();
+        }
+    }
+
+    /// Relative path under the live mountpoint: strip
+    /// `/{user}/{device}/{mount}` from the trash `<abspath>` (the original
+    /// parent) and append the entry name. Root-level items stay `/{name}`.
+    fn trash_relative_path(abspath: &str, name: &str) -> String {
+        let parts: Vec<&str> = abspath
+            .trim_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
+        // 0 user, 1 device, 2 mountpoint, 3… original parent under that mount.
+        let parent = if parts.len() > 3 {
+            parts[3..].join("/")
+        } else {
+            String::new()
+        };
+        if parent.is_empty() {
+            format!("/{name}")
+        } else {
+            format!("/{parent}/{name}")
+        }
+    }
+
+    /// size, md5, created, modified from a JFS `<file>` tombstone.
+    /// Only the root `<file>`'s `currentRevision` counts: a folder listing
+    /// carries child files whose revisions must not leak into cphash.
+    fn parse_jfs_file_revision(xml: &str) -> Option<(u64, String, String, String)> {
+        use quick_xml::events::Event;
+        use quick_xml::Reader;
+
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let mut depth: u32 = 0;
+        let mut root_is_file = false;
+        let mut in_revision = false;
+        let mut tag = String::new();
+        let mut size: u64 = 0;
+        let mut md5 = String::new();
+        let mut created = String::new();
+        let mut modified = String::new();
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    depth += 1;
+                    let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    if depth == 1 {
+                        root_is_file = name == "file";
+                    }
+                    if root_is_file && depth == 2 && name == "currentRevision" {
+                        in_revision = true;
+                    }
+                    tag = name;
+                }
+                Ok(Event::End(ref e)) => {
+                    if e.name().as_ref() == b"currentRevision" {
+                        in_revision = false;
+                    }
+                    depth = depth.saturating_sub(1);
+                    tag.clear();
+                }
+                Ok(Event::Text(ref e)) if in_revision => {
+                    let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                    match tag.as_str() {
+                        "size" => size = text.parse().unwrap_or(0),
+                        "md5" => md5 = text,
+                        "created" if created.is_empty() => created = text,
+                        "modified" if modified.is_empty() => modified = text,
+                        _ => {}
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(_) => break,
+                _ => {}
+            }
+            buf.clear();
+        }
+        if !root_is_file || md5.is_empty() {
+            return None;
+        }
+        if created.is_empty() {
+            created = modified.clone();
+        }
+        if modified.is_empty() {
+            modified = created.clone();
+        }
+        Some((size, md5, created, modified))
+    }
+
+    /// JFS destination path for a rename that stays inside Trash.
+    fn rename_in_trash_dest_jfs(&self, to_clean: &str) -> String {
+        let encoded_to: String = to_clean
+            .split('/')
+            .map(|s| crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s))
+            .collect::<Vec<_>>()
+            .join("/");
+        format!(
+            "/{}/{}/{}/{}",
+            self.username, self.config.device, TRASH_MOUNTPOINT, encoded_to
+        )
+    }
+
+    /// `(file_mv_url, dir_mvdir_url)` for a move whose source lives in Trash.
+    /// Directory form has a trailing slash on the source, matching `rename()`
+    /// and rclone's Jottacloud backend; without it `mvDir` 404s (#397).
+    fn trash_move_urls(&self, from_in_trash: &str, dest_jfs: &str) -> (String, String) {
+        let dest_q = urlencoding::encode(dest_jfs);
+        let src = self.trash_url(from_in_trash);
+        let file_url = format!("{}?mv={}", src, dest_q);
+        let dir_src = if src.ends_with('/') {
+            src.clone()
+        } else {
+            format!("{src}/")
+        };
+        let dir_url = format!("{dir_src}?mvDir={dest_q}");
+        (file_url, dir_url)
+    }
+
+    /// POST `?mv=`, and only on HTTP 404 retry `?mvDir=` with the trailing
+    /// slash. Any other failure is the real error; retrying 500s as a
+    /// directory move hid that.
+    async fn post_trash_move(
+        &mut self,
+        file_url: &str,
+        dir_url: &str,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let resp = self.post_command_with_retry(file_url).await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            jotta_log(&format!(
+                "Trash file-move 404, retrying as dir: {}",
+                dir_url
+            ));
+            return self.post_command_with_retry(dir_url).await;
+        }
+        Ok(resp)
+    }
+
     /// Restore an item from trash to its original location.
-    /// POST /jfs/{username}/{device}/Trash/{path}?restore=true
+    ///
+    /// Files: GET the original-mountpoint tombstone, then POST `?cphash=true`
+    /// with JSize/JMd5/JCreated/JModified — rclone's restore of a trashed
+    /// destination. `?restore=true` 500s on both the Trash view and the
+    /// original path; `?mv=` against `/Trash/name` 404s.
+    /// Folders: `?restore=true` on the original path, 404-only slash retry.
     pub async fn restore_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let clean = path.trim_start_matches('/');
-        let url = format!("{}?restore=true", self.trash_url(clean));
-        jotta_log(&format!("Restoring from trash: {}", url));
+        let src = self.jfs_url(clean);
+        let get = self.get_with_retry(&src).await?;
+        if !get.status().is_success() {
+            let status = get.status();
+            let body = get.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Restore GET tombstone failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+        let xml = get.text().await.unwrap_or_default();
+        let looks_like_file = Self::jfs_root_element(&xml).as_deref() == Some("file");
 
-        let resp = self.post_command_with_retry(&url).await?;
+        let resp = if looks_like_file {
+            if !Self::jfs_root_file_is_tombstone(&xml) {
+                return Err(ProviderError::ServerError(format!(
+                    "Restore refused for {}: original path is a live object, not a deleted tombstone",
+                    clean
+                )));
+            }
+            let (size, md5, created, modified) =
+                Self::parse_jfs_file_revision(&xml).ok_or_else(|| {
+                    ProviderError::ServerError(format!(
+                        "Restore tombstone for {} has no md5/size",
+                        clean
+                    ))
+                })?;
+            let url = self.restore_cphash_url(clean);
+            jotta_log(&format!(
+                "Restoring from trash via cphash: {} (size={} md5={})",
+                url, size, md5
+            ));
+            self.refresh_if_needed().await?;
+            let request = self
+                .client
+                .post(&url)
+                .header(AUTHORIZATION, self.auth_header())
+                .header(CONTENT_LENGTH, "0")
+                .header("JSize", size.to_string())
+                .header("JMd5", md5)
+                .header("JCreated", created)
+                .header("JModified", modified)
+                .build()
+                .map_err(|e| {
+                    ProviderError::ConnectionFailed(format!("Build restore request failed: {}", e))
+                })?;
+            send_with_retry(&self.client, request, &HttpRetryConfig::default())
+                .await
+                .map_err(|e| {
+                    ProviderError::ConnectionFailed(format!("Restore request failed: {}", e))
+                })?
+        } else {
+            let (file_url, dir_url) = self.restore_from_trash_dir_urls(clean);
+            jotta_log(&format!("Restoring folder from trash: {}", file_url));
+            let resp = self.post_command_with_retry(&file_url).await?;
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                jotta_log(&format!("Restore file 404, retrying as dir: {}", dir_url));
+                self.post_command_with_retry(&dir_url).await?
+            } else {
+                resp
+            }
+        };
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1901,6 +2206,34 @@ impl JottacloudProvider {
         }
 
         jotta_log(&format!("Restored from trash: {}", clean));
+        Ok(())
+    }
+
+    /// Rename an item that already lives in Trash.
+    ///
+    /// Regular `rename` posts `?mv=` against the live mountpoint URL, so a
+    /// folder that only exists in Trash 404s (#397). Keep the destination
+    /// inside the Trash mountpoint.
+    pub async fn rename_in_trash(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_clean = from.trim_start_matches('/');
+        let to_clean = to.trim_start_matches('/');
+        let dest = self.rename_in_trash_dest_jfs(to_clean);
+        let (file_url, dir_url) = self.trash_move_urls(from_clean, &dest);
+        jotta_log(&format!("Rename in trash: {}", file_url));
+
+        let resp = self.post_trash_move(&file_url, &dir_url).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Rename in trash {} → {} failed ({}): {}",
+                from_clean,
+                to_clean,
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
         Ok(())
     }
 
@@ -1958,9 +2291,18 @@ impl JottacloudProvider {
 
         let mut entries = Vec::new();
         let mut reader = Reader::from_str(xml);
-        // trim_text(true) is SAFE here: entry names arrive as attributes
-        // (xml_text::attr_value), never as Text events; only scalars do.
-        reader.config_mut().trim_text(true);
+        // Names arrive as attributes. `<abspath>` is Text + GeneralRef and
+        // is accumulated (then trimmed once) rather than assigned per chunk.
+        //
+        // Trimming is left OFF here on purpose: quick-xml trims every Text
+        // EVENT, not the node, so an entity splits `Photos &amp; Videos` into
+        // three events whose own edges carry the spaces. Trimming per event
+        // welds the pieces into `Photos&Videos`, and the single trim applied
+        // when the path is derived cannot put back what was already dropped.
+        // The scalars that need it (`size`, `state`, `modified`) trim
+        // themselves below, where a whitespace-only event is also harmless
+        // because it never matches their tag.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
 
         let mut depth: u32 = 0;
@@ -1974,8 +2316,13 @@ impl JottacloudProvider {
         let mut current_name = String::new();
         let mut current_size: u64 = 0;
         let mut current_modified = String::new();
+        let mut current_deleted_at = String::new();
+        let mut current_abspath = String::new();
         let mut current_state = String::new();
         let mut current_tag = String::new();
+        let mut pending_folder_name = String::new();
+        let mut pending_folder_deleted = String::new();
+        let mut pending_folder_abspath = String::new();
 
         loop {
             match reader.read_event_into(&mut buf) {
@@ -1999,30 +2346,20 @@ impl JottacloudProvider {
                                     || (root_depth.is_some()
                                         && depth == root_depth.unwrap() + 1)) =>
                         {
-                            let mut name = String::new();
+                            pending_folder_name.clear();
+                            pending_folder_deleted.clear();
+                            pending_folder_abspath.clear();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
-                                    name = crate::restricted_chars::decode_leaf(
+                                    pending_folder_name = crate::restricted_chars::decode_leaf(
                                         ProviderType::Jottacloud,
                                         &super::xml_text::attr_value(&attr),
                                     );
                                 }
-                            }
-                            if !name.is_empty() {
-                                entries.push(RemoteEntry {
-                                    name: name.clone(),
-                                    path: format!("/{}", name),
-                                    is_dir: true,
-                                    size: 0,
-                                    modified: None,
-                                    permissions: None,
-                                    owner: None,
-                                    group: None,
-                                    is_symlink: false,
-                                    link_target: None,
-                                    metadata: HashMap::new(),
-                                    mime_type: None,
-                                });
+                                if attr.key.as_ref() == b"deleted" {
+                                    pending_folder_deleted =
+                                        Self::parse_jotta_time(&super::xml_text::attr_value(&attr));
+                                }
                             }
                             child_folder_depth = Some(depth);
                         }
@@ -2031,6 +2368,8 @@ impl JottacloudProvider {
                             current_name.clear();
                             current_size = 0;
                             current_modified.clear();
+                            current_deleted_at.clear();
+                            current_abspath.clear();
                             current_state.clear();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
@@ -2038,6 +2377,10 @@ impl JottacloudProvider {
                                         ProviderType::Jottacloud,
                                         &super::xml_text::attr_value(&attr),
                                     );
+                                }
+                                if attr.key.as_ref() == b"deleted" {
+                                    current_deleted_at =
+                                        Self::parse_jotta_time(&super::xml_text::attr_value(&attr));
                                 }
                             }
                         }
@@ -2057,6 +2400,7 @@ impl JottacloudProvider {
                             || (root_depth.is_some() && depth == root_depth.unwrap()))
                     {
                         let mut name = String::new();
+                        let mut deleted_at = String::new();
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
                                 name = crate::restricted_chars::decode_leaf(
@@ -2064,14 +2408,22 @@ impl JottacloudProvider {
                                     &super::xml_text::attr_value(&attr),
                                 );
                             }
+                            if attr.key.as_ref() == b"deleted" {
+                                deleted_at =
+                                    Self::parse_jotta_time(&super::xml_text::attr_value(&attr));
+                            }
                         }
                         if !name.is_empty() {
                             entries.push(RemoteEntry {
                                 name: name.clone(),
-                                path: format!("/{}", name),
+                                path: Self::trash_relative_path("", &name),
                                 is_dir: true,
                                 size: 0,
-                                modified: None,
+                                modified: if deleted_at.is_empty() {
+                                    None
+                                } else {
+                                    Some(deleted_at)
+                                },
                                 permissions: None,
                                 owner: None,
                                 group: None,
@@ -2090,6 +2442,32 @@ impl JottacloudProvider {
                             in_folders_section = false;
                         }
                         "folder" if child_folder_depth == Some(depth) => {
+                            if !pending_folder_name.is_empty() {
+                                entries.push(RemoteEntry {
+                                    name: pending_folder_name.clone(),
+                                    path: Self::trash_relative_path(
+                                        pending_folder_abspath.trim(),
+                                        &pending_folder_name,
+                                    ),
+                                    is_dir: true,
+                                    size: 0,
+                                    modified: if pending_folder_deleted.is_empty() {
+                                        None
+                                    } else {
+                                        Some(pending_folder_deleted.clone())
+                                    },
+                                    permissions: None,
+                                    owner: None,
+                                    group: None,
+                                    is_symlink: false,
+                                    link_target: None,
+                                    metadata: HashMap::new(),
+                                    mime_type: None,
+                                });
+                            }
+                            pending_folder_name.clear();
+                            pending_folder_deleted.clear();
+                            pending_folder_abspath.clear();
                             child_folder_depth = None;
                         }
                         "file" if in_file => {
@@ -2097,16 +2475,22 @@ impl JottacloudProvider {
                             in_revision = false;
                             // In trash, show all files (not just COMPLETED)
                             if !current_name.is_empty() {
+                                let deleted_or_modified = if !current_deleted_at.is_empty() {
+                                    Some(current_deleted_at.clone())
+                                } else if current_modified.is_empty() {
+                                    None
+                                } else {
+                                    Some(current_modified.clone())
+                                };
                                 entries.push(RemoteEntry {
                                     name: current_name.clone(),
-                                    path: format!("/{}", current_name),
+                                    path: Self::trash_relative_path(
+                                        current_abspath.trim(),
+                                        &current_name,
+                                    ),
                                     is_dir: false,
                                     size: current_size,
-                                    modified: if current_modified.is_empty() {
-                                        None
-                                    } else {
-                                        Some(current_modified.clone())
-                                    },
+                                    modified: deleted_or_modified,
                                     permissions: None,
                                     owner: None,
                                     group: None,
@@ -2126,8 +2510,19 @@ impl JottacloudProvider {
                     current_tag.clear();
                 }
                 Ok(Event::Text(ref e)) => {
-                    let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
-                    if in_revision && in_file {
+                    if current_tag.as_str() == "abspath" {
+                        // Accumulate, do not assign: an `<abspath>` with an
+                        // entity arrives as Text + GeneralRef + Text, and
+                        // assigning the last chunk silently truncates the
+                        // original parent (the shape we just closed).
+                        let chunk = String::from_utf8_lossy(e.as_ref());
+                        if in_file && !in_revision {
+                            current_abspath.push_str(&chunk);
+                        } else if child_folder_depth == Some(depth.saturating_sub(1)) {
+                            pending_folder_abspath.push_str(&chunk);
+                        }
+                    } else if in_revision && in_file {
+                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
                         match current_tag.as_str() {
                             "size" => {
                                 current_size = text.parse().unwrap_or(0);
@@ -2139,6 +2534,15 @@ impl JottacloudProvider {
                                 current_modified = Self::parse_jotta_time(&text);
                             }
                             _ => {}
+                        }
+                    }
+                }
+                Ok(Event::GeneralRef(ref e)) if current_tag.as_str() == "abspath" => {
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        if in_file && !in_revision {
+                            current_abspath.push_str(&ch);
+                        } else if child_folder_depth == Some(depth.saturating_sub(1)) {
+                            pending_folder_abspath.push_str(&ch);
                         }
                     }
                 }
@@ -2232,6 +2636,215 @@ mod tests {
         );
         // The mountpoint the profile browses never appears in a trash URL.
         assert!(!p.trash_url("/photo.jpg").contains("Archive"));
+    }
+
+    #[test]
+    fn restore_from_trash_posts_cphash_on_the_original_mountpoint() {
+        // File restore is rclone cphash on the original object, not a
+        // move out of the Trash view and not ?restore=true (both live-failed).
+        let p = test_provider();
+        let url = p.restore_cphash_url("ehud-397-0420.txt");
+        assert!(
+            url.contains("/Jotta/Archive/ehud-397-0420.txt?cphash=true"),
+            "cphash: {url}"
+        );
+        assert!(
+            !url.contains("/Trash/"),
+            "must not post at Trash view: {url}"
+        );
+        assert!(!url.contains("?mv="));
+        assert!(!url.contains("?restore="));
+        let (bare, slashed) = p.restore_from_trash_dir_urls("aeroftp-scratch-397");
+        assert!(
+            bare.contains("/Jotta/Archive/aeroftp-scratch-397?restore=true"),
+            "{bare}"
+        );
+        assert!(
+            slashed.contains("/Jotta/Archive/aeroftp-scratch-397/?restore=true"),
+            "{slashed}"
+        );
+        let xml = r#"<file name="ehud-397-0420.txt" deleted="2026-08-29-T13:45:33Z">
+            <currentRevision>
+                <size>28</size>
+                <md5>9a6924f78982f7e759f371f08fb5d57e</md5>
+                <created>2026-08-29-T13:44:54Z</created>
+                <modified>2026-08-29-T13:44:54Z</modified>
+            </currentRevision>
+        </file>"#;
+        let (size, md5, created, modified) =
+            JottacloudProvider::parse_jfs_file_revision(xml).expect("revision");
+        assert_eq!(size, 28);
+        assert_eq!(md5, "9a6924f78982f7e759f371f08fb5d57e");
+        assert!(created.contains("13:44:54"), "{created}");
+        assert!(modified.contains("13:44:54"), "{modified}");
+
+        let folder_xml = r#"<folder name="aeroftp-scratch-397">
+            <files>
+                <file name="child.txt">
+                    <currentRevision>
+                        <size>99</size>
+                        <md5>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</md5>
+                    </currentRevision>
+                </file>
+            </files>
+        </folder>"#;
+        assert_eq!(
+            JottacloudProvider::jfs_root_element(folder_xml).as_deref(),
+            Some("folder")
+        );
+        assert!(
+            JottacloudProvider::parse_jfs_file_revision(folder_xml).is_none(),
+            "child revision must not leak into a folder restore"
+        );
+        assert_eq!(
+            JottacloudProvider::jfs_root_element(xml).as_deref(),
+            Some("file")
+        );
+        assert!(
+            JottacloudProvider::jfs_root_file_is_tombstone(xml),
+            "Ehud tombstone carries deleted="
+        );
+        let live = r#"<file name="ehud-397-0420.txt">
+            <currentRevision>
+                <size>99</size>
+                <md5>bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb</md5>
+                <created>2026-08-29-T14:00:00Z</created>
+                <modified>2026-08-29-T14:00:00Z</modified>
+            </currentRevision>
+        </file>"#;
+        assert!(
+            !JottacloudProvider::jfs_root_file_is_tombstone(live),
+            "live object at the original path must not feed cphash"
+        );
+        assert!(JottacloudProvider::parse_jfs_file_revision(live).is_some());
+    }
+
+    #[test]
+    fn parse_trash_xml_uses_the_deleted_attribute_not_revision_mtime() {
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="aeroftp-scratch-397" deleted="2026-08-29-T08:02:08Z" contextType="TRASH">
+      <abspath>/user123/Jotta/Archive</abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="ehud-397-0420.txt" uuid="b363c7f6-53aa-49a3-a587-9cd346666a52" deleted="2026-08-29-T13:45:33Z" contextType="TRASH">
+      <abspath>/user123/Jotta/Archive</abspath>
+      <currentRevision>
+        <modified>2026-08-29-T13:44:54Z</modified>
+        <size>28</size>
+      </currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        assert_eq!(entries.len(), 2, "{entries:?}");
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.name, "aeroftp-scratch-397");
+        assert_eq!(folder.path, "/aeroftp-scratch-397");
+        let folder_deleted = folder.modified.as_deref().expect("folder deleted-at");
+        assert!(
+            folder_deleted.contains("2026-08-29") && folder_deleted.contains("08:02"),
+            "folder deleted attr, not missing: {folder_deleted}"
+        );
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.name, "ehud-397-0420.txt");
+        assert_eq!(file.path, "/ehud-397-0420.txt");
+        assert_eq!(file.size, 28);
+        let file_deleted = file.modified.as_deref().expect("file deleted-at");
+        assert!(
+            file_deleted.contains("13:45"),
+            "deleted attr wins over revision mtime 13:44: {file_deleted}"
+        );
+        assert!(!file_deleted.contains("13:44"), "{file_deleted}");
+    }
+
+    #[test]
+    fn parse_trash_xml_keeps_the_original_parent_from_abspath() {
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="vacation" deleted="2026-08-29-T08:02:08Z">
+      <abspath>/user123/Jotta/Archive/photos</abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="img.jpg" deleted="2026-08-29-T13:45:33Z">
+      <abspath>/user123/Jotta/Archive/photos/vacation</abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.path, "/photos/vacation");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/photos/vacation/img.jpg");
+        assert_eq!(
+            JottacloudProvider::trash_relative_path("/user123/Jotta/Archive", "root.txt"),
+            "/root.txt"
+        );
+    }
+
+    #[test]
+    fn parse_trash_xml_accumulates_and_decodes_abspath_entities() {
+        // `<abspath>…a&amp;b…</abspath>` is Text("…a") + GeneralRef("amp") +
+        // Text("b…"). Assigning each Text overwrites the prefix and drops
+        // the entity, so restore would hit `/b/x.txt` instead of `/a&b/x.txt`.
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="vacation">
+      <abspath>/user123/Jotta/Archive/photos/a&amp;b</abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="x.txt">
+      <abspath>/user123/Jotta/Archive/photos/a&amp;b</abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.path, "/photos/a&b/vacation");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/photos/a&b/x.txt");
+    }
+
+    #[test]
+    fn parse_trash_xml_keeps_spaces_around_an_entity_in_abspath() {
+        // The accumulation is not enough on its own: quick-xml trims every
+        // Text EVENT, not the node, so `Photos &amp; Videos` arrives as
+        // Text("...Photos ") trimmed to "...Photos", GeneralRef -> "&",
+        // Text(" Videos") trimmed to "Videos", and the pieces weld into
+        // "Photos&Videos". The folder exists under its real name, so a
+        // restore would GET a path that is not there.
+        let xml = r#"<mountPoint name="Trash">
+  <files>
+    <file name="x.txt">
+      <abspath>/user123/Jotta/Archive/Photos &amp; Videos</abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/Photos & Videos/x.txt");
+    }
+
+    #[test]
+    fn rename_in_trash_builds_urls_that_stay_on_trash() {
+        let p = test_provider();
+        let dest = p.rename_in_trash_dest_jfs("renamed");
+        assert_eq!(dest, "/user123/Jotta/Trash/renamed");
+        let (file_url, dir_url) = p.trash_move_urls("old", &dest);
+        assert!(file_url.contains("/Jotta/Trash/old?mv="), "{file_url}");
+        assert!(dir_url.contains("/Jotta/Trash/old/?mvDir="), "{dir_url}");
+        assert!(
+            file_url.contains("Jotta%2FTrash%2Frenamed")
+                || file_url.contains("%2Fuser123%2FJotta%2FTrash%2Frenamed"),
+            "dest stays in Trash: {file_url}"
+        );
+        assert!(!file_url.contains("Archive"));
     }
 
     #[test]

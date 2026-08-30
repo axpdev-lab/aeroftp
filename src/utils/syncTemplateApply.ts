@@ -22,6 +22,16 @@ export interface ImportedSyncSettings {
     verifyPolicy?: VerifyPolicy;
     dryRun?: boolean;
     conflictMode?: string | null;
+    canaryMode?: boolean;
+    canaryPercent?: number;
+    canarySelection?: string;
+}
+
+/** Plan-tab knobs the .aerosync export must keep (#514). */
+export interface LivePlanExport {
+    compressionMode?: CompressionMode;
+    verifyPolicy?: VerifyPolicy | AeroSyncVerifyPolicy;
+    canary?: { percent: number; selection: string } | null;
 }
 
 export type AeroSyncTabStatePatch = Record<string, unknown>;
@@ -61,13 +71,43 @@ export function settingsFromTemplate(template: SyncTemplate): TemplateImportResu
         excludePatterns: template.exclude_patterns,
         parallelStreams: template.profile.parallel_streams,
         compressionMode: template.profile.compression_mode,
-        verifyPolicy: template.profile.compare_checksum
-            ? 'full'
-            : template.profile.compare_timestamp
-                ? 'size_and_mtime'
-                : 'size_only',
+        verifyPolicy: template.profile.verify_policy
+            ?? (template.profile.compare_checksum
+                ? 'full'
+                : template.profile.compare_timestamp
+                    ? 'size_and_mtime'
+                    : 'size_only'),
+        canaryMode: !!template.profile.canary,
+        canaryPercent: template.profile.canary?.percent,
+        canarySelection: template.profile.canary?.selection,
     };
     return { ok: true, settings };
+}
+
+function toTemplateVerify(value: VerifyPolicy | AeroSyncVerifyPolicy | undefined): VerifyPolicy | undefined {
+    if (!value) return undefined;
+    return value === 'full_checksum' ? 'full' : value;
+}
+
+/**
+ * Stamp the live Plan-tab values onto an exported .aerosync document.
+ * The backend serialises the named preset (Mirror → compression off, no
+ * canary, no verify_policy). Without this overlay those knobs round-trip
+ * as defaults (#514).
+ */
+export function overlayLivePlanOnTemplate(template: SyncTemplate, live: LivePlanExport): SyncTemplate {
+    const verify = toTemplateVerify(live.verifyPolicy);
+    return {
+        ...template,
+        profile: {
+            ...template.profile,
+            ...(live.compressionMode ? { compression_mode: live.compressionMode } : {}),
+            ...(verify ? { verify_policy: verify } : {}),
+            ...(live.canary
+                ? { canary: { percent: live.canary.percent, selection: live.canary.selection } }
+                : { canary: undefined }),
+        },
+    };
 }
 
 export function settingsFromLegacyScript(script: SyncScriptMeta): ImportedSyncSettings {
@@ -143,5 +183,8 @@ export function buildAeroSyncTabStatePatch(
     if (settings.dryRun != null) patch['sync.dryRun'] = settings.dryRun;
     const conflict = planConflict(settings.conflictMode);
     if (conflict) patch['plan.conflictPolicy'] = conflict;
+    if (settings.canaryMode != null) patch['plan.canaryMode'] = settings.canaryMode;
+    if (settings.canaryPercent != null) patch['plan.canaryPercent'] = settings.canaryPercent;
+    if (settings.canarySelection != null) patch['plan.canarySelection'] = settings.canarySelection;
     return patch;
 }

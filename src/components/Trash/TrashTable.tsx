@@ -67,7 +67,7 @@ const TRASH_COLUMNS: TableColumnDef<TrashSortKey>[] = [
     { id: 'type', labelKey: 'settings.columnType', sortable: true, defaultVisible: true, defaultWidth: 64, minWidth: 48, defaultAlign: 'center' },
     { id: 'name', labelKey: 'common.name', sortable: true, defaultVisible: true, defaultWidth: 300, minWidth: 120, defaultAlign: 'left' },
     { id: 'size', labelKey: 'common.size', sortable: true, defaultVisible: true, defaultWidth: 100, minWidth: 72, defaultAlign: 'right' },
-    { id: 'deletedAt', labelKey: 'contextMenu.trashDeletedDate', sortable: true, defaultVisible: true, defaultWidth: 190, minWidth: 130, defaultAlign: 'left' },
+    { id: 'deletedAt', labelKey: 'contextMenu.trashDeletedDate', sortable: true, defaultVisible: true, defaultWidth: 210, minWidth: 160, defaultAlign: 'left' },
 ];
 
 const alignClass = (align: TableColAlign): string => align === 'right'
@@ -167,8 +167,10 @@ export const TrashTable: React.FC<TrashTableProps> = ({
                 return <span className="block truncate text-gray-900 dark:text-gray-100">{row.name}</span>;
             case 'size':
                 return <span className="tabular-nums text-gray-600 dark:text-gray-400">{row.isDir || row.size == null ? '-' : formatSize(row.size)}</span>;
-            case 'deletedAt':
-                return <span className="whitespace-nowrap tabular-nums text-gray-500 dark:text-gray-500">{row.deletedAtLabel ?? (row.deletedAt ? formatDate(row.deletedAt) : '-')}</span>;
+            case 'deletedAt': {
+                const label = row.deletedAtLabel ?? (row.deletedAt ? formatDate(row.deletedAt) : '-');
+                return <span className="whitespace-nowrap tabular-nums text-gray-500 dark:text-gray-500" title={label === '-' ? undefined : label}>{label}</span>;
+            }
             default:
                 return null;
         }
@@ -181,7 +183,7 @@ export const TrashTable: React.FC<TrashTableProps> = ({
 
     return (
         <div ref={containerRef} className="relative h-full min-h-0 overflow-auto" onMouseDown={marquee.onMouseDown}>
-            <table className="w-full table-fixed text-xs select-none" style={{ minWidth: `${tableMinWidth}px` }}>
+            <table className="table-fixed text-xs select-none" style={{ width: `${tableMinWidth}px`, minWidth: `${tableMinWidth}px` }}>
                 <colgroup>
                     {selectable && <col style={{ width: '32px' }} />}
                     {visibleColumns.map((column) => <col key={column.id} style={{ width: `${liveWidths[column.id]}px` }} />)}

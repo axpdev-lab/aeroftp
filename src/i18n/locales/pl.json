@@ -3433,7 +3433,7 @@
             "showHashes": "Pokaż skróty",
             "fuzzyCutoff": "Próg rozmyty",
             "fuzzyCutoffHint": "puste = wartości domyślne dla typu (obrazy 10, tekst 3, inne 100)",
-            "title": "Znajdź duplikaty",
+            "title": "Wyszukiwarka duplikatów",
             "scanning": "Skanowanie w poszukiwaniu duplikatów...",
             "summary": "{groups} grup, {files} zduplikowanych plików, {size} zmarnowane",
             "noDuplicates": "Nie znaleziono duplikatów",

@@ -13,6 +13,49 @@ use crate::credential_store::CredentialStore;
 use crate::providers::oauth2::StoredTokens;
 use std::collections::HashSet;
 
+/// Vault account that actually holds this profile's OAuth / Jotta blob,
+/// honouring the per-profile key first and the protocol singleton second.
+/// `None` when neither key is in `accounts`.
+fn auth_token_account(
+    protocol: &str,
+    profile_id: &str,
+    accounts: &HashSet<String>,
+) -> Option<String> {
+    if protocol.eq_ignore_ascii_case("jottacloud") && !profile_id.is_empty() {
+        let per_profile = format!("jottacloud_refresh_{}", profile_id);
+        if accounts.contains(&per_profile) {
+            return Some(per_profile);
+        }
+    }
+    if let Some(slug) = oauth_vault_slug_for_oauth_protocol(protocol) {
+        if !profile_id.is_empty() {
+            let per_profile = format!("oauth_{}_{}", slug, profile_id);
+            if accounts.contains(&per_profile) {
+                return Some(per_profile);
+            }
+        }
+    }
+    let singleton = oauth_vault_key_for_protocol(protocol)?;
+    accounts.contains(singleton).then(|| singleton.to_string())
+}
+
+fn oauth_vault_slug_for_oauth_protocol(protocol: &str) -> Option<&'static str> {
+    // Same slugs `oauth_vault_key_for_protocol` uses, minus Jottacloud
+    // (that blob is `jottacloud_refresh`, not `oauth_*`).
+    match protocol.to_ascii_lowercase().as_str() {
+        "googledrive" => Some("google"),
+        "googlephotos" => Some("googlephotos"),
+        "dropbox" => Some("dropbox"),
+        "onedrive" => Some("onedrive"),
+        "box" => Some("box"),
+        "pcloud" => Some("pcloud"),
+        "zohoworkdrive" => Some("zohoworkdrive"),
+        "yandexdisk" => Some("yandexdisk"),
+        "fourshared" => Some("fourshared"),
+        _ => None,
+    }
+}
+
 /// Map a profile's `protocol` to the vault key that holds its OAuth /
 /// refresh-token blob (the per-protocol singleton, NOT the per-profile
 /// credential blob). Returns `None` for password-based protocols where the
@@ -63,13 +106,17 @@ pub fn derive_profile_auth_state(
     let oauth_key = oauth_vault_key_for_protocol(protocol);
 
     let has_server = accounts.contains(&server_key);
-    let has_oauth = oauth_key.is_some_and(|k| accounts.contains(k));
+    // Jottacloud import/persist writes `jottacloud_refresh_<id>`; the
+    // protocol map still names the legacy singleton. Presence of either
+    // key is enough: an imported profile that only has the per-profile
+    // blob must not report `no_credentials`.
+    let token_account = auth_token_account(protocol, profile_id, accounts);
 
-    if let Some(key) = oauth_key {
-        if !has_oauth {
+    if oauth_key.is_some() {
+        let Some(key) = token_account else {
             return "no_credentials";
-        }
-        match store.get(key) {
+        };
+        match store.get(&key) {
             Ok(json) => {
                 if let Ok(tokens) = serde_json::from_str::<StoredTokens>(&json) {
                     if tokens.is_expired() {
@@ -153,6 +200,31 @@ mod tests {
             oauth_vault_key_for_protocol("jottacloud"),
             Some("jottacloud_refresh")
         );
+    }
+
+    #[test]
+    fn jottacloud_auth_account_prefers_per_profile_key() {
+        let id = "srv_1771799399856_swqija1mi";
+        let per = format!("jottacloud_refresh_{id}");
+        let mut accounts = HashSet::new();
+        accounts.insert(per.clone());
+        assert_eq!(
+            auth_token_account("jottacloud", id, &accounts).as_deref(),
+            Some(per.as_str())
+        );
+        accounts.insert("jottacloud_refresh".to_string());
+        assert_eq!(
+            auth_token_account("jottacloud", id, &accounts).as_deref(),
+            Some(per.as_str()),
+            "per-profile key wins over the legacy singleton"
+        );
+        accounts.remove(&per);
+        assert_eq!(
+            auth_token_account("jottacloud", id, &accounts).as_deref(),
+            Some("jottacloud_refresh")
+        );
+        accounts.clear();
+        assert_eq!(auth_token_account("jottacloud", id, &accounts), None);
     }
 
     #[test]

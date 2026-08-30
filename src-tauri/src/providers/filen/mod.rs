@@ -432,10 +432,10 @@ pub struct FilenProvider {
     /// Test-only ingest base. `None` keeps production `INGEST`.
     #[cfg(test)]
     ingest_base_override: Option<String>,
-    /// Test-only: whether `storage_info` may consult the Filen CLI first.
+    /// Test-only: whether `storage_info` may fall back to the Filen CLI.
     /// Off under test so a quota assertion measures the REST path it targets
     /// rather than whichever account a locally installed CLI happens to be
-    /// logged into. Production always consults it.
+    /// logged into. Production still consults it, but only after REST fails.
     #[cfg(test)]
     statfs_cli_enabled: bool,
 }
@@ -474,7 +474,7 @@ impl FilenProvider {
         }
     }
 
-    /// Whether `storage_info` should try the Filen CLI before the REST quota.
+    /// Whether `storage_info` may fall back to the Filen CLI after REST.
     fn statfs_cli_enabled(&self) -> bool {
         #[cfg(test)]
         {
@@ -2412,16 +2412,41 @@ impl StorageProvider for FilenProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        // W2.2 (#275): when the Filen CLI is installed, `filen statfs` is a
-        // cleaner quota source than the REST call. Opportunistic and guarded:
-        // any failure or implausible output falls through to the REST path
-        // below. The CLI reports whatever account it is logged into, so this
-        // is best-effort, never a hard dependency.
-        // No versioning breakdown on this path, on purpose: the CLI reports the
-        // account IT is logged into, which need not be the account this session
-        // authenticated as. Pairing its totals with version bytes read over
-        // REST from our own account would attribute one account's versions to
-        // another's quota, which is worse than showing nothing.
+        // REST first: `/v3/user/info` is the account this session authenticated
+        // as, and `/v3/user/settings` is the only place Filen reports versioned
+        // storage. Putting `filen statfs` first hid that slice whenever the
+        // CLI was installed (#347, Ehud 2026-08-29: My Servers still showed
+        // versioning for MEGA only). The CLI remains the fallback when REST
+        // fails; it still carries no versioning, because it reports whichever
+        // account the CLI itself is logged into.
+        let request = self
+            .client
+            .get(format!("{}/v3/user/info", self.gateway_base()))
+            .header(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
+            )
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let rest_err = match self.send_retry(request).await {
+            Ok(resp) => match resp.json::<UserInfoResponse>().await {
+                Ok(body) => {
+                    if let Some(data) = body.data {
+                        return Ok(StorageInfo {
+                            total: data.max_storage,
+                            used: data.storage_used,
+                            free: data.max_storage.saturating_sub(data.storage_used),
+                            versioning_bytes: self.versioned_storage_bytes().await,
+                        });
+                    }
+                    ProviderError::Other("No user info data".to_string())
+                }
+                Err(e) => ProviderError::Other(format!("user info parse: {e}")),
+            },
+            Err(e) => e,
+        };
+
         if self.statfs_cli_enabled() {
             if let Ok((used, total)) = statfs::filen_statfs_query().await {
                 return Ok(StorageInfo {
@@ -2433,36 +2458,7 @@ impl StorageProvider for FilenProvider {
             }
         }
 
-        let request = self
-            .client
-            .get(format!("{}/v3/user/info", self.gateway_base()))
-            .header(
-                "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
-                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
-            )
-            .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        let resp: UserInfoResponse = self
-            .send_retry(request)
-            .await?
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        let data = resp
-            .data
-            .ok_or_else(|| ProviderError::Other("No user info data".to_string()))?;
-
-        Ok(StorageInfo {
-            total: data.max_storage,
-            used: data.storage_used,
-            free: data.max_storage.saturating_sub(data.storage_used),
-            // Best-effort second read: a quota that arrived is worth more than
-            // a quota refused because the breakdown behind it was unavailable,
-            // so a failure here degrades to "unknown" rather than propagating.
-            versioning_bytes: self.versioned_storage_bytes().await,
-        })
+        Err(rest_err)
     }
 
     fn supports_share_links(&self) -> bool {

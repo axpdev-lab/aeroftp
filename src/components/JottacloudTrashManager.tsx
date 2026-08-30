@@ -132,7 +132,7 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
         {...modalDrag.panelProps}
-        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[600px] max-h-[80vh] flex flex-col animate-scale-in"
+        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[760px] max-h-[80vh] flex flex-col animate-scale-in"
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -198,7 +198,7 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="flex-1 overflow-auto min-h-0">
           {loading ? (
             <div className="flex items-center justify-center py-12 text-gray-600 dark:text-gray-400">
               <Loader2 size={20} className="animate-spin mr-2" />

@@ -175,6 +175,22 @@ pub fn derive_keys(password: &str, salt: &str) -> Result<([u8; 32], [u8; 32]), S
     Ok((name_key, data_key))
 }
 
+/// If `value` is an rclone-obscured secret (`rclone obscure` / `rclone.conf`
+/// password / password2), return the revealed plaintext. Otherwise return
+/// `value` unchanged. Closed: a string that is not valid rclone-obscure is
+/// never modified (#600: Ehud pasted rclone.conf password1/password2).
+fn maybe_rclone_reveal(value: &str) -> String {
+    if value.is_empty() {
+        return String::new();
+    }
+    match crate::rclone_import::reveal_obscured(value) {
+        // Empty reveal is rclone `password2 = obscure("")`: omitted salt,
+        // which must collapse to the default salt — not stay as the blob.
+        Ok(plain) if plain != value && plain.chars().all(|c| !c.is_control()) => plain,
+        _ => value.to_string(),
+    }
+}
+
 /// Derive data_key (32 bytes), name_key (32 bytes), and name_tweak (16 bytes).
 ///
 /// Rclone derives 80 bytes in this order: data key, name key, then EME tweak.
@@ -182,6 +198,8 @@ pub fn derive_keys_with_tweak(
     password: &str,
     salt: &str,
 ) -> Result<RcloneCryptKeyMaterial, String> {
+    let password = maybe_rclone_reveal(password);
+    let salt = maybe_rclone_reveal(salt);
     // scrypt 0.11 limits Params::len to <=64 for password-hash metadata, but
     // the raw scrypt() function accepts rclone's 80-byte output buffer.
     let params = ScryptParams::new(SCRYPT_LOG_N, SCRYPT_R, SCRYPT_P, SCRYPT_PARAMS_LEN)
@@ -1497,6 +1515,57 @@ mod tests {
             encrypt_name(&name_key, &name_tweak, "file.txt").unwrap(),
             "h5p2oibs3erqnaspobsargglqs"
         );
+    }
+
+    #[test]
+    fn derive_keys_accepts_rclone_obscured_password_and_salt() {
+        // rclone.conf stores password / password2 already obscured. Pasting
+        // those into AeroFTP used to scrypt the ciphertext (#600).
+        let obscured_pw = "LZ9RxVK9L7SryViTF1LcFaIhT4Pe_wQkOD3Gud9FnQ";
+        let from_obscured = derive_keys_with_tweak(obscured_pw, "").unwrap();
+        let from_plain = derive_keys_with_tweak("testpassword123", "").unwrap();
+        assert_eq!(from_obscured.0, from_plain.0);
+        assert_eq!(from_obscured.1, from_plain.1);
+        assert_eq!(from_obscured.2, from_plain.2);
+    }
+
+    #[test]
+    fn obscured_empty_password2_is_the_default_salt() {
+        // rclone.conf often still writes `password2 = obscure("")` when the
+        // user left salt blank. That must not become a 22-char fake salt.
+        let obscured_empty = crate::rclone_import::obscure_password("").unwrap();
+        let with_blob = derive_keys_with_tweak("triage-password-600", &obscured_empty).unwrap();
+        let omitted = derive_keys_with_tweak("triage-password-600", "").unwrap();
+        assert_eq!(with_blob.0, omitted.0);
+        assert_eq!(
+            encrypt_name(&with_blob.0, &with_blob.2, "folder").unwrap(),
+            "785v69hnpanb9p84bhrlki9lp0"
+        );
+    }
+
+    #[test]
+    fn live_rclone_1743_file_roundtrip_when_env_set() {
+        let Ok(workdir) = std::env::var("AEROFTP_600_WORKDIR") else {
+            return;
+        };
+        let rclone_cipher =
+            format!("{workdir}/cipher/785v69hnpanb9p84bhrlki9lp0/h5p2oibs3erqnaspobsargglqs");
+        let data = std::fs::read(&rclone_cipher)
+            .unwrap_or_else(|e| panic!("read rclone ciphertext {rclone_cipher}: {e}"));
+        let (name_key, data_key, name_tweak) =
+            derive_keys_with_tweak("triage-password-600", "").unwrap();
+        let pt = decrypt_file_content(&data, &data_key).expect("AeroFTP decrypt of rclone 1.74.3");
+        assert_eq!(pt, b"hello-from-rclone-1743\n");
+
+        let aero_pt = b"hello-from-aeroftp-600\n";
+        let aero_ct = encrypt_file_content(aero_pt, &data_key).expect("AeroFTP encrypt");
+        let enc_name = encrypt_name(&name_key, &name_tweak, "aero.txt")
+            .unwrap()
+            .to_lowercase();
+        let aero_dir = format!("{workdir}/cipher-aero");
+        std::fs::create_dir_all(&aero_dir).unwrap();
+        std::fs::write(format!("{aero_dir}/{enc_name}"), &aero_ct).unwrap();
+        std::fs::write(format!("{workdir}/aero-enc-name"), enc_name.as_bytes()).unwrap();
     }
 
     #[test]

@@ -1191,6 +1191,10 @@ export interface SyncTemplate {
     delete_orphans: boolean;
     parallel_streams: number;
     compression_mode: CompressionMode;
+    /** Plan-tab verify policy. Absent on templates exported before v4.1.9. */
+    verify_policy?: VerifyPolicy;
+    /** Plan-tab canary trial. Absent when canary was off, or on older files. */
+    canary?: { percent: number; selection: string };
   };
   exclude_patterns: string[];
   schedule: SyncSchedule | null;

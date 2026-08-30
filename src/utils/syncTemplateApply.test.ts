@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildAeroSyncTabStatePatch,
+    overlayLivePlanOnTemplate,
     settingsFromAerosyncScript,
     settingsFromLegacyScript,
     settingsFromTemplate,
@@ -76,6 +77,44 @@ describe('AeroSync template import application', () => {
             'plan.parallelStreams': 3,
             'plan.compressionMode': 'auto',
         });
+    });
+
+    it('keeps live verify, compression and canary on an exported Mirror template (#514)', () => {
+        const template: SyncTemplate = {
+            schema_version: 1,
+            name: 'Mirror',
+            description: '',
+            created_by: 'test',
+            path_patterns: [{ local: '/a', remote: '/b' }],
+            profile: {
+                direction: 'local_to_remote',
+                compare_timestamp: true,
+                compare_size: true,
+                compare_checksum: false,
+                delete_orphans: true,
+                parallel_streams: 4,
+                compression_mode: 'off',
+            },
+            exclude_patterns: [],
+            schedule: null,
+        };
+        const overlaid = overlayLivePlanOnTemplate(template, {
+            compressionMode: 'auto',
+            verifyPolicy: 'full_checksum',
+            canary: { percent: 15, selection: 'newest' },
+        });
+        expect(overlaid.profile.compression_mode).toBe('auto');
+        expect(overlaid.profile.verify_policy).toBe('full');
+        expect(overlaid.profile.canary).toEqual({ percent: 15, selection: 'newest' });
+        const imported = settingsFromTemplate(overlaid);
+        expect(imported.ok).toBe(true);
+        if (!imported.ok) return;
+        const patch = buildAeroSyncTabStatePatch(imported.settings, 'local-remote');
+        expect(patch['plan.compressionMode']).toBe('auto');
+        expect(patch['plan.verifyPolicy']).toBe('full_checksum');
+        expect(patch['plan.canaryMode']).toBe(true);
+        expect(patch['plan.canaryPercent']).toBe(15);
+        expect(patch['plan.canarySelection']).toBe('newest');
     });
 
     it('maps a legacy wrapper import without inventing absent runtime knobs', () => {

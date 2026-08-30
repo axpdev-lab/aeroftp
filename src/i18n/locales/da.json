@@ -3433,7 +3433,7 @@
             "showHashes": "Vis hashværdier",
             "fuzzyCutoff": "Fuzzy-grænse",
             "fuzzyCutoffHint": "tom = standardværdier pr. type (billeder 10, tekst 3, andet 100)",
-            "title": "Find dubletter",
+            "title": "Dubletsøger",
             "scanning": "Scanner for dubletter...",
             "summary": "{groups} grupper, {files} duplikatfiler, {size} spildt",
             "noDuplicates": "Ingen dubletter fundet",

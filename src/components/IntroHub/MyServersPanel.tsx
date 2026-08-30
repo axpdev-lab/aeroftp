@@ -794,7 +794,12 @@ export function MyServersPanel({
     // a stable reference and the children rebind to their own row index
     // internally via `useCallback`. See issue #221.
     const handleDragStart = useCallback((idx: number, e: React.DragEvent) => {
-        const sourceId = visibleListRef.current[idx]?.id;
+        // A leftover text selection makes WebKitGTK start a *text* drag
+        // instead of the row drag; clearing it here is what makes the first
+        // attempt succeed (#453).
+        try { window.getSelection()?.removeAllRanges(); } catch { /* */ }
+        const fromAttr = (e.currentTarget as HTMLElement | null)?.getAttribute?.('data-server-id');
+        const sourceId = fromAttr || visibleListRef.current[idx]?.id;
         if (!sourceId) {
             e.preventDefault();
             return;
@@ -803,6 +808,15 @@ export function MyServersPanel({
         setDragIdx(idx);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', sourceId);
+        // WebKitGTK often starts a text-drag (or no drag at all) unless an
+        // explicit drag image is set; the first attempt then appears to do
+        // nothing (#453, "multiple attempts before the profiles move").
+        try {
+            const node = e.currentTarget as HTMLElement;
+            if (typeof e.dataTransfer.setDragImage === 'function' && node) {
+                e.dataTransfer.setDragImage(node, 12, 12);
+            }
+        } catch { /* setDragImage is best-effort */ }
     }, []);
 
     const handleDragEnter = useCallback((idx: number, e: React.DragEvent) => {
@@ -1766,9 +1780,9 @@ export function MyServersPanel({
                         className="grid gap-3 p-1"
                         style={{ contain: 'layout style', gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}
                     >
-                        {canDrag && dragIdx !== null && (
+                        {canDrag && (
                             <div
-                                className={`col-span-full h-6 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_TOP ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
+                                className={`col-span-full h-6 rounded-md border-2 border-dashed transition-colors ${dragIdx !== null && overIdx === DRAG_SENTINEL_TOP ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
                                 onDragEnter={(e) => handleDragEnter(DRAG_SENTINEL_TOP, e)}
                                 onDragOver={(e) => handleDragOver(DRAG_SENTINEL_TOP, e)}
                                 onDrop={(e) => handleDrop(DRAG_SENTINEL_TOP, e)}
@@ -1823,9 +1837,9 @@ export function MyServersPanel({
                                 />
                             );
                         })}
-                        {canDrag && dragIdx !== null && (
+                        {canDrag && (
                             <div
-                                className={`col-span-full h-6 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_BOTTOM ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
+                                className={`col-span-full h-6 rounded-md border-2 border-dashed transition-colors ${dragIdx !== null && overIdx === DRAG_SENTINEL_BOTTOM ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
                                 onDragEnter={(e) => handleDragEnter(DRAG_SENTINEL_BOTTOM, e)}
                                 onDragOver={(e) => handleDragOver(DRAG_SENTINEL_BOTTOM, e)}
                                 onDrop={(e) => handleDrop(DRAG_SENTINEL_BOTTOM, e)}
@@ -1846,9 +1860,9 @@ export function MyServersPanel({
                             e.preventDefault();
                         }}
                     >
-                    {canDrag && dragIdx !== null && (
+                    {canDrag && (
                         <div
-                            className={`mx-2 mt-2 h-5 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_TOP ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
+                            className={`mx-2 mt-2 h-5 rounded-md border-2 border-dashed transition-colors ${dragIdx !== null && overIdx === DRAG_SENTINEL_TOP ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
                             onDragEnter={(e) => handleDragEnter(DRAG_SENTINEL_TOP, e)}
                             onDragOver={(e) => handleDragOver(DRAG_SENTINEL_TOP, e)}
                             onDrop={(e) => handleDrop(DRAG_SENTINEL_TOP, e)}
@@ -1894,9 +1908,9 @@ export function MyServersPanel({
                         attachedProfileIds={attachedProfileIds}
                         getPeerState={peerStateFor}
                     />
-                    {canDrag && dragIdx !== null && (
+                    {canDrag && (
                         <div
-                            className={`mx-2 mb-2 h-5 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_BOTTOM ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
+                            className={`mx-2 mb-2 h-5 rounded-md border-2 border-dashed transition-colors ${dragIdx !== null && overIdx === DRAG_SENTINEL_BOTTOM ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
                             onDragEnter={(e) => handleDragEnter(DRAG_SENTINEL_BOTTOM, e)}
                             onDragOver={(e) => handleDragOver(DRAG_SENTINEL_BOTTOM, e)}
                             onDrop={(e) => handleDrop(DRAG_SENTINEL_BOTTOM, e)}

@@ -3433,7 +3433,7 @@
             "showHashes": "Tunjukkan cincangan",
             "fuzzyCutoff": "Ambang kabur",
             "fuzzyCutoffHint": "kosong = nilai lalai mengikut jenis (imej 10, teks 3, lain-lain 100)",
-            "title": "Cari Pendua",
+            "title": "Pencari Pendua",
             "scanning": "Mengimbas untuk pendua...",
             "summary": "{groups} kumpulan, {files} fail pendua, {size} dibazirkan",
             "noDuplicates": "Tiada pendua ditemui",

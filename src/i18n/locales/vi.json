@@ -3433,7 +3433,7 @@
             "showHashes": "Hiện các hash",
             "fuzzyCutoff": "Ngưỡng tương đồng mờ",
             "fuzzyCutoffHint": "để trống = giá trị mặc định theo loại (ảnh 10, văn bản 3, khác 100)",
-            "title": "Tìm tệp trùng lặp",
+            "title": "Trình tìm tệp trùng lặp",
             "scanning": "Đang quét tìm tệp trùng lặp...",
             "summary": "{groups} nhóm, {files} tệp trùng lặp, {size} lãng phí",
             "noDuplicates": "Không tìm thấy tệp trùng lặp",

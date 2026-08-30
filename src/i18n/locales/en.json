@@ -2017,7 +2017,7 @@
             "selectAll": "Select All Duplicates",
             "skip": "SKIP",
             "summary": "{groups} groups, {files} duplicate files, {size} wasted",
-            "title": "Find Duplicates",
+            "title": "Duplicates Finder",
             "wasted": "wasted",
             "sortSizeSpread": "Byte-size spread",
             "keepByDefault": "Keep by default",
