@@ -2591,6 +2591,13 @@ fn extract_s3_error(body: &str) -> String {
     }
 }
 
+/// Whether an S3 authentication failure is evidence that the signing clock is
+/// wrong. Kept pure so retry classification cannot be widened unnoticed.
+fn is_s3_clock_skew_error(error_msg: &str, body: &str) -> bool {
+    let lower = error_msg.to_lowercase();
+    lower.contains("expired") || body.contains("RequestTimeTooSkewed")
+}
+
 #[async_trait]
 impl StorageProvider for S3Provider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -2706,13 +2713,8 @@ impl StorageProvider for S3Provider {
                 let body = response.text().await.unwrap_or_default();
                 let error_msg = extract_s3_error(&body);
 
-                // Detect clock skew: error mentions "time" or "expired" and we haven't retried yet
-                let is_time_error = {
-                    let lower = error_msg.to_lowercase();
-                    lower.contains("time")
-                        || lower.contains("expired")
-                        || body.contains("RequestTimeTooSkewed")
-                };
+                // Detect the exact S3 clock-skew code or an expired signed request.
+                let is_time_error = is_s3_clock_skew_error(&error_msg, &body);
 
                 if is_time_error {
                     // Try server Date header first, then <ServerTime> from XML body
@@ -5802,6 +5804,19 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clock_skew_classifier_rejects_an_ordinary_timeout() {
+        assert!(is_s3_clock_skew_error(
+            "The difference between the request time and the server time is too large",
+            "<Code>RequestTimeTooSkewed</Code>"
+        ));
+        assert!(is_s3_clock_skew_error("Request has expired", ""));
+        assert!(
+            !is_s3_clock_skew_error("Connection timeout while reading response", ""),
+            "one ordinary timeout has zero clock-skew signals and must not spend a re-sign retry"
+        );
+    }
 
     #[test]
     fn list_buckets_parser_ignores_owner_name_and_sorts_targets() {

@@ -8,6 +8,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::Serialize;
+use std::error::Error as StdError;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
@@ -267,6 +268,24 @@ async fn check_tcp(host: &str, port: u16) -> CheckDetail {
     }
 }
 
+fn is_connection_refused_error(is_connect: bool, error: &(dyn StdError + 'static)) -> bool {
+    if !is_connect {
+        return false;
+    }
+
+    let mut current = Some(error);
+    while let Some(source) = current {
+        if source
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io_error| io_error.kind() == std::io::ErrorKind::ConnectionRefused)
+        {
+            return true;
+        }
+        current = source.source();
+    }
+    false
+}
+
 /// Perform TLS handshake timing via HTTPS HEAD request.
 /// Uses a shorter timeout (5s) since we only care about the TLS negotiation,
 /// not the full HTTP response.
@@ -303,7 +322,7 @@ async fn check_tls(host: &str, port: u16) -> CheckDetail {
         Err(e) => {
             let elapsed = start.elapsed();
             let msg = format!("{}", e);
-            if msg.contains("Connection refused") {
+            if is_connection_refused_error(e.is_connect(), &e) {
                 CheckDetail {
                     name: "tls_handshake".into(),
                     status: "skip".into(),
@@ -708,6 +727,21 @@ pub async fn server_health_check_batch(
 mod tests {
     use super::*;
 
+    #[derive(Debug)]
+    struct LocalizedConnectError(std::io::Error);
+
+    impl std::fmt::Display for LocalizedConnectError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Verbindung abgelehnt")
+        }
+    }
+
+    impl StdError for LocalizedConnectError {
+        fn source(&self) -> Option<&(dyn StdError + 'static)> {
+            Some(&self.0)
+        }
+    }
+
     fn check(name: &str, status: &str, latency_ms: Option<f64>) -> CheckDetail {
         CheckDetail {
             name: name.into(),
@@ -774,6 +808,17 @@ mod tests {
         assert!(should_check_tls("s3", 443));
         // Known cloud protocols
         assert!(should_check_tls("googledrive", 443));
+    }
+
+    #[test]
+    fn tls_refusal_uses_typed_io_kind_not_localized_display_text() {
+        let error =
+            LocalizedConnectError(std::io::Error::from(std::io::ErrorKind::ConnectionRefused));
+        assert!(
+            is_connection_refused_error(true, &error),
+            "one typed ConnectionRefused source must skip TLS even when zero English words match"
+        );
+        assert!(!is_connection_refused_error(false, &error));
     }
 
     #[test]
