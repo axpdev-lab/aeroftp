@@ -2305,10 +2305,16 @@ where
 
     /// Give the channel away and let the session survive if the server agrees.
     async fn abandon(&mut self) {
-        self.settled = true;
         if let Some(data) = self.data.take() {
             let _ = self.provider.abandon_transfer(data).await;
         }
+        // Set LAST, and that ordering is the whole point. Marking the channel
+        // settled before the await would disarm `Drop` while the abort is still
+        // in flight, so a caller dropped mid-abort would leave a session whose
+        // control channel is halfway through an ABOR, with nothing to poison it
+        // and the next command reading the leftover reply as its own. The guard
+        // against being dropped must not be switched off by being dropped.
+        self.settled = true;
     }
 
     /// The transfer ended on its own terms: hand the stream back so the caller
