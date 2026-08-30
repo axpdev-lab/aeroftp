@@ -99,6 +99,55 @@ const SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE: u64 = 1024 * 1024;
 /// unbounded on very large files.
 const SEGMENTED_DOWNLOAD_SUB_READ_SIZE: u64 = 64 * 1024 * 1024;
 
+/// Ceiling on the bytes all window workers may hold at once.
+///
+/// `read_range` returns a `Vec`, so a sub-read is materialised whole before it
+/// is written. The per-request cap above bounds ONE of those and says so, and
+/// that was read as bounding the download. It does not: the workers run
+/// concurrently, `max_parallel` equals the segment count, and the peak is their
+/// product.
+///
+/// The arithmetic is worse below the cap than above it. A sub-read is
+/// `min(window, 64 MiB)` and a window is the file divided by the segments, so
+/// under a gigabyte the sub-read IS the window and every worker holds a
+/// sixteenth of the file. A 500 MB download peaks near 500 MB, a 200 MB one
+/// near 200 MB, and only past a gigabyte does the per-request cap begin to
+/// bite. The protection starts exactly where the ratio stops being surprising.
+///
+/// So the aggregate is capped too, and the per-request cap stays for what it
+/// was always for. What this buys is paid in round trips: on FTP each sub-read
+/// is a REST plus RETR on a new data connection, with a TLS handshake when the
+/// channel is protected, so a smaller sub-read means more of them. The number
+/// below is therefore a starting point that wants measuring on a real link, not
+/// a tuned value, and the direction of doubt is stated: too small costs speed
+/// on every large download, too large costs memory on every concurrent one.
+const SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET: u64 = 128 * 1024 * 1024;
+
+/// Bytes a single `read_range` may ask for, given how many windows are running.
+///
+/// Separated from the loop so the memory a download plans to use can be
+/// checked without running one: the peak is decided here, by arithmetic, and a
+/// test that asserts it does not scale with the file is a statement about the
+/// property rather than about one observed run.
+pub fn segmented_sub_read_size(segments: usize, window_len: u64) -> u64 {
+    let share = SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET / (segments.max(1) as u64);
+    window_len
+        .min(SEGMENTED_DOWNLOAD_SUB_READ_SIZE)
+        .min(share.max(SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE))
+}
+
+/// What a segmented download of `file_size` plans to hold in memory at once.
+///
+/// Zero when the file is not segmented at all.
+pub fn segmented_planned_peak_bytes(file_size: u64, requested: u32, max_workers: usize) -> u64 {
+    let segments = provider_segmented_effective_count(file_size, requested).min(max_workers.max(1));
+    if segments < 2 {
+        return 0;
+    }
+    let window = file_size / segments as u64;
+    segmented_sub_read_size(segments, window) * segments as u64
+}
+
 /// Effective segment count after the anti-fragmentation rule
 /// (`SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE`). Mirrors `pget_effective_segments`
 /// in `bin/aeroftp_cli.rs`. Returns 0 to signal "do not segment".
@@ -308,7 +357,8 @@ pub async fn run_provider_segmented_download(
                         "Transfer cancelled by user".to_string(),
                     ));
                 }
-                let sub_len = (window_len - written).min(SEGMENTED_DOWNLOAD_SUB_READ_SIZE);
+                let sub_len =
+                    (window_len - written).min(segmented_sub_read_size(segments, window_len));
                 let data = provider
                     .read_range(&remote, start_off + written, sub_len)
                     .await
@@ -1784,6 +1834,77 @@ async fn transfer_entry_upload_size(entry: &TransferEntry) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    /// The memory a segmented download plans to hold does not grow with the
+    /// file.
+    ///
+    /// Two sizes, not one, and the assertion is that the peak does NOT scale.
+    /// A single figure, however small, is a statement about that one run; the
+    /// question the defect asks is whether the number follows the input.
+    ///
+    /// It followed it. `read_range` returns a `Vec`, so a sub-read is held
+    /// whole, the workers run concurrently with `max_parallel` equal to the
+    /// segment count, and the peak is their product. The per-request cap of
+    /// 64 MiB bounds one of them and reads as though it bounded the download.
+    ///
+    /// Below a gigabyte it never applied at all: the sub-read is
+    /// `min(window, 64 MiB)` and the window is the file over the segments, so
+    /// each worker held a sixteenth of the file and the peak was the whole
+    /// thing. A 200 MB download planned 200 MB, a 500 MB one planned 500 MB,
+    /// and nobody would look for a memory defect at those sizes.
+    #[test]
+    fn the_planned_peak_does_not_follow_the_file_size() {
+        const MB: u64 = 1024 * 1024;
+        let peak = |size: u64| segmented_planned_peak_bytes(size, 16, 16);
+
+        let small = peak(200 * MB);
+        let large = peak(25 * 1024 * MB);
+
+        assert!(
+            small > 0 && large > 0,
+            "both sizes must actually segment, or this compares nothing: {small} and {large}"
+        );
+        assert!(
+            large <= small.saturating_mul(2),
+            "the peak follows the input: {} MB of file plans {} MB, {} MB of file plans {} MB",
+            200,
+            small / MB,
+            25 * 1024,
+            large / MB
+        );
+        assert!(
+            large <= SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET,
+            "the aggregate exceeds its own budget: {} MB",
+            large / MB
+        );
+
+        // The size that used to be exactly the file: 500 MB over 16 windows is
+        // 31 MB each, under the per-request cap, so the cap never saw it.
+        let mid = peak(500 * MB);
+        assert!(
+            mid <= SEGMENTED_DOWNLOAD_TOTAL_READ_BUDGET,
+            "a 500 MB download plans {} MB, which is the whole file",
+            mid / MB
+        );
+    }
+
+    /// The floor still holds, so the budget cannot split a download into
+    /// pathologically small requests.
+    ///
+    /// The cost of the cap is paid in round trips, and on FTP each sub-read is
+    /// a REST plus RETR on a fresh data connection. Dividing the budget by the
+    /// segments must not drive the request below the size this file already
+    /// refuses to go under for exactly that reason.
+    #[test]
+    fn the_budget_never_asks_for_less_than_the_minimum_chunk() {
+        for segments in [2usize, 4, 8, 16, 64] {
+            let sub = segmented_sub_read_size(segments, 4 * 1024 * 1024 * 1024);
+            assert!(
+                sub >= SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE,
+                "{segments} segments planned a {sub}-byte request, under the floor"
+            );
+        }
+    }
+
     use super::*;
     use crate::transfer_dag::SessionLeaseKind;
 
