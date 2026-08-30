@@ -78,6 +78,10 @@ interface SettingsPanelProps {
     onOpenCloudPanel?: () => void;
     onActivityLog?: ActivityLogCallback;
     initialTab?: TabId;
+    /** Sub-tab to land on when initialTab is 'ui'. The panel stays mounted for
+     *  the life of the app, so its sub-tab remembers the last visit; a caller
+     *  that wants a specific pane has to say so. */
+    initialAppearanceSubTab?: AppearanceSubTabId;
     /** Path of a .aeroftp-keystore opened via OS file association. When
      *  set (and the panel is open) the Backup tab is selected and the
      *  keystore is preloaded for import, so a double-clicked keystore
@@ -362,7 +366,7 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
     );
 };
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab, initialKeystoreImportPath, onServersChanged, theme: appThemeProp = 'auto', setTheme: setAppTheme }) => {
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab, initialAppearanceSubTab, initialKeystoreImportPath, onServersChanged, theme: appThemeProp = 'auto', setTheme: setAppTheme }) => {
     const [activeTab, setActiveTab] = useState<TabId>((initialTab as string) === 'servers' ? 'backup' : initialTab || 'general');
     const [appearanceSubTab, setAppearanceSubTab] = useState<AppearanceSubTabId>('interface');
     const { iconTheme, setIconTheme } = useIconTheme();
@@ -371,8 +375,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     useEffect(() => {
         if (isOpen && initialTab) {
             setActiveTab((initialTab as string) === 'servers' ? 'backup' : initialTab);
+            if (initialAppearanceSubTab) {
+                setAppearanceSubTab(initialAppearanceSubTab);
+            }
         }
-    }, [isOpen, initialTab]);
+    }, [isOpen, initialTab, initialAppearanceSubTab]);
     const [settings, setSettings] = useState<AppSettings>(defaultSettings);
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
     const [servers, setServers] = useState<ServerProfile[]>([]);

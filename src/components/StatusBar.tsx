@@ -4,7 +4,8 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck, Loader2, Calculator, X } from 'lucide-react';
-import { useTranslation } from '../i18n';
+import { useTranslation, useI18n } from '../i18n';
+import { AVAILABLE_LANGUAGES } from '../i18n/types';
 import { AeroShareStatusButton } from './AeroShareStatusButton';
 import { formatBytes } from '../utils/formatters';
 import {
@@ -73,6 +74,9 @@ interface StatusBarProps {
     onScanUsed?: () => void;
     onCancelUsedScan?: () => void;
     usedScanStatus?: { running: boolean; files: number; bytes: number } | null;
+    /** Opens Settings on Appearance > Interface, where the language list is.
+     *  Without a caller the chip is not rendered at all. */
+    onOpenLanguageSettings?: () => void;
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({
@@ -101,6 +105,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     aeroAgentOpen = false,
     debugMode = false,
     storageQuota,
+    onOpenLanguageSettings,
     onToggleAeroFile,
     onToggleAeroAgent,
     onToggleDebug,
@@ -119,6 +124,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     usedScanStatus,
 }) => {
     const t = useTranslation();
+    const { language } = useI18n();
+    // Name for the language chip. `common.language` already exists in all 47
+    // locale files, so this stays a chip that adds no key, and the fallback
+    // matters more than it looks: an aria-label that is undefined for an
+    // unknown code leaves the button named by its own text, and nobody tests
+    // the rare case in which a label goes missing.
+    const languageNativeName = AVAILABLE_LANGUAGES.find(l => l.code === language)?.nativeName;
+    const languageLabel = `${t('common.language')}: ${languageNativeName ?? language.toUpperCase()}`;
     const { thresholds: quotaThresholds } = useStorageThresholds();
     const [aiStatus, setAiStatus] = useState<AIStatus>('idle');
 
@@ -507,6 +520,29 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     >
                         <Bug size={12} />
                         <span className="font-mono font-bold text-[10px]">DEBUG</span>
+                    </button>
+                )}
+
+                {/* Language chip. AeroFTP ships 47 interface languages and starts
+                    in English by design (detectBrowserLanguage is deliberately
+                    disabled in I18nContext), so a user whose language IS in the
+                    list has no way of learning that from the running app: the
+                    selector lives four clicks deep, in Settings > Appearance >
+                    Interface. This is the signpost. Code only, no flag: a flag
+                    names a country, and a language is not one.
+
+                    The label needs no translation (it is the language's own
+                    code) and the tooltip is the nativeName already carried by
+                    AVAILABLE_LANGUAGES, so this adds no key to the 47 locale
+                    files. */}
+                {onOpenLanguageSettings && (
+                    <button
+                        onClick={onOpenLanguageSettings}
+                        className="flex items-center px-1.5 py-0.5 rounded transition-colors hover:bg-gray-200 dark:hover:bg-gray-700 uppercase font-medium tracking-wide"
+                        title={languageLabel}
+                        aria-label={languageLabel}
+                    >
+                        {language}
                     </button>
                 )}
 
