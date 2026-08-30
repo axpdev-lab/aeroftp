@@ -440,7 +440,7 @@ impl FtpProvider {
             }
             let mlsd_result = {
                 let stream = self.stream_mut()?;
-                stream.mlsd(list_path.as_deref()).await
+                Self::list_with_cap(stream.mlsd(list_path.as_deref())).await
             };
 
             match mlsd_result {
@@ -477,7 +477,7 @@ impl FtpProvider {
             // entries that `-a` adds are dropped by the listing parsers.
             let saved_cwd = self.cwd_into(&base_path).await?;
             let stream = self.stream_mut()?;
-            let listed = stream.list(Some("-a")).await;
+            let listed = Self::list_with_cap(stream.list(Some("-a"))).await;
             let restored = self.restore_cwd(&saved_cwd).await;
             // Both are reported when both fail. Propagating the listing error
             // first would swallow the restore failure exactly when it matters
@@ -502,8 +502,7 @@ impl FtpProvider {
             }
         } else {
             let stream = self.stream_mut()?;
-            stream
-                .list(list_path.as_deref())
+            Self::list_with_cap(stream.list(list_path.as_deref()))
                 .await
                 .map_err(|e| ProviderError::ServerError(e.to_string()))?
         };
@@ -1352,10 +1351,13 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
         // Download using retr_as_stream
-        let data_stream = stream
-            .retr_as_stream(remote_path)
+        let opened = Self::open_with_cap(stream.retr_as_stream(remote_path))
             .await
             .map_err(|e| Self::classify_data_failure("reading", remote_path, e))?;
+        let data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => return Err(self.after_timed_out_open("reading", remote_path).await),
+        };
 
         // H2: Read with size cap to prevent OOM
         let mut data = Vec::new();
@@ -1690,10 +1692,13 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
 
         // Retrieve from offset
-        let data_stream = stream
-            .retr_as_stream(remote_path)
+        let opened = Self::open_with_cap(stream.retr_as_stream(remote_path))
             .await
             .map_err(|e| Self::classify_data_failure("resuming", remote_path, e))?;
+        let data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => return Err(self.after_timed_out_open("resuming", remote_path).await),
+        };
 
         // H3: Stream directly to file instead of buffering entire file in memory
         let mut file = tokio::fs::OpenOptions::new()
@@ -1985,10 +1990,13 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
 
-        let data_stream = stream
-            .retr_as_stream(path)
+        let opened = Self::open_with_cap(stream.retr_as_stream(path))
             .await
             .map_err(|e| Self::classify_data_failure("reading a range of", path, e))?;
+        let data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => return Err(self.after_timed_out_open("reading a range of", path).await),
+        };
 
         // Read exactly `len` bytes (or until EOF if file is shorter).
         //
@@ -2066,6 +2074,35 @@ fn canonical_hash_key(server_algo: &str) -> String {
 /// the only transfer path in the tree with no deadline of any kind, so this is
 /// not a new mechanism, it is the existing one reaching the provider that
 /// lacked it.
+/// How long OPENING a data channel may take before we stop waiting.
+///
+/// Total, not inactivity: an open has no bytes to be idle about, and its whole
+/// job is bounded work. Thirty seconds sits far from both edges of what has been
+/// measured. A healthy open against the lab completes in 0.116s, three orders of
+/// magnitude below this; the hang was still unresolved at 120s, which was the
+/// probe's own cap rather than a limit of the wait. A cap near the first would
+/// turn a slow-but-working handshake into a failure; one near the second would
+/// take minutes to say what it can say in seconds. Written here rather than
+/// inlined because the next person to change it needs the two numbers it sits
+/// between.
+const OPEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Total cap on a whole listing, and total is the point.
+///
+/// A transfer wants an INACTIVITY bound, because a large file legitimately takes
+/// hours and a total cap would kill it. A listing is the opposite: it has an
+/// intrinsic size, so an inactivity bound would never fire against a server that
+/// dribbles a row at a time, and a total one is the only kind that can.
+///
+/// Five minutes is a LIVENESS limit, not a performance one: anything under it is
+/// allowed, and the number exists so that a listing which will never finish stops
+/// instead of waiting forever. It is deliberately far above the twin's
+/// `list_timeout` of 30s in `src/ftp.rs`, which is a total cap too and may well be
+/// truncating legitimate listings of large directories on slow links. That is an
+/// open question with its own measurement, and copying the number would have
+/// inherited the answer without asking it.
+const LIST_BUDGET: std::time::Duration = std::time::Duration::from_secs(300);
+
 const DATA_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1800);
 
 /// How long the data may stay silent AFTER the server has spoken on control.
@@ -2337,6 +2374,110 @@ impl<'p, S> Drop for DataChannel<'p, S> {
 }
 
 impl FtpProvider {
+    /// A cap on OPENING a data channel, which is where the wait actually lives.
+    ///
+    /// Measured on `main`: a `RETR` against a server that refuses hangs before
+    /// the read loop is ever entered, inside the data connection's TLS
+    /// handshake. `read_watching_control` guards the loop, and the loop is not
+    /// reached. Two awaits in `data_command` are unbounded, and BOTH need this:
+    /// the passive connect, which is the only one of the two on a plaintext
+    /// session, and the TLS upgrade, which is the one that was measured.
+    ///
+    /// Returns `Ok(None)` when the budget expires, so the caller can realign
+    /// with the borrow of the control stream already released. Realignment is
+    /// deliberately NOT done here: the future being dropped is the crate's, and
+    /// the drop has to happen before anything else touches the session.
+    /// A total cap on a listing, shaped so every caller keeps its own handling.
+    ///
+    /// The expiry is returned as an `FtpError`, not as a separate variant, so the
+    /// three listing sites match on it exactly as they already match on a server
+    /// that refused: `MLSD` still marks itself broken and falls through to
+    /// `LIST`, which gets its own cap, and `LIST` still maps to a `ServerError`.
+    async fn list_with_cap(
+        fut: impl std::future::Future<Output = suppaftp::FtpResult<Vec<String>>>,
+    ) -> suppaftp::FtpResult<Vec<String>> {
+        match tokio::time::timeout(LIST_BUDGET, fut).await {
+            Ok(result) => result,
+            Err(_) => Err(FtpError::ConnectionError(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("no listing within {}s", LIST_BUDGET.as_secs()),
+            ))),
+        }
+    }
+
+    /// Bounds, and does nothing else. The failure is handed back RAW so each
+    /// caller keeps the mapping it already had: `STOR` classifies with
+    /// `map_store_error` and the others with `classify_data_failure`, and a
+    /// helper that classified on their behalf would quietly change one of them.
+    async fn open_with_cap<T>(
+        fut: impl std::future::Future<Output = suppaftp::FtpResult<T>>,
+    ) -> Result<Option<T>, FtpError> {
+        match tokio::time::timeout(OPEN_BUDGET, fut).await {
+            Ok(Ok(opened)) => Ok(Some(opened)),
+            Ok(Err(err)) => Err(err),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// What to do after an opening that never finished.
+    ///
+    /// The command is already on the wire and its reply unread: `pasv()` reads
+    /// its own `227`, but `perform(cmd)` reads nothing, so the control channel
+    /// is one reply behind. The likely case is that the reply is a REFUSAL that
+    /// arrived long ago, which is why the server never serviced the data port;
+    /// on the lab that reply was sitting in the socket while the handshake hung.
+    /// So this looks before it concludes, and returns the server's own reason
+    /// when there is one instead of a timeout that says nothing.
+    ///
+    /// When nothing is queued, the session is taken: the reply is still owed,
+    /// and a session one answer behind hands the next question somebody else's
+    /// answer.
+    async fn after_timed_out_open(&mut self, operation: &'static str, path: &str) -> ProviderError {
+        let queued = match self.stream.as_ref() {
+            Some(stream) => {
+                let control = stream.get_ref();
+                let mut probe = [0u8; 1];
+                let mut got = tokio::io::ReadBuf::new(&mut probe);
+                std::future::poll_fn(|cx| {
+                    std::task::Poll::Ready(match control.poll_peek(cx, &mut got) {
+                        std::task::Poll::Ready(Ok(bytes)) => bytes,
+                        _ => 0,
+                    })
+                })
+                .await
+            }
+            None => 0,
+        };
+        if queued > 0 {
+            match self.read_queued_refusal().await {
+                // A reply was parsed, so it was consumed whole and the control
+                // channel is aligned again: the session survives.
+                Ok(refusal @ FtpError::UnexpectedResponse(_)) => {
+                    return Self::classify_data_failure(operation, path, refusal)
+                }
+                // Anything else means the collection produced no complete reply,
+                // and `read_response_in` is not cancellation-safe: it may have
+                // been dropped mid-line. The error is still the best thing to
+                // report, but the session cannot be handed on.
+                Ok(other) => {
+                    self.stream = None;
+                    return Self::classify_data_failure(operation, path, other);
+                }
+                Err(err) => {
+                    self.stream = None;
+                    return err;
+                }
+            }
+        }
+        self.stream = None;
+        ProviderError::TransferFailed(format!(
+            "Opening the data channel for {} {} got no answer within {}s",
+            operation,
+            path,
+            OPEN_BUDGET.as_secs()
+        ))
+    }
+
     /// Read the refusal the server has queued, without waiting for one that
     /// may not be there.
     ///
@@ -2543,10 +2684,13 @@ impl FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
         // Download using retr_as_stream: stream directly to disk (no full-file RAM buffer)
-        let data_stream = stream
-            .retr_as_stream(remote_path)
+        let opened = Self::open_with_cap(stream.retr_as_stream(remote_path))
             .await
             .map_err(|e| Self::classify_data_failure("downloading", remote_path, e))?;
+        let data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => return Err(self.after_timed_out_open("downloading", remote_path).await),
+        };
 
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
@@ -2618,11 +2762,16 @@ impl FtpProvider {
             .map_err(ProviderError::IoError)?;
         let total_size = file.metadata().await.map_err(ProviderError::IoError)?.len();
 
-        // Open streaming upload channel (PASV + STOR)
-        let mut data_stream = stream
-            .put_with_stream(remote_path)
+        // Open streaming upload channel (PASV + STOR), under the same cap as the
+        // reads: the two unbounded awaits live in `data_command`, which every
+        // verb goes through.
+        let opened = Self::open_with_cap(stream.put_with_stream(remote_path))
             .await
             .map_err(|e| Self::map_store_error(remote_path, e))?;
+        let mut data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => return Err(self.after_timed_out_open("uploading", remote_path).await),
+        };
 
         // Write in 64KB chunks for optimal throughput
         let mut chunk = [0u8; 65536];
@@ -2806,11 +2955,21 @@ async fn ftp_download_one_range(
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
     }
 
-    let mut data_stream = {
+    let opened = {
         let stream = worker.stream_mut()?;
-        stream.retr_as_stream(&remote_path).await.map_err(|e| {
-            FtpProvider::classify_data_failure("downloading a range of", &remote_path, e)
-        })?
+        FtpProvider::open_with_cap(stream.retr_as_stream(&remote_path))
+            .await
+            .map_err(|e| {
+                FtpProvider::classify_data_failure("downloading a range of", &remote_path, e)
+            })?
+    };
+    let mut data_stream = match opened {
+        Some(data_stream) => data_stream,
+        None => {
+            return Err(worker
+                .after_timed_out_open("downloading a range of", &remote_path)
+                .await)
+        }
     };
 
     let mut out = tokio::fs::OpenOptions::new()
