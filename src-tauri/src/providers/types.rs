@@ -1675,14 +1675,48 @@ impl RemoteEntry {
 /// question answered in two places is the defect being removed, a second
 /// vocabulary is the same defect in miniature, so there is one list and both
 /// ask it.
+///
+/// THAT SENTENCE WAS TRUE OF TWO READERS AND THERE WERE FIVE. Three more asked
+/// the same question with three more lists: the CLI's `--force` delete path,
+/// the AI remote tools' stat probe, and the library's existence probe. None was
+/// a superset of another, and the divergences were not academic. `cannot find`
+/// lived only here, and it is the wording Windows itself uses ("The system
+/// cannot find the file specified"), so on Windows three of the five did not
+/// recognise the operating system's own message. `doesn't exist` lived only in
+/// the other two. And the library's list carried a bare `550`, which is the
+/// same defect this function's own comment below describes for `404`, one
+/// protocol over: FTP spends 550 on "file unavailable", which covers a missing
+/// file AND a refused one, so a permission denial was read as an absence.
+///
+/// The repair recorded below never travelled to the list it came FROM. The
+/// comment says the `404` needle came from the CLI; the CLI kept the untightened
+/// version. A fix that stays where it was made is how one vocabulary becomes
+/// five, so the three lists are gone and their callers ask this.
+///
+/// THE CONTRACT ONE OF THE ABSORBED LISTS CARRIED, kept because it belongs to
+/// whichever function answers this question. This says "the path is not there",
+/// NOT "the lookup did not complete": auth, connection, a provider 5xx and an
+/// unsupported operation are all failures to find out, and none of them is an
+/// absence. Callers that treat a failed lookup as permission to WRITE must go
+/// through here, because reading every error as "absent" is fail-open, and on a
+/// transient error it hands out a write on a path that may hold user data.
 pub fn message_names_a_missing_path(message: &str) -> bool {
     let lowered = message.to_ascii_lowercase();
     if [
-        "no such file",
-        "no such directory",
+        // "no such" rather than the two longer forms it replaces: it also
+        // covers "no such object", "no such bucket" and "no such key", which
+        // are how object stores phrase the same fact.
+        "no such",
         "not found",
         "does not exist",
+        // The contracted form, which two of the absorbed lists had and this
+        // one did not. A vocabulary that knows one spelling of a phrase and
+        // not the other is the divergence in miniature.
+        "doesn't exist",
         "file not exists",
+        // Windows' own wording, and the reason this list has to be the only
+        // one: it lived here alone while three other readers answered the same
+        // question, so a missing file on Windows was invisible to them.
         "cannot find",
     ]
     .iter()
@@ -1766,6 +1800,68 @@ mod missing_path_vocabulary_tests {
         ] {
             assert!(message_names_a_missing_path(message), "{message:?}");
         }
+    }
+
+    /// The wordings the four absorbed lists disagreed about.
+    ///
+    /// Each row was recognised by SOME reader of this question and not by
+    /// others, which is what made the answer depend on which caller asked. The
+    /// Windows row is the one that mattered in practice: `cannot find` lived in
+    /// this list alone while three other readers answered the same question, so
+    /// the operating system's own phrase for a missing file was invisible to
+    /// them.
+    #[test]
+    fn every_wording_the_separate_lists_disagreed_about() {
+        for message in [
+            // Windows, verbatim. Known only here before the merge.
+            "The system cannot find the file specified. (os error 2)",
+            "The system cannot find the path specified.",
+            // The contracted spelling. Known to the CLI delete path and the
+            // stat probe, not to this list nor to the existence probe.
+            "The remote object doesn't exist",
+            // Object stores, which say "no such X" for three different X.
+            "NoSuchKey: The specified key does not exist",
+            "no such bucket",
+            "no such object",
+        ] {
+            assert!(
+                message_names_a_missing_path(message),
+                "{message:?} is a missing path to at least one of the lists this replaced"
+            );
+        }
+    }
+
+    /// A bare `550` is not an absence, and one of the absorbed lists said it was.
+    ///
+    /// FTP spends 550 on "requested action not taken: file unavailable", which
+    /// covers a file that is not there AND a file the server refuses to give,
+    /// so the code alone cannot tell absence from refusal. The library's
+    /// existence probe matched it and turned a permission denial into "the file
+    /// is not there", which is the same defect as the digits-in-a-path case
+    /// above, one protocol over.
+    ///
+    /// Nothing is lost by dropping it. `sync.rs` pins that on FTP every 550
+    /// reaching classification is permission denied whatever the text says, and
+    /// a genuinely missing path arrives here as `ProviderError::NotFound`,
+    /// whose Display is "Path not found", matched by the words.
+    #[test]
+    fn a_bare_550_is_not_an_absence() {
+        for message in [
+            "550 Permission denied",
+            "550 Failed to change directory.",
+            "Server error: 550",
+        ] {
+            assert!(
+                !message_names_a_missing_path(message),
+                "{message:?} was read as a missing path from the status code alone"
+            );
+        }
+
+        // The refusal that also SAYS it is missing still matches, on the words.
+        assert!(message_names_a_missing_path(
+            "550 No such file or directory"
+        ));
+        assert!(message_names_a_missing_path("Path not found: /nope"));
     }
 }
 

@@ -86,23 +86,6 @@ fn backend_error(e: String) -> ToolError {
     }
 }
 
-/// True when a `RemoteBackend` error means "the path is not there", as opposed
-/// to "the lookup did not complete" (auth, connection, provider 5xx, unsupported
-/// operation). `RemoteBackend` errors are opaque `String`s, so this is a string
-/// probe; it mirrors `is_not_found_error` on the `ProviderError` side of the CLI.
-///
-/// Callers that use a failed `stat` as permission to write MUST go through this:
-/// treating every error as "absent" is fail-open, and on a transient error it
-/// hands out a write on a path that may hold user data.
-fn stat_error_is_not_found(e: &str) -> bool {
-    let msg = e.to_ascii_lowercase();
-    msg.contains("not found")
-        || msg.contains("no such")
-        || msg.contains("does not exist")
-        || msg.contains("doesn't exist")
-        || msg.contains("404")
-}
-
 /// Hard cap per pagina per `aeroftp_list_files` / `aeroftp_search_files`.
 /// Se l'agente passa un `limit` superiore, viene clampato a questo valore.
 const MAX_LIST_PAGE: usize = 5_000;
@@ -809,7 +792,7 @@ async fn preview_delete(
     let (is_dir, root_size): (bool, u64) = match backend.stat(path).await {
         Ok(r) => (r.is_dir, r.size),
         Err(e) => {
-            if recursive && stat_error_is_not_found(&e) {
+            if recursive && crate::providers::types::message_names_a_missing_path(&e) {
                 // Assume pseudo-directory for recursive preview; contents will
                 // be discovered by list below.
                 (true, 0)
@@ -2506,7 +2489,10 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                 ),
             });
         }
-        Err(e) if path_is_caller_named && !stat_error_is_not_found(&e) => {
+        Err(e)
+            if path_is_caller_named
+                && !crate::providers::types::message_names_a_missing_path(&e) =>
+        {
             return Err(ToolError::InvalidArgs {
                 tool: "aeroftp_speed".to_string(),
                 reason: format!(

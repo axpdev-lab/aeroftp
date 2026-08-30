@@ -11594,14 +11594,6 @@ fn sync_ec_message(status: SyncEcStatus, message: impl Into<String>) -> SyncEcCo
     }
 }
 
-fn remote_missing_error_text(error: &str) -> bool {
-    let lower = error.to_ascii_lowercase();
-    lower.contains("not found")
-        || lower.contains("no such file")
-        || lower.contains("does not exist")
-        || lower.contains("550")
-}
-
 async fn sync_ec_use_provider(
     provider_state: &provider_commands::ProviderState,
     is_provider: Option<bool>,
@@ -11656,14 +11648,18 @@ async fn sync_ec_download_remote_bytes(
                 .map(Some)
                 .map_err(|e| format!("read AeroSync EC temp download: {e}")),
             Err(crate::providers::ProviderError::NotFound(_)) => Ok(None),
-            Err(e) if remote_missing_error_text(&e.to_string()) => Ok(None),
+            Err(e) if crate::providers::types::message_names_a_missing_path(&e.to_string()) => {
+                Ok(None)
+            }
             Err(e) => Err(e.to_string()),
         }
     } else {
         let mut ftp_manager = state.ftp_manager.lock().await;
         match ftp_manager.download_to_bytes(remote_path).await {
             Ok(bytes) => Ok(Some(bytes)),
-            Err(e) if remote_missing_error_text(&e.to_string()) => Ok(None),
+            Err(e) if crate::providers::types::message_names_a_missing_path(&e.to_string()) => {
+                Ok(None)
+            }
             Err(e) => Err(e.to_string()),
         }
     }

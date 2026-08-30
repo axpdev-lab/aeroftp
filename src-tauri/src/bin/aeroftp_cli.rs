@@ -32438,16 +32438,21 @@ enum DryRunOutcome {
 /// Some providers (FTP, WebDAV) answer a missing path with `ServerError`
 /// instead of `NotFound`, so the message has to be sniffed too. Shared by the
 /// real delete and by `--dry-run`, which must agree on what "absent" means.
+/// The typed variant first, and the shared vocabulary for everything else.
+///
+/// The list that used to be inline here matched a bare `404`, three digits
+/// anywhere in the message. `message_names_a_missing_path` carries the record
+/// of why that is wrong and the note that the needle came FROM this file; the
+/// tightening was made there and never came back. Asking that function is what
+/// stops the two from drifting apart again.
+///
+/// The variant gate stays: only a `ServerError` or an `Other` has a message
+/// worth reading, and letting every variant's text be searched would find
+/// "not found" inside errors that are about something else entirely.
 fn is_not_found_error(e: &ProviderError) -> bool {
     matches!(e, ProviderError::NotFound(_))
-        || (matches!(e, ProviderError::ServerError(_) | ProviderError::Other(_)) && {
-            let msg = e.to_string().to_ascii_lowercase();
-            msg.contains("not found")
-                || msg.contains("no such file")
-                || msg.contains("doesn't exist")
-                || msg.contains("does not exist")
-                || msg.contains("404")
-        })
+        || (matches!(e, ProviderError::ServerError(_) | ProviderError::Other(_))
+            && ftp_client_gui_lib::providers::types::message_names_a_missing_path(&e.to_string()))
 }
 
 /// The delete scope of `rm`/`purge`, assembled from the GLOBAL filter flags:
