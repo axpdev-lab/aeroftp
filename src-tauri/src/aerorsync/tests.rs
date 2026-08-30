@@ -177,7 +177,7 @@ fn upload_remote_command_matches_product_profile() {
     let spec = RemoteCommandSpec::upload("/workspace/upload/target.bin");
     let line = spec.to_command_line();
     assert_eq!(
-        line, "rsync --server -ltprcze.iLsfxCIvu --stats . /workspace/upload/target.bin",
+        line, "rsync --server -ltprIze.iLsfxCIvu --stats . /workspace/upload/target.bin",
         "production upload command must pin the complete product policy"
     );
 }

@@ -476,10 +476,9 @@ where
     // The driver reads `STREAMING_READ_CHUNK_BYTES`-bounded slabs
     // from the file handle and emits engine literals incrementally,
     // so the upload no longer requests a `Vec<u8>` of `file_size`
-    // bytes. The resident memory bound becomes `O(read_chunk +
-    // op_vector)`; lifting the op_vector dependency on file_size
-    // requires streaming the zstd encoder + wire emission, scoped
-    // post-P3-T01 (see `send_delta_phase_streaming` docstring).
+    // bytes. #658 completes the path through codec, token framing and mux
+    // emission: each slab is written before the next read, so RSS is bounded
+    // by the read slab + codec state + one mux payload, not `file_size`.
     //
     // U-07: preserve the source mtime on the wire. Classic rsync
     // preserves mtime by default and `RsyncConfig::preserve_times`
@@ -2613,9 +2612,9 @@ mod tests {
         const XMIT_SAME_GID: u32 = 0x0010;
         const XMIT_LONG_NAME: u32 = 0x0040;
         const XMIT_SAME_TIME: u32 = 0x0080;
-        // CLAUDE-AV-B3-18: file-list digest and delta trailer use the same
-        // negotiated checksum width. The fixture's trailer therefore
-        // supplies the authoritative width instead of assuming 16.
+        // CLAUDE-AV-B3-18: the delta trailer uses the negotiated checksum
+        // width. Product sessions deliberately omit the optional file-list
+        // checksum (`-I`, not `-c`), so no digest belongs in this entry.
         let checksum_len = trailer.len();
         let entry = FileListEntry {
             flags: XMIT_LONG_NAME | XMIT_SAME_UID | XMIT_SAME_GID | XMIT_SAME_TIME,
@@ -2628,7 +2627,7 @@ mod tests {
             uid_name: None,
             gid: None,
             gid_name: None,
-            checksum: vec![0xAA; checksum_len],
+            checksum: Vec::new(),
             symlink_target: None,
             xattrs: None,
             acls: None,
@@ -2636,7 +2635,7 @@ mod tests {
         let opts = FileListDecodeOptions {
             protocol: 31,
             xfer_flags_as_varint: true,
-            always_checksum: true,
+            always_checksum: false,
             csum_len: checksum_len,
             preserve_uid: false,
             preserve_gid: false,

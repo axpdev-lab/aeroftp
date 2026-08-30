@@ -6,7 +6,7 @@
 //! byte-identical for frozen oracles and are reachable only through an
 //! explicit test-only constructor.
 //!
-//!   product upload   : `rsync --server -ltprcze.iLsfxCIvu --stats . <target>`
+//!   product upload   : `rsync --server -ltprIze.iLsfxCIvu --stats . <target>`
 //!   capture upload   : `rsync --server -logDtprcze.iLsfxCIvu --stats . /workspace/upload/target.bin`
 //!
 //! See `fixtures::UPLOAD_REMOTE_COMMAND` / `DOWNLOAD_REMOTE_COMMAND` for the
@@ -31,18 +31,23 @@ pub const OBSERVED_COMPACT_FLAGS_ACL_XATTR: &str = "-logDtpAXrcze.iLsfxCIvu";
 /// through a fake remote shell at protocol 31:
 ///
 /// ```text
-/// -ltprcz   -> -ltprcze.iLsfxCIvu
-/// -ltprczX  -> -ltpXrcze.iLsfxCIvu
-/// -ltprczA  -> -ltpArcze.iLsfxCIvu
-/// -ltprczAX -> -ltpAXrcze.iLsfxCIvu
+/// -ltprzI   -> -ltprIze.iLsfxCIvu
+/// -ltprzIX  -> -ltpXrIze.iLsfxCIvu
+/// -ltprzIA  -> -ltpArIze.iLsfxCIvu
+/// -ltprzIAX -> -ltpAXrIze.iLsfxCIvu
 /// ```
 ///
 /// `A`/`X` sit after `-ltp` and before `r`, the same slot as the historical
-/// capture after `-logDtp`. They are never a suffix.
-pub const PRODUCT_COMPACT_FLAGS: &str = "-ltprcze.iLsfxCIvu";
-pub const PRODUCT_COMPACT_FLAGS_XATTR: &str = "-ltpXrcze.iLsfxCIvu";
-pub const PRODUCT_COMPACT_FLAGS_ACL: &str = "-ltpArcze.iLsfxCIvu";
-pub const PRODUCT_COMPACT_FLAGS_ACL_XATTR: &str = "-ltpAXrcze.iLsfxCIvu";
+/// capture after `-logDtp`. They are never a suffix. Product transfers use
+/// `-I` (force transfer) instead of `-c` (pre-transfer whole-file checksum):
+/// the user already selected the file, and rsync still verifies every
+/// transferred file with the checksum produced during the delta pass. This
+/// removes a full extra read of large files without allowing the size+mtime
+/// quick-check to suppress an explicitly requested transfer.
+pub const PRODUCT_COMPACT_FLAGS: &str = "-ltprIze.iLsfxCIvu";
+pub const PRODUCT_COMPACT_FLAGS_XATTR: &str = "-ltpXrIze.iLsfxCIvu";
+pub const PRODUCT_COMPACT_FLAGS_ACL: &str = "-ltpArIze.iLsfxCIvu";
+pub const PRODUCT_COMPACT_FLAGS_ACL_XATTR: &str = "-ltpAXrIze.iLsfxCIvu";
 
 #[cfg(test)]
 const CAPTURE_FLAG_ANCHOR: &str = "-logDtp";
@@ -130,6 +135,19 @@ pub(crate) fn metadata_flags_from_args(args: &[String]) -> Option<EffectiveMetad
         preserve_acls: short_options.contains('A'),
         preserve_xattrs: short_options.contains('X'),
     })
+}
+
+/// Whether the effective stock-rsync argv requests a file-list checksum.
+///
+/// Only letters before rsync's `.` separator are short options. In
+/// particular, the `C`/`I` in `.iLsfxCIvu` are internal server flags and must
+/// not be mistaken for user-facing `-c`/`-I` options.
+pub(crate) fn always_checksum_from_args(args: &[String]) -> Option<bool> {
+    let bundle = args
+        .iter()
+        .find(|arg| arg.starts_with('-') && !arg.starts_with("--") && arg.len() > 1)?;
+    let short_options = bundle.split('.').next().unwrap_or(bundle);
+    Some(short_options.contains('c'))
 }
 
 pub const AERORSYNC_SERVER_PROGRAM: &str = "/opt/aerorsync/bin/aerorsync_serve";
@@ -454,10 +472,10 @@ mod tests {
 
     #[test]
     fn product_compact_flag_literals_are_exact() {
-        assert_eq!(PRODUCT_COMPACT_FLAGS, "-ltprcze.iLsfxCIvu");
-        assert_eq!(PRODUCT_COMPACT_FLAGS_XATTR, "-ltpXrcze.iLsfxCIvu");
-        assert_eq!(PRODUCT_COMPACT_FLAGS_ACL, "-ltpArcze.iLsfxCIvu");
-        assert_eq!(PRODUCT_COMPACT_FLAGS_ACL_XATTR, "-ltpAXrcze.iLsfxCIvu");
+        assert_eq!(PRODUCT_COMPACT_FLAGS, "-ltprIze.iLsfxCIvu");
+        assert_eq!(PRODUCT_COMPACT_FLAGS_XATTR, "-ltpXrIze.iLsfxCIvu");
+        assert_eq!(PRODUCT_COMPACT_FLAGS_ACL, "-ltpArIze.iLsfxCIvu");
+        assert_eq!(PRODUCT_COMPACT_FLAGS_ACL_XATTR, "-ltpAXrIze.iLsfxCIvu");
         let base_head = PRODUCT_COMPACT_FLAGS
             .strip_prefix(PRODUCT_FLAG_ANCHOR)
             .expect("product bundle must start with -ltp");
@@ -487,6 +505,25 @@ mod tests {
         assert_eq!(OBSERVED_COMPACT_FLAGS_XATTR, "-logDtpXrcze.iLsfxCIvu");
         assert_eq!(OBSERVED_COMPACT_FLAGS_ACL, "-logDtpArcze.iLsfxCIvu");
         assert_eq!(OBSERVED_COMPACT_FLAGS_ACL_XATTR, "-logDtpAXrcze.iLsfxCIvu");
+    }
+
+    #[test]
+    fn product_forces_transfer_without_a_pretransfer_checksum() {
+        for bundle in [
+            PRODUCT_COMPACT_FLAGS,
+            PRODUCT_COMPACT_FLAGS_XATTR,
+            PRODUCT_COMPACT_FLAGS_ACL,
+            PRODUCT_COMPACT_FLAGS_ACL_XATTR,
+        ] {
+            let args = vec!["--server".to_string(), bundle.to_string()];
+            let short_options = bundle.split('.').next().unwrap();
+            assert!(short_options.contains('I'), "{bundle}");
+            assert!(!short_options.contains('c'), "{bundle}");
+            assert_eq!(always_checksum_from_args(&args), Some(false));
+        }
+
+        let capture_args = RemoteCommandSpec::capture_upload("/target").to_args();
+        assert_eq!(always_checksum_from_args(&capture_args), Some(true));
     }
 
     // X.1: opting into xattrs must be the ONLY thing that changes the emitted
