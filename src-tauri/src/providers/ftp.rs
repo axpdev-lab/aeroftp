@@ -2481,10 +2481,33 @@ impl FtpProvider {
                 // no request identifier, so a reply queued here could in
                 // principle belong to an earlier command whose answer came late,
                 // and consuming it as ours would leave our own reply still
-                // owed. Nothing in reach distinguishes them, so it is named
-                // rather than claimed closed: a condition that looks total has
-                // been wrong four times, and each time it was total with
-                // respect to one property.
+                // owed. FTP carries no identifier, so nothing distinguishes
+                // them.
+                //
+                // AND ON A SECOND ONE, mute for a different reason: whether
+                // ANOTHER reply follows the one just read. `read_response_in`
+                // consumes exactly one, and a server that refuses and then hangs
+                // up sends `550` and then `421`, in that order, because the
+                // refusal answers the command and the goodbye comes after. Read
+                // the `550` and this arm keeps the session with the `421` still
+                // queued.
+                // It is named rather than fixed because the fix that suggests
+                // itself does not work: a second peek looks at `get_ref()`,
+                // which is the bare socket UNDER the `BufReader`, so when both
+                // replies arrive in one segment the `421` is already in the
+                // buffer and the socket shows nothing. The peek would report
+                // "aligned" in exactly the case it was added to catch, and a
+                // fixture sending the two in separate writes would make that
+                // green. Segmentation is not ours to control.
+                // The cost is bounded and that is why it is acceptable here: a
+                // queued `421` reaches the next command as a reply it did not
+                // expect, and `421` is never among any command's expected codes,
+                // so it surfaces as an error rather than as data. This is not
+                // the phantom-files class.
+                //
+                // Both are named rather than claimed closed: a condition that
+                // looks total has been wrong four times, and each time it was
+                // total with respect to one property.
                 Ok(FtpError::UnexpectedResponse(reply))
                     if (400..600).contains(&reply.status.code())
                         && reply.status != Status::NotAvailable =>
