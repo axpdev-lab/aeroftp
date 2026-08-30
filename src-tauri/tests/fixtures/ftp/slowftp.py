@@ -641,7 +641,11 @@ def main():
     p.add_argument("--feat", choices=["nomlsd", "mlsd", "mlsd-hang"], default="nomlsd")
     p.add_argument("--list-delay", type=float, default=0.0, help="seconds between listing rows")
     p.add_argument("--lines", type=int, default=5)
-    p.add_argument("--hang", type=float, default=90.0, help="seconds MLSD stays silent in mlsd-hang")
+    p.add_argument("--hang", type=float, default=420.0,
+                   help="seconds MLSD stays silent in the mlsd-hang position. Defaults LONG "
+                        "(420) so it outlasts a listing deadline under test: at the old 90 "
+                        "the fixture gave up first, so a test believing it measured a 300s "
+                        "listing budget measured this number instead, and passed")
     p.add_argument("--list-total", type=float, default=0.0,
                    help="spread the listing over this many seconds total, to sit just "
                         "under or just over a client deadline")
@@ -686,9 +690,12 @@ def main():
                    help="CASE B: bytes per second the server reads from the data channel "
                         "(0 = as fast as possible). Needed on loopback, where otherwise the "
                         "client finishes writing before the refusal can matter")
-    p.add_argument("--stor-stop-hold", type=float, default=30.0,
+    p.add_argument("--stor-stop-hold", type=float, default=120.0,
                    help="CASE B only: seconds the STOPPED socket is held open after the "
-                        "server stops reading a refused STOR")
+                        "server stops reading a refused STOR. Defaults LONG (120) for the "
+                        "same reason as --pending-hold: at the old 30 it was the same number "
+                        "as the idle deadline it races, and the winner was decided by "
+                        "milliseconds with the test passing either way")
     p.add_argument("--pending-hold", type=float, default=120.0,
                    help="seconds a LIST, RETR or STOR is held pending when tls-silent "
                         "leaves no usable data channel. Separate from --stor-stop-hold on "

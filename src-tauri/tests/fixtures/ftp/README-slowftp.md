@@ -460,7 +460,33 @@ is a false green on a test you believe is measuring a hang.
 Verified independent: `--pending-hold 6 --stor-stop-hold 60` holds each hang 6s,
 and `--stor-stop-hold 6 --pending-hold 60` lingers 6s on the stopped socket.
 
-### The default is long on purpose
+### No default may win a race against the thing under test
+
+Every timing default here either is `0`, meaning the behaviour is off and cannot
+race anything, or is long enough to lose on purpose. That is not decoration: a
+default does not appear on a command line, so when a default decides an outcome,
+the number that decided it is absent from the file someone reads to understand
+the test.
+
+Audited against the deadlines they run beside:
+
+| option | was | now | races |
+|---|---|---|---|
+| `--pending-hold` | 30 | 120 | `OPEN_BUDGET` = 30, the same number |
+| `--stor-stop-hold` | 30 | 120 | `DATA_IDLE_AFTER_CONTROL_SPOKE` = 30, the same number |
+| `--hang` | 90 | 420 | `LIST_BUDGET` = 300, which the old default never reached |
+
+The last one is the one worth staring at, because it lost the race by
+**surrendering** rather than by resisting. At 90 the fixture gave up first and a
+300 second listing budget was never reached, so a test believing it measured
+that budget measured this number instead, and passed. A default can decide an
+outcome by being too short just as easily as by being too long.
+
+The options that default to `0` are safe for a different reason worth stating:
+off cannot race. When a new timing knob is added here, defaulting it off is the
+cheapest way to keep this property.
+
+### The pending hold is long on purpose
 
 `--pending-hold` defaults to **120 seconds**, which is far longer than any
 deadline likely to be under test. That is the point. If the hold and the
