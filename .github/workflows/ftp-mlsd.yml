@@ -1,0 +1,160 @@
+# The listing tests that need a server speaking MLSD and MLST.
+#
+# They exist as a workflow rather than as instructions in a README because the
+# tests are `#[ignore]`, and an ignored test that no job runs is a defence that
+# is present and never fires. The branch they cover is the one most FTP servers
+# take, and a defect lived on it unnoticed precisely because nothing exercised
+# it. Running them by hand would leave that true.
+#
+# The docker fixture follows the shape delta-sync-integration.yml already uses.
+
+name: FTP MLSD listing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/providers/ftp.rs'
+      - 'src-tauri/src/providers/ftp_listing.rs'
+      - 'src-tauri/src/providers/types.rs'
+      - 'src-tauri/tests/integration_ftp_mlsd.rs'
+      - 'src-tauri/tests/fixtures/ftp-mlsd/**'
+      - '.github/workflows/ftp-mlsd.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/providers/ftp.rs'
+      - 'src-tauri/src/providers/ftp_listing.rs'
+      - 'src-tauri/src/providers/types.rs'
+      - 'src-tauri/tests/integration_ftp_mlsd.rs'
+      - 'src-tauri/tests/fixtures/ftp-mlsd/**'
+      - '.github/workflows/ftp-mlsd.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mlsd:
+    runs-on: ubuntu-latest
+    # Without a job cap, a slow apt mirror plus a cold Tauri build can sit until
+    # the platform limit. delta-sync-integration.yml caps at 110 for the same
+    # shape of work.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # The three packages are the right ones and were not the whole answer.
+      # delta-sync-integration.yml caches these archives because that download
+      # IS the observed failure mode of these lanes, with the measurements in
+      # its own comment: 61.5 MB of .deb, an Azure mirror serving one runner at
+      # roughly 45 kB/s, `libwebkit2gtk-4.1-0` alone taking 12m02s, and the step
+      # still fetching at 23m02s when the job cap killed it. `apt-get update` is
+      # not the cost. Installing the same list without the cache inherits that
+      # failure whole, so the cache travels with the list.
+      - name: apt archive cache key
+        id: apt-archive-key
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache apt archives
+        timeout-minutes: 10
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/apt-archives
+          key: apt-ftp-mlsd-${{ runner.os }}-${{ steps.apt-archive-key.outputs.week }}
+          restore-keys: |
+            apt-ftp-mlsd-${{ runner.os }}-
+
+      # The test target links the Tauri crate, so the GTK/WebKit stack has to be
+      # present or the glib-sys build script fails before a single test runs.
+      # Bounded and retried for the same reason as the sibling lane: a slow
+      # mirror should fail THIS step, with its name in the log, rather than
+      # cancel the job and leave every test reported as skipped.
+      - name: Install system dependencies
+        timeout-minutes: 12
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 2
+          retry_wait_seconds: 15
+          command: |
+            set -euo pipefail
+            # An attempt killed mid-unpack leaves dpkg half-configured, and the
+            # next apt-get would refuse to run until it is told to finish.
+            sudo dpkg --configure -a || true
+            mkdir -p "$HOME/apt-archives/partial"
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              -o Dir::Cache::archives="$HOME/apt-archives/" \
+              -o APT::Keep-Downloaded-Packages=true \
+              libwebkit2gtk-4.1-dev \
+              libappindicator3-dev \
+              librsvg2-dev
+            # apt ran as root; hand the archives back so the cache save (which
+            # runs as the runner user) can read them.
+            sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
+
+      # It pulls a base image from Docker Hub, which this repo has seen time
+      # out before (see aerorsync-protocol.yml).
+      - name: Build and start the MLSD fixture
+        timeout-minutes: 10
+        working-directory: src-tauri/tests/fixtures/ftp-mlsd
+        run: docker compose up -d --build
+
+      # A control connection that answers is the only readiness signal that
+      # means anything here: the container being up says the process started,
+      # not that it is serving.
+      # `/dev/tcp` is a bash builtin, so this needs no package. The sibling
+      # lane that waits for a service installs `netcat-openbsd` first, which
+      # says plainly that `nc` cannot be assumed on this runner; removing the
+      # dependency is better than adding the install.
+      # Three minutes, not two, and the arithmetic is the reason. The loop runs
+      # 30 iterations, and its worst case is one where the port is OPEN and
+      # silent: `read -t 3` waits its full three seconds and the `sleep 1`
+      # follows, so 30 x 4s is 120s, which is exactly what two minutes allows.
+      # The cap and the loop would finish together, and if the cap won the step
+      # would die MUTE, without the line written to say what happened. That
+      # worst case is not hypothetical: it is precisely the state the stalling
+      # fixture creates.
+      - name: Wait for the fixture to answer
+        timeout-minutes: 3
+        run: |
+          for i in $(seq 1 30); do
+            if exec 3<>/dev/tcp/127.0.0.1/2199 2>/dev/null \
+               && read -r -t 3 -u 3 banner \
+               && [[ "$banner" == 220* ]]; then
+              echo "fixture answering after ${i}s: $banner"
+              exec 3<&- 3>&-
+              exit 0
+            fi
+            exec 3<&- 3>&- 2>/dev/null || true
+            sleep 1
+          done
+          echo "the fixture never answered on 2199"
+          exit 1
+
+      # 15 minutes is a warm-cache figure. The first run on a branch compiles
+      # the Tauri crate from nothing, and a cap that bites once and never again
+      # reads as an infrastructure problem rather than as a wrong number.
+      - name: Listing tests against an MLSD server
+        timeout-minutes: 40
+        working-directory: src-tauri
+        run: cargo test --test integration_ftp_mlsd -- --ignored --nocapture
+
+      - name: Dump fixture logs on failure
+        if: failure()
+        working-directory: src-tauri/tests/fixtures/ftp-mlsd
+        run: |
+          docker logs aeroftp-ftp-mlsd-fixture || true
+          docker compose ps
+
+      - name: Teardown
+        if: always()
+        working-directory: src-tauri/tests/fixtures/ftp-mlsd
+        run: docker compose down -v
