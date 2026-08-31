@@ -18889,12 +18889,20 @@ pub fn run() {
             // preserve every localStorage/IndexedDB value (theme, local tabs,
             // recent paths, etc.), which are origin-scoped in WebKit.
             //
-            // Tauri is pinned to 2.11.0 in Cargo.toml because 2.11.1's fix
-            // for GHSA-7gmj-67g7-phm9 introduced an `is_local_url()` check
-            // that classifies `http://127.0.0.1:*` as remote and rejects all
-            // custom commands without a full app ACL manifest. AeroFTP does
-            // not load remote/untrusted content, so the CVE vector does not
-            // apply to our surface.
+            // Tauri is pinned to 2.11.0 in Cargo.toml, and the reason is not
+            // the one stated here before: 2.11.1 did not introduce a check
+            // that classifies `http://127.0.0.1:*` as remote. Comparing the
+            // two crate sources, the only edit to `is_local_url()` is inside
+            // the Windows/Android cfg, and neither version ever compares the
+            // host to 127.0.0.1. `is_local_url()` already returned false for
+            // this origin under 2.11.0, because `get_app_url()` yields
+            // `tauri://localhost` when `frontendDist` is a directory; what
+            // 2.11.1 changed is that the IPC gate now enforces that answer on
+            // app commands (`|| !is_local`). AeroFTP does not load
+            // remote/untrusted content, so the CVE vector does not apply to
+            // our surface. The full derivation, including why the obvious
+            // remedy erases the assets this very server exists to serve, is
+            // inline on the `tauri` pin in Cargo.toml.
             //
             // Window is hidden until the frontend signals `app_ready` so the
             // splash can stay visible during initial load.
