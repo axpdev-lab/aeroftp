@@ -1,0 +1,54 @@
+name: DCO
+
+# Verifies that every commit in a pull request carries a Developer Certificate
+# of Origin sign-off (see the DCO file at the repository root).
+#
+# Deliberately self-contained: this is a supply-chain sensitive check, so it
+# uses no third-party action beyond the official checkout.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check-sign-off:
+    name: Check sign-off
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Every commit must be signed off
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          missing=0
+          # Merge commits are exempt: their content is signed off on the branch.
+          for sha in $(git rev-list --no-merges "$BASE".."$HEAD"); do
+            author_name=$(git show -s --format='%an' "$sha")
+            author_mail=$(git show -s --format='%ae' "$sha")
+            expected="Signed-off-by: ${author_name} <${author_mail}>"
+            if git show -s --format='%B' "$sha" | grep -qiF "$expected"; then
+              continue
+            fi
+            echo "::error::commit $sha is missing '$expected'"
+            git show -s --format='  %h %s' "$sha"
+            missing=1
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo ""
+            echo "Add the sign-off by amending or rebasing with -s, for example:"
+            echo "  git commit --amend -s --no-edit"
+            echo "  git rebase --signoff $BASE"
+            echo ""
+            echo "The sign-off must match the commit author exactly. It certifies"
+            echo "the Developer Certificate of Origin, see the DCO file in the repo root."
+            exit 1
+          fi
+          echo "All commits are signed off."
