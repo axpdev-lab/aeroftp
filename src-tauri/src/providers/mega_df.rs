@@ -299,7 +299,7 @@ pub(crate) fn classify_mega_webdav_result(
         return Ok(());
     }
     let lower = combined.to_ascii_lowercase();
-    if lower.contains("already") || lower.contains("serving") || lower.contains("served") {
+    if lower.contains("already being served at") && parse_mega_webdav_url(combined).is_some() {
         return Ok(());
     }
     if lower.contains("not logged in")
@@ -602,6 +602,18 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
             "/: already being served at http://127.0.0.1:4443/"
         )
         .is_ok());
+    }
+
+    #[test]
+    fn mega_webdav_failure_with_incidental_already_is_not_success() {
+        let result = classify_mega_webdav_result(
+            false,
+            "Failed to initialize WebDAV: port 4443 is already allocated",
+        );
+        assert!(
+            matches!(result, Err(ProviderError::ServerError(_))),
+            "one incidental word must not erase one failed command"
+        );
     }
 
     #[test]

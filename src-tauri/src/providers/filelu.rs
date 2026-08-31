@@ -528,7 +528,6 @@ impl FileLuProvider {
             || lower.contains("http 503")
             || lower.contains("http 504")
             || lower.starts_with("api error 5")
-            || lower.contains(" 500")
             || lower.contains("internal server error")
             || lower.contains("bad gateway")
             || lower.contains("service unavailable")
@@ -2261,6 +2260,18 @@ mod tests {
         assert!(FileLuProvider::is_filelu_transient_5xx(
             &ProviderError::ServerError("API error 503".into())
         ));
+    }
+
+    #[test]
+    fn test_is_filelu_transient_5xx_rejects_numbers_that_only_start_with_500() {
+        for message in ["Upload contains 5000 chunks", "Remaining quota: 500 MB"] {
+            assert!(
+                !FileLuProvider::is_filelu_transient_5xx(&ProviderError::ServerError(
+                    message.into()
+                )),
+                "one quoted quantity is not one HTTP 500 response: {message}"
+            );
+        }
     }
 
     #[test]
