@@ -276,7 +276,11 @@ pub(crate) fn cmd_archive(command: &ArchiveCommands, cli: &Cli, format: OutputFo
 /// which exit code it maps to, which is the ambiguity being removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ArchiveFailure {
-    /// Something the caller named is not there.
+    /// Something the caller named is not there. Only ever built from an
+    /// `ErrorKind::NotFound`, which is the only way this lane learns it: there
+    /// is deliberately no hand-written constructor, because a caller that
+    /// decided "this is a not-found" from context rather than from the kind
+    /// would be the substring match coming back wearing a type.
     NotFound,
     /// A destination exists and this lane will not write over it.
     RefuseOverwrite,
@@ -306,13 +310,6 @@ impl ArchiveError {
     pub(crate) fn other(message: impl Into<String>) -> Self {
         Self {
             failure: ArchiveFailure::Other,
-            message: message.into(),
-        }
-    }
-
-    pub(crate) fn not_found(message: impl Into<String>) -> Self {
-        Self {
-            failure: ArchiveFailure::NotFound,
             message: message.into(),
         }
     }
