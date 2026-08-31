@@ -904,7 +904,7 @@ impl ProviderDownloadExecutor {
                 }
                 Err(error) => {
                     last_error = error;
-                    if self.cancel_token.is_cancelled() {
+                    if attempt_is_over(self.cancel_token.is_cancelled(), &last_error) {
                         break;
                     }
                     let err_info =
@@ -1336,7 +1336,7 @@ impl ProviderUploadExecutor {
                 }
                 Err(error) => {
                     last_error = error;
-                    if self.cancel_token.is_cancelled() {
+                    if attempt_is_over(self.cancel_token.is_cancelled(), &last_error) {
                         break;
                     }
                     let err_info =
@@ -1859,8 +1859,45 @@ async fn transfer_entry_upload_size(entry: &TransferEntry) -> u64 {
     }
 }
 
+/// Is this attempt over, whoever stopped it?
+///
+/// Split out because it is the only part that decides anything, and inside the
+/// loop it cannot be reached without a provider, a runtime and a live socket. A
+/// branch that changes behaviour and cannot be reached by a test is where a
+/// regression hides.
+///
+/// It answers ONE question with both available sources. The loop used to
+/// consult only the local flag while the failure built at the end consulted the
+/// message too, so a cancellation the PROVIDER reported was retried to the
+/// policy limit and only then labelled cancelled: two readers of the same
+/// question, disagreeing, with the wasteful answer running first.
+fn attempt_is_over(locally_cancelled: bool, last_error: &str) -> bool {
+    locally_cancelled || crate::transfer_dag::error::message_names_a_cancellation(last_error)
+}
+
 #[cfg(test)]
 mod tests {
+
+    /// A cancellation the provider reported ends the attempt, like our own flag.
+    ///
+    /// Before, only the local flag was consulted here while the failure built
+    /// at the end consulted the message as well, so a provider cancellation was
+    /// retried to the policy limit and only then labelled cancelled. The retry
+    /// was wasted work against an operation nobody wanted finished.
+    #[test]
+    fn a_cancellation_ends_the_attempt_whichever_side_reported_it() {
+        assert!(super::attempt_is_over(true, "connection reset by peer"));
+        assert!(super::attempt_is_over(false, "request cancelled"));
+        assert!(super::attempt_is_over(false, "Transfer cancelled by user"));
+
+        // An ordinary failure still gets its retries.
+        assert!(!super::attempt_is_over(false, "connection reset by peer"));
+        // And a NEGATED cancellation is an ordinary failure, so it keeps them.
+        assert!(!super::attempt_is_over(
+            false,
+            "the transfer could not be cancelled"
+        ));
+    }
     /// The memory a segmented download plans to hold does not grow with the
     /// file.
     ///

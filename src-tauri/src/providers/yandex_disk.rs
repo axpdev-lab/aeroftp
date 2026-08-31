@@ -294,12 +294,31 @@ fn resource_to_entry(res: &YdResource) -> RemoteEntry {
     }
 }
 
+/// The user-facing sentence for an auth failure, which is NOT the same question
+/// as whether the failure is terminal.
+///
+/// Both were answered by one predicate, so every terminal condition came out as
+/// "token revoked or expired: regenerate the OAuth token". A SCOPE problem is
+/// terminal, correctly, and it is not a dead token: telling its owner to
+/// regenerate a token that is perfectly valid sends them to repair the one
+/// thing that is not broken, and the real cause, a missing permission on the
+/// application, is not mentioned at all.
+///
+/// The retry decision is unchanged and still asks
+/// [`is_yandex_terminal_auth_message`]. Only the sentence splits.
 fn yandex_auth_message(description: &str) -> String {
     let clean = if description.trim().is_empty() {
         "Unauthorized"
     } else {
         description.trim()
     };
+    let lower = clean.to_ascii_lowercase();
+    if lower.contains("scope") {
+        return format!(
+            "Yandex refused the token's permissions: {}. The token itself is valid; the application is missing a scope, so re-authorise it with Disk access rather than regenerating the token.",
+            clean
+        );
+    }
     if is_yandex_terminal_auth_message(clean) {
         format!(
             "Yandex token revoked or expired: {}. Regenerate the OAuth token at oauth.yandex.com and re-add the server.",
@@ -1912,6 +1931,36 @@ impl StorageProvider for YandexDiskProvider {
 
 #[cfg(test)]
 mod tests {
+
+    /// A scope problem is terminal, and it is not a dead token.
+    ///
+    /// One predicate answered both "should this be retried" and "what do we
+    /// tell the user", so every terminal condition came out as "token revoked
+    /// or expired: regenerate the OAuth token". Sending the owner of a valid
+    /// token to regenerate it is repairing the one thing that works, while the
+    /// real cause, a permission the application was never granted, is not
+    /// mentioned.
+    #[test]
+    fn a_scope_refusal_does_not_tell_the_user_to_regenerate_the_token() {
+        let msg = super::yandex_auth_message("invalid OAuth scope");
+        assert!(
+            !msg.contains("Regenerate the OAuth token"),
+            "a scope problem sent the user to regenerate a valid token: {msg}"
+        );
+        assert!(msg.contains("scope"), "the real cause is not named: {msg}");
+
+        // The dead-token sentence is unchanged for a dead token.
+        let dead = super::yandex_auth_message("token has been revoked");
+        assert!(dead.contains("Regenerate the OAuth token"), "{dead}");
+
+        // And the RETRY decision is untouched: both are still terminal.
+        assert!(super::is_yandex_terminal_auth_message(
+            "invalid OAuth scope"
+        ));
+        assert!(super::is_yandex_terminal_auth_message(
+            "token has been revoked"
+        ));
+    }
     use super::*;
 
     #[test]

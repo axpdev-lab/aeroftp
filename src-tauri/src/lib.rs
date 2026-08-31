@@ -11648,7 +11648,12 @@ async fn sync_ec_download_remote_bytes(
                 .map(Some)
                 .map_err(|e| format!("read AeroSync EC temp download: {e}")),
             Err(crate::providers::ProviderError::NotFound(_)) => Ok(None),
-            Err(e) if crate::providers::types::message_names_a_missing_path(&e.to_string()) => {
+            Err(e)
+                if crate::providers::types::message_names_a_missing_path_for(
+                    &e.to_string(),
+                    remote_path,
+                ) =>
+            {
                 Ok(None)
             }
             Err(e) => Err(e.to_string()),
@@ -11657,7 +11662,12 @@ async fn sync_ec_download_remote_bytes(
         let mut ftp_manager = state.ftp_manager.lock().await;
         match ftp_manager.download_to_bytes(remote_path).await {
             Ok(bytes) => Ok(Some(bytes)),
-            Err(e) if crate::providers::types::message_names_a_missing_path(&e.to_string()) => {
+            Err(e)
+                if crate::providers::types::message_names_a_missing_path_for(
+                    &e.to_string(),
+                    remote_path,
+                ) =>
+            {
                 Ok(None)
             }
             Err(e) => Err(e.to_string()),

@@ -1700,13 +1700,55 @@ impl RemoteEntry {
 /// absence. Callers that treat a failed lookup as permission to WRITE must go
 /// through here, because reading every error as "absent" is fail-open, and on a
 /// transient error it hands out a write on a path that may hold user data.
+/// The same question, asked after removing the caller's own path from the text.
+///
+/// EVERY needle in the list below is a legal path component, and a server reply
+/// carries the reason and the path in one string, so matching over the whole of
+/// it cannot tell which half spoke. `404.html` is the case already recorded
+/// below; `/no such/keep.txt` and `/not found/report.pdf` are the same defect
+/// with a different needle, and a directory called `not found` is not exotic on
+/// a machine where somebody was looking for something.
+///
+/// Callers that know which path they asked about should use this rather than
+/// the bare function. The FTP provider has stripped the path since the needle
+/// was tightened for `404`; the others did not, and the tightening did not
+/// reach them, which is the same failure to travel that this whole function
+/// exists to record.
+pub fn message_names_a_missing_path_for(message: &str, echoed_path: &str) -> bool {
+    message_names_a_missing_path(&reason_without_the_echoed_path(message, echoed_path))
+}
+
+/// Remove the caller's path from a server reply so only the reason is matched.
+///
+/// A one-character path carries no information and removing it damages the text
+/// instead: stripping "/" from a reply would take every separator out of it.
+///
+/// No test covers that guard and the omission is deliberate rather than an
+/// oversight. None of the current needles contains a separator, so today the
+/// mangling changes no verdict and a test would pass with the guard deleted. It
+/// is here against the needle somebody adds later, and it is said out loud so
+/// nobody reads it as a checked rule.
+pub fn reason_without_the_echoed_path(reply: &str, path: &str) -> String {
+    if path.len() < 2 {
+        return reply.to_string();
+    }
+    reply.replace(path, " ")
+}
+
 pub fn message_names_a_missing_path(message: &str) -> bool {
     let lowered = message.to_ascii_lowercase();
     if [
-        // "no such" rather than the two longer forms it replaces: it also
-        // covers "no such object", "no such bucket" and "no such key", which
-        // are how object stores phrase the same fact.
-        "no such",
+        // The specific forms rather than a bare "no such". The bare version was
+        // wider by one word and that word was the whole safety margin: a server
+        // reply quotes the user's path back, so "550 /no such/keep.txt:
+        // Permission denied" matched on the PATH and a refusal was read as an
+        // absence. The object-store phrasings are named individually instead,
+        // which is what the bare form was reaching for.
+        "no such file",
+        "no such directory",
+        "no such object",
+        "no such bucket",
+        "no such key",
         "not found",
         "does not exist",
         // The contracted form, which two of the absorbed lists had and this
@@ -1751,7 +1793,10 @@ pub fn message_names_a_missing_path(message: &str) -> bool {
 
 #[cfg(test)]
 mod missing_path_vocabulary_tests {
-    use super::message_names_a_missing_path;
+    use super::{
+        message_names_a_missing_path, message_names_a_missing_path_for,
+        reason_without_the_echoed_path,
+    };
 
     /// A path that merely contains "404" is not a missing path.
     ///
@@ -1829,6 +1874,74 @@ mod missing_path_vocabulary_tests {
                 "{message:?} is a missing path to at least one of the lists this replaced"
             );
         }
+    }
+
+    /// The needle matched on the PATH, not on the reason.
+    ///
+    /// Every needle in this vocabulary is a legal path component, and a server
+    /// reply carries the reason and the path in one string. `404.html` was the
+    /// case that tightened the digits; these are the same defect with the word
+    /// needles, and the one that matters is the `speed` tool's overwrite guard:
+    /// it treats "the path is not there" as permission to write and then
+    /// delete, so a refusal read as an absence destroys a real file.
+    #[test]
+    fn a_needle_inside_the_users_own_path_is_not_a_reason() {
+        // Bare matching cannot tell which half of the reply spoke, so this is
+        // recorded as the limit of the unscoped function rather than as a pass.
+        assert!(message_names_a_missing_path(
+            "550 /no such file/keep.txt: Permission denied"
+        ));
+
+        // But the needles stay as narrow as the vocabulary allows, because the
+        // callers that cannot pass a path depend on that margin. A bare "no
+        // such" would match every one of these, and each is a plausible
+        // directory on a machine where somebody was looking for something.
+        for message in [
+            "550 /no such/keep.txt: Permission denied",
+            "550 /no such thing/report.pdf: Permission denied",
+            "550 /archive/no such/a.bin: Permission denied",
+        ] {
+            assert!(
+                !message_names_a_missing_path(message),
+                "{message:?} matched on a path fragment: the needle is wider than the vocabulary"
+            );
+        }
+
+        // Given the path the caller asked about, the reason is read alone.
+        for (reply, path) in [
+            (
+                "550 /no such file/keep.txt: Permission denied",
+                "/no such file/keep.txt",
+            ),
+            (
+                "550 /not found/report.pdf: Permission denied",
+                "/not found/report.pdf",
+            ),
+            (
+                "550 /does not exist/a.bin: Permission denied",
+                "/does not exist/a.bin",
+            ),
+        ] {
+            assert!(
+                !message_names_a_missing_path_for(reply, path),
+                "{reply:?} was read as an absence because the PATH carried the needle"
+            );
+        }
+
+        // And a genuine absence still reads as one once the path is removed.
+        assert!(message_names_a_missing_path_for(
+            "550 /srv/data/keep.txt: No such file or directory",
+            "/srv/data/keep.txt"
+        ));
+    }
+
+    /// A one-character path is left alone, or stripping it would gut the reply.
+    #[test]
+    fn a_single_character_path_is_not_stripped() {
+        assert_eq!(
+            reason_without_the_echoed_path("550 /: Permission denied", "/"),
+            "550 /: Permission denied"
+        );
     }
 
     /// A bare `550` is not an absence, and one of the absorbed lists said it was.
