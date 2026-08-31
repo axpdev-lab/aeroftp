@@ -2123,12 +2123,6 @@ mod tests {
         assert!(text.contains("`user_info`"), "{text}");
     }
 
-    /// The scope names arrive in the response body, so the branch that prints
-    /// them has to clean them exactly as the branch it replaced cleaned the
-    /// body. Verified against the two things `sanitize_api_error` is for: a
-    /// value carrying something secret-shaped, and an array long enough to
-    /// produce an unbounded message.
-    #[test]
     /// A name that is empty or only spaces is not a name. Without the trim and
     /// the filter it survives `filter_map`, `scopes.is_empty()` stays false, and
     /// the message names a scope that is not there instead of falling back to
@@ -2154,6 +2148,12 @@ mod tests {
         );
     }
 
+    /// The scope names arrive in the response body, so the branch that prints
+    /// them has to clean them exactly as the branch it replaced cleaned the
+    /// body. Verified against the two things `sanitize_api_error` is for: a
+    /// value carrying something secret-shaped, and an array long enough to
+    /// produce an unbounded message.
+    #[test]
     fn scope_names_from_the_body_are_cleaned_and_bounded() {
         // 20 characters or more after the prefix: the sanitiser's patterns have a
         // deliberate length floor so ordinary words are not redacted, and a
