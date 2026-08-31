@@ -168,7 +168,7 @@ pub(crate) fn cmd_archive(command: &ArchiveCommands, cli: &Cli, format: OutputFo
             password,
         } => {
             if let Err(e) = reject_password(password) {
-                return fail(format, &e, 5);
+                return fail(format, e.message(), 5);
             }
             create_archive(output, paths, profile, recovery_level).map(ArchiveCommandResult::Create)
         }
@@ -178,13 +178,13 @@ pub(crate) fn cmd_archive(command: &ArchiveCommands, cli: &Cli, format: OutputFo
             password,
         } => {
             if let Err(e) = reject_password(password) {
-                return fail(format, &e, 5);
+                return fail(format, e.message(), 5);
             }
             extract_archive(archive, outdir).map(ArchiveCommandResult::Extract)
         }
         ArchiveCommands::List { archive, password } => {
             if let Err(e) = reject_password(password) {
-                return fail(format, &e, 5);
+                return fail(format, e.message(), 5);
             }
             list_archive(archive).map(ArchiveCommandResult::List)
         }
@@ -263,23 +263,110 @@ pub(crate) fn cmd_archive(command: &ArchiveCommands, cli: &Cli, format: OutputFo
             }
             0
         }
-        Err(e) => fail(format, &e, archive_exit_code(&e)),
+        Err(e) => fail(format, e.message(), archive_exit_code(&e)),
     }
 }
 
-/// Map an archive-lane error string to the CLI's structured exit-code contract
-/// (see `docs/CLI-GUIDE.md`): not-found -> 2, already-exists / refuse-overwrite
-/// -> 9, everything else -> 1. The lane surfaces `String` errors rather than a
-/// typed `ProviderError`, so this matches on the stable message fragments the
-/// lane itself emits (`No such file or directory`, `Refusing to overwrite`).
-fn archive_exit_code(msg: &str) -> i32 {
-    let m = msg.to_ascii_lowercase();
-    if m.contains("no such file") || m.contains("not readable") || m.contains("not found") {
-        2
-    } else if m.contains("refusing to overwrite") || m.contains("already exists") {
-        9
-    } else {
-        1
+/// What the archive lane failed at, expressed in the terms of the CLI's
+/// exit-code contract and in no finer terms than that.
+///
+/// The contract (`docs/CLI-GUIDE.md`) has three outcomes here, so this has three
+/// variants. It is deliberately not a catalogue of everything that can go wrong:
+/// a richer type would invite the next person to add a variant without deciding
+/// which exit code it maps to, which is the ambiguity being removed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ArchiveFailure {
+    /// Something the caller named is not there.
+    NotFound,
+    /// A destination exists and this lane will not write over it.
+    RefuseOverwrite,
+    /// Anything else.
+    Other,
+}
+
+/// An archive-lane failure that carries its own classification.
+///
+/// The lane used to return `String` and the exit code was recovered by matching
+/// message fragments. That made the exit code, which scripts branch on, depend
+/// on prose nobody had promised to keep stable: rewording an error silently
+/// changed a contract, and no test could catch it because the test would have
+/// used the same fragments as the code.
+///
+/// The classification now travels WITH the error, decided where the failure
+/// happens and by the code that knows what happened. Rewording a message is now
+/// free; changing the contract requires changing a variant, which the compiler
+/// makes visible at the mapping.
+#[derive(Debug)]
+pub(crate) struct ArchiveError {
+    failure: ArchiveFailure,
+    message: String,
+}
+
+impl ArchiveError {
+    pub(crate) fn other(message: impl Into<String>) -> Self {
+        Self {
+            failure: ArchiveFailure::Other,
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            failure: ArchiveFailure::NotFound,
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn refuse_overwrite(message: impl Into<String>) -> Self {
+        Self {
+            failure: ArchiveFailure::RefuseOverwrite,
+            message: message.into(),
+        }
+    }
+
+    /// Wrap an I/O failure, taking the classification from the ERROR KIND rather
+    /// than from how the operating system happened to word it. This is the one
+    /// place the old substring match was actually doing something: "No such file
+    /// or directory" is `ErrorKind::NotFound` rendered in English on one
+    /// platform, and reading the kind says the same thing in every locale and on
+    /// every target.
+    pub(crate) fn io(context: &str, err: std::io::Error) -> Self {
+        let failure = match err.kind() {
+            std::io::ErrorKind::NotFound => ArchiveFailure::NotFound,
+            std::io::ErrorKind::AlreadyExists => ArchiveFailure::RefuseOverwrite,
+            _ => ArchiveFailure::Other,
+        };
+        Self {
+            failure,
+            message: format!("{context}: {err}"),
+        }
+    }
+
+    pub(crate) fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Display for ArchiveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl From<String> for ArchiveError {
+    fn from(message: String) -> Self {
+        Self::other(message)
+    }
+}
+
+/// Map an archive-lane failure to the CLI's structured exit-code contract
+/// (`docs/CLI-GUIDE.md`). Total over the enum, so a variant added later cannot
+/// reach here without someone choosing its code.
+fn archive_exit_code(err: &ArchiveError) -> i32 {
+    match err.failure {
+        ArchiveFailure::NotFound => 2,
+        ArchiveFailure::RefuseOverwrite => 9,
+        ArchiveFailure::Other => 1,
     }
 }
 
@@ -336,19 +423,20 @@ fn create_archive(
     paths: &[String],
     profile: &str,
     recovery_level: &str,
-) -> Result<AerovzCreateReport, String> {
+) -> Result<AerovzCreateReport, ArchiveError> {
     let recovery_pct = parse_recovery_level(recovery_level)?;
     let out_string = resolve_local_path(output);
     ensure_aerozip_path(&out_string)?;
     let out_path = PathBuf::from(&out_string);
     if out_path.exists() {
-        return Err(format!(
+        return Err(ArchiveError::refuse_overwrite(format!(
             "Refusing to overwrite existing .aerozip archive: {}",
             out_path.display()
-        ));
+        )));
     }
     if let Some(parent) = out_path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent).map_err(|e| format!("Create output directory: {e}"))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| ArchiveError::io("Create output directory", e))?;
     }
 
     let sources = resolve_archive_sources(paths)?;
@@ -400,7 +488,7 @@ fn create_archive_inner(
     sources: &[ArchiveSource],
     profile: &str,
     recovery_pct: u32,
-) -> Result<(), String> {
+) -> Result<(), ArchiveError> {
     let opts = apply_archive_profile(
         aerovault::v3::CreateOptionsV3::new_plaintext(out_path.to_path_buf()),
         profile,
@@ -433,12 +521,13 @@ fn create_archive_inner(
     Ok(())
 }
 
-fn extract_archive(archive: &str, outdir: &str) -> Result<AerovzExtractReport, String> {
+fn extract_archive(archive: &str, outdir: &str) -> Result<AerovzExtractReport, ArchiveError> {
     let archive_string = resolve_local_path(archive);
     let archive_path = PathBuf::from(&archive_string);
     let outdir_string = resolve_local_path(outdir);
     let outdir_path = PathBuf::from(&outdir_string);
-    std::fs::create_dir_all(&outdir_path).map_err(|e| format!("Create output directory: {e}"))?;
+    std::fs::create_dir_all(&outdir_path)
+        .map_err(|e| ArchiveError::io("Create output directory", e))?;
 
     let mut vault = open_plaintext_archive(&archive_path)?;
     let damaged_chunks = aerovault::v3::VaultV3::scrub(&vault).len();
@@ -485,7 +574,7 @@ fn extract_archive(archive: &str, outdir: &str) -> Result<AerovzExtractReport, S
     })
 }
 
-fn list_archive(archive: &str) -> Result<AerovzListReport, String> {
+fn list_archive(archive: &str) -> Result<AerovzListReport, ArchiveError> {
     let archive_string = resolve_local_path(archive);
     let archive_path = PathBuf::from(&archive_string);
     let vault = open_plaintext_archive(&archive_path)?;
@@ -534,17 +623,25 @@ struct ArchiveSource {
     is_dir: bool,
 }
 
-fn resolve_archive_sources(paths: &[String]) -> Result<Vec<ArchiveSource>, String> {
+fn resolve_archive_sources(paths: &[String]) -> Result<Vec<ArchiveSource>, ArchiveError> {
     let mut sources = Vec::with_capacity(paths.len());
     for raw in paths {
         let resolved = PathBuf::from(resolve_local_path(raw));
-        let meta = std::fs::metadata(&resolved)
-            .map_err(|e| format!("Archive input not readable '{}': {e}", resolved.display()))?;
+        // The old substring matcher recognised this one by the words "not
+        // readable", and it is the case the exit-code contract cares about most:
+        // a missing input is exit 2. The kind says so directly, and says it on
+        // every platform and in every locale.
+        let meta = std::fs::metadata(&resolved).map_err(|e| {
+            ArchiveError::io(
+                &format!("Archive input not readable '{}'", resolved.display()),
+                e,
+            )
+        })?;
         if !meta.is_file() && !meta.is_dir() {
-            return Err(format!(
+            return Err(ArchiveError::other(format!(
                 "Archive input must be a file or directory: {}",
                 resolved.display()
-            ));
+            )));
         }
         sources.push(ArchiveSource {
             path: resolved,
@@ -557,16 +654,20 @@ fn resolve_archive_sources(paths: &[String]) -> Result<Vec<ArchiveSource>, Strin
 fn apply_archive_profile(
     opts: aerovault::v3::CreateOptionsV3,
     profile: &str,
-) -> Result<aerovault::v3::CreateOptionsV3, String> {
+) -> Result<aerovault::v3::CreateOptionsV3, ArchiveError> {
     Ok(match profile {
         "fast" => opts.with_zstd_level(3),
         "balanced" | "" => opts,
         "archive" => opts.with_zstd_level(15),
-        other => return Err(format!("Unknown .aerozip compression profile: {other}")),
+        other => {
+            return Err(ArchiveError::other(format!(
+                "Unknown .aerozip compression profile: {other}"
+            )))
+        }
     })
 }
 
-fn recovery_report(path: &Path, overhead_pct: u32) -> Result<AerovzRecoveryReport, String> {
+fn recovery_report(path: &Path, overhead_pct: u32) -> Result<AerovzRecoveryReport, ArchiveError> {
     let status = aerovault::v3::VaultV3::recovery_status(path).map_err(aerovz_error)?;
     Ok(AerovzRecoveryReport {
         enabled: status.any,
@@ -582,18 +683,20 @@ fn recovery_report(path: &Path, overhead_pct: u32) -> Result<AerovzRecoveryRepor
     })
 }
 
-fn open_plaintext_archive(path: &Path) -> Result<aerovault::v3::OpenVaultV3, String> {
+fn open_plaintext_archive(path: &Path) -> Result<aerovault::v3::OpenVaultV3, ArchiveError> {
     if matches!(v3_plaintext_flag(path)?, Some(false)) {
-        return Err("Not a plaintext .aerozip archive (it is encrypted)".to_string());
+        return Err(ArchiveError::other(
+            "Not a plaintext .aerozip archive (it is encrypted)",
+        ));
     }
     aerovault::v3::VaultV3::open_plaintext(path).map_err(aerovz_error)
 }
 
-fn v3_plaintext_flag(path: &Path) -> Result<Option<bool>, String> {
-    let mut file = std::fs::File::open(path).map_err(|e| format!("Open archive: {e}"))?;
+fn v3_plaintext_flag(path: &Path) -> Result<Option<bool>, ArchiveError> {
+    let mut file = std::fs::File::open(path).map_err(|e| ArchiveError::io("Open archive", e))?;
     let mut header_prefix = [0u8; 12];
     file.read_exact(&mut header_prefix)
-        .map_err(|e| format!("Read archive header: {e}"))?;
+        .map_err(|e| ArchiveError::io("Read archive header", e))?;
     if &header_prefix[..10] != aerovault::v3::constants::MAGIC
         || header_prefix[10] != aerovault::v3::constants::VERSION
     {
@@ -609,21 +712,21 @@ fn v3_plaintext_flag(path: &Path) -> Result<Option<bool>, String> {
 const PASSWORD_REJECTED_MSG: &str =
     ".aerozip is an unencrypted lane and has no password; use `.aerovault` if you need confidentiality.";
 
-fn reject_password(password: &Option<String>) -> Result<(), String> {
+fn reject_password(password: &Option<String>) -> Result<(), ArchiveError> {
     if password.is_some() {
-        Err(PASSWORD_REJECTED_MSG.to_string())
+        Err(ArchiveError::other(PASSWORD_REJECTED_MSG))
     } else {
         Ok(())
     }
 }
 
-fn ensure_aerozip_path(path: &str) -> Result<(), String> {
+fn ensure_aerozip_path(path: &str) -> Result<(), ArchiveError> {
     if is_aerozip_path(path) {
         Ok(())
     } else {
-        Err(format!(
+        Err(ArchiveError::other(format!(
             "Expected a .aerozip archive path (MIME {PRODUCT_ARCHIVE_MIME}): {path}"
-        ))
+        )))
     }
 }
 
@@ -640,7 +743,7 @@ fn is_plaintext_archive_file(path: &str) -> bool {
     p.exists() && aerovault::v3::VaultV3::open_plaintext(p).is_ok()
 }
 
-fn archive_entry_basename(path: &Path) -> Result<String, String> {
+fn archive_entry_basename(path: &Path) -> Result<String, ArchiveError> {
     let name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -652,12 +755,14 @@ fn archive_entry_basename(path: &Path) -> Result<String, String> {
         || name.contains('\\')
         || name.contains('\0')
     {
-        return Err(format!("Invalid archive entry name: {name}"));
+        return Err(ArchiveError::other(format!(
+            "Invalid archive entry name: {name}"
+        )));
     }
     Ok(name.to_string())
 }
 
-fn parse_recovery_level(raw: &str) -> Result<u32, String> {
+fn parse_recovery_level(raw: &str) -> Result<u32, ArchiveError> {
     let pct = match raw.trim().to_ascii_lowercase().as_str() {
         "off" | "none" => 0,
         "low" => 7,
@@ -672,9 +777,9 @@ fn parse_recovery_level(raw: &str) -> Result<u32, String> {
     // 0 (or "off"/"none") fully disables recovery so the archive can match canonical
     // compression ratios; positive parity stays in the 5-50% band (sub-5 is rejected).
     if pct != 0 && !(5..=50).contains(&pct) {
-        return Err(format!(
+        return Err(ArchiveError::other(format!(
             "Invalid .aerozip --recovery-level {pct}: expected 0 (off) or 5-50"
-        ));
+        )));
     }
     Ok(pct)
 }
@@ -687,11 +792,18 @@ fn ratio_pct(output_bytes: u64, input_bytes: u64) -> f64 {
     }
 }
 
-fn aerovz_error(error: String) -> String {
-    error
-        .replace(".aerovz", ".aerozip")
-        .replace("aerovz", "aerozip")
-        .replace("AEROVZ", "AEROZIP")
+/// Rewrite the crate's internal product name in a message on its way out.
+///
+/// It carries the classification through untouched: renaming a product must not
+/// be able to change an exit code, and before this it could, because the code
+/// was recovered from the words afterwards.
+fn aerovz_error(error: String) -> ArchiveError {
+    ArchiveError::other(
+        error
+            .replace(".aerovz", ".aerozip")
+            .replace("aerovz", "aerozip")
+            .replace("AEROVZ", "AEROZIP"),
+    )
 }
 
 #[cfg(test)]
@@ -710,32 +822,57 @@ mod tests {
     #[test]
     fn password_is_rejected_for_plaintext_lane() {
         let err = reject_password(&Some("secret".to_string())).unwrap_err();
-        assert!(err.contains("unencrypted lane"));
+        assert!(err.message().contains("unencrypted lane"));
     }
 
     #[test]
     fn archive_exit_code_follows_structured_contract() {
-        // Not-found family -> 2
+        // The mapping is total over the enum, so these three are the contract in
+        // full: 2 for not-found, 9 for refuse-overwrite, 1 for everything else.
         assert_eq!(
-            archive_exit_code(
-                "Archive input not readable '/x': No such file or directory (os error 2)"
-            ),
+            archive_exit_code(&ArchiveError::io(
+                "Open archive",
+                std::io::Error::from(std::io::ErrorKind::NotFound)
+            )),
             2
         );
+        assert_eq!(archive_exit_code(&ArchiveError::refuse_overwrite("x")), 9);
         assert_eq!(
-            archive_exit_code("Open archive: No such file or directory (os error 2)"),
-            2
-        );
-        // Already-exists / refuse-overwrite -> 9
-        assert_eq!(
-            archive_exit_code("Refusing to overwrite existing .aerozip archive: /x.aerozip"),
-            9
-        );
-        // Anything else -> generic 1
-        assert_eq!(
-            archive_exit_code("Cipher block hash mismatch for chunk abc"),
+            archive_exit_code(&ArchiveError::other("Cipher block hash mismatch")),
             1
         );
+    }
+
+    #[test]
+    fn a_missing_archive_input_is_classified_by_the_producer() {
+        // The test that carries the regression. The old mapping recognised this
+        // case by the words "not readable" in a message the operating system
+        // half wrote, so rewording it, or running under a different locale,
+        // silently changed the exit code a script branches on.
+        //
+        // Asserting through `resolve_archive_sources` rather than on a
+        // hand-built error is the point: it proves the PRODUCER classifies, which
+        // is where the old version had nothing.
+        let missing = "/nonexistent-aeroftp-archive-input-4f2a9c";
+        let err = resolve_archive_sources(&[missing.to_string()])
+            .expect_err("a path that is not there cannot resolve");
+        assert_eq!(
+            archive_exit_code(&err),
+            2,
+            "a missing input must exit 2 whatever the message says; got {:?}",
+            err.message()
+        );
+    }
+
+    #[test]
+    fn renaming_the_product_cannot_change_an_exit_code() {
+        // `aerovz_error` rewrites the internal product name on the way out. Under
+        // the old scheme that rewrite ran BEFORE the words were inspected, so a
+        // rename was one edit away from moving an exit code. Now the class
+        // travels beside the text and the rewrite cannot reach it.
+        let renamed = aerovz_error("aerovz internal failure".to_string());
+        assert!(renamed.message().contains("aerozip"));
+        assert_eq!(archive_exit_code(&renamed), 1);
     }
 
     #[test]
@@ -843,8 +980,8 @@ mod tests {
         ))
         .unwrap();
         let err = list_archive(encrypted.to_str().unwrap()).unwrap_err();
-        assert!(err.contains("plaintext .aerozip archive"));
-        assert!(err.contains("encrypted"));
+        assert!(err.message().contains("plaintext .aerozip archive"));
+        assert!(err.message().contains("encrypted"));
     }
 
     #[test]
