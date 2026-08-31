@@ -103,7 +103,16 @@ stop_stack() {
   fi
 }
 
+# `mktemp`, not a fixed name under /tmp. This harness runs on developer
+# machines as well as on a CI runner, /tmp is world-writable and shared there,
+# and a predictable path is one another local user can pre-create as a symlink
+# for `tee` to follow into a file this user can write (CWE-377). The template
+# carries the directory explicitly so the line behaves the same under GNU and
+# BSD mktemp.
+ORACLE_LOG="$(mktemp "${TMPDIR:-/tmp}/aerorsync-deflate-oracle.XXXXXX")"
+
 cleanup() {
+  rm -f "$ORACLE_LOG"
   if [[ "$KEEP_STACK" != "1" ]]; then
     stop_stack
   fi
@@ -301,8 +310,8 @@ echo "[deflate-harness] checking captured tokens with AeroRsync real_wire"
   AEROFTP_DEFLATE_CAPTURE="$DEST_DIR" \
     cargo test --features aerorsync --lib \
       rsync_3_1_3_deflate_byte_oracle_matches_real_wire_decoder -- \
-      --ignored --nocapture | tee /tmp/aerorsync-deflate-oracle.log
-  ../scripts/assert-tests-ran.sh /tmp/aerorsync-deflate-oracle.log =1 \
+      --ignored --nocapture | tee "$ORACLE_LOG"
+  ../scripts/assert-tests-ran.sh "$ORACLE_LOG" =1 \
     "rsync 3.1.3 deflate byte oracle"
 )
 

@@ -73,7 +73,13 @@ download_final = mutate_payload(basis, 8 * 1024, b"real-live-download")
 (root / "local" / "expected-download.bin").write_bytes(download_final)
 PY
 
+# `mktemp`, not a fixed name under /tmp: same reason as the deflate harness
+# next to it. A predictable path in a shared /tmp is a symlink another local
+# user can pre-create for `tee` to follow (CWE-377).
+LIVE_LOG="$(mktemp "${TMPDIR:-/tmp}/aerorsync-real-capture.XXXXXX")"
+
 cleanup() {
+  rm -f "$LIVE_LOG"
   if [[ "$KEEP_STACK" != "1" ]]; then
     docker compose -f "$CAPTURE_DIR/docker-compose.real-rsync.yml" down --remove-orphans >/dev/null 2>&1 || true
   fi
@@ -215,8 +221,8 @@ pushd "$SRC_TAURI_DIR" >/dev/null
 # `set -euo pipefail` at the top of this file already makes the pipe honest.
 cargo test --features aerorsync \
   aerorsync::live_tests::live_real_rsync_lane_emits_protocol_31_greeting \
-  -- --ignored --nocapture | tee /tmp/aerorsync-real-capture.log
-../scripts/assert-tests-ran.sh /tmp/aerorsync-real-capture.log =1 \
+  -- --ignored --nocapture | tee "$LIVE_LOG"
+../scripts/assert-tests-ran.sh "$LIVE_LOG" =1 \
   "real-rsync capture live test"
 popd >/dev/null
 
