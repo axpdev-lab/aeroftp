@@ -300,6 +300,27 @@ pub fn message_names_a_cancellation(message: &str) -> bool {
     // bare `cancel` was done precisely to exclude "failed to cancel", and it
     // does; what it does not exclude is the PASSIVE negation, where the word
     // keeps its participle form and the negation sits in front of it.
+    //
+    // CONTRACTIONS ARE EXPANDED FIRST, and that is the fix rather than a tidy-up.
+    // The list below was written by enumerating phrases, and enumeration is what
+    // it exists to correct: "couldn't be canceled" and "wasn't cancelled" are the
+    // same negations with an apostrophe, and a list of spellings will always be
+    // one spelling short. The same mistake was avoided two functions away, where
+    // underscores are normalised rather than spelled out, and made again here.
+    //
+    // BOTH apostrophes are handled. A message composed in a user interface
+    // carries U+2019, the typographic one, and a message from an operating
+    // system or a protocol carries U+0027; the two are different characters and
+    // matching one of them is the same defect one layer down.
+    let lowered = lowered
+        .replace('\u{2019}', "'")
+        .replace("couldn't", "could not")
+        .replace("wasn't", "was not")
+        .replace("weren't", "were not")
+        .replace("isn't", "is not")
+        .replace("didn't", "did not")
+        .replace("won't", "will not")
+        .replace("can't", "cannot");
     const NEGATIONS: &[&str] = &[
         "not cancelled",
         "not canceled",
@@ -311,6 +332,12 @@ pub fn message_names_a_cancellation(message: &str) -> bool {
         "could not be canceled",
         "unable to cancel",
         "failed to cancel",
+        "will not cancel",
+        "did not cancel",
+        "is not cancelled",
+        "is not canceled",
+        "was not cancelled",
+        "was not canceled",
     ];
     if NEGATIONS.iter().any(|n| lowered.contains(n)) {
         return false;
@@ -393,6 +420,17 @@ mod tests {
             "cannot be cancelled once committed",
             "unable to cancel the running job",
             "failed to cancel: server refused",
+            // The CONTRACTED forms. The list of negations was written by
+            // enumerating phrases, so it was one apostrophe short of complete,
+            // which is what enumeration always is.
+            "the request couldn't be canceled",
+            "the request wasn't cancelled",
+            "it can't be cancelled at this stage",
+            "the job didn't cancel",
+            // And with the TYPOGRAPHIC apostrophe, which is what a message
+            // composed in a user interface actually carries.
+            "the request couldn\u{2019}t be canceled",
+            "the request wasn\u{2019}t cancelled",
         ] {
             assert!(
                 !super::message_names_a_cancellation(message),
