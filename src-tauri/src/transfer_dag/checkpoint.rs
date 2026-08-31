@@ -327,16 +327,36 @@ impl TransferCheckpointStore {
                 None
             }
         };
-        // The cap runs BEFORE the write, deliberately. `enforce_cap` counts the
-        // kept record as one slot whether or not it is on disk yet, so the
-        // arithmetic is identical, and running it first means a store that
-        // cannot evict refuses to grow instead of reporting failure with the
-        // new record already written: the previous order left the record behind
-        // and pushed the store past the cap in the very call that said it could
-        // not hold it.
+        // A NEW record reserves its slot on disk before the cap is enforced,
+        // and the reason is what another opener can see. `enforce_cap` counts
+        // the kept record as one slot whether or not it is written yet, so the
+        // arithmetic is right for the caller; it is wrong for everyone else.
+        // Between one opener's eviction and its write the store is one record
+        // under its cap, and an opener that scans in that window reads capacity
+        // that is already spoken for, evicts nothing, and writes: the cap is
+        // exceeded by one per opener that arrives in a window. Writing first
+        // puts the claim where the other scans can count it, which is also why
+        // `enforce_cap` already sorts a just-persisted in-flight record LAST
+        // among eviction candidates: the design expected these to be on disk.
+        //
+        // The order this replaces was itself deliberate, and its reason is kept
+        // rather than dropped: a store that cannot evict must refuse to grow,
+        // not report failure with the new record left behind. That is what the
+        // rollback below is for. The window it opens instead is a crash between
+        // the write and the eviction, which leaves one extra record that the
+        // next open reclaims, rather than a record the store said it could not
+        // hold.
         let Some(mut loaded) = existing else {
-            self.enforce_cap(&fresh.transfer_key)?;
             self.persist(&fresh)?;
+            if let Err(e) = self.enforce_cap(&fresh.transfer_key) {
+                // Undo the reservation. Ignoring the unlink error is correct
+                // here: the caller is already being told the open failed, and a
+                // residual record is reclaimable by the next cap run, while
+                // replacing the real reason with "could not clean up" would
+                // hide it.
+                let _ = fs::remove_file(&path);
+                return Err(e);
+            }
             return Ok(CheckpointOpen {
                 checkpoint: fresh,
                 resumed: false,
@@ -1321,6 +1341,91 @@ mod tests {
         assert!(
             err.contains("concurrent eviction"),
             "and why, so the next reader is not left guessing: {err}",
+        );
+    }
+
+    /// The ordering change has one risk and this is it: writing the record
+    /// before enforcing the cap could leave it behind when the store turns out
+    /// to have no room, which is exactly what the previous order existed to
+    /// prevent. The rollback is what keeps that promise, and this fails without
+    /// it.
+    ///
+    /// The eviction is made to fail deterministically rather than by timing: a
+    /// DIRECTORY named like a record is an unremovable candidate (`remove_file`
+    /// gives `IsADirectory`, not `NotFound`), so the cap cannot be met and the
+    /// open must refuse.
+    #[test]
+    fn a_store_that_cannot_evict_does_not_keep_the_record_it_refused() {
+        let temp = TempDir::new().unwrap();
+        let store =
+            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, 1).unwrap();
+        fs::create_dir(temp.path().join("unremovable.json")).unwrap();
+
+        let key = MultipartCheckpoint::fresh(source(), destination(), layout()).transfer_key;
+        let err = store
+            .open_or_create(source(), destination(), layout())
+            .unwrap_err();
+        assert!(
+            err.contains("reclaimed only"),
+            "the refusal must say why: {err}",
+        );
+        assert!(
+            !store.path_for(&key).exists(),
+            "a store that said it could not hold the record must not be holding it",
+        );
+    }
+
+    /// Three openers, which is the shape a reviewer raised against the counting
+    /// fix alone: with the cap enforced BEFORE the write, one opener deletes its
+    /// victim and has not written yet, and a third opener scanning in that
+    /// window reads capacity that is already spoken for, evicts nothing, and
+    /// writes. Reserving the slot first removes the window rather than guarding
+    /// it: the claim is on disk for every other scan to count.
+    ///
+    /// What this test can and cannot do. It exercises the invariant with real
+    /// concurrency, and it is the reason the fan-out case is not left to an
+    /// argument alone; it cannot FORCE the interleaving, because the store has
+    /// no hook between its scan and its write. The property is carried by the
+    /// ordering, and the deterministic pin for the ordering is the rollback
+    /// test above.
+    #[test]
+    fn three_overlapping_opens_do_not_push_the_store_past_the_cap() {
+        const CAP: usize = 8;
+        let temp = TempDir::new().unwrap();
+        let store =
+            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, CAP).unwrap();
+        for i in 0..CAP {
+            let r = record_at(
+                &format!("/filled-{i}.bin"),
+                CheckpointStatus::Transferring,
+                1000 + i as u64,
+            );
+            store.persist(&r).unwrap();
+        }
+
+        let barrier = std::sync::Barrier::new(3);
+        std::thread::scope(|scope| {
+            for i in 0..3 {
+                let store = &store;
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    // A distinct source path is what makes a distinct key, so
+                    // the three openers really are three admissions and not one
+                    // record opened three times.
+                    let mut opening = source();
+                    opening.local_path = format!("/opening-{i}.bin");
+                    barrier.wait();
+                    store
+                        .open_or_create(opening, destination(), layout())
+                        .unwrap();
+                });
+            }
+        });
+
+        let present = present_keys(temp.path()).len();
+        assert!(
+            present <= CAP,
+            "{present} records in a store capped at {CAP}",
         );
     }
 
