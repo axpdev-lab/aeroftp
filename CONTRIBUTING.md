@@ -29,7 +29,7 @@ Be respectful, inclusive, and professional. We're here to build great software t
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
 4. Run tests (`cd src-tauri && cargo test`)
-5. Commit (`git commit -m 'Add amazing feature'`)
+5. Commit **with a sign-off** (`git commit -s -m 'Add amazing feature'`), see [Sign-off](#sign-off-developer-certificate-of-origin)
 6. Push (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
 
@@ -116,6 +116,26 @@ npm run tauri build
 - Use clear, descriptive messages
 - Start with a verb (Add, Fix, Update, Remove)
 - Reference issues when relevant (#123)
+
+## Sign-off (Developer Certificate of Origin)
+
+Every commit must carry a `Signed-off-by` line. Adding one is a single flag:
+
+```bash
+git commit -s -m "fix(webdav): handle 405 on root PROPFIND"
+```
+
+which appends:
+
+```
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+The name and email must match the commit author. If you forget, `git commit --amend -s --no-edit` fixes the last commit and `git rebase --signoff <base>` fixes a whole branch. A CI check enforces this on every pull request.
+
+The sign-off certifies the [Developer Certificate of Origin](DCO) 1.1: in short, that you wrote the contribution yourself, or that you have the right to submit it under the project's licence. It is a statement about the origin of the code, not a transfer of anything: **you keep the copyright in your contribution**.
+
+AeroFTP deliberately uses a DCO rather than a Contributor Licence Agreement. A CLA would ask you to grant rights beyond the project's licence, and that is not something this project needs from you.
 
 ## Test Requirements
 
