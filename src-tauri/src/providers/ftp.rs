@@ -440,9 +440,42 @@ impl FtpProvider {
             }
             let mlsd_result = {
                 let stream = self.stream_mut()?;
-                stream.mlsd(list_path.as_deref()).await
+                Self::list_with_cap(stream.mlsd(list_path.as_deref())).await
             };
 
+            let mlsd_result = match mlsd_result {
+                Ok(Some(lines)) => Ok(lines),
+                Ok(None) => {
+                    // The session goes, but this flag is PROVIDER state and
+                    // outlives it: `connect` re-reads it as
+                    // `mlsd_supported = server_supports_mlsd && !mlsd_broken`,
+                    // so it is what stops the next attempt from paying the whole
+                    // budget again. A server that advertises MLSD and then never
+                    // answers it is exactly the server this flag exists for, and
+                    // the ordinary failure path below sets it for the same
+                    // reason. Returning early without it would leave the
+                    // provider permanently SLOW instead of permanently STUCK,
+                    // which is better and is not the point.
+                    // Said, and said DIFFERENTLY from the failure path below,
+                    // which logs the same flag being set. Two identical lines
+                    // would give a log that cannot tell a server which REFUSES
+                    // from one which goes SILENT, and separating those two is
+                    // most of what this work has been about. Without any line at
+                    // all, the log would show "disabling MLSD" when MLSD errors
+                    // and show nothing when it expires, while the effect on the
+                    // provider is the same.
+                    tracing::debug!(
+                        "[FTP] MLSD produced nothing for {} within {}s. Disabling MLSD for this \
+                         provider: it answered the command and then went silent.",
+                        base_path,
+                        LIST_BUDGET.as_secs()
+                    );
+                    self.mlsd_broken = true;
+                    self.mlsd_supported = false;
+                    return Err(self.listing_timed_out(&base_path));
+                }
+                Err(err) => Err(err),
+            };
             match mlsd_result {
                 Ok(lines) => {
                     let entries: Vec<RemoteEntry> = lines
@@ -454,7 +487,8 @@ impl FtpProvider {
                 Err(err) => {
                     let provider_err = ProviderError::ServerError(err.to_string());
                     tracing::debug!(
-                        "[FTP] MLSD failed for {}: {}. Disabling MLSD fallback for this session.",
+                        "[FTP] MLSD failed for {}: {}. Disabling MLSD for this provider: the \
+                         flag outlives the session and is re-read on reconnect.",
                         base_path,
                         provider_err
                     );
@@ -477,7 +511,14 @@ impl FtpProvider {
             // entries that `-a` adds are dropped by the listing parsers.
             let saved_cwd = self.cwd_into(&base_path).await?;
             let stream = self.stream_mut()?;
-            let listed = stream.list(Some("-a")).await;
+            let listed = Self::list_with_cap(stream.list(Some("-a"))).await;
+            // Restoring the directory on a session whose listing timed out is
+            // the exact defect this guards: the late reply would answer the
+            // `CWD` instead. So the expiry is handled before anything else
+            // touches the stream.
+            if matches!(listed, Ok(None)) {
+                return Err(self.listing_timed_out(&base_path));
+            }
             let restored = self.restore_cwd(&saved_cwd).await;
             // Both are reported when both fail. Propagating the listing error
             // first would swallow the restore failure exactly when it matters
@@ -485,13 +526,15 @@ impl FtpProvider {
             // and of the pair it is the unrestored directory that outlives the
             // call and misdirects everything after it.
             match (listed, restored) {
-                (Ok(lines), Ok(())) => lines,
+                (Ok(Some(lines)), Ok(())) => lines,
+                // Unreachable: the expiry returned above.
+                (Ok(None), _) => return Err(self.listing_timed_out(&base_path)),
                 (Err(list_err), Ok(())) => {
                     return Err(ProviderError::ServerError(Self::doing(
                         "listing", &base_path, list_err,
                     )))
                 }
-                (Ok(_), Err(restore_err)) => return Err(restore_err),
+                (Ok(Some(_)), Err(restore_err)) => return Err(restore_err),
                 (Err(list_err), Err(restore_err)) => {
                     return Err(ProviderError::ServerError(Self::doing(
                         "listing",
@@ -502,10 +545,11 @@ impl FtpProvider {
             }
         } else {
             let stream = self.stream_mut()?;
-            stream
-                .list(list_path.as_deref())
-                .await
-                .map_err(|e| ProviderError::ServerError(e.to_string()))?
+            match Self::list_with_cap(stream.list(list_path.as_deref())).await {
+                Ok(Some(lines)) => lines,
+                Ok(None) => return Err(self.listing_timed_out(&base_path)),
+                Err(e) => return Err(ProviderError::ServerError(e.to_string())),
+            }
         };
 
         let listing =
@@ -1352,10 +1396,13 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
         // Download using retr_as_stream
-        let data_stream = stream
-            .retr_as_stream(remote_path)
+        let opened = Self::open_with_cap(stream.retr_as_stream(remote_path))
             .await
             .map_err(|e| Self::classify_data_failure("reading", remote_path, e))?;
+        let data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => return Err(self.after_timed_out_open("reading", remote_path).await),
+        };
 
         // H2: Read with size cap to prevent OOM
         let mut data = Vec::new();
@@ -1690,10 +1737,13 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
 
         // Retrieve from offset
-        let data_stream = stream
-            .retr_as_stream(remote_path)
+        let opened = Self::open_with_cap(stream.retr_as_stream(remote_path))
             .await
             .map_err(|e| Self::classify_data_failure("resuming", remote_path, e))?;
+        let data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => return Err(self.after_timed_out_open("resuming", remote_path).await),
+        };
 
         // H3: Stream directly to file instead of buffering entire file in memory
         let mut file = tokio::fs::OpenOptions::new()
@@ -1985,10 +2035,13 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
 
-        let data_stream = stream
-            .retr_as_stream(path)
+        let opened = Self::open_with_cap(stream.retr_as_stream(path))
             .await
             .map_err(|e| Self::classify_data_failure("reading a range of", path, e))?;
+        let data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => return Err(self.after_timed_out_open("reading a range of", path).await),
+        };
 
         // Read exactly `len` bytes (or until EOF if file is shorter).
         //
@@ -2066,6 +2119,35 @@ fn canonical_hash_key(server_algo: &str) -> String {
 /// the only transfer path in the tree with no deadline of any kind, so this is
 /// not a new mechanism, it is the existing one reaching the provider that
 /// lacked it.
+/// How long OPENING a data channel may take before we stop waiting.
+///
+/// Total, not inactivity: an open has no bytes to be idle about, and its whole
+/// job is bounded work. Thirty seconds sits far from both edges of what has been
+/// measured. A healthy open against the lab completes in 0.116s, three orders of
+/// magnitude below this; the hang was still unresolved at 120s, which was the
+/// probe's own cap rather than a limit of the wait. A cap near the first would
+/// turn a slow-but-working handshake into a failure; one near the second would
+/// take minutes to say what it can say in seconds. Written here rather than
+/// inlined because the next person to change it needs the two numbers it sits
+/// between.
+const OPEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Total cap on a whole listing, and total is the point.
+///
+/// A transfer wants an INACTIVITY bound, because a large file legitimately takes
+/// hours and a total cap would kill it. A listing is the opposite: it has an
+/// intrinsic size, so an inactivity bound would never fire against a server that
+/// dribbles a row at a time, and a total one is the only kind that can.
+///
+/// Five minutes is a LIVENESS limit, not a performance one: anything under it is
+/// allowed, and the number exists so that a listing which will never finish stops
+/// instead of waiting forever. It is deliberately far above the twin's
+/// `list_timeout` of 30s in `src/ftp.rs`, which is a total cap too and may well be
+/// truncating legitimate listings of large directories on slow links. That is an
+/// open question with its own measurement, and copying the number would have
+/// inherited the answer without asking it.
+const LIST_BUDGET: std::time::Duration = std::time::Duration::from_secs(300);
+
 const DATA_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1800);
 
 /// How long the data may stay silent AFTER the server has spoken on control.
@@ -2337,6 +2419,222 @@ impl<'p, S> Drop for DataChannel<'p, S> {
 }
 
 impl FtpProvider {
+    /// A total cap on a listing, whose expiry every caller must handle.
+    ///
+    /// The expiry is `Ok(None)` and NOT an error, and that is the whole shape.
+    /// An earlier version returned it as an `FtpError`, which made it
+    /// indistinguishable from a reply the server had actually sent: the three
+    /// listing sites treated it as one more server failure and carried on using
+    /// a session whose listing reply was still owed. `MLSD` fell through to
+    /// `LIST` on it, the `-a` path called `restore_cwd` on it, and the late
+    /// reply answered the wrong command.
+    ///
+    /// As `Ok(None)` the compiler forces each of the three to say what it does,
+    /// and all three take the session. Nothing here is matched on the text of a
+    /// message, which is what the existing reconnect guard does and why it never
+    /// fired for this.
+    async fn list_with_cap(
+        fut: impl std::future::Future<Output = suppaftp::FtpResult<Vec<String>>>,
+    ) -> suppaftp::FtpResult<Option<Vec<String>>> {
+        match tokio::time::timeout(LIST_BUDGET, fut).await {
+            Ok(result) => result.map(Some),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// The session cannot survive a listing that timed out, and returning the
+    /// expiry as an ordinary error was not enough to say so.
+    ///
+    /// The dropped future was inside `read_response_in`, which is not
+    /// cancellation-safe, and the reply to `MLSD` or `LIST` is still owed. Every
+    /// caller here goes on to use the same session: `MLSD` falls through to
+    /// `LIST` by design, and the `-a` path calls `restore_cwd` on that stream,
+    /// so the late listing reply would be read as the answer to the `CWD`.
+    ///
+    /// The reconnect that looks like it would cover this does not fire.
+    /// `is_stale_data_connection_error` matches on SUBSTRINGS of the message,
+    /// and none of its six covers a timeout phrased here, so widening that list
+    /// would silence the symptom and keep the mechanism that produced the hole.
+    /// The session is taken instead, which costs a re-dial on a path that has
+    /// already spent the whole budget.
+    fn listing_timed_out(&mut self, path: &str) -> ProviderError {
+        self.stream = None;
+        ProviderError::TransferFailed(format!(
+            "Listing {} produced nothing within {}s",
+            path,
+            LIST_BUDGET.as_secs()
+        ))
+    }
+
+    /// A cap on OPENING a data channel, which is where the wait actually lives.
+    ///
+    /// Measured on `main`: a `RETR` against a server that refuses hangs before
+    /// the read loop is ever entered, inside the data connection's TLS
+    /// handshake. `read_watching_control` guards the loop, and the loop is not
+    /// reached. Two awaits in `data_command` are unbounded, and BOTH need this:
+    /// the passive connect, which is the only one of the two on a plaintext
+    /// session, and the TLS upgrade, which is the one that was measured.
+    ///
+    /// Returns `Ok(None)` when the budget expires, so the caller can realign
+    /// with the borrow of the control stream already released. Realignment is
+    /// deliberately NOT done here: the future being dropped is the crate's, and
+    /// the drop has to happen before anything else touches the session.
+    ///
+    /// Bounds, and does nothing else. The failure is handed back RAW so each
+    /// caller keeps the mapping it already had: `STOR` classifies with
+    /// `map_store_error` and the others with `classify_data_failure`, and a
+    /// helper that classified on their behalf would quietly change one of them.
+    async fn open_with_cap<T>(
+        fut: impl std::future::Future<Output = suppaftp::FtpResult<T>>,
+    ) -> Result<Option<T>, FtpError> {
+        match tokio::time::timeout(OPEN_BUDGET, fut).await {
+            Ok(Ok(opened)) => Ok(Some(opened)),
+            Ok(Err(err)) => Err(err),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// What to do after an opening that never finished.
+    ///
+    /// The command is already on the wire and its reply unread: `pasv()` reads
+    /// its own `227`, but `perform(cmd)` reads nothing, so the control channel
+    /// is one reply behind. The likely case is that the reply is a REFUSAL that
+    /// arrived long ago, which is why the server never serviced the data port;
+    /// on the lab that reply was sitting in the socket while the handshake hung.
+    /// So this looks before it concludes, and returns the server's own reason
+    /// when there is one instead of a timeout that says nothing.
+    ///
+    /// When nothing is queued, the session is taken: the reply is still owed,
+    /// and a session one answer behind hands the next question somebody else's
+    /// answer.
+    async fn after_timed_out_open(&mut self, operation: &'static str, path: &str) -> ProviderError {
+        let queued = match self.stream.as_ref() {
+            Some(stream) => {
+                let control = stream.get_ref();
+                let mut probe = [0u8; 1];
+                let mut got = tokio::io::ReadBuf::new(&mut probe);
+                std::future::poll_fn(|cx| {
+                    std::task::Poll::Ready(match control.poll_peek(cx, &mut got) {
+                        std::task::Poll::Ready(Ok(bytes)) => bytes,
+                        _ => 0,
+                    })
+                })
+                .await
+            }
+            None => 0,
+        };
+        if queued > 0 {
+            match self.read_queued_refusal().await {
+                // A reply was parsed AND it is FINAL. Parsed alone is not
+                // enough, and that distinction is the whole of this arm: a
+                // `1xx` is preliminary and another reply follows it, so
+                // consuming it and keeping the session leaves the completion in
+                // the pipe for the next command to read as its own. That is the
+                // phantom-files class, entering through the branch that exists
+                // to prevent it. A `3xx` is intermediate for the same reason,
+                // and an unexpected `2xx` in this position is strange enough
+                // that guessing is worse than dialling again.
+                // `4xx` and `5xx` are the only replies that are both final and
+                // legitimately here: after one of those, nothing more is owed
+                // for that command, so the control channel really is aligned.
+                //
+                // `421` is excluded and it is the fourth narrowing of this arm.
+                // It is a `4xx`, final, and legitimately here, so every earlier
+                // version of this condition kept the session; but it says
+                // "service not available, CLOSING CONTROL CONNECTION". The
+                // server is announcing that the channel is going away, and the
+                // next command would take a session already closed. It is the
+                // only status in this range that carries that meaning: `426`
+                // closes the DATA connection and `221` is a `2xx`, outside it.
+                //
+                // ON WHICH PROPERTY IS THIS ONE STILL SILENT? Each version of
+                // this condition was right about the property it was chosen for
+                // and said nothing about the next: any error at all was mute on
+                // whether a whole reply arrived, the VARIANT was mute on
+                // finality, the STATUS CLASS was mute on the connection
+                // surviving. This one is mute on WHOSE reply it is. FTP carries
+                // no request identifier, so a reply queued here could in
+                // principle belong to an earlier command whose answer came late,
+                // and consuming it as ours would leave our own reply still
+                // owed. FTP carries no identifier, so nothing distinguishes
+                // them.
+                //
+                // AND ON A SECOND ONE, mute for a different reason: whether
+                // ANOTHER reply follows the one just read. `read_response_in`
+                // consumes exactly one, and a server that refuses and then hangs
+                // up sends `550` and then `421`, in that order, because the
+                // refusal answers the command and the goodbye comes after. Read
+                // the `550` and this arm keeps the session with the `421` still
+                // queued.
+                // It is named rather than fixed because the fix that suggests
+                // itself does not work: a second peek looks at `get_ref()`,
+                // which is the bare socket UNDER the `BufReader`, so when both
+                // replies arrive in one segment the `421` is already in the
+                // buffer and the socket shows nothing. The peek would report
+                // "aligned" in exactly the case it was added to catch, and a
+                // fixture sending the two in separate writes would make that
+                // green. Segmentation is not ours to control.
+                // THE COST IS NOT BOUNDED, and an earlier version of this
+                // comment said it was. Measured, not reasoned: a server
+                // answering `RETR` with `550` and `421` in ONE write leaves
+                // nothing on the socket, and the next command, a `PWD`, receives
+                // "421 Service not available" as ITS OWN reply. An operation
+                // fails citing an answer caused by the command before it, which
+                // IS the phantom-files class, the one this whole line of work
+                // exists to remove.
+                // The first version of that claim checked the VALUE (an error,
+                // not data) and not the ATTRIBUTION (the error of the wrong
+                // command), which is the same mistake in prose that the code is
+                // here to prevent on the wire.
+                // Tracked separately rather than patched here: the fix is not a
+                // comment, and it does not belong in a change about bounding the
+                // open.
+                //
+                // Both are named rather than claimed closed: a condition that
+                // looks total has been wrong four times, and each time it was
+                // total with respect to one property.
+                Ok(FtpError::UnexpectedResponse(reply))
+                    if (400..600).contains(&reply.status.code())
+                        && reply.status != Status::NotAvailable =>
+                {
+                    return Self::classify_data_failure(
+                        operation,
+                        path,
+                        FtpError::UnexpectedResponse(reply),
+                    )
+                }
+                // EVERYTHING else, and the catch-all is the point rather than a
+                // shorthand. It now holds two kinds of case. Some say nothing
+                // about alignment: `BadResponse` means the collection produced
+                // nothing readable, a connection error means something else
+                // again, and a variant added by a later crate version means
+                // something nobody here has considered. Others say the wrong
+                // thing: a parsed but non-final reply proves the channel is
+                // mid-exchange rather than aligned. Neither group establishes
+                // that the session can be handed on, and `read_response_in` is
+                // not cancellation-safe, so it may also have been dropped
+                // mid-line. The default discards because the safe side is the
+                // one that makes the smaller claim. The error is still the best
+                // thing to report; the session is not.
+                Ok(other) => {
+                    self.stream = None;
+                    return Self::classify_data_failure(operation, path, other);
+                }
+                Err(err) => {
+                    self.stream = None;
+                    return err;
+                }
+            }
+        }
+        self.stream = None;
+        ProviderError::TransferFailed(format!(
+            "Opening the data channel for {} {} got no answer within {}s",
+            operation,
+            path,
+            OPEN_BUDGET.as_secs()
+        ))
+    }
+
     /// Read the refusal the server has queued, without waiting for one that
     /// may not be there.
     ///
@@ -2543,10 +2841,13 @@ impl FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
         // Download using retr_as_stream: stream directly to disk (no full-file RAM buffer)
-        let data_stream = stream
-            .retr_as_stream(remote_path)
+        let opened = Self::open_with_cap(stream.retr_as_stream(remote_path))
             .await
             .map_err(|e| Self::classify_data_failure("downloading", remote_path, e))?;
+        let data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => return Err(self.after_timed_out_open("downloading", remote_path).await),
+        };
 
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
@@ -2618,11 +2919,16 @@ impl FtpProvider {
             .map_err(ProviderError::IoError)?;
         let total_size = file.metadata().await.map_err(ProviderError::IoError)?.len();
 
-        // Open streaming upload channel (PASV + STOR)
-        let mut data_stream = stream
-            .put_with_stream(remote_path)
+        // Open streaming upload channel (PASV + STOR), under the same cap as the
+        // reads: the two unbounded awaits live in `data_command`, which every
+        // verb goes through.
+        let opened = Self::open_with_cap(stream.put_with_stream(remote_path))
             .await
             .map_err(|e| Self::map_store_error(remote_path, e))?;
+        let mut data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => return Err(self.after_timed_out_open("uploading", remote_path).await),
+        };
 
         // Write in 64KB chunks for optimal throughput
         let mut chunk = [0u8; 65536];
@@ -2806,11 +3112,21 @@ async fn ftp_download_one_range(
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
     }
 
-    let mut data_stream = {
+    let opened = {
         let stream = worker.stream_mut()?;
-        stream.retr_as_stream(&remote_path).await.map_err(|e| {
-            FtpProvider::classify_data_failure("downloading a range of", &remote_path, e)
-        })?
+        FtpProvider::open_with_cap(stream.retr_as_stream(&remote_path))
+            .await
+            .map_err(|e| {
+                FtpProvider::classify_data_failure("downloading a range of", &remote_path, e)
+            })?
+    };
+    let mut data_stream = match opened {
+        Some(data_stream) => data_stream,
+        None => {
+            return Err(worker
+                .after_timed_out_open("downloading a range of", &remote_path)
+                .await)
+        }
     };
 
     let mut out = tokio::fs::OpenOptions::new()
@@ -3995,5 +4311,93 @@ mod data_channel_watch_tests {
         let mut left = [0u8; 3];
         let seen = control_client.peek(&mut left).await.unwrap();
         assert_eq!(&left[..seen], b"226", "the completion reply was consumed");
+    }
+}
+
+/// Live regression for the one thing a timed-out listing must not do: hand the
+/// session on.
+///
+/// **Why this cannot be a unit test.** The defect is a relation between two
+/// commands on one control channel, so it needs a server that accepts `MLSD`
+/// and then says nothing. `slowftp.py --feat mlsd-hang` is that server.
+///
+/// **What it asserts, and what it deliberately does not.** Not the duration: a
+/// released client re-dials, so the elapsed time is multiplied by the retry
+/// count and says nothing. Not that the listing failed: it fails either way.
+/// It asserts ATTRIBUTION, which is the only thing that separates the two
+/// worlds. Without the fix the session survives with the listing's reply still
+/// owed, and the next command collects it: measured, a `PWD` receives
+/// "425 Cannot open data connection." and the `257` it was owed arrives one
+/// place later. With the fix the session is gone, so the same `PWD` can only
+/// report `NotConnected`.
+///
+/// The probe is a `PWD` and not a `LIST` on purpose: an empty listing and a
+/// misattributed one look alike, so the assertion could not tell them apart,
+/// while `PWD` has one known right answer and anything else is unambiguous.
+///
+/// **It takes five minutes, and that is declared rather than discovered.**
+/// `LIST_BUDGET` is 300s and is not injectable, so the wait is real. The fixture
+/// hangs for 420s by default, chosen to outlast it: at the earlier default of
+/// 90s the fixture gave up first, and a test that believed it was measuring the
+/// cap was measuring the fixture, and passed. If this is ever wanted faster the
+/// way is to make the budget injectable, never to shorten it, because a
+/// production constant lowered for the convenience of a test turns the measured
+/// thing into one that resembles it.
+///
+/// ```bash
+/// cd src-tauri/tests/fixtures/ftp
+/// ./slowftp.py --port 2140 --feat mlsd-hang --hang 420 &
+/// cd ../../.. && cargo test --lib providers::ftp::live_listing_timeout -- --ignored --nocapture
+/// ```
+#[cfg(test)]
+mod live_listing_timeout {
+    use super::*;
+
+    fn fixture_port() -> u16 {
+        std::env::var("AEROFTP_MLSD_HANG_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(2140)
+    }
+
+    #[tokio::test]
+    #[ignore = "live: needs slowftp.py --feat mlsd-hang, and waits out LIST_BUDGET"]
+    async fn a_listing_that_timed_out_does_not_hand_the_session_on() {
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port: fixture_port(),
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        });
+        provider
+            .connect()
+            .await
+            .expect("the mlsd-hang fixture must be up");
+
+        let started = std::time::Instant::now();
+        let listing = provider.list("/").await;
+        eprintln!(
+            "MEASURED listing after {:?}: {listing:?}",
+            started.elapsed()
+        );
+        assert!(
+            listing.is_err(),
+            "a server that accepts MLSD and never answers must not produce a listing"
+        );
+
+        // The whole test is this line. The listing failed in both worlds; only
+        // here do they differ.
+        match provider.pwd().await {
+            Err(ProviderError::NotConnected) => {}
+            other => panic!(
+                "after a timed-out listing the session must not be reusable, so this PWD should \
+                 have found no session at all. Got {other:?}. If that mentions 425 or a data \
+                 connection, the session was kept and the PWD collected the listing's reply \
+                 instead of its own, which is the defect this guards."
+            ),
+        }
     }
 }
