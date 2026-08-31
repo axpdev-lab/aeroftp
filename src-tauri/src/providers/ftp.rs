@@ -690,45 +690,6 @@ impl FtpProvider {
         format!("{reply} (while {operation} {path})")
     }
 
-    /// The part of a server reply that is the reason, with the path taken out.
-    ///
-    /// FTP servers quote back the path they were given, so the reply carries
-    /// both a reason the server chose and a name the user chose, and the
-    /// missing-path vocabulary reads the two as one string. Every word it looks
-    /// for is a legal path component: `550 /public_html/404.html: Permission
-    /// denied` was read as a missing file, and a refusal for permission came
-    /// back as a file that is not there. That is the exact mistake the doc
-    /// comment below warns about, arriving through the vocabulary rather than
-    /// through the status.
-    ///
-    /// The path we sent is what the server is quoting, so it is removed here,
-    /// where it is known, rather than guessed at from the shape of the text.
-    /// This is the same split as `sync::classification_text` and for the same
-    /// reason: only the reason is evidence, and the name never was.
-    ///
-    /// It is not a complete separation and does not need to be. A server may
-    /// echo a path it resolved differently from the one we sent, and then the
-    /// removal does nothing; the vocabulary's own token boundary still keeps
-    /// `404.html` from counting. The reply the CALLER is shown is untouched:
-    /// only the reading of it changes.
-    fn reason_without_the_path(reply: &str, path: &str) -> String {
-        // A one-character path carries no information and removing it damages
-        // the text instead: a failed CWD to "/" would take every slash out of
-        // the reply.
-        //
-        // No test covers this and that is deliberate rather than an omission.
-        // None of the current needles contains a separator, so today the
-        // mangling changes no verdict and any test would pass with the guard
-        // deleted. It is here against the needle somebody adds later, and it is
-        // said out loud so nobody reads it as a checked rule: the class it
-        // belongs to is `i/o error` in `sync::looks_like_a_path`, where a rule
-        // written to remove noise removed the signal instead.
-        if path.len() < 2 {
-            return reply.to_string();
-        }
-        reply.replace(path, " ")
-    }
-
     /// Decide what a refused CWD means, without claiming more than the reply says.
     ///
     /// The reply carries two independent facts and they must not be collapsed:
@@ -777,8 +738,7 @@ impl FtpProvider {
         // NotFound turns an inaccessible directory into a nonexistent one,
         // which is the mistake this change already made once on mkdir and had
         // corrected by a live server.
-        if super::types::message_names_a_missing_path(&Self::reason_without_the_path(&text, target))
-        {
+        if super::types::message_names_a_missing_path_for(&text, target) {
             ProviderError::NotFound(Self::doing(operation, target, &text))
         } else {
             ProviderError::InvalidPath(Self::doing(operation, target, &text))
@@ -830,7 +790,7 @@ impl FtpProvider {
             return None;
         }
         let text = response.to_string();
-        super::types::message_names_a_missing_path(&Self::reason_without_the_path(&text, path))
+        super::types::message_names_a_missing_path_for(&text, path)
             .then(|| ProviderError::NotFound(Self::doing(operation, path, &text)))
     }
 

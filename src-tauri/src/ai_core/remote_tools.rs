@@ -792,7 +792,7 @@ async fn preview_delete(
     let (is_dir, root_size): (bool, u64) = match backend.stat(path).await {
         Ok(r) => (r.is_dir, r.size),
         Err(e) => {
-            if recursive && crate::providers::types::message_names_a_missing_path(&e) {
+            if recursive && crate::providers::types::message_names_a_missing_path_for(&e, path) {
                 // Assume pseudo-directory for recursive preview; contents will
                 // be discovered by list below.
                 (true, 0)
@@ -2491,7 +2491,7 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         }
         Err(e)
             if path_is_caller_named
-                && !crate::providers::types::message_names_a_missing_path(&e) =>
+                && !crate::providers::types::message_names_a_missing_path_for(&e, &remote_path) =>
         {
             return Err(ToolError::InvalidArgs {
                 tool: "aeroftp_speed".to_string(),

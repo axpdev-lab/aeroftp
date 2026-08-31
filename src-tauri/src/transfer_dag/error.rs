@@ -291,6 +291,30 @@ fn default_idempotent_for(kind: TransferErrorKind) -> bool {
 /// the way this codebase does.
 pub fn message_names_a_cancellation(message: &str) -> bool {
     let lowered = message.to_ascii_lowercase();
+    // A NEGATED cancellation is not a cancellation, and substring matching says
+    // it is. "could not be cancelled" and "the request was not canceled" both
+    // contain the word, and reading them as a cancellation suppresses the
+    // retries and reports an ordinary failure as something the user asked for.
+    //
+    // The earlier reasoning stopped one form short. Choosing `cancelled` over a
+    // bare `cancel` was done precisely to exclude "failed to cancel", and it
+    // does; what it does not exclude is the PASSIVE negation, where the word
+    // keeps its participle form and the negation sits in front of it.
+    const NEGATIONS: &[&str] = &[
+        "not cancelled",
+        "not canceled",
+        "never cancelled",
+        "never canceled",
+        "cannot be cancelled",
+        "cannot be canceled",
+        "could not be cancelled",
+        "could not be canceled",
+        "unable to cancel",
+        "failed to cancel",
+    ];
+    if NEGATIONS.iter().any(|n| lowered.contains(n)) {
+        return false;
+    }
     lowered.contains("cancelled") || lowered.contains("canceled")
 }
 
@@ -348,6 +372,43 @@ fn classify_network_message(raw: &str) -> TransferErrorKind {
 
 #[cfg(test)]
 mod tests {
+
+    /// A negated cancellation is not a cancellation.
+    ///
+    /// Substring matching says it is: "could not be cancelled" contains the
+    /// word. Read as a cancellation it suppresses the retries and reports an
+    /// ordinary failure as something the user asked for, which is a wrong
+    /// answer in the direction that also hides itself, because a transfer the
+    /// user believes they stopped is not investigated.
+    ///
+    /// The earlier reasoning stopped one form short. Choosing `cancelled` over
+    /// bare `cancel` excluded "failed to cancel" and does; it did not exclude
+    /// the passive negation, where the participle survives and the negation
+    /// sits in front of it.
+    #[test]
+    fn a_negated_cancellation_is_not_a_cancellation() {
+        for message in [
+            "the transfer could not be cancelled",
+            "the request was not canceled",
+            "cannot be cancelled once committed",
+            "unable to cancel the running job",
+            "failed to cancel: server refused",
+        ] {
+            assert!(
+                !super::message_names_a_cancellation(message),
+                "{message:?} was read as a cancellation because it contains the word"
+            );
+        }
+
+        // The real thing still reads as the real thing, in both spellings.
+        for message in [
+            "Transfer cancelled by user",
+            "request cancelled",
+            "operation canceled",
+        ] {
+            assert!(super::message_names_a_cancellation(message), "{message:?}");
+        }
+    }
     use super::*;
     use crate::transfer_dag::adaptive::embed_retry_after_marker;
 
