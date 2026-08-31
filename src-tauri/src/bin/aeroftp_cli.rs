@@ -29808,7 +29808,21 @@ mod serve_sftp {
             methods: if auth_credentials.is_some() {
                 russh::MethodSet::from(&[russh::MethodKind::Password][..])
             } else {
-                russh::MethodSet::all()
+                // russh 0.63 removed `all()` and split it by side. This is a
+                // `server::Config`, so `server_supported()` is the one, and it
+                // is `all()` and `server_supported()` that return the identical
+                // list: None, Password, PublicKey, HostBased,
+                // KeyboardInteractive. Checked against both crates rather than
+                // assumed from the name.
+                //
+                // Not the two SIDES. `client_supported()` returns those five
+                // plus GssapiWithMic, so it is not a drop-in here: russh 0.63.1
+                // ships no gssapi implementation in its server module, and a
+                // `server::Config` built from it would advertise a method it
+                // cannot honour. The equality that makes this substitution
+                // behaviour-preserving is with the OLD `all()`, not with the
+                // client side.
+                russh::MethodSet::server_supported()
             },
             keys: vec![key],
             ..Default::default()

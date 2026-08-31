@@ -13,7 +13,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use russh::client::{self, AuthResult, Config, Handle, Handler, Msg};
-use russh::keys::{self, Algorithm, EcdsaCurve, HashAlg, PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{
+    self, Algorithm, EcdsaCurve, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate,
+};
 use russh::Preferred;
 use russh::{Channel, ChannelMsg};
 use secrecy::ExposeSecret;
@@ -76,8 +78,49 @@ impl Handler for RusshHandler {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &PublicKey,
+        server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
+        // russh 0.63 presents either a bare key or a host CERTIFICATE here.
+        // The certificate arm is unreachable as this client is configured:
+        // `Preferred::host_key_certificates` defaults to an empty list, so no
+        // certificate algorithm is ever offered and a server cannot present
+        // one. It is refused rather than left to a wildcard so that the answer
+        // is a decision instead of an accident.
+        //
+        // The default holding is the second half of that claim, and it was
+        // checked rather than assumed: this tree builds a `Preferred` of its
+        // own in exactly two places, `providers/sftp.rs` (compression only) and
+        // `aerorsync/russh_session_transport.rs` (host-key algorithms only),
+        // and both take `host_key_certificates` from the default. The one that
+        // does override `key` lists Ed25519, three ECDSA curves and two RSA
+        // hashes, every one of them a plain-key algorithm, so it does not
+        // reopen the door either. The arm goes live if any `Preferred` fills
+        // that list, or if a `key` list gains a `*-cert-v01@openssh.com`
+        // algorithm. Both of those edits are named by path on purpose, because
+        // this paragraph is repeated in three handlers and "not in this file"
+        // would be true in one of them and reassuring in exactly the file that
+        // owns the dangerous line: today they are `providers/sftp.rs` and
+        // `aerorsync/russh_session_transport.rs`, the two that build a
+        // `Preferred`, the second holding the only `key` override, plus
+        // wherever a new `Preferred` is added.
+        //
+        // WHOEVER ENABLES HOST CERTIFICATES MUST COME BACK TO ALL FOUR
+        // HANDLERS FIRST. Filling that list makes this arm live, and accepting
+        // a certificate is a trust
+        // policy nobody has discussed: it would mean trusting a CA to vouch for
+        // hosts, which is a different model from the known-hosts and pinned
+        // fingerprint checks below. Refusing keeps today's behaviour exactly,
+        // because today the case cannot arise.
+        let server_public_key = match server_public_key {
+            PublicKeyOrCertificate::PublicKey { key, .. } => key,
+            PublicKeyOrCertificate::Certificate(_) => {
+                tracing::warn!(
+                    "SSH: refusing a host certificate; certificate algorithms are not offered \
+                     by this client, so this should be unreachable"
+                );
+                return Ok(false);
+            }
+        };
         match &self.policy {
             SshHostKeyPolicy::AcceptAny => Ok(true),
             SshHostKeyPolicy::PinnedFingerprintSha256 { sha256_hex } => {
@@ -850,6 +893,17 @@ impl crate::aerorsync::transport::BidirectionalByteStream for RusshUnusedStream 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// russh 0.63 hands the handler a key OR a certificate. These tests are
+    /// about the key policy, so they present a key; the certificate arm is
+    /// unreachable while no certificate algorithm is offered, and it has its
+    /// own refusal in the handler.
+    fn presented(key: &PublicKey) -> PublicKeyOrCertificate {
+        PublicKeyOrCertificate::PublicKey {
+            key: key.clone(),
+            hash_alg: None,
+        }
+    }
     use secrecy::SecretString;
 
     fn dummy_config() -> SshTransportConfig {
@@ -1141,13 +1195,13 @@ mod tests {
         });
 
         assert!(
-            h.check_server_key(&pinned)
+            h.check_server_key(&presented(&pinned))
                 .await
                 .expect("no transport error"),
             "the pinned key must be accepted"
         );
         assert!(
-            !h.check_server_key(&impostor)
+            !h.check_server_key(&presented(&impostor))
                 .await
                 .expect("a mismatch is a rejection, not a transport error"),
             "a server key we did not pin MUST be rejected: this is the man-in-the-middle case"
@@ -1167,7 +1221,7 @@ mod tests {
         });
 
         assert!(
-            h.check_server_key(&pinned)
+            h.check_server_key(&presented(&pinned))
                 .await
                 .expect("no transport error"),
             "an uppercase pin must match the same key"
@@ -1184,7 +1238,7 @@ mod tests {
         let (_, unknown) = two_distinct_host_keys();
         let mut h = RusshHandler::new(SshHostKeyPolicy::AcceptAny);
         assert!(
-            h.check_server_key(&unknown)
+            h.check_server_key(&presented(&unknown))
                 .await
                 .expect("no transport error"),
             "AcceptAny is the bootstrap hatch and accepts an unvouched key by design"

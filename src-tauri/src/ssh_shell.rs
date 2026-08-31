@@ -9,7 +9,7 @@
 
 use russh::client::AuthResult;
 use russh::client::{self, Config, Handle, Handler, Msg};
-use russh::keys::{self, known_hosts, PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{self, known_hosts, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 use russh::{Channel, ChannelId, ChannelMsg};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -36,8 +36,25 @@ impl Handler for ShellSshHandler {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &PublicKey,
+        server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
+        // See the sibling handlers for the full reasoning and the two edits
+        // that would make this arm live: `providers/sftp.rs`,
+        // `host_key_check.rs`, `aerorsync/russh_session_transport.rs`. In
+        // short: the certificate arm is unreachable while
+        // `Preferred::host_key_certificates` stays empty, and refusing keeps
+        // today's behaviour exactly. Whoever enables host certificates must
+        // come back to all FOUR of these first.
+        let server_public_key = match server_public_key {
+            PublicKeyOrCertificate::PublicKey { key, .. } => key,
+            PublicKeyOrCertificate::Certificate(_) => {
+                tracing::warn!(
+                    "SSH Shell: refusing a host certificate; certificate algorithms are not \
+                     offered by this client, so this should be unreachable"
+                );
+                return Ok(false);
+            }
+        };
         match known_hosts::check_known_hosts(&self.host, self.port, server_public_key) {
             Ok(true) => Ok(true),
             Ok(false) => {
