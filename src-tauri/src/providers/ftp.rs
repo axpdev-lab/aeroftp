@@ -879,6 +879,20 @@ impl FtpProvider {
         if let Some(missing) = Self::classify_missing_path(operation, path, &err) {
             return missing;
         }
+        // A command line the library refused to write, because the path carries
+        // CR or LF. Decided on the io KIND and not on the words: suppaftp
+        // reports it as `ConnectionError`, so passing its sentence through made
+        // the user read "Connection error" for something that is a property of
+        // the NAME, and made `sync::classify_sync_error` match "connection" and
+        // mark a permanent refusal retryable. Both follow from the type, so the
+        // type is where it is fixed; teaching the substring matcher another
+        // exception would leave the wrong noun in the sentence and would have to
+        // be taught again for the next caller that phrases it differently.
+        if let FtpError::ConnectionError(ref io) = err {
+            if io.kind() == std::io::ErrorKind::InvalidInput {
+                return ProviderError::InvalidPath(Self::doing(operation, path, io));
+            }
+        }
         if let FtpError::UnexpectedResponse(ref response) = err {
             let code = response.status as u32;
             if (500..600).contains(&code) {
@@ -3037,7 +3051,7 @@ impl FtpProvider {
                 &[suppaftp::Status::File, suppaftp::Status::CommandOk],
             )
             .await
-            .map_err(|e| ProviderError::ServerError(format!("Hash command failed: {}", e)))?;
+            .map_err(|e| Self::classify_data_failure("hashing", path, e))?;
 
         let body = String::from_utf8_lossy(&response.body).into_owned();
         let mut result = std::collections::HashMap::new();
