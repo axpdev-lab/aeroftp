@@ -3109,7 +3109,7 @@ pub struct SyncErrorInfo {
 /// unwrapped, because asserting an expected value here only measures what we
 /// already believed.
 fn mentions_ftp_status(lowered: &str, code_and_space: &str) -> bool {
-    if lowered.starts_with(code_and_space) {
+    if opens_with_status(lowered, code_and_space) {
         return true;
     }
     // Lowercased forms of the `#[error("...: {0}")]` labels in
@@ -3138,8 +3138,49 @@ fn mentions_ftp_status(lowered: &str, code_and_space: &str) -> bool {
     OUR_LABELS.iter().any(|label| {
         lowered
             .find(label)
-            .is_some_and(|at| lowered[at + label.len()..].starts_with(code_and_space))
+            .is_some_and(|at| opens_with_status(&lowered[at + label.len()..], code_and_space))
     })
+}
+
+/// True when `rest` OPENS with the status, in either shape this system puts on
+/// the wire.
+///
+/// `550 ` is the reply as the server sent it. `[550]` is the same reply after a
+/// provider renders it, which `providers::ftp` does for every failure it
+/// classifies, and the bracket is the reason six rules in this file could not
+/// match a real message: each looked for the digits followed by a space, and
+/// that shape never produces one. It was not uniformly dead, which is worse
+/// than dead: a server that echoes its own code inside the text, as in
+/// `[550] 550 Failed to open file.`, made the old needle match by accident, so
+/// the classification worked against one server and silently stopped against
+/// another.
+///
+/// Both shapes are anchored rather than searched for. The message carries a
+/// path the user chose, and a file named `[404] note.txt` must not be read as a
+/// status; `classification_text` already removes the paths it can recognise,
+/// and a relative path with a space is documented there as the case it cannot.
+/// Anchoring is what keeps this rule out of that gap instead of relying on it.
+fn opens_with_status(rest: &str, code_and_space: &str) -> bool {
+    if rest.starts_with(code_and_space) {
+        return true;
+    }
+    let code = code_and_space.trim_end();
+    rest.strip_prefix('[')
+        .and_then(|r| r.strip_prefix(code))
+        .is_some_and(|r| r.starts_with(']'))
+}
+
+/// The status needle as the branches below use it: the loose search they have
+/// always done, PLUS the anchored bracket shape they were missing.
+///
+/// Additive on purpose. Losing a match here is not a neutral change: these
+/// branches all produce non-retryable kinds, so a message that stops matching
+/// falls through to `Unknown`, which is retryable, and a permanent refusal
+/// starts being attempted three times. Tightening the loose half is a separate
+/// question from letting it see the shape the system actually produces, and
+/// only the second one is answered here.
+fn mentions_status(lowered: &str, code_and_space: &str) -> bool {
+    lowered.contains(code_and_space) || mentions_ftp_status(lowered, code_and_space)
 }
 
 /// A token that opens with a filesystem root, and so is a name somebody chose
@@ -3256,7 +3297,7 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
     } else if lower.contains("quota")
         || lower.contains("storage full")
         || lower.contains("insufficient storage")
-        || lower.contains("552 ")
+        || mentions_status(&lower, "552 ")
     {
         (SyncErrorKind::QuotaExceeded, false)
     } else if lower.contains("file too large")
@@ -3271,13 +3312,13 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
         (SyncErrorKind::QuotaExceeded, false)
     } else if lower.contains("permission denied")
         || lower.contains("access denied")
-        || lower.contains("403 ")
-        || lower.contains("550 ")
+        || mentions_status(&lower, "403 ")
+        || mentions_status(&lower, "550 ")
     {
         (SyncErrorKind::PermissionDenied, false)
     } else if lower.contains("not found")
         || lower.contains("no such file")
-        || lower.contains("404 ")
+        || mentions_status(&lower, "404 ")
     {
         // The `550` that used to be listed here could never fire: the
         // permission branch above holds the same needle and runs first, so no
@@ -3350,8 +3391,8 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
     } else if lower.contains("auth")
         || lower.contains("login")
         || lower.contains("credential")
-        || lower.contains("401 ")
-        || lower.contains("530 ")
+        || mentions_status(&lower, "401 ")
+        || mentions_status(&lower, "530 ")
     {
         (SyncErrorKind::Auth, false)
     } else if lower.contains("locked") || lower.contains("in use") {
@@ -5702,6 +5743,118 @@ mod tests {
     /// Each row is the same failure twice, once with a loaded path and once
     /// bare. The verdicts have to agree: whatever the classification is, the
     /// folder name must not be what produced it.
+    /// The status shape the system actually produces, `[NNN]`, has to reach the
+    /// branches that key on the code.
+    ///
+    /// Six needles in this file (552, 403, 550, 404, 401, 530) looked for the
+    /// digits followed by a space. `providers::ftp` renders every failure it
+    /// classifies as `[552] Exceeded storage allocation (while ...)`, where the
+    /// digits are followed by `]`, so none of them could fire on a real
+    /// message: a quota refusal came out `Unknown`, which is RETRYABLE, and a
+    /// permanent failure was attempted three times.
+    ///
+    /// The strings here are rendered through `ProviderError`, not chosen: the
+    /// rule that was dead was guarded by a test calling
+    /// `classify_sync_error("552 Insufficient storage space")`, a string
+    /// production never generates, so the rule was verified against the input
+    /// it was written for rather than against the system.
+    #[test]
+    fn the_bracketed_status_the_providers_render_reaches_the_branches() {
+        use crate::providers::ProviderError;
+
+        let quota = ProviderError::TransferFailed(
+            "[552] Exceeded storage allocation (while writing /srv/data/report.csv)".to_string(),
+        )
+        .to_string();
+        let info = classify_sync_error(&quota, Some("/srv/data/report.csv"));
+        assert_eq!(info.kind, SyncErrorKind::QuotaExceeded, "{quota}");
+        assert!(
+            !info.retryable,
+            "a full disk does not empty itself on retry"
+        );
+
+        let auth = ProviderError::TransferFailed(
+            "[530] Not logged in (while reading /srv/data/report.csv)".to_string(),
+        )
+        .to_string();
+        let info = classify_sync_error(&auth, Some("/srv/data/report.csv"));
+        assert_eq!(info.kind, SyncErrorKind::Auth, "{auth}");
+        assert!(!info.retryable);
+    }
+
+    /// The population the fix actually moves, kept separate from the one that
+    /// already worked.
+    ///
+    /// A server that does NOT echo its code sends `[550] Failed to open file.`
+    /// Before this change that fell through to `Unknown`, which is RETRYABLE,
+    /// so a permanent refusal was attempted three times. After it, it is a
+    /// permanent verdict. This is a change of behaviour for the majority of
+    /// servers and not a restoration, which is why it is asserted on the
+    /// OUTCOME here and declared in the pull request rather than left to be
+    /// discovered: a reviewer reading "revive a dead rule" has no reason to go
+    /// looking for which cases move.
+    #[test]
+    fn a_permanent_refusal_from_a_server_that_does_not_echo_stops_being_retried() {
+        let raw =
+            "Transfer failed: [550] Failed to open file. (while reading /srv/data/report.csv)";
+        let info = classify_sync_error(raw, Some("/srv/data/report.csv"));
+        assert_eq!(info.kind, SyncErrorKind::PermissionDenied, "{raw}");
+        assert!(
+            !info.retryable,
+            "a permanent negative reply cannot succeed on the second attempt"
+        );
+    }
+
+    /// The case that made the old needle work SOMETIMES, which is worse than
+    /// never: a server that echoes its own code inside the text.
+    ///
+    /// `[550] 550 Failed to open file.` matched `"550 "` by accident, through
+    /// the echo rather than through the shape, so the classification held
+    /// against a server that echoes and vanished against one that does not.
+    /// After the change it has to match through the anchored bracket, by
+    /// construction. Without this row, a later simplification of the anchoring
+    /// would keep the test green on the old accidental path.
+    #[test]
+    fn a_server_that_echoes_its_code_matches_by_shape_not_by_accident() {
+        let echoed = "[550] 550 Failed to open file.".to_lowercase();
+        assert!(mentions_ftp_status(&echoed, "550 "));
+        // The same reply without the echo: only the bracket can carry it.
+        let plain = "[550] failed to open file.";
+        assert!(mentions_ftp_status(plain, "550 "));
+        // And the anchoring is what does it, not a search: the same digits in
+        // the middle of a sentence are not a status.
+        assert!(!mentions_ftp_status("failed to open [550] later", "550 "));
+    }
+
+    /// A file the user named `[404] note.txt` must not be read as a status.
+    ///
+    /// `classification_text` removes the paths it can recognise by shape, and
+    /// documents the one it cannot: a relative path with a space, matching no
+    /// `file_path` the caller passed. This asserts the anchoring covers that
+    /// gap rather than depending on it, and it was run against a version
+    /// without the anchoring, where it fails.
+    ///
+    /// HALF of that gap, and this test must not be read as covering the other.
+    /// Anchoring makes the BRACKETED shape safe, which is the one this change
+    /// introduces. A bare relative name still reaches the loose `contains`
+    /// half, which is older than this change and untouched by it: measured on
+    /// main, `connection reset by peer (while writing 404 note.txt)` comes out
+    /// `PathNotFound`, NOT retryable, while the same failure with `[404]` or
+    /// with `/srv/ok.txt` stays `Network` and retryable. So a connection reset
+    /// stops being retried because of what a file is called.
+    ///
+    /// It is out of scope here for the reason stated on `mentions_status`:
+    /// tightening the loose half is a separate question from letting the rules
+    /// see the shape the system produces, and doing both in one diff would ask
+    /// a reviewer two questions at once. It is tracked on its own.
+    #[test]
+    fn a_path_that_looks_like_a_status_does_not_decide_the_classification() {
+        let raw = "Transfer failed: connection reset by peer (while writing [404] note.txt)";
+        let info = classify_sync_error(raw, None);
+        assert_ne!(info.kind, SyncErrorKind::PathNotFound, "{raw}");
+        assert!(info.retryable, "a connection reset is retryable: {raw}");
+    }
+
     #[test]
     fn a_folder_name_does_not_decide_the_classification() {
         // (loaded message, the same failure with no path, the path argument)
