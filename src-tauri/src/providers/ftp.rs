@@ -3198,9 +3198,15 @@ mod tests {
                 "/srv/data/report.csv",
                 cwd_reply(code, body),
             );
+            // Asserted as "must still be this" rather than "must not be that".
+            // A negative assertion is weak in proportion to how many variants
+            // exist and gets weaker each time someone adds one, silently and
+            // without touching the test; it is also blind to the case a reviewer
+            // would most want flagged, a change that reclassifies the failure
+            // into a third thing nobody considered.
             assert!(
-                !matches!(err, ProviderError::InvalidPath(_)),
-                "{code} {body} is not a statement about the path: {err:?}"
+                matches!(err, ProviderError::TransferFailed(_)),
+                "{code} {body} must remain TransferFailed: {err:?}"
             );
         }
 
