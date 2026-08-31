@@ -128,6 +128,9 @@ run-clean.sh
 !/scripts/i18n-untranslated-accepted.json
 # Exception: single pre-release smoke entrypoint (`npm run smoke`, #408 row 1)
 !/scripts/smoke.mjs
+# Exception: asserts a CI lane actually executed the tests it selects, called by
+# ftp-mlsd, delta-sync-integration, aerorsync-protocol and nightly-telemetry
+!/scripts/assert-tests-ran.sh
 
 # Security reports: keep latest snapshot in repo, ignore dated copies
 /docs/security/security-report-20*.html

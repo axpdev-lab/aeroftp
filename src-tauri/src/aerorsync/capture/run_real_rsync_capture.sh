@@ -209,9 +209,15 @@ export RSNP_TEST_REAL_HOST_FINGERPRINT="$HOST_FINGERPRINT"
 export RSNP_TEST_REAL_REMOTE_UPLOAD_TARGET="/workspace/real/upload/target.bin"
 
 pushd "$SRC_TAURI_DIR" >/dev/null
+# One named test over the ignored set, so a rename leaves `cargo test` printing
+# "test result: ok" over an empty run and the line below announcing a capture
+# that never happened. Exactly one, because one is what is named here. The
+# `set -euo pipefail` at the top of this file already makes the pipe honest.
 cargo test --features aerorsync \
   aerorsync::live_tests::live_real_rsync_lane_emits_protocol_31_greeting \
-  -- --ignored --nocapture
+  -- --ignored --nocapture | tee /tmp/aerorsync-real-capture.log
+../scripts/assert-tests-ran.sh /tmp/aerorsync-real-capture.log =1 \
+  "real-rsync capture live test"
 popd >/dev/null
 
 echo "[harness] S8a capture + live test complete"
