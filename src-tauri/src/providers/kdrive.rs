@@ -357,27 +357,48 @@ impl KDriveProvider {
             .and_then(|e| e.get("context"))
             .and_then(|c| c.get("scopes"))
             .and_then(|s| s.as_array())
-            .map(|a| a.iter().filter_map(|s| s.as_str()).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|s| s.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
             .unwrap_or_default();
         if scopes.is_empty() {
             return Some(
                 "this API token is missing a scope that Infomaniak did not name. \
-                 Fetching the Drive ID needs the account id, so generate a new \
-                 token with `user_info` alongside `drive` at \
+                 Fetching the Drive ID needs `user_info` alongside `drive`, so \
+                 generate a new token with both at \
                  https://manager.infomaniak.com/v3/ng/profile/user/token/list"
                     .to_string(),
             );
         }
+        // These names come out of the response body, so they get the same
+        // treatment the body was already getting: `sanitize_api_error` keeps one
+        // line, caps the length and strips anything that looks like a secret.
+        // The guard was never there because scope names are dangerous, it was
+        // there because a response body is not something to make assumptions
+        // about, and a branch added beside it does not inherit it for free.
+        // The count is capped for the same reason: an array of a hundred long
+        // entries would otherwise produce a message with no bound at all.
+        const MAX_LISTED: usize = 4;
+        let listed: Vec<String> = scopes
+            .iter()
+            .take(MAX_LISTED)
+            .map(|s| format!("`{}`", sanitize_api_error(s)))
+            .collect();
+        let and_more = if scopes.len() > MAX_LISTED {
+            format!(" and {} more", scopes.len() - MAX_LISTED)
+        } else {
+            String::new()
+        };
         Some(format!(
-            "this API token is missing the {} scope. Fetching the Drive ID needs \
-             the account id, which only that scope can supply, so add it to the \
-             existing `drive` scope and generate a new token at \
+            "this API token is missing the {}{} scope, so add it to the token's \
+             existing scopes and generate a new one at \
              https://manager.infomaniak.com/v3/ng/profile/user/token/list",
-            scopes
-                .iter()
-                .map(|s| format!("`{s}`"))
-                .collect::<Vec<_>>()
-                .join(" and ")
+            listed.join(" and "),
+            and_more
         ))
     }
 
@@ -2100,6 +2121,94 @@ mod tests {
         .to_string();
         assert!(text.contains("manager.infomaniak.com"), "{text}");
         assert!(text.contains("`user_info`"), "{text}");
+    }
+
+    /// The scope names arrive in the response body, so the branch that prints
+    /// them has to clean them exactly as the branch it replaced cleaned the
+    /// body. Verified against the two things `sanitize_api_error` is for: a
+    /// value carrying something secret-shaped, and an array long enough to
+    /// produce an unbounded message.
+    #[test]
+    /// A name that is empty or only spaces is not a name. Without the trim and
+    /// the filter it survives `filter_map`, `scopes.is_empty()` stays false, and
+    /// the message names a scope that is not there instead of falling back to
+    /// guidance that would have been useful. Its own test rather than a block
+    /// inside the one below, because that one reuses `text` and an assertion
+    /// added in the middle silently measures the wrong message.
+    #[test]
+    fn a_blank_scope_name_is_no_name_at_all() {
+        let blank = br#"{"error":{"code":"all_scopes","context":{"scopes":["","   "]}}}"#;
+        let text = KDriveProvider::discovery_http_error(
+            reqwest::StatusCode::FORBIDDEN,
+            blank,
+            "Could not read the Infomaniak account profile",
+        )
+        .to_string();
+        assert!(
+            text.contains("did not name"),
+            "blank names are no names, so this is the unnamed case: {text}"
+        );
+        assert!(
+            !text.contains("``"),
+            "and no empty backticks reach the user: {text}"
+        );
+    }
+
+    fn scope_names_from_the_body_are_cleaned_and_bounded() {
+        // 20 characters or more after the prefix: the sanitiser's patterns have a
+        // deliberate length floor so ordinary words are not redacted, and a
+        // hand-picked short value silently exercises nothing. Checked against
+        // `ai.rs`, which requires `{20,}`, rather than assumed.
+        let leaky = br#"{"error":{"code":"all_scopes","context":{"scopes":["sk-AbCdEfGhIjKlMnOpQrStUvWxYz0123"]}}}"#;
+        let text = KDriveProvider::discovery_http_error(
+            reqwest::StatusCode::FORBIDDEN,
+            leaky,
+            "Could not read the Infomaniak account profile",
+        )
+        .to_string();
+        assert!(
+            !text.contains("sk-AbCdEfGhIjKlMnOpQrStUvWxYz0123"),
+            "a secret-shaped scope name is redacted like any other body text: {text}"
+        );
+
+        let many = format!(
+            r#"{{"error":{{"code":"all_scopes","context":{{"scopes":[{}]}}}}}}"#,
+            (0..40)
+                .map(|i| format!("\"scope_number_{i}\""))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let text = KDriveProvider::discovery_http_error(
+            reqwest::StatusCode::FORBIDDEN,
+            many.as_bytes(),
+            "Could not read the Infomaniak account profile",
+        )
+        .to_string();
+        assert!(text.contains("and 36 more"), "the list is bounded: {text}");
+
+        // The property is that the message does not GROW with the array, not
+        // that it fits under some number somebody picked. A fixed threshold
+        // would pass or fail on the length of the surrounding prose, which is
+        // not what is being defended.
+        let few = format!(
+            r#"{{"error":{{"code":"all_scopes","context":{{"scopes":[{}]}}}}}}"#,
+            (0..4)
+                .map(|i| format!("\"scope_number_{i}\""))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let short = KDriveProvider::discovery_http_error(
+            reqwest::StatusCode::FORBIDDEN,
+            few.as_bytes(),
+            "Could not read the Infomaniak account profile",
+        )
+        .to_string();
+        assert!(
+            text.len() < short.len() + 24,
+            "ten times the scopes must not mean a message ten times longer: {} against {}",
+            text.len(),
+            short.len()
+        );
     }
 
     fn test_provider() -> KDriveProvider {
