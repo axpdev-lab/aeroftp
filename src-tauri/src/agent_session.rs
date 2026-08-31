@@ -67,7 +67,7 @@ fn flatten_options(options: Option<&Value>) -> HashMap<String, String> {
 
 /// Stamp the saved record id last so an options-borne `profile_id` cannot
 /// win (CWE-639). `or_insert` would leave a value already present in
-/// `extras` — the opposite of `apply_profile_options`.
+/// `extras`, the opposite of `apply_profile_options`.
 fn extras_for_connect(profile: &ProfileSummary) -> HashMap<String, String> {
     let mut extra = profile.extras.clone();
     if !profile.id.is_empty() {

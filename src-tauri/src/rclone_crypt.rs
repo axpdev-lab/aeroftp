@@ -185,7 +185,7 @@ fn maybe_rclone_reveal(value: &str) -> String {
     }
     match crate::rclone_import::reveal_obscured(value) {
         // Empty reveal is rclone `password2 = obscure("")`: omitted salt,
-        // which must collapse to the default salt — not stay as the blob.
+        // which must collapse to the default salt, not stay as the blob.
         Ok(plain) if plain != value && plain.chars().all(|c| !c.is_control()) => plain,
         _ => value.to_string(),
     }

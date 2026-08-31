@@ -54,18 +54,19 @@
  * detector: it catches the leaks whose shape we have already seen, and it exists
  * so the class cannot grow back quietly.
  *
- * How this is gated, and why it is not `--strict` yet. The backlog on the day
- * the detector landed was 1966 pairs over 69 keys. `--strict` would have shipped
- * a permanently red gate, and the only way to make it green on day one would
- * have been to bulk-accept the whole backlog, which is precisely what the
- * baseline forbids: an acceptance is a sentence a human read, and nobody reads
- * 1966. So CI runs the RATCHET instead, `--max=<n>` with n set to the backlog of
- * the day. A newly untranslated string pushes the count over the line and fails
- * the build, while the existing backlog stays visible and countable instead of
- * being laundered into a baseline. Every batch of translations lowers n, and
- * when n reaches 0 the flag is replaced by `--strict` and the ratchet is gone.
- * Lowering n is part of the commit that does the translating, never a separate
- * courtesy commit, and n is never raised.
+ * How this is gated. The backlog on the day the detector landed was 1966 pairs
+ * over 69 keys. `--strict` would have shipped a permanently red gate, and the
+ * only way to make it green on day one would have been to bulk-accept the whole
+ * backlog, which is precisely what the baseline forbids: an acceptance is a
+ * sentence a human read, and nobody reads 1966. So CI ran the RATCHET instead,
+ * `--max=<n>` with n set to the backlog of the day: a newly untranslated string
+ * pushed the count over the line and failed the build, while the existing
+ * backlog stayed visible and countable instead of being laundered into a
+ * baseline. Every batch of translations lowered n, in the commit that did the
+ * translating and never in a separate courtesy commit, and n was never raised.
+ * n reached 0, so CI now runs `--strict` and the ratchet is gone: ANY
+ * untranslated pair fails. `--max=` stays for a future backlog and is the only
+ * mode in which a nonzero count is tolerated.
  *
  * Usage:
  *   node scripts/i18n-untranslated.mjs            # report, always exit 0

@@ -2125,7 +2125,7 @@ impl JottacloudProvider {
     /// Restore an item from trash to its original location.
     ///
     /// Files: GET the original-mountpoint tombstone, then POST `?cphash=true`
-    /// with JSize/JMd5/JCreated/JModified — rclone's restore of a trashed
+    /// with JSize/JMd5/JCreated/JModified, which is rclone's restore of a trashed
     /// destination. `?restore=true` 500s on both the Trash view and the
     /// original path; `?mv=` against `/Trash/name` 404s.
     /// Folders: `?restore=true` on the original path, 404-only slash retry.
