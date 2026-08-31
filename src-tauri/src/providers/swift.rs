@@ -727,33 +727,32 @@ impl SwiftProvider {
     }
 
     /// Swift object keys are flat, so a path is only ever a prefix. This turns
-    /// a UI path into that prefix, and the segment walk is the point: without
-    /// it, `.` survives as a literal segment and the listing asks the server
-    /// for the objects starting with `./`, which are none. The server answers
-    /// 200 with an empty array, so the panel shows an empty container with no
-    /// error at all, which is exactly how this hid.
+    /// a UI path into that prefix, and the root case is the point: without it,
+    /// `.` survives as a literal segment and the listing asks the server for the
+    /// objects starting with `./`, which are none. The server answers 200 with an
+    /// empty array, so the panel shows an empty container with no error at all,
+    /// which is exactly how this hid.
     ///
     /// The GUI reaches it: `provider_list_files` defaults its path to `"."`, so
     /// the first listing after connecting sent `./` and every Swift account
     /// looked empty in the app while the CLI, which passes `/`, worked.
     fn normalize_path(path: &str) -> String {
         // Leading and trailing slashes are framing and go, exactly as the
-        // original trim did. Repeated slashes INSIDE the path do not: a Swift
-        // object name is an opaque key, so `a//b` and `a/b` name two different
-        // objects and collapsing them would point rename, copy and delete at
-        // the wrong one. Only `.` and `..` are resolved, because the GUI opens
-        // a session on `.` and a relative segment has no meaning to the server.
-        let mut segments: Vec<&str> = Vec::new();
-        for segment in path.trim_matches('/').split('/') {
-            match segment {
-                "." => {}
-                ".." => {
-                    segments.pop();
-                }
-                other => segments.push(other),
-            }
+        // original trim did. Nothing else does.
+        let trimmed = path.trim_matches('/');
+        // A whole path of `.` is the GUI saying "the container root", and it is the
+        // only dot this function is allowed to interpret. Anything else stays byte
+        // for byte, INCLUDING `.` and `..` as segments: a Swift object name is an
+        // opaque key, so `foo/../bar` and `bar` are two different objects, exactly
+        // as `a//b` and `a/b` are. Resolving them here pointed `rmdir_recursive`,
+        // `rename` and `server_side_copy` at a prefix the caller never asked for,
+        // so a recursive delete of the literal prefix `foo/../bar/` removed the
+        // unrelated objects under `bar/`. Navigation is where a relative segment
+        // has meaning, and `cd` resolves it there.
+        if trimmed == "." {
+            return String::new();
         }
-        segments.join("/")
+        trimmed.to_string()
     }
 
     // ─── Request with 401 retry ────────────────────────────────
@@ -1078,10 +1077,28 @@ impl StorageProvider for SwiftProvider {
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.current_path = if path.starts_with('/') {
+        let joined = if path.starts_with('/') {
             path.to_string()
         } else {
             format!("{}/{}", self.current_path.trim_end_matches('/'), path)
+        };
+        // `.` and `..` are resolved HERE and nowhere else. This is navigation, where
+        // a relative segment is what the user means; `normalize_path` addresses
+        // objects, where the same characters are part of an opaque key.
+        let mut segments: Vec<&str> = Vec::new();
+        for segment in joined.split('/') {
+            match segment {
+                "" | "." => {}
+                ".." => {
+                    segments.pop();
+                }
+                other => segments.push(other),
+            }
+        }
+        self.current_path = if segments.is_empty() {
+            "/".to_string()
+        } else {
+            format!("/{}", segments.join("/"))
         };
         Ok(())
     }
@@ -1691,13 +1708,13 @@ mod tests {
             "the GUI default and the CLI default must address the same place"
         );
         // A dot inside a path is a segment to drop, not part of a name.
-        assert_eq!(SwiftProvider::normalize_path("foo/./bar"), "foo/bar");
+        assert_eq!(SwiftProvider::normalize_path("foo/./bar"), "foo/./bar");
         // And `..` walks up rather than surviving into a prefix the server
         // would match literally.
-        assert_eq!(SwiftProvider::normalize_path("foo/../bar"), "bar");
-        assert_eq!(SwiftProvider::normalize_path("/foo/bar/../"), "foo");
+        assert_eq!(SwiftProvider::normalize_path("foo/../bar"), "foo/../bar");
+        assert_eq!(SwiftProvider::normalize_path("/foo/bar/../"), "foo/bar/..");
         // A leading `..` cannot escape the container: there is nothing above it.
-        assert_eq!(SwiftProvider::normalize_path("../secrets"), "secrets");
+        assert_eq!(SwiftProvider::normalize_path("../secrets"), "../secrets");
         // A file whose name merely contains a dot is untouched.
         assert_eq!(SwiftProvider::normalize_path("/a.txt"), "a.txt");
         assert_eq!(SwiftProvider::normalize_path("dir/.hidden"), "dir/.hidden");
@@ -1719,6 +1736,59 @@ mod tests {
     /// into `a/b`: listing kept the server's name while rename, copy and delete
     /// went through the normalizer and addressed a different object. Raised by
     /// CodeRabbit on the pull request that introduced it.
+    /// `foo/../bar` and `bar` are two DIFFERENT objects on a Swift account, because
+    /// an object name is an opaque key and the server does no path resolution. The
+    /// normalizer used to resolve the dot segments, so a recursive delete of the
+    /// literal prefix `foo/../bar/` was sent as `bar/` and removed objects the caller
+    /// never named. The property under test is the distinctness, not either value:
+    /// asserting only that `foo/../bar` survives would still pass if `bar` were
+    /// rewritten into it.
+    #[test]
+    fn dot_segments_inside_an_opaque_key_are_not_resolved() {
+        assert_ne!(
+            SwiftProvider::normalize_path("foo/../bar"),
+            SwiftProvider::normalize_path("bar"),
+            "two distinct object keys must not collapse onto one"
+        );
+        assert_eq!(SwiftProvider::normalize_path("foo/../bar"), "foo/../bar");
+        assert_eq!(SwiftProvider::normalize_path("bar"), "bar");
+        // The prefix a recursive delete builds from each of them, which is the value
+        // that actually reached the server.
+        assert_eq!(
+            format!("{}/", SwiftProvider::normalize_path("foo/../bar")),
+            "foo/../bar/"
+        );
+        assert_ne!(
+            format!("{}/", SwiftProvider::normalize_path("foo/../bar")),
+            format!("{}/", SwiftProvider::normalize_path("bar"))
+        );
+        // A single leading `..` is a legal key too, and used to become `secrets`.
+        assert_ne!(
+            SwiftProvider::normalize_path("../secrets"),
+            SwiftProvider::normalize_path("secrets")
+        );
+    }
+
+    /// Navigation is the place where a relative segment means what the user thinks
+    /// it means, so `cd` resolves what `normalize_path` no longer touches. Without
+    /// this, moving the resolution out of the normalizer would have left `cd ..`
+    /// walking into a literal `..` directory that does not exist.
+    #[tokio::test]
+    async fn cd_resolves_relative_segments_that_the_normalizer_leaves_alone() {
+        let mut provider = cleartext_opted_in_provider();
+        provider.cd("/docs/reports").await.unwrap();
+        assert_eq!(provider.pwd().await.unwrap(), "/docs/reports");
+        provider.cd("..").await.unwrap();
+        assert_eq!(provider.pwd().await.unwrap(), "/docs");
+        provider.cd("./drafts").await.unwrap();
+        assert_eq!(provider.pwd().await.unwrap(), "/docs/drafts");
+        provider.cd("../..").await.unwrap();
+        assert_eq!(provider.pwd().await.unwrap(), "/");
+        // Past the root it stops, rather than producing a path with no container.
+        provider.cd("..").await.unwrap();
+        assert_eq!(provider.pwd().await.unwrap(), "/");
+    }
+
     #[test]
     fn normalize_path_keeps_repeated_slashes_inside_the_name() {
         assert_eq!(SwiftProvider::normalize_path("a//b"), "a//b");
@@ -1729,7 +1799,7 @@ mod tests {
         );
         // Framing still goes, and the dot segments still resolve around them.
         assert_eq!(SwiftProvider::normalize_path("//a//b//"), "a//b");
-        assert_eq!(SwiftProvider::normalize_path("a//./b"), "a//b");
+        assert_eq!(SwiftProvider::normalize_path("a//./b"), "a//./b");
     }
 
     #[test]
