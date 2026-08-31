@@ -455,12 +455,17 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # stream. Pinned by `rev` on purpose, for the same reason as n0-mainline
 # above.
 #
-# UPSTREAM PR: NOT OPENED as of 2026-09-01. Prepared and waiting on @axpnet
-# to send it: the branch `buffered-reply-bytes` is pushed on
-# axpdev-lab/suppaftp, the diff is the one method, and the text plus the
-# one-line command are in `BATON-suppaftp-upstream-pr.md` outside this repo.
-# Filing it is an action on somebody else's repository, so it belongs to the
-# account owner rather than to whoever touches this file next.
+# UPSTREAM: NOTHING FILED as of 2026-09-01, and the branch being ready is not
+# the same as the contribution being ready. suppaftp asks for an issue first
+# (CONTRIBUTING.md), and its PR checklist wants tests and a local
+# `just check_code`, neither of which exists for this method yet. It also has
+# a binding AI_POLICY.md: disclosure is mandatory and must go through their PR
+# template, and the contributor has to be a person who understands the change
+# and answers review in their own words. The branch `buffered-reply-bytes` is
+# pushed on axpdev-lab/suppaftp and the issue text, the disclosure wording and
+# the remaining work are in `BATON-suppaftp-upstream-pr.md` outside this repo.
+# Filing it is an action on somebody else's repository under somebody's name,
+# so it belongs to the account owner rather than to whoever edits this file.
 #
 # When it is sent, REPLACE the two lines above with its URL. That is the
 # whole point of writing the state here: "we will upstream it" is a sentence
