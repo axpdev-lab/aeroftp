@@ -1,5 +1,5 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest';
 import { normCryptScope, isWithinCryptScope, resolveBoundCryptScope } from './cryptScope';
 
