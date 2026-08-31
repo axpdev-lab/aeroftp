@@ -59,7 +59,10 @@ futures-util = "0.3"
 # Why it answers false: in production `get_app_url()` returns `frontendDist`
 # only when that is a URL. Ours is a directory, so it falls back to
 # `tauri_protocol_url()`, which off Windows and Android is `tauri://localhost`,
-# while the webview lives on `http://127.0.0.1:14321`. The schemes differ,
+# while the webview lives on `http://127.0.0.1:14321`. That second half is a
+# LINUX fact: only the Linux shipped build uses `WebviewUrl::External` on the
+# localhost server, and Windows and macOS use `WebviewUrl::App`, which is why
+# only Linux regressed. The schemes differ,
 # `make_relative` fails, and the third clause asks whether "http" is a
 # registered URI scheme, which it is not: tauri-plugin-localhost runs an HTTP
 # server rather than registering a scheme.

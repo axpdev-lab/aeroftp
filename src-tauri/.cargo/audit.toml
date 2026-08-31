@@ -172,19 +172,37 @@ ignore = [
     #
     # AeroFTP is NOT reachable through this vector:
     #
-    #   1. AeroFTP's frontend is always served from the bundled localhost
-    #      server via `tauri-plugin-localhost` on `http://127.0.0.1:14321`.
-    #      `WebviewUrl::External` IS used, in four places, and an earlier
-    #      version of this note wrongly said it was not. Every one of them
-    #      parses a fixed `http://127.0.0.1:<port>/` URL built in our own
-    #      code (index, splash, extract); none takes a URL from a server, a
-    #      profile, a file or any other outside input, and there is no
-    #      `loadUrl` accepting attacker input. The property that matters for
-    #      this advisory is that no attacker-chosen URL reaches a webview,
-    #      and that holds; the absolute claim did not.
-    #   2. The webview origin is `http://127.0.0.1:*`, not a custom scheme
-    #      mapped via `http://<scheme>.localhost/`, so the buggy first-dot
-    #      check does not apply to our origin shape.
+    #   1. The localhost server is a LINUX arrangement, and saying so makes
+    #      this ignore stronger rather than weaker. Each of the three windows
+    #      is built from a cfg triple, and the shipped arms are:
+    #
+    #        prod + linux      -> WebviewUrl::External("http://127.0.0.1:<port>/...")
+    #        prod + not linux  -> WebviewUrl::App(...)      i.e. the tauri:// protocol
+    #
+    #      So on Windows and macOS the app never loads an External URL in a
+    #      shipped build at all, and the origin this advisory abuses has no
+    #      entry point there. On Linux it does load one, from the bundled
+    #      `tauri-plugin-localhost` server, and Linux is not in the affected
+    #      platform set. Two legs, one per platform, both stated.
+    #
+    #      `WebviewUrl::External` IS used, and an earlier version of this note
+    #      wrongly said it was not. Its replacement said "four places", which
+    #      was true and still misleading twice over: it did not say on which
+    #      platform, and it counted a DEV-only site (the splash on the Vite
+    #      server at :5173) alongside three that ship. Shipped it is three, on
+    #      Linux: index, splash, extract. Every one parses a fixed
+    #      `http://127.0.0.1:<port>/` URL built in our own code; none takes a
+    #      URL from a server, a profile, a file or any other outside input,
+    #      and there is no `loadUrl` accepting attacker input.
+    #
+    #      The property that matters for this advisory is that no
+    #      attacker-chosen URL reaches a webview. That holds on every platform.
+    #      The absolute claim did not, and the unqualified count offered a
+    #      Linux fact as grounds for judging a Windows risk.
+    #   2. On Linux the webview origin is `http://127.0.0.1:*`, and on Windows
+    #      and macOS it is the `tauri://` App protocol. Neither is a custom
+    #      scheme mapped via `http://<scheme>.localhost/`, so the buggy
+    #      first-dot check does not apply to our origin shape on any platform.
     #   3. Linux/macOS builds are not in the affected platform set at all.
     #
     # Why we cannot simply take the fix, stated correctly. 2.11.1 did NOT
