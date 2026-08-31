@@ -321,6 +321,23 @@ async fn ensure_remote_parents(
         return Ok(());
     };
     let backend = ctx.remote_backend(server).await.map_err(backend_error)?;
+
+    // Ask the precise question once before doing any work. The walk below
+    // issues one MKD per level and, when the tree is already there, which is
+    // the ordinary case, every one of them fails and is then forgiven. A
+    // single stat answers "is the parent already a directory" in one round
+    // trip instead of that. A guard that asks the exact question can be
+    // faster than a vague one, because a vague answer leaves you having to
+    // attempt the work anyway.
+    //
+    // If the backend cannot stat a directory, this falls through to the walk,
+    // which is exactly the behaviour before this check existed.
+    match backend.stat(&parent).await {
+        Ok(entry) if entry.is_dir => return Ok(()),
+        Ok(_) => return Err(non_directory_in_the_way(&parent)),
+        Err(_) => {}
+    }
+
     let mut acc = String::new();
     let leading_slash = parent.starts_with('/');
     for part in parent.split('/').filter(|p| !p.is_empty()) {
@@ -331,6 +348,27 @@ async fn ensure_remote_parents(
         match backend.mkdir(&acc).await {
             Ok(()) => {}
             Err(e) => {
+                // Some FTP servers (e.g. ProFTPD, as used by Aruba shared
+                // hosting) answer MKD on an already-existing directory with
+                // "550 Permission denied" instead of a recognizable "exists"
+                // message. Rather than widen the string match (which would
+                // mask genuine permission failures), ask stat.
+                //
+                // The question is not "does something exist here", it is "can
+                // I descend into it", and stat answers that one: it returns a
+                // `RemoteEntry` carrying `is_dir`. Reading only `is_ok()`
+                // discarded the half that mattered, so a plain file sitting
+                // where a parent directory belongs was forgiven, and the
+                // failure surfaced one level further down naming a path that
+                // was not the problem.
+                match backend.stat(&acc).await {
+                    Ok(entry) if entry.is_dir => continue,
+                    Ok(_) => return Err(non_directory_in_the_way(&acc)),
+                    Err(_) => {}
+                }
+                // stat could not answer. Fall back to the server's own words,
+                // which are weaker: they say something is already there, not
+                // that it is a directory.
                 let low = e.to_ascii_lowercase();
                 if low.contains("already exists")
                     || low.contains("file exists")
@@ -338,20 +376,21 @@ async fn ensure_remote_parents(
                 {
                     continue;
                 }
-                // Some FTP servers (e.g. ProFTPD, as used by Aruba shared
-                // hosting) answer MKD on an already-existing directory with
-                // "550 Permission denied" instead of a recognizable "exists"
-                // message. Rather than widen the string match (which would
-                // mask genuine permission failures), confirm via stat: if the
-                // path is already present, treat mkdir as a no-op.
-                if backend.stat(&acc).await.is_ok() {
-                    continue;
-                }
                 return Err(ToolError::Exec(format!("mkdir {} failed: {}", acc, e)));
             }
         }
     }
     Ok(())
+}
+
+/// Name the level that is actually in the way, and say what is there.
+///
+/// The old message came from the mkdir of the level BELOW this one, so it
+/// reported a path that was fine and hid the one that was not.
+fn non_directory_in_the_way(path: &str) -> ToolError {
+    ToolError::Exec(format!(
+        "cannot create parent directories: {path} already exists and is not a directory"
+    ))
 }
 
 pub async fn dispatch_remote_tool(
@@ -3380,6 +3419,10 @@ mod tests {
         /// When set, `stat` fails with this message for every path, the way a
         /// provider fails on an expired token or a dropped connection.
         stat_fails_with: Option<String>,
+        /// When set, `mkdir` fails with this message instead of the default
+        /// "unused", so a test can hand the walk the wording a real server
+        /// uses when the path is already taken.
+        mkdir_fails_with: Option<String>,
     }
 
     impl FakeBackend {
@@ -3419,6 +3462,7 @@ mod tests {
                 delete_fails_with: None,
                 rename_fails_with: None,
                 stat_fails_with: None,
+                mkdir_fails_with: None,
             }
         }
 
@@ -3521,7 +3565,10 @@ mod tests {
             Ok(())
         }
         async fn mkdir(&self, _path: &str) -> Result<(), String> {
-            Err("unused".into())
+            Err(self
+                .mkdir_fails_with
+                .clone()
+                .unwrap_or_else(|| "unused".to_string()))
         }
         async fn rename(&self, from: &str, to: &str) -> Result<(), String> {
             if let Some(msg) = &self.rename_fails_with {
@@ -3620,6 +3667,77 @@ mod tests {
             sink: NoopSink,
             creds: NoopCreds,
         }
+    }
+
+    /// A plain file where a parent directory belongs must be reported at the
+    /// level it is on.
+    ///
+    /// `stat` returns a `RemoteEntry` carrying `is_dir`, and the old code read
+    /// only `is_ok()`. That answers "does something exist here" while the
+    /// question is "can I descend into it", so a file was forgiven and the
+    /// walk carried on. The failure then surfaced one level further down,
+    /// naming a path that was not the problem, which sends whoever reads it
+    /// looking below the actual obstacle.
+    ///
+    /// Seeded so the old behaviour is reachable: /data is a directory, and
+    /// /data/report is a FILE. The mock refuses every mkdir, which is what a
+    /// server does when the path is taken.
+    #[tokio::test]
+    async fn a_file_where_a_parent_belongs_is_named_at_its_own_level() {
+        let mut fake = FakeBackend::sample();
+        fake.stats.insert("/data".to_string(), (true, 0));
+        fake.stats.insert("/data/report".to_string(), (false, 12));
+        let ctx = test_ctx(Arc::new(fake));
+
+        let err = ensure_remote_parents(&ctx, "s", "/data/report/2026/x.csv")
+            .await
+            .unwrap_err();
+        let text = format!("{err:?}");
+
+        assert!(
+            text.contains("/data/report") && !text.contains("/data/report/2026"),
+            "the obstacle is /data/report, but the error points elsewhere: {text}"
+        );
+        assert!(
+            text.contains("not a directory"),
+            "the error does not say what is wrong with it: {text}"
+        );
+    }
+
+    /// An existing parent costs one round trip, not one per level.
+    ///
+    /// The walk issues an MKD per level and forgives each failure, so the
+    /// ordinary case, a tree that is already there, pays for every level. A
+    /// stat up front answers the exact question once. Asking precisely can be
+    /// cheaper than asking vaguely, because a vague answer leaves the work to
+    /// be attempted anyway.
+    ///
+    /// Only the parent itself is seeded, and the mock refuses every mkdir, so
+    /// this passes only if no level is walked at all.
+    #[tokio::test]
+    async fn an_existing_parent_is_settled_without_walking_it() {
+        let mut fake = FakeBackend::sample();
+        fake.stats
+            .insert("/data/report/2026".to_string(), (true, 0));
+        let ctx = test_ctx(Arc::new(fake));
+
+        ensure_remote_parents(&ctx, "s", "/data/report/2026/x.csv")
+            .await
+            .expect("an existing parent directory needs no mkdir at all");
+    }
+
+    /// A backend that cannot stat falls back to the words the server used,
+    /// exactly as before the typed check was added.
+    #[tokio::test]
+    async fn without_stat_the_server_wording_still_decides() {
+        let mut fake = FakeBackend::sample();
+        fake.stat_fails_with = Some("stat unsupported".to_string());
+        fake.mkdir_fails_with = Some("550 File exists".to_string());
+        let ctx = test_ctx(Arc::new(fake));
+
+        ensure_remote_parents(&ctx, "s", "/data/report/x.csv")
+            .await
+            .expect("an \"exists\" reply is still forgiven when stat cannot answer");
     }
 
     #[tokio::test]
