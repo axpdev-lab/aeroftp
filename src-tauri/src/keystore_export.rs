@@ -1297,12 +1297,26 @@ pub fn import_keystore(
                         tracing::warn!("Rollback failed for '{}': {}", rollback_account, re);
                     }
                 }
-                return Err(KeystoreExportError::Encryption(format!(
+                // The sentence and the class both matter here, so neither is
+                // given up. `from_store_error` alone would keep the class and
+                // lose the account name and the rollback count, which are the
+                // useful half of the message; `Encryption` alone would keep the
+                // sentence and lose the class, and an IO failure writing the
+                // vault would stop being an 11. The rollback writes the vault
+                // through `store` twice, so `Io` is reachable here for the same
+                // reasons it is at the three sites `from_store_error` covers.
+                let text = format!(
                     "Import failed at '{}': {}. {} entries rolled back.",
                     account,
                     e,
                     committed.len()
-                )));
+                );
+                return Err(match e {
+                    crate::credential_store::CredentialError::Io(io) => {
+                        KeystoreExportError::Io(std::io::Error::new(io.kind(), text))
+                    }
+                    _ => KeystoreExportError::Encryption(text),
+                });
             }
         }
     }
@@ -1620,6 +1634,40 @@ mod tests {
             from_store_error(CredentialError::VaultNotInitialized),
             KeystoreExportError::Encryption(_)
         ));
+    }
+
+    /// The import rollback builds a composite sentence and must keep both halves
+    /// of it: the account name and the rollback count, which are the useful part
+    /// of the message, and the class, without which an IO failure writing the
+    /// vault stops being an 11.
+    ///
+    /// This case was missed once. The site was simulated with an invented inner
+    /// value ("disk full") instead of with the variants the store can actually
+    /// return, so the `Io` that renders as "IO error: ..." inside the composite
+    /// text never appeared in the check. Enumerating the site is not enough if
+    /// what goes into it is chosen by hand.
+    #[test]
+    fn the_rollback_message_keeps_its_class_and_its_words() {
+        let io = std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Permission denied (os error 13)",
+        );
+        let text = format!("Import failed at 'acct': {io}. 3 entries rolled back.");
+        let err = KeystoreExportError::Io(std::io::Error::new(io.kind(), text));
+
+        assert!(
+            matches!(err, KeystoreExportError::Io(_)),
+            "an IO failure during rollback is still an IO failure"
+        );
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("acct"),
+            "the account name survives: {rendered}"
+        );
+        assert!(
+            rendered.contains("3 entries rolled back"),
+            "the rollback count survives: {rendered}"
+        );
     }
 
     /// zstd round-trip on the shape of payload we actually produce:
