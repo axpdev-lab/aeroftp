@@ -640,7 +640,7 @@ pub fn clone_multipart_worker(provider: &dyn StorageProvider) -> Option<Box<dyn 
 /// Classification happens once at this adapter boundary (via the shared
 /// [`TransferError`] taxonomy). Controllers later read only machine fields.
 pub fn transfer_failure_from_message(message: &str, _path_hint: Option<&str>) -> TransferFailure {
-    if message.to_lowercase().contains("cancel") {
+    if crate::transfer_dag::error::message_names_a_cancellation(message) {
         return cancelled_failure();
     }
     // Lift typed congestion / Retry-After from the raw message before the

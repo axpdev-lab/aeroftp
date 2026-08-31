@@ -1206,7 +1206,9 @@ impl ProviderDownloadExecutor {
     fn failed_download(&self, entry: TransferEntry, last_error: String) -> TransferOutcome {
         // Classify from the raw provider string once; domain carrier keeps
         // typed congestion / Retry-After while the public event stays redacted.
-        let failure = if self.cancel_token.is_cancelled() || last_error.contains("cancelled") {
+        let failure = if self.cancel_token.is_cancelled()
+            || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
+        {
             TransferFailure::new(
                 crate::transfer_domain::TransferFailureKind::Cancelled,
                 "Transfer cancelled by user",
@@ -1515,7 +1517,9 @@ impl ProviderUploadExecutor {
     }
 
     fn failed_upload(&self, entry: TransferEntry, last_error: String) -> TransferOutcome {
-        let failure = if self.cancel_token.is_cancelled() || last_error.contains("cancelled") {
+        let failure = if self.cancel_token.is_cancelled()
+            || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
+        {
             TransferFailure::new(
                 crate::transfer_domain::TransferFailureKind::Cancelled,
                 "Transfer cancelled by user",

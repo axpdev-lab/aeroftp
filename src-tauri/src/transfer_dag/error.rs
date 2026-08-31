@@ -268,17 +268,45 @@ fn default_idempotent_for(kind: TransferErrorKind) -> bool {
     )
 }
 
+/// Does this message say the operation was cancelled?
+///
+/// Five readers asked this with THREE different needles, and the answer to the
+/// same message depended on which layer was asking. `transfer_multipart` used
+/// bare `cancel`; the FTP and provider executors used `cancelled`, except for
+/// one site four lines from its twin that used `cancelled by user`; this file
+/// and `provider_commands` used `cancelled by user`. A provider error phrased
+/// "request cancelled" was therefore a cancellation to two layers and an
+/// ordinary failure to the other two, and cleanup and event emission followed
+/// different answers to one question.
+///
+/// `cancelled` is the level both extremes were wrong about, and consolidating
+/// moves two sites in each direction rather than widening everything to the
+/// loosest. Bare `cancel` also matched "failed to cancel" and "cancellation
+/// refused", which are the opposite of a cancellation; `cancelled by user`
+/// missed every cancellation the user did not personally cause, which includes
+/// a parent task cancelling its children.
+///
+/// The American spelling is here because none of the five had it, and nothing
+/// guarantees that every library and provider in the dependency tree spells it
+/// the way this codebase does.
+pub fn message_names_a_cancellation(message: &str) -> bool {
+    let lowered = message.to_ascii_lowercase();
+    lowered.contains("cancelled") || lowered.contains("canceled")
+}
+
 /// Classify a free-form error string once at the adapter boundary.
 ///
 /// This is the only place that may inspect message text for transfer-DAG
 /// scheduling decisions. The controller must use [`TransferErrorKind`].
+///
+/// The claim above is about SCHEDULING and it holds; it was never a claim that
+/// no other file reads message text, and four of them read it for cancellation
+/// alone. They now ask [`message_names_a_cancellation`], which lives here so
+/// that the sentence is true of the vocabulary as well as of the scheduling.
 fn classify_raw_message(raw: &str) -> TransferErrorKind {
     let lower = raw.to_lowercase();
 
-    if lower.contains("cancelled by user")
-        || lower.contains("transfer cancelled")
-        || lower == "transfer cancelled"
-    {
+    if message_names_a_cancellation(&lower) {
         return TransferErrorKind::Cancelled;
     }
     if lower.contains("503") || lower.contains("service unavailable") {

@@ -3467,7 +3467,7 @@ pub async fn provider_download_file(
 
     // Partial local target is not a valid whole file after cancel (MTP has no resume).
     if let Err(ref err) = result {
-        if err.to_string().contains("cancelled by user") {
+        if crate::transfer_dag::error::message_names_a_cancellation(&err.to_string()) {
             let _ = tokio::fs::remove_file(&local_path).await;
         }
     }
@@ -3504,7 +3504,7 @@ pub async fn provider_download_file(
             info!("Download completed: {}", filename);
             Ok(format!("Downloaded: {}", filename))
         }
-        Err(e) if e.to_string().contains("cancelled by user") => {
+        Err(e) if crate::transfer_dag::error::message_names_a_cancellation(&e.to_string()) => {
             // Cancel path already emitted a transfer_event above.
             Err(format!("Download cancelled by user: {}", filename))
         }
@@ -4997,7 +4997,7 @@ pub async fn provider_upload_file(
     // MTP honesty: cancelled whole-file upload may leave a partial object.
     // Delete it when the backend allows; never claim resume.
     if let Err(ref err) = result {
-        if err.contains("cancelled by user")
+        if crate::transfer_dag::error::message_names_a_cancellation(err)
             && provider.provider_type() == crate::providers::types::ProviderType::Mtp
         {
             if let Err(del_err) = provider.delete(&remote_path).await {
@@ -5035,7 +5035,7 @@ pub async fn provider_upload_file(
             info!("Upload completed: {}", filename);
             Ok(format!("Uploaded: {}", filename))
         }
-        Err(e) if e.contains("cancelled by user") => {
+        Err(e) if crate::transfer_dag::error::message_names_a_cancellation(e) => {
             // Cancel path already emitted a transfer_event above.
             Err(e.clone())
         }

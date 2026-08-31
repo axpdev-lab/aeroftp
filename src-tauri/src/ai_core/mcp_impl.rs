@@ -147,13 +147,40 @@ pub struct McpRemoteBackend {
 /// app refreshes the token in the vault the pooled provider keeps presenting
 /// the stale one. Dropping the pooled entry forces `create_provider_from_vault`
 /// to re-read the fresh token from disk.
+/// Is this failure the kind a fresh credential could fix?
+///
+/// It gates one hot-reload from the vault and a single retry, so the two
+/// directions cost differently and that decides how wide it should be. A miss
+/// means a user sees a failure that reloading would have repaired; a false
+/// positive costs one wasted round trip. Wider is the cheap side here, which is
+/// the opposite of most guards in this file.
+///
+/// UNDERSCORES ARE NORMALISED TO SPACES before matching, and that is the fix
+/// rather than a tidy-up. `yandex_disk.rs` emits `invalid_token`; this list
+/// carried `invalid token`, and one does not contain the other, so a revoked
+/// Yandex token reached the pool and never triggered the reload that exists for
+/// exactly that case. Adding the second spelling would have fixed one wording
+/// and left the next one to be discovered; normalising means neither spelling
+/// of any needle can be the one that was not thought of.
+///
+/// `revoked` belongs here even though a revoked token cannot be refreshed. The
+/// retry does not refresh anything: it re-reads the vault, which the desktop
+/// app may have repopulated by a full re-authentication. A revoked token is
+/// therefore precisely a case where the stored credential may already be good
+/// again. Note that `yandex_disk.rs` asks the OPPOSITE question of the same
+/// words, whether an auth failure is terminal for its own retry loop, so the
+/// two lists must not be merged however alike they look.
 fn looks_like_auth_failure(msg: &str) -> bool {
-    let m = msg.to_ascii_lowercase();
+    let m = msg.to_ascii_lowercase().replace('_', " ");
     m.contains("401")
         || m.contains("unauthorized")
         || m.contains("access token")
-        || m.contains("invalid_grant")
+        || m.contains("invalid grant")
         || m.contains("invalid token")
+        || m.contains("invalid oauth")
+        || m.contains("token is invalid")
+        || m.contains("token not valid")
+        || m.contains("revoked")
         || m.contains("token expired")
         || m.contains("expired token")
         || m.contains("authentication failed")
@@ -416,6 +443,15 @@ mod tests {
             "invalid_grant",
             "the access token expired",
             "Box API: invalid token",
+            // Every wording `yandex_disk.rs` produces for a dead token. None
+            // of these matched before: `invalid_token` is not `invalid token`
+            // once the underscore is in the way, and the two word orders below
+            // are not the phrase this list knew either.
+            "invalid_token",
+            "OAuth token is invalid",
+            "token not valid",
+            "The OAuth token has been revoked",
+            "invalid oauth token",
         ] {
             assert!(looks_like_auth_failure(s), "should be auth-class: {s}");
         }
@@ -426,6 +462,10 @@ mod tests {
             "404 Not Found",
             "directory not found",
             "connection refused",
+            // Widening for the underscore must not reach past auth: a expired
+            // certificate is not a credential the vault can replace.
+            "certificate expired",
+            "the cached listing is invalid",
         ] {
             assert!(!looks_like_auth_failure(s), "should NOT be auth-class: {s}");
         }
