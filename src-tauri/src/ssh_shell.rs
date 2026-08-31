@@ -38,7 +38,10 @@ impl Handler for ShellSshHandler {
         &mut self,
         server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
-        // See the sibling handlers: the certificate arm is unreachable while
+        // See the sibling handlers for the full reasoning and the two edits
+        // that would make this arm live: `providers/sftp.rs`,
+        // `host_key_check.rs`, `aerorsync/russh_session_transport.rs`. In
+        // short: the certificate arm is unreachable while
         // `Preferred::host_key_certificates` stays empty, and refusing keeps
         // today's behaviour exactly. Whoever enables host certificates must
         // come back to all FOUR of these first.
