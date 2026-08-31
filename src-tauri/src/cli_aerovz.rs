@@ -283,6 +283,9 @@ pub(crate) enum ArchiveFailure {
     /// would be the substring match coming back wearing a type.
     NotFound,
     /// A destination exists and this lane will not write over it.
+    /// This lane will not write over a destination the caller named. Built ONLY
+    /// at the explicit output-exists check, never inferred from an
+    /// `ErrorKind::AlreadyExists`: see `ArchiveError::io`.
     RefuseOverwrite,
     /// Anything else.
     Other,
@@ -327,10 +330,21 @@ impl ArchiveError {
     /// or directory" is `ErrorKind::NotFound` rendered in English on one
     /// platform, and reading the kind says the same thing in every locale and on
     /// every target.
+    ///
+    /// Only `NotFound` is taken from the kind, and the omission of
+    /// `AlreadyExists` is deliberate. A kind describes what a SYSCALL hit, not
+    /// what this lane promised. The two coincide for not-found ("the thing you
+    /// named is not there" is the same statement either way) and they come apart
+    /// for already-exists: `create_dir_all` reports `AlreadyExists` when a
+    /// regular file sits on a path component it needs as a directory, which is
+    /// an ordinary failure, not this lane refusing to clobber the output the
+    /// caller named. Mapping it to `RefuseOverwrite` would exit 9 and tell a
+    /// script "your destination is occupied, choose another" about a file the
+    /// caller never mentioned. `RefuseOverwrite` is produced at the explicit
+    /// output-exists check and nowhere else.
     pub(crate) fn io(context: &str, err: std::io::Error) -> Self {
         let failure = match err.kind() {
             std::io::ErrorKind::NotFound => ArchiveFailure::NotFound,
-            std::io::ErrorKind::AlreadyExists => ArchiveFailure::RefuseOverwrite,
             _ => ArchiveFailure::Other,
         };
         Self {
@@ -870,6 +884,47 @@ mod tests {
         let renamed = aerovz_error("aerovz internal failure".to_string());
         assert!(renamed.message().contains("aerozip"));
         assert_eq!(archive_exit_code(&renamed), 1);
+    }
+
+    #[test]
+    fn a_blocked_output_parent_is_not_a_refusal_to_overwrite() {
+        // Exit 9 is a promise with a specific meaning: the destination YOU named
+        // is already there, pick another one. `create_dir_all` also reports
+        // `AlreadyExists` when the parent it must create is itself a regular
+        // file, so classifying by kind told a script "your destination is
+        // occupied" about a file the caller never mentioned and cannot act on.
+        //
+        // The SHAPE here is load-bearing and was measured, not assumed: only a
+        // parent one level up yields `AlreadyExists` (EEXIST). Put the blocker
+        // two levels up and the kind is `NotADirectory` (ENOTDIR) instead, which
+        // maps to `Other` either way, so that version of this test passes against
+        // the very bug it claims to defend against. A broken symlink in the
+        // parent's place is the other `AlreadyExists` producer.
+        //
+        // Driven through `create_archive` rather than a hand-built error, because
+        // the claim under test is about which failures the PRODUCER can turn into
+        // a 9, and a hand-built error would only assert the mapping back.
+        let dir = tempfile::tempdir().unwrap();
+        let blocker = dir.path().join("blocker");
+        std::fs::write(&blocker, b"a regular file where a directory is needed").unwrap();
+        let src = dir.path().join("payload.txt");
+        std::fs::write(&src, b"payload").unwrap();
+
+        let output = blocker.join("out.aerozip");
+        let err = create_archive(
+            output.to_str().unwrap(),
+            &[src.to_string_lossy().to_string()],
+            "balanced",
+            "20",
+        )
+        .expect_err("an output parent that is a regular file cannot be created");
+        assert_eq!(
+            archive_exit_code(&err),
+            1,
+            "only the explicit output-exists check may exit 9; got {} for {:?}",
+            archive_exit_code(&err),
+            err.message()
+        );
     }
 
     #[test]
