@@ -17,6 +17,7 @@ import { Checkbox } from './ui/Checkbox';
 import { BridgeSourcePanel } from './BridgeSourcePanel';
 import { BridgeSourceDescriptor, GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useDetectedBridgeConfigs, shortenConfigPath, orderBridgeSourcesByDetection } from '../hooks/useDetectedBridgeConfigs';
 
 interface ExportImportDialogProps {
     servers: ServerProfile[];
@@ -81,6 +82,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     // A profile file dropped onto the dialog and identified by
     // bridge_identify; handed to BridgeSourcePanel to skip browse.
     const [bridgePresetPath, setBridgePresetPath] = useState<string | null>(null);
+    // Which bridge tools are actually installed on this machine. Probed once,
+    // and only while the import picker is on screen: the export picker offers
+    // every tool regardless, since exporting does not need a config to exist.
+    const { detected: detectedBridgeConfigs } = useDetectedBridgeConfigs(mode === 'bridge-import');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [includeCredentials, setIncludeCredentials] = useState(true);
@@ -461,6 +466,14 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                             const filtered = q
                                 ? GENERIC_BRIDGE_SOURCES.filter(s => s.label.toLowerCase().includes(q))
                                 : GENERIC_BRIDGE_SOURCES;
+                            // Tools whose config was found on this machine float to the top,
+                            // so the one you are migrating from is the first thing you see.
+                            // Array.sort is stable, so the curated order survives inside
+                            // each group. Import only: an export target does not need a
+                            // config file to already exist.
+                            const ordered = isImport
+                                ? orderBridgeSourcesByDetection(filtered, detectedBridgeConfigs)
+                                : filtered;
                             return (
                                 <div className="space-y-3">
                                     <div className="text-sm text-gray-600 dark:text-gray-300">
@@ -475,26 +488,38 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                         className="w-full pl-3 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500"
                                     />
                                     <div className="space-y-2 max-h-[336px] overflow-y-auto pr-1">
-                                        {filtered.length === 0 ? (
+                                        {ordered.length === 0 ? (
                                             <div className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">{t('settings.bridgeNoApps')}</div>
-                                        ) : filtered.map(s => (
+                                        ) : ordered.map(s => {
+                                            const foundPath = isImport ? detectedBridgeConfigs[s.id] : undefined;
+                                            return (
                                             <button
                                                 key={s.id}
                                                 onClick={() => pick(s)}
                                                 disabled={!isImport && servers.length === 0}
-                                                className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 flex items-center gap-3 transition-colors disabled:opacity-50"
+                                                title={foundPath}
+                                                className={`w-full p-3 border rounded-lg hover:border-blue-400 dark:hover:border-blue-500 flex items-center gap-3 transition-colors disabled:opacity-50 ${foundPath ? 'border-green-300 dark:border-green-800' : 'border-gray-200 dark:border-gray-700'}`}
                                             >
                                                 <div className={`w-9 h-9 rounded-lg ${s.accentBg} flex items-center justify-center flex-shrink-0`}>
                                                     <Icon size={18} className={s.accent} />
                                                 </div>
                                                 <div className="text-left min-w-0">
-                                                    <div className="font-medium">{s.label}</div>
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                                        {(isImport ? t('settings.bridgeGenericImportDesc') : t('settings.bridgeGenericExportDesc')).replace('{app}', s.label)}
+                                                    <div className="font-medium flex items-center gap-1.5">
+                                                        {s.label}
+                                                        {foundPath && <CheckCircle2 size={13} className="text-green-600 dark:text-green-400 flex-shrink-0" />}
+                                                    </div>
+                                                    {/* The path IS the message: it says the config exists and
+                                                        where it is, in every language, with no string to
+                                                        translate. Falls back to the generic blurb otherwise. */}
+                                                    <div className={`text-xs truncate ${foundPath ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                                                        {foundPath
+                                                            ? shortenConfigPath(foundPath)
+                                                            : (isImport ? t('settings.bridgeGenericImportDesc') : t('settings.bridgeGenericExportDesc')).replace('{app}', s.label)}
                                                     </div>
                                                 </div>
                                             </button>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                     <div className="flex gap-2">
                                         <button onClick={() => { setBridgeFilter(''); resetMode(); }} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">{t('common.back')}</button>

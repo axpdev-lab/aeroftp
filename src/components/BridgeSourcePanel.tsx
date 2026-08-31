@@ -13,6 +13,7 @@ import { ServerProfile } from '../types';
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourceDescriptor, BridgeSourceMeta } from './bridge/bridgeSources';
+import { detectBridgeConfigBounded } from '../hooks/useDetectedBridgeConfigs';
 import { commitImportedServers } from './bridge/bridgeImportCommit';
 
 interface ImportedServer {
@@ -94,9 +95,11 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     // file was already identified for this source (presetFilePath wins).
     useEffect(() => {
         if (direction === 'import' && detectedPath === null && !presetFilePath) {
-            invoke<string | null>('detect_bridge_config', { source: source.id })
-                .then(p => setDetectedPath(p || ''))
-                .catch(() => setDetectedPath(''));
+            // Bounded, and served from the picker's sweep when that already
+            // knows the answer. An unbounded probe left this panel on an
+            // eternal "Detecting..." spinner whenever the backend call did not
+            // come back, with the browse button unreachable behind it.
+            void detectBridgeConfigBounded(source.id).then(setDetectedPath);
         }
     }, [direction, source.id, detectedPath, presetFilePath]);
 
