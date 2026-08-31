@@ -76,7 +76,7 @@ contact: https://github.com/axpdev-lab/aeroftp/discussions
 issues: https://github.com/axpdev-lab/aeroftp/issues
 source-code: https://github.com/axpdev-lab/aeroftp
 website: https://aeroftp.app
-license: GPL-3.0
+license: GPL-3.0-or-later
 
 architectures:
   - build-on: amd64
