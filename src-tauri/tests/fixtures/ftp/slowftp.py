@@ -56,6 +56,7 @@ class Counters:
         self.unsolicited_sent = 0
         self.pasv_announced = 0
         self.data_accepted = 0
+        self.commands = {}
         self.write()
 
     def write(self):
@@ -63,10 +64,11 @@ class Counters:
             return
         tmp = self.path + ".tmp"
         with open(tmp, "w") as fh:
+            cmds = ", ".join('"%s": %d' % (k, v) for k, v in sorted(self.commands.items()))
             fh.write('{"abor_read": %d, "stor_bytes": %d, "unsolicited_sent": %d, '
-                     '"pasv_announced": %d, "data_accepted": %d}\n'
+                     '"pasv_announced": %d, "data_accepted": %d, "commands": {%s}}\n'
                      % (self.abor_read, self.stor_bytes, self.unsolicited_sent,
-                        self.pasv_announced, self.data_accepted))
+                        self.pasv_announced, self.data_accepted, cmds))
         os.replace(tmp, self.path)  # atomic: a reader never sees a half file
 
     def bump_abor(self):
@@ -84,6 +86,20 @@ class Counters:
         """
         with self.lock:
             self.unsolicited_sent += 1
+            self.write()
+
+    def note_command(self, verb):
+        """Count every command verb the server was asked, by name.
+
+        A test that drives the client cannot see this server's log, so without
+        this it can only assert on what the client printed. That is the wrong
+        end for questions like "was a second command injected": the client is
+        exactly the side that does not know. Counted per verb rather than as a
+        total, because the assertion is "DELE was never asked", and a total
+        cannot say which verb is missing.
+        """
+        with self.lock:
+            self.commands[verb] = self.commands.get(verb, 0) + 1
             self.write()
 
     def bump(self, field):
@@ -412,6 +428,7 @@ class Session(threading.Thread):
                 continue
             cmd, _, arg = line.partition(" ")
             cmd = cmd.upper()
+            self.counters.note_command(cmd)
             log("<- %s" % line)
 
             if cmd == "USER":   self.send("331 Please specify the password.")

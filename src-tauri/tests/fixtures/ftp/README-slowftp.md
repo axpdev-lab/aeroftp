@@ -593,3 +593,29 @@ Note that the deadline has to be shorter than `--hang`, and `--hang` now default
 to 420 for the reasons in the defaults audit above. For this scenario set it
 explicitly to something just above the deadline you are testing, so the reply is
 late but the test is not slow.
+
+## Asserting what the server was asked, by name
+
+The status file counts every command verb the server received:
+
+```text
+"commands": {"FEAT": 1, "PASS": 1, "PWD": 1, "SIZE": 1, "TYPE": 2, "USER": 1}
+```
+
+A test driving the client cannot see this server's log, and the client is the
+wrong end to ask questions like "was a second command injected": it is exactly
+the side that does not know. Counted per verb rather than as a total, because
+the assertion is "`DELE` was never asked" and a total cannot say which verb is
+missing.
+
+Validated against the fault it exists to report, which is the only check that
+makes a counter a guard:
+
+| binary | `DELE` | `USER` | `DELE == 0` |
+|---|---|---|---|
+| before the CR/LF refusal | **1** | 1 | fails |
+| after | **0** | 1 | passes |
+
+The `USER` count is the control in the same reading. Without it a `DELE` of zero
+could equally mean the client never reached the server, and the assertion would
+pass for the wrong reason.
