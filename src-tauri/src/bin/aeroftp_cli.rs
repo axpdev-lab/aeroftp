@@ -37151,6 +37151,7 @@ fn classify_keystore_error(err: &ftp_client_gui_lib::keystore_export::KeystoreEx
         E::InvalidPassword => 6,       // auth failure
         E::VaultNotReady => 5,         // configuration / vault-locked
         E::UnsupportedVersion(_) => 7, // not-supported / unsupported version
+        E::UnsupportedCodec(_) => 7,   // same family: this build cannot read it
         E::Io(_) => 11,                // I/O
         // Both cover too many distinct causes for one code to say anything
         // useful, so they say nothing rather than something false.
@@ -66633,10 +66634,38 @@ mod tests {
             99
         );
 
-        // Same variant, wording that once mattered and now does not.
+        // Same variant, wording that once mattered and now does not. The old
+        // chain gave 6 to anything containing "decrypt", and three sites
+        // interpolate a string the caller chose, so `--merge decrypt` exited 6
+        // and `--merge "io error"` exited 11: a pipeline branching on the code
+        // was being steered from the command line.
         assert_eq!(
-            classify_keystore_error(&E::Encryption("failed to decrypt blob".into())),
+            classify_keystore_error(&E::Encryption("Invalid merge strategy: decrypt".into())),
             99
+        );
+        assert_eq!(
+            classify_keystore_error(&E::Encryption("Invalid merge strategy: io error".into())),
+            99
+        );
+
+        // The two that must NOT move, and did in the first version of this
+        // change. A permission problem on the vault file arrives as a
+        // `CredentialError::Io` and used to reach 11 because its text happened
+        // to say "IO error"; it now reaches 11 because it is an `Io`.
+        assert_eq!(
+            classify_keystore_error(&E::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "Permission denied (os error 13)"
+            ))),
+            11
+        );
+        // A codec this build cannot read used to get 7 from the words "unknown
+        // compression" appearing in an `Encryption` message, which let the
+        // marker inside the backup file pick the exit code. Same 7, from a
+        // variant.
+        assert_eq!(
+            classify_keystore_error(&E::UnsupportedCodec("brotli".into())),
+            7
         );
     }
     use serde_json::json;
