@@ -312,6 +312,39 @@ fn parent_remote_dir(path: &str) -> Option<String> {
     }
 }
 
+/// What a listing lets us conclude about descending into a path.
+///
+/// There are two answers and the missing third is the whole point.
+///
+/// A listing can PROVE a path is a directory: `is_dir` comes from the leading
+/// `d` in the permission string (ftp_listing.rs), and the MLSD path sets it for
+/// `type=dir|cdir|pdir`. Nothing a listing says proves a path is NOT one. A
+/// symlink pointing at a directory reports `is_dir == false` because its
+/// permissions begin with `l`, and MLSD recognises only two spellings of a
+/// symlink while RFC 3659 allows a third, so a symlink can arrive with both
+/// flags false. `is_dir == false` therefore means "not shown to be a
+/// directory", never "shown not to be one".
+///
+/// The rule this encodes: refuse only on positive evidence of the negative,
+/// and treat "not proven a directory" as unknown rather than as refuted. It is
+/// a type and not a comment because the same mistake was made twice in this
+/// one function, once in the walk and once in the pre-check written after the
+/// walk was fixed. Removing an instance leaves the reasoning that produced it.
+/// There is no `NotADirectory` variant because a listing cannot hand one out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DescendEvidence {
+    ProvenDirectory,
+    Unknown,
+}
+
+fn descend_evidence(entry: &crate::providers::RemoteEntry) -> DescendEvidence {
+    if entry.is_dir {
+        DescendEvidence::ProvenDirectory
+    } else {
+        DescendEvidence::Unknown
+    }
+}
+
 async fn ensure_remote_parents(
     ctx: &dyn ToolCtx,
     server: &str,
@@ -332,13 +365,18 @@ async fn ensure_remote_parents(
     //
     // If the backend cannot stat a directory, this falls through to the walk,
     // which is exactly the behaviour before this check existed.
-    match backend.stat(&parent).await {
-        Ok(entry) if entry.is_dir => return Ok(()),
-        Ok(_) => return Err(non_directory_in_the_way(&parent)),
-        Err(_) => {}
+    if let Ok(entry) = backend.stat(&parent).await {
+        if descend_evidence(&entry) == DescendEvidence::ProvenDirectory {
+            return Ok(());
+        }
+        // Unknown. Not a reason to stop: fall through to the walk, which is
+        // what happened before this check existed.
     }
 
     let mut acc = String::new();
+    // The first level that exists but is not reported as a directory. It is
+    // almost always the real obstacle, and the failure lands one level below.
+    let mut blocked_at: Option<String> = None;
     let leading_slash = parent.starts_with('/');
     for part in parent.split('/').filter(|p| !p.is_empty()) {
         if leading_slash || !acc.is_empty() {
@@ -361,11 +399,24 @@ async fn ensure_remote_parents(
                 // where a parent directory belongs was forgiven, and the
                 // failure surfaced one level further down naming a path that
                 // was not the problem.
-                match backend.stat(&acc).await {
-                    Ok(entry) if entry.is_dir => continue,
-                    Ok(_) => return Err(non_directory_in_the_way(&acc)),
-                    Err(_) => {}
+                if let Ok(entry) = backend.stat(&acc).await {
+                    match descend_evidence(&entry) {
+                        DescendEvidence::ProvenDirectory => continue,
+                        // Something is here and the listing does not prove it
+                        // is a directory. That is worth REMEMBERING and not
+                        // worth stopping for: it is the likely cause of
+                        // whatever fails next, and a symlink to a perfectly
+                        // good directory lands in this same branch. Carry on
+                        // exactly as before and keep the level to name later.
+                        DescendEvidence::Unknown => {
+                            if blocked_at.is_none() {
+                                blocked_at = Some(acc.clone());
+                            }
+                            continue;
+                        }
+                    }
                 }
+                // stat could not answer at all.
                 // stat could not answer. Fall back to the server's own words,
                 // which are weaker: they say something is already there, not
                 // that it is a directory.
@@ -376,21 +427,28 @@ async fn ensure_remote_parents(
                 {
                     continue;
                 }
-                return Err(ToolError::Exec(format!("mkdir {} failed: {}", acc, e)));
+                return Err(mkdir_failed(&acc, &e, blocked_at.as_deref()));
             }
         }
     }
     Ok(())
 }
 
-/// Name the level that is actually in the way, and say what is there.
+/// The mkdir that failed, plus the level that is probably why.
 ///
-/// The old message came from the mkdir of the level BELOW this one, so it
-/// reported a path that was fine and hid the one that was not.
-fn non_directory_in_the_way(path: &str) -> ToolError {
-    ToolError::Exec(format!(
-        "cannot create parent directories: {path} already exists and is not a directory"
-    ))
+/// The message used to name only the path whose mkdir failed. When a parent
+/// higher up is occupied by something that is not a directory, that path is
+/// not the problem, and a reader who trusts the message looks one level below
+/// the obstacle. Naming both keeps the failure where it happened and says
+/// where to look.
+fn mkdir_failed(path: &str, error: &str, blocked_at: Option<&str>) -> ToolError {
+    match blocked_at {
+        Some(blocker) => ToolError::Exec(format!(
+            "mkdir {path} failed: {error}. {blocker} already exists and the listing does not \
+             report it as a directory, which is the likely cause"
+        )),
+        None => ToolError::Exec(format!("mkdir {path} failed: {error}")),
+    }
 }
 
 pub async fn dispatch_remote_tool(
@@ -3423,6 +3481,9 @@ mod tests {
         /// "unused", so a test can hand the walk the wording a real server
         /// uses when the path is already taken.
         mkdir_fails_with: Option<String>,
+        /// Paths a listing would mark with a leading `l`. `is_dir` stays
+        /// false for these, exactly as the real parser reports them.
+        symlinks: std::collections::HashSet<String>,
     }
 
     impl FakeBackend {
@@ -3463,6 +3524,7 @@ mod tests {
                 rename_fails_with: None,
                 stat_fails_with: None,
                 mkdir_fails_with: None,
+                symlinks: std::collections::HashSet::new(),
             }
         }
 
@@ -3491,7 +3553,9 @@ mod tests {
                 .stats
                 .get(path)
                 .ok_or_else(|| format!("not found: {path}"))?;
-            Ok(entry(path, is_dir, size))
+            let mut e = entry(path, is_dir, size);
+            e.is_symlink = self.symlinks.contains(path);
+            Ok(e)
         }
         async fn download_to_bytes(&self, _path: &str) -> Result<Vec<u8>, String> {
             // Pre-seeded fixture first, then whatever a previous
@@ -3695,13 +3759,79 @@ mod tests {
         let text = format!("{err:?}");
 
         assert!(
-            text.contains("/data/report") && !text.contains("/data/report/2026"),
-            "the obstacle is /data/report, but the error points elsewhere: {text}"
+            text.contains("/data/report already exists"),
+            "the obstacle is /data/report and the error does not name it: {text}"
         );
         assert!(
-            text.contains("not a directory"),
-            "the error does not say what is wrong with it: {text}"
+            text.contains("does not report it as a directory"),
+            "the error names the level but not what is wrong with it: {text}"
         );
+    }
+
+    /// The rule, checked on the shapes a listing actually produces.
+    ///
+    /// The symlink test below covers the case; this one covers the reasoning
+    /// that produced it, because the same mistake was made twice in one
+    /// function and the second time in code written after the first was fixed.
+    /// Removing an instance leaves the premise, and the premise keeps working.
+    ///
+    /// Only a leading `d` proves a directory. Everything else is unknown, and
+    /// unknown is not a refusal: a symlink to a directory, a symlink spelling
+    /// MLSD does not recognise, and a plain file are indistinguishable here,
+    /// so no caller may turn any of them into a rejection.
+    #[test]
+    fn only_a_positive_says_directory_and_nothing_says_the_opposite() {
+        let dir = entry("/a", true, 0);
+        let file = entry("/a", false, 12);
+        let mut link = entry("/a", false, 0);
+        link.is_symlink = true;
+
+        assert_eq!(descend_evidence(&dir), DescendEvidence::ProvenDirectory);
+        assert_eq!(descend_evidence(&file), DescendEvidence::Unknown);
+        assert_eq!(
+            descend_evidence(&link),
+            DescendEvidence::Unknown,
+            "a symlink to a directory reports is_dir == false; reading that as \
+             a refusal is the regression this rule exists to prevent"
+        );
+
+        // The type itself is the guard: there is no variant meaning "proven
+        // not a directory", so no branch can be written that refuses on the
+        // absence of proof. If someone adds one, this stops compiling.
+        for e in [&dir, &file, &link] {
+            match descend_evidence(e) {
+                DescendEvidence::ProvenDirectory | DescendEvidence::Unknown => {}
+            }
+        }
+    }
+
+    /// A parent that is a symlink must keep working.
+    ///
+    /// This test exists because the first version of this fix broke it. A
+    /// listing gives `is_dir` from the leading `d` and `is_symlink` from the
+    /// leading `l`, so a symlink pointing AT a directory arrives with
+    /// `is_dir == false`. Refusing on that would have failed every upload
+    /// whose parent is a symlink, which on shared hosting is ordinary, and it
+    /// would have failed them in the name of a better error message.
+    ///
+    /// The listing is not positive evidence of a regular file either: MLSD
+    /// only sets `is_symlink` for two exact spellings, so other symlink forms
+    /// land in the same branch. Hence nothing here refuses; it only explains.
+    #[tokio::test]
+    async fn a_symlinked_parent_is_not_treated_as_an_obstacle() {
+        let mut fake = FakeBackend::sample();
+        fake.stats.insert("/data".to_string(), (true, 0));
+        // A symlink to a directory, as a listing reports it: not a dir.
+        fake.symlinks.insert("/data/report".to_string());
+        fake.stats.insert("/data/report".to_string(), (false, 0));
+        fake.stats
+            .insert("/data/report/2026".to_string(), (false, 0));
+        fake.mkdir_fails_with = Some("550 Permission denied".to_string());
+        let ctx = test_ctx(Arc::new(fake));
+
+        ensure_remote_parents(&ctx, "s", "/data/report/2026/x.csv")
+            .await
+            .expect("a symlinked parent used to work and must keep working");
     }
 
     /// An existing parent costs one round trip, not one per level.
