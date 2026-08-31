@@ -36138,7 +36138,7 @@ async fn cmd_keystore_export(
     let metadata = match result {
         Ok(Ok(m)) => m,
         Ok(Err(e)) => {
-            let exit = classify_keystore_error(&e.to_string());
+            let exit = classify_keystore_error(&e);
             print_error(format, &format!("keystore export failed: {e}"), exit);
             return exit;
         }
@@ -36259,7 +36259,7 @@ async fn cmd_keystore_import(
     let outcome = match result {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => {
-            let exit = classify_keystore_error(&e.to_string());
+            let exit = classify_keystore_error(&e);
             print_error(format, &format!("keystore import failed: {e}"), exit);
             return exit;
         }
@@ -36401,7 +36401,7 @@ fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
     ) {
         Ok(m) => m,
         Err(e) => {
-            let exit = classify_keystore_error(&e.to_string());
+            let exit = classify_keystore_error(&e);
             print_error(format, &format!("keystore info failed: {e}"), exit);
             return exit;
         }
@@ -37120,22 +37120,41 @@ async fn cmd_aerorsync_probe(
     7
 }
 
-/// Map a keystore_export error message back to a CLI exit code.
-/// Matches the 0/1/2/4/5/6/8/11/99 scheme used elsewhere in
-/// `aeroftp-cli` so cron/CI pipelines can branch on it without
-/// parsing the error text.
-fn classify_keystore_error(msg: &str) -> i32 {
-    let low = msg.to_ascii_lowercase();
-    if low.contains("invalid password") || low.contains("decrypt") {
-        6 // auth failure
-    } else if low.contains("vault not ready") || low.contains("vault unavailable") {
-        5 // configuration / vault-locked
-    } else if low.contains("unsupported file version") || low.contains("unknown compression") {
-        7 // not-supported / unsupported version
-    } else if low.contains("io error") || low.contains("backup file") {
-        11 // I/O
-    } else {
-        99 // unclassified
+/// Map a keystore_export error to a CLI exit code, by VARIANT.
+///
+/// Matches the 0/1/2/4/5/6/8/11/99 scheme used elsewhere in `aeroftp-cli` so
+/// cron/CI pipelines can branch on it without parsing the error text.
+///
+/// That promise used to be made and not kept. The function received
+/// `e.to_string()` and searched it for words, so the parsing a pipeline was
+/// told it could skip had merely MOVED: it became a duty of whoever writes the
+/// error messages, and nobody told them. A reworded message changed an exit
+/// code with no test failing anywhere, because the callers had the typed error
+/// in hand and threw the type away to get a string.
+///
+/// It now takes the error itself. Two mappings are worth naming because the
+/// text was getting them wrong:
+///
+/// `Encryption` covers everything from `zstd init` to `Invalid merge strategy`,
+/// and two of its messages begin "Backup file too large" / "Backup file exceeds
+/// cap after read". Those matched a `contains("backup file")` branch and exited
+/// **11**, telling a script a size-cap refusal was a disk I/O fault. They are
+/// unclassified, so they exit 99: that replaces a wrong answer with no answer,
+/// which is the honest one of the two.
+///
+/// The old 6 branch also matched `contains("decrypt")`. No message this enum can
+/// produce contains that word, so that half never fired. Dead, and it looked
+/// like coverage.
+fn classify_keystore_error(err: &ftp_client_gui_lib::keystore_export::KeystoreExportError) -> i32 {
+    use ftp_client_gui_lib::keystore_export::KeystoreExportError as E;
+    match err {
+        E::InvalidPassword => 6,       // auth failure
+        E::VaultNotReady => 5,         // configuration / vault-locked
+        E::UnsupportedVersion(_) => 7, // not-supported / unsupported version
+        E::Io(_) => 11,                // I/O
+        // Both cover too many distinct causes for one code to say anything
+        // useful, so they say nothing rather than something false.
+        E::Serialization(_) | E::Encryption(_) => 99,
     }
 }
 
@@ -66580,6 +66599,46 @@ fn effective_max_attempts(cli: &Cli, format: OutputFormat) -> u32 {
 mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
+
+    /// Pin the exit code to the error VARIANT, so a reworded message cannot
+    /// move it. The previous version searched `to_string()` for words, which
+    /// meant every one of these mappings depended on a sentence nobody had been
+    /// told was load-bearing.
+    #[test]
+    fn keystore_exit_code_follows_the_variant_not_the_words() {
+        use ftp_client_gui_lib::keystore_export::KeystoreExportError as E;
+
+        assert_eq!(classify_keystore_error(&E::InvalidPassword), 6);
+        assert_eq!(classify_keystore_error(&E::VaultNotReady), 5);
+        assert_eq!(classify_keystore_error(&E::UnsupportedVersion(3)), 7);
+        assert_eq!(
+            classify_keystore_error(&E::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no such file"
+            ))),
+            11
+        );
+
+        // The two that the text was getting wrong. Both begin "Backup file",
+        // which matched an I/O branch and exited 11 for a size-cap refusal.
+        // They are refusals, not disk faults, and they are not classified.
+        assert_eq!(
+            classify_keystore_error(&E::Encryption(
+                "Backup file too large: 1 bytes (cap is 0)".into()
+            )),
+            99
+        );
+        assert_eq!(
+            classify_keystore_error(&E::Encryption("zstd init: broken".into())),
+            99
+        );
+
+        // Same variant, wording that once mattered and now does not.
+        assert_eq!(
+            classify_keystore_error(&E::Encryption("failed to decrypt blob".into())),
+            99
+        );
+    }
     use serde_json::json;
 
     #[test]
