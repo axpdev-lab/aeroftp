@@ -308,8 +308,56 @@ pub enum KeystoreExportError {
     Encryption(String),
     #[error("Unsupported file version: {0}")]
     UnsupportedVersion(u32),
+    /// A compression codec this build cannot read. Its own variant because the
+    /// exit code for it used to come from the words "unknown compression"
+    /// appearing in an `Encryption` message, which meant the marker inside the
+    /// backup file decided the code: a file naming its codec "decrypt" exited 6,
+    /// an authentication failure.
+    #[error("Unsupported compression codec: {0}")]
+    UnsupportedCodec(String),
     #[error("Vault not ready")]
     VaultNotReady,
+}
+
+/// Classify an import rollback failure, keeping both halves of it.
+///
+/// The sentence and the class both matter. `from_store_error` alone would keep
+/// the class and lose the account name and the rollback count, which are the
+/// useful part of the message; `Encryption` alone would keep the sentence and
+/// lose the class, and an IO failure writing the vault would stop being an 11.
+///
+/// It is a named function rather than an inline match so the call site and the
+/// test are the SAME code. The first test written for this rebuilt the error by
+/// hand and asserted on its own construction, so putting the defect back left it
+/// green: the check stood one step away from the thing checked, and the step was
+/// invisible because the test code looked identical to the code in the file.
+fn rollback_failure(
+    account: &str,
+    e: crate::credential_store::CredentialError,
+    rolled_back: usize,
+) -> KeystoreExportError {
+    let text = format!("Import failed at '{account}': {e}. {rolled_back} entries rolled back.");
+    match e {
+        crate::credential_store::CredentialError::Io(io) => {
+            KeystoreExportError::Io(std::io::Error::new(io.kind(), text))
+        }
+        _ => KeystoreExportError::Encryption(text),
+    }
+}
+
+/// Carry a credential-store failure across without flattening what it already
+/// knows.
+///
+/// These call sites used to do `Encryption(e.to_string())`, which threw away a
+/// typed error to make a string. A permission problem on the vault file arrived
+/// as an `Encryption` whose text happened to contain "IO error", and the CLI's
+/// exit code came from that coincidence: the right answer, held up by the wrong
+/// mechanism. Keeping `Io` as `Io` makes the same answer follow from the type.
+fn from_store_error(e: crate::credential_store::CredentialError) -> KeystoreExportError {
+    match e {
+        crate::credential_store::CredentialError::Io(io) => KeystoreExportError::Io(io),
+        other => KeystoreExportError::Encryption(other.to_string()),
+    }
 }
 
 // ============ File Format ============
@@ -885,9 +933,7 @@ pub fn export_keystore(
         .ok_or(KeystoreExportError::VaultNotReady)?;
 
     // List all accounts and read their values
-    let accounts = store
-        .list_accounts()
-        .map_err(|e| KeystoreExportError::Encryption(e.to_string()))?;
+    let accounts = store.list_accounts().map_err(from_store_error)?;
 
     let mut entries: HashMap<String, String> = HashMap::new();
     let mut read_errors: u32 = 0;
@@ -1183,7 +1229,7 @@ pub fn import_keystore(
         None | Some("none") | Some("") => raw_payload.to_vec(),
         Some("zstd") => decompress_with_cap(&raw_payload)?,
         Some(other) => {
-            return Err(KeystoreExportError::Encryption(format!(
+            return Err(KeystoreExportError::UnsupportedCodec(format!(
                 "Unknown compression codec: {other}"
             )))
         }
@@ -1204,7 +1250,7 @@ pub fn import_keystore(
     let existing = if merge_strategy == "skip_existing" {
         store
             .list_accounts()
-            .map_err(|e| KeystoreExportError::Encryption(e.to_string()))?
+            .map_err(from_store_error)?
             .into_iter()
             .collect::<HashSet<_>>()
     } else {
@@ -1237,7 +1283,7 @@ pub fn import_keystore(
         let original = match store.get(account) {
             Ok(existing_value) => Some(existing_value),
             Err(crate::credential_store::CredentialError::NotFound(_)) => None,
-            Err(e) => return Err(KeystoreExportError::Encryption(e.to_string())),
+            Err(e) => return Err(from_store_error(e)),
         };
         originals.insert(account.clone(), original);
         staged.push((account.clone(), value.clone()));
@@ -1277,12 +1323,15 @@ pub fn import_keystore(
                         tracing::warn!("Rollback failed for '{}': {}", rollback_account, re);
                     }
                 }
-                return Err(KeystoreExportError::Encryption(format!(
-                    "Import failed at '{}': {}. {} entries rolled back.",
-                    account,
-                    e,
-                    committed.len()
-                )));
+                // The sentence and the class both matter here, so neither is
+                // given up. `from_store_error` alone would keep the class and
+                // lose the account name and the rollback count, which are the
+                // useful half of the message; `Encryption` alone would keep the
+                // sentence and lose the class, and an IO failure writing the
+                // vault would stop being an 11. The rollback writes the vault
+                // through `store` twice, so `Io` is reachable here for the same
+                // reasons it is at the three sites `from_store_error` covers.
+                return Err(rollback_failure(account, e, committed.len()));
             }
         }
     }
@@ -1573,6 +1622,80 @@ pub fn read_keystore_metadata(file_path: &Path) -> Result<KeystoreMetadata, Keys
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The producer half of the exit-code contract.
+    ///
+    /// The classifier test pins variant to code; this pins failure to variant,
+    /// and without it the two halves could drift apart silently. A permission
+    /// problem on the vault file must arrive as `Io`, because that is what makes
+    /// its exit code 11 follow from the type instead of from the words "IO
+    /// error" happening to appear in a flattened string.
+    #[test]
+    fn a_store_io_failure_keeps_its_type() {
+        use crate::credential_store::CredentialError;
+
+        let denied = CredentialError::Io(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Permission denied (os error 13)",
+        ));
+        assert!(
+            matches!(from_store_error(denied), KeystoreExportError::Io(_)),
+            "an IO failure from the store must not be flattened into Encryption"
+        );
+
+        // Everything else the store can say has no keystore equivalent, so it
+        // keeps arriving as Encryption and, deliberately, as an unclassified 99.
+        assert!(matches!(
+            from_store_error(CredentialError::VaultNotInitialized),
+            KeystoreExportError::Encryption(_)
+        ));
+    }
+
+    /// The import rollback builds a composite sentence and must keep both halves
+    /// of it: the account name and the rollback count, which are the useful part
+    /// of the message, and the class, without which an IO failure writing the
+    /// vault stops being an 11.
+    ///
+    /// This case was missed once. The site was simulated with an invented inner
+    /// value ("disk full") instead of with the variants the store can actually
+    /// return, so the `Io` that renders as "IO error: ..." inside the composite
+    /// text never appeared in the check. Enumerating the site is not enough if
+    /// what goes into it is chosen by hand.
+    #[test]
+    fn the_rollback_message_keeps_its_class_and_its_words() {
+        use crate::credential_store::CredentialError;
+
+        let err = rollback_failure(
+            "acct",
+            CredentialError::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "Permission denied (os error 13)",
+            )),
+            3,
+        );
+        assert!(
+            matches!(err, KeystoreExportError::Io(_)),
+            "an IO failure during rollback is still an IO failure: {err:?}"
+        );
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("acct"),
+            "the account name survives: {rendered}"
+        );
+        assert!(
+            rendered.contains("3 entries rolled back"),
+            "the rollback count survives: {rendered}"
+        );
+
+        // The other half. Without it, classifying EVERY inner failure as `Io`
+        // would leave the assertions above green.
+        let other = rollback_failure("acct", CredentialError::VaultNotInitialized, 3);
+        assert!(
+            matches!(other, KeystoreExportError::Encryption(_)),
+            "a non-IO store failure stays unclassified: {other:?}"
+        );
+        assert!(other.to_string().contains("3 entries rolled back"));
+    }
 
     /// zstd round-trip on the shape of payload we actually produce:
     /// a `Vec<u8>` of serialised JSON containing structured text and
