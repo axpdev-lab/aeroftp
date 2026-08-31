@@ -319,6 +319,32 @@ pub enum KeystoreExportError {
     VaultNotReady,
 }
 
+/// Classify an import rollback failure, keeping both halves of it.
+///
+/// The sentence and the class both matter. `from_store_error` alone would keep
+/// the class and lose the account name and the rollback count, which are the
+/// useful part of the message; `Encryption` alone would keep the sentence and
+/// lose the class, and an IO failure writing the vault would stop being an 11.
+///
+/// It is a named function rather than an inline match so the call site and the
+/// test are the SAME code. The first test written for this rebuilt the error by
+/// hand and asserted on its own construction, so putting the defect back left it
+/// green: the check stood one step away from the thing checked, and the step was
+/// invisible because the test code looked identical to the code in the file.
+fn rollback_failure(
+    account: &str,
+    e: crate::credential_store::CredentialError,
+    rolled_back: usize,
+) -> KeystoreExportError {
+    let text = format!("Import failed at '{account}': {e}. {rolled_back} entries rolled back.");
+    match e {
+        crate::credential_store::CredentialError::Io(io) => {
+            KeystoreExportError::Io(std::io::Error::new(io.kind(), text))
+        }
+        _ => KeystoreExportError::Encryption(text),
+    }
+}
+
 /// Carry a credential-store failure across without flattening what it already
 /// knows.
 ///
@@ -1305,18 +1331,7 @@ pub fn import_keystore(
                 // vault would stop being an 11. The rollback writes the vault
                 // through `store` twice, so `Io` is reachable here for the same
                 // reasons it is at the three sites `from_store_error` covers.
-                let text = format!(
-                    "Import failed at '{}': {}. {} entries rolled back.",
-                    account,
-                    e,
-                    committed.len()
-                );
-                return Err(match e {
-                    crate::credential_store::CredentialError::Io(io) => {
-                        KeystoreExportError::Io(std::io::Error::new(io.kind(), text))
-                    }
-                    _ => KeystoreExportError::Encryption(text),
-                });
+                return Err(rollback_failure(account, e, committed.len()));
             }
         }
     }
@@ -1648,16 +1663,19 @@ mod tests {
     /// what goes into it is chosen by hand.
     #[test]
     fn the_rollback_message_keeps_its_class_and_its_words() {
-        let io = std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "Permission denied (os error 13)",
-        );
-        let text = format!("Import failed at 'acct': {io}. 3 entries rolled back.");
-        let err = KeystoreExportError::Io(std::io::Error::new(io.kind(), text));
+        use crate::credential_store::CredentialError;
 
+        let err = rollback_failure(
+            "acct",
+            CredentialError::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "Permission denied (os error 13)",
+            )),
+            3,
+        );
         assert!(
             matches!(err, KeystoreExportError::Io(_)),
-            "an IO failure during rollback is still an IO failure"
+            "an IO failure during rollback is still an IO failure: {err:?}"
         );
         let rendered = err.to_string();
         assert!(
@@ -1668,6 +1686,15 @@ mod tests {
             rendered.contains("3 entries rolled back"),
             "the rollback count survives: {rendered}"
         );
+
+        // The other half. Without it, classifying EVERY inner failure as `Io`
+        // would leave the assertions above green.
+        let other = rollback_failure("acct", CredentialError::VaultNotInitialized, 3);
+        assert!(
+            matches!(other, KeystoreExportError::Encryption(_)),
+            "a non-IO store failure stays unclassified: {other:?}"
+        );
+        assert!(other.to_string().contains("3 entries rolled back"));
     }
 
     /// zstd round-trip on the shape of payload we actually produce:
