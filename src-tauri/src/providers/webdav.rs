@@ -909,8 +909,19 @@ impl WebDavProvider {
         // burned attempts, and a second rotation inside one call is the retry
         // storm the `stale` gate exists to prevent.
         let mut digest_replayed = false;
+        // The replay is granted an attempt OF ITS OWN instead of consuming or
+        // escaping the 425 budget, because the two answer different questions: the
+        // budget bounds how long we wait for a server that is not ready, while the
+        // replay is one retry of a request the server refused for a reason we can
+        // fix. Letting the replay `continue` out of the final attempt is what used
+        // to walk the loop off the end of its own range and into a panic; the loop
+        // is now unbounded in form and bounded by `budget`, so the only way out is
+        // the return below.
+        let mut budget = MAX_ATTEMPTS;
+        let mut attempt = 0usize;
 
-        for attempt in 1..=MAX_ATTEMPTS {
+        loop {
+            attempt += 1;
             let nonce_used = self.digest_nonce_snapshot();
             let mut req = self.request(method.clone(), path);
             if let Some(ref r) = referer {
@@ -929,10 +940,11 @@ impl WebDavProvider {
                 && self.should_replay_after_401(&response, &nonce_used)
             {
                 digest_replayed = true;
+                budget = MAX_ATTEMPTS + 1;
                 continue;
             }
 
-            if response.status() != StatusCode::TOO_EARLY || attempt == MAX_ATTEMPTS {
+            if response.status() != StatusCode::TOO_EARLY || attempt >= budget {
                 return Ok(response);
             }
 
@@ -941,12 +953,10 @@ impl WebDavProvider {
                 method.as_str(),
                 path,
                 attempt,
-                MAX_ATTEMPTS
+                budget
             );
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
-
-        unreachable!("retry loop must return on final attempt")
     }
 
     /// Send a request and, on a `401` carrying a genuinely rotated Digest
@@ -6200,6 +6210,49 @@ mod tests {
             provider.digest_auth.as_ref().expect("digest state").nonce(),
             "rotated",
             "the replay must have used the rotated nonce"
+        );
+    }
+
+    const TOO_EARLY_425: &str =
+        "HTTP/1.1 425 Too Early\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+    /// Two 425s followed by a rotated-nonce 401 used to PANIC the calling task.
+    /// The 425 branch spends the attempt budget, and the Digest replay then issued
+    /// a `continue` from the final attempt, which skipped the only `return` in the
+    /// loop and walked off the end of the range into `unreachable!`. Both single
+    /// stream GET paths route through this helper, so the panic was reachable from
+    /// an ordinary download against a server that answers 425 while rotating its
+    /// nonce.
+    ///
+    /// The assertion is on the OUTCOME, a returned response rather than a panic,
+    /// because that is what the caller experiences. The request count is asserted
+    /// too: the replay must be granted its own attempt, not an unbounded supply of
+    /// them, so four is both the proof it happened and the proof it stopped.
+    #[tokio::test]
+    async fn a_425_run_followed_by_a_rotated_nonce_401_returns_instead_of_panicking() {
+        let (url, hits) = spawn_http_stub(vec![
+            TOO_EARLY_425,
+            TOO_EARLY_425,
+            ROTATED_401,
+            TOO_EARLY_425,
+        ])
+        .await;
+        let mut provider = digest_provider(&url);
+
+        let response = provider
+            .send_with_too_early_retry(Method::GET, "/file.bin")
+            .await
+            .expect("the helper must return a response, not fail");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::TOO_EARLY,
+            "the last response is what the caller gets back"
+        );
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            4,
+            "three attempts of the 425 budget plus exactly one replay attempt"
         );
     }
 
