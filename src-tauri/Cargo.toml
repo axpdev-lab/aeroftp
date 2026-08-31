@@ -467,6 +467,15 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # Filing it is an action on somebody else's repository under somebody's name,
 # so it belongs to the account owner rather than to whoever edits this file.
 #
+# COST OF STAYING FORKED, stated because it is easy to forget once it builds:
+# `cargo audit` matches advisories by crate name and version against the
+# crates.io index, and a git source is not that. So for as long as this entry
+# exists, suppaftp is outside the advisory scanning the released version would
+# get, and a RUSTSEC advisory landing on it may not turn the audit lane red.
+# The pin is v10.0.2 plus one method, so the exposure is that of v10.0.2, but
+# nothing here will TELL us if that changes. That is a reason to file upstream
+# rather than to keep the fork comfortable.
+#
 # When it is sent, REPLACE the two lines above with its URL. That is the
 # whole point of writing the state here: "we will upstream it" is a sentence
 # nobody can check six months later, while "not opened as of a date" and a
