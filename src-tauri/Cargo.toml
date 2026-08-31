@@ -41,18 +41,54 @@ toml = "1.1"
 log = "0.4"
 futures-util = "0.3"
 # DO NOT BUMP. Dependabot raised this to =2.11.1 (PR #201) and broke EVERY
-# Linux build: 2.11.1's GHSA-7gmj-67g7-phm9 fix added an `is_local_url()`
-# check that classifies the Linux production webview origin
-# `http://127.0.0.1:14321` as remote and rejects every custom command
-# ("not allowed by ACL": get_local_files, vault read, keystore, mount,
-# update) because default.json is not a full app ACL manifest. Windows/macOS
-# use the `tauri://` App protocol and are unaffected, which is why only
-# Linux regressed. The webview origin must stay on the localhost server so
-# upgrades preserve all WebKit origin-scoped state (localStorage, IndexedDB,
-# server filters, theme, etc.). The CVE vector requires loading
-# remote/untrusted content, which AeroFTP does not do, so the residual risk
-# is not applicable to our surface. Keep =2.11.0; ignore tauri 2.11.x in
-# dependabot.yml.
+# Linux build: every custom command started returning "not allowed by ACL"
+# (get_local_files, vault read, keystore, mount, update).
+#
+# What 2.11.1 changed is ONE line, and it is not the one this comment used
+# to name. The two crate sources differ in three files; in `is_local_url`
+# the only edit sits inside `#[cfg(any(windows, target_os = "android"))]`,
+# so the branch we compile on Linux is identical, and neither version
+# compares the host to 127.0.0.1 anywhere. The change is in the IPC gate:
+#
+#   -  if (plugin_command.is_some() || has_app_acl_manifest)
+#   +  if (plugin_command.is_some() || has_app_acl_manifest || !is_local)
+#
+# `is_local_url()` already answered false for our origin under 2.11.0. Only
+# the enforcement of that answer on app commands is new.
+#
+# Why it answers false: in production `get_app_url()` returns `frontendDist`
+# only when that is a URL. Ours is a directory, so it falls back to
+# `tauri_protocol_url()`, which off Windows and Android is `tauri://localhost`,
+# while the webview lives on `http://127.0.0.1:14321`. That second half is a
+# LINUX fact: only the Linux shipped build uses `WebviewUrl::External` on the
+# localhost server, and Windows and macOS use `WebviewUrl::App`, which is why
+# only Linux regressed. The schemes differ,
+# `make_relative` fails, and the third clause asks whether "http" is a
+# registered URI scheme, which it is not: tauri-plugin-localhost runs an HTTP
+# server rather than registering a scheme.
+#
+# The obvious remedy is self-defeating, which is worth writing down because it
+# looks correct. Making `get_app_url()` return the HTTP URL requires
+# `frontendDist` to be a URL, and tauri-codegen maps `FrontendDist::Url` to an
+# EMPTY embedded asset set, which is exactly what tauri-plugin-localhost serves
+# through `app.asset_resolver()`. The app would start and answer 404.
+#
+# Discarded alternative, recorded so it is not re-evaluated from scratch:
+# stop embedding the frontend and serve it from disk with our own server. That
+# makes the origins agree, and gives up single-binary packaging on every
+# platform to escape a pin. Not proportionate.
+#
+# What the bump actually costs: the invoke handler exposes 1013 commands and
+# there is no `src-tauri/permissions/`, so `has_app_manifest()` is false and
+# they bypass ACL today. Adding ONE app permission flips it true, and from that
+# moment ACL governs all 1013. The capability's `remote` block already lists
+# `http://127.0.0.1:14321/*`, so that is not the missing piece.
+#
+# The webview origin must stay on the localhost server so upgrades preserve all
+# WebKit origin-scoped state (localStorage, IndexedDB, server filters, theme).
+# The CVE vector requires loading remote/untrusted content, which AeroFTP does
+# not do, so the residual risk is not applicable to our surface.
+# Keep =2.11.0; ignore tauri 2.11.x in dependabot.yml.
 tauri = { version = "=2.11.0", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"

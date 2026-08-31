@@ -172,25 +172,68 @@ ignore = [
     #
     # AeroFTP is NOT reachable through this vector:
     #
-    #   1. AeroFTP's frontend is always served from the bundled localhost
-    #      server via `tauri-plugin-localhost` on `http://localhost:14321`.
-    #      We never load remote URLs into the main webview; there is no
-    #      `WebviewUrl::External` or `loadUrl` accepting attacker input.
-    #   2. The webview origin is `http://localhost:*`, not a custom scheme
-    #      mapped via `http://<scheme>.localhost/`, so the buggy first-dot
-    #      check does not apply to our origin shape.
+    #   1. The localhost server is a LINUX arrangement, and saying so makes
+    #      this ignore stronger rather than weaker. Each of the three windows
+    #      is built from a cfg triple, and the shipped arms are:
+    #
+    #        prod + linux      -> WebviewUrl::External("http://127.0.0.1:<port>/...")
+    #        prod + not linux  -> WebviewUrl::App(...)      i.e. the tauri:// protocol
+    #
+    #      So on Windows and macOS the app never loads an External URL in a
+    #      shipped build at all, and the origin this advisory abuses has no
+    #      entry point there. On Linux it does load one, from the bundled
+    #      `tauri-plugin-localhost` server, and Linux is not in the affected
+    #      platform set. Two legs, one per platform, both stated.
+    #
+    #      `WebviewUrl::External` IS used, and an earlier version of this note
+    #      wrongly said it was not. Its replacement said "four places", which
+    #      was true and still misleading twice over: it did not say on which
+    #      platform, and it counted a DEV-only site (the splash on the Vite
+    #      server at :5173) alongside three that ship. Shipped it is three, on
+    #      Linux: index, splash, extract. Every one parses a fixed
+    #      `http://127.0.0.1:<port>/` URL built in our own code; none takes a
+    #      URL from a server, a profile, a file or any other outside input,
+    #      and there is no `loadUrl` accepting attacker input.
+    #
+    #      The property that matters for this advisory is that no
+    #      attacker-chosen URL reaches a webview. That holds on every platform.
+    #      The absolute claim did not, and the unqualified count offered a
+    #      Linux fact as grounds for judging a Windows risk.
+    #   2. On Linux the webview origin is `http://127.0.0.1:*`, and on Windows
+    #      and macOS it is the `tauri://` App protocol. Neither is a custom
+    #      scheme mapped via `http://<scheme>.localhost/`, so the buggy
+    #      first-dot check does not apply to our origin shape on any platform.
     #   3. Linux/macOS builds are not in the affected platform set at all.
     #
-    # The 2.11.1 fix is incompatible with our localhost-served frontend
-    # because it introduces a stricter `is_local_url()` that classifies
-    # `http://127.0.0.1:*` as remote and rejects every custom command
-    # without a full app ACL manifest. Migrating to 2.11.1 would require
-    # auditing and gating the entire invoke_handler surface behind an ACL
-    # capability scope, which is tracked separately and is unrelated to
-    # this CVE's attack surface.
+    # Why we cannot simply take the fix, stated correctly. 2.11.1 did NOT
+    # introduce a stricter `is_local_url()` that classifies
+    # `http://127.0.0.1:*` as remote; an earlier version of this note said so
+    # and it is wrong. Diffing the two published crates, the only edit to that
+    # function is inside `#[cfg(any(windows, target_os = "android"))]`, and
+    # neither version compares the host to 127.0.0.1 at all. The function
+    # already answered false for our origin under 2.11.0, because in
+    # production `get_app_url()` falls back to `tauri://localhost` whenever
+    # `frontendDist` is a directory, as ours is. What 2.11.1 changed is the
+    # IPC gate, which now enforces that answer on app commands as well:
+    # `if (plugin_command.is_some() || has_app_acl_manifest || !is_local)`.
     #
-    # The matching pin rationale lives inline on `tauri = "=2.11.0"` in
-    # src-tauri/Cargo.toml lines 44-50.
+    # The distinction is not academic. Under the old wording the fix looked
+    # like it could be met by changing the webview origin; it cannot. The only
+    # lever that makes `get_app_url()` return our HTTP URL is declaring
+    # `frontendDist` as a URL, and tauri-codegen maps `FrontendDist::Url` to an
+    # EMPTY embedded asset set, which is precisely what tauri-plugin-localhost
+    # serves. The remedy erases the content the server exists to serve.
+    #
+    # So migrating to 2.11.1 means giving all 1013 commands in the invoke
+    # handler an ACL. There is no `src-tauri/permissions/` today, so
+    # `has_app_manifest()` is false and they bypass ACL; adding one app
+    # permission flips it true and then ACL governs every command. The
+    # capability's `remote` block already lists `http://127.0.0.1:14321/*`, so
+    # that is not the missing piece. Tracked separately, and unrelated to this
+    # CVE's attack surface.
+    #
+    # The matching pin rationale lives inline on the `tauri` dependency in
+    # src-tauri/Cargo.toml (line numbers drift, search for "DO NOT BUMP").
     "GHSA-7gmj-67g7-phm9",  # Tauri Origin Confusion (not reachable, intentional pin)
 
     # ----------------------------------------------------------------
