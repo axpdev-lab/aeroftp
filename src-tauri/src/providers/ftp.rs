@@ -854,8 +854,21 @@ impl FtpProvider {
             }
         }
         if let FtpError::UnexpectedResponse(ref response) = err {
-            let code = response.status as u32;
-            if (500..600).contains(&code) {
+            // Only the replies that are ABOUT the path. The condition used to be
+            // any 5xx, which reads every permanent refusal as a bad path: "502
+            // Command not implemented" and "530 Not logged in" both came back to
+            // the user as an invalid path, and a login problem presented as a
+            // naming problem sends them to look in the wrong place.
+            //
+            // 550 and 553 are the two the server uses to talk about the name
+            // itself. `classify_missing_path` above has already taken the subset
+            // of those whose text names a missing path; what is left here is the
+            // same family for another reason, such as a name the server refuses.
+            // Everything else keeps the typing it had.
+            if matches!(
+                response.status,
+                Status::FileUnavailable | Status::BadFilename
+            ) {
                 let text = response.to_string();
                 return ProviderError::InvalidPath(Self::doing(operation, path, &text));
             }
@@ -3162,6 +3175,51 @@ async fn ftp_download_one_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A permanent refusal that is not about the path must not be reported as
+    /// one. The condition used to be any 5xx, so "530 Not logged in" reached the
+    /// user as an invalid path and sent them to check a name when the problem
+    /// was the session.
+    ///
+    /// 530 rather than the 502 that a review example named, and the difference
+    /// was measured rather than assumed: 502 arrives from a command the server
+    /// does not implement, and every caller of `checksum` discards its error, so
+    /// a test built on that case would never defend anything. 530 arrives on the
+    /// reading and writing paths, whose errors do reach the user.
+    #[test]
+    fn a_non_path_5xx_is_not_reported_as_a_bad_path() {
+        for (code, body) in [
+            (530u32, "Not logged in"),
+            (502, "Command not implemented"),
+            (552, "Exceeded storage allocation"),
+        ] {
+            let err = FtpProvider::classify_data_failure(
+                "reading",
+                "/srv/data/report.csv",
+                cwd_reply(code, body),
+            );
+            assert!(
+                !matches!(err, ProviderError::InvalidPath(_)),
+                "{code} {body} is not a statement about the path: {err:?}"
+            );
+        }
+
+        // The two that ARE about the name keep their classification.
+        for (code, body) in [
+            (550u32, "Permission denied"),
+            (553, "File name not allowed"),
+        ] {
+            let err = FtpProvider::classify_data_failure(
+                "reading",
+                "/srv/data/report.csv",
+                cwd_reply(code, body),
+            );
+            assert!(
+                matches!(err, ProviderError::InvalidPath(_)),
+                "{code} {body} is about the name: {err:?}"
+            );
+        }
+    }
 
     fn cwd_reply(code: u32, body: &str) -> FtpError {
         FtpError::UnexpectedResponse(suppaftp::types::Response::new(
