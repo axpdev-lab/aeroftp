@@ -5833,6 +5833,20 @@ mod tests {
     /// `file_path` the caller passed. This asserts the anchoring covers that
     /// gap rather than depending on it, and it was run against a version
     /// without the anchoring, where it fails.
+    ///
+    /// HALF of that gap, and this test must not be read as covering the other.
+    /// Anchoring makes the BRACKETED shape safe, which is the one this change
+    /// introduces. A bare relative name still reaches the loose `contains`
+    /// half, which is older than this change and untouched by it: measured on
+    /// main, `connection reset by peer (while writing 404 note.txt)` comes out
+    /// `PathNotFound`, NOT retryable, while the same failure with `[404]` or
+    /// with `/srv/ok.txt` stays `Network` and retryable. So a connection reset
+    /// stops being retried because of what a file is called.
+    ///
+    /// It is out of scope here for the reason stated on `mentions_status`:
+    /// tightening the loose half is a separate question from letting the rules
+    /// see the shape the system produces, and doing both in one diff would ask
+    /// a reviewer two questions at once. It is tracked on its own.
     #[test]
     fn a_path_that_looks_like_a_status_does_not_decide_the_classification() {
         let raw = "Transfer failed: connection reset by peer (while writing [404] note.txt)";
