@@ -29808,7 +29808,12 @@ mod serve_sftp {
             methods: if auth_credentials.is_some() {
                 russh::MethodSet::from(&[russh::MethodKind::Password][..])
             } else {
-                russh::MethodSet::all()
+                // russh 0.63 removed `all()` and split it by side. This is a
+                // `server::Config`, so `server_supported()` is the one, and the
+                // two return the identical list: None, Password, PublicKey,
+                // HostBased, KeyboardInteractive. Checked against both crates
+                // rather than assumed from the name.
+                russh::MethodSet::server_supported()
             },
             keys: vec![key],
             ..Default::default()

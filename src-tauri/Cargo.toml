@@ -142,7 +142,7 @@ mime_guess = "2"
 
 # SFTP Support (Sprint 3 - v1.3.0)
 # SFTP channel writes: see sftp-upload-0byte-bug.md in memory
-russh = { version = "0.62.5", features = ["ring"] }
+russh = { version = "0.63.1", features = ["ring"] }
 russh-sftp = "2.1"
 ssh2 = { version = "0.9.5", features = ["vendored-openssl"] }
 
@@ -351,7 +351,20 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(mtp_libmtp)',
 ] }
 
-# russh 0.62.5 closes the three advisories that 0.61.2 carried plus
+# russh 0.63.1 closes GHSA-47hw-gvq5-r2gm (High, CVSS 7.5, published 2026-08-23),
+# which is a CLIENT-side defect and therefore ours: a hostile or compromised
+# server can fire channel-scoped `Handler` callbacks for channel IDs the client
+# never opened, giving panics, forged exit statuses and desynchronised channel
+# state. It also closes GHSA-w3jg-pjxf-73p4 (Moderate), the missing X25519
+# zero-point validation in the hybrid ML-KEM768+X25519 key exchange, fixed in
+# 0.63.0 only.
+#
+# There is no backport on the 0.62 line, and that is arithmetic rather than a
+# reading of a changelog: 0.62.7 was published 2026-08-17, four days BEFORE
+# 0.63.0 and six before 0.63.1, so it cannot contain a fix for advisories
+# published after it. `cargo update` stays on 0.62 and stays vulnerable.
+#
+# 0.62.5 closed the three advisories that 0.61.2 carried plus
 # GHSA-m65r-rprj-r5rg, which affects channel-scoped server callbacks through
 # 0.62.4. The earlier advisories are GHSA-g9hv-x236-4qp3
 # and GHSA-5xvq-cp9x-6p6r (pre-auth panics, the first on every SFTP connection

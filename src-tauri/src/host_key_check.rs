@@ -7,7 +7,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use russh::client::{self, Config, Handler};
-use russh::keys::{self, known_hosts, HashAlg, PublicKey};
+use russh::keys::{self, known_hosts, HashAlg, PublicKey, PublicKeyOrCertificate};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -56,8 +56,32 @@ impl Handler for ProbeHandler {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &PublicKey,
+        server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
+        // russh 0.63 presents either a bare key or a host CERTIFICATE here.
+        // The certificate arm is unreachable as this client is configured:
+        // `Preferred::host_key_certificates` defaults to an empty list, so no
+        // certificate algorithm is ever offered and a server cannot present
+        // one. It is refused rather than left to a wildcard so that the answer
+        // is a decision instead of an accident.
+        //
+        // WHOEVER ENABLES HOST CERTIFICATES MUST COME BACK TO ALL FOUR
+        // HANDLERS FIRST. Filling
+        // that list makes this arm live, and accepting a certificate is a trust
+        // policy nobody has discussed: it would mean trusting a CA to vouch for
+        // hosts, which is a different model from the known-hosts and pinned
+        // fingerprint checks below. Refusing keeps today's behaviour exactly,
+        // because today the case cannot arise.
+        let server_public_key = match server_public_key {
+            PublicKeyOrCertificate::PublicKey { key, .. } => key,
+            PublicKeyOrCertificate::Certificate(_) => {
+                tracing::warn!(
+                    "SSH: refusing a host certificate; certificate algorithms are not offered \
+                     by this client, so this should be unreachable"
+                );
+                return Ok(false);
+            }
+        };
         let fingerprint = server_public_key.fingerprint(HashAlg::Sha256).to_string();
         let algorithm = server_public_key.algorithm().as_str().to_string();
 
