@@ -375,7 +375,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 #
 # The bump is not resolvable without this patch. n0-mainline 0.5.0, reached
 # through aeroftp-peer-l0 -> iroh-mainline-address-lookup 0.4.0, pins
-# `ed25519-dalek = "=3.0.0-rc.0"`, while russh 0.62.5 asks for `^3`. A caret
+# `ed25519-dalek = "=3.0.0-rc.0"`, while russh 0.63.1 asks for `^3`. A caret
 # requirement does not match a pre-release and cargo treats 3.0.0-rc.0 and
 # 3.0.0 as one compatibility range, so the two are disjoint rather than merely
 # duplicated: cargo cannot satisfy both and refuses the graph.
