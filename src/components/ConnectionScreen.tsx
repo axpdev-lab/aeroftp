@@ -44,7 +44,7 @@ import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
 import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers';
-import { isBlompAuthUrl } from './swiftAuthUrl';
+import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
@@ -6250,11 +6250,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         port: connectionParams.port || 443,
                                                         // Leaving Blomp drops its preset opt-in: a private
                                                         // OpenStack has to accept a cleartext object store
-                                                        // for itself. Returning to Blomp restores it.
-                                                        options: {
-                                                            ...connectionParams.options,
-                                                            allowCleartextStorage: isBlompAuthUrl(e.target.value) ? true : undefined,
-                                                        },
+                                                        // for itself. Returning to Blomp restores it. Only
+                                                        // the crossing decides, so editing the URL cannot
+                                                        // untick a box the user ticked: see
+                                                        // swiftOptionsForAuthUrl.
+                                                        options: swiftOptionsForAuthUrl(
+                                                            connectionParams.server,
+                                                            e.target.value,
+                                                            connectionParams.options,
+                                                        ),
                                                     })}
                                                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.swiftAuthUrl')}
