@@ -325,13 +325,72 @@ impl KDriveProvider {
             })
     }
 
+    /// Recognise Infomaniak's "your token lacks a scope" refusal and say what
+    /// to do about it, because the answer is in the payload and unreadable there.
+    ///
+    /// Discovery needs an `account_id`, and there is no way to obtain one with a
+    /// `drive`-only token: `/2/profile` requires `user_info`, `/2/accounts`
+    /// requires `accounts`, and `/2/drive` without the parameter is a 422. That
+    /// was measured against the live API rather than read off the documentation,
+    /// so the remedy really is a differently scoped token and not a different
+    /// endpoint. See #650. Measured against the live API with a `drive`-only
+    /// token: `/2/profile` 403 `user_info`, `/2/accounts` and `/1/account` 403
+    /// `accounts`, `/2/drive` without the parameter 422 "The account id field is
+    /// required", `/2/drives` and `/3/drive` 404. `/2/drive/init` is the one
+    /// endpoint that answers 200 on a `drive`-only token, and it returns an
+    /// `ips.uuid`, not an account id, so it is not a way around this.
+    ///
+    /// The scope names come from `error.context.scopes` rather than from the
+    /// prose in `description`: a description is a sentence somebody may reword,
+    /// and a message that parses prose starts lying the day it changes.
+    fn missing_scope_hint(body: &[u8]) -> Option<String> {
+        let parsed: serde_json::Value = serde_json::from_slice(body).ok()?;
+        if parsed.get("error")?.get("code")?.as_str()? != "all_scopes" {
+            return None;
+        }
+        // `context.scopes` is one condition more than `code`, so losing it would
+        // send exactly those replies back to the raw JSON: a defect that returns
+        // for a subset is harder to see than one that returns for all. The
+        // fallback names no scope and still says what to do.
+        let scopes: Vec<&str> = parsed
+            .get("error")
+            .and_then(|e| e.get("context"))
+            .and_then(|c| c.get("scopes"))
+            .and_then(|s| s.as_array())
+            .map(|a| a.iter().filter_map(|s| s.as_str()).collect())
+            .unwrap_or_default();
+        if scopes.is_empty() {
+            return Some(
+                "this API token is missing a scope that Infomaniak did not name. \
+                 Fetching the Drive ID needs the account id, so generate a new \
+                 token with `user_info` alongside `drive` at \
+                 https://manager.infomaniak.com/v3/ng/profile/user/token/list"
+                    .to_string(),
+            );
+        }
+        Some(format!(
+            "this API token is missing the {} scope. Fetching the Drive ID needs \
+             the account id, which only that scope can supply, so add it to the \
+             existing `drive` scope and generate a new token at \
+             https://manager.infomaniak.com/v3/ng/profile/user/token/list",
+            scopes
+                .iter()
+                .map(|s| format!("`{s}`"))
+                .collect::<Vec<_>>()
+                .join(" and ")
+        ))
+    }
+
     fn discovery_http_error(
         status: reqwest::StatusCode,
         body: &[u8],
         context: &str,
     ) -> ProviderError {
         let text = String::from_utf8_lossy(body);
-        let message = format!("{context} ({status}): {}", sanitize_api_error(&text));
+        let message = match Self::missing_scope_hint(body) {
+            Some(hint) => format!("{context} ({status}): {hint}"),
+            None => format!("{context} ({status}): {}", sanitize_api_error(&text)),
+        };
         if matches!(
             status,
             reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
@@ -1973,6 +2032,74 @@ mod tests {
         });
         assert_eq!(KDriveProvider::profile_account_id(&numeric), Some(45665));
         assert_eq!(KDriveProvider::profile_account_id(&string), Some(45665));
+    }
+
+    /// #650. The payload is the one Infomaniak actually returned for a token
+    /// carrying only the `drive` scope, captured live rather than composed
+    /// here, because a message built to match the code proves nothing about
+    /// what the server sends.
+    ///
+    /// The assertion is on the OUTCOME of `discovery_http_error`, not on the
+    /// helper: what was broken is the sentence the user reads, and a test that
+    /// called `missing_scope_hint` directly would stay green if the caller
+    /// stopped consulting it.
+    #[test]
+    fn a_missing_scope_is_reported_as_something_the_user_can_fix() {
+        let body = br#"{"result":"error","error":{"code":"all_scopes","description":"This method require this specific scope: \"user_info\"","context":{"scopes":["user_info"]}}}"#;
+        let err = KDriveProvider::discovery_http_error(
+            reqwest::StatusCode::FORBIDDEN,
+            body,
+            "Could not read the Infomaniak account profile",
+        );
+        let text = err.to_string();
+        assert!(
+            matches!(err, ProviderError::AuthenticationFailed(_)),
+            "a refused scope is still an authentication failure: {err:?}"
+        );
+        assert!(
+            text.contains("`user_info`"),
+            "the scope the token is missing has to be named: {text}"
+        );
+        assert!(
+            text.contains("manager.infomaniak.com"),
+            "and where to add it: {text}"
+        );
+        assert!(
+            !text.contains("all_scopes"),
+            "the raw API error code is not what the user needs to read: {text}"
+        );
+    }
+
+    /// The companion, so the hint cannot swallow every other failure: a body
+    /// that is not a scope refusal still reports what the server said.
+    #[test]
+    fn an_ordinary_discovery_failure_keeps_the_server_text() {
+        let body = br#"{"result":"error","error":{"code":"not_authorized","description":"Nope"}}"#;
+        let text = KDriveProvider::discovery_http_error(
+            reqwest::StatusCode::FORBIDDEN,
+            body,
+            "Could not list accessible kDrive accounts",
+        )
+        .to_string();
+        assert!(text.contains("not_authorized"), "{text}");
+        assert!(!text.contains("manager.infomaniak.com"), "{text}");
+    }
+
+    /// The subset that would otherwise slip back to the raw JSON: the code says
+    /// `all_scopes` and the payload names no scope. Reported because the branch
+    /// added a second condition, and a defect that returns for only some replies
+    /// is harder to see than one that returns for all.
+    #[test]
+    fn a_scope_refusal_that_names_no_scope_still_says_what_to_do() {
+        let body = br#"{"result":"error","error":{"code":"all_scopes","description":"Nope"}}"#;
+        let text = KDriveProvider::discovery_http_error(
+            reqwest::StatusCode::FORBIDDEN,
+            body,
+            "Could not read the Infomaniak account profile",
+        )
+        .to_string();
+        assert!(text.contains("manager.infomaniak.com"), "{text}");
+        assert!(text.contains("`user_info`"), "{text}");
     }
 
     fn test_provider() -> KDriveProvider {
