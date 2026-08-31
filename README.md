@@ -845,7 +845,7 @@ Contributions are welcome. Please open an issue to discuss proposed changes befo
 
 ## License
 
-GPL-3.0 - See [LICENSE](LICENSE) for details.
+GPL-3.0-or-later - See [LICENSE](LICENSE) for details.
 
 ---
 
