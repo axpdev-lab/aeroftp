@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.9] - 2026-09-01
+
+### The Release That Stopped Believing Its Own Gates
+
+Three CI lanes in this repository could report success having executed no tests at all, and one of them had been doing exactly that since May. A pull request said two review findings were closed by two tests, and one of those tests had never run in any run, because an attribute had landed between another test's `#[test]` and its function; the suite reported the same passing count either way. Six error-classification rules had never fired once, because the codes they look for are followed by a bracket and not a space. The pattern under all of it is the same: a green result that was measuring nothing, and no way to tell it apart from a green result that was measuring everything. What is fixed here is not only the individual defects but the instruments, so that the next time one of them is empty it says so.
+
+Alongside that, FTP stops hanging on a refusal the server already sent, WebDAV survives a rotated Digest nonce on every path rather than five of them, Swift and Blomp accounts list their files again, and a private OpenStack that legitimately serves cleartext can now say so instead of being refused.
+
+#### Added
+- **AeroSync preserves POSIX.1e access ACLs on Linux**, opt-in, alongside the integrated protocol and metadata gaps closed in the same change. Owner, group and device files remain out of scope and are still listed as such.
+- **The language chip in the status bar is a way in, not only a readout.** It opens Settings on the Interface sub-tab, where the language list actually lives, so the shortest path from noticing the language to changing it stops going through two panels. Its accessible name says what the button does rather than only what it reads.
+- **A private OpenStack that legitimately serves cleartext can say so.** The guard that refuses an unencrypted object store after an encrypted login stays on by default; a profile can now opt in explicitly, which is what the Blomp preset does, instead of the guard being off for everyone.
+- **The app chrome can be restyled through published CSS tokens** rather than through arbitrary user CSS. The tokens are a contract with names that stay stable, so a theme does not break on the next release the way a selector-based override would.
+- **The resume store has a screen**, so the multipart checkpoint cap has an escape in the GUI and not only in `aeroftp checkpoints`.
+- **Quick Connect reaches a private OpenStack**, and the Blomp tile carries its own identity rather than a generic Swift one.
+
+#### Fixed
+- **Swift and Blomp accounts list their files again.** The GUI opens a session on `.`, which Swift turned into the prefix `./`, and that matches no object: the server answered 200 with an empty array, so every account looked empty in the app with no error at all, while the CLI, which sends `/`, worked.
+- **An FTP download of a file that is not there no longer waits for ever with the refusal already in the client.** The wait was inside the data channel's TLS handshake, one step before the read loop that was already guarded, so a request the server accepted and then ignored had no deadline at all. Every data-channel opening now has one, listings have their own, and an expiry drops the session instead of handing the next command a reply that is still owed.
+- **A transfer the server closed was abandoned without a single retry, and reported as a disk error.** Two wrong answers at once: the user was told their disk had failed, and the transfer that would have succeeded on the second attempt was not attempted.
+- **Six FTP classification rules had never fired once.** They look for a status code followed by a space, while every failure this application renders puts a `]` there. Quota, permission, not-found and authentication were decided by rules that could not see the shape the system produces, so a permanent refusal was retried three times. They were not uniformly dead, which is worse: a server that echoes its own code inside the message made the old rule match by accident, so the classification held against one server and silently stopped against another.
+- **A lost FTP login was reported as a bad path.** `[530] Not logged in` was presented as a naming problem, which sends the reader to check a path that was never wrong. Only the two replies that are about the name itself are treated as path errors now.
+- **WebDAV re-negotiates a rotated Digest nonce on every request path, not five of them**, and folder downloads honour the concurrent-transfers setting while doing it.
+- **A WebDAV download could panic the task that was running it.** A server answering 425 while rotating its Digest nonce walked the retry loop off the end of its own range. The replay now has an attempt of its own, bounded, and the loop has no edge left to fall off.
+- **A Swift recursive delete could remove objects the caller never named.** An object name is an opaque key, so `foo/../bar` and `bar` are two different objects; the path normalizer resolved the dot segments anyway, and a delete, a rename or a server-side copy addressed a different object than the one asked for.
+- **A path holding CR or LF let the caller append a second FTP command**, and the refusal was then filed as a network error and retried. Both halves are fixed: the command line rejects the characters, and the refusal is typed as what it is.
+- **Uploading a very large file no longer holds the whole file in memory**, and neither does a segmented download: the cap applied to one request, while the peak was the smaller of the file size and 1 GiB.
+- **The B2 provider was told the bucket's encryption and lock settings at every connect and threw them away**, so the header budget was computed from defaults that did not describe the bucket.
+- **Three Jottacloud trash operations that failed for a reporter**, each for a different reason, and the reasons were not related to one another.
+- **A listing nobody could read is no longer reported as an empty directory**, and the two FTP listing parsers became one, so the copy nobody had read stopped inventing files.
+- **Asking whether a parent exists is not asking whether it is a directory.** The obvious correction reintroduced a bug that had already been fixed once, which is recorded next to the code so the third attempt does not repeat it.
+- **A keystore exit code was chosen by searching the error message for English words**, so `--merge decrypt` returned an authentication failure and `--merge "io error"` returned a disk fault, for the same invalid input. Cron jobs and CI branch on those numbers. The class now travels with the error, decided where the failure happens, in the archive CLI as well as the keystore.
+- **179 locale strings had their diacritics stripped**, and a CI gate now stops the class growing. The remaining 66 in Swedish that the gate cannot see by construction were found by hand and restored, never reworded.
+- **Strings that shipped as raw English inside translated locales are gone**, with a gate that keeps them out.
+- **A Swift recursive delete, rename or server-side copy could address a different object than the one asked for.** An object name is an opaque key, so `foo/../bar` and `bar` are two different objects; the path normalizer resolved the dot segments anyway. Found by the pre-release audit, introduced earlier in this same cycle.
+- **A WebDAV download could panic the task running it**, when a server answered 425 while rotating its Digest nonce. Found by the pre-release audit.
+- **Six error classifications were blind to the shape providers actually produce and firing on byte counters instead.** The rule looked for a status code followed by a space, so `Upload failed (403): ...` was not recognised while `connection reset after 550 of 1024 bytes` was classified as a permanent permission failure and the transfer discarded. Ten providers render the unrecognised form. The criterion is now the position where a provider writes a status, read from the real code rather than assumed.
+- **An FTP transfer could wait 1800 seconds for a refusal the client had already received.** When a server sends the preliminary reply and the final refusal in one segment, the final one sits in the reader's buffer while the socket underneath looks empty, and the watcher was looking at the socket. It now looks at the layer the bytes are actually in.
+- **The multipart checkpoint cap could be exceeded by concurrent opens, and the fix for that could delete a record another opener had adopted.** Both are the same question answered by omission, "is this record mine", once by counting someone else's deletion as your own and once by removing someone else's record believing it yours.
+- **The Swift auth-URL field silently revoked a ticked cleartext-storage consent on every keystroke**, with the tick still drawn. Found by the pre-release audit.
+- **FTP probes MLST before listing** rather than assuming the server supports it, with a fixture server in CI that answers the way the awkward servers do, so the branch is proved rather than reasoned about.
+
+#### Changed
+- **pCloud's trash button is gone**, because pCloud refuses its trash endpoints to OAuth tokens and no scope unlocks it. A control that cannot work is worse than an absent one.
+- **S3Drive is marked stable on evidence, and DigitalOcean Spaces is no longer hidden**: it is a standard S3 connector and was being treated as experimental.
+- **The language chip moved to the edge of the status bar**, behind its own divider. It is a readout, not an app button, and sitting between AeroAgent and DevTools it read as a third one.
+- **Contribution origin is certified with a DCO rather than a CLA.** Contributors state where their code came from instead of signing rights over. The check uses no third-party action beyond the official checkout, because verifying provenance is the wrong place to add a supply chain dependency, and nothing is retroactive.
+- **The project licence identifier is `GPL-3.0-or-later`**, replacing the deprecated `GPL-3.0` in every manifest and source header.
+
+#### Security
+- **Three advisories affecting `russh` as a client**, which the project's own security gate is structurally unable to see: it audits the server side. `russh` moves to 0.63.1.
+- **A CI lane that runs no tests now fails instead of reporting success.** The AeroRsync live lane was the first one fixed, and the same guard was then found missing on ten more selection points, one of which had been reporting success while executing nothing since May. Every point that selects tests now asserts how many actually ran.
+- **Pre-release audit: three independent auditors, one lane each, over the 55 commits of this cycle.** Backend and protocols, frontend and CI and packaging, and a third lane asking a different question: does the code do what its own description says it does. Every confirmed finding was fixed before the tag rather than deferred. Two of them were introduced by this cycle and the rest predate it. **The most consequential finding is not in this list because it is not a defect in shipped behaviour**: three CI lanes could report success having executed no tests, and one had been doing so since May, which means part of the confidence this project had in its own gates was not earned. That is fixed above.
+- **Pre-tag commit audit: PASS.** PLACEHOLDER, filled in when the pre-tag check runs on the exact commit being tagged.
+
+#### Contributors
+[<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh)
+
 ## [4.1.8] - 2026-08-26
 
 ### The Release That Audited Itself
