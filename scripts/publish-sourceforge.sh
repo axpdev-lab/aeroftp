@@ -43,7 +43,7 @@ run() {
 }
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
-need gh ; need jq
+need gh ; need jq ; need curl
 CLI="${AEROFTP_CLI:-$(command -v aeroftp-cli || echo /usr/bin/aeroftp-cli)}"
 [ -x "$CLI" ] || { echo "missing: aeroftp-cli" >&2; exit 1; }
 
@@ -173,6 +173,32 @@ if [ "$PRUNE" -eq 1 ]; then
   mapfile -t KEEP < <(printf '%s\n' "${FOLDERS[@]}" | tail -n "$KEEP_COMPLETE")
   echo "keeping complete: ${KEEP[*]}"
 
+  # Delete one file and let the LISTING decide whether it worked, not the exit code.
+  # On the v4.1.9 prune `rm` returned exit 10 ("server or parse error") for a file that
+  # was in fact gone: SourceForge had performed the delete and then answered as if it had
+  # not. Under `set -e` that one false failure would abort the prune halfway and report a
+  # failure for work that succeeded, and whoever re-ran it would re-delete files that were
+  # already gone. It is the mirror image of the empty-listing trap above: there a failed
+  # read looked like a clean folder, here a successful delete looks like a failed one.
+  # So the exit status is a hint and the folder listing is the verdict: a nonzero `rm`
+  # is followed by a re-list, the file being absent counts as deleted, the file being
+  # present stops the script loudly. In a dry run `run` only prints, so nothing is listed.
+  sfrm() {
+    local folder="$1" name="$2"
+    local path="$SF_ROOT/$folder/$name"
+    if run "$CLI" --profile "$PROFILE_ID" rm "$path"; then
+      return 0
+    fi
+    local after
+    after="$(sfls "$SF_ROOT/$folder" --files-only)" || exit 1
+    if jq -e --arg n "$name" '.entries[] | select(.name==$n)' >/dev/null <<<"$after"; then
+      echo "delete failed and the file is still there: $path" >&2
+      exit 1
+    fi
+    echo "rm exited nonzero but $path is gone on re-listing: counted as deleted" >&2
+    return 0
+  }
+
   PRUNED=0
   for folder in "${FOLDERS[@]}"; do
     printf '%s\n' "${KEEP[@]}" | grep -qx "$folder" && continue
@@ -182,7 +208,7 @@ if [ "$PRUNE" -eq 1 ]; then
       case "$name" in
         README.md|*.sigstore.json|'') continue ;;
       esac
-      run "$CLI" --profile "$PROFILE_ID" rm "$SF_ROOT/$folder/$name"
+      sfrm "$folder" "$name"
       PRUNED=$((PRUNED + 1))
     done
   done
@@ -191,8 +217,29 @@ fi
 
 echo
 if [ "$FORCE" -eq 1 ]; then
-  echo "Done. Now set the SourceForge default download button by hand: the webhook used"
-  echo "to do it, and without it the project page keeps offering the previous release."
+  # The default download button does NOT need setting by hand: that instruction stood
+  # here from v4.1.3 to v4.1.9 and was false every time, SourceForge picks the newest
+  # folder on its own. Verify it instead, from the same endpoint the download button
+  # reads, and say so if it has not caught up yet (it can lag the upload by minutes).
+  SF_PROJECT="$(basename "$SF_ROOT")"
+  BEST_URL="https://sourceforge.net/projects/$SF_PROJECT/best_release.json"
+  echo "Done. Checking the default download button ($BEST_URL) ..."
+  if BEST="$(curl -fsS --max-time 30 "$BEST_URL" 2>/dev/null)"; then
+    STALE=0
+    while IFS=$'\t' read -r platform filename; do
+      if [[ "$filename" == *"$VERSION"* ]]; then
+        echo "  $platform: $filename"
+      else
+        echo "  $platform: $filename  (NOT $VERSION yet)"; STALE=1
+      fi
+    done < <(jq -r '.platform_releases | to_entries[] | [.key, .value.filename] | @tsv' <<<"$BEST")
+    if [ "$STALE" -eq 1 ]; then
+      echo "  SourceForge has not switched every platform to $VERSION yet; re-check in a few minutes,"
+      echo "  and only if it still lags set the default under Files > folder > (i) on the site."
+    fi
+  else
+    echo "  could not read $BEST_URL; check the download button on the project page."
+  fi
 else
   echo "Dry run. Re-run with --force to upload."
 fi
