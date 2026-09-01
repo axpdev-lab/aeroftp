@@ -52,6 +52,18 @@ const FEATURE_LABELS: Record<string, string> = {
   sse: 'Server-Side Encryption', checksum: 'Checksum', tierManagement: 'Tier Management',
 };
 
+// Per-feature, per-provider details for the tooltip on a listed capability.
+// A tick that holds only for some accounts of a provider says so here, so
+// Help never advertises a button the app cannot honour for the reader.
+const FEATURE_DETAILS: Record<string, Record<string, string>> = {
+  trash: {
+    // #397: Microsoft Graph has no endpoint for the OneDrive Personal
+    // recycle bin (`/me/drive/special/deleted` answers 400 invalidRequest
+    // there). The app reports it as a limit; Help must say the same.
+    onedrive: 'Business and SharePoint drives. Microsoft Graph does not expose the recycle bin of a OneDrive Personal drive; use the OneDrive website for it',
+  },
+};
+
 // Share link capability details for tooltip
 const SHARE_LINK_DETAILS: Record<string, string> = {
   googledrive: 'Permissions: view, comment, edit',
@@ -413,8 +425,8 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                         <td key={f} className="text-center py-1.5 px-2">
                           {provider.base.includes(f) ? (
                             <span
-                              title={f === 'shareLink' ? (SHARE_LINK_DETAILS[provider.logoId] || '') : ''}
-                              className={f === 'shareLink' && SHARE_LINK_DETAILS[provider.logoId] ? 'cursor-help' : ''}
+                              title={(f === 'shareLink' ? SHARE_LINK_DETAILS[provider.logoId] : FEATURE_DETAILS[f]?.[provider.logoId]) || ''}
+                              className={(f === 'shareLink' ? SHARE_LINK_DETAILS[provider.logoId] : FEATURE_DETAILS[f]?.[provider.logoId]) ? 'cursor-help' : ''}
                             >
                               <Check size={13} className="inline-block text-emerald-500" />
                             </span>
