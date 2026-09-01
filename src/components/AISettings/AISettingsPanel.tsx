@@ -1260,7 +1260,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                             },
                                         ].map((task) => {
                                             const rule = settings.autoRouting.rules.find((r) => r.taskType === task.type);
-                                            const allModels = settings.providers.filter((p) => p.isEnabled && p.apiKey).flatMap((p) => settings.models.filter((m) => m.providerId === p.id && m.isEnabled).map((m) => ({ ...m, providerName: p.name })));
+                                            const allModels = settings.providers.filter((p) => p.isEnabled && (p.apiKey || p.type === 'ollama')).flatMap((p) => settings.models.filter((m) => m.providerId === p.id && m.isEnabled).map((m) => ({ ...m, providerName: p.name })));
 
                                             return (
                                                 <div key={task.type} className="flex items-center gap-4 p-3 bg-gray-800 rounded-lg">
