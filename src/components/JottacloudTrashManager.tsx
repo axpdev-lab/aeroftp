@@ -68,8 +68,13 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
     const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Jottacloud', count: paths.length });
     setActionLoading('restore');
     try {
-      await invoke('jottacloud_restore_from_trash', { paths });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Jottacloud] Restored ${paths.length} item(s) from trash` });
+      const report = await invoke<{ files_restored: number; files_already_present: number; dirs_restored: number; failed: string[] }>('jottacloud_restore_from_trash', { paths });
+      // Show what the server confirmed, not what was selected (#397): a
+      // folder restore revives its descendants one file at a time.
+      const parts = [`${report.files_restored} file(s)`];
+      if (report.dirs_restored > 0) parts.push(`${report.dirs_restored} folder(s)`);
+      if (report.files_already_present > 0) parts.push(`${report.files_already_present} already present`);
+      humanLog.updateEntry(logId, { status: 'success', message: `[Jottacloud] Restored ${parts.join(', ')} from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {

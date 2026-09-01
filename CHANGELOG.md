@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+#### Fixed
+- **Jottacloud folder restore from the recycle bin works, because it stopped asking for a verb that does not exist.** Probed against a real directory tombstone, JFS has no command that restores a directory: `?restore=true` is rejected as an unknown command on both the Trash view and the original path, and `?mv=`/`?mvDir=` out of Trash 404 because the Trash listing is a virtual view whose entries no verb can address. The restore is now composed from the primitives that already carry file restore: the tombstone at the original path still lists the deleted tree with every child's `deleted` stamp and revision, each tombstoned file is revived with `?cphash=true` against its own path — which revives the ancestor folders along with it — and only the folders no file could bring back, the empty ones, are recreated with `?mkDir=true`. The reported result counts only what the server confirmed: children found already live are listed as already present rather than claimed, and a restore that stops partway is an error carrying the confirmed counts and the paths that failed, never a quiet success. Re-running a restore restores nothing twice. (#397)
+
 ## [4.1.9] - 2026-09-01
 
 ### The Release That Stopped Believing Its Own Gates

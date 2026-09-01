@@ -87,6 +87,45 @@ struct CustomerInfo {
 
 // ─── Provider ───────────────────────────────────────────────────────────
 
+/// Outcome of a trash restore. Every count is server-confirmed: a file is
+/// "restored" only when its cphash POST 2xx'd against a tombstone, and a
+/// directory is "restored" only when mkDir's answer came back without the
+/// `deleted` attribute. Children found already live are counted apart and
+/// never as work we produced.
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TrashRestoreReport {
+    pub files_restored: u32,
+    pub files_already_present: u32,
+    pub dirs_restored: u32,
+    /// `path: reason` for every entry that could not be restored.
+    pub failed: Vec<String>,
+}
+
+/// One child of a folder listing, tombstone-aware. `deleted` mirrors the
+/// `deleted` attribute: tombstoned children still sit in Trash; live ones
+/// were already restored (by us earlier or by someone else).
+#[derive(Debug, Clone, PartialEq)]
+enum TombstoneChild {
+    Folder {
+        name: String,
+        deleted: bool,
+    },
+    /// `revision` is the tombstone's (size, md5, created, modified).
+    File {
+        name: String,
+        deleted: bool,
+        revision: Option<(u64, String, String, String)>,
+    },
+}
+
+/// A file collected by the restore walk: path under the mountpoint, whether
+/// it still carries the `deleted` stamp, and its tombstone revision.
+struct WalkedFile {
+    path: String,
+    deleted: bool,
+    revision: Option<(u64, String, String, String)>,
+}
+
 pub struct JottacloudProvider {
     config: JottacloudConfig,
     client: reqwest::Client,
@@ -1919,18 +1958,54 @@ impl JottacloudProvider {
         format!("{}?cphash=true", self.jfs_url(from_in_trash))
     }
 
-    /// Directory restore: `?restore=true` on the original path, with a
-    /// trailing-slash form for the 404-only folder retry.
-    fn restore_from_trash_dir_urls(&self, from_in_trash: &str) -> (String, String) {
-        let src = self.jfs_url(from_in_trash);
-        let file_url = format!("{src}?restore=true");
-        let dir_src = if src.ends_with('/') {
-            src.clone()
-        } else {
-            format!("{src}/")
-        };
-        let dir_url = format!("{dir_src}?restore=true");
-        (file_url, dir_url)
+    /// POST `?cphash=true` on the original mountpoint object with the
+    /// TOMBSTONE's size/md5/timestamps — rclone's restore of a trashed file.
+    /// Callers must source the revision from the tombstone, never from a live
+    /// object at the same path (F-652-3). A 2xx answer carries the revived
+    /// `<file>` (no `deleted` attribute), so success here is server-confirmed.
+    async fn post_cphash_restore(
+        &mut self,
+        clean_path: &str,
+        size: u64,
+        md5: &str,
+        created: &str,
+        modified: &str,
+    ) -> Result<(), ProviderError> {
+        let url = self.restore_cphash_url(clean_path);
+        jotta_log(&format!(
+            "Restoring from trash via cphash: {} (size={} md5={})",
+            url, size, md5
+        ));
+        self.refresh_if_needed().await?;
+        let request = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header())
+            .header(CONTENT_LENGTH, "0")
+            .header("JSize", size.to_string())
+            .header("JMd5", md5)
+            .header("JCreated", created)
+            .header("JModified", modified)
+            .build()
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("Build restore request failed: {}", e))
+            })?;
+        let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
+            .await
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("Restore request failed: {}", e))
+            })?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "cphash restore of {} failed ({}): {}",
+                clean_path,
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+        Ok(())
     }
 
     /// Name of the first element in a JFS response (`file`, `folder`, …).
@@ -2074,6 +2149,356 @@ impl JottacloudProvider {
         Some((size, md5, created, modified))
     }
 
+    /// Parse a folder listing (live or tombstoned) into tombstone-aware
+    /// children. Unlike `parse_folder_xml` nothing is filtered out: the
+    /// restore walk needs the tombstoned entries, each with its own
+    /// `currentRevision` — reading size/md5 from here is what keeps cphash
+    /// away from a live object at the same path (F-652-3).
+    fn parse_folder_tombstone_children(xml: &str) -> Vec<TombstoneChild> {
+        use quick_xml::events::Event;
+        use quick_xml::Reader;
+
+        let mut children = Vec::new();
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+
+        let mut depth: u32 = 0;
+        let mut in_file = false;
+        let mut in_revision = false;
+        let mut tag = String::new();
+        let mut cur_name = String::new();
+        let mut cur_deleted = false;
+        let mut cur_size: u64 = 0;
+        let mut cur_md5 = String::new();
+        let mut cur_created = String::new();
+        let mut cur_modified = String::new();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    depth += 1;
+                    let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    // Children live exactly one level below <folders>/<files>.
+                    if depth == 3 && name == "folder" {
+                        let mut fname = String::new();
+                        let mut deleted = false;
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"name" {
+                                fname = crate::restricted_chars::decode_leaf(
+                                    ProviderType::Jottacloud,
+                                    &super::xml_text::attr_value(&attr),
+                                );
+                            }
+                            if attr.key.as_ref() == b"deleted"
+                                && !super::xml_text::attr_value(&attr).is_empty()
+                            {
+                                deleted = true;
+                            }
+                        }
+                        if !fname.is_empty() {
+                            children.push(TombstoneChild::Folder {
+                                name: fname,
+                                deleted,
+                            });
+                        }
+                    } else if depth == 3 && name == "file" {
+                        in_file = true;
+                        cur_name.clear();
+                        cur_deleted = false;
+                        cur_size = 0;
+                        cur_md5.clear();
+                        cur_created.clear();
+                        cur_modified.clear();
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"name" {
+                                cur_name = crate::restricted_chars::decode_leaf(
+                                    ProviderType::Jottacloud,
+                                    &super::xml_text::attr_value(&attr),
+                                );
+                            }
+                            if attr.key.as_ref() == b"deleted"
+                                && !super::xml_text::attr_value(&attr).is_empty()
+                            {
+                                cur_deleted = true;
+                            }
+                        }
+                    } else if in_file && depth == 4 && name == "currentRevision" {
+                        in_revision = true;
+                    }
+                    tag = name;
+                }
+                Ok(Event::Empty(ref e)) => {
+                    // Live folders arrive as `<folder name="x"/>`.
+                    if depth == 2 && e.name().as_ref() == b"folder" {
+                        let mut fname = String::new();
+                        let mut deleted = false;
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"name" {
+                                fname = crate::restricted_chars::decode_leaf(
+                                    ProviderType::Jottacloud,
+                                    &super::xml_text::attr_value(&attr),
+                                );
+                            }
+                            if attr.key.as_ref() == b"deleted"
+                                && !super::xml_text::attr_value(&attr).is_empty()
+                            {
+                                deleted = true;
+                            }
+                        }
+                        if !fname.is_empty() {
+                            children.push(TombstoneChild::Folder {
+                                name: fname,
+                                deleted,
+                            });
+                        }
+                    }
+                }
+                Ok(Event::End(ref e)) => {
+                    match e.name().as_ref() {
+                        b"currentRevision" => in_revision = false,
+                        b"file" if in_file => {
+                            in_file = false;
+                            in_revision = false;
+                            if !cur_name.is_empty() {
+                                let revision = if cur_md5.is_empty() {
+                                    None
+                                } else {
+                                    let c = if cur_created.is_empty() {
+                                        cur_modified.clone()
+                                    } else {
+                                        cur_created.clone()
+                                    };
+                                    let m = if cur_modified.is_empty() {
+                                        cur_created.clone()
+                                    } else {
+                                        cur_modified.clone()
+                                    };
+                                    Some((cur_size, cur_md5.clone(), c, m))
+                                };
+                                children.push(TombstoneChild::File {
+                                    name: cur_name.clone(),
+                                    deleted: cur_deleted,
+                                    revision,
+                                });
+                            }
+                        }
+                        _ => {}
+                    }
+                    depth = depth.saturating_sub(1);
+                    tag.clear();
+                }
+                Ok(Event::Text(ref e)) if in_revision => {
+                    let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                    match tag.as_str() {
+                        "size" => cur_size = text.parse().unwrap_or(0),
+                        "md5" => cur_md5 = text,
+                        "created" if cur_created.is_empty() => cur_created = text,
+                        "modified" if cur_modified.is_empty() => cur_modified = text,
+                        _ => {}
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(_) => break,
+                _ => {}
+            }
+            buf.clear();
+        }
+        children
+    }
+
+    /// True when the root `<folder>` carries a non-empty `deleted` attribute.
+    fn jfs_root_folder_is_tombstone(xml: &str) -> bool {
+        use quick_xml::events::Event;
+        use quick_xml::Reader;
+
+        let mut reader = Reader::from_str(xml);
+        let mut buf = Vec::new();
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+                    if e.name().as_ref() != b"folder" {
+                        return false;
+                    }
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"deleted"
+                            && !super::xml_text::attr_value(&attr).is_empty()
+                        {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                Ok(Event::Eof) | Err(_) => return false,
+                _ => {}
+            }
+            buf.clear();
+        }
+    }
+
+    /// Composed folder restore (#397): no JFS verb restores a directory —
+    /// `?restore=true` 500s on both the Trash view and the original path, and
+    /// `?mv=`/`?mvDir=` out of Trash 404 because the view is virtual. What
+    /// works is reviving each descendant with the primitives that already
+    /// carry file restore: walk the original-path tombstone (JFS still serves
+    /// the deleted tree, children `deleted`-stamped, revisions intact),
+    /// cphash every tombstoned file — JFS revives the ancestor chain along
+    /// with it — and mkDir only the directories that stay tombstoned because
+    /// no file lives beneath them.
+    ///
+    /// Partial failure is reported, never hidden: every entry is attempted,
+    /// `failed` lists what did not come back, and the caller gets `Err` with
+    /// the confirmed counts. Re-running is safe: live children are counted as
+    /// `files_already_present`, not restored again, and cphash/mkDir are
+    /// server-side no-ops on live objects.
+    async fn restore_folder_from_trash(
+        &mut self,
+        root: &str,
+    ) -> Result<TrashRestoreReport, ProviderError> {
+        let mut report = TrashRestoreReport::default();
+        // dir path -> tombstoned?
+        let mut dirs: Vec<(String, bool)> = Vec::new();
+        let mut files: Vec<WalkedFile> = Vec::new();
+
+        // Breadth-first so parents are scanned before their children.
+        let mut queue = vec![root.to_string()];
+        let mut cursor = 0;
+        while cursor < queue.len() {
+            let dir = queue[cursor].clone();
+            cursor += 1;
+            let url = self.jfs_url(&dir);
+            // A listing that cannot be fetched is a failed entry, not an
+            // abort: the rest of the tree is still restorable, and the
+            // report must carry everything that did not come back.
+            let resp = match self.get_with_retry(&url).await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    report
+                        .failed
+                        .push(format!("/{}: tombstone listing failed: {}", dir, e));
+                    continue;
+                }
+            };
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                report.failed.push(format!(
+                    "/{}: tombstone listing failed ({}): {}",
+                    dir,
+                    status,
+                    sanitize_api_error(&body)
+                ));
+                continue;
+            }
+            let xml = resp.text().await.unwrap_or_default();
+            let dir_deleted = Self::jfs_root_folder_is_tombstone(&xml);
+            dirs.push((dir.clone(), dir_deleted));
+            for child in Self::parse_folder_tombstone_children(&xml) {
+                match child {
+                    // The dir's own GET (when the walk reaches it) records
+                    // its tombstone state; recording it here too would count
+                    // it twice in the empty-dir pass.
+                    TombstoneChild::Folder { name, .. } => {
+                        queue.push(format!("{dir}/{name}"));
+                    }
+                    TombstoneChild::File {
+                        name,
+                        deleted,
+                        revision,
+                    } => {
+                        files.push(WalkedFile {
+                            path: format!("{dir}/{name}"),
+                            deleted,
+                            revision,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Files first: each cphash revives its ancestor chain, so directory
+        // creation must not run ahead of it.
+        for file in &files {
+            if !file.deleted {
+                // Already live: not our work, never counted as restored.
+                report.files_already_present += 1;
+                continue;
+            }
+            let Some((size, md5, created, modified)) = &file.revision else {
+                report
+                    .failed
+                    .push(format!("/{}: tombstone carries no md5/size", file.path));
+                continue;
+            };
+            match self
+                .post_cphash_restore(&file.path, *size, md5, created, modified)
+                .await
+            {
+                Ok(()) => report.files_restored += 1,
+                Err(e) => report.failed.push(format!("/{}: {e}", file.path)),
+            }
+        }
+
+        // Directories still tombstoned after the file pass are the ones no
+        // file could revive (empty subtrees). mkDir them top-down; the answer
+        // must come back without `deleted`, otherwise the dir is a failure,
+        // not a silent success.
+        let tombstoned_files: Vec<&str> = files
+            .iter()
+            .filter(|f| f.deleted)
+            .map(|f| f.path.as_str())
+            .collect();
+        let mut empty_dirs: Vec<&String> = dirs
+            .iter()
+            .filter(|(d, deleted)| {
+                *deleted
+                    && !tombstoned_files
+                        .iter()
+                        .any(|f| f.starts_with(&format!("{d}/")))
+            })
+            .map(|(d, _)| d)
+            .collect();
+        empty_dirs.sort_by_key(|d| d.matches('/').count());
+        for dir in empty_dirs {
+            let url = format!("{}?mkDir=true", self.jfs_url(dir));
+            match self.post_command_with_retry(&url).await {
+                Ok(resp) if resp.status().is_success() => {
+                    let body = resp.text().await.unwrap_or_default();
+                    if Self::jfs_root_folder_is_tombstone(&body) {
+                        report.failed.push(format!(
+                            "/{dir}: mkDir answered 2xx but the folder is still tombstoned"
+                        ));
+                    } else {
+                        report.dirs_restored += 1;
+                    }
+                }
+                Ok(resp) => {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_default();
+                    report.failed.push(format!(
+                        "/{dir}: mkDir failed ({}): {}",
+                        status,
+                        sanitize_api_error(&body)
+                    ));
+                }
+                Err(e) => report.failed.push(format!("/{dir}: mkDir failed: {e}")),
+            }
+        }
+
+        if !report.failed.is_empty() {
+            return Err(ProviderError::ServerError(format!(
+                "Folder restore of /{} incomplete: {} file(s) restored, {} already present, {} empty folder(s) revived; {} failure(s): {}",
+                root,
+                report.files_restored,
+                report.files_already_present,
+                report.dirs_restored,
+                report.failed.len(),
+                report.failed.join("; ")
+            )));
+        }
+        Ok(report)
+    }
+
     /// JFS destination path for a rename that stays inside Trash.
     fn rename_in_trash_dest_jfs(&self, to_clean: &str) -> String {
         let encoded_to: String = to_clean
@@ -2128,8 +2553,16 @@ impl JottacloudProvider {
     /// with JSize/JMd5/JCreated/JModified, which is rclone's restore of a trashed
     /// destination. `?restore=true` 500s on both the Trash view and the
     /// original path; `?mv=` against `/Trash/name` 404s.
-    /// Folders: `?restore=true` on the original path, 404-only slash retry.
-    pub async fn restore_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
+    /// Folders: no JFS verb restores a directory (same probes, #397), so the
+    /// restore is composed — see `restore_folder_from_trash`.
+    ///
+    /// The report counts only server-confirmed work; an incomplete folder
+    /// restore is an `Err` carrying the confirmed counts, never a quiet
+    /// success.
+    pub async fn restore_from_trash(
+        &mut self,
+        path: &str,
+    ) -> Result<TrashRestoreReport, ProviderError> {
         let clean = path.trim_start_matches('/');
         let src = self.jfs_url(clean);
         let get = self.get_with_retry(&src).await?;
@@ -2145,7 +2578,7 @@ impl JottacloudProvider {
         let xml = get.text().await.unwrap_or_default();
         let looks_like_file = Self::jfs_root_element(&xml).as_deref() == Some("file");
 
-        let resp = if looks_like_file {
+        if looks_like_file {
             if !Self::jfs_root_file_is_tombstone(&xml) {
                 return Err(ProviderError::ServerError(format!(
                     "Restore refused for {}: original path is a live object, not a deleted tombstone",
@@ -2159,54 +2592,21 @@ impl JottacloudProvider {
                         clean
                     ))
                 })?;
-            let url = self.restore_cphash_url(clean);
-            jotta_log(&format!(
-                "Restoring from trash via cphash: {} (size={} md5={})",
-                url, size, md5
-            ));
-            self.refresh_if_needed().await?;
-            let request = self
-                .client
-                .post(&url)
-                .header(AUTHORIZATION, self.auth_header())
-                .header(CONTENT_LENGTH, "0")
-                .header("JSize", size.to_string())
-                .header("JMd5", md5)
-                .header("JCreated", created)
-                .header("JModified", modified)
-                .build()
-                .map_err(|e| {
-                    ProviderError::ConnectionFailed(format!("Build restore request failed: {}", e))
-                })?;
-            send_with_retry(&self.client, request, &HttpRetryConfig::default())
-                .await
-                .map_err(|e| {
-                    ProviderError::ConnectionFailed(format!("Restore request failed: {}", e))
-                })?
-        } else {
-            let (file_url, dir_url) = self.restore_from_trash_dir_urls(clean);
-            jotta_log(&format!("Restoring folder from trash: {}", file_url));
-            let resp = self.post_command_with_retry(&file_url).await?;
-            if resp.status() == reqwest::StatusCode::NOT_FOUND {
-                jotta_log(&format!("Restore file 404, retrying as dir: {}", dir_url));
-                self.post_command_with_retry(&dir_url).await?
-            } else {
-                resp
-            }
-        };
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Restore from trash failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
+            self.post_cphash_restore(clean, size, &md5, &created, &modified)
+                .await?;
+            jotta_log(&format!("Restored from trash: {}", clean));
+            return Ok(TrashRestoreReport {
+                files_restored: 1,
+                ..Default::default()
+            });
         }
 
-        jotta_log(&format!("Restored from trash: {}", clean));
-        Ok(())
+        let report = self.restore_folder_from_trash(clean).await?;
+        jotta_log(&format!(
+            "Restored folder from trash: {} ({} file(s), {} already present, {} empty dir(s))",
+            clean, report.files_restored, report.files_already_present, report.dirs_restored
+        ));
+        Ok(report)
     }
 
     /// Rename an item that already lives in Trash.
@@ -2654,15 +3054,6 @@ mod tests {
         );
         assert!(!url.contains("?mv="));
         assert!(!url.contains("?restore="));
-        let (bare, slashed) = p.restore_from_trash_dir_urls("aeroftp-scratch-397");
-        assert!(
-            bare.contains("/Jotta/Archive/aeroftp-scratch-397?restore=true"),
-            "{bare}"
-        );
-        assert!(
-            slashed.contains("/Jotta/Archive/aeroftp-scratch-397/?restore=true"),
-            "{slashed}"
-        );
         let xml = r#"<file name="ehud-397-0420.txt" deleted="2026-08-29-T13:45:33Z">
             <currentRevision>
                 <size>28</size>
@@ -3072,5 +3463,311 @@ mod tests {
         // Garbage / empty bodies yield an empty list, never a panic.
         assert!(JottacloudProvider::parse_folder_xml("not xml at all", "/").is_empty());
         assert!(JottacloudProvider::parse_folder_xml("", "/").is_empty());
+    }
+
+    #[test]
+    fn folder_tombstone_children_classify_live_and_deleted() {
+        // Shape captured from the live API (#397): a trashed folder's listing
+        // on the ORIGINAL mountpoint still serves every child, each stamped
+        // with its own `deleted` attribute and, for files, the tombstone
+        // revision carrying size/md5. Restored (live) children lose the
+        // attribute; live folders collapse to an empty element.
+        let xml = r#"<folder name="aeroftp-397-restore" deleted="2026-09-01-T10:41:34Z">
+  <path>/user123/Jotta/Archive</path>
+  <folders>
+    <folder name="sub1" deleted="2026-09-01-T10:41:34Z">
+      <abspath>/user123/Jotta/Archive/aeroftp-397-restore</abspath>
+    </folder>
+    <folder name="already-back"/>
+  </folders>
+  <files>
+    <file name="root-file.txt" uuid="02d5df8e-b376-4f34-84f5-749925faf0e0" deleted="2026-09-01-T10:41:34Z">
+      <abspath>/user123/Jotta/Archive/aeroftp-397-restore</abspath>
+      <currentRevision>
+        <number>1</number>
+        <state>COMPLETED</state>
+        <created>2026-09-01-T10:40:48Z</created>
+        <modified>2026-09-01-T10:40:48Z</modified>
+        <mime>text/plain</mime>
+        <size>30</size>
+        <md5>d84d3caf340bd500193971c9eecb7255</md5>
+        <updated>2026-09-01-T10:41:11Z</updated>
+      </currentRevision>
+    </file>
+    <file name="live.txt" uuid="7dd16aac-df5c-49e0-b4cc-b851e28f2493">
+      <currentRevision>
+        <size>24</size>
+        <md5>c665afba7ca3625a6544034ca2341c19</md5>
+        <created>2026-09-01-T10:40:48Z</created>
+        <modified>2026-09-01-T10:40:48Z</modified>
+      </currentRevision>
+    </file>
+  </files>
+</folder>"#;
+        let children = JottacloudProvider::parse_folder_tombstone_children(xml);
+        assert_eq!(children.len(), 4, "{children:?}");
+        assert_eq!(
+            children[0],
+            TombstoneChild::Folder {
+                name: "sub1".to_string(),
+                deleted: true
+            }
+        );
+        assert_eq!(
+            children[1],
+            TombstoneChild::Folder {
+                name: "already-back".to_string(),
+                deleted: false
+            },
+            "live folders arrive as empty elements and must not be re-created"
+        );
+        match &children[2] {
+            TombstoneChild::File {
+                name,
+                deleted,
+                revision,
+            } => {
+                assert_eq!(name, "root-file.txt");
+                assert!(deleted, "tombstoned file keeps its deleted stamp");
+                let (size, md5, created, modified) = revision.clone().expect("tombstone revision");
+                assert_eq!(size, 30);
+                assert_eq!(md5, "d84d3caf340bd500193971c9eecb7255");
+                assert_eq!(created, "2026-09-01-T10:40:48Z");
+                assert_eq!(modified, "2026-09-01-T10:40:48Z");
+            }
+            other => panic!("expected file, got {other:?}"),
+        }
+        match &children[3] {
+            TombstoneChild::File {
+                name,
+                deleted,
+                revision,
+            } => {
+                assert_eq!(name, "live.txt");
+                assert!(!deleted, "live child must land in already-present");
+                assert!(revision.is_some());
+            }
+            other => panic!("expected file, got {other:?}"),
+        }
+
+        // Garbage yields no children, never a panic.
+        assert!(JottacloudProvider::parse_folder_tombstone_children("junk").is_empty());
+        assert!(JottacloudProvider::parse_folder_tombstone_children("").is_empty());
+    }
+
+    #[test]
+    fn root_folder_tombstone_detection() {
+        let tombstoned = r#"<folder name="x" deleted="2026-09-01-T10:41:34Z"><files/></folder>"#;
+        let live = r#"<folder name="x"><files/></folder>"#;
+        let not_a_folder = r#"<file name="x" deleted="2026-09-01-T10:41:34Z"/>"#;
+        assert!(JottacloudProvider::jfs_root_folder_is_tombstone(tombstoned));
+        assert!(!JottacloudProvider::jfs_root_folder_is_tombstone(live));
+        assert!(
+            !JottacloudProvider::jfs_root_folder_is_tombstone(not_a_folder),
+            "a file root is not a folder tombstone"
+        );
+        assert!(!JottacloudProvider::jfs_root_folder_is_tombstone("garbage"));
+    }
+
+    // ─── Live end-to-end regression for #397 folder restore ────────────
+    //
+    // This is the red→green proof: on v4.1.9 the folder branch of
+    // `restore_from_trash` POSTs `?restore=true`, JFS answers 500, and this
+    // test fails at the restore step. With the composed restore it passes.
+    //
+    // Run explicitly (never in CI):
+    //   cargo test --release --lib live_restore_folder_tree_end_to_end -- --ignored --nocapture
+    // Env: JOTTA_TEST_PROFILE (default "Jotta").
+    //
+    // The test builds a tree (root file, nested subfolders with one file per
+    // level, one EMPTY subfolder), trashes it, restores it, byte-compares
+    // every file, then restores a SECOND time to prove idempotence (nothing
+    // re-restored, nothing duplicated, no error). It cleans up after itself.
+    #[tokio::test]
+    #[ignore = "live Jottacloud test; run explicitly"]
+    async fn live_restore_folder_tree_end_to_end() {
+        use crate::providers::{ProviderConfig, ProviderFactory, ProviderType};
+
+        let profile_query =
+            std::env::var("JOTTA_TEST_PROFILE").unwrap_or_else(|_| "Jotta".to_string());
+        crate::credential_store::CredentialStore::init().expect("vault init failed");
+        let store = crate::credential_store::CredentialStore::from_cache().expect("vault not open");
+        let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)
+            .expect("profile listing failed");
+        let matched = profiles
+            .iter()
+            .find(|p| p.get("name").and_then(|v| v.as_str()) == Some(profile_query.as_str()))
+            .cloned()
+            .expect("test profile not found");
+        let profile_id = matched
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let raw = crate::user_partitions::resolve_active_credential(
+            &store,
+            &format!("server_{profile_id}"),
+        )
+        .ok()
+        .flatten()
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+        let token = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+            v.get("password")
+                .and_then(|x| x.as_str())
+                .or_else(|| v.get("access_token").and_then(|x| x.as_str()))
+                .unwrap_or("")
+                .to_string()
+        } else {
+            raw.trim_matches('"').to_string()
+        };
+        assert!(!token.is_empty(), "no credential resolved for test profile");
+
+        // Bind the profile id: the per-profile refresh-token key is the
+        // partition-aware chain the GUI and the current CLI maintain, so it
+        // stays valid across runs. The legacy singleton is a separate chain
+        // (used by older installed binaries) and sharing values across
+        // chains makes one rotation invalidate the other.
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("profile_id".to_string(), profile_id);
+        let config = ProviderConfig {
+            name: "jotta-e2e".to_string(),
+            provider_type: ProviderType::Jottacloud,
+            host: "jfs.jottacloud.com".to_string(),
+            port: Some(443),
+            username: Some("token".to_string()),
+            password: Some(token),
+            initial_path: None,
+            extra,
+        };
+        let mut boxed = ProviderFactory::create(&config).expect("provider create failed");
+        // The GUI and CLI on this machine hold their own Jotta token chains
+        // and refresh on their own schedule; a rotation race fails one
+        // connect with invalid_grant. A fresh provider re-reads the newest
+        // persisted token, so one retry absorbs the race.
+        if let Err(e) = boxed.connect().await {
+            eprintln!("first connect failed ({e}); retrying with a fresh provider");
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            boxed = ProviderFactory::create(&config).expect("provider create failed");
+            boxed.connect().await.expect("connect failed after retry");
+        }
+        let p = boxed
+            .as_any_mut()
+            .downcast_mut::<JottacloudProvider>()
+            .expect("downcast failed");
+
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let root = format!("aeroftp-397-e2e-{stamp}");
+        let files: Vec<(String, Vec<u8>)> = vec![
+            (format!("{root}/root.txt"), b"e2e root level\n".to_vec()),
+            (
+                format!("{root}/sub1/sub1.txt"),
+                b"e2e sub1 level\n".to_vec(),
+            ),
+            (
+                format!("{root}/sub1/sub2/deep.txt"),
+                b"e2e deepest level\n".to_vec(),
+            ),
+        ];
+
+        // Build the fixture.
+        p.mkdir(&root).await.expect("mkdir root");
+        p.mkdir(&format!("{root}/empty"))
+            .await
+            .expect("mkdir empty");
+        p.mkdir(&format!("{root}/sub1")).await.expect("mkdir sub1");
+        p.mkdir(&format!("{root}/sub1/sub2"))
+            .await
+            .expect("mkdir sub2");
+        let tmp = std::env::temp_dir().join(format!("jotta-e2e-{stamp}"));
+        tokio::fs::create_dir_all(&tmp).await.unwrap();
+        for (remote, bytes) in &files {
+            let local = tmp.join(remote.rsplit('/').next().unwrap());
+            tokio::fs::write(&local, bytes).await.unwrap();
+            p.upload(local.to_str().unwrap(), remote, None)
+                .await
+                .unwrap_or_else(|e| panic!("upload {remote} failed: {e}"));
+        }
+
+        // Trash the whole tree, then confirm the bin holds it.
+        p.move_to_trash(&root).await.expect("move to trash");
+        let trash = p.list_trash().await.expect("list trash");
+        assert!(
+            trash.iter().any(|e| e.name == root),
+            "fixture must appear in trash: {trash:?}"
+        );
+
+        // THE restore under test.
+        let report = p.restore_from_trash(&root).await.expect("FOLDER RESTORE");
+        assert_eq!(
+            report.files_restored, 3,
+            "one file per level must be restored: {report:?}"
+        );
+        assert_eq!(report.files_already_present, 0, "{report:?}");
+        assert_eq!(
+            report.dirs_restored, 1,
+            "the empty dir needs mkDir: {report:?}"
+        );
+        assert!(report.failed.is_empty(), "{report:?}");
+
+        // Every file must be back with the exact bytes it had before.
+        for (remote, bytes) in &files {
+            let got = p
+                .download_to_bytes(remote)
+                .await
+                .unwrap_or_else(|e| panic!("download restored {remote} failed: {e}"));
+            assert_eq!(&got, bytes, "restored bytes differ for {remote}");
+        }
+        // The empty dir must be back too.
+        let root_entries = p.list(&root).await.expect("list restored root");
+        assert!(
+            root_entries.iter().any(|e| e.is_dir && e.name == "empty"),
+            "empty dir missing after restore: {root_entries:?}"
+        );
+        // The bin must no longer hold the fixture.
+        let trash = p.list_trash().await.expect("list trash after restore");
+        assert!(
+            !trash.iter().any(|e| e.name == root),
+            "fully restored folder must leave the bin: {trash:?}"
+        );
+
+        // Idempotence: a second restore changes nothing and fails nothing.
+        let second = p
+            .restore_from_trash(&root)
+            .await
+            .expect("second restore must not fail");
+        assert_eq!(second.files_restored, 0, "{second:?}");
+        assert_eq!(
+            second.files_already_present, 3,
+            "live children are counted apart, not re-restored: {second:?}"
+        );
+        assert_eq!(second.dirs_restored, 0, "{second:?}");
+        assert!(second.failed.is_empty(), "{second:?}");
+
+        // Cleanup: trash the tree again, then best-effort purge. As of
+        // v4.1.9 no JFS verb purges a trashed FOLDER (`?rm`/`?rmDir` on the
+        // Trash view 404; `?dl`/`?dlDir` on the original tombstone are 200
+        // no-ops), so a leftover fixture in the bin is logged, not fatal.
+        p.move_to_trash(&root).await.expect("cleanup move to trash");
+        let trash = p.list_trash().await.expect("list trash for cleanup");
+        for entry in trash
+            .iter()
+            .filter(|e| e.name.starts_with("aeroftp-397-e2e-"))
+            .cloned()
+            .collect::<Vec<_>>()
+        {
+            let name = entry.name.trim_start_matches('/').to_string();
+            match p.permanent_delete_from_trash(&name).await {
+                Ok(()) => eprintln!("CLEANUP {name}: purged"),
+                Err(e) => eprintln!(
+                    "CLEANUP {name}: purge unavailable for trashed folders ({e}); \
+                     empty the bin from the Jottacloud web UI"
+                ),
+            }
+        }
+        let _ = tokio::fs::remove_dir_all(&tmp).await;
     }
 }
