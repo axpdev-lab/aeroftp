@@ -1926,7 +1926,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--max-backlog <n>` | Max queued transfer tasks for parallel operations (default: 10000) |
 | `--files-from <file>` | Transfer only files listed in file (one per line, `#` comments). Works with get -r, put -r, sync |
 | `--files-from-raw <file>` | Like `--files-from` but preserves whitespace and empty lines |
-| `--immutable` | Never overwrite existing files on destination (append-only mode) |
+| `--immutable` | Never overwrite an existing destination (append-only mode). Honoured by `put`, `cp`, `mv`, `get` and `sync`: an existing target is skipped with exit 9 and left untouched. The check is a stat before the write, not a server-side precondition, so two writers racing for the same target can still both pass it |
 | `--no-check-dest` | Skip remote directory listing during sync (assume destination is empty) |
 | `--max-depth <n>` | Maximum recursion depth for ls -R, find, sync, get -r, put -r |
 | `--default-time <ts>` | Fallback mtime when backend returns None. Accepts ISO 8601, RFC 3339, or `now` |
