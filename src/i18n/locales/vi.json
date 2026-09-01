@@ -2448,7 +2448,7 @@
                 "general": "Chung",
                 "generalDesc": "Mặc định cho các tác vụ chưa phân loại",
                 "autoDefault": "Tự động (Mặc định)",
-                "autoRoutingTip": "Mẹo: Để \"Tự động (Mặc định)\" để sử dụng mô hình đã chọn trong tiêu đề trò chuyện. Chỉ cấu hình mô hình cụ thể khi bạn muốn dùng mô hình khác cho các tác vụ khác nhau.",
+                "autoRoutingTip": "Mẹo: để một tác vụ ở «Tự động (Mặc định)» thì mô hình mặc định của bạn sẽ được dùng. Chỉ đặt mô hình ưu tiên cho những tác vụ bạn muốn dùng mô hình khác, và một mô hình dự phòng để trả lời khi mô hình ưu tiên thất bại.",
                 "advancedDescription": "Cấu hình các tham số AI nâng cao cho việc tạo phản hồi.",
                 "conversationStyle": "Phong cách hội thoại",
                 "styleHelp": "Chính xác = phản hồi thực tế. Sáng tạo = giàu trí tưởng tượng hơn. Cân bằng = mặc định.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Ngắn gọn",
                 "styleDefault": "Mặc định",
                 "styleExplanatory": "Giải thích",
-                "styleLearning": "Học tập"
+                "styleLearning": "Học tập",
+                "routingPreferred": "Ưu tiên",
+                "routingFallback": "Dự phòng",
+                "routingNoFallback": "Không có"
             },
             "copy": "Sao chép",
             "attachImage": "Đính kèm hình ảnh",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Duyệt plugin"
             },
-            "stopGeneration": "Dừng tạo"
+            "stopGeneration": "Dừng tạo",
+            "routing": {
+                "fallbackUsed": "dự phòng",
+                "fallbackUsedTooltip": "{model} đã thất bại, nên mô hình dự phòng đã trả lời thay"
+            }
         },
         "archive": {
             "passwordRequired": "Tệp lưu trữ này được bảo vệ bằng mật khẩu",

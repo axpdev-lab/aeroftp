@@ -2413,7 +2413,7 @@
                 "general": "一般",
                 "generalDesc": "未分類タスクの既定",
                 "autoDefault": "自動（既定）",
-                "autoRoutingTip": "ヒント: チャットヘッダーで選択したモデルを使うには「自動（既定）」のままにしてください。タスク別に異なるモデルを使う場合のみ個別設定します。",
+                "autoRoutingTip": "ヒント: タスクを「自動（既定）」のままにすると既定のモデルが使われます。別のモデルを使いたいタスクにだけ優先モデルを設定し、優先モデルが失敗したときに応答するフォールバックモデルを指定してください。",
                 "advancedDescription": "応答生成の高度なAIパラメータを設定します。",
                 "conversationStyle": "会話スタイル",
                 "styleHelp": "Precise = 事実重視。Creative = より創造的。Balanced = 既定。",
@@ -2497,7 +2497,10 @@
                 "styleConcise": "簡潔",
                 "styleDefault": "デフォルト",
                 "styleExplanatory": "説明的",
-                "styleLearning": "学習"
+                "styleLearning": "学習",
+                "routingPreferred": "優先",
+                "routingFallback": "フォールバック",
+                "routingNoFallback": "なし"
             },
             "copy": "コピー",
             "attachImage": "画像を添付",
@@ -2865,7 +2868,11 @@
             "plugins": {
                 "browsePlugins": "プラグインを閲覧"
             },
-            "stopGeneration": "生成を停止"
+            "stopGeneration": "生成を停止",
+            "routing": {
+                "fallbackUsed": "フォールバック",
+                "fallbackUsedTooltip": "{model} が失敗したため、フォールバックのモデルが応答しました"
+            }
         },
         "archive": {
             "passwordRequired": "このアーカイブはパスワードで保護されています",

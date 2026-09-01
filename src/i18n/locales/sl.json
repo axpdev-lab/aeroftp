@@ -2448,7 +2448,7 @@
                 "general": "Splošno",
                 "generalDesc": "Privzeto za nekategorizirane naloge",
                 "autoDefault": "Samodejno (privzeto)",
-                "autoRoutingTip": "Namig: Pustite na \"Samodejno (privzeto)\" za uporabo modela, izbranega v glavi klepeta. Nastavite določene modele le, ko želite različne modele za različne naloge.",
+                "autoRoutingTip": "Nasvet: pustite opravilo na »Samodejno (privzeto)« in uporabljen bo vaš privzeti model. Prednostni model nastavite samo za opravila, kjer želite drugega, in rezervni model, ki odgovori, ko prednostni odpove.",
                 "advancedDescription": "Nastavite napredne parametre AI za generiranje odgovorov.",
                 "conversationStyle": "Slog pogovora",
                 "styleHelp": "Natančno = dejanski odgovori. Ustvarjalno = bolj domišljijsko. Uravnoteženo = privzeto.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Jedrnato",
                 "styleDefault": "Privzeto",
                 "styleExplanatory": "Pojasnjevalno",
-                "styleLearning": "Učno"
+                "styleLearning": "Učno",
+                "routingPreferred": "Prednostni",
+                "routingFallback": "Rezervni",
+                "routingNoFallback": "Brez"
             },
             "copy": "Kopiraj",
             "attachImage": "Priloži sliko",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Brskaj po vtičnikih"
             },
-            "stopGeneration": "Ustavi generiranje"
+            "stopGeneration": "Ustavi generiranje",
+            "routing": {
+                "fallbackUsed": "rezervni",
+                "fallbackUsedTooltip": "{model} ni uspel, zato je odgovoril rezervni model"
+            }
         },
         "archive": {
             "passwordRequired": "Ta arhiv je zaščiten z geslom",

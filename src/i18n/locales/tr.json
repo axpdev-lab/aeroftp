@@ -2448,7 +2448,7 @@
                 "general": "Genel",
                 "generalDesc": "Sınıflandırılmamış görevler için varsayılan",
                 "autoDefault": "Otomatik (Varsayılan)",
-                "autoRoutingTip": "İpucu: Sohbet başlığında seçilen modeli kullanmak için \"Otomatik (Varsayılan)\" olarak bırakın. Yalnızca farklı görevler için farklı modeller istediğinizde belirli modelleri yapılandırın.",
+                "autoRoutingTip": "İpucu: bir görevi „Otomatik (Varsayılan)“ olarak bırakırsanız varsayılan modeliniz kullanılır. Tercih edilen modeli yalnızca farklı bir model istediğiniz görevler için ayarlayın ve tercih edilen model başarısız olduğunda yanıt verecek bir yedek model belirleyin.",
                 "advancedDescription": "Yanıt üretimi için gelişmiş AI parametrelerini yapılandırın.",
                 "conversationStyle": "Konuşma Stili",
                 "styleHelp": "Kesin = olgusal yanıtlar. Yaratıcı = daha hayal gücüne dayalı. Dengeli = varsayılan.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Özlü",
                 "styleDefault": "Varsayılan",
                 "styleExplanatory": "Açıklayıcı",
-                "styleLearning": "Öğrenme"
+                "styleLearning": "Öğrenme",
+                "routingPreferred": "Tercih edilen",
+                "routingFallback": "Yedek",
+                "routingNoFallback": "Yok"
             },
             "copy": "Kopyala",
             "attachImage": "Görsel ekle",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Eklentilere göz at"
             },
-            "stopGeneration": "Üretimi durdur"
+            "stopGeneration": "Üretimi durdur",
+            "routing": {
+                "fallbackUsed": "yedek",
+                "fallbackUsedTooltip": "{model} başarısız oldu, bu nedenle yedek model yanıt verdi"
+            }
         },
         "archive": {
             "passwordRequired": "Bu arşiv parola korumalı",

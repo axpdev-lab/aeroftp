@@ -2448,7 +2448,7 @@
                 "general": "Général",
                 "generalDesc": "Par défaut pour les tâches non classifiées",
                 "autoDefault": "Auto (Par défaut)",
-                "autoRoutingTip": "Conseil : Laissez sur \"Auto (Par défaut)\" pour utiliser le modèle sélectionné dans l'en-tête du chat. Ne configurez des modèles spécifiques que si vous souhaitez des modèles différents pour différentes tâches.",
+                "autoRoutingTip": "Astuce : si vous laissez une tâche sur « Auto (Par défaut) », votre modèle par défaut est utilisé. Définissez un modèle préféré uniquement pour les tâches où vous en voulez un autre, et un modèle de secours qui répond lorsque le préféré échoue.",
                 "advancedDescription": "Configurez les paramètres avancés de l'IA pour la génération de réponses.",
                 "conversationStyle": "Style de conversation",
                 "styleHelp": "Précis = réponses factuelles. Créatif = plus imaginatif. Équilibré = par défaut.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Concis",
                 "styleDefault": "Par défaut",
                 "styleExplanatory": "Explicatif",
-                "styleLearning": "Apprentissage"
+                "styleLearning": "Apprentissage",
+                "routingPreferred": "Préféré",
+                "routingFallback": "Secours",
+                "routingNoFallback": "Aucun"
             },
             "copy": "Copier",
             "attachImage": "Joindre une image",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Parcourir les Plugins"
             },
-            "stopGeneration": "Arrêter la génération"
+            "stopGeneration": "Arrêter la génération",
+            "routing": {
+                "fallbackUsed": "secours",
+                "fallbackUsedTooltip": "{model} a échoué, le modèle de secours a répondu à la place"
+            }
         },
         "archive": {
             "passwordRequired": "Cette archive est protégée par mot de passe",

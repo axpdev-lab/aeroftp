@@ -34,7 +34,7 @@ import type { AIProviderType } from '../../types/ai';
 interface ChatMessageRowProps {
     message: Message;
     ct: Record<string, string>;
-    t: (key: string) => string;
+    t: (key: string, params?: Record<string, string | number>) => string;
     /** isLoading && this row is the active streaming message. */
     isStreamingRow: boolean;
     isExpanded: boolean;
@@ -227,6 +227,14 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                         <span className={`flex items-center gap-1 ${ct.textSecondary}`}>
                             • {getProviderIcon(message.modelInfo.providerType, 10)}
                             <span>{message.modelInfo.modelName}</span>
+                            {message.modelInfo.fallbackFrom && (
+                                <span
+                                    className="text-amber-500/80"
+                                    title={t('ai.routing.fallbackUsedTooltip', { model: message.modelInfo.fallbackFrom })}
+                                >
+                                    {t('ai.routing.fallbackUsed')}
+                                </span>
+                            )}
                         </span>
                     )}
                     {message.tokenInfo && (

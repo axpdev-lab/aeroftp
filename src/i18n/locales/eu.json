@@ -2467,7 +2467,7 @@
                 "general": "Orokorra",
                 "generalDesc": "Sailkatu gabeko zereginen lehenetsia",
                 "autoDefault": "Automatikoa (Lehenetsia)",
-                "autoRoutingTip": "Aholkua: Utzi \"Automatikoa (Lehenetsia)\" gisa txataren goiburuan hautatutako eredua erabiltzeko. Konfiguratu eredu zehatzak zeregin desberdinetarako eredu desberdinak nahi dituzunean soilik.",
+                "autoRoutingTip": "Aholkua: utzi ataza bat „Automatikoa (Lehenetsia)“ aukeran eta zure eredu lehenetsia erabiliko da. Ezarri eredu hobetsi bat beste bat nahi duzun atazetan bakarrik, eta ordezko eredu bat hobetsiak huts egiten duenean erantzuteko.",
                 "advancedDescription": "Konfiguratu AI parametro aurreratuak erantzunen sorkuntzarako.",
                 "conversationStyle": "Elkarrizketa Estiloa",
                 "styleHelp": "Zehatza = erantzun faktualak. Sortzailea = irudimentsuagoa. Orekatua = lehenetsia.",
@@ -2551,7 +2551,10 @@
                 "styleConcise": "Laburra",
                 "styleDefault": "Lehenetsia",
                 "styleExplanatory": "Azalpenezkoa",
-                "styleLearning": "Ikaskuntza"
+                "styleLearning": "Ikaskuntza",
+                "routingPreferred": "Hobetsia",
+                "routingFallback": "Ordezkoa",
+                "routingNoFallback": "Bat ere ez"
             },
             "rag": {
                 "indexing": "Fitxategiak indexatzen...",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Arakatu Plugins"
             },
-            "stopGeneration": "Gelditu sorkuntza"
+            "stopGeneration": "Gelditu sorkuntza",
+            "routing": {
+                "fallbackUsed": "ordezkoa",
+                "fallbackUsedTooltip": "{model} huts egin du, beraz ordezko ereduak erantzun du"
+            }
         },
         "archive": {
             "passwordRequired": "Artxibo hau pasahitzarekin babestuta dago",
