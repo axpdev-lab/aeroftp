@@ -144,10 +144,21 @@ jobs:
       # 15 minutes is a warm-cache figure. The first run on a branch compiles
       # the Tauri crate from nothing, and a cap that bites once and never again
       # reads as an infrastructure problem rather than as a wrong number.
+      #
+      # The count is asserted for the reason this whole file exists: the two
+      # tests are selected with `--ignored`, so the day somebody removes those
+      # attributes to make them run more often, this lane selects NOTHING,
+      # prints "test result: ok" and stays green while covering nothing. Two,
+      # not "exactly two", because the binary is a module meant to grow.
       - name: Listing tests against an MLSD server
         timeout-minutes: 40
         working-directory: src-tauri
-        run: cargo test --test integration_ftp_mlsd -- --ignored --nocapture
+        run: |
+          set -o pipefail
+          cargo test --test integration_ftp_mlsd -- --ignored --nocapture \
+            | tee /tmp/ftp-mlsd-listing.log
+          ../scripts/assert-tests-ran.sh /tmp/ftp-mlsd-listing.log 2 \
+            "MLSD listing tests"
 
       - name: Dump fixture logs on failure
         if: failure()
@@ -264,8 +275,8 @@ jobs:
       # that prints "test result: ok" and exits 0 when the filter matches
       # nothing. Exactly one, not "at least one": this step promises to run one
       # named test, so a second arriving here is a change to what the job does
-      # and should be said out loud. The sibling aerorsync lane uses `-lt`
-      # instead, and correctly: it collects a whole module, which may grow.
+      # and should be said out loud. The sibling aerorsync lane asks for "at
+      # least", and correctly: it collects a whole module, which may grow.
       - name: The session must not survive a timed-out listing
         timeout-minutes: 40
         working-directory: src-tauri
@@ -273,14 +284,8 @@ jobs:
           set -o pipefail
           cargo test --lib providers::ftp::live_listing_timeout -- \
             --ignored --nocapture | tee /tmp/listing-timeout.log
-          ran=$(grep -oE '^test result: ok\. [0-9]+ passed' /tmp/listing-timeout.log \
-                | grep -oE '[0-9]+' | head -1 || true)
-          echo "live listing-timeout tests executed: ${ran:-none}"
-          if [ "${ran:-0}" -ne 1 ]; then
-            echo "::error::expected exactly 1 test, ran ${ran:-0}: the filter stopped matching,"
-            echo "::error::which is a green that executed nothing. Fix the filter, not this check."
-            exit 1
-          fi
+          ../scripts/assert-tests-ran.sh /tmp/listing-timeout.log =1 \
+            "Listing-timeout guard"
 
       - name: Fixture log on failure
         if: failure()

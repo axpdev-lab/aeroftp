@@ -83,9 +83,19 @@ jobs:
       - name: cargo clippy (strict, -D warnings)
         working-directory: src-tauri
         run: cargo clippy --lib --features aerorsync --all-targets -- -D warnings
+      # `aerorsync` is a substring filter over the whole lib, which is the shape
+      # that prints "test result: ok" and exits 0 when it matches nothing: rename
+      # the module and this step passes having compiled the crate and run no
+      # test. 677 is what it executes today (692 selected, 15 of them ignored,
+      # measured on run 33436715702 and reproduced locally); a floor, because the
+      # module is meant to grow.
       - name: Mock + unit test suite
         working-directory: src-tauri
-        run: cargo test --features aerorsync --lib aerorsync
+        run: |
+          set -o pipefail
+          cargo test --features aerorsync --lib aerorsync | tee /tmp/aerorsync-unit.log
+          ../scripts/assert-tests-ran.sh /tmp/aerorsync-unit.log 677 \
+            "aerorsync mock + unit suite"
       - name: Default build regression (feature off)
         working-directory: src-tauri
         run: cargo check --no-default-features --lib
@@ -252,6 +262,7 @@ jobs:
         # All filters go after `--`: cargo itself takes a single
         # positional TESTNAME, libtest ORs multiple filters.
         run: |
+          set -o pipefail
           cargo test --features aerorsync --lib -- \
             aerorsync::native_driver::tests::driver_upload_live_lane_3_real_rsync_byte_identical \
             aerorsync::native_driver::tests::driver_upload_streaming_live_lane_3_real_rsync_byte_identical \
@@ -268,7 +279,9 @@ jobs:
             aerorsync::delta_transport_impl::tests::delta_upload_symlink_xattr_not_inherited_live_lane_3 \
             aerorsync::delta_transport_impl::tests::delta_upload_acl_named_user_live_lane_3 \
             aerorsync::delta_transport_impl::tests::delta_download_acl_named_user_live_lane_3 \
-            --nocapture
+            --nocapture | tee /tmp/aerorsync-lane3.log
+          ../scripts/assert-tests-ran.sh /tmp/aerorsync-lane3.log 15 \
+            "lane 3 live tests"
       # The RSNP_TEST_REAL lane: eight #[ignore] tests that drive the
       # production AerorsyncDeltaTransport upload and download paths against
       # the same stock rsync, with each negotiated checksum forced in turn
@@ -328,25 +341,15 @@ jobs:
         # would turn this lane green having executed NOTHING, and the second one
         # looks like an improvement while doing it. `set -o pipefail` matters for
         # the same reason: without it the exit status would be tee's, not cargo's.
+        # The check itself now lives in scripts/assert-tests-ran.sh, which is
+        # where the shell subtleties it needs are written down once instead of
+        # once per lane.
         run: |
           set -o pipefail
           cargo test --features aerorsync --lib aerorsync::live_tests -- \
             --ignored --nocapture --test-threads=1 | tee /tmp/aerorsync-live.log
-          # `|| true` is load-bearing: GitHub runs a step with no `shell:` as
-          # `bash -e {0}`, and under -e an assignment from a pipeline that
-          # matches nothing ends the script right here, silently. The check
-          # would still fail, but with no message, which is the exact shape
-          # this step exists to remove. `shell: bash` does NOT fix it: that is
-          # `bash -eo pipefail`, so -e is still on.
-          ran=$(grep -oE '^test result: ok\. [0-9]+ passed' /tmp/aerorsync-live.log \
-                | grep -oE '[0-9]+' | head -1 || true)
-          echo "aerorsync live tests executed: ${ran:-none}"
-          if [ -z "${ran}" ] || [ "${ran}" -lt 8 ]; then
-            echo "::error::this lane executed ${ran:-0} live tests, expected at least 8."
-            echo "::error::a green here with fewer tests means the filter stopped matching,"
-            echo "::error::not that the protocol got simpler. Fix the filter, not this check."
-            exit 1
-          fi
+          ../scripts/assert-tests-ran.sh /tmp/aerorsync-live.log 8 \
+            "aerorsync live checksum-matrix tests"
       - name: Tear down harness
         if: always()
         working-directory: src-tauri/src/aerorsync/capture
