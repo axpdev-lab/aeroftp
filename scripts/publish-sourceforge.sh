@@ -97,9 +97,28 @@ SFNOTE
     gh release download "$TAG" --repo "$REPO" --dir "$STAGE" --pattern "$a" --skip-existing
   done
 
-  "$CLI" --profile "$PROFILE_ID" mkdir "$SF_ROOT/$TAG"
+  # An existing folder is not a failure here: a re-run after an interrupted
+  # upload is the normal way this script is used a second time. SourceForge
+  # answers a duplicate mkdir with a bare "Failure", which under `set -e` took
+  # the whole publish down and made a COMPLETED upload look like a failed one:
+  # on v4.1.9 all 17 files were already on the mirror when this line aborted.
+  #
+  # The message cannot be the discriminator, because "Failure" is all the
+  # server says for every cause. What separates them is whether the directory
+  # IS THERE afterwards: an already-existing folder lists, while a permission,
+  # authentication, path or transport failure does not. So a failed mkdir is
+  # tolerated only when the listing that follows it succeeds, and any other
+  # cause still stops the publish before a single file is uploaded.
+  if ! "$CLI" --profile "$PROFILE_ID" mkdir "$SF_ROOT/$TAG"; then
+    if "$CLI" --profile "$PROFILE_ID" ls "$SF_ROOT/$TAG" >/dev/null 2>&1; then
+      echo "mkdir reported a failure but $SF_ROOT/$TAG exists: continuing" >&2
+    else
+      echo "mkdir failed and $SF_ROOT/$TAG is not there: aborting before upload" >&2
+      exit 11
+    fi
+  fi
   while IFS= read -r f; do
-    "$CLI" --profile "$PROFILE_ID" put "$f" "$SF_ROOT/$TAG/"
+    "$CLI" --profile "$PROFILE_ID" put --partial --strict "$f" "$SF_ROOT/$TAG/"
   done < <(find "$STAGE" -maxdepth 1 -type f | sort)
 
   echo "--- remote listing after upload ---"
