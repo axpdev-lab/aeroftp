@@ -3170,17 +3170,106 @@ fn opens_with_status(rest: &str, code_and_space: &str) -> bool {
         .is_some_and(|r| r.starts_with(']'))
 }
 
-/// The status needle as the branches below use it: the loose search they have
-/// always done, PLUS the anchored bracket shape they were missing.
+/// The status needle as the branches below use it: the anchored shapes, plus
+/// every POSITION in which a provider actually renders a status code.
 ///
-/// Additive on purpose. Losing a match here is not a neutral change: these
-/// branches all produce non-retryable kinds, so a message that stops matching
-/// falls through to `Unknown`, which is retryable, and a permanent refusal
-/// starts being attempted three times. Tightening the loose half is a separate
-/// question from letting it see the shape the system actually produces, and
-/// only the second one is answered here.
+/// This used to be `lowered.contains("550 ")`, and the comment above it said
+/// the loose half was known and waiting on a measurement: this function
+/// classifies for every provider, `mentions_ftp_status` anchors on our own
+/// `ProviderError` labels, and nobody had established the shape the other
+/// providers produce. Anchoring without that would have switched off six
+/// working classifications and looked like a clean green.
+///
+/// The measurement was taken, over every `ProviderError` construction site in
+/// `providers/`, and the shapes are few. A status is rendered:
+///
+///   `Upload failed (403): body`      parenthesised, the most common by far
+///   `Box commit failed (HTTP 403)`   parenthesised with the scheme
+///   `HTTP 403: body`                 after the scheme
+///   `Download failed with status: 403`
+///   `Auth check response: status=403`
+///   `Media item creation failed (code 403): body`
+///   `OIDC discovery returned 403`
+///   `Box API error 403: body`        after the word `error`
+///   `403: body`                      opening a payload, after `: `
+///   `550 Failed to open file.`       the FTP reply verbatim, at the start
+///   `[550] ...`                      the same reply once `providers::ftp` renders it
+///
+/// and a number that is NOT a status is rendered `after 550 of 1024 bytes`,
+/// `553 bytes`, `at byte 550: HTTP 500`, `upload part 403 failed (500)`,
+/// `chunk 401-500`, `Segment 552 upload failed`. The two sets are told apart by
+/// WHAT PRECEDES THE DIGITS, not by where they sit, so this accepts the
+/// measured status positions and nothing else.
+///
+/// The direction of each mistake is worth stating, because they are not
+/// symmetric. A needle that stops matching sends a permanent refusal to
+/// `Unknown`, which is retryable: the transfer is attempted three times and
+/// then reported. A needle that matches a byte count sends a transient failure
+/// to a non-retryable kind, and the executors break on `!retryable`: the work
+/// is DROPPED. Retrying something permanent costs two attempts; not retrying
+/// something transient costs the file.
 fn mentions_status(lowered: &str, code_and_space: &str) -> bool {
-    lowered.contains(code_and_space) || mentions_ftp_status(lowered, code_and_space)
+    if mentions_ftp_status(lowered, code_and_space) {
+        return true;
+    }
+    let code = code_and_space.trim_end();
+    let mut from = 0;
+    while let Some(at) = lowered[from..].find(code) {
+        let start = from + at;
+        let end = start + code.len();
+        if status_position(lowered, start, end) {
+            return true;
+        }
+        from = start + 1;
+    }
+    false
+}
+
+/// Whether the digits at `start..end` sit where a provider puts a status.
+///
+/// Both sides are checked. What FOLLOWS separates `403` the status from `4030`
+/// and from `401-500`; what PRECEDES separates it from a byte count, a part
+/// number and a segment index, which is the half the old `contains` had none of.
+fn status_position(lowered: &str, start: usize, end: usize) -> bool {
+    // A status ends the token. `-` and `/` are excluded because `chunk 401-500`
+    // and `attempt 401/3` are ranges, and `.` because `1.403` is a number.
+    let ends_token = match lowered[end..].chars().next() {
+        None => true,
+        Some(c) => matches!(c, ' ' | ':' | ')' | ']' | ',' | ';' | '"' | '\n'),
+    };
+    if !ends_token {
+        return false;
+    }
+    // Every prefix here was read off a real format string in `providers/`.
+    //
+    // `[` is deliberately NOT among them, and the repository's own test is why.
+    // `[550]` is a real shape, the one `providers::ftp` renders, but it is
+    // already recognised by `mentions_ftp_status`, which accepts it ANCHORED:
+    // at the start of the message or immediately after one of our own labels.
+    // Accepting it anywhere would classify a file the user named
+    // `[404] note.txt`, and `a_path_that_looks_like_a_status_does_not_decide_
+    // the_classification` fails when it does. That test caught this exact
+    // widening while this change was being written, which is the whole reason
+    // it exists: a bracket in a message is a status only where a provider puts
+    // one, and a user can put one anywhere.
+    const STATUS_PREFIXES: &[&str] = &[
+        "http ",
+        "http/1.1 ",
+        "(",
+        "(http ",
+        "(code ",
+        "status: ",
+        "status ",
+        "status=",
+        "returned ",
+        "error ",
+        "code ",
+        ": ",
+    ];
+    let before = &lowered[..start];
+    STATUS_PREFIXES
+        .iter()
+        .any(|prefix| before.ends_with(prefix))
 }
 
 /// A token that opens with a filesystem root, and so is a name somebody chose
@@ -5850,6 +5939,164 @@ mod tests {
     #[test]
     fn a_path_that_looks_like_a_status_does_not_decide_the_classification() {
         let raw = "Transfer failed: connection reset by peer (while writing [404] note.txt)";
+        let info = classify_sync_error(raw, None);
+        assert_ne!(info.kind, SyncErrorKind::PathNotFound, "{raw}");
+        assert!(info.retryable, "a connection reset is retryable: {raw}");
+    }
+
+    /// Every one of the six status needles, on a shape a provider ACTUALLY
+    /// produces, with the format string it comes from named beside it.
+    ///
+    /// This is the half of the change that could break in silence. The needles
+    /// were loosened from `contains` to a set of measured positions, and if a
+    /// real shape sits outside that set the classification quietly stops and
+    /// the failure looks like a clean green: a permanent refusal starts being
+    /// retried three times instead of being reported once.
+    ///
+    /// Each message below was built from a `format!` literal read out of
+    /// `providers/`, not invented to satisfy the matcher. Each also avoids the
+    /// TEXT keywords of its own branch, so what is being pinned is the needle
+    /// and not a word: the 403 case says "forbidden" and never "permission
+    /// denied", the 404 case never says "not found", the 530 case says "not
+    /// logged in", which does not contain "login".
+    #[test]
+    fn each_status_needle_fires_on_a_shape_a_provider_really_produces() {
+        // (message, format string it comes from, expected kind)
+        let cases: &[(&str, &str, SyncErrorKind)] = &[
+            (
+                // providers/ftp.rs renders every classified failure this way.
+                "Transfer failed: [552] 552 Requested file action aborted, exceeded allocation",
+                "ftp.rs `{reply} (while {operation} {path})`",
+                SyncErrorKind::QuotaExceeded,
+            ),
+            (
+                // providers/kdrive.rs, drime_cloud.rs, internxt.rs, fourshared.rs,
+                // zoho_workdrive.rs and pcloud.rs all use `... failed ({}): {}`.
+                "Transfer failed: Upload failed (403): the account cannot write here",
+                "kdrive.rs `Upload failed ({}): {}`",
+                SyncErrorKind::PermissionDenied,
+            ),
+            (
+                "Transfer failed: [550] Failed to open file.",
+                "ftp.rs, bracketed render",
+                SyncErrorKind::PermissionDenied,
+            ),
+            (
+                // providers/jottacloud.rs `Download {} failed ({}): {}`.
+                "Transfer failed: Download /a/b failed (404): the item is gone",
+                "jottacloud.rs `Download {} failed ({}): {}`",
+                SyncErrorKind::PathNotFound,
+            ),
+            (
+                // providers/dropbox.rs `Invalid token (HTTP {})`.
+                "Connection failed: Invalid token (HTTP 401)",
+                "dropbox.rs `Invalid token (HTTP {})`",
+                SyncErrorKind::Auth,
+            ),
+            (
+                "Connection failed: [530] Not logged in.",
+                "ftp.rs, bracketed render",
+                SyncErrorKind::Auth,
+            ),
+            (
+                // providers/cloudinary.rs, imagekit.rs, uploadcare.rs, filelu.rs
+                // and yandex_disk.rs all use `HTTP {}: {}`.
+                "Server error: HTTP 403: the account cannot write here",
+                "cloudinary.rs `HTTP {}: {}`",
+                SyncErrorKind::PermissionDenied,
+            ),
+            (
+                // providers/s3.rs and webdav.rs, `... failed with status: {}`.
+                "Transfer failed: Upload failed with status: 403",
+                "s3.rs `Upload failed with status: {}`",
+                SyncErrorKind::PermissionDenied,
+            ),
+            (
+                // providers/box_provider.rs `Box API error {}: {}`.
+                "Server error: Box API error 403: the account cannot write here",
+                "box_provider.rs `Box API error {}: {}`",
+                SyncErrorKind::PermissionDenied,
+            ),
+            (
+                // providers/swift.rs `Upload failed: HTTP {status}`.
+                "Transfer failed: Upload failed: HTTP 401",
+                "swift.rs `Upload failed: HTTP {status}`",
+                SyncErrorKind::Auth,
+            ),
+        ];
+        for (message, shape, expected) in cases {
+            let info = classify_sync_error(message, None);
+            assert_eq!(
+                info.kind, *expected,
+                "the needle stopped seeing a shape that {shape} really produces: {message}",
+            );
+            assert!(
+                !info.retryable,
+                "these kinds are permanent and must not be retried: {message}",
+            );
+        }
+    }
+
+    /// The other half: a number that is not a status must not decide the retry.
+    ///
+    /// Every message here is built from a real `format!` literal too, and that
+    /// is the point. `Uploadcare upload part {} failed ({}): {}` renders the
+    /// PART NUMBER before the status, so part 403 of an upload that failed with
+    /// a 500 used to classify as permission denied and permanent. The executors
+    /// break on `!retryable`, so a transient 500 stopped being retried because
+    /// of a part number.
+    ///
+    /// The direction is what makes this the worse half. A needle that stops
+    /// matching costs two extra attempts on something permanent. A needle that
+    /// matches a byte count costs the FILE.
+    #[test]
+    fn a_quantity_that_looks_like_a_status_does_not_decide_the_retry() {
+        // (message, the shape it comes from)
+        let cases: &[(&str, &str)] = &[
+            (
+                "Transfer failed: connection reset after 550 of 1024 bytes",
+                "a byte count beside a reset",
+            ),
+            (
+                "Transfer failed: Uploadcare upload part 403 failed (500): server busy",
+                "uploadcare.rs `Uploadcare upload part {} failed ({}): {}`",
+            ),
+            (
+                "Transfer failed: Yandex Disk chunk 404 failed (503): try again",
+                "yandex_disk.rs `Yandex Disk chunk {} failed ({}): {}`",
+            ),
+            (
+                "Transfer failed: Upload failed at byte 401: HTTP 500",
+                "yandex_disk.rs `Upload failed at byte {}: HTTP {}`",
+            ),
+            (
+                "Transfer failed: Box upload_part 530 failed (HTTP 500): server busy",
+                "box_provider.rs `Box upload_part {} failed (HTTP {}): {}`",
+            ),
+            (
+                "Transfer failed: Segment 552 upload failed: HTTP 500",
+                "swift.rs `Segment {seq} upload failed: HTTP {}`",
+            ),
+        ];
+        for (message, shape) in cases {
+            let info = classify_sync_error(message, None);
+            assert!(
+                info.retryable,
+                "a quantity was read as a status and the work was dropped: {message} ({shape})",
+            );
+        }
+    }
+
+    /// The gap the test above this one documented as still open: a file called
+    /// `404 note.txt`, with no leading slash, is not a path `classification_text`
+    /// can recognise, so it used to reach the loose `contains` half and turn a
+    /// connection reset into `PathNotFound`, permanent. Measured on main before
+    /// this change, and it is why that comment said the loose half was tracked
+    /// on its own. It is closed here: `writing ` is not a position a provider
+    /// renders a status in.
+    #[test]
+    fn a_bare_relative_name_that_opens_with_digits_is_not_a_status() {
+        let raw = "Transfer failed: connection reset by peer (while writing 404 note.txt)";
         let info = classify_sync_error(raw, None);
         assert_ne!(info.kind, SyncErrorKind::PathNotFound, "{raw}");
         assert!(info.retryable, "a connection reset is retryable: {raw}");
