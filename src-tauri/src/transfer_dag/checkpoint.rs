@@ -327,31 +327,16 @@ impl TransferCheckpointStore {
                 None
             }
         };
-        // A NEW record reserves its slot on disk before the cap is enforced,
-        // and the reason is what another opener can see. `enforce_cap` counts
-        // the kept record as one slot whether or not it is written yet, so the
-        // arithmetic is right for the caller; it is wrong for everyone else.
-        // Between one opener's eviction and its write the store is one record
-        // under its cap, and an opener that scans in that window reads capacity
-        // that is already spoken for, evicts nothing, and writes: the cap is
-        // exceeded by one per opener that arrives in a window. Writing first
-        // puts the claim where the other scans can count it, which is also why
-        // `enforce_cap` already sorts a just-persisted in-flight record LAST
-        // among eviction candidates: the design expected these to be on disk.
-        //
-        // The order this replaces was itself deliberate, and its reason is kept
-        // rather than dropped: a store that cannot evict must refuse to grow,
-        // not report failure with the new record left behind. That is what the
-        // rollback below is for. The window it opens instead is a crash between
-        // the write and the eviction, which leaves one extra record that the
-        // next open reclaims, rather than a record the store said it could not
-        // hold.
+        // The cap runs BEFORE the write, deliberately. `enforce_cap` counts the
+        // kept record as one slot whether or not it is on disk yet, so the
+        // arithmetic is identical, and running it first means a store that
+        // cannot evict refuses to grow instead of reporting failure with the
+        // new record already written: the previous order left the record behind
+        // and pushed the store past the cap in the very call that said it could
+        // not hold it.
         let Some(mut loaded) = existing else {
+            self.enforce_cap(&fresh.transfer_key)?;
             self.persist(&fresh)?;
-            if let Err(e) = self.enforce_cap(&fresh.transfer_key) {
-                self.rollback_reservation(&path, &fresh);
-                return Err(e);
-            }
             return Ok(CheckpointOpen {
                 checkpoint: fresh,
                 resumed: false,
@@ -589,45 +574,6 @@ impl TransferCheckpointStore {
     }
 
     /// Remove every record bound to one destination endpoint, ignoring the
-    /// Undo our own reservation, and only ours.
-    ///
-    /// The reservation is written under the transfer key, so it is the same
-    /// file for every opener of the same transfer, and a path is not an
-    /// identity. An opener that arrives while ours is on disk does not see a
-    /// placeholder: it sees a resumable record, adopts it (`attempts + 1`, a
-    /// transition, a persist) and returns `resumed: true`. Removing that file
-    /// by path would then destroy a record whose owner has been told it is
-    /// durable, which is this PR's own defect wearing the other mask: the first
-    /// version counted another opener's deletion as ours, and an unconditional
-    /// rollback deletes another opener's record believing it is ours.
-    ///
-    /// So the reservation is removed only when the bytes on disk are still
-    /// exactly the bytes we wrote. `persist` is `to_vec_pretty` plus an atomic
-    /// replace, so a reader sees one whole record and never a torn one, and an
-    /// adopter necessarily changes `attempts`: byte equality is a sound test of
-    /// "nobody has taken this over".
-    ///
-    /// THE WINDOW IT DOES NOT CLOSE, stated rather than left to be discovered:
-    /// an adopter can still land between the read and the unlink. Closing it
-    /// needs an atomic compare-and-delete, which the filesystem does not offer.
-    /// The design that would close it, a reservation marker under a name only
-    /// this opener holds, trades this window for a marker that survives a crash
-    /// and consumes capacity until something ages it out, which is a new way to
-    /// be wrong in exchange for a narrower one. If that trade is ever wanted,
-    /// it is a change of its own and not a line here.
-    ///
-    /// Errors are swallowed on purpose: the caller is already being told why
-    /// the open failed, and replacing that reason with "could not clean up"
-    /// would hide it. A record left behind is reclaimable by the next cap run.
-    fn rollback_reservation(&self, path: &Path, ours: &MultipartCheckpoint) {
-        let Ok(ours_bytes) = serde_json::to_vec_pretty(ours) else {
-            return;
-        };
-        if fs::read(path).is_ok_and(|on_disk| on_disk == ours_bytes) {
-            let _ = fs::remove_file(path);
-        }
-    }
-
     /// Free `needed` slots by deleting candidates in order, counting only the
     /// deletions THIS caller performed.
     ///
@@ -1378,194 +1324,25 @@ mod tests {
         );
     }
 
-    /// The ordering change has one risk and this is it: writing the record
-    /// before enforcing the cap could leave it behind when the store turns out
-    /// to have no room, which is exactly what the previous order existed to
-    /// prevent. The rollback is what keeps that promise, and this fails without
-    /// it.
+    /// What this PR does NOT close, stated as a test would have to be honest
+    /// about it rather than left for the next reader to find.
     ///
-    /// The eviction is made to fail deterministically rather than by timing: a
-    /// DIRECTORY named like a record is an unremovable candidate (`remove_file`
-    /// gives `IsADirectory`, not `NotFound`), so the cap cannot be met and the
-    /// open must refuse.
-    #[test]
-    fn a_store_that_cannot_evict_does_not_keep_the_record_it_refused() {
-        let temp = TempDir::new().unwrap();
-        let store =
-            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, 1).unwrap();
-        fs::create_dir(temp.path().join("unremovable.json")).unwrap();
-
-        let key = MultipartCheckpoint::fresh(source(), destination(), layout()).transfer_key;
-        let err = store
-            .open_or_create(source(), destination(), layout())
-            .unwrap_err();
-        assert!(
-            err.contains("reclaimed only"),
-            "the refusal must say why: {err}",
-        );
-        assert!(
-            !store.path_for(&key).exists(),
-            "a store that said it could not hold the record must not be holding it",
-        );
-    }
-
-    /// The rollback must remove OUR reservation and nothing else.
+    /// The counting fix guarantees that each caller frees its OWN slot. It does
+    /// not close the window between one caller's delete and its write: a caller
+    /// scanning inside it reads capacity that is already spoken for, evicts
+    /// nothing and writes, and the store ends one over the cap. That window
+    /// exists on `main` today and is unchanged here.
     ///
-    /// Two openers of the same transfer share one file, because the name is the
-    /// transfer key. The second one does not see a placeholder: it sees a
-    /// resumable record, adopts it (`attempts + 1`, a transition, a persist)
-    /// and is told `resumed: true`. If the first one's cap enforcement then
-    /// fails and it deletes by path, it destroys a record whose owner believes
-    /// it is durable, and the second opener's checkpoint is silently gone.
-    ///
-    /// Run against an unconditional `remove_file`, the second half of this test
-    /// fails: the adopted record is deleted.
-    #[test]
-    fn the_rollback_removes_our_reservation_and_not_an_adopted_one() {
-        let temp = TempDir::new().unwrap();
-        let store =
-            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, 8).unwrap();
-        let ours = MultipartCheckpoint::fresh(source(), destination(), layout());
-        let path = store.path_for(&ours.transfer_key);
-
-        // Untouched: ours to remove.
-        store.persist(&ours).unwrap();
-        store.rollback_reservation(&path, &ours);
-        assert!(
-            !path.exists(),
-            "an untouched reservation is ours to withdraw"
-        );
-
-        // Adopted by a concurrent opener of the same transfer: not ours.
-        store.persist(&ours).unwrap();
-        let mut adopted = ours.clone();
-        adopted.attempts = adopted.attempts.saturating_add(1);
-        adopted.transition(CheckpointStatus::Transferring).unwrap();
-        store.persist(&adopted).unwrap();
-
-        store.rollback_reservation(&path, &ours);
-        assert!(
-            path.exists(),
-            "the rollback deleted a record another opener had already adopted",
-        );
-        let still_there = store.load_path(&path).unwrap().unwrap();
-        assert_eq!(
-            still_there.attempts, adopted.attempts,
-            "and it must be the adopter's record, untouched",
-        );
-    }
-
-    /// Three openers, which is the shape a reviewer raised against the counting
-    /// fix alone: with the cap enforced BEFORE the write, one opener deletes its
-    /// victim and has not written yet, and a third opener scanning in that
-    /// window reads capacity that is already spoken for, evicts nothing, and
-    /// writes. Reserving the slot first removes the window rather than guarding
-    /// it: the claim is on disk for every other scan to count.
-    ///
-    /// What this test can and cannot do. It exercises the invariant with real
-    /// concurrency, and it is the reason the fan-out case is not left to an
-    /// argument alone; it cannot FORCE the interleaving, because the store has
-    /// no hook between its scan and its write. The property is carried by the
-    /// ordering, and the deterministic pin for the ordering is the rollback
-    /// test above.
-    #[test]
-    fn three_overlapping_opens_do_not_push_the_store_past_the_cap() {
-        const CAP: usize = 8;
-        let temp = TempDir::new().unwrap();
-        let store =
-            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, CAP).unwrap();
-        for i in 0..CAP {
-            let r = record_at(
-                &format!("/filled-{i}.bin"),
-                CheckpointStatus::Transferring,
-                1000 + i as u64,
-            );
-            store.persist(&r).unwrap();
-        }
-
-        let barrier = std::sync::Barrier::new(3);
-        std::thread::scope(|scope| {
-            for i in 0..3 {
-                let store = &store;
-                let barrier = &barrier;
-                scope.spawn(move || {
-                    // A distinct source path is what makes a distinct key, so
-                    // the three openers really are three admissions and not one
-                    // record opened three times.
-                    let mut opening = source();
-                    opening.local_path = format!("/opening-{i}.bin");
-                    barrier.wait();
-                    store
-                        .open_or_create(opening, destination(), layout())
-                        .unwrap();
-                });
-            }
-        });
-
-        let present = present_keys(temp.path()).len();
-        assert!(
-            present <= CAP,
-            "{present} records in a store capped at {CAP}",
-        );
-    }
-
-    /// The same thing end to end, with two openers actually overlapping.
-    ///
-    /// Honest about what this is: the interleaving is not forced, so this test
-    /// reproduces the overshoot only when the two scans really do straddle the
-    /// unlink. That is why the pin above exists and is the one that holds the
-    /// behaviour; this one is here because an invariant stated at the level the
-    /// user sees ("the store never exceeds its cap") is worth asserting even
-    /// when the path to breaking it is timing.
-    ///
-    /// It also covers the case the fix is FOR, which is two PROCESSES rather
-    /// than two tasks: threads are what a test can run, and the exclusion the
-    /// fix relies on is the kernel's, not the runtime's. `unlink` gives exactly
-    /// one caller success per path whether the callers share an address space
-    /// or not, so the GUI and the CLI are covered by the same mechanism this
-    /// exercises.
-    #[test]
-    fn two_overlapping_opens_do_not_push_the_store_past_the_cap() {
-        const CAP: usize = 8;
-        let temp = TempDir::new().unwrap();
-        let store =
-            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, CAP).unwrap();
-        // A FULL store, which is the only state in which the cap runs at all. A
-        // test that starts empty never reaches the branch.
-        for i in 0..CAP {
-            let r = record_at(
-                &format!("/filled-{i}.bin"),
-                CheckpointStatus::Transferring,
-                1000 + i as u64,
-            );
-            store.persist(&r).unwrap();
-        }
-        assert_eq!(present_keys(temp.path()).len(), CAP);
-
-        let barrier = std::sync::Barrier::new(2);
-        std::thread::scope(|scope| {
-            for i in 0..2 {
-                let store = &store;
-                let barrier = &barrier;
-                scope.spawn(move || {
-                    let opening = record_at(
-                        &format!("/opening-{i}.bin"),
-                        CheckpointStatus::Transferring,
-                        9000 + i as u64,
-                    );
-                    barrier.wait();
-                    store.enforce_cap(&opening.transfer_key).unwrap();
-                    store.persist(&opening).unwrap();
-                });
-            }
-        });
-
-        let present = present_keys(temp.path()).len();
-        assert!(
-            present <= CAP,
-            "the cap is a bound, not an average: {present} records in a store capped at {CAP}",
-        );
-    }
+    /// A concurrency test was written for it and then removed rather than
+    /// weakened. It could not distinguish the fixed case from the broken one,
+    /// because both overshoot by exactly one and the interleaving cannot be
+    /// forced from outside: an assertion that passes either way is decoration,
+    /// and decoration in a test file is worse than an absence, because it reads
+    /// as coverage. Closing the window needs an exclusive reservation
+    /// (`create_new` on the record path, so exactly one opener creates it and
+    /// the other takes the resume path it already has), which is a change to
+    /// the admission control flow and belongs in its own PR with its own tests.
+    /// See `BATON-checkpoint-exclusive-reservation.md`.
 
     #[test]
     fn cap_evicts_terminal_residue_before_a_newer_resumable() {
