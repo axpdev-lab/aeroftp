@@ -2345,13 +2345,17 @@ where
                 watch,
                 ..
             } = self;
-            let control = provider
+            let stream = provider
                 .stream
                 .as_ref()
-                .ok_or(ProviderError::NotConnected)?
-                .get_ref();
+                .ok_or(ProviderError::NotConnected)?;
+            let control = stream.get_ref();
+            // Replies the control reader has already pulled off the socket
+            // and not yet consumed. A peek on the bare socket is blind to
+            // them, and they are exactly where a fast refusal hides.
+            let buffered = stream.buffered_reply_bytes();
             let data = data.as_mut().ok_or(ProviderError::NotConnected)?;
-            FtpProvider::read_watching_control(data, control, buf, watch).await
+            FtpProvider::read_watching_control(data, control, buffered, buf, watch).await
         };
         match step {
             Ok(DataStep::Read(n)) => Ok(n),
@@ -2561,6 +2565,12 @@ impl FtpProvider {
                 // "aligned" in exactly the case it was added to catch, and a
                 // fixture sending the two in separate writes would make that
                 // green. Segmentation is not ours to control.
+                // What the reader holds is no longer invisible:
+                // `buffered_reply_bytes` exists now and the data-channel watch
+                // uses it. Whether a second reply is queued could be answered
+                // here with it; the decision that answer feeds, keep or drop
+                // the session, is still tracked separately and is not part of
+                // the change that added the accessor.
                 // THE COST IS NOT BOUNDED, and an earlier version of this
                 // comment said it was. Measured, not reasoned: a server
                 // answering `RETR` with `550` and `421` in ONE write leaves
@@ -2713,9 +2723,21 @@ impl FtpProvider {
     /// 2yz is the ordinary completion reply, which arrives on this channel too
     /// and must be left alone for `finalize_retr_stream` to consume, or the
     /// tail of a perfectly good transfer would be thrown away.
+    ///
+    /// TWO PLACES are watched, because a reply can wait in either. `control`
+    /// is the bare socket under the control reader, and its peek sees what
+    /// has arrived but not yet been read. `buffered` is the reader's own
+    /// unconsumed bytes: a server that sends `150` and the final reply in ONE
+    /// segment has both pulled into the reader by the read that collected the
+    /// `150`, and the socket then shows nothing at all. Looking only at the
+    /// socket reported "no reply" in exactly that case, measured as a thirty
+    /// minute wait for an answer already inside the process. The buffered
+    /// bytes are plaintext even under FTPS, so the status class stays
+    /// decidable there when the wire bytes would not be.
     async fn read_watching_control<S>(
         data: &mut S,
         control: &tokio::net::TcpStream,
+        buffered: &[u8],
         buf: &mut [u8],
         watch: &mut ControlWatch,
     ) -> Result<DataStep, ProviderError>
@@ -2740,9 +2762,9 @@ impl FtpProvider {
             // and wait for ever. A remedy for an unbounded wait must not open
             // one where it claims to close them.
             //
-            // The check is another peek, so it consumes nothing and works on an
-            // encrypted channel too: bytes waiting mean the server spoke, even
-            // when what it said cannot be read from this side.
+            // The check looks at both places a reply can wait: another peek,
+            // so it consumes nothing and works on an encrypted channel too,
+            // and the reader's buffer, which the peek cannot see.
             let mut probe = [0u8; 1];
             let mut got = tokio::io::ReadBuf::new(&mut probe);
             // Polled exactly once and always Ready: "is there something now",
@@ -2754,10 +2776,24 @@ impl FtpProvider {
                 })
             })
             .await;
-            return if queued > 0 {
+            return if queued > 0 || !buffered.is_empty() {
                 Ok(DataStep::ControlRefused)
             } else {
                 step
+            };
+        }
+        // A reply the reader is already holding needs no waiting on anything:
+        // classify it from its first byte, exactly as the socket peek does.
+        if let Some(first) = buffered.first() {
+            return match first {
+                b'4' | b'5' => Ok(DataStep::ControlRefused),
+                // A completion reply, or anything else: leave the bytes for
+                // the finalizer and let the shortened deadline take over, the
+                // same treatment the socket arm gives a non-refusal.
+                _ => {
+                    *watch = ControlWatch::Spoke;
+                    Self::read_with_deadline(data, buf, DATA_IDLE_AFTER_CONTROL_SPOKE).await
+                }
             };
         }
         tokio::select! {
@@ -4148,7 +4184,8 @@ mod data_channel_watch_tests {
         let mut watch = ControlWatch::Spoke;
 
         let step =
-            FtpProvider::read_watching_control(&mut data, &control, &mut buf, &mut watch).await;
+            FtpProvider::read_watching_control(&mut data, &control, &[], &mut buf, &mut watch)
+                .await;
 
         match step {
             Err(ProviderError::TransferFailed(msg)) => {
@@ -4186,7 +4223,8 @@ mod data_channel_watch_tests {
         let mut watch = ControlWatch::Spoke;
 
         let step =
-            FtpProvider::read_watching_control(&mut data, &control, &mut buf, &mut watch).await;
+            FtpProvider::read_watching_control(&mut data, &control, &[], &mut buf, &mut watch)
+                .await;
 
         assert!(
             matches!(step, Ok(DataStep::ControlRefused)),
@@ -4280,6 +4318,7 @@ mod data_channel_watch_tests {
             FtpProvider::read_watching_control(
                 &mut data_client,
                 &control_client,
+                &[],
                 &mut buf,
                 &mut watch,
             ),
@@ -4295,6 +4334,91 @@ mod data_channel_watch_tests {
         assert!(
             matches!(watch, ControlWatch::Quiet),
             "a refusal must not move the watch on: the caller still has to read the reply"
+        );
+    }
+
+    /// The refusal the BufReader already swallowed ends the wait, instead of
+    /// the wait outliving the transfer.
+    ///
+    /// The one case a peek on the bare socket cannot see. The server answers
+    /// `RETR` with `150` and the final `550` in ONE segment; suppaftp's
+    /// BufReader, reading the `150`, pulls the whole segment and the refusal
+    /// is now in the reader's buffer, not in the socket. `readable()` never
+    /// fires again and the watch would wait out DATA_IDLE_TIMEOUT, thirty
+    /// minutes, for a reply that arrived together with the first one.
+    ///
+    /// The BufReader is modelled by hand: one read with a buffer large enough
+    /// for both replies is exactly what the reader did when it collected the
+    /// `150`. The assertion on the captured bytes is part of the test, not a
+    /// nicety: if the `550` were still sitting on the socket the peek would
+    /// see it, and the test would pass without ever having exercised the
+    /// defect.
+    ///
+    /// The data socket stays open and silent on purpose: on loopback a server
+    /// that closes it at once would end the wait by another road, which is
+    /// the shortcut measured at the head of `read_watching_control`, and the
+    /// stall would never show.
+    #[tokio::test]
+    async fn a_refusal_absorbed_by_the_reader_ends_the_wait() {
+        use tokio::io::AsyncReadExt;
+
+        let (mut data_client, _data_server_kept_open) = silent_pair().await;
+        let (mut control_client, mut control_server) = silent_pair().await;
+
+        // One write, one segment: the precondition of the whole finding. A
+        // server flushing between the two replies would leave the refusal on
+        // the socket, and that is the case the peek already covers.
+        control_server
+            .write_all(b"150 Opening data connection.\r\n550 Failed to open file.\r\n")
+            .await
+            .unwrap();
+        control_server.flush().await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // suppaftp's BufReader, answering the command, pulls the segment: it
+        // asked for the `150` and the `550` came along into its buffer. What
+        // the watch is handed is what the reader still holds after consuming
+        // the preliminary reply: everything past the first line.
+        let mut reader_buffer = [0u8; 4096];
+        let swallowed = control_client.read(&mut reader_buffer).await.unwrap();
+        let first_line_end = reader_buffer[..swallowed]
+            .windows(2)
+            .position(|w| w == b"\r\n")
+            .map(|p| p + 2)
+            .expect("the preliminary reply is a full line");
+        let buffered = &reader_buffer[first_line_end..swallowed];
+        assert!(
+            buffered.starts_with(b"550"),
+            "the reader did not absorb the refusal: the test would be proving nothing"
+        );
+        assert_eq!(
+            control_client.try_read(&mut [0u8; 1]).unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock,
+            "the socket must be empty now: the refusal lives only inside the reader"
+        );
+
+        let mut buf = [0u8; 64];
+        let mut watch = ControlWatch::Quiet;
+        let step = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            FtpProvider::read_watching_control(
+                &mut data_client,
+                &control_client,
+                buffered,
+                &mut buf,
+                &mut watch,
+            ),
+        )
+        .await
+        .expect(
+            "the wait did not end: a refusal already inside the reader is invisible to a peek \
+             on the bare socket, and the transfer hangs until DATA_IDLE_TIMEOUT",
+        )
+        .expect("watching the control channel must not fail");
+
+        assert!(
+            matches!(step, DataStep::ControlRefused),
+            "a refusal the reader already holds has to stop the wait"
         );
     }
 
@@ -4325,6 +4449,7 @@ mod data_channel_watch_tests {
             FtpProvider::read_watching_control(
                 &mut data_client,
                 &control_client,
+                &[],
                 &mut buf,
                 &mut watch,
             ),
