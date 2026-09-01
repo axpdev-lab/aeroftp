@@ -148,8 +148,11 @@ if [ "$PRUNE" -eq 1 ]; then
     local path="$1"; shift
     local out attempt
     for attempt in 1 2 3; do
+      # `entries` must be an ARRAY, not merely present: `null` or an object would
+      # make every later `.entries[]` query answer "not there", and a delete loop
+      # reading "not there" as "gone" would count files it never verified.
       if out="$("$CLI" --profile "$PROFILE_ID" ls "$path" --json --no-banner "$@" 2>/dev/null)" \
-        && jq -e 'has("entries")' >/dev/null 2>&1 <<<"$out"; then
+        && jq -e '.entries | type == "array"' >/dev/null 2>&1 <<<"$out"; then
         printf '%s' "$out"
         return 0
       fi
@@ -189,14 +192,20 @@ if [ "$PRUNE" -eq 1 ]; then
     if run "$CLI" --profile "$PROFILE_ID" rm "$path"; then
       return 0
     fi
-    local after
+    local after present
     after="$(sfls "$SF_ROOT/$folder" --files-only)" || exit 1
-    if jq -e --arg n "$name" '.entries[] | select(.name==$n)' >/dev/null <<<"$after"; then
-      echo "delete failed and the file is still there: $path" >&2
-      exit 1
-    fi
-    echo "rm exited nonzero but $path is gone on re-listing: counted as deleted" >&2
-    return 0
+    # Three outcomes, kept apart on purpose: jq exit 0 = the file is still there,
+    # exit 1 = the listing is valid and the file is absent, anything else = jq could
+    # not evaluate the listing, which is a verification failure and never "gone".
+    set +e
+    jq -e --arg n "$name" '[.entries[] | select(.name==$n)] | length > 0' >/dev/null 2>&1 <<<"$after"
+    present=$?
+    set -e
+    case "$present" in
+      0) echo "delete failed and the file is still there: $path" >&2; exit 1 ;;
+      1) echo "rm exited nonzero but $path is gone on re-listing: counted as deleted" >&2; return 0 ;;
+      *) echo "delete failed and the re-listing of $SF_ROOT/$folder could not be evaluated (jq exit $present): stopping" >&2; exit 1 ;;
+    esac
   }
 
   PRUNED=0
@@ -224,21 +233,28 @@ if [ "$FORCE" -eq 1 ]; then
   SF_PROJECT="$(basename "$SF_ROOT")"
   BEST_URL="https://sourceforge.net/projects/$SF_PROJECT/best_release.json"
   echo "Done. Checking the default download button ($BEST_URL) ..."
-  if BEST="$(curl -fsS --max-time 30 "$BEST_URL" 2>/dev/null)"; then
+  # Parse and validate BEFORE looping: a jq failure inside a process substitution
+  # is invisible, and a body without platform_releases would yield zero rows, so
+  # the loop would end with nothing stale and the script would report a check it
+  # never made. Rows must exist, and each is matched on the release FOLDER
+  # `/v$VERSION/`, not on a substring: 4.1.9 must not accept 4.1.90.
+  ROWS=""
+  if BEST="$(curl -fsS --max-time 30 "$BEST_URL" 2>/dev/null)" \
+     && ROWS="$(jq -r '.platform_releases | to_entries[] | [.key, .value.filename] | @tsv' <<<"$BEST" 2>/dev/null)" \
+     && [ -n "$ROWS" ]; then
     STALE=0
     while IFS=$'\t' read -r platform filename; do
-      if [[ "$filename" == *"$VERSION"* ]]; then
-        echo "  $platform: $filename"
-      else
-        echo "  $platform: $filename  (NOT $VERSION yet)"; STALE=1
-      fi
-    done < <(jq -r '.platform_releases | to_entries[] | [.key, .value.filename] | @tsv' <<<"$BEST")
+      case "$filename" in
+        "/v$VERSION/"*) echo "  $platform: $filename" ;;
+        *) echo "  $platform: $filename  (NOT $VERSION yet)"; STALE=1 ;;
+      esac
+    done <<<"$ROWS"
     if [ "$STALE" -eq 1 ]; then
       echo "  SourceForge has not switched every platform to $VERSION yet; re-check in a few minutes,"
       echo "  and only if it still lags set the default under Files > folder > (i) on the site."
     fi
   else
-    echo "  could not read $BEST_URL; check the download button on the project page."
+    echo "  could not read or parse $BEST_URL; check the download button on the project page."
   fi
 else
   echo "Dry run. Re-run with --force to upload."
