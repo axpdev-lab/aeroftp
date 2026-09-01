@@ -99,7 +99,7 @@ SFNOTE
 
   "$CLI" --profile "$PROFILE_ID" mkdir "$SF_ROOT/$TAG"
   while IFS= read -r f; do
-    "$CLI" --profile "$PROFILE_ID" put "$f" "$SF_ROOT/$TAG/"
+    "$CLI" --profile "$PROFILE_ID" put --partial "$f" "$SF_ROOT/$TAG/"
   done < <(find "$STAGE" -maxdepth 1 -type f | sort)
 
   echo "--- remote listing after upload ---"

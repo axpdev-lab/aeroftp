@@ -870,7 +870,17 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("get_speed_limit".to_string()))
     }
 
-    /// Check if provider supports resume (REST command)
+    /// Whether this provider can resume an interrupted transfer at all, which
+    /// is the gate the CLI's `--partial` consults before calling
+    /// [`Self::resume_upload`] or the resumable download path.
+    ///
+    /// The name of a wire command used to sit in this line, `REST`, which is
+    /// FTP's. It has not described the meaning for a long time: nineteen
+    /// providers that never speak FTP answer true here, over HTTP ranges,
+    /// multipart uploads and SFTP offsets. The stale wording is worth
+    /// recording rather than just deleting, because it is what made an
+    /// omission invisible: a provider author reading "REST command" has no
+    /// reason to think the question is being asked of them.
     fn supports_resume(&self) -> bool {
         false
     }

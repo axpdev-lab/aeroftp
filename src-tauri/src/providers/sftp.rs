@@ -1935,6 +1935,22 @@ impl StorageProvider for SftpProvider {
         Ok(())
     }
 
+    /// SFTP resumes an interrupted upload by appending from a byte offset, so
+    /// the answer here is yes. It was left at the trait default of `false`
+    /// while [`Self::resume_upload`] below was implemented and
+    /// [`Self::supports_resume_upload_append`] answered true, which made the
+    /// capability real and unreachable: the GUI resumed an interrupted SFTP
+    /// upload and the CLI's `--partial` did not, because it consults THIS
+    /// method and this one alone.
+    ///
+    /// Deliberately NOT unified with the two neighbours. `supports_resume_upload_append`
+    /// is kept separate from the DAG hints on purpose, and that intent is
+    /// documented on it; the three answer related questions to different
+    /// callers, and only this one was wrong.
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
     /// SFTP can append the tail of an interrupted upload from a byte offset
     /// (the GUI "Resume" action), so the remote partial is not re-sent.
     fn supports_resume_upload_append(&self) -> bool {
