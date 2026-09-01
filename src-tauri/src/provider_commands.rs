@@ -8177,7 +8177,7 @@ pub async fn jottacloud_list_trash(
 pub async fn jottacloud_restore_from_trash(
     state: State<'_, ProviderState>,
     paths: Vec<String>,
-) -> Result<(), String> {
+) -> Result<crate::providers::jottacloud::TrashRestoreReport, String> {
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -8192,13 +8192,33 @@ pub async fn jottacloud_restore_from_trash(
         .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
         .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
 
+    // Aggregate the per-entry reports so the UI shows what the server
+    // actually confirmed, not what was selected (#397). A partial folder
+    // restore arrives as Err carrying its confirmed counts; the remaining
+    // selections are still attempted so one bad entry does not strand the
+    // rest, then the combined failure is reported.
+    let mut total = crate::providers::jottacloud::TrashRestoreReport::default();
+    let mut errors: Vec<String> = Vec::new();
     for path in &paths {
-        jotta
-            .restore_from_trash(path)
-            .await
-            .map_err(|e| format!("Restore failed for {}: {}", path, e))?;
+        match jotta.restore_from_trash(path).await {
+            Ok(rep) => {
+                total.files_restored += rep.files_restored;
+                total.files_already_present += rep.files_already_present;
+                total.dirs_restored += rep.dirs_restored;
+            }
+            Err(e) => errors.push(format!("Restore failed for {}: {}", path, e)),
+        }
     }
-    Ok(())
+    if !errors.is_empty() {
+        return Err(format!(
+            "{} (overall: {} file(s) restored, {} already present, {} folder(s) revived)",
+            errors.join("; "),
+            total.files_restored,
+            total.files_already_present,
+            total.dirs_restored
+        ));
+    }
+    Ok(total)
 }
 
 /// Permanently delete files from Jottacloud Trash
