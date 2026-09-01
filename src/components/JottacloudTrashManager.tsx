@@ -34,6 +34,7 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingEmptyConfirm, setPendingEmptyConfirm] = useState(false);
 
   const loadTrash = useCallback(async () => {
     setLoading(true);
@@ -106,6 +107,28 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
       onRefreshFiles?.();
     } catch (err) {
       humanLog.updateEntry(logId, { status: 'error', message: `[Jottacloud] Failed to permanently delete from trash` });
+      setError(String(err));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Whole-bin purge through `files/v1/purge_trash` (rclone's `cleanup`),
+  // measured 2026-09-01 (#397): the server answers with what it removed,
+  // so the log line carries the confirmed counts, not the selection.
+  const confirmEmptyTrash = async () => {
+    setPendingEmptyConfirm(false);
+    const totalCount = items.length;
+    const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'Jottacloud', count: totalCount });
+    setActionLoading('empty');
+    setError(null);
+    try {
+      const [files, folders] = await invoke<[number, number]>('jottacloud_empty_trash');
+      humanLog.updateEntry(logId, { status: 'success', message: `[Jottacloud] Emptied trash (${files} file(s), ${folders} folder(s) purged)` });
+      await loadTrash();
+      onRefreshFiles?.();
+    } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Jottacloud] Failed to empty trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -199,6 +222,15 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
               {actionLoading === 'delete' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}
               {t('contextMenu.permanentDelete')} {selected.size > 0 && `(${selected.size})`}
             </button>
+            <button
+              onClick={() => setPendingEmptyConfirm(true)}
+              disabled={items.length === 0 || actionLoading !== null}
+              title={t('contextMenu.emptyTrashHint')}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {actionLoading === 'empty' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}
+              {t('contextMenu.emptyTrash')}
+            </button>
           </div>
         )}
 
@@ -250,6 +282,30 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
                 className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600"
               >
                 {t('contextMenu.permanentDelete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingEmptyConfirm && (
+        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={() => setPendingEmptyConfirm(false)}>
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
+            <p className="text-gray-900 dark:text-gray-100 mb-4">
+              {t('contextMenu.emptyTrashConfirm')}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingEmptyConfirm(false)}
+                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={confirmEmptyTrash}
+                className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600"
+              >
+                {t('contextMenu.emptyTrash')}
               </button>
             </div>
           </div>

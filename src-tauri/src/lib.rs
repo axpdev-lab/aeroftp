@@ -20154,6 +20154,7 @@ pub fn run() {
             provider_commands::jottacloud_list_trash,
             provider_commands::jottacloud_restore_from_trash,
             provider_commands::jottacloud_permanent_delete,
+            provider_commands::jottacloud_empty_trash,
             provider_commands::mega_move_to_trash,
             provider_commands::mega_list_trash,
             provider_commands::mega_restore_from_trash,

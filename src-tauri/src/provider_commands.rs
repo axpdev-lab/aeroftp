@@ -8250,6 +8250,30 @@ pub async fn jottacloud_permanent_delete(
     Ok(())
 }
 
+/// Empty the whole Jottacloud trash (`files/v1/purge_trash`, rclone's
+/// `cleanup`). Returns the counts the server reports, files then folders.
+#[tauri::command]
+pub async fn jottacloud_empty_trash(state: State<'_, ProviderState>) -> Result<(u64, u64), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::Jottacloud {
+        return Err("This operation is only available for Jottacloud".to_string());
+    }
+
+    let jotta = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+        .as_any_mut()
+        .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
+        .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
+
+    jotta
+        .empty_trash()
+        .await
+        .map_err(|e| format!("Empty trash failed: {}", e))
+}
+
 // ── MEGA Trash Operations ────────────────────────────────────────────
 
 /// Move files to MEGA Rubbish Bin (soft delete)
