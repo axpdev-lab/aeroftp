@@ -97,9 +97,17 @@ SFNOTE
     gh release download "$TAG" --repo "$REPO" --dir "$STAGE" --pattern "$a" --skip-existing
   done
 
-  "$CLI" --profile "$PROFILE_ID" mkdir "$SF_ROOT/$TAG"
+  # An existing folder is not a failure here: a re-run after an interrupted
+  # upload is the normal way this script is used a second time. SourceForge
+  # answers a duplicate mkdir with a bare "Failure", which under `set -e` took
+  # the whole publish down and made a COMPLETED upload look like a failed one:
+  # on v4.1.9 all 17 files were already on the mirror when this line aborted.
+  # The listing below is what establishes the real state, so a mkdir that did
+  # not create anything is allowed to pass and be judged there.
+  "$CLI" --profile "$PROFILE_ID" mkdir "$SF_ROOT/$TAG" \
+    || echo "mkdir did not create $SF_ROOT/$TAG (it may already exist); the listing below decides"
   while IFS= read -r f; do
-    "$CLI" --profile "$PROFILE_ID" put --partial "$f" "$SF_ROOT/$TAG/"
+    "$CLI" --profile "$PROFILE_ID" put --partial --strict "$f" "$SF_ROOT/$TAG/"
   done < <(find "$STAGE" -maxdepth 1 -type f | sort)
 
   echo "--- remote listing after upload ---"

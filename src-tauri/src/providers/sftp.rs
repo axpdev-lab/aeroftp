@@ -1951,6 +1951,36 @@ impl StorageProvider for SftpProvider {
         true
     }
 
+    /// Resume an interrupted download.
+    ///
+    /// `download` already does the whole job: it opens the `.aerotmp` through
+    /// `ResumableFile`, reads the offset OFF THAT FILE, discards a partial
+    /// larger than the current remote (a changed remote must not be appended
+    /// to), finalizes without reading when the partial is already complete,
+    /// and seeks the remote read to the partial's end. So this method
+    /// delegates rather than reimplementing, and the `offset` argument is
+    /// deliberately not used: the caller measured it by stat'ing the same
+    /// `.aerotmp` that `ResumableFile` opens, so re-deriving it there keeps
+    /// one source of truth instead of two that can disagree.
+    ///
+    /// It exists because [`Self::supports_resume`] is a SHARED gate. The CLI
+    /// reads it for `--partial` on upload, and `provider_transfer_executor`
+    /// reads it on a download RETRY, where a non-zero partial routes to this
+    /// method. Answering true without this override would have sent that retry
+    /// into the trait default, which returns `NotSupported`, so a retry that
+    /// used to restart the download would have failed instead. Implementing
+    /// the capability on one side and advertising it on both is the defect
+    /// this pairing exists to prevent.
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        self.download(remote_path, local_path, on_progress).await
+    }
+
     /// SFTP can append the tail of an interrupted upload from a byte offset
     /// (the GUI "Resume" action), so the remote partial is not re-sent.
     fn supports_resume_upload_append(&self) -> bool {
