@@ -2896,7 +2896,7 @@
             "plugins": {
                 "browsePlugins": "Դիտել պլագինները"
             },
-            "stopGeneration": "Սերնդի դադարեցնել",
+            "stopGeneration": "Դադարեցնել գեներացումը",
             "routing": {
                 "fallbackUsed": "պահեստային",
                 "fallbackUsedTooltip": "{model}-ը ձախողվեց, ուստի պատասխանեց պահեստային մոդելը"
