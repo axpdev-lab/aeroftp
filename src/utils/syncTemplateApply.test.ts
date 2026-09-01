@@ -105,6 +105,12 @@ describe('AeroSync template import application', () => {
         });
         expect(overlaid.profile.compression_mode).toBe('auto');
         expect(overlaid.profile.verify_policy).toBe('full');
+        // The comparison triple follows the verify policy, not the preset:
+        // the preset says true / true / false, full checksum says compare
+        // by checksum too (#514).
+        expect(overlaid.profile.compare_checksum).toBe(true);
+        expect(overlaid.profile.compare_timestamp).toBe(true);
+        expect(overlaid.profile.compare_size).toBe(true);
         expect(overlaid.profile.canary).toEqual({ percent: 15, selection: 'newest' });
         const imported = settingsFromTemplate(overlaid);
         expect(imported.ok).toBe(true);
@@ -115,6 +121,41 @@ describe('AeroSync template import application', () => {
         expect(patch['plan.canaryMode']).toBe(true);
         expect(patch['plan.canaryPercent']).toBe(15);
         expect(patch['plan.canarySelection']).toBe('newest');
+    });
+
+    it('exports the compare_* triple the verify policy implies, and leaves it alone for none (#514)', () => {
+        const base: SyncTemplate = {
+            schema_version: 1,
+            name: 'T',
+            description: '',
+            created_by: 'test',
+            path_patterns: [{ local: '/a', remote: '/b' }],
+            profile: {
+                direction: 'local_to_remote',
+                compare_timestamp: true,
+                compare_size: true,
+                compare_checksum: false,
+                delete_orphans: true,
+                parallel_streams: 4,
+                compression_mode: 'off',
+            },
+            exclude_patterns: [],
+            schedule: null,
+        };
+        const triple = (t: SyncTemplate) => [t.profile.compare_size, t.profile.compare_timestamp, t.profile.compare_checksum];
+        expect(triple(overlayLivePlanOnTemplate(base, { verifyPolicy: 'full_checksum' }))).toEqual([true, true, true]);
+        expect(triple(overlayLivePlanOnTemplate(base, { verifyPolicy: 'size_and_mtime' }))).toEqual([true, true, false]);
+        expect(triple(overlayLivePlanOnTemplate(base, { verifyPolicy: 'size_only' }))).toEqual([true, false, false]);
+        // `none` says nothing about comparison: the preset's own fields stand.
+        const untouched = overlayLivePlanOnTemplate(
+            { ...base, profile: { ...base.profile, compare_timestamp: false } },
+            { verifyPolicy: 'none' },
+        );
+        expect(triple(untouched)).toEqual([true, false, false]);
+        expect(untouched.profile.verify_policy).toBe('none');
+        // And the round trip: what was exported with size_only comes back as size_only.
+        const imported = settingsFromTemplate(overlayLivePlanOnTemplate(base, { verifyPolicy: 'size_only' }));
+        expect(imported.ok && imported.settings.verifyPolicy).toBe('size_only');
     });
 
     it('maps a legacy wrapper import without inventing absent runtime knobs', () => {
