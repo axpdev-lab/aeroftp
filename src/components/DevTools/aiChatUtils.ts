@@ -104,9 +104,16 @@ const FAILOVER_MARKERS: RegExp[] = [
 export function isFailoverWorthy(error: unknown): boolean {
     const err = String(error).toLowerCase();
 
-    // The user's own ceilings and choices: never route around them.
+    // The user's own ceilings and choices: never route around them. These two
+    // patterns deliberately have no closing boundary: an `AbortError` or a
+    // `CancelledError` carries the word glued to "Error", so a trailing \b never
+    // matched and the guard silently did nothing. It looked correct because a
+    // bare "AbortError" returns false anyway, by falling through to the end
+    // rather than by being refused here. Add one failover marker to the same
+    // message, as in "AbortError: network timeout", and the request the user
+    // stopped would have been retried on another provider.
     if (/\bbudget\b/.test(err)) return false;
-    if (/\bcancel(?:l?ed|ling)?\b/.test(err) || /\babort(?:ed)?\b/.test(err)) return false;
+    if (/\bcancel/.test(err) || /\babort/.test(err)) return false;
 
     const status = err.match(/\b([45]\d{2})\b/);
     if (status && FAILOVER_STATUS_CODES.has(Number(status[1]))) return true;

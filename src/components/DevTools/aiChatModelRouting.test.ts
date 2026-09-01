@@ -85,6 +85,15 @@ describe('isFailoverWorthy', () => {
         }
     });
 
+    it('refuses a stopped request through the guard, not by falling through', () => {
+        // Each of these also carries a marker that would otherwise fail over, so
+        // only the guard can produce false. Asserting on a bare 'AbortError'
+        // proves nothing: it returns false because nothing matches at all.
+        expect(isFailoverWorthy('AbortError: network timeout')).toBe(false);
+        expect(isFailoverWorthy('CancelledError: 503 from upstream')).toBe(false);
+        expect(isFailoverWorthy('Monthly budget exhausted, request 429')).toBe(false);
+    });
+
     it('leaves unrelated errors alone rather than burning a second call', () => {
         expect(isFailoverWorthy('No model selected. Click to configure a provider.')).toBe(false);
     });
