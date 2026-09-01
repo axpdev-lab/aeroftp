@@ -570,35 +570,67 @@ impl TransferCheckpointStore {
             };
             rank(a.1, a.3).cmp(&rank(b.1, b.3)).then(a.2.cmp(&b.2))
         });
-        // Ignoring every unlink error made the advertised hard cap a claim
-        // rather than a bound: a candidate that cannot be deleted (permissions,
-        // a Windows sharing violation, a read-only filesystem) was reselected
-        // forever while new records kept being accepted. Skip past a stuck one
-        // and try the next, since another candidate may well be removable, and
-        // fail only when the target cannot be met at all.
-        let mut removed = 0usize;
+        Self::reclaim_slots(records.into_iter().map(|(path, _, _, _)| path), evict)
+    }
+
+    /// Remove every record bound to one destination endpoint, ignoring the
+    /// Free `needed` slots by deleting candidates in order, counting only the
+    /// deletions THIS caller performed.
+    ///
+    /// The distinction is the whole function. A candidate that is already gone
+    /// when the unlink runs was taken by a concurrent opener, and that opener
+    /// took the slot for its own record: the file is gone, and no slot was
+    /// freed for us. Counting it as ours is how the cap was exceeded.
+    ///
+    /// Two opens sharing a saturated store both scanned 256, both computed one
+    /// eviction and both selected the same oldest record. One unlinked it, the
+    /// other got `NotFound`, counted it, and wrote: 257 records in a store whose
+    /// cap is 256, with a wider fan-out overshooting by more. Nothing reported
+    /// it, because from inside each call the arithmetic was consistent.
+    ///
+    /// No lock is needed to fix it, and one was considered before being
+    /// rejected. `unlink` IS the mutual exclusion: for a given path exactly one
+    /// caller can succeed and every other gets `NotFound`, on Unix and on
+    /// Windows alike, across processes and not merely across tasks. What was
+    /// missing was not exclusion but bookkeeping: counting somebody else's
+    /// success as our own. A lock file would add stale-lock recovery, a
+    /// filesystem assumption and a new failure mode to buy a guarantee the
+    /// kernel already gives. The GUI and the CLI running at once, which is the
+    /// case that makes this real, are covered by the same argument.
+    ///
+    /// A stuck candidate (permissions, a Windows sharing violation, a read-only
+    /// filesystem) is skipped rather than reselected forever, and the call fails
+    /// only when the target cannot be met at all, which is the pre-existing
+    /// behaviour and the reason this returns an error rather than shrugging.
+    fn reclaim_slots(
+        candidates: impl IntoIterator<Item = PathBuf>,
+        needed: usize,
+    ) -> Result<(), String> {
+        let mut reclaimed = 0usize;
+        let mut vanished = 0usize;
         let mut failures: Vec<String> = Vec::new();
-        for (path, _, _, _) in records {
-            if removed == evict {
+        for path in candidates {
+            if reclaimed == needed {
                 break;
             }
             match fs::remove_file(&path) {
-                Ok(()) => removed += 1,
-                // Another process got there first: that is the desired end state.
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => removed += 1,
+                Ok(()) => reclaimed += 1,
+                // Gone before we got to it: somebody else's eviction, and
+                // somebody else's slot. Move to the next candidate.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => vanished += 1,
                 Err(e) => failures.push(format!("{}: {e}", path.display())),
             }
         }
-        if removed < evict {
+        if reclaimed < needed {
             return Err(format!(
-                "checkpoint cap removed only {removed} of {evict} records: {}",
+                "checkpoint cap reclaimed only {reclaimed} of {needed} records \
+                 ({vanished} taken by a concurrent eviction): {}",
                 failures.join("; ")
             ));
         }
         Ok(())
     }
 
-    /// Remove every record bound to one destination endpoint, ignoring the
     /// per-file remote path. This is the explicit, honest escape for a
     /// decommissioned server: the TTL scavenger only prunes a record when the
     /// same endpoint is revisited, so without this a server you stop using keeps
@@ -1237,6 +1269,80 @@ mod tests {
         assert!(!present.contains(&keys[1]));
         assert!(!present.contains(&keys[2]));
     }
+
+    /// The deterministic pin: a candidate that is already gone did not free a
+    /// slot for THIS caller, so it must not be counted as one.
+    ///
+    /// This is the whole defect in one call. The eviction loop treated
+    /// `NotFound` as a success, with a comment saying it was "the desired end
+    /// state": true of the file, false of the slot. The file was taken by a
+    /// concurrent opener that then used the slot for its own record, so the
+    /// caller that merely watched it disappear wrote on top of a full store.
+    ///
+    /// Run against the previous behaviour, `first` survives and nothing is
+    /// reclaimed, because the loop stops as soon as it has counted one.
+    #[test]
+    fn a_vanished_candidate_does_not_count_as_a_slot_we_freed() {
+        let temp = TempDir::new().unwrap();
+        let taken_by_someone_else = temp.path().join("already-evicted.json");
+        let first = temp.path().join("first.json");
+        let second = temp.path().join("second.json");
+        fs::write(&first, b"{}").unwrap();
+        fs::write(&second, b"{}").unwrap();
+
+        TransferCheckpointStore::reclaim_slots(
+            [taken_by_someone_else.clone(), first.clone(), second.clone()],
+            1,
+        )
+        .unwrap();
+
+        assert!(
+            !first.exists(),
+            "the vanished candidate was counted as ours and no slot was actually freed",
+        );
+        assert!(
+            second.exists(),
+            "only the one slot that was needed should be reclaimed",
+        );
+    }
+
+    /// And the failure is reported rather than hidden when the candidates run
+    /// out: a store whose only candidates were taken by other openers cannot
+    /// grow, and saying so is the contract `enforce_cap` already had.
+    #[test]
+    fn reclaiming_nothing_is_an_error_and_names_the_reason() {
+        let temp = TempDir::new().unwrap();
+        let gone = temp.path().join("gone.json");
+        let err = TransferCheckpointStore::reclaim_slots([gone], 1).unwrap_err();
+        assert!(
+            err.contains("reclaimed only 0 of 1"),
+            "the error must say how far it got: {err}",
+        );
+        assert!(
+            err.contains("concurrent eviction"),
+            "and why, so the next reader is not left guessing: {err}",
+        );
+    }
+
+    /// What this PR does NOT close, stated as a test would have to be honest
+    /// about it rather than left for the next reader to find.
+    ///
+    /// The counting fix guarantees that each caller frees its OWN slot. It does
+    /// not close the window between one caller's delete and its write: a caller
+    /// scanning inside it reads capacity that is already spoken for, evicts
+    /// nothing and writes, and the store ends one over the cap. That window
+    /// exists on `main` today and is unchanged here.
+    ///
+    /// A concurrency test was written for it and then removed rather than
+    /// weakened. It could not distinguish the fixed case from the broken one,
+    /// because both overshoot by exactly one and the interleaving cannot be
+    /// forced from outside: an assertion that passes either way is decoration,
+    /// and decoration in a test file is worse than an absence, because it reads
+    /// as coverage. Closing the window needs an exclusive reservation
+    /// (`create_new` on the record path, so exactly one opener creates it and
+    /// the other takes the resume path it already has), which is a change to
+    /// the admission control flow and belongs in its own PR with its own tests.
+    /// See `BATON-checkpoint-exclusive-reservation.md`.
 
     #[test]
     fn cap_evicts_terminal_residue_before_a_newer_resumable() {
