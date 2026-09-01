@@ -349,12 +349,7 @@ impl TransferCheckpointStore {
         let Some(mut loaded) = existing else {
             self.persist(&fresh)?;
             if let Err(e) = self.enforce_cap(&fresh.transfer_key) {
-                // Undo the reservation. Ignoring the unlink error is correct
-                // here: the caller is already being told the open failed, and a
-                // residual record is reclaimable by the next cap run, while
-                // replacing the real reason with "could not clean up" would
-                // hide it.
-                let _ = fs::remove_file(&path);
+                self.rollback_reservation(&path, &fresh);
                 return Err(e);
             }
             return Ok(CheckpointOpen {
@@ -594,6 +589,45 @@ impl TransferCheckpointStore {
     }
 
     /// Remove every record bound to one destination endpoint, ignoring the
+    /// Undo our own reservation, and only ours.
+    ///
+    /// The reservation is written under the transfer key, so it is the same
+    /// file for every opener of the same transfer, and a path is not an
+    /// identity. An opener that arrives while ours is on disk does not see a
+    /// placeholder: it sees a resumable record, adopts it (`attempts + 1`, a
+    /// transition, a persist) and returns `resumed: true`. Removing that file
+    /// by path would then destroy a record whose owner has been told it is
+    /// durable, which is this PR's own defect wearing the other mask: the first
+    /// version counted another opener's deletion as ours, and an unconditional
+    /// rollback deletes another opener's record believing it is ours.
+    ///
+    /// So the reservation is removed only when the bytes on disk are still
+    /// exactly the bytes we wrote. `persist` is `to_vec_pretty` plus an atomic
+    /// replace, so a reader sees one whole record and never a torn one, and an
+    /// adopter necessarily changes `attempts`: byte equality is a sound test of
+    /// "nobody has taken this over".
+    ///
+    /// THE WINDOW IT DOES NOT CLOSE, stated rather than left to be discovered:
+    /// an adopter can still land between the read and the unlink. Closing it
+    /// needs an atomic compare-and-delete, which the filesystem does not offer.
+    /// The design that would close it, a reservation marker under a name only
+    /// this opener holds, trades this window for a marker that survives a crash
+    /// and consumes capacity until something ages it out, which is a new way to
+    /// be wrong in exchange for a narrower one. If that trade is ever wanted,
+    /// it is a change of its own and not a line here.
+    ///
+    /// Errors are swallowed on purpose: the caller is already being told why
+    /// the open failed, and replacing that reason with "could not clean up"
+    /// would hide it. A record left behind is reclaimable by the next cap run.
+    fn rollback_reservation(&self, path: &Path, ours: &MultipartCheckpoint) {
+        let Ok(ours_bytes) = serde_json::to_vec_pretty(ours) else {
+            return;
+        };
+        if fs::read(path).is_ok_and(|on_disk| on_disk == ours_bytes) {
+            let _ = fs::remove_file(path);
+        }
+    }
+
     /// Free `needed` slots by deleting candidates in order, counting only the
     /// deletions THIS caller performed.
     ///
@@ -1372,6 +1406,52 @@ mod tests {
         assert!(
             !store.path_for(&key).exists(),
             "a store that said it could not hold the record must not be holding it",
+        );
+    }
+
+    /// The rollback must remove OUR reservation and nothing else.
+    ///
+    /// Two openers of the same transfer share one file, because the name is the
+    /// transfer key. The second one does not see a placeholder: it sees a
+    /// resumable record, adopts it (`attempts + 1`, a transition, a persist)
+    /// and is told `resumed: true`. If the first one's cap enforcement then
+    /// fails and it deletes by path, it destroys a record whose owner believes
+    /// it is durable, and the second opener's checkpoint is silently gone.
+    ///
+    /// Run against an unconditional `remove_file`, the second half of this test
+    /// fails: the adopted record is deleted.
+    #[test]
+    fn the_rollback_removes_our_reservation_and_not_an_adopted_one() {
+        let temp = TempDir::new().unwrap();
+        let store =
+            TransferCheckpointStore::with_limits(temp.path(), DEFAULT_CHECKPOINT_TTL, 8).unwrap();
+        let ours = MultipartCheckpoint::fresh(source(), destination(), layout());
+        let path = store.path_for(&ours.transfer_key);
+
+        // Untouched: ours to remove.
+        store.persist(&ours).unwrap();
+        store.rollback_reservation(&path, &ours);
+        assert!(
+            !path.exists(),
+            "an untouched reservation is ours to withdraw"
+        );
+
+        // Adopted by a concurrent opener of the same transfer: not ours.
+        store.persist(&ours).unwrap();
+        let mut adopted = ours.clone();
+        adopted.attempts = adopted.attempts.saturating_add(1);
+        adopted.transition(CheckpointStatus::Transferring).unwrap();
+        store.persist(&adopted).unwrap();
+
+        store.rollback_reservation(&path, &ours);
+        assert!(
+            path.exists(),
+            "the rollback deleted a record another opener had already adopted",
+        );
+        let still_there = store.load_path(&path).unwrap().unwrap();
+        assert_eq!(
+            still_there.attempts, adopted.attempts,
+            "and it must be the adopter's record, untouched",
         );
     }
 
