@@ -310,11 +310,12 @@ struct Cli {
     #[arg(long, global = true)]
     files_from_raw: Option<String>,
 
-    /// Never overwrite an existing destination (append-only / immutable mode).
-    /// Honoured by put, cp, mv, get and sync: an existing target is reported
-    /// as skipped (exit 9) and left untouched. The check is a stat before the
-    /// write, not an atomic condition on the server; see
-    /// `skip_if_destination_exists`.
+    /// Skip a destination the pre-write check finds already there
+    /// (append-only / immutable mode, best effort). Honoured by put, cp, mv,
+    /// get and sync: an existing target is reported as skipped (exit 9) and
+    /// left untouched. The check is a stat before the write, not an atomic
+    /// condition on the server, so two writers racing for one target can both
+    /// pass it; see `skip_if_destination_exists`.
     #[arg(long, global = true)]
     immutable: bool,
 
