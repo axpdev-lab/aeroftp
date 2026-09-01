@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "ჩასვით თქვენი API ტოკენი აქ",
             "kdriveDriveIdPlaceholder": "თქვენი kDrive იდენტიფიკატორი (რიცხვითი)",
             "kdriveTokenHelp": "შექმენით ტოკენი manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "ტოკენს სჭირდება drive და user_info სკოუპები: Fetch კითხულობს თქვენი ანგარიშის პროფილს Drive ID-ის საპოვნელად, და მხოლოდ drive-ის მქონე ტოკენი უარყოფილია.",
             "kdriveFindDriveId": "იპოვეთ თქვენი Drive ID",
             "kdriveFindDriveIdHint": "რიცხვითი Drive ID ჩანს ამ გვერდის მისამართის ველში",
             "kdriveCreateToken": "შექმენით API ტოკენი",

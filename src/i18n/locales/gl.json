@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Pegue o seu API Token aquí",
             "kdriveDriveIdPlaceholder": "O seu kDrive ID (numérico)",
             "kdriveTokenHelp": "Xere un token en manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "O token necesita os ámbitos drive e user_info: Fetch le o perfil da túa conta para atopar o Drive ID, e un token só con drive é rexeitado.",
             "kdriveFindDriveId": "Atope o seu Drive ID",
             "kdriveFindDriveIdHint": "O Drive ID numérico aparece na barra de enderezos desta páxina",
             "kdriveCreateToken": "Cree un token de API",

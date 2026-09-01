@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "បិទភ្ជាប់ API token របស់អ្នកនៅទីនេះ",
             "kdriveDriveIdPlaceholder": "លេខសម្គាល់ kDrive របស់អ្នក (ជាលេខ)",
             "kdriveTokenHelp": "បង្កើត token នៅ manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "ថូខិនត្រូវការវិសាលភាព drive និង user_info៖ Fetch អានប្រវត្តិរូបគណនីរបស់អ្នកដើម្បីរក Drive ID ហើយថូខិនដែលមានតែ drive ត្រូវបានបដិសេធ។",
             "kdriveFindDriveId": "ស្វែងរក Drive ID របស់អ្នក",
             "kdriveFindDriveIdHint": "Drive ID ជាលេខបង្ហាញនៅក្នុងរបារអាសយដ្ឋាននៃទំព័រនេះ",
             "kdriveCreateToken": "បង្កើត token API",

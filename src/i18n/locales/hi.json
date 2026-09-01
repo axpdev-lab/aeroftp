@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "अपना API Token यहाँ पेस्ट करें",
             "kdriveDriveIdPlaceholder": "आपका kDrive ID (संख्यात्मक)",
             "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens पर टोकन बनाएँ",
+            "kdriveTokenScopes": "टोकन में drive और user_info स्कोप होने चाहिए: Fetch आपकी खाता प्रोफ़ाइल पढ़कर Drive ID खोजता है, और केवल drive वाला टोकन अस्वीकार कर दिया जाता है।",
             "kdriveFindDriveId": "अपना Drive ID खोजें",
             "kdriveFindDriveIdHint": "संख्यात्मक Drive ID इस पृष्ठ के पता बार में दिखाई देता है",
             "kdriveCreateToken": "एक API टोकन बनाएँ",

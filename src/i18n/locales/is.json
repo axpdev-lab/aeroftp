@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Límdu API lykilorðið þitt hér",
             "kdriveDriveIdPlaceholder": "kDrive auðkennið þitt (tala)",
             "kdriveTokenHelp": "Búðu til lykil á manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Lykillinn þarf umfangið drive og user_info: Fetch les reikningssnið þitt til að finna Drive ID, og lykli með drive einu er hafnað.",
             "kdriveFindDriveId": "Finndu Drive ID-ið þitt",
             "kdriveFindDriveIdHint": "Tölulega Drive ID-ið birtist í veffangastiku þessarar síðu",
             "kdriveCreateToken": "Búa til API-lykil",

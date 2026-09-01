@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Vložte svůj API Token sem",
             "kdriveDriveIdPlaceholder": "Vaše kDrive ID (číselné)",
             "kdriveTokenHelp": "Vygenerujte token na manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Token potřebuje rozsahy drive a user_info: Fetch čte profil vašeho účtu, aby našel Drive ID, a token pouze s drive je odmítnut.",
             "kdriveFindDriveId": "Najděte své Drive ID",
             "kdriveFindDriveIdHint": "Číselné Drive ID se zobrazuje v adresním řádku této stránky",
             "kdriveCreateToken": "Vytvořte token API",

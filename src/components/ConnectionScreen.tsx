@@ -5229,6 +5229,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
+                                            {/* Said here, before the token is pasted: a drive-only
+                                                token connects fine and only Fetch is refused, with a
+                                                403 naming the scope (#650). The hint has to sit where
+                                                the token is created, not in the error. */}
+                                            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.kdriveTokenScopes')}</p>
                                         </div>
                                         <DiscoverableTargetField
                                             label={t('connection.kdriveDriveId')}

@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Tempelkan token API Anda di sini",
             "kdriveDriveIdPlaceholder": "ID kDrive Anda (numerik)",
             "kdriveTokenHelp": "Buat token di manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Token memerlukan cakupan drive dan user_info: Fetch membaca profil akun Anda untuk menemukan Drive ID, dan token dengan drive saja akan ditolak.",
             "kdriveFindDriveId": "Temukan Drive ID Anda",
             "kdriveFindDriveIdHint": "Drive ID numerik muncul di bilah alamat halaman ini",
             "kdriveCreateToken": "Buat token API",

@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "วาง API Token ของคุณที่นี่",
             "kdriveDriveIdPlaceholder": "ID kDrive ของคุณ (ตัวเลข)",
             "kdriveTokenHelp": "สร้างโทเคนที่ manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "โทเค็นต้องมีขอบเขต drive และ user_info: Fetch จะอ่านโปรไฟล์บัญชีของคุณเพื่อค้นหา Drive ID และโทเค็นที่มีเฉพาะ drive จะถูกปฏิเสธ",
             "kdriveFindDriveId": "ค้นหา Drive ID ของคุณ",
             "kdriveFindDriveIdHint": "Drive ID ที่เป็นตัวเลขจะปรากฏในแถบที่อยู่ของหน้านี้",
             "kdriveCreateToken": "สร้างโทเคน API",

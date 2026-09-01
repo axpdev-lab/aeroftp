@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Տեղադրեք Ձեր API տոկենը այստեղ",
             "kdriveDriveIdPlaceholder": "Ձեր kDrive իդենտիֆիկատորը (թիվ)",
             "kdriveTokenHelp": "Ստեղծեք տոկեն՝ manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Թոքենին անհրաժեշտ են drive և user_info շրջանակները. Fetch-ը կարդում է ձեր հաշվի պրոֆիլը Drive ID-ն գտնելու համար, և միայն drive ունեցող թոքենը մերժվում է:",
             "kdriveFindDriveId": "Գտեք ձեր Drive ID-ն",
             "kdriveFindDriveIdHint": "Թվային Drive ID-ն երևում է այս էջի հասցեի տողում",
             "kdriveCreateToken": "Ստեղծել API տոկեն",
