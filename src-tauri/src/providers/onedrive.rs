@@ -2558,7 +2558,11 @@ mod tests {
             .expect("profile listing failed");
         let matched = profiles
             .iter()
-            .find(|p| p.get("name").and_then(|v| v.as_str()) == Some(profile_query.as_str()))
+            .find(|p| {
+                p.get("name")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|n| n.eq_ignore_ascii_case(&profile_query))
+            })
             .cloned()
             .expect("test profile not found");
         let profile_id = matched

@@ -424,12 +424,22 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                       {OPTIONAL_FEATURES.map(f => (
                         <td key={f} className="text-center py-1.5 px-2">
                           {provider.base.includes(f) ? (
-                            <span
-                              title={(f === 'shareLink' ? SHARE_LINK_DETAILS[provider.logoId] : FEATURE_DETAILS[f]?.[provider.logoId]) || ''}
-                              className={(f === 'shareLink' ? SHARE_LINK_DETAILS[provider.logoId] : FEATURE_DETAILS[f]?.[provider.logoId]) ? 'cursor-help' : ''}
-                            >
-                              <Check size={13} className="inline-block text-emerald-500" />
-                            </span>
+                            (() => {
+                              const detail = (f === 'shareLink' ? SHARE_LINK_DETAILS[provider.logoId] : FEATURE_DETAILS[f]?.[provider.logoId]) || '';
+                              // A caveat that only lives in `title` is unreachable from the
+                              // keyboard and unreliable for screen readers, so a tick that
+                              // carries one is focusable and names it as its label.
+                              return (
+                                <span
+                                  title={detail}
+                                  aria-label={detail ? `${FEATURE_LABELS[f] ?? f}: ${detail}` : undefined}
+                                  tabIndex={detail ? 0 : undefined}
+                                  className={detail ? 'cursor-help inline-block rounded focus:outline-none focus:ring-2 focus:ring-blue-500' : ''}
+                                >
+                                  <Check size={13} className="inline-block text-emerald-500" />
+                                </span>
+                              );
+                            })()
                           ) : (
                             <Minus size={11} className="inline-block text-gray-400 dark:text-gray-600" />
                           )}
