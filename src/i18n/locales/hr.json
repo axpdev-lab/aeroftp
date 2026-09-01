@@ -2467,7 +2467,7 @@
                 "general": "Općenito",
                 "generalDesc": "Zadano za neklasificirane zadatke",
                 "autoDefault": "Automatski (zadano)",
-                "autoRoutingTip": "Savjet: ostavite zadatak na „Automatski (zadano)“ i koristit će se vaš zadani model. Preferirani model postavite samo za zadatke gdje želite drugi, i pričuvni model koji će odgovoriti kada preferirani zakaže.",
+                "autoRoutingTip": "Savjet: ostavite zadatak na „Automatski (zadano)“ i koristit će se vaš zadani model. Preferirani model postavite samo za zadatke gdje želite drugi model model, i pričuvni model koji će odgovoriti kada preferirani zakaže.",
                 "advancedDescription": "Konfigurirajte napredne AI parametre za generiranje odgovora.",
                 "conversationStyle": "Stil razgovora",
                 "styleHelp": "Precizno = činjenični odgovori. Kreativno = maštovitije. Uravnoteženo = zadano.",

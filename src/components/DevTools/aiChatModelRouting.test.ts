@@ -88,4 +88,22 @@ describe('isFailoverWorthy', () => {
     it('leaves unrelated errors alone rather than burning a second call', () => {
         expect(isFailoverWorthy('No model selected. Click to configure a provider.')).toBe(false);
     });
+
+    it('reads a status code rather than a digit sequence that happens to look like one', () => {
+        // A bare substring test saw the "500" inside this limit message and sent
+        // a pointless second request to another provider.
+        expect(isFailoverWorthy('max_tokens must be <= 5000')).toBe(false);
+        expect(isFailoverWorthy('context length 50000 exceeded')).toBe(false);
+    });
+
+    it('treats a 404 as an unknown model, which another provider may well have', () => {
+        // Only the phrase "model not found" used to match, so a provider that
+        // answers a missing model with a bare HTTP 404 never failed over.
+        expect(isFailoverWorthy('HTTP 404 Not Found')).toBe(true);
+        expect(isFailoverWorthy('Request failed with status 503')).toBe(true);
+    });
+
+    it('does not fail over on a request the endpoint rejected as malformed', () => {
+        expect(isFailoverWorthy('HTTP 400 Bad Request: invalid role')).toBe(false);
+    });
 });

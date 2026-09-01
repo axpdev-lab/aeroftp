@@ -2533,7 +2533,7 @@
                 "styleDefault": "기본값",
                 "styleExplanatory": "설명형",
                 "styleLearning": "학습형",
-                "routingPreferred": "기본 선택",
+                "routingPreferred": "선호 모델",
                 "routingFallback": "대체",
                 "routingNoFallback": "없음"
             },

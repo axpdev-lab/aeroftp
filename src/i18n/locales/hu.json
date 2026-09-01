@@ -2906,7 +2906,7 @@
             "stopGeneration": "Generálás leállítása",
             "routing": {
                 "fallbackUsed": "tartalék",
-                "fallbackUsedTooltip": "A(z) {model} nem válaszolt, ezért a tartalék modell válaszolt"
+                "fallbackUsedTooltip": "A(z) {model} nem volt elérhető, ezért a tartalék modell válaszolt"
             }
         },
         "archive": {

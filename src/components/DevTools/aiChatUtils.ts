@@ -70,6 +70,23 @@ export async function withRetry<T>(
     throw lastError;
 }
 
+/** HTTP statuses where a different endpoint is a real remedy. 404 is here
+ *  because a provider answers an unknown model with it, and `formatProviderError`
+ *  already maps it to the model-not-found message. */
+const FAILOVER_STATUS_CODES = new Set([401, 403, 404, 408, 429, 500, 502, 503, 504, 529]);
+
+/** Phrases that identify an endpoint failure when no status code is present.
+ *  Anchored on word boundaries: a bare substring test read the "500" inside
+ *  "max_tokens must be <= 5000" as a server error and burned a second call. */
+const FAILOVER_MARKERS: RegExp[] = [
+    /\btimeout\b/, /\btimed out\b/,
+    /\bnetwork\b/, /\bfailed to fetch\b/,
+    /\brate limit/, /\boverloaded\b/, /\bcapacity\b/, /\bunavailable\b/,
+    /\bunauthorized\b/, /\bforbidden\b/, /\bapi key\b/, /\binvalid key\b/,
+    /\bmodel not found\b/, /\bunknown model\b/, /\bunsupported model\b/,
+    /\bdoes not exist\b/, /\bnot available\b/,
+];
+
 /**
  * Whether a failed request is worth retrying on a different model.
  *
@@ -79,22 +96,22 @@ export async function withRetry<T>(
  * second attempt, so a different provider is a real remedy. A blown monthly
  * budget or a cancelled request is the opposite: failing over would spend money
  * the user capped, or resurrect work the user stopped.
+ *
+ * A status code decides when the message carries one, because the status is the
+ * fact and the prose around it is not. Only when there is no status does this
+ * fall back to phrase matching, and then on word boundaries.
  */
 export function isFailoverWorthy(error: unknown): boolean {
     const err = String(error).toLowerCase();
 
     // The user's own ceilings and choices: never route around them.
-    if (err.includes('budget')) return false;
-    if (err.includes('cancel') || err.includes('abort')) return false;
+    if (/\bbudget\b/.test(err)) return false;
+    if (/\bcancel(?:l?ed|ling)?\b/.test(err) || /\babort(?:ed)?\b/.test(err)) return false;
 
-    const endpointFailures = [
-        '429', '500', '502', '503', '504',
-        'timeout', 'timed out', 'network', 'fetch',
-        'rate limit', 'overloaded', 'capacity', 'unavailable',
-        '401', '403', 'unauthorized', 'forbidden', 'api key', 'invalid key',
-        'model not found', 'does not exist', 'not available', 'unsupported model',
-    ];
-    return endpointFailures.some(marker => err.includes(marker));
+    const status = err.match(/\b([45]\d{2})\b/);
+    if (status && FAILOVER_STATUS_CODES.has(Number(status[1]))) return true;
+
+    return FAILOVER_MARKERS.some(marker => marker.test(err));
 }
 
 // Estimate token count for a string (~4 chars per token heuristic)

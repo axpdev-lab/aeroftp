@@ -2404,6 +2404,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     } catch (timeoutErr) {
                         // Timeout occurred - add error message and clean up
                         if (!streamProduced) streamError = timeoutErr;
+                        // Stop the backend task for this stream before anything
+                        // else starts one. Giving up on the listener does not stop
+                        // the provider: the primary would keep streaming, and
+                        // billing, while the fallback request runs beside it.
+                        invoke('ai_cancel_stream', { streamId }).catch(() => {});
                         streamContent += `\n\n[Stream timeout - no response received for ${Math.round(streamTimeoutMs / 1000)} seconds]`;
                         setMessages(prev => prev.map(m =>
                             m.id === msgId ? { ...m, content: streamContent } : m

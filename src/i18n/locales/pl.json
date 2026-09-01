@@ -2448,7 +2448,7 @@
                 "general": "Ogólne",
                 "generalDesc": "Domyślne dla niesklasyfikowanych zadań",
                 "autoDefault": "Auto (domyślnie)",
-                "autoRoutingTip": "Wskazówka: pozostaw zadanie na „Auto (domyślnie)”, a zostanie użyty model domyślny. Preferowany model ustaw tylko dla zadań, w których chcesz inny, oraz model zapasowy, który odpowie, gdy preferowany zawiedzie.",
+                "autoRoutingTip": "Wskazówka: pozostaw zadanie na „Auto (domyślnie)”, a zostanie użyty model domyślny. Preferowany model ustaw tylko dla zadań, w których chcesz użyć innego modelu, oraz model zapasowy, który odpowie, gdy preferowany zawiedzie.",
                 "advancedDescription": "Skonfiguruj zaawansowane parametry AI do generowania odpowiedzi.",
                 "conversationStyle": "Styl rozmowy",
                 "styleHelp": "Precyzyjny = odpowiedzi faktyczne. Kreatywny = bardziej pomysłowe. Zrównoważony = domyślny.",

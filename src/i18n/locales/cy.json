@@ -2448,7 +2448,7 @@
                 "general": "Cyffredinol",
                 "generalDesc": "Diofyn ar gyfer tasgau heb eu dosbarthu",
                 "autoDefault": "Awtomatig (Diofyn)",
-                "autoRoutingTip": "Awgrym: gadewch dasg ar „Awtomatig (Diofyn)“ a defnyddir eich model rhagosodedig. Gosodwch fodel dewisol dim ond ar gyfer y tasgau lle rydych am un gwahanol, a model wrth gefn i ateb pan fydd yr un dewisol yn methu.",
+                "autoRoutingTip": "Awgrym: gadewch dasg ar „Awtomatig (Diofyn)“ a defnyddir eich model rhagosodedig. Gosodwch y model a ffefrir dim ond ar gyfer y tasgau lle rydych am un gwahanol, a model wrth gefn i ateb pan fydd yr un dewisol yn methu.",
                 "advancedDescription": "Ffurfweddu paramedrau AI uwch ar gyfer cynhyrchu ymatebion.",
                 "conversationStyle": "Arddull Sgwrs",
                 "styleHelp": "Manwl = ymatebion ffeithiol. Creadigol = mwy dychmygus. Cytbwys = diofyn.",
@@ -2533,7 +2533,7 @@
                 "styleDefault": "Rhagosodedig",
                 "styleExplanatory": "Esboniadol",
                 "styleLearning": "Dysgu",
-                "routingPreferred": "Dewisol",
+                "routingPreferred": "A ffefrir",
                 "routingFallback": "Wrth gefn",
                 "routingNoFallback": "Dim"
             },
