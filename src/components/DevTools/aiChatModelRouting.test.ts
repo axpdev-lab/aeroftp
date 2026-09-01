@@ -79,19 +79,20 @@ describe('isFailoverWorthy', () => {
         }
     });
 
-    it('never routes around a limit the user set or a request the user stopped', () => {
-        for (const err of ['Monthly budget exhausted ($5.00 / $5.00)', 'Request cancelled by user', 'AbortError']) {
-            expect(isFailoverWorthy(err), err).toBe(false);
-        }
-    });
-
-    it('refuses a stopped request through the guard, not by falling through', () => {
+    it('refuses a stopped request at the guard, not by falling through', () => {
         // Each of these also carries a marker that would otherwise fail over, so
         // only the guard can produce false. Asserting on a bare 'AbortError'
-        // proves nothing: it returns false because nothing matches at all.
+        // proves nothing: it is false because nothing matches at all.
         expect(isFailoverWorthy('AbortError: network timeout')).toBe(false);
         expect(isFailoverWorthy('CancelledError: 503 from upstream')).toBe(false);
+        expect(isFailoverWorthy('CanceledError: 429 too many requests')).toBe(false);
         expect(isFailoverWorthy('Monthly budget exhausted, request 429')).toBe(false);
+    });
+
+    it('lets a transport abort through, because another provider may well work', () => {
+        // "connection aborted by peer" is not the user stopping anything. The
+        // guard anchors on the error name for exactly this reason.
+        expect(isFailoverWorthy('connection aborted by peer, network unreachable')).toBe(true);
     });
 
     it('leaves unrelated errors alone rather than burning a second call', () => {
@@ -114,5 +115,15 @@ describe('isFailoverWorthy', () => {
 
     it('does not fail over on a request the endpoint rejected as malformed', () => {
         expect(isFailoverWorthy('HTTP 400 Bad Request: invalid role')).toBe(false);
+    });
+
+    it('fails over on an unknown model whichever status the endpoint chose for it', () => {
+        // OpenAI-compatible servers are not uniform here: some answer 404 with
+        // `model_not_found`, others answer 400 with the same fact in the body.
+        // A status is only ever a positive shortcut, so the prose still decides
+        // when the status is not one of the failover codes.
+        expect(isFailoverWorthy('HTTP 404 model_not_found')).toBe(true);
+        expect(isFailoverWorthy('HTTP 400 Bad Request: model does not exist')).toBe(true);
+        expect(isFailoverWorthy('HTTP 400: model not found')).toBe(true);
     });
 });

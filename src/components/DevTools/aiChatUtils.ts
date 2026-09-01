@@ -104,16 +104,22 @@ const FAILOVER_MARKERS: RegExp[] = [
 export function isFailoverWorthy(error: unknown): boolean {
     const err = String(error).toLowerCase();
 
-    // The user's own ceilings and choices: never route around them. These two
-    // patterns deliberately have no closing boundary: an `AbortError` or a
-    // `CancelledError` carries the word glued to "Error", so a trailing \b never
-    // matched and the guard silently did nothing. It looked correct because a
-    // bare "AbortError" returns false anyway, by falling through to the end
-    // rather than by being refused here. Add one failover marker to the same
-    // message, as in "AbortError: network timeout", and the request the user
-    // stopped would have been retried on another provider.
+    // The user's own ceilings and choices: never route around them.
+    //
+    // The stop guard anchors on the ERROR NAME rather than on the word, because
+    // the question it asks is "did the user stop this", and a transport failure
+    // is a different sentence. "connection aborted by peer" is not the user
+    // stopping anything: it is exactly the case where another provider is a real
+    // remedy, and a bare /abort/ refused it.
+    //
+    // Worth recording, because it decides how much this guard carries: AeroFTP's
+    // own cancellation produces no error string at all. `ai_cancel_stream` sets a
+    // flag and returns Ok, the stream loop `break`s out normally, and
+    // `cancelActiveStream` resolves the promise rather than rejecting it. So this
+    // guard covers a DOM or library error that reaches here by another route, and
+    // nothing that the cancel button itself emits.
     if (/\bbudget\b/.test(err)) return false;
-    if (/\bcancel/.test(err) || /\babort/.test(err)) return false;
+    if (/\b(?:abort|cancell?ed)error\b/.test(err)) return false;
 
     const status = err.match(/\b([45]\d{2})\b/);
     if (status && FAILOVER_STATUS_CODES.has(Number(status[1]))) return true;
