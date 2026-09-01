@@ -6519,9 +6519,13 @@ async fn reject_restricted_target(
 /// provider-side precondition (an S3 `If-None-Match: *`, an SFTP `O_EXCL`
 /// open) can close that window, and no transfer path carries one yet.
 ///
-/// A `stat` that fails for any reason other than "not found" lets the write
-/// proceed, as `put` always has: a provider whose `stat` is unsupported must
-/// not make every immutable write impossible.
+/// Under `--immutable` a `stat` that fails for any reason other than "not
+/// found" fails CLOSED: the flag promises not to overwrite, and a timeout, a
+/// permission error or an unsupported `stat` would otherwise turn that
+/// promise into an overwrite, silently, exactly on the unattended runs the
+/// flag exists for. The error is reported and the provider's own exit code
+/// returned. `--no-clobber` keeps its historical fail-open reading, since it
+/// was documented as a convenience and scripts rely on it proceeding.
 async fn skip_if_destination_exists(
     provider: &mut dyn StorageProvider,
     target: &str,
@@ -6529,8 +6533,22 @@ async fn skip_if_destination_exists(
     cli: &Cli,
     format: OutputFormat,
 ) -> Option<i32> {
-    if provider.stat(target).await.is_err() {
-        return None;
+    match provider.stat(target).await {
+        Ok(_) => {}
+        Err(ProviderError::NotFound(_)) => return None,
+        Err(e) if cli.immutable => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!(
+                    "{}: cannot verify that {} does not exist ({}); refusing to write rather than risk an overwrite",
+                    flag_name, target, e
+                ),
+                code,
+            );
+            return Some(code);
+        }
+        Err(_) => return None,
     }
     match format {
         OutputFormat::Text => {
@@ -72551,6 +72569,8 @@ mod tests {
         renames: Vec<(String, String)>,
         deleted: Vec<String>,
         rename_fails_with: Option<String>,
+        /// When set, `stat` fails with this instead of answering.
+        stat_fails_with: Option<String>,
     }
 
     impl CliEditFakeProvider {
@@ -72561,6 +72581,7 @@ mod tests {
                 renames: Vec::new(),
                 deleted: Vec::new(),
                 rename_fails_with: None,
+                stat_fails_with: None,
             }
         }
     }
@@ -72671,6 +72692,9 @@ mod tests {
         }
 
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            if let Some(msg) = &self.stat_fails_with {
+                return Err(ProviderError::ConnectionFailed(msg.clone()));
+            }
             self.remote_files
                 .get(path)
                 .map(|data| {
@@ -72908,5 +72932,42 @@ mod tests {
         )
         .await;
         assert_eq!(code, None, "a missing destination lets the write proceed");
+    }
+
+    /// A `stat` that cannot answer is not a missing destination. Under
+    /// `--immutable` the write is refused with the provider's exit code, so a
+    /// timeout or a permission error never becomes an overwrite; under
+    /// `--no-clobber` the historical fail-open reading stands.
+    #[tokio::test]
+    async fn immutable_fails_closed_when_the_destination_cannot_be_checked() {
+        let mut p = CliEditFakeProvider::new();
+        p.stat_fails_with = Some("timed out talking to the server".to_string());
+        let mut cli = test_cli();
+        cli.immutable = true;
+        cli.quiet = true;
+
+        let code = skip_if_destination_exists(
+            &mut p,
+            "/dest.txt",
+            "--immutable",
+            &cli,
+            OutputFormat::Text,
+        )
+        .await;
+        assert!(
+            matches!(code, Some(c) if c != 0 && c != 9),
+            "an unverifiable destination must refuse with an error code, got {code:?}"
+        );
+
+        cli.immutable = false;
+        let code = skip_if_destination_exists(
+            &mut p,
+            "/dest.txt",
+            "--no-clobber",
+            &cli,
+            OutputFormat::Text,
+        )
+        .await;
+        assert_eq!(code, None, "--no-clobber keeps its fail-open reading");
     }
 }
