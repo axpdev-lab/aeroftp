@@ -105,6 +105,43 @@ fn onedrive_retry_marker_tail(
 /// Build a `ProviderError::Other` from a failed OneDrive HTTP response,
 /// appending the Retry-After marker when the response is a throttle
 /// signal. The `context_prefix` is prepended verbatim.
+/// Microsoft Graph exposes no endpoint for the OneDrive Personal recycle bin.
+/// `/me/drive/special/deleted/children` is the shape that works on business
+/// drives, and a personal drive answers it with 400 `invalidRequest: The
+/// special folder identifier isn't valid`: not a bad token, not a bad path,
+/// the bin is simply not addressable through the API for that account kind
+/// (#397). Recognised on the status plus that message, never on the drive
+/// type alone: a personal tenant where the endpoint does work keeps working.
+///
+/// The error is `NotSupported` rather than `Other` so the trash surface
+/// reports a limit rather than a failure, and the message says where the bin
+/// still is: the OneDrive website, which empties it on its own after 30 days.
+fn recycle_bin_not_exposed(
+    status: reqwest::StatusCode,
+    body: &str,
+    drive_type: Option<&str>,
+) -> Option<ProviderError> {
+    if status != reqwest::StatusCode::BAD_REQUEST {
+        return None;
+    }
+    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
+    let code = parsed["error"]["code"].as_str().unwrap_or_default();
+    let message = parsed["error"]["message"].as_str().unwrap_or_default();
+    if code != "invalidRequest" || !message.contains("special folder identifier") {
+        return None;
+    }
+    let kind = match drive_type {
+        Some("personal") => "This OneDrive Personal account",
+        Some(other) => return Some(ProviderError::NotSupported(format!(
+            "Microsoft Graph does not expose the recycle bin of this OneDrive ({other}) drive, so AeroFTP cannot list, restore or purge it here. Use the Recycle bin on the OneDrive website instead."
+        ))),
+        None => "This OneDrive account",
+    };
+    Some(ProviderError::NotSupported(format!(
+        "{kind} does not expose its recycle bin through Microsoft Graph, so AeroFTP cannot list, restore or purge it here. Use the Recycle bin on onedrive.live.com instead; Microsoft empties it on its own after 30 days."
+    )))
+}
+
 async fn onedrive_error_from_response(
     response: reqwest::Response,
     context_prefix: &str,
@@ -251,6 +288,10 @@ pub struct OneDriveProvider {
     path_cache: HashMap<String, String>,
     /// Authenticated user email
     account_email: Option<String>,
+    /// Graph `driveType` from `/me/drive` at connect: `personal`, `business`
+    /// or `documentLibrary`. Names the account kind in the recycle-bin
+    /// limit below, so the message says which kind of OneDrive this is.
+    drive_type: Option<String>,
     /// Server profile identifier owning these OAuth tokens. Empty when the
     /// caller has not bound a profile (legacy singleton key path). Issue #214.
     profile_id: String,
@@ -290,6 +331,7 @@ impl OneDriveProvider {
             current_item_id: "root".to_string(),
             path_cache: HashMap::new(),
             account_email: None,
+            drive_type: None,
             profile_id: String::new(),
             no_versions: false,
             list_chunk_override: None,
@@ -699,6 +741,23 @@ impl OneDriveProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
+                let status = response.status();
+                if status == reqwest::StatusCode::BAD_REQUEST {
+                    // The one 400 this endpoint produces on a healthy token is
+                    // Graph saying the recycle bin is not addressable for this
+                    // account (#397). Say that, instead of the raw JSON.
+                    let text = response.text().await.unwrap_or_default();
+                    if let Some(limit) =
+                        recycle_bin_not_exposed(status, &text, self.drive_type.as_deref())
+                    {
+                        return Err(limit);
+                    }
+                    return Err(ProviderError::Other(format!(
+                        "List trash failed: {}: {}",
+                        status,
+                        sanitize_api_error(&text)
+                    )));
+                }
                 return Err(onedrive_error_from_response(response, "List trash failed:").await);
             }
 
@@ -968,6 +1027,11 @@ impl StorageProvider for OneDriveProvider {
             if let Some(email) = body["owner"]["user"]["email"].as_str() {
                 self.account_email = Some(email.to_string());
             }
+            self.drive_type = body["driveType"]
+                .as_str()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
             // #128-D: persist the Graph drive id + driveType so an rclone export
             // can emit a usable remote. rclone's `onedrive` backend needs
             // `drive_id` + `drive_type` (it fails at use with "unable to get
@@ -2470,6 +2534,95 @@ mod tests {
 
     fn test_provider() -> OneDriveProvider {
         OneDriveProvider::new(OneDriveConfig::new("cid", "csec"))
+    }
+
+    // ─── Live check for #397 on a real account ─────────────────────────
+    //
+    // Run explicitly (never in CI):
+    //   cargo test --release --lib live_personal_recycle_bin -- --ignored --nocapture
+    // Env: ONEDRIVE_TEST_PROFILE (default "OneDrive").
+    //
+    // Connects the saved profile the way the CLI does, reads the drive type
+    // Graph reports, then asks for the recycle bin. On a drive that exposes
+    // it the listing simply succeeds; on one that does not, the answer must
+    // be the declared limit and never the raw 400. Read-only: nothing is
+    // written, trashed or purged.
+    #[tokio::test]
+    #[ignore = "live OneDrive test; run explicitly"]
+    async fn live_personal_recycle_bin_is_reported_as_a_limit() {
+        let profile_query =
+            std::env::var("ONEDRIVE_TEST_PROFILE").unwrap_or_else(|_| "OneDrive".to_string());
+        crate::credential_store::CredentialStore::init().expect("vault init failed");
+        let store = crate::credential_store::CredentialStore::from_cache().expect("vault not open");
+        let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)
+            .expect("profile listing failed");
+        let matched = profiles
+            .iter()
+            .find(|p| {
+                p.get("name")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|n| n.eq_ignore_ascii_case(&profile_query))
+            })
+            .cloned()
+            .expect("test profile not found");
+        let profile_id = matched
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let (client_id, client_secret) =
+            crate::bridge_commands::resolve_oauth_client_config(&store, "onedrive");
+        let mut p = OneDriveProvider::new(OneDriveConfig::new(&client_id, &client_secret))
+            .with_profile_id(&profile_id);
+        p.connect().await.expect("connect failed");
+        eprintln!("driveType reported by Graph: {:?}", p.drive_type);
+        match p.list_trash().await {
+            Ok(entries) => eprintln!("recycle bin exposed: {} entries", entries.len()),
+            Err(ProviderError::NotSupported(msg)) => {
+                assert!(msg.contains("recycle bin"), "{msg}");
+                eprintln!("LIMIT (as designed): {msg}");
+            }
+            Err(other) => panic!("a raw failure leaked instead of the limit: {other}"),
+        }
+    }
+
+    /// The exact answer a personal drive gives `/me/drive/special/deleted`
+    /// (#397, reported verbatim): recognised as the API limit it is, and the
+    /// message names the account kind and where the bin still lives. Any
+    /// other 400, and the same body on another status, stay ordinary errors.
+    #[test]
+    fn personal_recycle_bin_400_is_reported_as_a_limit_not_a_failure() {
+        let body = r#"{"error":{"code":"invalidRequest","message":"The special folder identifier isn't valid","innerError":{"date":"2026-07-08T10:00:00","request-id":"r","client-request-id":"c"}}}"#;
+        let bad = reqwest::StatusCode::BAD_REQUEST;
+
+        let limit = recycle_bin_not_exposed(bad, body, Some("personal")).expect("the limit");
+        assert!(matches!(limit, ProviderError::NotSupported(_)), "{limit:?}");
+        let text = limit.to_string();
+        assert!(text.contains("OneDrive Personal"), "{text}");
+        assert!(text.contains("onedrive.live.com"), "{text}");
+        assert!(
+            !text.contains("invalidRequest"),
+            "raw API code must not leak: {text}"
+        );
+
+        // Drive type unknown (connect could not read it): still a limit.
+        let unknown = recycle_bin_not_exposed(bad, body, None).expect("the limit");
+        assert!(unknown.to_string().contains("recycle bin"));
+
+        // A business drive answering the same way is named for what it is.
+        let business = recycle_bin_not_exposed(bad, body, Some("business")).expect("the limit");
+        assert!(business.to_string().contains("business"), "{business}");
+
+        // A different 400 is not this limit.
+        let other = r#"{"error":{"code":"invalidRequest","message":"Invalid filter clause"}}"#;
+        assert!(recycle_bin_not_exposed(bad, other, Some("personal")).is_none());
+        // The same body on a 404 is not this limit either.
+        assert!(
+            recycle_bin_not_exposed(reqwest::StatusCode::NOT_FOUND, body, Some("personal"))
+                .is_none()
+        );
+        // Garbage is never a limit.
+        assert!(recycle_bin_not_exposed(bad, "not json", Some("personal")).is_none());
     }
 
     #[test]

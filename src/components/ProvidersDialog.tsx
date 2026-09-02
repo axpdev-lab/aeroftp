@@ -52,6 +52,18 @@ const FEATURE_LABELS: Record<string, string> = {
   sse: 'Server-Side Encryption', checksum: 'Checksum', tierManagement: 'Tier Management',
 };
 
+// Per-feature, per-provider details for the tooltip on a listed capability.
+// A tick that holds only for some accounts of a provider says so here, so
+// Help never advertises a button the app cannot honour for the reader.
+const FEATURE_DETAILS: Record<string, Record<string, string>> = {
+  trash: {
+    // #397: Microsoft Graph has no endpoint for the OneDrive Personal
+    // recycle bin (`/me/drive/special/deleted` answers 400 invalidRequest
+    // there). The app reports it as a limit; Help must say the same.
+    onedrive: 'Business and SharePoint drives. Microsoft Graph does not expose the recycle bin of a OneDrive Personal drive; use the OneDrive website for it',
+  },
+};
+
 // Share link capability details for tooltip
 const SHARE_LINK_DETAILS: Record<string, string> = {
   googledrive: 'Permissions: view, comment, edit',
@@ -412,12 +424,22 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                       {OPTIONAL_FEATURES.map(f => (
                         <td key={f} className="text-center py-1.5 px-2">
                           {provider.base.includes(f) ? (
-                            <span
-                              title={f === 'shareLink' ? (SHARE_LINK_DETAILS[provider.logoId] || '') : ''}
-                              className={f === 'shareLink' && SHARE_LINK_DETAILS[provider.logoId] ? 'cursor-help' : ''}
-                            >
-                              <Check size={13} className="inline-block text-emerald-500" />
-                            </span>
+                            (() => {
+                              const detail = (f === 'shareLink' ? SHARE_LINK_DETAILS[provider.logoId] : FEATURE_DETAILS[f]?.[provider.logoId]) || '';
+                              // A caveat that only lives in `title` is unreachable from the
+                              // keyboard and unreliable for screen readers, so a tick that
+                              // carries one is focusable and names it as its label.
+                              return (
+                                <span
+                                  title={detail}
+                                  aria-label={detail ? `${FEATURE_LABELS[f] ?? f}: ${detail}` : undefined}
+                                  tabIndex={detail ? 0 : undefined}
+                                  className={detail ? 'cursor-help inline-block rounded focus:outline-none focus:ring-2 focus:ring-blue-500' : ''}
+                                >
+                                  <Check size={13} className="inline-block text-emerald-500" />
+                                </span>
+                              );
+                            })()
                           ) : (
                             <Minus size={11} className="inline-block text-gray-400 dark:text-gray-600" />
                           )}
