@@ -133,17 +133,35 @@ cargo test --features aerorsync \
 
 ## File del modulo
 
-- `mod.rs`: dichiarazione modulo + gating `aerorsync`
-- `real_wire.rs` (~6 200 LOC): wire format encode/decode rsync 31/32
-- `native_driver.rs` (~8 300 LOC): state machine upload/download
-- `tests.rs` (~3 800 LOC): unit tests contro frozen transcripts
-- `delta_transport_impl.rs` (~3 300 LOC): `AerorsyncDeltaTransport` (impl `DeltaTransport`) + `AerorsyncBatch` session reuse
-- `events.rs`, `progress.rs`, `ssh_transport.rs`, `live_tests.rs`: supporto
-- `mock.rs`, `fixtures.rs`: test scaffolding
-- `streaming_writer.rs` (W2.3): `StreamingAtomicWriter`, counterpart streaming di `delta_transport_impl::write_atomic_chunked` (`AsyncWrite` + `finalize` rename-last)
-- altri: `types.rs`, `protocol.rs`, `planner.rs`, `engine_adapter.rs`, `transport.rs`, `frame_io.rs`, `fallback_policy.rs`, `remote_command.rs`
+Elenco allineato a `mod.rs` (una riga per file, dal doc di testa del file).
 
-Totale: 26 file `.rs` + harness `capture/` (snapshot 2026-07-21).
+- `acl_fs.rs`: I/O delle ACL POSIX.1e locali (B2)
+- `delta_engine.rs`: motore delta rolling checksum + block matching, entrato nel modulo con la tranche A1
+- `delta_transport_impl.rs`: `AerorsyncDeltaTransport` (impl `DeltaTransport`) + `AerorsyncBatch` session reuse
+- `engine_adapter.rs`: ponte fra il layer di protocollo nativo e il motore delta
+- `engine_protocol_types.rs`: tipi di forma protocollare rimasti dopo Y-RSC.8
+- `events.rs`: eventi mux out-of-band, `EventSink`, `AerorsyncEvent::notice()` e `WarningCollector`
+- `fallback_policy.rs`: matrice della policy di fallback (A5)
+- `fixtures.rs`: golden fixtures derivate dalla capture reale del wrapper
+- `frame_io.rs`: framing stdio length-prefixed del transport prototipale
+- `live_tests.rs`: test live opt-in contro un server reale, guidati da variabili d'ambiente
+- `local_transport.rs`: delta transport local-to-local (Z.2.1)
+- `mock.rs`: transport mock in-process
+- `mod.rs`: dichiarazione del modulo + gating `aerorsync`
+- `native_driver.rs`: state machine upload/download sul wire reale
+- `progress.rs`: contratto di progress del driver (`ProgressSink`)
+- `real_wire.rs`: wire format rsync 31/32, encode/decode
+- `remote_command.rs`: command line remota in remote-shell mode
+- `russh_session_transport.rs`: transport di sessione SSH su russh per il path batch
+- `shell_escape.rs`: escaping POSIX per le command line di `exec` SSH
+- `ssh_transport.rs`: transport SSH live
+- `streaming_writer.rs`: `StreamingAtomicWriter` e gli helper di scrittura atomica
+- `tests.rs`: unit test del modulo contro i transcript congelati
+- `transport.rs`: astrazione di transport
+- `types.rs`: tipi core
+- `xattr_fs.rs`: I/O degli extended attribute locali (B3)
+
+Totale: 25 file `.rs` + harness `capture/`.
 
 ## Cross-reference
 
