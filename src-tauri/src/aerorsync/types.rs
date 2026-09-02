@@ -660,6 +660,17 @@ mod tests {
                 "native fallback: atomic write failed at write (target untouched): broken pipe",
                 true,
             ),
+            // Negative controls from the same family: a soft failure whose
+            // io error is not a drop, and one the module builds with no io
+            // error at all.
+            (
+                "native fallback: atomic write failed at write (target untouched): disk full",
+                false,
+            ),
+            (
+                "native fallback: local baseline /tmp/base.bin is not a regular file",
+                false,
+            ),
         ] {
             assert_eq!(
                 TransferError::Soft {
@@ -670,6 +681,115 @@ mod tests {
                 "soft {detail:?}"
             );
             checked += 1;
+        }
+        // The denylist, needle by needle, under every kind a reconnect
+        // could otherwise clear and under both commit states: a deny
+        // marker in the detail always wins. Expected answer: false.
+        const DENY_CORPUS: [&str; 11] = [
+            "peer reported hostkeyrejected during handshake",
+            "host key mismatch for 10.0.0.1",
+            "fingerprint mismatch",
+            "invalidframe at offset 12",
+            "illegalstatetransition: summary before hello",
+            "plannerrejected: no plan for this entry",
+            "unexpectedmessage: data before flist",
+            "internal: unreachable arm",
+            "remoteerror: code 23",
+            "negotiation chose file checksum xxh3",
+            "checksum negotiation found no common algorithm",
+        ];
+        const RETRYABLE_KINDS: [AerorsyncErrorKind; 3] = [
+            AerorsyncErrorKind::TransportFailure,
+            AerorsyncErrorKind::NegotiationFailed,
+            AerorsyncErrorKind::UnsupportedVersion,
+        ];
+        for detail in DENY_CORPUS {
+            for kind in RETRYABLE_KINDS {
+                for committed in [false, true] {
+                    assert!(
+                        !native(kind, detail, committed).is_transient_channel_drop(),
+                        "deny wins: {kind:?} committed={committed} {detail:?}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        // The same kinds with a detail that carries no deny marker, the
+        // real driver texts included, and one that only looks like an
+        // envelope: the tag belongs to the kind, not to the free text, so
+        // it changes nothing. Expected answer: true.
+        const NON_DENY_CORPUS: [&str; 5] = [
+            "next_data_frame: remote closed mid file list",
+            "kex blip",
+            "channel send error",
+            "",
+            "(transportfailure) smuggled into the detail",
+        ];
+        for detail in NON_DENY_CORPUS {
+            for kind in RETRYABLE_KINDS {
+                for committed in [false, true] {
+                    assert!(
+                        native(kind, detail, committed).is_transient_channel_drop(),
+                        "retryable kind, no deny marker: {kind:?} committed={committed} {detail:?}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        // Every kind a reconnect cannot clear, under both commit states,
+        // with a detail that would be transient under a retryable kind:
+        // the kind decides. Expected answer: false.
+        for kind in [
+            AerorsyncErrorKind::InvalidFrame,
+            AerorsyncErrorKind::PlannerRejected,
+            AerorsyncErrorKind::IllegalStateTransition,
+            AerorsyncErrorKind::RemoteError,
+            AerorsyncErrorKind::UnexpectedMessage,
+            AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::Internal,
+            AerorsyncErrorKind::Cancelled,
+        ] {
+            for detail in ["next_data_frame: remote closed mid file list", ""] {
+                for committed in [false, true] {
+                    assert!(
+                        !native(kind, detail, committed).is_transient_channel_drop(),
+                        "kind is not retryable: {kind:?} committed={committed} {detail:?}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        // The four soft details the module really builds, each carrying the
+        // `Display` of a `std::io::Error`. The three renderings are what
+        // Linux `strerror` prints for EPIPE, ECONNRESET and ETIMEDOUT, and
+        // all twelve are transient: this is the case the parity run caught,
+        // where reading only the envelope would have stopped retrying them.
+        for template in [
+            "native fallback: atomic write failed at write (target untouched): {}",
+            "native fallback: cannot open streaming baseline /tmp/base.bin: {}",
+            "native fallback: cannot inspect local baseline /tmp/base.bin: {}",
+            "native fallback: cannot open streaming temp file for /tmp/t.bin: {}",
+        ] {
+            for rendered in [
+                "Broken pipe (os error 32)",
+                "Connection reset by peer (os error 104)",
+                "Connection timed out (os error 110)",
+            ] {
+                let detail = template.replace("{}", rendered);
+                assert!(
+                    TransferError::Soft {
+                        detail: detail.clone()
+                    }
+                    .is_transient_channel_drop(),
+                    "soft with a real io drop inside: {detail:?}"
+                );
+                // The same text inside a hard rejection is never retried.
+                assert!(
+                    !TransferError::Hard { detail }.is_transient_channel_drop(),
+                    "hard is never retried on its text"
+                );
+                checked += 2;
+            }
         }
         // A hard rejection is never retried on its text, even when the
         // text is one that would make a soft failure transient.
@@ -702,7 +822,7 @@ mod tests {
         checked += 2;
 
         assert_eq!(
-            checked, 36,
+            checked, 190,
             "the inherited case table shrank: {checked} cases checked"
         );
     }
