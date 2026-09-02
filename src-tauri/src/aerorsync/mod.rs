@@ -35,6 +35,7 @@ pub mod live_tests;
 pub mod local_transport;
 pub mod mock;
 pub mod native_driver;
+pub mod progress;
 pub mod real_wire;
 pub mod remote_command;
 pub mod rsync_event_bridge;

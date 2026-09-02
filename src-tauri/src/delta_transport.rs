@@ -43,6 +43,9 @@ use std::path::Path;
 /// unchanged for them (a single `is_none()` check per chunk). The driver
 /// throttles calls, so the boxed closure (which emits the GUI `transfer_event`)
 /// fires at most ~1% of total movement.
+///
+/// Must stay structurally identical to `aerorsync::progress::ProgressSink`;
+/// pinned by `delta_transport::tests::aerorsync_delta_progress_sink_is_the_crate_progress_sink`.
 pub type DeltaProgressSink = Box<dyn FnMut(u64, u64) + Send>;
 
 /// Transport abstraction over any delta-capable sync mechanism.
@@ -484,5 +487,30 @@ mod tests {
         // Finalize is still infallible afterwards.
         let stats = Box::new(batch).finalize().await.expect("infallible");
         assert_eq!(stats, BatchStats::default());
+    }
+
+    /// The application keeps `crate::delta_transport::DeltaProgressSink` (this
+    /// module compiles with the feature off) while the aerorsync module owns
+    /// `aerorsync::progress::ProgressSink`. They must be the same type, so
+    /// callers hand one to the other without conversion: if the two aliases
+    /// ever diverge, `same` stops compiling. That is the pin.
+    ///
+    /// It lives here, and not in the module's own `tests.rs`, because the
+    /// module's import budget forbids naming an application path inside
+    /// `src/aerorsync/` (test code included). The `aerorsync_` prefix keeps it
+    /// selected by the module's suite filter.
+    #[cfg(feature = "aerorsync")]
+    #[test]
+    fn aerorsync_delta_progress_sink_is_the_crate_progress_sink() {
+        fn same(
+            s: crate::delta_transport::DeltaProgressSink,
+        ) -> crate::aerorsync::progress::ProgressSink {
+            s
+        }
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(0u32));
+        let c = calls.clone();
+        let mut sink = same(Box::new(move |_, _| *c.lock().unwrap() += 1));
+        sink(1, 2);
+        assert_eq!(*calls.lock().unwrap(), 1);
     }
 }
