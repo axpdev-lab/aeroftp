@@ -2657,9 +2657,9 @@ enum Commands {
         breakdown: bool,
 
         /// Drop into an interactive prompt after the table (rclone-config-style).
-        /// Single-letter actions on a numbered profile: `<n>l` lists, `<n>t` trees,
-        /// `<n>d` deletes from the vault, `q` quits. Requires a TTY; ignored
-        /// in JSON / non-interactive mode.
+        /// Drop into an interactive prompt after the table (rclone-config-style):
+        /// Help, List, Tree, refresh, Groups, Users, New, Rename, Edit, Copy, Fav,
+        /// re-index, Delete. Requires a TTY; ignored in JSON / non-interactive mode.
         #[arg(long, short = 'i')]
         interactive: bool,
 
@@ -2677,8 +2677,9 @@ enum Commands {
         health: bool,
 
         /// Open the inline action menu (TUI) directly, skipping the `-i` line
-        /// prompt (Ehud #311). Implies interactive and needs a TTY; equivalent
-        /// to running `-i` and immediately typing `tui`. Quitting the menu exits.
+        /// prompt (Ehud #311). Offers every verb of the `-i` action bar. Implies
+        /// interactive and needs a TTY; equivalent to running `-i` and
+        /// immediately typing `tui`. Quitting the menu exits.
         #[arg(long)]
         tui: bool,
     },
@@ -2695,14 +2696,15 @@ enum Commands {
         _ignored: Vec<String>,
 
         /// Drop into an interactive prompt after the table (rclone-config-style):
-        /// re-index(#), Rename(R), Copy(C), Delete(D), List(L). Requires a TTY;
-        /// ignored in JSON / non-interactive mode.
+        /// Help, List, refresh, New, Rename, Copy, Add, remove, re-index, Delete.
+        /// Requires a TTY; ignored in JSON / non-interactive mode.
         #[arg(long, short = 'i')]
         interactive: bool,
 
         /// Open the inline action menu (TUI) directly, skipping the `-i` line
-        /// prompt (Ehud #311). Implies interactive and needs a TTY; equivalent
-        /// to running `-i` and immediately typing `tui`. Quitting the menu exits.
+        /// prompt (Ehud #311). Offers every verb of the `-i` action bar. Implies
+        /// interactive and needs a TTY; equivalent to running `-i` and
+        /// immediately typing `tui`. Quitting the menu exits.
         #[arg(long)]
         tui: bool,
     },
@@ -2715,14 +2717,16 @@ enum Commands {
         command: Option<UsersCommands>,
 
         /// Drop into an interactive prompt after the table (rclone-config-style):
-        /// re-index(#), Rename(R), Copy(C), Delete(D), Fav(F), List(L), Tree(T).
-        /// Requires a TTY; ignored in JSON / non-interactive mode. Per Ehud #311.
+        /// Help, List, Tree, refresh, New, Rename, Copy, Add, remove, Fav,
+        /// re-index, Delete. Requires a TTY; ignored in JSON / non-interactive
+        /// mode. Per Ehud #311.
         #[arg(long, short = 'i')]
         interactive: bool,
 
         /// Open the inline action menu (TUI) directly, skipping the `-i` line
-        /// prompt (Ehud #311). Implies interactive and needs a TTY; equivalent
-        /// to running `-i` and immediately typing `tui`. Quitting the menu exits.
+        /// prompt (Ehud #311). Offers every verb of the `-i` action bar. Implies
+        /// interactive and needs a TTY; equivalent to running `-i` and
+        /// immediately typing `tui`. Quitting the menu exits.
         #[arg(long)]
         tui: bool,
     },
@@ -14745,7 +14749,15 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
         });
     }
 
-    if profiles.is_empty() {
+    // An empty vault is exactly where `-i` / `--tui` matter most: `New`,
+    // `Help` and `refresh` live in the interactive loop, so an interactive
+    // run goes on to the (empty) table and the menu instead of returning
+    // here. Returning early made the menu unreachable for a fresh vault while
+    // the menu itself already offered every verb (#347).
+    let wants_loop = (overrides.interactive || overrides.start_in_tui)
+        && std::io::stdin().is_terminal()
+        && std::io::stderr().is_terminal();
+    if profiles.is_empty() && !wants_loop {
         if matches!(format, OutputFormat::Json) {
             println!("[]");
         } else {
@@ -17414,13 +17426,31 @@ impl SectionVerb {
             key,
         }
     }
+
+    /// The keys that invoke this verb, one per `/`-separated alternative in the
+    /// displayed key, lowercased: `"H/?"` gives `['h', '?']`, `"Q/0"` gives
+    /// `['q', '0']`, `"#"` gives `['#']`. The first one is the verb letter the
+    /// line-mode dispatch understands; the rest are aliases the raw-mode bar
+    /// accepts as well.
+    fn hotkeys(&self) -> Vec<char> {
+        self.key
+            .split('/')
+            .filter_map(|part| part.chars().next())
+            .map(|c| c.to_ascii_lowercase())
+            .collect()
+    }
+
+    /// The `Label(KEY)` cell as shown in the action bar and in the `--tui` menu.
+    fn bar_label(&self) -> String {
+        format!("{}({})", self.label, self.key)
+    }
 }
 
 /// Render an action bar from a verb table: `Help(H/?) \u{00b7} List/ls(L) \u{00b7} ...`.
 fn render_section_actions(verbs: &[SectionVerb]) -> String {
     verbs
         .iter()
-        .map(|v| format!("{}({})", v.label, v.key))
+        .map(SectionVerb::bar_label)
         .collect::<Vec<_>>()
         .join(" \u{00b7} ")
 }
@@ -17490,18 +17520,23 @@ fn section_prompt_line(prompt: &str) -> std::io::Result<Option<String>> {
 
 /// The labelled action bar for `profiles -i`. Ordered safe-first (#311
 /// discussioncomment-17411227, @EhudKirsh): `Help` leads, then the read-only
-/// inspection verbs (`List`/`Tree`/`Refresh`) and cross-navigation
+/// inspection verbs (`List`/`Tree`/`refresh`) and cross-navigation
 /// (`Groups`/`Users`), then the mutating verbs (`New` catalog-driven create #311
 /// row 1, leading the block) with `re-index` out of the front and the destructive
 /// `Delete` last before `Quit`. Keys are unchanged, so no
 /// automation breaks. `fav_marker` (\u{2605} default, \u{2665} if chosen, #270)
 /// rides on the Fav verb so the bar shows the user's chosen glyph.
+///
+/// Case rule (#347): a label is capitalised only when the verb is invoked by
+/// its first letter. `refresh(.)`, `remove(X)` and `re-index(#)` stay lowercase.
+/// This table is also the source of the `--tui` menu (`section_tui_actions`),
+/// so the menu can never offer fewer verbs than the prompt.
 fn profiles_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
     vec![
         SectionVerb::new("Help", "H/?"),
         SectionVerb::new("List/ls", "L"),
         SectionVerb::new("Tree", "T"),
-        SectionVerb::new("Refresh", "."),
+        SectionVerb::new("refresh", "."),
         SectionVerb::new("Groups", "G"),
         SectionVerb::new("Users", "U"),
         SectionVerb::new("New", "N"),
@@ -17517,19 +17552,20 @@ fn profiles_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
 
 /// The labelled action bar for `groups -i` (Ehud #311, D2 verb set). Same
 /// safe-first ordering as `profiles -i` (disc 17411227): `Help` leads, read-only
-/// `List`/`Refresh` next, then the mutating verbs (`New` empty group #311 row 1,
-/// `Add`/`Remove` member profiles #311 row 8) with `re-index` out of the front
-/// and `Delete` last before `Quit`. Keys unchanged.
+/// `List`/`refresh` next, then the mutating verbs (`New` empty group #311 row 1,
+/// `Add`/`remove` member profiles #311 row 8) with `re-index` out of the front
+/// and `Delete` last before `Quit`. Keys unchanged. Same case rule and same
+/// `--tui` derivation as `profiles_section_verbs`.
 fn groups_section_verbs() -> Vec<SectionVerb> {
     vec![
         SectionVerb::new("Help", "H/?"),
         SectionVerb::new("List/ls", "L"),
-        SectionVerb::new("Refresh", "."),
+        SectionVerb::new("refresh", "."),
         SectionVerb::new("New", "N"),
         SectionVerb::new("Rename", "R"),
         SectionVerb::new("Copy", "C"),
         SectionVerb::new("Add", "A"),
-        SectionVerb::new("Remove", "X"),
+        SectionVerb::new("remove", "X"),
         SectionVerb::new("re-index", "#"),
         SectionVerb::new("Delete", "D"),
         SectionVerb::new("Quit", "Q/0"),
@@ -17797,7 +17833,7 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore, start_in_tui: boo
                 continue;
             }
             let was_direct = direct_tui;
-            match groups_tui_pick(&groups) {
+            match groups_tui_pick() {
                 Ok(SectionTuiOutcome::Quit) => {
                     if was_direct {
                         return 0;
@@ -18163,8 +18199,9 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore, start_in_tui: boo
 
 /// Verb table for the `users -i` action bar. Same safe-first ordering as
 /// `profiles -i` (#311 disc 17411227): `Help` leads, read-only
-/// `List`/`Tree`/`Refresh` next, then the mutating verbs with `re-index` out of
-/// the front and `Delete` last before `Quit`. Keys unchanged. `fav_marker` rides
+/// `List`/`Tree`/`refresh` next, then the mutating verbs with `re-index` out of
+/// the front and `Delete` last before `Quit`. Keys unchanged. Same case rule and
+/// same `--tui` derivation as `profiles_section_verbs`. `fav_marker` rides
 /// on the Fav label (\u{2605} default, \u{2665} when chosen, #270) so it matches
 /// the GUI favourite glyph and the profiles section.
 fn users_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
@@ -18172,12 +18209,12 @@ fn users_section_verbs(fav_marker: &str) -> Vec<SectionVerb> {
         SectionVerb::new("Help", "H/?"),
         SectionVerb::new("List/ls", "L"),
         SectionVerb::new("Tree", "T"),
-        SectionVerb::new("Refresh", "."),
+        SectionVerb::new("refresh", "."),
         SectionVerb::new("New", "N"),
         SectionVerb::new("Rename", "R"),
         SectionVerb::new("Copy", "C"),
         SectionVerb::new("Add", "A"),
-        SectionVerb::new("Remove", "X"),
+        SectionVerb::new("remove", "X"),
         SectionVerb::new(format!("Fav{}", fav_marker), "F"),
         SectionVerb::new("re-index", "#"),
         SectionVerb::new("Delete", "D"),
@@ -19292,9 +19329,13 @@ fn interactive_profiles_loop(
             print_profiles_summary_with_tombstones(&current, &tombstones);
             tombstones.clear();
         }
+        // An empty list is not the end of the session: `New` (and Help,
+        // refresh, Groups, Users) need no row, and a fresh vault reaches this
+        // loop precisely to create its first profile. Exiting here made both
+        // `-i` and `--tui` unusable on an empty vault (#347). The hint is the
+        // only thing the empty state adds; the menu or the prompt follows.
         if current.is_empty() {
-            eprintln!("\nNo profiles left. Exiting interactive mode.");
-            return 0;
+            eprintln!("\nNo profiles yet: press N to create one, or Q to leave.");
         }
 
         // Re-open the --tui menu once the previous action has drained, so the
@@ -19414,7 +19455,7 @@ fn interactive_profiles_loop(
             // prompt the user never asked for. A `tui` typed at the `-i` prompt is
             // one-shot: every outcome returns to that prompt, as before. (#311)
             let was_direct = direct_tui;
-            match profiles_tui_pick(&current, fav_marker) {
+            match profiles_tui_pick(fav_marker) {
                 Ok(SectionTuiOutcome::Quit) => {
                     if was_direct {
                         return 0;
@@ -20372,12 +20413,58 @@ enum SectionTuiOutcome {
 enum SectionActionTarget {
     /// No target needed (Quit).
     None,
+    /// No target needed and the bare verb is the whole command (help, refresh,
+    /// user switch, new group/user): the line-mode handler does its own prompting.
+    Bare,
     /// One or more space-separated selectors (list/tree/delete/fav/copy).
     Many,
     /// A single selector (rename/edit; the handler prompts for the rest).
     One,
     /// `<selector> <new-index>` for re-index.
     Reindex,
+    /// Free-form arguments behind a verb-specific prompt (group membership,
+    /// add/remove); blank cancels.
+    Args(&'static str),
+    /// Optional free-form arguments behind a verb-specific prompt; blank sends
+    /// the bare verb instead of cancelling (new profile: empty query = full
+    /// catalog picker).
+    OptionalArgs(&'static str),
+}
+
+/// One entry of a section's `--tui` menu: the keys that pick it, the cell shown
+/// in the bar and what the user is asked for afterwards. Built from the section's
+/// `-i` verb table by `section_tui_actions`, never written by hand, so the menu
+/// and the prompt cannot drift apart (#347).
+struct SectionTuiAction {
+    hotkeys: Vec<char>,
+    label: String,
+    target: SectionActionTarget,
+}
+
+/// Derive a section's `--tui` menu from its `-i` verb table. `target_of` maps
+/// the verb letter (the first hotkey) to what the menu asks for after the pick;
+/// a verb the section forgot to map still appears, behind a generic argument
+/// prompt, so the menu never silently offers less than the prompt. The test
+/// `tui_menu_maps_every_interactive_verb` keeps that fallback unused.
+type SectionTuiTargetOf = fn(char) -> Option<SectionActionTarget>;
+
+fn section_tui_actions(
+    verbs: &[SectionVerb],
+    target_of: SectionTuiTargetOf,
+) -> Vec<SectionTuiAction> {
+    verbs
+        .iter()
+        .map(|v| {
+            let hotkeys = v.hotkeys();
+            let verb = hotkeys.first().copied().unwrap_or(' ');
+            SectionTuiAction {
+                hotkeys,
+                label: v.bar_label(),
+                target: target_of(verb)
+                    .unwrap_or(SectionActionTarget::Args("arguments (blank cancels): ")),
+            }
+        })
+        .collect()
 }
 
 /// What the shared raw-mode action bar returned.
@@ -20403,13 +20490,14 @@ enum ActionBarChoice {
 /// builds the equivalent line-mode command so the existing, tested action
 /// handlers do the actual work — the menu never mutates the vault itself.
 ///
-/// `actions` is the `(hotkey, label)` list in display order; `initial_focus` is
+/// `actions` is the `(hotkeys, label)` list in display order, every key in a
+/// verb's list picks it (`Help(H/?)` answers to both `h` and `?`); `initial_focus` is
 /// the option highlighted on entry (callers focus the safe Quit option so a
 /// stray Enter just leaves). `zero_selects`, when `Some`, maps the '0' key to
 /// that action index (the Quit alias from Ehud's demo). Raw mode and the cursor
 /// are always restored, even on error/panic.
 fn run_action_bar(
-    actions: &[(char, String)],
+    actions: &[(Vec<char>, String)],
     initial_focus: usize,
     zero_selects: Option<usize>,
 ) -> std::io::Result<ActionBarChoice> {
@@ -20562,7 +20650,7 @@ fn run_action_bar(
                 KeyCode::End => selected = n - 1,
                 KeyCode::Char(c) => {
                     let lc = c.to_ascii_lowercase();
-                    if let Some(idx) = actions.iter().position(|(k, _)| *k == lc) {
+                    if let Some(idx) = actions.iter().position(|(keys, _)| keys.contains(&lc)) {
                         break Some(idx);
                     }
                 }
@@ -20620,6 +20708,10 @@ fn section_prompt_target(
         }
         SectionActionTarget::One => format!("target {noun} (blank cancels): "),
         SectionActionTarget::Many => format!("target {noun}(s) (blank cancels): "),
+        SectionActionTarget::Args(p) | SectionActionTarget::OptionalArgs(p) => p.to_string(),
+        // The bare verb is the whole command; the line-mode handler prompts for
+        // whatever else it needs (help and refresh need nothing).
+        SectionActionTarget::Bare => return Ok(SectionTuiOutcome::Command(key.to_string())),
         SectionActionTarget::None => String::new(),
     };
     eprint!("{}", prompt);
@@ -20630,6 +20722,9 @@ fn section_prompt_target(
     }
     let line = line.trim();
     if line.is_empty() {
+        if matches!(target, SectionActionTarget::OptionalArgs(_)) {
+            return Ok(SectionTuiOutcome::Command(key.to_string()));
+        }
         // Nothing typed: cancel this action only, no change. Distinct from Quit so
         // a blank target under --tui re-opens the menu rather than exiting (#311).
         return Ok(SectionTuiOutcome::Cancel);
@@ -20644,88 +20739,116 @@ fn section_prompt_target(
 /// The Quit option is focused on entry and also bound to the '0' alias. Shared
 /// by profiles/groups/users (Ehud #270/#311).
 fn section_tui_pick(
-    actions: &[(char, String, SectionActionTarget)],
+    actions: &[SectionTuiAction],
     noun: &str,
 ) -> std::io::Result<SectionTuiOutcome> {
-    let quit_idx = actions.iter().position(|(c, _, _)| *c == 'q').unwrap_or(0);
-    let bar: Vec<(char, String)> = actions.iter().map(|(c, l, _)| (*c, l.clone())).collect();
+    let quit_idx = actions
+        .iter()
+        .position(|a| matches!(a.target, SectionActionTarget::None))
+        .unwrap_or(0);
+    let bar: Vec<(Vec<char>, String)> = actions
+        .iter()
+        .map(|a| (a.hotkeys.clone(), a.label.clone()))
+        .collect();
     let idx = match run_action_bar(&bar, quit_idx, Some(quit_idx))? {
         ActionBarChoice::Picked(i) => i,
         ActionBarChoice::Dismissed => return Ok(SectionTuiOutcome::Quit),
     };
-    let (key, _, target) = &actions[idx];
-    if matches!(target, SectionActionTarget::None) {
+    let action = &actions[idx];
+    if matches!(action.target, SectionActionTarget::None) {
         return Ok(SectionTuiOutcome::Quit);
     }
-    section_prompt_target(*key, target, noun)
+    let key = action.hotkeys.first().copied().unwrap_or(' ');
+    section_prompt_target(key, &action.target, noun)
 }
 
-/// Inline action menu for `profiles -i` (Ehud #270/#311). Actions in the
-/// profile / My-Servers column order: re-index(#), Rename(R), Edit(E), Copy(C),
-/// Delete(D), Fav(F), List(L), Tree(T), Quit. `Fav` carries the user's marker
-/// glyph (★ default, ♥ if chosen) so it matches the rest of the CLI.
-fn profiles_tui_pick(
-    profiles: &[serde_json::Value],
-    fav_marker: &str,
-) -> std::io::Result<SectionTuiOutcome> {
-    if profiles.is_empty() {
-        return Ok(SectionTuiOutcome::Quit);
-    }
-    let actions: Vec<(char, String, SectionActionTarget)> = vec![
-        ('#', "re-index(#)".to_string(), SectionActionTarget::Reindex),
-        ('r', "Rename(R)".to_string(), SectionActionTarget::One),
-        ('e', "Edit(E)".to_string(), SectionActionTarget::One),
-        ('c', "Copy(C)".to_string(), SectionActionTarget::Many),
-        ('d', "Delete(D)".to_string(), SectionActionTarget::Many),
-        (
-            'f',
-            format!("Fav{}(F)", fav_marker),
-            SectionActionTarget::Many,
+/// What the `profiles` menu asks for after each verb of `profiles_section_verbs`
+/// (Ehud #270/#311, parity with the `-i` prompt per #347). The verbs that take
+/// no selector (`h`, `.`, `u`) send the bare line-mode command, whose handler
+/// prints, refreshes or lists-and-asks by itself; `g` and `n` get the prompt the
+/// line-mode syntax needs.
+fn profiles_tui_target(verb: char) -> Option<SectionActionTarget> {
+    Some(match verb {
+        'h' | '.' | 'u' => SectionActionTarget::Bare,
+        'n' => SectionActionTarget::OptionalArgs(
+            "catalog query, e.g. a provider name (blank opens the full picker): ",
         ),
-        ('l', "List/ls(L)".to_string(), SectionActionTarget::Many),
-        ('t', "Tree(T)".to_string(), SectionActionTarget::Many),
-        ('q', "Quit(Q/0)".to_string(), SectionActionTarget::None),
-    ];
+        'g' => SectionActionTarget::Args(
+            "<profile(s)> <group> toggles membership  \u{00b7}  rename <old> <new>  \u{00b7}  delete <group>  (blank cancels): ",
+        ),
+        'r' | 'e' => SectionActionTarget::One,
+        'l' | 't' | 'c' | 'f' | 'd' => SectionActionTarget::Many,
+        '#' => SectionActionTarget::Reindex,
+        'q' => SectionActionTarget::None,
+        _ => return None,
+    })
+}
+
+/// Inline action menu for `profiles -i` (Ehud #270/#311): the `-i` action bar,
+/// verb for verb, as a raw-mode picker. `Fav` carries the user's marker glyph
+/// (★ default, ♥ if chosen) so it matches the rest of the CLI.
+///
+/// The menu takes no rows on purpose: it is built from the verb table alone,
+/// so an EMPTY section still offers `Help`, `refresh` and `New`, which is the
+/// first thing a fresh vault needs. The selector verbs refuse a missing row at
+/// their own prompt, exactly as they do at the `-i` line. An early exit on an
+/// empty list used to send Quit here, which made the menu strictly less
+/// capable than the prompt for the one case a new user hits first.
+fn profiles_tui_pick(fav_marker: &str) -> std::io::Result<SectionTuiOutcome> {
+    let actions = section_tui_actions(&profiles_section_verbs(fav_marker), profiles_tui_target);
     section_tui_pick(&actions, "profile")
 }
 
-/// Inline action menu for `groups -i` (Ehud #311). Selector-based actions only:
-/// re-index(#), Rename(R), Copy(C), Delete(D), List(L), Quit — member add/remove
-/// (`a`/`x`) take a second argument and stay at the line prompt.
-fn groups_tui_pick(groups: &[CliServerGroup]) -> std::io::Result<SectionTuiOutcome> {
-    if groups.is_empty() {
-        return Ok(SectionTuiOutcome::Quit);
-    }
-    let actions: Vec<(char, String, SectionActionTarget)> = vec![
-        ('#', "re-index(#)".to_string(), SectionActionTarget::Reindex),
-        ('r', "Rename(R)".to_string(), SectionActionTarget::One),
-        ('c', "Copy(C)".to_string(), SectionActionTarget::One),
-        ('d', "Delete(D)".to_string(), SectionActionTarget::Many),
-        ('l', "List(L)".to_string(), SectionActionTarget::Many),
-        ('q', "Quit(Q/0)".to_string(), SectionActionTarget::None),
-    ];
+/// What the `groups` menu asks for after each verb of `groups_section_verbs`
+/// (Ehud #311, parity per #347). `n` is bare because the line-mode handler
+/// prompts for the group name itself; `a`/`x` take the group first, then the
+/// member profiles, as at the prompt.
+fn groups_tui_target(verb: char) -> Option<SectionActionTarget> {
+    Some(match verb {
+        'h' | '.' | 'n' => SectionActionTarget::Bare,
+        'a' => SectionActionTarget::Args("<group> <profile N|name ...> to add (blank cancels): "),
+        'x' => {
+            SectionActionTarget::Args("<group> <profile N|name ...> to remove (blank cancels): ")
+        }
+        'r' | 'c' => SectionActionTarget::One,
+        'l' | 'd' => SectionActionTarget::Many,
+        '#' => SectionActionTarget::Reindex,
+        'q' => SectionActionTarget::None,
+        _ => return None,
+    })
+}
+
+/// Inline action menu for `groups -i` (Ehud #311): the `-i` action bar, verb for
+/// verb, as a raw-mode picker.
+/// Same as `profiles_tui_pick`: no rows in, so an empty section keeps `New`.
+fn groups_tui_pick() -> std::io::Result<SectionTuiOutcome> {
+    let actions = section_tui_actions(&groups_section_verbs(), groups_tui_target);
     section_tui_pick(&actions, "group")
 }
 
-/// Inline action menu for `users -i` (Ehud #311). Selector-based actions:
-/// re-index(#), Rename(R), Copy(C), Delete(D), Fav(F), List(L), Tree(T), Quit —
-/// member add/remove (`a`/`x`) take a second argument and stay at the line
-/// prompt. `Fav` carries the user's marker glyph.
+/// What the `users` menu asks for after each verb of `users_section_verbs`
+/// (Ehud #311, parity per #347). `n` is bare because the line-mode handler
+/// prompts for the name and passphrase itself; `a`/`x` take the user first,
+/// then the group label, as at the prompt.
+fn users_tui_target(verb: char) -> Option<SectionActionTarget> {
+    Some(match verb {
+        'h' | '.' | 'n' => SectionActionTarget::Bare,
+        'a' => SectionActionTarget::Args("<user N|name> <group name> to add (blank cancels): "),
+        'x' => {
+            SectionActionTarget::Args("<user N|name> <group N|name> to remove (blank cancels): ")
+        }
+        'r' | 'c' | 'f' => SectionActionTarget::One,
+        'l' | 't' | 'd' => SectionActionTarget::Many,
+        '#' => SectionActionTarget::Reindex,
+        'q' => SectionActionTarget::None,
+        _ => return None,
+    })
+}
+
+/// Inline action menu for `users -i` (Ehud #311): the `-i` action bar, verb for
+/// verb, as a raw-mode picker. `Fav` carries the user's marker glyph.
 fn users_tui_pick(fav_marker: &str) -> std::io::Result<SectionTuiOutcome> {
-    let actions: Vec<(char, String, SectionActionTarget)> = vec![
-        ('#', "re-index(#)".to_string(), SectionActionTarget::Reindex),
-        ('r', "Rename(R)".to_string(), SectionActionTarget::One),
-        ('c', "Copy(C)".to_string(), SectionActionTarget::One),
-        ('d', "Delete(D)".to_string(), SectionActionTarget::Many),
-        (
-            'f',
-            format!("Fav{}(F)", fav_marker),
-            SectionActionTarget::One,
-        ),
-        ('l', "List(L)".to_string(), SectionActionTarget::Many),
-        ('t', "Tree(T)".to_string(), SectionActionTarget::Many),
-        ('q', "Quit(Q/0)".to_string(), SectionActionTarget::None),
-    ];
+    let actions = section_tui_actions(&users_section_verbs(fav_marker), users_tui_target);
     section_tui_pick(&actions, "user")
 }
 
@@ -67547,6 +67670,117 @@ mod tests {
     }
 
     #[test]
+    fn section_verb_hotkeys_split_the_displayed_aliases() {
+        assert_eq!(SectionVerb::new("Help", "H/?").hotkeys(), vec!['h', '?']);
+        assert_eq!(SectionVerb::new("Quit", "Q/0").hotkeys(), vec!['q', '0']);
+        assert_eq!(SectionVerb::new("re-index", "#").hotkeys(), vec!['#']);
+        assert_eq!(SectionVerb::new("refresh", ".").hotkeys(), vec!['.']);
+    }
+
+    /// Every table the three sections show. One place so the two properties
+    /// below cannot be satisfied by one section and missed by another.
+    fn all_section_verb_tables() -> Vec<(&'static str, Vec<SectionVerb>)> {
+        vec![
+            ("profiles", profiles_section_verbs("\u{2605}")),
+            ("groups", groups_section_verbs()),
+            ("users", users_section_verbs("\u{2605}")),
+        ]
+    }
+
+    /// The three `--tui` menus with the table and mapping each is derived from.
+    fn all_tui_sections() -> Vec<(&'static str, Vec<SectionVerb>, SectionTuiTargetOf)> {
+        vec![
+            (
+                "profiles",
+                profiles_section_verbs("\u{2605}"),
+                profiles_tui_target,
+            ),
+            ("groups", groups_section_verbs(), groups_tui_target),
+            ("users", users_section_verbs("\u{2605}"), users_tui_target),
+        ]
+    }
+
+    #[test]
+    fn section_verb_label_is_capitalised_only_when_invoked_by_its_first_letter() {
+        // Ehud (#347 c-17817998): the only capitalised actions are those invoked
+        // by their first letter. `refresh(.)`, `remove(X)` and `re-index(#)` are
+        // not, so they stay lowercase; `Help(H/?)` and `Quit(Q/0)` are.
+        for (section, verbs) in all_section_verb_tables() {
+            for v in verbs {
+                let first = v.label.chars().next().unwrap();
+                let invoked_by_first_letter = v
+                    .hotkeys()
+                    .first()
+                    .map(|k| k.eq_ignore_ascii_case(&first))
+                    .unwrap_or(false);
+                assert_eq!(
+                    first.is_ascii_uppercase(),
+                    invoked_by_first_letter,
+                    "{section}: '{}' with key '{}' breaks the case rule",
+                    v.label,
+                    v.key
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tui_menu_offers_every_interactive_verb() {
+        // Ehud (#347 c-17817946): `--tui` must never be less capable than `-i`.
+        // The menu is derived from the same verb table, in the same order, with
+        // the same cell text and the same keys (aliases included).
+        for (section, verbs, target_of) in all_tui_sections() {
+            let menu = section_tui_actions(&verbs, target_of);
+            assert_eq!(menu.len(), verbs.len(), "{section}: menu dropped a verb");
+            for (verb, action) in verbs.iter().zip(&menu) {
+                assert_eq!(action.label, verb.bar_label(), "{section}");
+                assert_eq!(action.hotkeys, verb.hotkeys(), "{section}");
+            }
+            // Exactly one Quit, and it is the one the bar focuses on entry.
+            let quits = menu
+                .iter()
+                .filter(|a| matches!(a.target, SectionActionTarget::None))
+                .count();
+            assert_eq!(quits, 1, "{section}: expected exactly one Quit");
+        }
+    }
+
+    /// The menus take no rows: an empty section must still offer `Help`,
+    /// `refresh` and `New`. The property is enforced by the signatures of
+    /// `profiles_tui_pick` / `groups_tui_pick` / `users_tui_pick`, which have
+    /// nothing to gate on; this pins that the derived menu carries those
+    /// verbs for every section, so the promise holds for a fresh vault.
+    #[test]
+    fn tui_menu_keeps_the_rowless_verbs_for_an_empty_section() {
+        for (section, verbs, target_of) in all_tui_sections() {
+            let menu = section_tui_actions(&verbs, target_of);
+            for needed in ["Help(H/?)", "refresh(.)", "New(N)"] {
+                assert!(
+                    menu.iter().any(|a| a.label == needed),
+                    "{section}: an empty section must still offer {needed}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tui_menu_maps_every_interactive_verb() {
+        // The derivation falls back to a generic prompt for an unmapped verb so
+        // the menu never shrinks; this pins that the fallback is never needed.
+        for (section, verbs, target_of) in all_tui_sections() {
+            for v in verbs {
+                let verb = v.hotkeys()[0];
+                assert!(
+                    target_of(verb).is_some(),
+                    "{section}: verb '{}' ({}) has no --tui target mapping",
+                    v.label,
+                    verb
+                );
+            }
+        }
+    }
+
+    #[test]
     fn section_summary_tombstone_marks_deleted_row() {
         // Column-generic delete summary (#311, point 5): a deleted row stays as a
         // struck red tombstone with a `-` index; the survivors keep their
@@ -67622,7 +67856,7 @@ mod tests {
         // including the favourite glyph riding on the Fav verb (#270/#311).
         assert_eq!(
             render_section_actions(&profiles_section_verbs("\u{2605}")),
-            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} Groups(G) \u{00b7} Users(U) \u{00b7} New(N) \u{00b7} Rename(R) \u{00b7} Edit(E) \u{00b7} Copy(C) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
+            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} refresh(.) \u{00b7} Groups(G) \u{00b7} Users(U) \u{00b7} New(N) \u{00b7} Rename(R) \u{00b7} Edit(E) \u{00b7} Copy(C) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
         );
         // The chosen-heart marker (#270) flows through unchanged.
         assert!(
@@ -67945,7 +68179,7 @@ mod tests {
     fn groups_action_bar_matches_d2_vocabulary() {
         assert_eq!(
             render_section_actions(&groups_section_verbs()),
-            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Refresh(.) \u{00b7} New(N) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Add(A) \u{00b7} Remove(X) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
+            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} refresh(.) \u{00b7} New(N) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Add(A) \u{00b7} remove(X) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
         );
     }
 
@@ -68183,7 +68417,7 @@ mod tests {
     fn users_action_bar_matches_d1_vocabulary() {
         assert_eq!(
             render_section_actions(&users_section_verbs("\u{2605}")),
-            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} Refresh(.) \u{00b7} New(N) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Add(A) \u{00b7} Remove(X) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
+            "Help(H/?) \u{00b7} List/ls(L) \u{00b7} Tree(T) \u{00b7} refresh(.) \u{00b7} New(N) \u{00b7} Rename(R) \u{00b7} Copy(C) \u{00b7} Add(A) \u{00b7} remove(X) \u{00b7} Fav\u{2605}(F) \u{00b7} re-index(#) \u{00b7} Delete(D) \u{00b7} Quit(Q/0)"
         );
         // The Fav glyph follows the user's chosen favourite marker (#270).
         assert!(render_section_actions(&users_section_verbs("\u{2665}")).contains("Fav\u{2665}(F)"));
