@@ -81,6 +81,13 @@ fn map_native_error_to_rsync(err: AerorsyncError, committed: bool) -> RsyncError
     }
 }
 
+/// Render a failed probe as the application error.
+///
+/// The rule is the application's, not the module's, and it is kept
+/// verbatim: a host key rejection is surfaced as a hard rejection so the
+/// user sees why the native path refused, and everything else collapses
+/// into "remote not available", which is the verdict the probe cache in
+/// `delta_sync_rsync` memoises for five minutes.
 pub fn probe_error_to_rsync(err: AerorsyncError) -> RsyncError {
     if err.kind == AerorsyncErrorKind::HostKeyRejected {
         return map_native_error_to_rsync(err, false);

@@ -4,7 +4,7 @@
 //! The module is the bridge between the prototype driver
 //! (`AerorsyncDriver` + the `WarningCollector` event sink) and the production
 //! delta-transport trait consumed by the sync loop, whose
-//! implementation lives in `crate::aerorsync_adapter`. It owns:
+//! implementation lives in the application adapter. It owns:
 //!
 //! - Construction of the SSH transport, driver and engine adapter for
 //!   each individual transfer (no cross-transfer session caching: the
@@ -12,10 +12,9 @@
 //! - Reporting a failure as a crate-owned `types::TransferError`, which
 //!   carries the typed `AerorsyncError` and the commit flag observed at
 //!   the failure site. Turning that into an application error, through
-//!   the `fallback_policy::classify_fallback` matrix, belongs to
-//!   `crate::aerorsync_adapter` since the A3 tranche: the module does
-//!   not name the application error type, and cannot import the adapter
-//!   either.
+//!   the `fallback_policy::classify_fallback` matrix, belongs to the
+//!   application adapter since the A3 tranche: the module does not name
+//!   the application error type, and cannot import the adapter either.
 //! - Atomic disk write of the download result via the temp-file + rename
 //!   helper with kill-9 invariant pin (`write_atomic_chunked`, owned by
 //!   `streaming_writer` since the A1 crate tranche; `WriteAtomicError`
@@ -110,6 +109,34 @@ pub struct AerorsyncDeltaTransport {
     preserve_acls: bool,
     /// X.5: turn ENOTSUP / metadata-loss warnings into hard errors.
     fail_on_metadata_loss: bool,
+}
+
+/// A failed probe, plus the stage it failed at.
+///
+/// The two stages produce the same application error, but not the same
+/// log line: a probe that answered badly is worth a warning, while an SSH
+/// leg that never came up is already visible to whoever asked for the
+/// connection. Keeping the distinction here is what lets the adapter log
+/// exactly what it logged before the module owned the probe.
+pub(crate) struct ProbeFailure {
+    pub(crate) error: AerorsyncError,
+    pub(crate) at_connect: bool,
+}
+
+impl ProbeFailure {
+    fn during_connect(error: AerorsyncError) -> Self {
+        Self {
+            error,
+            at_connect: true,
+        }
+    }
+
+    fn during_probe(error: AerorsyncError) -> Self {
+        Self {
+            error,
+            at_connect: false,
+        }
+    }
 }
 
 impl AerorsyncDeltaTransport {
@@ -238,13 +265,15 @@ impl AerorsyncDeltaTransport {
     /// [`AerorsyncError`]; deciding that this means "remote unavailable",
     /// and caching that verdict, is the application's rule and lives in
     /// the adapter.
-    pub(crate) async fn probe(&self) -> Result<TransportProbe, AerorsyncError> {
+    pub(crate) async fn probe(&self) -> Result<TransportProbe, ProbeFailure> {
         if self.ssh_config.prefers_russh_leg() {
-            let transport = RusshSessionTransport::connect(self.ssh_config.clone()).await?;
-            transport.probe().await
+            let transport = RusshSessionTransport::connect(self.ssh_config.clone())
+                .await
+                .map_err(ProbeFailure::during_connect)?;
+            transport.probe().await.map_err(ProbeFailure::during_probe)
         } else {
             let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
-            transport.probe().await
+            transport.probe().await.map_err(ProbeFailure::during_probe)
         }
     }
 
@@ -1574,9 +1603,9 @@ impl AerorsyncBatch {
         .await;
         if let Err(ref e) = first {
             tracing::debug!(
-                "AerorsyncBatch::upload: first attempt errored on {} → variant={:?} transient={}",
+                "AerorsyncBatch::upload: first attempt errored on {} → variant={} transient={}",
                 remote_path,
-                e,
+                e.variant_name(),
                 e.is_transient_channel_drop()
             );
         }
@@ -1653,9 +1682,9 @@ impl AerorsyncBatch {
         .await;
         if let Err(ref e) = first {
             tracing::debug!(
-                "AerorsyncBatch::download: first attempt errored on {} → variant={:?} transient={}",
+                "AerorsyncBatch::download: first attempt errored on {} → variant={} transient={}",
                 remote_path,
-                e,
+                e.variant_name(),
                 e.is_transient_channel_drop()
             );
         }

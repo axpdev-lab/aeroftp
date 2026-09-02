@@ -388,6 +388,36 @@ pub enum TransferError {
 }
 
 impl TransferError {
+    /// Stable short tag for a log line: the variant, and for a driver
+    /// failure the kind that caused it.
+    ///
+    /// Deliberately a `&'static str` and deliberately without the detail:
+    /// the detail carries local paths and remote stderr, and a debug line
+    /// that fires on every failed attempt would spill both into the log
+    /// on one line. This replaces the application-side helper that did
+    /// the same job for the rendered error before the module owned one.
+    pub fn variant_name(&self) -> &'static str {
+        match self {
+            TransferError::Soft { .. } => "Soft",
+            TransferError::Hard { .. } => "Hard",
+            TransferError::Io(_) => "Io",
+            TransferError::TooSmall { .. } => "TooSmall",
+            TransferError::Native { error, .. } => match error.kind {
+                AerorsyncErrorKind::UnsupportedVersion => "Native(UnsupportedVersion)",
+                AerorsyncErrorKind::InvalidFrame => "Native(InvalidFrame)",
+                AerorsyncErrorKind::TransportFailure => "Native(TransportFailure)",
+                AerorsyncErrorKind::NegotiationFailed => "Native(NegotiationFailed)",
+                AerorsyncErrorKind::PlannerRejected => "Native(PlannerRejected)",
+                AerorsyncErrorKind::IllegalStateTransition => "Native(IllegalStateTransition)",
+                AerorsyncErrorKind::RemoteError => "Native(RemoteError)",
+                AerorsyncErrorKind::UnexpectedMessage => "Native(UnexpectedMessage)",
+                AerorsyncErrorKind::Cancelled => "Native(Cancelled)",
+                AerorsyncErrorKind::HostKeyRejected => "Native(HostKeyRejected)",
+                AerorsyncErrorKind::Internal => "Native(Internal)",
+            },
+        }
+    }
+
     /// Fallback verdict of a driver error, `None` for the other variants.
     ///
     /// The adapter needs the verdict to pick its own error variant; the
@@ -508,8 +538,8 @@ mod tests {
     /// The retry decision, case by case, inherited from the application
     /// classifier this predicate replaced.
     ///
-    /// `rsync_over_ssh::is_transient_for_reconnect` reached its verdict by
-    /// re-reading the rendered envelope string, and 29 tests pinned it:
+    /// The application classifier reached its verdict by re-reading the
+    /// rendered envelope string, and 29 tests pinned it:
     /// 17 on the two envelope shapes and 12 on the plain variants. It is
     /// gone; every one of its cases is transcribed here against the
     /// carrier that produced the string in the first place, with the

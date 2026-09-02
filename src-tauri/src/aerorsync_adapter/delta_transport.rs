@@ -44,9 +44,13 @@ impl DeltaTransport for AerorsyncDeltaTransport {
         // `open_raw_stream`, and only then fall back to classic.
         match self.probe().await {
             Ok(probe) => Ok(probe_to_capability(probe)),
-            Err(error) => {
-                let rsync_error = probe_error_to_rsync(error);
-                if matches!(rsync_error, RsyncError::HardRejection(_)) {
+            Err(failure) => {
+                let rsync_error = probe_error_to_rsync(failure.error);
+                // An SSH leg that never came up is returned without a
+                // warning of its own, as it was before the module owned
+                // the probe: the connect failure is already reported
+                // where the connection was asked for.
+                if failure.at_connect || matches!(rsync_error, RsyncError::HardRejection(_)) {
                     return Err(rsync_error);
                 }
                 let (host, port) = self.endpoint();
