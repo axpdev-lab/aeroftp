@@ -117,6 +117,7 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
   // measured 2026-09-01 (#397): the server answers with what it removed,
   // so the log line carries the confirmed counts, not the selection.
   const confirmEmptyTrash = async () => {
+    if (actionLoading !== null) return;
     setPendingEmptyConfirm(false);
     const totalCount = items.length;
     const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'Jottacloud', count: totalCount });
@@ -265,7 +266,7 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
 
       {/* Styled confirmation dialog (replaces window.confirm) */}
       {pendingDeleteConfirm && (
-        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={() => setPendingDeleteConfirm(false)}>
+        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={(e) => { e.stopPropagation(); setPendingDeleteConfirm(false); }}>
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
             <p className="text-gray-900 dark:text-gray-100 mb-4">
               {t('contextMenu.permanentDeleteConfirm', { count: selected.size })}
@@ -289,7 +290,7 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
       )}
 
       {pendingEmptyConfirm && (
-        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={() => setPendingEmptyConfirm(false)}>
+        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={(e) => { e.stopPropagation(); setPendingEmptyConfirm(false); }}>
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
             <p className="text-gray-900 dark:text-gray-100 mb-4">
               {t('contextMenu.emptyTrashConfirm')}
@@ -303,7 +304,8 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
               </button>
               <button
                 onClick={confirmEmptyTrash}
-                className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600"
+                disabled={actionLoading !== null}
+                className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {t('contextMenu.emptyTrash')}
               </button>

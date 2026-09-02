@@ -2708,6 +2708,15 @@ impl JottacloudProvider {
     /// in the Trash view, so a folder is purged with the hard-delete form on
     /// its original path, after that path has been read back and confirmed
     /// to be a tombstone (#397, tracker #701 item 9 corrected).
+    ///
+    /// Declared limit: the tombstone check and the delete are two requests,
+    /// and JFS offers no conditional delete (no revision or ETag precondition
+    /// on `rmDir`), so a session that restores or recreates the same name
+    /// between them would see its live folder purged. The window is one
+    /// round trip, the same window every list-then-purge trash manager has
+    /// on this provider, and it cannot be closed from the client side. The
+    /// check exists so that the ordinary case, a live folder that was never
+    /// the one selected, is refused rather than deleted.
     pub async fn permanent_delete_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let clean = path.trim_start_matches('/');
         let url = format!(
@@ -2773,6 +2782,30 @@ impl JottacloudProvider {
         Ok(())
     }
 
+    /// The counts `purge_trash` reports, or a parse error. A malformed body
+    /// must not read as "0 files, 0 folders": that number is shown to the user
+    /// as what the server confirmed, and a silent zero would say the trash was
+    /// already empty when the answer was in fact unreadable.
+    fn parse_purge_trash_counts(body: &str) -> Result<(u64, u64), ProviderError> {
+        let counts: serde_json::Value = serde_json::from_str(body).map_err(|e| {
+            ProviderError::ParseError(format!(
+                "purge_trash answered 200 with a body that is not JSON ({}): {}",
+                e,
+                sanitize_api_error(body)
+            ))
+        })?;
+        let field = |key: &str| -> Result<u64, ProviderError> {
+            counts.get(key).and_then(|v| v.as_u64()).ok_or_else(|| {
+                ProviderError::ParseError(format!(
+                    "purge_trash answered without a numeric `{}`: {}",
+                    key,
+                    sanitize_api_error(body)
+                ))
+            })
+        };
+        Ok((field("files")?, field("folders")?))
+    }
+
     /// Empty the whole trash: `POST {API_BASE}/files/v1/purge_trash`, the
     /// request behind rclone's `cleanup`. Measured on 2026-09-01: 200 with
     /// `{"files":N,"folders":M}` and the trash re-lists empty. Returns the
@@ -2802,9 +2835,7 @@ impl JottacloudProvider {
                 sanitize_api_error(&body)
             )));
         }
-        let counts: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
-        let files = counts["files"].as_u64().unwrap_or(0);
-        let folders = counts["folders"].as_u64().unwrap_or(0);
+        let (files, folders) = Self::parse_purge_trash_counts(&body)?;
         jotta_log(&format!(
             "Trash emptied: {} file(s), {} folder(s) purged",
             files, folders
@@ -3693,6 +3724,30 @@ mod tests {
         assert!(JottacloudProvider::trashed_folder_purge_decision("garbage").is_err());
     }
 
+    /// `purge_trash` answers `{"files":N,"folders":M}`; anything else is a
+    /// parse error and never a confirmed zero.
+    #[test]
+    fn purge_trash_counts_are_parsed_strictly() {
+        assert_eq!(
+            JottacloudProvider::parse_purge_trash_counts(r#"{"files":0,"folders":2}"#).unwrap(),
+            (0, 2)
+        );
+        for bad in [
+            "not json",
+            "",
+            r#"{"files":0}"#,
+            r#"{"files":"0","folders":2}"#,
+            r#"{"files":-1,"folders":2}"#,
+            r#"[]"#,
+        ] {
+            let err = JottacloudProvider::parse_purge_trash_counts(bad).unwrap_err();
+            assert!(
+                matches!(err, ProviderError::ParseError(_)),
+                "{bad:?} -> {err:?}"
+            );
+        }
+    }
+
     #[test]
     fn folder_tombstone_children_classify_live_and_deleted() {
         // Shape captured from the live API (#397): a trashed folder's listing
@@ -4114,18 +4169,31 @@ mod tests {
         );
 
         // 3. empty_trash reports what it removed and the bin re-lists empty.
+        // This step purges EVERY entry in the account's trash, not only the
+        // fixtures, so it needs its own opt-in on top of the ignored test:
+        // without JOTTA_TEST_ALLOW_EMPTY_TRASH=1 the fixture is purged one
+        // by one instead and the whole-bin step is reported as skipped.
         p.move_to_trash(&live)
             .await
             .expect("trash the live fixture for cleanup");
-        let (files, folders) = p.empty_trash().await.expect("EMPTY TRASH");
-        eprintln!("empty_trash: {files} file(s), {folders} folder(s)");
-        assert!(
-            folders >= 1,
-            "the trashed fixture must be counted: {folders}"
-        );
-        assert!(
-            p.list_trash().await.expect("list after empty").is_empty(),
-            "bin must be empty"
-        );
+        if std::env::var("JOTTA_TEST_ALLOW_EMPTY_TRASH").as_deref() == Ok("1") {
+            let (files, folders) = p.empty_trash().await.expect("EMPTY TRASH");
+            eprintln!("empty_trash: {files} file(s), {folders} folder(s)");
+            assert!(
+                folders >= 1,
+                "the trashed fixture must be counted: {folders}"
+            );
+            assert!(
+                p.list_trash().await.expect("list after empty").is_empty(),
+                "bin must be empty"
+            );
+        } else {
+            p.permanent_delete_from_trash(&live)
+                .await
+                .expect("purge the second fixture");
+            eprintln!(
+                "empty_trash step SKIPPED: set JOTTA_TEST_ALLOW_EMPTY_TRASH=1 to purge the whole bin"
+            );
+        }
     }
 }
