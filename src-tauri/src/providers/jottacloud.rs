@@ -137,6 +137,11 @@ pub struct JottacloudProvider {
     refresh_token: SecretString,
     token_endpoint: String,
     token_expiry: Instant,
+    /// Vault key the live refresh chain was loaded from, when it was not the
+    /// key this provider is bound to. A rotation is written back to BOTH, so
+    /// whichever client reads either key next finds the current value; see
+    /// `refresh_persist_accounts`.
+    refresh_source_account: Option<String>,
     current_path: String,
     /// Server profile identifier owning the persisted refresh token. Empty
     /// when the caller has not bound a profile (legacy singleton key path).
@@ -161,6 +166,7 @@ impl JottacloudProvider {
             refresh_token: SecretString::from(String::new()),
             token_endpoint: String::new(),
             token_expiry: Instant::now(),
+            refresh_source_account: None,
             current_path: "/".to_string(),
             profile_id: String::new(),
         }
@@ -182,6 +188,47 @@ impl JottacloudProvider {
         } else {
             format!("jottacloud_refresh_{}", self.profile_id)
         }
+    }
+
+    /// Every vault key that may hold a live refresh chain for this profile,
+    /// most specific first. A station can carry TWO chains for one profile:
+    /// the per-profile key written by a bound provider (the GUI) and the
+    /// legacy singleton written by an unbound one (the CLI up to v4.1.8).
+    /// Jotta rotates each independently, so one can be refused while the
+    /// other still works; a refusal on the first must try the second before
+    /// falling through to the one-shot login token, which is usually spent.
+    /// Measured 2026-09-01: per-profile refused with `invalid_grant`, the
+    /// singleton accepted, and the fallthrough reported the login token as
+    /// "expired or already used" on a station that could still connect.
+    fn refresh_chain_candidates(profile_id: &str) -> Vec<String> {
+        if profile_id.is_empty() {
+            vec!["jottacloud_refresh".to_string()]
+        } else {
+            vec![
+                format!("jottacloud_refresh_{}", profile_id),
+                "jottacloud_refresh".to_string(),
+            ]
+        }
+    }
+
+    /// Keys a rotated token is written to: the provider's own key, plus the
+    /// key the chain was loaded from when that was a different one. Writing
+    /// only the own key would leave the source key holding a consumed token,
+    /// and the next client reading it (an older CLI on the singleton) would
+    /// fall through to the spent login token. Both keys, one chain.
+    fn refresh_persist_accounts(profile_id: &str, source: Option<&str>) -> Vec<String> {
+        let own = if profile_id.is_empty() {
+            "jottacloud_refresh".to_string()
+        } else {
+            format!("jottacloud_refresh_{}", profile_id)
+        };
+        let mut out = vec![own.clone()];
+        if let Some(src) = source {
+            if src != own {
+                out.push(src.to_string());
+            }
+        }
+        out
     }
 
     // ─── Auth Helpers ───────────────────────────────────────────────────
@@ -361,48 +408,51 @@ impl JottacloudProvider {
             "username": self.username,
         });
         let json = data.to_string();
-        let account = self.refresh_token_account();
-        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            if store.store(&account, &json).is_ok() {
+        let accounts = Self::refresh_persist_accounts(
+            &self.profile_id,
+            self.refresh_source_account.as_deref(),
+        );
+        let write_all = |store: &crate::credential_store::CredentialStore| -> bool {
+            let mut ok = true;
+            for account in &accounts {
+                if store.store(account, &json).is_err() {
+                    ok = false;
+                    continue;
+                }
                 // MUV-4: mirror into the active user's partition (per-profile only).
-                if !self.profile_id.is_empty() {
+                if account != "jottacloud_refresh" {
                     crate::user_partitions::mirror_active_credential(
-                        &store,
-                        &account,
+                        store,
+                        account,
                         "jottacloud_refresh",
                         &json,
                     );
                 }
-                jotta_log("Refresh token persisted to vault");
+            }
+            ok
+        };
+        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+            if write_all(&store) {
+                jotta_log(&format!(
+                    "Refresh token persisted to vault ({} key(s))",
+                    accounts.len()
+                ));
                 return;
             }
         }
         // Try auto-init vault
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                let _ = store.store(&account, &json);
-                if !self.profile_id.is_empty() {
-                    crate::user_partitions::mirror_active_credential(
-                        &store,
-                        &account,
-                        "jottacloud_refresh",
-                        &json,
-                    );
-                }
+                let _ = write_all(&store);
                 jotta_log("Refresh token persisted to auto-initialized vault");
             }
         }
     }
 
-    /// Load persisted refresh token from vault, honouring per-profile keys
-    /// with a one-shot lazy migration from the legacy singleton key when the
-    /// caller has bound a profile but no per-profile entry exists yet. The
-    /// legacy entry is removed after a successful rebind so a second Jotta
-    /// profile on the same device does not inherit the same refresh token
-    /// silently. Issue #214.
-    fn load_persisted_refresh_token(profile_id: &str) -> Option<(String, String, String)> {
+    /// Read one refresh chain from the vault: the active user's partition
+    /// first (vault fallback inside), then the raw vault key.
+    fn load_refresh_chain(account: &str) -> Option<(String, String, String)> {
         let store = crate::credential_store::CredentialStore::from_cache()?;
-
         let parse = |json: String| -> Option<(String, String, String)> {
             let v: serde_json::Value = serde_json::from_str(&json).ok()?;
             let rt = v["refresh_token"].as_str()?.to_string();
@@ -414,118 +464,101 @@ impl JottacloudProvider {
                 Some((rt, te, un))
             }
         };
-
-        let account = if profile_id.is_empty() {
-            "jottacloud_refresh".to_string()
-        } else {
-            format!("jottacloud_refresh_{}", profile_id)
-        };
-        // MUV-4: prefer the active user's partition (vault fallback inside) for
-        // the per-profile key; fall through to the legacy singleton on a miss.
-        if !profile_id.is_empty() {
-            if let Ok(Some(json)) =
-                crate::user_partitions::resolve_active_credential(&store, &account)
-            {
-                if let Some(parsed) = parse(json.to_string()) {
-                    return Some(parsed);
-                }
+        if let Ok(Some(json)) = crate::user_partitions::resolve_active_credential(&store, account) {
+            if let Some(parsed) = parse(json.to_string()) {
+                return Some(parsed);
             }
         }
-        if let Ok(json) = store.get(&account) {
-            return parse(json);
-        }
-
-        if !profile_id.is_empty() {
-            if let Ok(json) = store.get("jottacloud_refresh") {
-                let migrated = if store.store(&account, &json).is_ok() {
-                    let _ = store.delete("jottacloud_refresh");
-                    jotta_log("Migrated legacy jottacloud_refresh to per-profile vault key");
-                    true
-                } else {
-                    false
-                };
-                let parsed = parse(json);
-                if migrated && parsed.is_none() {
-                    let _ = store.delete(&account);
-                }
-                return parsed;
-            }
-        }
-
-        None
+        store.get(account).ok().and_then(parse)
     }
 
     /// Try to connect using a persisted refresh token (no login token needed).
     async fn try_connect_with_refresh(&mut self) -> Result<bool, ProviderError> {
-        let (rt, te, un) = match Self::load_persisted_refresh_token(&self.profile_id) {
-            Some(data) => data,
-            None => {
-                jotta_log("No persisted refresh token in vault: will use login token");
-                return Ok(false);
-            }
-        };
-        jotta_log(&format!(
-            "Found persisted refresh token ({} chars) for {}, attempting reconnection at {}",
-            rt.len(),
-            mask_credential(&un),
-            te
-        ));
-
-        // J1 root cause: Jotta's OIDC rejects uppercase `REFRESH_TOKEN`
-        // as `unsupported_grant_type`. Use the RFC 6749 lowercase form.
-        let form_body = format!(
-            "grant_type=refresh_token&refresh_token={}&client_id=jottacli",
-            urlencoding::encode(&rt),
-        );
-        let resp = self
-            .client
-            .post(&te)
-            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
-            .body(form_body)
-            .send()
-            .await
-            .map_err(|e| {
-                ProviderError::AuthenticationFailed(format!("Refresh token exchange failed: {}", e))
-            })?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
+        let own = self.refresh_token_account();
+        for account in Self::refresh_chain_candidates(&self.profile_id) {
+            let Some((rt, te, un)) = Self::load_refresh_chain(&account) else {
+                continue;
+            };
             jotta_log(&format!(
-                "Persisted refresh token rejected by Jotta OIDC (status={}, body={}): falling back to login token",
-                status,
-                sanitize_api_error(&body)
+                "Found persisted refresh token ({} chars) for {} under {}, attempting reconnection at {}",
+                rt.len(),
+                mask_credential(&un),
+                account,
+                te
             ));
-            // Clear stale persisted token for THIS profile only
-            if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                let _ = store.delete(&self.refresh_token_account());
+
+            // J1 root cause: Jotta's OIDC rejects uppercase `REFRESH_TOKEN`
+            // as `unsupported_grant_type`. Use the RFC 6749 lowercase form.
+            let form_body = format!(
+                "grant_type=refresh_token&refresh_token={}&client_id=jottacli",
+                urlencoding::encode(&rt),
+            );
+            let resp = self
+                .client
+                .post(&te)
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(form_body)
+                .send()
+                .await
+                .map_err(|e| {
+                    ProviderError::AuthenticationFailed(format!(
+                        "Refresh token exchange failed: {}",
+                        e
+                    ))
+                })?;
+
+            let status = resp.status();
+            if !status.is_success() {
+                let body = resp.text().await.unwrap_or_default();
+                jotta_log(&format!(
+                    "Persisted refresh token under {} rejected by Jotta OIDC (status={}, body={}): trying the next chain",
+                    account,
+                    status,
+                    sanitize_api_error(&body)
+                ));
+                // A refused chain is dead for everyone: clear it so no client
+                // reads it again and falls through to the login token. Both
+                // copies must go: the raw vault key AND the active user's
+                // partition mirror, which `resolve_active_credential` reads
+                // FIRST. Deleting only the vault key left the mirror in place,
+                // so every later read (this provider, the profile export)
+                // found the same dead chain again. Measured 2026-09-02: three
+                // exports in a row carried a 707-char chain Jotta refused
+                // with the same `invalid_grant` on the other station.
+                if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                    let _ = store.delete(&account);
+                }
+                crate::user_partitions::unmirror_active_credential(&account);
+                continue;
             }
-            return Ok(false);
+
+            let token_resp: TokenResponse = resp.json().await.map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("Refresh response parse failed: {}", e))
+            })?;
+            if token_resp.access_token.is_none() {
+                continue;
+            }
+
+            self.username = un;
+            self.access_token = SecretString::from(token_resp.access_token.unwrap_or_default());
+            // Jotta rotates the refresh token at every exchange. Persisting
+            // the rotated value is mandatory: if we keep the old one in the
+            // on-disk slot, the next invocation reads an already-consumed
+            // token and falls through to the (one-shot) login token, which
+            // returns "Login token expired or already used". The prior
+            // behaviour only updated the in-memory field (J1 finding).
+            self.refresh_token = SecretString::from(token_resp.refresh_token.unwrap_or(rt));
+            self.token_endpoint = te;
+            let expires_in = token_resp.expires_in.unwrap_or(3600);
+            self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
+            self.refresh_source_account = if account == own { None } else { Some(account) };
+
+            self.persist_refresh_token();
+            jotta_log("Reconnected using persisted refresh token; rotated token saved");
+            return Ok(true);
         }
-
-        let token_resp: TokenResponse = resp.json().await.map_err(|e| {
-            ProviderError::AuthenticationFailed(format!("Refresh response parse failed: {}", e))
-        })?;
-        if token_resp.access_token.is_none() {
-            return Ok(false);
-        }
-
-        self.username = un;
-        self.access_token = SecretString::from(token_resp.access_token.unwrap_or_default());
-        // Jotta rotates the refresh token at every exchange. Persisting
-        // the rotated value is mandatory: if we keep the old one in the
-        // on-disk slot, the next invocation reads an already-consumed
-        // token and falls through to the (one-shot) login token, which
-        // returns "Login token expired or already used". The prior
-        // behaviour only updated the in-memory field (J1 finding).
-        self.refresh_token = SecretString::from(token_resp.refresh_token.unwrap_or(rt));
-        self.token_endpoint = te;
-        let expires_in = token_resp.expires_in.unwrap_or(3600);
-        self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
-
-        self.persist_refresh_token();
-        jotta_log("Reconnected using persisted refresh token; rotated token saved");
-        Ok(true)
+        jotta_log("No usable persisted refresh token in vault: will use login token");
+        Ok(false)
     }
 
     // ─── HTTP Helpers ───────────────────────────────────────────────────
@@ -3463,6 +3496,72 @@ mod tests {
         // Garbage / empty bodies yield an empty list, never a panic.
         assert!(JottacloudProvider::parse_folder_xml("not xml at all", "/").is_empty());
         assert!(JottacloudProvider::parse_folder_xml("", "/").is_empty());
+    }
+
+    /// A station can hold two refresh chains for one profile (GUI per-profile,
+    /// CLI singleton); a bound provider must try both, most specific first,
+    /// and an unbound one only the singleton. A rotated token goes back to
+    /// the key it came from as well as the provider's own key, so neither
+    /// client is left reading a consumed value.
+    #[test]
+    fn refresh_chains_are_tried_in_order_and_rotations_reach_both_keys() {
+        assert_eq!(
+            JottacloudProvider::refresh_chain_candidates("srv_1"),
+            vec![
+                "jottacloud_refresh_srv_1".to_string(),
+                "jottacloud_refresh".to_string()
+            ]
+        );
+        assert_eq!(
+            JottacloudProvider::refresh_chain_candidates(""),
+            vec!["jottacloud_refresh".to_string()]
+        );
+        // Loaded from its own key: one write.
+        assert_eq!(
+            JottacloudProvider::refresh_persist_accounts("srv_1", None),
+            vec!["jottacloud_refresh_srv_1".to_string()]
+        );
+        assert_eq!(
+            JottacloudProvider::refresh_persist_accounts("srv_1", Some("jottacloud_refresh_srv_1")),
+            vec!["jottacloud_refresh_srv_1".to_string()]
+        );
+        // Loaded from the singleton by a bound provider: both keys.
+        assert_eq!(
+            JottacloudProvider::refresh_persist_accounts("srv_1", Some("jottacloud_refresh")),
+            vec![
+                "jottacloud_refresh_srv_1".to_string(),
+                "jottacloud_refresh".to_string()
+            ]
+        );
+        // Unbound provider: only the singleton, whatever it was loaded from.
+        assert_eq!(
+            JottacloudProvider::refresh_persist_accounts("", Some("jottacloud_refresh")),
+            vec!["jottacloud_refresh".to_string()]
+        );
+    }
+
+    /// A credential mirrored into the user partition has TWO copies, and
+    /// `resolve_active_credential` reads the partition one first. A file that
+    /// mirrors a key must therefore also unmirror it wherever it deletes it,
+    /// or every later read finds the dead value again (three Jotta exports
+    /// in a row carried a refused chain this way). Pinned on the callers of
+    /// `mirror_active_credential`, which is the property; MEGA and 4shared
+    /// store and delete raw and are outside it.
+    #[test]
+    fn every_file_that_mirrors_a_credential_also_unmirrors_it() {
+        let files: [(&str, &str); 2] = [
+            ("jottacloud.rs", include_str!("jottacloud.rs")),
+            ("oauth2.rs", include_str!("oauth2.rs")),
+        ];
+        for (name, src) in files {
+            let mirrors = src.matches("mirror_active_credential(").count()
+                - src.matches("unmirror_active_credential(").count();
+            assert!(mirrors > 0, "{name}: expected at least one mirror call");
+            assert!(
+                src.contains("unmirror_active_credential("),
+                "{name} mirrors a credential and never unmirrors it: a raw delete leaves the partition copy alive"
+            );
+        }
     }
 
     #[test]

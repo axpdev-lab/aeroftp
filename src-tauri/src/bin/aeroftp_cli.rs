@@ -25937,6 +25937,21 @@ fn profile_value_to_provider_config(
 
     // Load provider-specific options from profile
     apply_profile_options(&mut extra, profile);
+    // Bind Jottacloud to its per-profile refresh chain, the key the GUI
+    // writes. Unbound, the CLI rotated the legacy singleton while the GUI
+    // rotated `jottacloud_refresh_<id>`: two live chains on one station,
+    // each able to die alone, and a profile export that carried whichever
+    // one it found first. One profile, one chain, on every surface.
+    if protocol == "jottacloud" {
+        if let Some(id) = profile
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            extra.insert("profile_id".to_string(), id.to_string());
+        }
+    }
     if let Some(provider_id) = profile
         .get("providerId")
         .and_then(|v| v.as_str())
