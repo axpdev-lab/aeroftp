@@ -2652,9 +2652,9 @@ enum Commands {
         breakdown: bool,
 
         /// Drop into an interactive prompt after the table (rclone-config-style).
-        /// Single-letter actions on a numbered profile: `<n>l` lists, `<n>t` trees,
-        /// `<n>d` deletes from the vault, `q` quits. Requires a TTY; ignored
-        /// in JSON / non-interactive mode.
+        /// Drop into an interactive prompt after the table (rclone-config-style):
+        /// Help, List, Tree, refresh, Groups, Users, New, Rename, Edit, Copy, Fav,
+        /// re-index, Delete. Requires a TTY; ignored in JSON / non-interactive mode.
         #[arg(long, short = 'i')]
         interactive: bool,
 
