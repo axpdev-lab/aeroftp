@@ -310,7 +310,12 @@ struct Cli {
     #[arg(long, global = true)]
     files_from_raw: Option<String>,
 
-    /// Never overwrite existing files on destination (append-only / immutable mode)
+    /// Skip a destination the pre-write check finds already there
+    /// (append-only / immutable mode, best effort). Honoured by put, cp, mv,
+    /// get and sync: an existing target is reported as skipped (exit 9) and
+    /// left untouched. The check is a stat before the write, not an atomic
+    /// condition on the server, so two writers racing for one target can both
+    /// pass it; see `skip_if_destination_exists`.
     #[arg(long, global = true)]
     immutable: bool,
 
@@ -6494,6 +6499,72 @@ async fn reject_restricted_target(
         return Some(code);
     }
     None
+}
+
+/// `--immutable` / `--no-clobber`: refuse to write over an existing
+/// destination. Prints the skip and returns `Some(9)`, the exit code `put`
+/// has always used for "already exists"; returns `None` when the write may
+/// proceed.
+///
+/// Shared by `put`, `cp` and `mv` so the flag means the same thing on every
+/// verb that writes a destination. Until this helper existed `cp` and `mv`
+/// did not read the flag at all: `cp --immutable --strict` onto an existing
+/// key exited 0 and overwrote it, which is how two concurrent copies from two
+/// different sources could both report success onto one target and one of
+/// the two payloads vanish without a trace (live test on S3, 2026-09-01).
+///
+/// This is a check-then-write, not an atomic condition: a writer landing
+/// between the `stat` and the write is not seen. That is the documented
+/// limit of the flag, not something this helper can promise; only a
+/// provider-side precondition (an S3 `If-None-Match: *`, an SFTP `O_EXCL`
+/// open) can close that window, and no transfer path carries one yet.
+///
+/// Under `--immutable` a `stat` that fails for any reason other than "not
+/// found" fails CLOSED: the flag promises not to overwrite, and a timeout, a
+/// permission error or an unsupported `stat` would otherwise turn that
+/// promise into an overwrite, silently, exactly on the unattended runs the
+/// flag exists for. The error is reported and the provider's own exit code
+/// returned. `--no-clobber` keeps its historical fail-open reading, since it
+/// was documented as a convenience and scripts rely on it proceeding.
+async fn skip_if_destination_exists(
+    provider: &mut dyn StorageProvider,
+    target: &str,
+    flag_name: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Option<i32> {
+    match provider.stat(target).await {
+        Ok(_) => {}
+        Err(ProviderError::NotFound(_)) => return None,
+        Err(e) if cli.immutable => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!(
+                    "{}: cannot verify that {} does not exist ({}); refusing to write rather than risk an overwrite",
+                    flag_name, target, e
+                ),
+                code,
+            );
+            return Some(code);
+        }
+        Err(_) => return None,
+    }
+    match format {
+        OutputFormat::Text => {
+            if !cli.quiet {
+                eprintln!("Skipped: {} (already exists, {})", target, flag_name);
+            }
+        }
+        OutputFormat::Json => {
+            print_json(&serde_json::json!({
+                "status": "skipped",
+                "reason": "already_exists",
+                "path": target,
+            }));
+        }
+    }
+    Some(9)
 }
 
 fn is_valid_sync_direction(direction: &str) -> bool {
@@ -31647,32 +31718,16 @@ async fn cmd_put(
 
     // --immutable / --no-clobber: skip upload if remote file already exists
     if no_clobber || cli.immutable {
-        match provider.stat(remote_path).await {
-            Ok(_) => {
-                match format {
-                    OutputFormat::Text => {
-                        if !cli.quiet {
-                            let flag_name = if cli.immutable {
-                                "--immutable"
-                            } else {
-                                "--no-clobber"
-                            };
-                            eprintln!("Skipped: {} (already exists, {})", remote_path, flag_name);
-                        }
-                    }
-                    OutputFormat::Json => {
-                        print_json(&serde_json::json!({
-                            "status": "skipped",
-                            "reason": "already_exists",
-                            "path": remote_path,
-                        }));
-                    }
-                }
-                let _ = provider.disconnect().await;
-                return 9;
-            }
-            Err(ProviderError::NotFound(_)) => {} // File does not exist, proceed with upload
-            Err(_) => {} // stat failed for other reasons, attempt upload anyway
+        let flag_name = if cli.immutable {
+            "--immutable"
+        } else {
+            "--no-clobber"
+        };
+        if let Some(code) =
+            skip_if_destination_exists(provider.as_mut(), remote_path, flag_name, cli, format).await
+        {
+            let _ = provider.disconnect().await;
+            return code;
         }
     }
 
@@ -33158,6 +33213,16 @@ async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
     if let Some(code) = reject_restricted_target(provider.as_mut(), to, "mv", format).await {
         return code;
     }
+    // --immutable: a rename onto an existing target replaces it on every
+    // provider that allows it, which is exactly the overwrite the flag forbids.
+    if cli.immutable {
+        if let Some(code) =
+            skip_if_destination_exists(provider.as_mut(), to, "--immutable", cli, format).await
+        {
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    }
     match provider.rename(from, to).await {
         Ok(()) => {
             match format {
@@ -33200,6 +33265,17 @@ async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
         reject_restricted_target(guard.as_mut(), to, "cp", format).await
     } {
         return code;
+    }
+    // --immutable: both the server-side copy and the download->upload
+    // fallback overwrite an existing target, so the check sits above the DAG.
+    if cli.immutable {
+        let mut guard = provider.lock().await;
+        if let Some(code) =
+            skip_if_destination_exists(guard.as_mut(), to, "--immutable", cli, format).await
+        {
+            let _ = guard.disconnect().await;
+            return code;
+        }
     }
 
     // Production copy is capability-shaped as one ServerSideCopy node or an
@@ -72508,6 +72584,8 @@ mod tests {
         renames: Vec<(String, String)>,
         deleted: Vec<String>,
         rename_fails_with: Option<String>,
+        /// When set, `stat` fails with this instead of answering.
+        stat_fails_with: Option<String>,
     }
 
     impl CliEditFakeProvider {
@@ -72518,6 +72596,7 @@ mod tests {
                 renames: Vec::new(),
                 deleted: Vec::new(),
                 rename_fails_with: None,
+                stat_fails_with: None,
             }
         }
     }
@@ -72628,6 +72707,9 @@ mod tests {
         }
 
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            if let Some(msg) = &self.stat_fails_with {
+                return Err(ProviderError::ConnectionFailed(msg.clone()));
+            }
             self.remote_files
                 .get(path)
                 .map(|data| {
@@ -72827,5 +72909,80 @@ mod tests {
             .expect("spawn parse thread")
             .join()
             .expect("parsing should not panic");
+    }
+    /// `--immutable` on a destination that exists: skipped with the exit code
+    /// `put` has always used, and the existing bytes are not touched. A
+    /// missing destination lets the write proceed. `cp` and `mv` route through
+    /// this same helper, which is what closes the silent overwrite of a
+    /// same-name concurrent copy: before, neither read the flag at all.
+    #[tokio::test]
+    async fn immutable_skips_an_existing_destination_and_leaves_it_untouched() {
+        let mut p = CliEditFakeProvider::new();
+        p.remote_files
+            .insert("/dest.txt".to_string(), b"first writer".to_vec());
+        let mut cli = test_cli();
+        cli.immutable = true;
+        cli.quiet = true;
+
+        let code = skip_if_destination_exists(
+            &mut p,
+            "/dest.txt",
+            "--immutable",
+            &cli,
+            OutputFormat::Text,
+        )
+        .await;
+        assert_eq!(code, Some(9), "an existing destination is a skip, exit 9");
+        assert_eq!(
+            p.remote_files["/dest.txt"], b"first writer",
+            "the existing payload must survive the check"
+        );
+
+        let code = skip_if_destination_exists(
+            &mut p,
+            "/fresh.txt",
+            "--immutable",
+            &cli,
+            OutputFormat::Json,
+        )
+        .await;
+        assert_eq!(code, None, "a missing destination lets the write proceed");
+    }
+
+    /// A `stat` that cannot answer is not a missing destination. Under
+    /// `--immutable` the write is refused with the provider's exit code, so a
+    /// timeout or a permission error never becomes an overwrite; under
+    /// `--no-clobber` the historical fail-open reading stands.
+    #[tokio::test]
+    async fn immutable_fails_closed_when_the_destination_cannot_be_checked() {
+        let mut p = CliEditFakeProvider::new();
+        p.stat_fails_with = Some("timed out talking to the server".to_string());
+        let mut cli = test_cli();
+        cli.immutable = true;
+        cli.quiet = true;
+
+        let code = skip_if_destination_exists(
+            &mut p,
+            "/dest.txt",
+            "--immutable",
+            &cli,
+            OutputFormat::Text,
+        )
+        .await;
+        assert!(
+            matches!(code, Some(c) if c != 0 && c != 9),
+            "an unverifiable destination must refuse with an error code, got {code:?}"
+        );
+
+        cli.immutable = false;
+        let code = skip_if_destination_exists(
+            &mut p,
+            "/dest.txt",
+            "--no-clobber",
+            &cli,
+            OutputFormat::Text,
+        )
+        .await;
+        assert_eq!(code, None, "--no-clobber keeps its fail-open reading");
     }
 }
