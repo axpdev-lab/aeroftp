@@ -94,14 +94,22 @@ Legend:
 
 ## Running the tests
 
-Deterministic tests (no credentials, run anywhere):
+One command runs everything that can run on the current machine and prints a pass/skip matrix:
+
+```bash
+npm run smoke
+```
+
+It runs the deterministic suites (Rust `cargo test` and frontend `vitest run`), which must always pass, then the lab-backed `#[ignore]` integration lanes. A lane whose enabler is absent is reported as SKIP and never fails the run: the Docker-fixture lanes (SFTP with rsync, FTP) skip unless the fixture port is listening, and the vault- and credential-backed lanes (S3, WebDAV, Backblaze B2, segmented WAN transfer) skip unless the environment carries the credentials. The exit code is non-zero only on a real FAIL. A contributor without any lab therefore gets the deterministic core with one command, and a release run shows at a glance which lanes were exercised and which were not. The lane list lives in `scripts/smoke.mjs`.
+
+The suites can also be run on their own:
 
 ```bash
 # Rust unit tests
 cd src-tauri && cargo test
 
 # Frontend tests
-npm run test
+npm run test:unit
 ```
 
 Live integration tests are gated behind credentials or Docker fixtures and are marked `#[ignore]`, so they do not run by default. They require lab servers and/or provider credentials that are not part of the public repository.
@@ -112,7 +120,7 @@ Live integration tests are gated behind credentials or Docker fixtures and are m
 
 Before tagging a release we run the deterministic suite (Rust and frontend) and the lab-backed integration tests, and CI builds on Linux, Windows, and macOS must be green before the tag is pushed. Live cloud verification for the providers marked "Live (manual)" is performed per release cycle and recorded with byte-identity proof.
 
-We are expanding this in two directions: a single pre-release smoke entrypoint that runs the deterministic and lab suites and reports a pass/skip matrix, and systematic deterministic parsing and error-mapping tests for the providers that currently have unit coverage only. The goal is that a change on a provider's side or in a third-party dependency is caught by a failing test rather than by a user. Because this is ongoing work, the coverage matrix above is updated continuously as new tests land.
+The pre-release smoke above (`npm run smoke`) is the pre-tag step of the release checklist in `docs/RELEASE.md`; its matrix is the record of which lanes a release was actually tested against. We are expanding coverage with systematic deterministic parsing and error-mapping tests for the providers that currently have unit coverage only. The goal is that a change on a provider's side or in a third-party dependency is caught by a failing test rather than by a user. Because this is ongoing work, the coverage matrix above is updated continuously as new tests land.
 
 ---
 
