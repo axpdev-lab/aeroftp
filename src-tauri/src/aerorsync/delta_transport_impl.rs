@@ -2,7 +2,7 @@
 //! implementation backed by the Strada C native rsync driver.
 //!
 //! The module is the bridge between the prototype driver
-//! (`AerorsyncDriver` + `RsyncEventBridge`) and the production
+//! (`AerorsyncDriver` + the `WarningCollector` event sink) and the production
 //! `crate::delta_transport::DeltaTransport` trait consumed by the sync
 //! loop. It owns:
 //!
@@ -68,6 +68,7 @@ use xxhash_rust::xxh3::Xxh3Default;
 use crate::aerorsync::engine_adapter::{
     BaselineSource, CurrentDeltaSyncBridge, FileBaseline, MemoryBaseline,
 };
+use crate::aerorsync::events::WarningCollector;
 use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
 use crate::aerorsync::native_driver::{
     xxh128_wire_bytes, AerorsyncDriver, PreambleProfile, MD4_ALGO_NAME, MD5_ALGO_NAME,
@@ -75,7 +76,6 @@ use crate::aerorsync::native_driver::{
 };
 use crate::aerorsync::real_wire::{is_symlink_mode, FileListEntry};
 use crate::aerorsync::remote_command::{EffectiveMetadataFlags, RemoteCommandSpec};
-use crate::aerorsync::rsync_event_bridge::RsyncEventBridge;
 use crate::aerorsync::russh_session_transport::RusshSessionTransport;
 use crate::aerorsync::ssh_transport::{
     SshHostKeyPolicy, SshRemoteShellTransport, SshTransportConfig,
@@ -86,7 +86,6 @@ use crate::aerorsync::transport::{
 };
 use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionStats};
 use crate::delta_transport::{BatchStats, DeltaBatch, DeltaTransport};
-use crate::rsync_output::RsyncEvent;
 use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
 
 /// Display name surfaced by `DeltaTransport::name()`.
@@ -291,7 +290,7 @@ impl DeltaTransport for AerorsyncDeltaTransport {
         &self,
         remote_path: &str,
         local_path: &Path,
-        progress: Option<crate::delta_transport::DeltaProgressSink>,
+        progress: Option<crate::aerorsync::progress::ProgressSink>,
     ) -> Result<RsyncStats, RsyncError> {
         self.download_inner(remote_path, local_path, progress).await
     }
@@ -304,7 +303,7 @@ impl DeltaTransport for AerorsyncDeltaTransport {
         &self,
         local_path: &Path,
         remote_path: &str,
-        progress: Option<crate::delta_transport::DeltaProgressSink>,
+        progress: Option<crate::aerorsync::progress::ProgressSink>,
     ) -> Result<RsyncStats, RsyncError> {
         self.upload_inner(local_path, remote_path, progress).await
     }
@@ -356,7 +355,7 @@ impl AerorsyncDeltaTransport {
         &self,
         local_path: &Path,
         remote_path: &str,
-        progress: Option<crate::delta_transport::DeltaProgressSink>,
+        progress: Option<crate::aerorsync::progress::ProgressSink>,
     ) -> Result<RsyncStats, RsyncError> {
         let cancel = CancelHandle::inert();
         let preamble_profile = PreambleProfile::for_host(&self.ssh_config.host);
@@ -415,7 +414,7 @@ async fn do_upload<T>(
     remote_path: &str,
     min_file_size: u64,
     preamble_profile: PreambleProfile,
-    progress: Option<crate::delta_transport::DeltaProgressSink>,
+    progress: Option<crate::aerorsync::progress::ProgressSink>,
     preserve_xattrs: bool,
     preserve_acls: bool,
 ) -> Result<RsyncStats, RsyncError>
@@ -547,7 +546,7 @@ where
         .with_progress_sink(progress);
     let adapter = CurrentDeltaSyncBridge::new();
     let warnings = new_warnings_sink();
-    let mut bridge = build_event_bridge(warnings.clone());
+    let mut collector = build_warning_collector(warnings.clone());
 
     // B.1: production dispatch talks to stock `rsync --server`
     // (WrapperParity flavor) with the product flag profile (`-ltp...`).
@@ -564,13 +563,13 @@ where
             source_file,
             file_size,
             &adapter,
-            &mut bridge,
+            &mut collector,
         )
         .await;
     if let Err(e) = drive_res {
         return Err(map_native_error_to_rsync(e, driver.committed()));
     }
-    if let Err(e) = driver.finish_session(&mut bridge).await {
+    if let Err(e) = driver.finish_session(&mut collector).await {
         return Err(map_native_error_to_rsync(e, driver.committed()));
     }
 
@@ -605,7 +604,7 @@ async fn do_upload_symlink<T>(
     remote_path: &str,
     metadata: &std::fs::Metadata,
     preamble_profile: PreambleProfile,
-    progress: Option<crate::delta_transport::DeltaProgressSink>,
+    progress: Option<crate::aerorsync::progress::ProgressSink>,
     start: Instant,
     preserve_xattrs: bool,
 ) -> Result<RsyncStats, RsyncError>
@@ -658,19 +657,19 @@ where
             .with_preamble_profile(preamble_profile)
             .with_progress_sink(progress);
         let warnings = new_warnings_sink();
-        let mut bridge = build_event_bridge(warnings.clone());
+        let mut collector = build_warning_collector(warnings.clone());
 
         let spec = RemoteCommandSpec::upload(remote_path).with_xattrs(preserve_xattrs);
         // Symlink entries carry no ACL model even when the transport
         // opted into -A; the command flag stays off here because this
         // file is a link-only transfer.
         if let Err(e) = driver
-            .drive_upload_symlink(spec, source_entry, &mut bridge)
+            .drive_upload_symlink(spec, source_entry, &mut collector)
             .await
         {
             return Err(map_native_error_to_rsync(e, driver.committed()));
         }
-        if let Err(e) = driver.finish_session(&mut bridge).await {
+        if let Err(e) = driver.finish_session(&mut collector).await {
             return Err(map_native_error_to_rsync(e, driver.committed()));
         }
 
@@ -697,7 +696,7 @@ impl AerorsyncDeltaTransport {
         &self,
         remote_path: &str,
         local_path: &Path,
-        progress: Option<crate::delta_transport::DeltaProgressSink>,
+        progress: Option<crate::aerorsync::progress::ProgressSink>,
     ) -> Result<RsyncStats, RsyncError> {
         let cancel = CancelHandle::inert();
         let preamble_profile = PreambleProfile::for_host(&self.ssh_config.host);
@@ -1071,7 +1070,7 @@ async fn do_download<T>(
     remote_path: &str,
     local_path: &Path,
     preamble_profile: PreambleProfile,
-    progress: Option<crate::delta_transport::DeltaProgressSink>,
+    progress: Option<crate::aerorsync::progress::ProgressSink>,
     preserve_xattrs: bool,
     preserve_acls: bool,
     fail_on_metadata_loss: bool,
@@ -1170,7 +1169,7 @@ where
         .with_progress_sink(progress);
     let adapter = CurrentDeltaSyncBridge::new();
     let warnings = new_warnings_sink();
-    let mut bridge = build_event_bridge(warnings.clone());
+    let mut collector = build_warning_collector(warnings.clone());
 
     // B.1: production dispatch talks to stock `rsync --server --sender`
     // with the product flag profile (`-ltp...`).
@@ -1190,7 +1189,7 @@ where
                 &mut *baseline,
                 &mut hashing_writer,
                 &adapter,
-                &mut bridge,
+                &mut collector,
             )
             .await;
         (res, hashing_writer.digest128())
@@ -1208,7 +1207,7 @@ where
         discard_streaming_temp(writer).await;
         return Err(mapped);
     }
-    if let Err(e) = driver.finish_session(&mut bridge).await {
+    if let Err(e) = driver.finish_session(&mut collector).await {
         // Same abandon-path reasoning as the `drive_res` arm above: clear
         // the orphan temp before the classic fallback re-opens it.
         let mapped = map_native_error_to_rsync(e, driver.committed());
@@ -2129,21 +2128,13 @@ fn new_warnings_sink() -> Arc<StdMutex<Vec<String>>> {
     Arc::new(StdMutex::new(Vec::new()))
 }
 
-/// Construct an `RsyncEventBridge` that funnels `RsyncEvent::Warning`
-/// messages into the shared `Vec<String>`. Non-warning events are still
-/// emitted to the bridge's internal counters but discarded here (the
-/// production UI wiring for them is Zona B4 scope).
-fn build_event_bridge(
-    warnings: Arc<StdMutex<Vec<String>>>,
-) -> RsyncEventBridge<impl FnMut(RsyncEvent) + Send> {
-    let warnings_for_closure = warnings;
-    RsyncEventBridge::new(move |ev: RsyncEvent| {
-        if let RsyncEvent::Warning { message } = ev {
-            if let Ok(mut v) = warnings_for_closure.lock() {
-                v.push(message);
-            }
-        }
-    })
+/// Construct the `EventSink` that funnels the warning notices of the
+/// session into the shared `Vec<String>` behind `RsyncStats.warnings`.
+/// Which events become a warning, and with which text, is decided by
+/// `AerorsyncEvent::notice()`; errors are not warnings and are discarded
+/// here (the production UI wiring for them is Zona B4 scope).
+fn build_warning_collector(warnings: Arc<StdMutex<Vec<String>>>) -> WarningCollector {
+    WarningCollector::new(warnings)
 }
 
 fn drain_warnings(handle: Arc<StdMutex<Vec<String>>>) -> Vec<String> {

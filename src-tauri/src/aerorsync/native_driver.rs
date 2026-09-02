@@ -861,7 +861,7 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// via [`report_wire_progress`](Self::report_wire_progress). `None` for
     /// AeroSync and the CLI, so their hot path stays a single `is_none()`
     /// check per chunk. See `docs/dev/roadmap/APPENDIX-AERORSYNC-DELTA-REDESIGN`.
-    progress_sink: Option<crate::delta_transport::DeltaProgressSink>,
+    progress_sink: Option<crate::aerorsync::progress::ProgressSink>,
     /// Throttle cursor for `report_wire_progress`: the last `transferred`
     /// value the sink was actually called with.
     last_progress_report: u64,
@@ -932,7 +932,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// transfers keep `progress_sink = None` and pay no per-chunk cost.
     pub fn with_progress_sink(
         mut self,
-        sink: Option<crate::delta_transport::DeltaProgressSink>,
+        sink: Option<crate::aerorsync::progress::ProgressSink>,
     ) -> Self {
         self.progress_sink = sink;
         self
@@ -6282,10 +6282,9 @@ mod tests {
 
         let calls: Arc<Mutex<Vec<(u64, u64)>>> = Arc::new(Mutex::new(Vec::new()));
         let calls_for_sink = calls.clone();
-        let sink: crate::delta_transport::DeltaProgressSink =
-            Box::new(move |transferred, total| {
-                calls_for_sink.lock().unwrap().push((transferred, total));
-            });
+        let sink: crate::aerorsync::progress::ProgressSink = Box::new(move |transferred, total| {
+            calls_for_sink.lock().unwrap().push((transferred, total));
+        });
 
         let transport = mock_transport_with_raw_inbound(Vec::new());
         let last_raw_outbound = transport.last_raw_outbound.clone();
