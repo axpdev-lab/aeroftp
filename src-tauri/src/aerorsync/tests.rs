@@ -2892,7 +2892,7 @@ fn production_unsafe_surface_matches_the_documented_count() {
     assert_eq!(total, 19, "documented total in the parity docs is 19");
 }
 
-/// The aerorsync module is on its way to a standalone crate (Fase A of the
+/// The aerorsync module is on its way to a standalone crate (Phase A of the
 /// standalone-crate plan). Every `crate::<application module>` line inside
 /// it is coupling the crate cannot carry, so the inventory below is a
 /// budget: it may only shrink. Unlike the `unsafe` count above, whole-file
@@ -2906,7 +2906,8 @@ fn production_unsafe_surface_matches_the_documented_count() {
 /// (`use crate::{a, b}`) fail outright so a mixed group cannot hide an
 /// application module next to `aerorsync`; `super::super::` is the crate
 /// root seen from a module file and is refused for the same reason.
-/// Source-level escape hatches (a path attribute on a `mod` item, the
+/// Source-level escape hatches (a path attribute on a `mod` item, also when
+/// it is smuggled in through a conditional attribute with a `path` key, the
 /// `include` and `include_str` macros, a `macro_rules` definition) and `.rs`
 /// files in subdirectories are refused because the counter reads one flat
 /// directory and cannot see through them. `crate :: x`
@@ -2929,6 +2930,10 @@ fn app_import_budget_matches_the_documented_inventory() {
     // Assembled from pieces so this file's own source does not trip the scan.
     let needle = ["crate", "::"].concat();
     let root_alias = ["super::", "super::"].concat();
+    // A conditional attribute carrying a `path` key redirects a `mod` item to
+    // a file outside the flat directory without spelling the plain path
+    // attribute, so the two halves are refused whenever they share a line.
+    let conditional_attribute = ["cfg_", "attr"].concat();
     let escape_hatches = [
         ["#[", "path"].concat(),
         ["include", "!("].concat(),
@@ -2991,6 +2996,11 @@ fn app_import_budget_matches_the_documented_inventory() {
                 !line.contains(root_alias.as_str()),
                 "{name}:{lineno}: `{root_alias}` reaches the crate root; name the module \
                  through `{needle}` so the budget sees it"
+            );
+            assert!(
+                !(line.contains(conditional_attribute.as_str()) && line.contains("path")),
+                "{name}:{lineno}: `{conditional_attribute}` with a `path` key redirects a \
+                 module to a file the flat scan cannot see"
             );
             let mut rest = line;
             while let Some(at) = rest.find(needle.as_str()) {
