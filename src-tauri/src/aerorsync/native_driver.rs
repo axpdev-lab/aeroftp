@@ -7218,15 +7218,17 @@ mod tests {
         let (first_block, _) = decode_sum_block(&app[cursor..], head.checksum_length as usize)
             .expect("first sum block");
 
-        let baseline = std::fs::read(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("src/aerorsync/capture/workspace/real/local/download.bin"),
-        )
-        .expect("frozen download baseline");
-        let expected = compute_xxh128_wire_with_seed(
-            &baseline[..head.block_length as usize],
-            server_pre.checksum_seed as u64,
-        );
+        // The capture harness seeds the download basis as
+        // `make_payload(size) = bytes(i % 251 for i in range(size))`
+        // (capture/run_real_rsync_capture.sh). Derive the first block from
+        // that formula rather than reading capture/workspace/real/local/
+        // download.bin: the workspace is gitignored, so a fresh checkout has
+        // no such file, and rsync rewrites it during the capture, so the copy
+        // on disk is the post-transfer content, not the basis. Only the first
+        // block is compared, and it lies inside the untouched prefix.
+        let block_len = head.block_length as usize;
+        let baseline: Vec<u8> = (0..block_len).map(|i| (i % 251) as u8).collect();
+        let expected = compute_xxh128_wire_with_seed(&baseline, server_pre.checksum_seed as u64);
 
         assert_eq!(
             first_block.strong,
