@@ -753,7 +753,7 @@ impl OneDriveProvider {
                         return Err(limit);
                     }
                     return Err(ProviderError::Other(format!(
-                        "List trash failed: {} {}",
+                        "List trash failed: {}: {}",
                         status,
                         sanitize_api_error(&text)
                     )));
