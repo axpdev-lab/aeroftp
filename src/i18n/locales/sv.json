@@ -2536,7 +2536,10 @@
                 "retiredModel": "Utfasad",
                 "retiredModelHint": "Den här leverantören har fasat ut modellen. Välj en aktuell ersättare före nästa förfrågan.",
                 "unverifiedCapabilities": "Overifierade funktioner",
-                "unverifiedModelHint": "Funktionerna är okända. Granska kontext, verktyg, syn och resonemang innan du använder den här modellen för agentuppgifter."
+                "unverifiedModelHint": "Funktionerna är okända. Granska kontext, verktyg, syn och resonemang innan du använder den här modellen för agentuppgifter.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Använd den inbyggda Responses-transporten för verifierade kompatibla OpenAI-modeller. Stäng av den för att använda Chat Completions.",
+                "openAIResponsesEnable": "Aktivera Responses för kompatibla OpenAI-modeller"
             },
             "copy": "Kopiera",
             "attachImage": "Bifoga bild",

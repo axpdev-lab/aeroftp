@@ -55,6 +55,7 @@ pub mod ai_stream;
 mod ai_tools;
 pub mod app_events;
 mod archive_browse;
+mod openai_responses;
 
 /// Registered Tauri (GUI) command names, generated at build time from the
 /// `tauri::generate_handler!` block in this file. Consumed by `aeroftp-cli

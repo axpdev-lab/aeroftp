@@ -2536,7 +2536,10 @@
                 "retiredModel": "Dipensiunkan",
                 "retiredModelHint": "Penyedia ini telah menghentikan model. Pilih pengganti yang masih tersedia sebelum permintaan berikutnya.",
                 "unverifiedCapabilities": "Kemampuan belum terverifikasi",
-                "unverifiedModelHint": "Kemampuannya tidak diketahui. Tinjau konteks, alat, visi, dan penalaran sebelum menggunakan model ini untuk tugas agen."
+                "unverifiedModelHint": "Kemampuannya tidak diketahui. Tinjau konteks, alat, visi, dan penalaran sebelum menggunakan model ini untuk tugas agen.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Gunakan transport Responses bawaan untuk model OpenAI kompatibel yang telah diverifikasi. Matikan ini untuk menggunakan Chat Completions.",
+                "openAIResponsesEnable": "Aktifkan Responses untuk model OpenAI yang kompatibel"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan Gambar",

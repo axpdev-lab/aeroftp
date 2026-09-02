@@ -163,6 +163,11 @@ pub struct AIRequest {
     /// Enable provider web search (Kimi $web_search, Qwen enable_search)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub web_search: Option<bool>,
+    /// Use the OpenAI Responses API for this foreground request. Honored only
+    /// for the first-party OpenAI provider; compatible providers keep their
+    /// own Chat Completions transports until they have dedicated adapters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub use_responses_api: Option<bool>,
 }
 
 // AI Response to frontend
@@ -1290,6 +1295,9 @@ pub async fn call_ai(request: AIRequest) -> Result<AIResponse, AIError> {
     match request.provider_type {
         AIProviderType::Google => gemini::call(client, &request).await,
         AIProviderType::Anthropic => anthropic::call(client, &request).await,
+        AIProviderType::OpenAI if request.use_responses_api.unwrap_or(false) => {
+            crate::openai_responses::call(client, &request).await
+        }
         // Ollama 0.5+ supports OpenAI-compat format at /v1/chat/completions
         AIProviderType::Ollama => {
             openai_compat::call(client, &request, "/v1/chat/completions").await

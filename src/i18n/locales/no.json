@@ -2536,7 +2536,10 @@
                 "retiredModel": "Utfaset",
                 "retiredModelHint": "Denne leverandøren har faset ut modellen. Velg en aktuell erstatning før neste forespørsel.",
                 "unverifiedCapabilities": "Ubekreftede funksjoner",
-                "unverifiedModelHint": "Funksjonene er ukjente. Gå gjennom kontekst, verktøy, syn og resonnering før du bruker denne modellen til agentoppgaver."
+                "unverifiedModelHint": "Funksjonene er ukjente. Gå gjennom kontekst, verktøy, syn og resonnering før du bruker denne modellen til agentoppgaver.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Bruk den innebygde Responses-transporten for bekreftede kompatible OpenAI-modeller. Slå dette av for å bruke Chat Completions.",
+                "openAIResponsesEnable": "Aktiver Responses for kompatible OpenAI-modeller"
             },
             "copy": "Kopier",
             "attachImage": "Legg ved bilde",

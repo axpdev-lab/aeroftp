@@ -8,7 +8,7 @@ import { createTauriListener } from '../../hooks/useTauriListener';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon, NvidiaIcon, ZaiIcon, HyperbolicIcon, NovitaIcon, YiIcon, KiloIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType } from '../../types/ai';
-import { resolveModelContext } from '../../types/aiModelRegistry';
+import { resolveModelContext, shouldUseOpenAIResponses } from '../../types/aiModelRegistry';
 import { AgentToolCall, AGENT_TOOLS, toNativeDefinitions, isSafeTool, getToolByName, getToolByNameFromAll } from '../../types/tools';
 import { PluginManifest, allPluginTools, findPluginForTool } from '../../types/plugins';
 import { ToolApproval } from './ToolApproval';
@@ -1916,7 +1916,13 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     cache_creation_input_tokens?: number;
                     cache_read_input_tokens?: number;
                     tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
-                }>('ai_chat', { request: { ...aiRequest, messages: messageHistory } });
+                }>('ai_chat', {
+                    // AA26-02 keeps Responses foreground turns stateless. Until
+                    // AA26-04 persists the opaque reasoning/output items needed
+                    // for correct chaining, tool continuations use the proven
+                    // Chat Completions fallback instead of faking state.
+                    request: { ...aiRequest, messages: messageHistory, use_responses_api: false },
+                });
 
                 // Parse ALL tool calls from response (parallel support)
                 let allToolsParsedMS: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
@@ -2298,6 +2304,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 ? settings.advancedSettings.thinkingBudget
                 : undefined;
 
+            const useOpenAIResponses = shouldUseOpenAIResponses(
+                activeModel.providerType,
+                modelDef,
+                settings.advancedSettings?.openAIResponsesEnabled ?? true,
+            );
+
             // Resolve task-specific parameter preset (provider + detected task type)
             const preset = getParameterPreset(activeModel.providerType, taskType);
 
@@ -2314,6 +2326,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 ...(useNativeTools ? { tools: toNativeDefinitions(allTools) } : {}),
                 ...(thinkingBudget ? { thinking_budget: thinkingBudget } : {}),
                 ...(settings.advancedSettings?.webSearchEnabled ? { web_search: true } : {}),
+                ...(useOpenAIResponses ? { use_responses_api: true } : {}),
             };
 
             const webSearchActive = !!settings.advancedSettings?.webSearchEnabled;

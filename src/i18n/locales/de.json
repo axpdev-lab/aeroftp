@@ -2536,7 +2536,10 @@
                 "retiredModel": "Ausgemustert",
                 "retiredModelHint": "Dieser Anbieter hat das Modell ausgemustert. Wählen Sie vor der nächsten Anfrage einen aktuellen Ersatz aus.",
                 "unverifiedCapabilities": "Unbestätigte Fähigkeiten",
-                "unverifiedModelHint": "Die Fähigkeiten sind unbekannt. Prüfen Sie Kontext, Tools, Vision und Schlussfolgern, bevor Sie dieses Modell für Agentenaufgaben verwenden."
+                "unverifiedModelHint": "Die Fähigkeiten sind unbekannt. Prüfen Sie Kontext, Tools, Vision und Schlussfolgern, bevor Sie dieses Modell für Agentenaufgaben verwenden.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Verwenden Sie den nativen Responses-Transport für verifizierte kompatible OpenAI-Modelle. Deaktivieren Sie dies, um Chat Completions zu verwenden.",
+                "openAIResponsesEnable": "Responses für kompatible OpenAI-Modelle aktivieren"
             },
             "copy": "Kopieren",
             "attachImage": "Bild anhängen",

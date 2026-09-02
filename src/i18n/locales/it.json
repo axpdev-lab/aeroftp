@@ -2738,7 +2738,10 @@
                 "retiredModel": "Ritirato",
                 "retiredModelHint": "Questo provider ha ritirato il modello. Seleziona un sostituto attuale prima della prossima richiesta.",
                 "unverifiedCapabilities": "Funzionalità non verificate",
-                "unverifiedModelHint": "Le funzionalità sono sconosciute. Esamina contesto, strumenti, visione e ragionamento prima di usare questo modello per attività dell'agente."
+                "unverifiedModelHint": "Le funzionalità sono sconosciute. Esamina contesto, strumenti, visione e ragionamento prima di usare questo modello per attività dell'agente.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Usa il trasporto nativo Responses per i modelli OpenAI compatibili verificati. Disattivalo per usare Chat Completions.",
+                "openAIResponsesEnable": "Abilita Responses per i modelli OpenAI compatibili"
             },
             "copy": "Copia",
             "attachImage": "Allega immagine",

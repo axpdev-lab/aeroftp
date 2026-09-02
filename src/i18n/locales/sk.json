@@ -2536,7 +2536,10 @@
                 "retiredModel": "Vyradený",
                 "retiredModelHint": "Tento poskytovateľ vyradil model. Pred ďalšou požiadavkou vyberte aktuálnu náhradu.",
                 "unverifiedCapabilities": "Neoverené schopnosti",
-                "unverifiedModelHint": "Schopnosti nie sú známe. Pred použitím tohto modelu na úlohy agenta skontrolujte kontext, nástroje, videnie a uvažovanie."
+                "unverifiedModelHint": "Schopnosti nie sú známe. Pred použitím tohto modelu na úlohy agenta skontrolujte kontext, nástroje, videnie a uvažovanie.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Použite natívny prenos Responses pre overené kompatibilné modely OpenAI. Vypnite ho, ak chcete používať Chat Completions.",
+                "openAIResponsesEnable": "Povoliť Responses pre kompatibilné modely OpenAI"
             },
             "copy": "Kopírovať",
             "attachImage": "Priložiť obrázok",

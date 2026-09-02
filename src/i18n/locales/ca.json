@@ -2536,7 +2536,10 @@
                 "retiredModel": "Retirat",
                 "retiredModelHint": "Aquest proveïdor ha retirat el model. Selecciona un substitut actual abans de la propera sol·licitud.",
                 "unverifiedCapabilities": "Capacitats no verificades",
-                "unverifiedModelHint": "Les capacitats són desconegudes. Revisa el context, les eines, la visió i el raonament abans d'utilitzar aquest model per a tasques d'agent."
+                "unverifiedModelHint": "Les capacitats són desconegudes. Revisa el context, les eines, la visió i el raonament abans d'utilitzar aquest model per a tasques d'agent.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Utilitza el transport natiu de Responses per als models d'OpenAI compatibles verificats. Desactiva'l per utilitzar Chat Completions.",
+                "openAIResponsesEnable": "Activa Responses per als models d'OpenAI compatibles"
             },
             "copy": "Copiar",
             "attachImage": "Adjuntar imatge",

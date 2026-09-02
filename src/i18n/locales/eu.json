@@ -2555,7 +2555,10 @@
                 "retiredModel": "Erretiratua",
                 "retiredModelHint": "Hornitzaile honek modeloa erretiratu du. Hautatu egungo ordezko bat hurrengo eskaera egin aurretik.",
                 "unverifiedCapabilities": "Egiaztatu gabeko gaitasunak",
-                "unverifiedModelHint": "Gaitasunak ezezagunak dira. Berrikusi testuingurua, tresnak, ikusmena eta arrazoibidea, eredu hau agentearen zereginetarako erabili aurretik."
+                "unverifiedModelHint": "Gaitasunak ezezagunak dira. Berrikusi testuingurua, tresnak, ikusmena eta arrazoibidea, eredu hau agentearen zereginetarako erabili aurretik.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Erabili Responses jatorrizko garraioa egiaztatutako OpenAI eredu bateragarrietarako. Desaktibatu Chat Completions erabiltzeko.",
+                "openAIResponsesEnable": "Gaitu Responses OpenAI eredu bateragarrietarako"
             },
             "rag": {
                 "indexing": "Fitxategiak indexatzen...",

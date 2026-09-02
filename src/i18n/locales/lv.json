@@ -2536,7 +2536,10 @@
                 "retiredModel": "Novecojis",
                 "retiredModelHint": "Šis pakalpojumu sniedzējs ir pārtraucis modeļa izmantošanu. Pirms nākamā pieprasījuma izvēlieties aktuālu aizstājēju.",
                 "unverifiedCapabilities": "Nepārbaudītas iespējas",
-                "unverifiedModelHint": "Iespējas nav zināmas. Pirms šī modeļa izmantošanas aģenta uzdevumiem pārskatiet kontekstu, rīkus, redzi un spriešanu."
+                "unverifiedModelHint": "Iespējas nav zināmas. Pirms šī modeļa izmantošanas aģenta uzdevumiem pārskatiet kontekstu, rīkus, redzi un spriešanu.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Izmantojiet vietējo Responses transportu pārbaudītiem saderīgiem OpenAI modeļiem. Izslēdziet šo, lai izmantotu Chat Completions.",
+                "openAIResponsesEnable": "Iespējot Responses saderīgiem OpenAI modeļiem"
             },
             "copy": "Kopēt",
             "attachImage": "Pievienot attēlu",

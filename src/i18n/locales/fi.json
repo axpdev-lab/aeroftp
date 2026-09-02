@@ -2536,7 +2536,10 @@
                 "retiredModel": "Poistettu käytöstä",
                 "retiredModelHint": "Tämä palveluntarjoaja on poistanut mallin käytöstä. Valitse ajantasainen korvaaja ennen seuraavaa pyyntöä.",
                 "unverifiedCapabilities": "Vahvistamattomat ominaisuudet",
-                "unverifiedModelHint": "Ominaisuudet eivät ole tiedossa. Tarkista konteksti, työkalut, näkökyky ja päättely ennen tämän mallin käyttöä agenttitehtäviin."
+                "unverifiedModelHint": "Ominaisuudet eivät ole tiedossa. Tarkista konteksti, työkalut, näkökyky ja päättely ennen tämän mallin käyttöä agenttitehtäviin.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Käytä natiivia Responses-siirtoa vahvistetuille yhteensopiville OpenAI-malleille. Poista tämä käytöstä käyttääksesi Chat Completionsia.",
+                "openAIResponsesEnable": "Ota Responses käyttöön yhteensopiville OpenAI-malleille"
             },
             "copy": "Kopioi",
             "attachImage": "Liitä kuva",

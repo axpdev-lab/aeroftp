@@ -2536,7 +2536,10 @@
                 "retiredModel": "Kivezetve",
                 "retiredModelHint": "Ez a szolgáltató kivezette a modellt. A következő kérés előtt válasszon aktuális helyettesítőt.",
                 "unverifiedCapabilities": "Nem ellenőrzött képességek",
-                "unverifiedModelHint": "A képességek ismeretlenek. Az ügynöki feladatokhoz való használat előtt tekintse át a kontextust, az eszközöket, a látást és a következtetést."
+                "unverifiedModelHint": "A képességek ismeretlenek. Az ügynöki feladatokhoz való használat előtt tekintse át a kontextust, az eszközöket, a látást és a következtetést.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Használja a natív Responses-átvitelt az ellenőrzött, kompatibilis OpenAI-modellekhez. Kapcsolja ki a Chat Completions használatához.",
+                "openAIResponsesEnable": "Responses engedélyezése kompatibilis OpenAI-modellekhez"
             },
             "copy": "Másolás",
             "attachImage": "Kép csatolása",

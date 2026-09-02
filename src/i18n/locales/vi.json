@@ -2536,7 +2536,10 @@
                 "retiredModel": "Đã ngừng sử dụng",
                 "retiredModelHint": "Nhà cung cấp này đã ngừng sử dụng mô hình. Hãy chọn một mô hình thay thế hiện hành trước yêu cầu tiếp theo.",
                 "unverifiedCapabilities": "Khả năng chưa được xác minh",
-                "unverifiedModelHint": "Chưa rõ các khả năng. Hãy xem xét ngữ cảnh, công cụ, thị giác và khả năng suy luận trước khi dùng mô hình này cho tác vụ tác nhân."
+                "unverifiedModelHint": "Chưa rõ các khả năng. Hãy xem xét ngữ cảnh, công cụ, thị giác và khả năng suy luận trước khi dùng mô hình này cho tác vụ tác nhân.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Sử dụng giao thức Responses gốc cho các mô hình OpenAI tương thích đã được xác minh. Tắt tùy chọn này để sử dụng Chat Completions.",
+                "openAIResponsesEnable": "Bật Responses cho các mô hình OpenAI tương thích"
             },
             "copy": "Sao chép",
             "attachImage": "Đính kèm hình ảnh",

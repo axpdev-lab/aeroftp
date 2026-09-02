@@ -2536,7 +2536,10 @@
                 "retiredModel": "Úrelt",
                 "retiredModelHint": "Þessi þjónustuaðili hefur lagt líkanið niður. Veldu núverandi staðgengil áður en næsta beiðni er send.",
                 "unverifiedCapabilities": "Óstaðfestir eiginleikar",
-                "unverifiedModelHint": "Eiginleikarnir eru óþekktir. Farðu yfir samhengi, verkfæri, sjón og rökhugsun áður en þú notar þetta líkan fyrir verkefni umboðsmanns."
+                "unverifiedModelHint": "Eiginleikarnir eru óþekktir. Farðu yfir samhengi, verkfæri, sjón og rökhugsun áður en þú notar þetta líkan fyrir verkefni umboðsmanns.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Notaðu innbyggðan Responses-flutning fyrir staðfest samhæf OpenAI-líkön. Slökktu á þessu til að nota Chat Completions.",
+                "openAIResponsesEnable": "Virkja Responses fyrir samhæf OpenAI-líkön"
             },
             "copy": "Afrita",
             "attachImage": "Hengja mynd við",

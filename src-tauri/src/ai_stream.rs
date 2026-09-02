@@ -103,6 +103,9 @@ pub async fn ai_chat_stream_with_sink(
         AIProviderType::Anthropic => {
             stream_anthropic(client, &request, sink, stream_id, &cancel).await
         }
+        AIProviderType::OpenAI if request.use_responses_api.unwrap_or(false) => {
+            stream_openai_responses(client, &request, sink, stream_id, &cancel).await
+        }
         AIProviderType::Ollama => stream_ollama(client, &request, sink, stream_id, &cancel).await,
         // OpenAI, xAI, OpenRouter, Custom all use OpenAI-compatible SSE
         _ => stream_openai(client, &request, sink, stream_id, &cancel).await,
@@ -133,6 +136,120 @@ pub async fn ai_chat_stream_with_sink(
             Err(safe_msg)
         }
     }
+}
+
+fn emit_responses_update(
+    sink: &dyn EventSink,
+    stream_id: &str,
+    update: crate::openai_responses::ResponsesStreamUpdate,
+) {
+    sink.emit_stream_chunk(
+        stream_id,
+        &StreamChunk {
+            content: update.content.unwrap_or_default(),
+            done: update.done,
+            tool_calls: update.tool_calls,
+            input_tokens: update.input_tokens,
+            output_tokens: update.output_tokens,
+            thinking: None,
+            thinking_done: None,
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: None,
+        },
+    );
+}
+
+// First-party OpenAI Responses SSE. Other OpenAI-compatible providers remain
+// on their own Chat Completions dialect until a provider-specific adapter says
+// otherwise; API compatibility does not imply identical event semantics.
+async fn stream_openai_responses(
+    client: &Client,
+    request: &AIRequest,
+    sink: &dyn EventSink,
+    stream_id: &str,
+    cancel: &AtomicBool,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
+    let url = format!("{}/responses", request.base_url.trim_end_matches('/'));
+    let body = crate::openai_responses::build_request_body(request, true)?;
+    let response = client
+        .post(url)
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        let detail = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|value| {
+                value
+                    .pointer("/error/message")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            })
+            .unwrap_or_else(|| truncate_safe(&body, 500).to_string());
+        return Err(format!("HTTP {}: {}", status, detail).into());
+    }
+
+    let mut stream = response.bytes_stream();
+    let mut buffer = String::new();
+    let mut raw_buffer = Vec::new();
+    let mut state = crate::openai_responses::ResponsesStreamAccumulator::default();
+
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            chunk = stream.next() => chunk,
+            _ = wait_for_cancel(cancel) => break,
+        };
+        let Some(chunk) = chunk else { break };
+        let bytes = chunk?;
+        raw_buffer.extend_from_slice(&bytes);
+        match String::from_utf8(std::mem::take(&mut raw_buffer)) {
+            Ok(text) => buffer.push_str(&text),
+            Err(error) => {
+                let valid_up_to = error.utf8_error().valid_up_to();
+                let bytes = error.into_bytes();
+                buffer.push_str(std::str::from_utf8(&bytes[..valid_up_to]).unwrap_or_default());
+                raw_buffer = bytes[valid_up_to..].to_vec();
+            }
+        }
+        if buffer.len() > MAX_BUFFER_SIZE {
+            return Err("Responses stream buffer exceeded 50MB limit".into());
+        }
+
+        while let Some(line_end) = buffer.find('\n') {
+            let line = buffer[..line_end].trim().to_string();
+            buffer.drain(..=line_end);
+            let Some(data) = line.strip_prefix("data:").map(str::trim) else {
+                continue;
+            };
+            if data.is_empty() || data == "[DONE]" {
+                continue;
+            }
+            let event: serde_json::Value = serde_json::from_str(data)?;
+            if let Some(update) = state.ingest(&event)? {
+                emit_responses_update(sink, stream_id, update);
+            }
+        }
+    }
+
+    let remaining = buffer.trim();
+    if let Some(data) = remaining.strip_prefix("data:").map(str::trim) {
+        if !data.is_empty() && data != "[DONE]" {
+            let event: serde_json::Value = serde_json::from_str(data)?;
+            if let Some(update) = state.ingest(&event)? {
+                emit_responses_update(sink, stream_id, update);
+            }
+        }
+    }
+
+    if !state.completed() {
+        emit_responses_update(sink, stream_id, state.finish());
+    }
+    Ok(())
 }
 
 // OpenAI-compatible SSE streaming (OpenAI, xAI, OpenRouter, Custom)

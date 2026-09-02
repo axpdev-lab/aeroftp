@@ -12,6 +12,7 @@ import {
     getModelCapabilitySource,
     lookupModelSpec,
     resolveModelContext,
+    shouldUseOpenAIResponses,
 } from './aiModelRegistry';
 
 const baseModel = (overrides: Partial<AIModel> = {}): AIModel => ({
@@ -149,5 +150,15 @@ describe('model capability resolution', () => {
         expect(getModelCapabilitySource({ name: 'gpt-5.6' })).toBe('registry');
         expect(getModelCapabilitySource({ name: 'private-model', maxContextTokens: 32_000 })).toBe('user');
         expect(getModelCapabilitySource({ name: 'private-model', maxTokens: 4096 })).toBe('unknown');
+    });
+
+    it('enables first-party Responses only for verified OpenAI models', () => {
+        const sol = applyRegistryDefaults({ name: 'gpt-5.6-sol' });
+        expect(shouldUseOpenAIResponses('openai', sol, true)).toBe(true);
+        expect(shouldUseOpenAIResponses('openai', sol, false)).toBe(false);
+        expect(shouldUseOpenAIResponses('xai', sol, true)).toBe(false);
+        expect(shouldUseOpenAIResponses('anthropic', sol, true)).toBe(false);
+        expect(shouldUseOpenAIResponses('kimi', sol, true)).toBe(false);
+        expect(shouldUseOpenAIResponses('openai', baseModel(), true)).toBe(false);
     });
 });

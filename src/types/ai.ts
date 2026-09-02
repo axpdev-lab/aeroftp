@@ -89,6 +89,7 @@ export interface AISettings {
         useCustomPrompt?: boolean;
         thinkingBudget?: number;    // Extended thinking budget tokens (0 = disabled, default 10000)
         webSearchEnabled?: boolean;    // Provider web search (Kimi $web_search, Qwen enable_search)
+        openAIResponsesEnabled?: boolean; // First-party OpenAI Responses API for verified models
         streamingTimeoutSecs?: number; // Streaming response timeout in seconds (default 120)
         chatHistoryRetentionDays?: number; // 0 = unlimited, 30/60/90/180/365 days
         enableAutoRAGIndexing?: boolean;   // B07: opt-in auto-index workspace for RAG context (default: true)
@@ -327,6 +328,7 @@ export const getDefaultAISettings = (): AISettings => ({
         temperature: 0.7,
         maxTokens: 4096,
         conversationStyle: 'balanced',
+        openAIResponsesEnabled: true,
     },
     defaultModelId: null,
 });

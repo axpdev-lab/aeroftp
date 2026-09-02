@@ -2536,7 +2536,10 @@
                 "retiredModel": "Kasutuselt kõrvaldatud",
                 "retiredModelHint": "See teenusepakkuja kõrvaldas mudeli kasutuselt. Valige enne järgmist päringut ajakohane asendus.",
                 "unverifiedCapabilities": "Kinnitamata võimalused",
-                "unverifiedModelHint": "Võimalused pole teada. Enne selle mudeli kasutamist agendi ülesannetes vaadake üle kontekst, tööriistad, nägemine ja arutlemine."
+                "unverifiedModelHint": "Võimalused pole teada. Enne selle mudeli kasutamist agendi ülesannetes vaadake üle kontekst, tööriistad, nägemine ja arutlemine.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Kasutage kinnitatud ühilduvate OpenAI mudelite jaoks natiivset Responses-edastust. Chat Completionsi kasutamiseks lülitage see välja.",
+                "openAIResponsesEnable": "Luba Responses ühilduvate OpenAI mudelite jaoks"
             },
             "copy": "Kopeeri",
             "attachImage": "Lisa pilt",

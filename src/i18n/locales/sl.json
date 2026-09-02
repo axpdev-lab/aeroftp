@@ -2536,7 +2536,10 @@
                 "retiredModel": "Umaknjen",
                 "retiredModelHint": "Ta ponudnik je umaknil model. Pred naslednjo zahtevo izberite trenutno zamenjavo.",
                 "unverifiedCapabilities": "Nepreverjene zmogljivosti",
-                "unverifiedModelHint": "Zmogljivosti niso znane. Pred uporabo tega modela za naloge agenta preglejte kontekst, orodja, vid in sklepanje."
+                "unverifiedModelHint": "Zmogljivosti niso znane. Pred uporabo tega modela za naloge agenta preglejte kontekst, orodja, vid in sklepanje.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Uporabite izvorni prenos Responses za preverjene združljive modele OpenAI. Izklopite ga, če želite uporabljati Chat Completions.",
+                "openAIResponsesEnable": "Omogoči Responses za združljive modele OpenAI"
             },
             "copy": "Kopiraj",
             "attachImage": "Priloži sliko",

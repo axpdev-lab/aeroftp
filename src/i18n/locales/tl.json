@@ -2536,7 +2536,10 @@
                 "retiredModel": "Itinigil",
                 "retiredModelHint": "Itinigil na ng provider na ito ang modelo. Pumili ng kasalukuyang kapalit bago ang susunod na kahilingan.",
                 "unverifiedCapabilities": "Hindi beripikadong kakayahan",
-                "unverifiedModelHint": "Hindi alam ang mga kakayahan. Suriin ang konteksto, mga tool, vision, at pangangatwiran bago gamitin ang modelong ito para sa mga gawain ng ahente."
+                "unverifiedModelHint": "Hindi alam ang mga kakayahan. Suriin ang konteksto, mga tool, vision, at pangangatwiran bago gamitin ang modelong ito para sa mga gawain ng ahente.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Gamitin ang native na Responses transport para sa na-verify na tugmang mga modelo ng OpenAI. I-off ito para gamitin ang Chat Completions.",
+                "openAIResponsesEnable": "I-enable ang Responses para sa tugmang mga modelo ng OpenAI"
             },
             "copy": "Kopyahin",
             "attachImage": "Mag-attach ng larawan",

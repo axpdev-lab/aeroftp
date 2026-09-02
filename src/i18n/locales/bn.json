@@ -2536,7 +2536,10 @@
                 "retiredModel": "অবসরপ্রাপ্ত",
                 "retiredModelHint": "এই প্রদানকারী মডেলটি অবসর দিয়েছে। পরবর্তী অনুরোধের আগে একটি বর্তমান বিকল্প নির্বাচন করুন।",
                 "unverifiedCapabilities": "যাচাই না-করা সক্ষমতা",
-                "unverifiedModelHint": "সক্ষমতাগুলি অজানা। এজেন্টের কাজে এই মডেল ব্যবহারের আগে প্রসঙ্গ, টুল, ভিশন ও যুক্তি পর্যালোচনা করুন।"
+                "unverifiedModelHint": "সক্ষমতাগুলি অজানা। এজেন্টের কাজে এই মডেল ব্যবহারের আগে প্রসঙ্গ, টুল, ভিশন ও যুক্তি পর্যালোচনা করুন।",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "যাচাই করা সামঞ্জস্যপূর্ণ OpenAI মডেলের জন্য নেটিভ Responses পরিবহন ব্যবহার করুন। Chat Completions ব্যবহার করতে এটি বন্ধ করুন।",
+                "openAIResponsesEnable": "সামঞ্জস্যপূর্ণ OpenAI মডেলের জন্য Responses চালু করুন"
             },
             "copy": "অনুলিপি",
             "attachImage": "ছবি সংযুক্ত করুন",

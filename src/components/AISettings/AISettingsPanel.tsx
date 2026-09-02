@@ -1554,6 +1554,27 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 </div>
                             </div>
 
+                            {/* OpenAI Responses transport */}
+                            <div className="bg-gray-800/50 rounded-lg p-4">
+                                <h4 className="text-sm font-medium text-white mb-1">{t('ai.settings.openAIResponses')}</h4>
+                                <p className="text-[10px] text-gray-500 mb-3">{t('ai.settings.openAIResponsesDesc')}</p>
+                                <Checkbox
+                                    checked={settings.advancedSettings?.openAIResponsesEnabled ?? true}
+                                    onChange={(value) => {
+                                        const newSettings = {
+                                            ...settings,
+                                            advancedSettings: {
+                                                ...settings.advancedSettings,
+                                                openAIResponsesEnabled: value,
+                                            },
+                                        };
+                                        setSettings(newSettings);
+                                        saveSettings(newSettings);
+                                    }}
+                                    label={<span className="text-sm text-gray-300">{t('ai.settings.openAIResponsesEnable')}</span>}
+                                />
+                            </div>
+
                             {/* Web Search (Kimi / Qwen only) */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
                                 <h4 className="text-sm font-medium text-white mb-1">{t('ai.webSearch.title')}</h4>

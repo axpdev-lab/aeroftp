@@ -2536,7 +2536,10 @@
                 "retiredModel": "Повучен",
                 "retiredModelHint": "Овај добављач је повукао модел. Изаберите актуелну замену пре следећег захтева.",
                 "unverifiedCapabilities": "Непроверене могућности",
-                "unverifiedModelHint": "Могућности су непознате. Прегледајте контекст, алате, вид и расуђивање пре коришћења овог модела за задатке агента."
+                "unverifiedModelHint": "Могућности су непознате. Прегледајте контекст, алате, вид и расуђивање пре коришћења овог модела за задатке агента.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Користите изворни пренос Responses за проверене компатибилне моделе OpenAI. Искључите га да бисте користили Chat Completions.",
+                "openAIResponsesEnable": "Омогући Responses за компатибилне моделе OpenAI"
             },
             "copy": "Копирај",
             "attachImage": "Приложи слику",

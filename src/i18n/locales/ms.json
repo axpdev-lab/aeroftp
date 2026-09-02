@@ -2536,7 +2536,10 @@
                 "retiredModel": "Ditamatkan",
                 "retiredModelHint": "Penyedia ini telah menamatkan model tersebut. Pilih pengganti semasa sebelum permintaan seterusnya.",
                 "unverifiedCapabilities": "Keupayaan belum disahkan",
-                "unverifiedModelHint": "Keupayaan tidak diketahui. Semak konteks, alat, penglihatan dan penaakulan sebelum menggunakan model ini untuk tugas ejen."
+                "unverifiedModelHint": "Keupayaan tidak diketahui. Semak konteks, alat, penglihatan dan penaakulan sebelum menggunakan model ini untuk tugas ejen.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Gunakan pengangkutan Responses asli untuk model OpenAI yang serasi dan disahkan. Matikannya untuk menggunakan Chat Completions.",
+                "openAIResponsesEnable": "Dayakan Responses untuk model OpenAI yang serasi"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan imej",

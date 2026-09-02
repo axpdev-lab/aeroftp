@@ -2555,7 +2555,10 @@
                 "retiredModel": "सेवानिवृत्त",
                 "retiredModelHint": "इस प्रदाता ने मॉडल को सेवानिवृत्त कर दिया है। अगले अनुरोध से पहले वर्तमान विकल्प चुनें।",
                 "unverifiedCapabilities": "असत्यापित क्षमताएँ",
-                "unverifiedModelHint": "क्षमताएँ अज्ञात हैं। एजेंट कार्यों के लिए इस मॉडल का उपयोग करने से पहले संदर्भ, टूल, विज़न और तर्क की समीक्षा करें।"
+                "unverifiedModelHint": "क्षमताएँ अज्ञात हैं। एजेंट कार्यों के लिए इस मॉडल का उपयोग करने से पहले संदर्भ, टूल, विज़न और तर्क की समीक्षा करें।",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "सत्यापित संगत OpenAI मॉडल के लिए नेटिव Responses ट्रांसपोर्ट का उपयोग करें। Chat Completions का उपयोग करने के लिए इसे बंद करें।",
+                "openAIResponsesEnable": "संगत OpenAI मॉडल के लिए Responses सक्षम करें"
             },
             "rag": {
                 "indexing": "फ़ाइलें इंडेक्स हो रही हैं...",

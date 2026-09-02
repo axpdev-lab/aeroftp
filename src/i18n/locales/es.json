@@ -2536,7 +2536,10 @@
                 "retiredModel": "Retirado",
                 "retiredModelHint": "Este proveedor ha retirado el modelo. Selecciona un reemplazo actual antes de la próxima solicitud.",
                 "unverifiedCapabilities": "Capacidades no verificadas",
-                "unverifiedModelHint": "Las capacidades son desconocidas. Revisa el contexto, las herramientas, la visión y el razonamiento antes de usar este modelo para tareas de agente."
+                "unverifiedModelHint": "Las capacidades son desconocidas. Revisa el contexto, las herramientas, la visión y el razonamiento antes de usar este modelo para tareas de agente.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Usa el transporte nativo de Responses para modelos de OpenAI compatibles y verificados. Desactívalo para usar Chat Completions.",
+                "openAIResponsesEnable": "Activar Responses para modelos de OpenAI compatibles"
             },
             "copy": "Copiar",
             "attachImage": "Adjuntar imagen",

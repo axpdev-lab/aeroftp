@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { AIModel, AIModelNativeCapabilities } from './ai';
+import { AIModel, AIModelNativeCapabilities, AIProviderType } from './ai';
 
 export const MODEL_REGISTRY_REVIEWED_AT = '2026-09-02';
 export const UNKNOWN_MODEL_CONTEXT_BUDGET = 8192;
@@ -725,6 +725,17 @@ export function getModelCapabilitySource(model: Partial<AIModel>): ModelCapabili
     if (model.name && lookupModelSpec(model.name)) return 'registry';
     if (model.maxContextTokens && model.maxContextTokens > 0) return 'user';
     return 'unknown';
+}
+
+/** Keep the first-party Responses transport behind verified model metadata and an explicit flag. */
+export function shouldUseOpenAIResponses(
+    providerType: AIProviderType,
+    model: Partial<AIModel> | null | undefined,
+    enabled: boolean,
+): boolean {
+    return enabled
+        && providerType === 'openai'
+        && model?.nativeCapabilities?.responses === true;
 }
 
 /**

@@ -2536,7 +2536,10 @@
                 "retiredModel": "Imestaafu",
                 "retiredModelHint": "Mtoa huduma huyu ameiondoa modeli. Chagua mbadala wa sasa kabla ya ombi linalofuata.",
                 "unverifiedCapabilities": "Uwezo usiothibitishwa",
-                "unverifiedModelHint": "Uwezo haujulikani. Kagua muktadha, zana, kuona na kufikiri kabla ya kutumia modeli hii kwa kazi za wakala."
+                "unverifiedModelHint": "Uwezo haujulikani. Kagua muktadha, zana, kuona na kufikiri kabla ya kutumia modeli hii kwa kazi za wakala.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Tumia usafirishaji wa asili wa Responses kwa miundo ya OpenAI inayooana iliyothibitishwa. Zima hii ili kutumia Chat Completions.",
+                "openAIResponsesEnable": "Washa Responses kwa miundo ya OpenAI inayooana"
             },
             "copy": "Nakili",
             "attachImage": "Ambatanisha picha",

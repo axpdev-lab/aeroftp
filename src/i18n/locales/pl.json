@@ -2536,7 +2536,10 @@
                 "retiredModel": "Wycofany",
                 "retiredModelHint": "Ten dostawca wycofał model. Przed następnym żądaniem wybierz aktualny zamiennik.",
                 "unverifiedCapabilities": "Niezweryfikowane możliwości",
-                "unverifiedModelHint": "Możliwości są nieznane. Przed użyciem tego modelu do zadań agenta sprawdź kontekst, narzędzia, widzenie i rozumowanie."
+                "unverifiedModelHint": "Możliwości są nieznane. Przed użyciem tego modelu do zadań agenta sprawdź kontekst, narzędzia, widzenie i rozumowanie.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Używaj natywnego transportu Responses dla zweryfikowanych zgodnych modeli OpenAI. Wyłącz tę opcję, aby używać Chat Completions.",
+                "openAIResponsesEnable": "Włącz Responses dla zgodnych modeli OpenAI"
             },
             "copy": "Kopiuj",
             "attachImage": "Załącz obraz",

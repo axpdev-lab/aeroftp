@@ -2536,7 +2536,10 @@
                 "retiredModel": "Uitgefaseerd",
                 "retiredModelHint": "Deze provider heeft het model uitgefaseerd. Selecteer een actuele vervanger vóór het volgende verzoek.",
                 "unverifiedCapabilities": "Niet-geverifieerde mogelijkheden",
-                "unverifiedModelHint": "De mogelijkheden zijn onbekend. Controleer context, tools, visie en redeneervermogen voordat je dit model voor agenttaken gebruikt."
+                "unverifiedModelHint": "De mogelijkheden zijn onbekend. Controleer context, tools, visie en redeneervermogen voordat je dit model voor agenttaken gebruikt.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Gebruik het native Responses-transport voor geverifieerde compatibele OpenAI-modellen. Schakel dit uit om Chat Completions te gebruiken.",
+                "openAIResponsesEnable": "Responses inschakelen voor compatibele OpenAI-modellen"
             },
             "copy": "Kopiëren",
             "attachImage": "Afbeelding bijvoegen",

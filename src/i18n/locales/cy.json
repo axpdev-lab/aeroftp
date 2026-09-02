@@ -2536,7 +2536,10 @@
                 "retiredModel": "Wedi ymddeol",
                 "retiredModelHint": "Mae'r darparwr hwn wedi ymddeol y model. Dewiswch amnewidiad cyfredol cyn y cais nesaf.",
                 "unverifiedCapabilities": "Galluoedd heb eu gwirio",
-                "unverifiedModelHint": "Nid yw'r galluoedd yn hysbys. Adolygwch y cyd-destun, offer, gweledigaeth a rhesymu cyn defnyddio'r model hwn ar gyfer tasgau asiant."
+                "unverifiedModelHint": "Nid yw'r galluoedd yn hysbys. Adolygwch y cyd-destun, offer, gweledigaeth a rhesymu cyn defnyddio'r model hwn ar gyfer tasgau asiant.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Defnyddiwch gludiant Responses brodorol ar gyfer modelau OpenAI cydnaws sydd wedi'u gwirio. Diffoddwch hwn i ddefnyddio Chat Completions.",
+                "openAIResponsesEnable": "Galluogi Responses ar gyfer modelau OpenAI cydnaws"
             },
             "copy": "Copïo",
             "attachImage": "Atodi delwedd",

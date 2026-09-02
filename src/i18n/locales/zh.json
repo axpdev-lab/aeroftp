@@ -2536,7 +2536,10 @@
                 "retiredModel": "已弃用",
                 "retiredModelHint": "此提供商已弃用该模型。请在下次请求前选择当前可用的替代模型。",
                 "unverifiedCapabilities": "未经验证的能力",
-                "unverifiedModelHint": "能力未知。在将此模型用于代理任务前，请检查上下文、工具、视觉和推理能力。"
+                "unverifiedModelHint": "能力未知。在将此模型用于代理任务前，请检查上下文、工具、视觉和推理能力。",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "对已验证的兼容 OpenAI 模型使用原生 Responses 传输。关闭此选项即可使用 Chat Completions。",
+                "openAIResponsesEnable": "为兼容的 OpenAI 模型启用 Responses"
             },
             "copy": "复制",
             "attachImage": "附加图片",
