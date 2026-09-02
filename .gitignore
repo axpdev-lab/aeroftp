@@ -73,7 +73,8 @@ CLAUDE.md
 src-tauri/src/aerorsync/capture/bin/
 src-tauri/src/aerorsync/capture/artifacts/
 src-tauri/src/aerorsync/capture/artifacts_deflate/
-src-tauri/src/aerorsync/capture/artifacts_real/
+src-tauri/src/aerorsync/capture/artifacts_real/*
+!src-tauri/src/aerorsync/capture/artifacts_real/frozen/
 src-tauri/src/aerorsync/capture/workspace/
 
 # Upstream rsync 3.2.7 source extracted at repo root for CVE inspection
