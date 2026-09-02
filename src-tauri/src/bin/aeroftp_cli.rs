@@ -17754,7 +17754,7 @@ fn interactive_groups_loop(cli: &Cli, store: &CredentialStore, start_in_tui: boo
                 continue;
             }
             let was_direct = direct_tui;
-            match groups_tui_pick(&groups) {
+            match groups_tui_pick() {
                 Ok(SectionTuiOutcome::Quit) => {
                     if was_direct {
                         return 0;
@@ -19372,7 +19372,7 @@ fn interactive_profiles_loop(
             // prompt the user never asked for. A `tui` typed at the `-i` prompt is
             // one-shot: every outcome returns to that prompt, as before. (#311)
             let was_direct = direct_tui;
-            match profiles_tui_pick(&current, fav_marker) {
+            match profiles_tui_pick(fav_marker) {
                 Ok(SectionTuiOutcome::Quit) => {
                     if was_direct {
                         return 0;
@@ -20704,13 +20704,14 @@ fn profiles_tui_target(verb: char) -> Option<SectionActionTarget> {
 /// Inline action menu for `profiles -i` (Ehud #270/#311): the `-i` action bar,
 /// verb for verb, as a raw-mode picker. `Fav` carries the user's marker glyph
 /// (★ default, ♥ if chosen) so it matches the rest of the CLI.
-fn profiles_tui_pick(
-    profiles: &[serde_json::Value],
-    fav_marker: &str,
-) -> std::io::Result<SectionTuiOutcome> {
-    if profiles.is_empty() {
-        return Ok(SectionTuiOutcome::Quit);
-    }
+///
+/// The menu takes no rows on purpose: it is built from the verb table alone,
+/// so an EMPTY section still offers `Help`, `refresh` and `New`, which is the
+/// first thing a fresh vault needs. The selector verbs refuse a missing row at
+/// their own prompt, exactly as they do at the `-i` line. An early exit on an
+/// empty list used to send Quit here, which made the menu strictly less
+/// capable than the prompt for the one case a new user hits first.
+fn profiles_tui_pick(fav_marker: &str) -> std::io::Result<SectionTuiOutcome> {
     let actions = section_tui_actions(&profiles_section_verbs(fav_marker), profiles_tui_target);
     section_tui_pick(&actions, "profile")
 }
@@ -20736,10 +20737,8 @@ fn groups_tui_target(verb: char) -> Option<SectionActionTarget> {
 
 /// Inline action menu for `groups -i` (Ehud #311): the `-i` action bar, verb for
 /// verb, as a raw-mode picker.
-fn groups_tui_pick(groups: &[CliServerGroup]) -> std::io::Result<SectionTuiOutcome> {
-    if groups.is_empty() {
-        return Ok(SectionTuiOutcome::Quit);
-    }
+/// Same as `profiles_tui_pick`: no rows in, so an empty section keeps `New`.
+fn groups_tui_pick() -> std::io::Result<SectionTuiOutcome> {
     let actions = section_tui_actions(&groups_section_verbs(), groups_tui_target);
     section_tui_pick(&actions, "group")
 }
@@ -67640,6 +67639,24 @@ mod tests {
                 .filter(|a| matches!(a.target, SectionActionTarget::None))
                 .count();
             assert_eq!(quits, 1, "{section}: expected exactly one Quit");
+        }
+    }
+
+    /// The menus take no rows: an empty section must still offer `Help`,
+    /// `refresh` and `New`. The property is enforced by the signatures of
+    /// `profiles_tui_pick` / `groups_tui_pick` / `users_tui_pick`, which have
+    /// nothing to gate on; this pins that the derived menu carries those
+    /// verbs for every section, so the promise holds for a fresh vault.
+    #[test]
+    fn tui_menu_keeps_the_rowless_verbs_for_an_empty_section() {
+        for (section, verbs, target_of) in all_tui_sections() {
+            let menu = section_tui_actions(&verbs, target_of);
+            for needed in ["Help(H/?)", "refresh(.)", "New(N)"] {
+                assert!(
+                    menu.iter().any(|a| a.label == needed),
+                    "{section}: an empty section must still offer {needed}"
+                );
+            }
         }
     }
 
