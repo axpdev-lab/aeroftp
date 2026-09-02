@@ -150,6 +150,10 @@ pub mod util;
 // Does not affect production builds. See `src/aerorsync/README.md`.
 #[cfg(feature = "aerorsync")]
 pub mod aerorsync;
+// A3: application-side adapter of the aerorsync module. Holds every
+// AeroFTP type the module is not allowed to name.
+#[cfg(feature = "aerorsync")]
+pub mod aerorsync_adapter;
 pub mod agent_session;
 pub mod dedupe;
 mod file_associations;

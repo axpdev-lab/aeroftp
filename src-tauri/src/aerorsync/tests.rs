@@ -2901,7 +2901,7 @@ fn production_unsafe_surface_matches_the_documented_count() {
 ///
 /// The exclusion is `crate::aerorsync` compared as a whole identifier, never
 /// as a prefix: `crate::aerorsync_adapter`, the application-side adapter the
-/// A2 tranche creates, is an application import and must count, because the
+/// A3 tranche creates, is an application import and must count, because the
 /// crate must never depend on its own adapter. Grouped imports
 /// (`use crate::{a, b}`) fail outright so a mixed group cannot hide an
 /// application module next to `aerorsync`; `super::super::` is the crate
@@ -2918,8 +2918,8 @@ fn app_import_budget_matches_the_documented_inventory() {
     // (file, application module, occurrences). Update in the same commit
     // that removes a line, never to add one.
     const DOCUMENTED: [(&str, &str, usize); 5] = [
-        ("delta_transport_impl.rs", "delta_transport", 2),
-        ("delta_transport_impl.rs", "rsync_over_ssh", 12),
+        ("delta_transport_impl.rs", "delta_transport", 1),
+        ("delta_transport_impl.rs", "rsync_over_ssh", 8),
         ("live_tests.rs", "delta_transport", 1),
         ("local_transport.rs", "delta_transport", 1),
         ("local_transport.rs", "rsync_over_ssh", 1),

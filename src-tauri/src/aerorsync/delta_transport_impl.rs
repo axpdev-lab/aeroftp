@@ -3,24 +3,23 @@
 //!
 //! The module is the bridge between the prototype driver
 //! (`AerorsyncDriver` + the `WarningCollector` event sink) and the production
-//! `crate::delta_transport::DeltaTransport` trait consumed by the sync
-//! loop. It owns:
+//! delta-transport trait consumed by the sync loop, whose
+//! implementation lives in `crate::aerorsync_adapter`. It owns:
 //!
-//! - Construction of the SSH transport, driver, adapter, and bridge for
+//! - Construction of the SSH transport, driver and engine adapter for
 //!   each individual transfer (no cross-transfer session caching: the
-//!   trait is `&self`, so we avoid locking altogether).
-//! - Translation of typed `AerorsyncError` into `RsyncError` through
-//!   the `fallback_policy::classify_fallback` matrix. HardError variants
-//!   land in `RsyncError::HardRejection`, which
-//!   `delta_sync_rsync::transfer_with_delta` now routes to
-//!   `DeltaSyncResult::hard_error` instead of the usual silent fallback.
-//!   This plugs the last R4 gap: HostKeyRejected (and all other
-//!   HardError kinds) no longer degrade to the classic-SFTP path
-//!   silently.
+//!   trait methods are `&self`, so we avoid locking altogether).
+//! - Reporting a failure as a crate-owned `types::TransferError`, which
+//!   carries the typed `AerorsyncError` and the commit flag observed at
+//!   the failure site. Turning that into an application error, through
+//!   the `fallback_policy::classify_fallback` matrix, belongs to
+//!   `crate::aerorsync_adapter` since the A3 tranche: the module does
+//!   not name the application error type, and cannot import the adapter
+//!   either.
 //! - Atomic disk write of the download result via the temp-file + rename
 //!   helper with kill-9 invariant pin (`write_atomic_chunked`, owned by
-//!   `streaming_writer` since the A1 crate tranche; `WriteAtomicError` is
-//!   mapped to `RsyncError` here).
+//!   `streaming_writer` since the A1 crate tranche; `WriteAtomicError`
+//!   becomes a `TransferError` here).
 //!
 //! # Q5 PreCommit / PostCommit semantics (recap)
 //!
@@ -60,7 +59,6 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use async_trait::async_trait;
 use tokio::fs::{self, OpenOptions};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use xxhash_rust::xxh3::Xxh3Default;
@@ -69,7 +67,6 @@ use crate::aerorsync::engine_adapter::{
     BaselineSource, CurrentDeltaSyncBridge, FileBaseline, MemoryBaseline,
 };
 use crate::aerorsync::events::WarningCollector;
-use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
 use crate::aerorsync::native_driver::{
     xxh128_wire_bytes, AerorsyncDriver, PreambleProfile, MD4_ALGO_NAME, MD5_ALGO_NAME,
     SHA1_ALGO_NAME, XXH128_ALGO_NAME, XXH3_ALGO_NAME, XXH64_ALGO_NAME,
@@ -82,16 +79,13 @@ use crate::aerorsync::ssh_transport::{
 };
 use crate::aerorsync::streaming_writer::{StreamingAtomicWriter, WriteAtomicError, TEMP_SUFFIX};
 use crate::aerorsync::transport::{
-    CancelHandle, RawRemoteShellTransport, RemoteExecRequest, RemoteShellTransport,
+    CancelHandle, RawRemoteShellTransport, RemoteExecRequest, RemoteShellTransport, TransportProbe,
 };
-use crate::aerorsync::types::{
-    AerorsyncError, AerorsyncErrorKind, TransferError, TransferReport,
-};
-use crate::delta_transport::{BatchStats, DeltaBatch, DeltaTransport};
-use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
+use crate::aerorsync::types::{AerorsyncError, TransferError, TransferReport};
+use crate::rsync_over_ssh::{RsyncConfig, RsyncError};
 
 /// Display name surfaced by `DeltaTransport::name()`.
-const AERORSYNC_TRANSPORT_NAME: &str = "aerorsync-proto-31";
+pub(crate) const AERORSYNC_TRANSPORT_NAME: &str = "aerorsync-proto-31";
 
 /// Chunk size used by `write_atomic_chunked` in production. 64 KiB
 /// matches the AeroVault v2 body chunk + keeps syscall count reasonable.
@@ -230,96 +224,28 @@ impl AerorsyncDeltaTransport {
     }
 }
 
-#[async_trait]
-impl DeltaTransport for AerorsyncDeltaTransport {
-    fn name(&self) -> &'static str {
-        AERORSYNC_TRANSPORT_NAME
+// --- upload flow ---------------------------------------------------------
+
+impl AerorsyncDeltaTransport {
+    /// Endpoint of the configured SSH leg, for the adapter's log lines.
+    pub(crate) fn endpoint(&self) -> (&str, u16) {
+        (&self.ssh_config.host, self.ssh_config.port)
     }
 
-    async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
-        // U-04: real exec probe. Opens a one-shot SSH exec channel and
-        // runs `aerorsync_serve --probe`. A non-zero exit or a
-        // transport failure propagates as `RsyncError::RemoteNotAvailable`
-        // so the adapter's probe cache (`PROBE_CACHE`, 5-minute TTL)
-        // memoises a typed "unavailable" verdict: without this, every
-        // file in a multi-file sync would enter the native path, pay a
-        // fresh SSH setup, fail at `open_raw_stream`, and only then
-        // fall back to classic.
-        let probe_result = if self.ssh_config.prefers_russh_leg() {
-            let transport = RusshSessionTransport::connect(self.ssh_config.clone())
-                .await
-                .map_err(map_native_probe_error_to_rsync)?;
+    /// U-04: real exec probe. Opens a one-shot SSH exec channel and runs
+    /// `aerorsync_serve --probe`, returning the crate-owned probe record.
+    /// A non-zero exit or a transport failure comes back as a typed
+    /// [`AerorsyncError`]; deciding that this means "remote unavailable",
+    /// and caching that verdict, is the application's rule and lives in
+    /// the adapter.
+    pub(crate) async fn probe(&self) -> Result<TransportProbe, AerorsyncError> {
+        if self.ssh_config.prefers_russh_leg() {
+            let transport = RusshSessionTransport::connect(self.ssh_config.clone()).await?;
             transport.probe().await
         } else {
             let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
             transport.probe().await
-        };
-        let probe = match probe_result {
-            Ok(p) => p,
-            Err(error) => {
-                let rsync_error = map_native_probe_error_to_rsync(error);
-                if matches!(rsync_error, RsyncError::HardRejection(_)) {
-                    return Err(rsync_error);
-                }
-                tracing::warn!(
-                    "native rsync probe failed for {}:{}: {}: marking remote unavailable",
-                    self.ssh_config.host,
-                    self.ssh_config.port,
-                    rsync_error
-                );
-                return Err(rsync_error);
-            }
-        };
-        Ok(RsyncCapability {
-            version: probe.remote_banner,
-            protocol: probe.protocol.0,
-        })
-    }
-
-    async fn probe_local(&self) -> Result<(), RsyncError> {
-        Ok(())
-    }
-
-    async fn download(
-        &self,
-        remote_path: &str,
-        local_path: &Path,
-    ) -> Result<RsyncStats, RsyncError> {
-        self.download_inner(remote_path, local_path, None)
-            .await
-            .map(report_to_rsync_stats)
-            .map_err(to_rsync_error)
-    }
-
-    async fn download_with_progress(
-        &self,
-        remote_path: &str,
-        local_path: &Path,
-        progress: Option<crate::aerorsync::progress::ProgressSink>,
-    ) -> Result<RsyncStats, RsyncError> {
-        self.download_inner(remote_path, local_path, progress)
-            .await
-            .map(report_to_rsync_stats)
-            .map_err(to_rsync_error)
-    }
-
-    async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError> {
-        self.upload_inner(local_path, remote_path, None)
-            .await
-            .map(report_to_rsync_stats)
-            .map_err(to_rsync_error)
-    }
-
-    async fn upload_with_progress(
-        &self,
-        local_path: &Path,
-        remote_path: &str,
-        progress: Option<crate::aerorsync::progress::ProgressSink>,
-    ) -> Result<RsyncStats, RsyncError> {
-        self.upload_inner(local_path, remote_path, progress)
-            .await
-            .map(report_to_rsync_stats)
-            .map_err(to_rsync_error)
+        }
     }
 
     /// P3-T01 W3.2(b2): open a session-reuse batch backed by russh.
@@ -327,45 +253,29 @@ impl DeltaTransport for AerorsyncDeltaTransport {
     /// Performs one SSH handshake here ([`RusshSessionTransport::connect`])
     /// and returns an [`AerorsyncBatch`] that opens a fresh channel-exec
     /// per file over that single SSH session: the per-file cost drops
-    /// from full handshake to channel allocation. Failure to connect
-    /// degrades to [`crate::delta_transport::NoopBatch`] via the trait
-    /// default, so the sync loop falls back to the single-shot path
-    /// without losing the file.
-    async fn begin_batch(&self) -> Result<Box<dyn DeltaBatch>, RsyncError> {
-        match RusshSessionTransport::connect(self.ssh_config.clone()).await {
-            Ok(transport) => {
-                let (preserve_xattrs, preserve_acls, fail_on_metadata_loss) =
-                    self.metadata_policy();
-                Ok(Box::new(AerorsyncBatch::new(
-                    transport,
-                    self.min_file_size,
-                    preserve_xattrs,
-                    preserve_acls,
-                    fail_on_metadata_loss,
-                )))
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "AerorsyncDeltaTransport::begin_batch: russh connect failed ({}); \
-                     falling back to NoopBatch: sync loop will use single-shot per-file path",
-                    e
-                );
-                Ok(Box::new(crate::delta_transport::NoopBatch::new()))
-            }
-        }
+    /// from full handshake to channel allocation. What to do when the
+    /// handshake fails is the caller's call; the adapter degrades to the
+    /// application's no-op batch so the sync loop falls back to the
+    /// single-shot path without losing the file.
+    pub(crate) async fn open_batch(&self) -> Result<AerorsyncBatch, AerorsyncError> {
+        let transport = RusshSessionTransport::connect(self.ssh_config.clone()).await?;
+        let (preserve_xattrs, preserve_acls, fail_on_metadata_loss) = self.metadata_policy();
+        Ok(AerorsyncBatch::new(
+            transport,
+            self.min_file_size,
+            preserve_xattrs,
+            preserve_acls,
+            fail_on_metadata_loss,
+        ))
     }
-}
 
-// --- upload flow ---------------------------------------------------------
-
-impl AerorsyncDeltaTransport {
     /// Single-shot upload. Constructs a fresh `SshRemoteShellTransport`
     /// and an inert `CancelHandle` (the `&self` trait method has no
     /// cancel hook available) and delegates to [`do_upload`]. The same
     /// helper is reused by `AerorsyncBatch::upload` (W3.2b) with a
     /// long-lived transport that keeps an SSH session alive across N
     /// files and with a real `CancelHandle` shared across the batch.
-    async fn upload_inner(
+    pub(crate) async fn upload_inner(
         &self,
         local_path: &Path,
         remote_path: &str,
@@ -735,7 +645,7 @@ impl AerorsyncDeltaTransport {
     /// same helper is reused by `AerorsyncBatch::download` (W3.2b) with
     /// a long-lived transport that keeps an SSH session alive across N
     /// files and with a real shared cancel handle.
-    async fn download_inner(
+    pub(crate) async fn download_inner(
         &self,
         remote_path: &str,
         local_path: &Path,
@@ -1541,7 +1451,7 @@ pub struct AerorsyncBatch {
 }
 
 impl AerorsyncBatch {
-    fn new(
+    pub(crate) fn new(
         transport: RusshSessionTransport,
         min_file_size: u64,
         preserve_xattrs: bool,
@@ -1814,44 +1724,6 @@ impl AerorsyncBatch {
             session_count,
             self.cancel_observed.load(Ordering::SeqCst),
         )
-    }
-}
-#[async_trait]
-impl DeltaBatch for AerorsyncBatch {
-    async fn upload(
-        &mut self,
-        local_path: &Path,
-        remote_path: &str,
-    ) -> Result<RsyncStats, RsyncError> {
-        self.upload_file(local_path, remote_path)
-            .await
-            .map(report_to_rsync_stats)
-            .map_err(to_rsync_error)
-    }
-
-    async fn download(
-        &mut self,
-        remote_path: &str,
-        local_path: &Path,
-    ) -> Result<RsyncStats, RsyncError> {
-        self.download_file(remote_path, local_path)
-            .await
-            .map(report_to_rsync_stats)
-            .map_err(to_rsync_error)
-    }
-
-    fn cancel(&self) {
-        self.cancel_batch();
-    }
-
-    async fn finalize(self: Box<Self>) -> Result<BatchStats, RsyncError> {
-        let (files_transferred, bytes_on_wire, session_count, partial) = self.batch_totals().await;
-        Ok(BatchStats {
-            files_transferred,
-            bytes_on_wire,
-            session_count,
-            partial,
-        })
     }
 }
 
@@ -2238,7 +2110,8 @@ fn new_warnings_sink() -> Arc<StdMutex<Vec<String>>> {
 }
 
 /// Construct the `EventSink` that funnels the warning notices of the
-/// session into the shared `Vec<String>` behind `RsyncStats.warnings`.
+/// session into the shared `Vec<String>` the adapter hands to the
+/// application statistics.
 /// Which events become a warning, and with which text, is decided by
 /// `AerorsyncEvent::notice()`; errors are not warnings and are discarded
 /// here (the production UI wiring for them is Zona B4 scope).
@@ -2253,80 +2126,7 @@ fn drain_warnings(handle: Arc<StdMutex<Vec<String>>>) -> Vec<String> {
     }
 }
 
-/// Render a crate-owned [`TransferReport`] into the application
-/// statistics type. Same arithmetic as the `build_stats` it replaces:
-/// the speedup is the total size over the bytes actually sent, and 1.0
-/// when nothing was sent (never a division by zero).
-fn report_to_rsync_stats(report: TransferReport) -> RsyncStats {
-    let speedup = if report.session.bytes_sent > 0 {
-        report.total_size as f64 / report.session.bytes_sent as f64
-    } else {
-        1.0
-    };
-    RsyncStats {
-        bytes_sent: report.session.bytes_sent,
-        bytes_received: report.session.bytes_received,
-        total_size: report.total_size,
-        speedup,
-        duration_ms: report.duration_ms,
-        copy_blocks: report.session.copy_blocks,
-        warnings: report.warnings,
-    }
-}
-
-/// Render a crate-owned [`TransferError`] into the application error
-/// type. Every string is the one the module produced, verbatim; only
-/// the `Native` arm adds anything, and it adds the same envelope
-/// `map_native_error_to_rsync` has always added.
-fn to_rsync_error(err: TransferError) -> RsyncError {
-    match err {
-        TransferError::Soft { detail } => RsyncError::TransferFailed {
-            exit: -1,
-            stderr: detail,
-        },
-        TransferError::Hard { detail } => RsyncError::HardRejection(detail),
-        TransferError::Io(io) => RsyncError::Io(io),
-        TransferError::TooSmall { size, threshold } => RsyncError::TooSmall { size, threshold },
-        TransferError::Native { error, committed } => map_native_error_to_rsync(error, committed),
-    }
-}
-
-/// Translate a typed `AerorsyncError` into the production `RsyncError`
-/// by consulting the fallback policy matrix. The resulting variant drives
-/// downstream semantics through `delta_sync_rsync::transfer_with_delta`:
-///
-/// - `FallbackVerdict::Cancel` → `RsyncError::Cancelled` →
-///   `DeltaSyncResult::fallback` (`transfer_with_delta` folds it into
-///   the generic-fallback catch-all; the sync loop surfaces it as a
-///   cancelled transfer).
-/// - `FallbackVerdict::AttemptClassicSftpFallback` →
-///   `RsyncError::TransferFailed { exit: -1, stderr: ... }` →
-///   `DeltaSyncResult::fallback` → classic SFTP transparently.
-/// - `FallbackVerdict::HardError` → `RsyncError::HardRejection(...)` →
-///   `DeltaSyncResult::hard_error` → surfaced to the user, classic
-///   fallback suppressed. This is the R4 solution.
-fn map_native_error_to_rsync(err: AerorsyncError, committed: bool) -> RsyncError {
-    match classify_fallback(&err, committed) {
-        FallbackVerdict::Cancel => RsyncError::Cancelled,
-        FallbackVerdict::AttemptClassicSftpFallback => RsyncError::TransferFailed {
-            exit: -1,
-            stderr: format!("native fallback ({:?}): {}", err.kind, err.detail),
-        },
-        FallbackVerdict::HardError => RsyncError::HardRejection(format!(
-            "native hard rejection ({:?}): {}",
-            err.kind, err.detail
-        )),
-    }
-}
-
-fn map_native_probe_error_to_rsync(err: AerorsyncError) -> RsyncError {
-    if err.kind == AerorsyncErrorKind::HostKeyRejected {
-        return map_native_error_to_rsync(err, false);
-    }
-    RsyncError::RemoteNotAvailable
-}
-
-fn map_write_atomic_error(err: WriteAtomicError) -> TransferError {
+pub(crate) fn map_write_atomic_error(err: WriteAtomicError) -> TransferError {
     match err {
         // Pre-open: nothing touched on disk yet → treat as Io, the
         // wrapper degrades to classic fallback for free.
@@ -2367,7 +2167,7 @@ fn map_write_atomic_error(err: WriteAtomicError) -> TransferError {
 mod tests {
     use super::*;
     use crate::aerorsync::streaming_writer::{write_atomic_chunked, write_atomic_chunked_sparse};
-    use crate::aerorsync::types::{AerorsyncErrorKind, SessionStats};
+    use crate::delta_transport::DeltaBatch;
     use std::io::Write;
     use std::time::Duration;
     use tempfile::TempDir;
@@ -2616,19 +2416,24 @@ mod tests {
         )
         .await;
 
-        // The typed cause is rendered at the module boundary now, so the
-        // pin runs the outcome through the same rendering the trait
-        // methods use.
-        match result.map_err(to_rsync_error) {
-            Err(RsyncError::TransferFailed { exit, stderr }) => {
-                assert_eq!(exit, -1, "typed native fallback uses the -1 envelope");
-                assert!(
-                    stderr.contains("NegotiationFailed"),
-                    "fallback must retain the typed cause: {stderr}"
+        // The module reports the typed cause and the commit flag; the
+        // rendering into the `-1` fallback envelope belongs to the
+        // adapter and is pinned there by
+        // `map_pre_commit_environmental_errors_land_in_transfer_failed_minus_one`.
+        // What has to be true here is that the refusal is pre-commit and
+        // carries the kind and the winner that caused it.
+        match result {
+            Err(TransferError::Native { error, committed }) => {
+                assert!(!committed, "the refusal happens before any commit");
+                assert_eq!(
+                    error.kind,
+                    crate::aerorsync::types::AerorsyncErrorKind::NegotiationFailed,
+                    "unsupported checksum must stay fallback-eligible: {error:?}"
                 );
                 assert!(
-                    stderr.contains("sha256"),
-                    "fallback must name the unsupported winner: {stderr}"
+                    error.detail.contains("sha256"),
+                    "the cause must name the unsupported winner: {}",
+                    error.detail
                 );
             }
             other => panic!("unsupported checksum must stay fallback-eligible, got {other:?}"),
@@ -2918,126 +2723,6 @@ mod tests {
                 tokio::fs::read(&local_path).await.expect("target written"),
                 content
             );
-        }
-    }
-
-    // -- map_native_error_to_rsync -----------------------------------------
-
-    #[test]
-    fn map_cancel_maps_to_rsync_cancelled_regardless_of_committed() {
-        for committed in [false, true] {
-            let err = AerorsyncError::cancelled("user abort");
-            let rs = map_native_error_to_rsync(err, committed);
-            assert!(
-                matches!(rs, RsyncError::Cancelled),
-                "committed={committed} → expected RsyncError::Cancelled, got {rs:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn map_pre_commit_environmental_errors_land_in_transfer_failed_minus_one() {
-        let kinds = [
-            AerorsyncErrorKind::UnsupportedVersion,
-            AerorsyncErrorKind::NegotiationFailed,
-            AerorsyncErrorKind::TransportFailure,
-            AerorsyncErrorKind::RemoteError,
-        ];
-        for kind in kinds {
-            let err = AerorsyncError::new(kind, "env");
-            let rs = map_native_error_to_rsync(err, false);
-            match rs {
-                RsyncError::TransferFailed { exit, stderr } => {
-                    assert_eq!(exit, -1, "pre-commit {kind:?} must use sentinel -1");
-                    assert!(stderr.contains("native fallback"));
-                    assert!(stderr.contains(&format!("{kind:?}")));
-                }
-                other => panic!("pre-commit {kind:?} → expected TransferFailed, got {other:?}"),
-            }
-        }
-    }
-
-    #[test]
-    fn map_pre_commit_host_key_rejected_is_hard_rejection() {
-        // R4 pin: HostKeyRejected MUST produce HardRejection even pre-commit,
-        // so `transfer_with_delta` routes it to `hard_error` and the user
-        // sees the failure: no silent classic fallback.
-        let err = AerorsyncError::host_key_rejected("fingerprint mismatch");
-        let rs = map_native_error_to_rsync(err, false);
-        match rs {
-            RsyncError::HardRejection(msg) => {
-                assert!(msg.contains("HostKeyRejected"));
-                assert!(msg.contains("fingerprint mismatch"));
-            }
-            other => panic!("expected HardRejection, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn map_probe_host_key_rejected_is_hard_rejection() {
-        let err = AerorsyncError::host_key_rejected("probe fingerprint mismatch");
-        let rs = map_native_probe_error_to_rsync(err);
-        match rs {
-            RsyncError::HardRejection(msg) => {
-                assert!(msg.contains("HostKeyRejected"));
-                assert!(msg.contains("probe fingerprint mismatch"));
-            }
-            other => panic!("probe HostKeyRejected must be hard, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn map_probe_environmental_error_is_remote_not_available() {
-        let err = AerorsyncError::transport("rsync missing");
-        let rs = map_native_probe_error_to_rsync(err);
-        assert!(matches!(rs, RsyncError::RemoteNotAvailable));
-    }
-
-    #[test]
-    fn map_post_commit_non_cancel_is_always_hard_rejection() {
-        let kinds = [
-            AerorsyncErrorKind::UnsupportedVersion,
-            AerorsyncErrorKind::InvalidFrame,
-            AerorsyncErrorKind::TransportFailure,
-            AerorsyncErrorKind::NegotiationFailed,
-            AerorsyncErrorKind::PlannerRejected,
-            AerorsyncErrorKind::IllegalStateTransition,
-            AerorsyncErrorKind::RemoteError,
-            AerorsyncErrorKind::UnexpectedMessage,
-            AerorsyncErrorKind::HostKeyRejected,
-            AerorsyncErrorKind::Internal,
-        ];
-        for kind in kinds {
-            let err = AerorsyncError::new(kind, "post-commit");
-            let rs = map_native_error_to_rsync(err, true);
-            match rs {
-                RsyncError::HardRejection(msg) => {
-                    assert!(
-                        msg.contains(&format!("{kind:?}")),
-                        "post-commit {kind:?} message missing kind tag: {msg}"
-                    );
-                }
-                other => panic!("post-commit {kind:?} → expected HardRejection, got {other:?}"),
-            }
-        }
-    }
-
-    #[test]
-    fn map_pre_commit_protocol_bugs_are_hard_rejection() {
-        let kinds = [
-            AerorsyncErrorKind::InvalidFrame,
-            AerorsyncErrorKind::IllegalStateTransition,
-            AerorsyncErrorKind::PlannerRejected,
-            AerorsyncErrorKind::UnexpectedMessage,
-            AerorsyncErrorKind::Internal,
-        ];
-        for kind in kinds {
-            let err = AerorsyncError::new(kind, "proto-bug");
-            let rs = map_native_error_to_rsync(err, false);
-            match rs {
-                RsyncError::HardRejection(_) => {}
-                other => panic!("pre-commit {kind:?} → expected HardRejection, got {other:?}"),
-            }
         }
     }
 
@@ -4996,359 +4681,7 @@ PY"#
 
     // -- crate error to application error -------------------------------------
 
-    /// Every string the module hands the application, pinned whole.
-    ///
-    /// The module now speaks [`TransferError`] and the boundary renders
-    /// it. This is the only place the rendering is described, so the
-    /// assertions are on entire strings, never on substrings, and the
-    /// match is exhaustive by construction: a new variant stops
-    /// compiling here first.
-    #[test]
-    fn to_rsync_error_is_exhaustive_and_keeps_every_string() {
-        match to_rsync_error(TransferError::Soft {
-            detail: "soft text".into(),
-        }) {
-            RsyncError::TransferFailed { exit, stderr } => {
-                assert_eq!(exit, -1, "the soft envelope keeps the -1 sentinel");
-                assert_eq!(stderr, "soft text");
-            }
-            other => panic!("expected TransferFailed, got {other:?}"),
-        }
-        match to_rsync_error(TransferError::Hard {
-            detail: "hard text".into(),
-        }) {
-            RsyncError::HardRejection(msg) => assert_eq!(msg, "hard text"),
-            other => panic!("expected HardRejection, got {other:?}"),
-        }
-        match to_rsync_error(TransferError::Io(std::io::Error::from(
-            std::io::ErrorKind::BrokenPipe,
-        ))) {
-            RsyncError::Io(io) => assert_eq!(io.kind(), std::io::ErrorKind::BrokenPipe),
-            other => panic!("expected Io, got {other:?}"),
-        }
-        match to_rsync_error(TransferError::TooSmall {
-            size: 7,
-            threshold: 9,
-        }) {
-            RsyncError::TooSmall { size, threshold } => {
-                assert_eq!((size, threshold), (7, 9));
-            }
-            other => panic!("expected TooSmall, got {other:?}"),
-        }
-        // Native, pre-commit: the fallback envelope, whole.
-        match to_rsync_error(TransferError::Native {
-            error: AerorsyncError::new(AerorsyncErrorKind::TransportFailure, "channel closed"),
-            committed: false,
-        }) {
-            RsyncError::TransferFailed { exit, stderr } => {
-                assert_eq!(exit, -1);
-                assert_eq!(stderr, "native fallback (TransportFailure): channel closed");
-            }
-            other => panic!("expected TransferFailed, got {other:?}"),
-        }
-        // Native, post-commit: the hard rejection envelope, whole.
-        match to_rsync_error(TransferError::Native {
-            error: AerorsyncError::new(AerorsyncErrorKind::TransportFailure, "channel closed"),
-            committed: true,
-        }) {
-            RsyncError::HardRejection(msg) => {
-                assert_eq!(
-                    msg,
-                    "native hard rejection (TransportFailure): channel closed"
-                );
-            }
-            other => panic!("expected HardRejection, got {other:?}"),
-        }
-        // Native, cancelled: no envelope at all.
-        assert!(matches!(
-            to_rsync_error(TransferError::Native {
-                error: AerorsyncError::new(AerorsyncErrorKind::Cancelled, "user asked to stop"),
-                committed: false,
-            }),
-            RsyncError::Cancelled
-        ));
-        // The three atomic-write branches, whole strings.
-        let soft = to_rsync_error(map_write_atomic_error(WriteAtomicError::PostOpen {
-            stage: "write",
-            source: std::io::Error::other("disk full"),
-        }));
-        match soft {
-            RsyncError::TransferFailed { exit, stderr } => {
-                assert_eq!(exit, -1);
-                assert_eq!(
-                    stderr,
-                    "native fallback: atomic write failed at write (target untouched): disk full"
-                );
-            }
-            other => panic!("expected TransferFailed, got {other:?}"),
-        }
-        match to_rsync_error(map_write_atomic_error(WriteAtomicError::PostOpen {
-            stage: "acl",
-            source: std::io::Error::other("no acl"),
-        })) {
-            RsyncError::HardRejection(msg) => {
-                assert_eq!(msg, "atomic write failed at acl (target untouched): no acl");
-            }
-            other => panic!("expected HardRejection, got {other:?}"),
-        }
-        match to_rsync_error(map_write_atomic_error(WriteAtomicError::PostOpen {
-            stage: "rename",
-            source: std::io::Error::other("EXDEV"),
-        })) {
-            RsyncError::HardRejection(msg) => {
-                assert_eq!(msg, "atomic write failed at rename: EXDEV");
-            }
-            other => panic!("expected HardRejection, got {other:?}"),
-        }
-    }
-
     // -- transient retry predicate -------------------------------------------
-
-    const PARITY_KINDS: [AerorsyncErrorKind; 11] = [
-        AerorsyncErrorKind::UnsupportedVersion,
-        AerorsyncErrorKind::InvalidFrame,
-        AerorsyncErrorKind::TransportFailure,
-        AerorsyncErrorKind::NegotiationFailed,
-        AerorsyncErrorKind::PlannerRejected,
-        AerorsyncErrorKind::IllegalStateTransition,
-        AerorsyncErrorKind::RemoteError,
-        AerorsyncErrorKind::UnexpectedMessage,
-        AerorsyncErrorKind::Cancelled,
-        AerorsyncErrorKind::HostKeyRejected,
-        AerorsyncErrorKind::Internal,
-    ];
-
-    /// Parity gate for the retry decision.
-    ///
-    /// The crate predicate [`TransferError::is_transient_channel_drop`]
-    /// must answer exactly like `rsync_over_ssh::is_transient_for_reconnect`,
-    /// the application classifier it replaces, which reached its verdict by
-    /// re-reading the rendered envelope string. Covered: every error kind
-    /// times both commit states times a detail corpus that carries each of
-    /// the eleven denylist needles plus the real driver texts, the six
-    /// retryable `io::ErrorKind`s plus two that are not, and the variants
-    /// the module builds without the driver. The application function is
-    /// removed in a later commit; this test is what licenses that removal,
-    /// and the case count is asserted so a shrunken corpus cannot pass
-    /// quietly.
-    #[test]
-    fn transient_channel_drop_matches_the_app_classifier() {
-        const DETAILS: &[&str] = &[
-            // real driver texts
-            "next_data_frame: remote closed mid file list",
-            "kex blip",
-            "channel send error",
-            "",
-            // the eleven denylist needles, each in a plausible sentence
-            "peer reported hostkeyrejected during handshake",
-            "host key mismatch for 10.0.0.1",
-            "fingerprint mismatch",
-            "invalidframe at offset 12",
-            "illegalstatetransition: summary before hello",
-            "plannerrejected: no plan for this entry",
-            "unexpectedmessage: data before flist",
-            "internal: unreachable arm",
-            "remoteerror: code 23",
-            "negotiation chose file checksum xxh3",
-            "checksum negotiation found no common algorithm",
-            // an envelope-looking detail: the tag belongs to the kind, not
-            // to the free text, and neither side may be fooled by it
-            "(transportfailure) smuggled into the detail",
-        ];
-
-        let mut checked = 0usize;
-        for kind in PARITY_KINDS {
-            for committed in [false, true] {
-                for detail in DETAILS {
-                    let mine = TransferError::Native {
-                        error: AerorsyncError::new(kind, *detail),
-                        committed,
-                    };
-                    let rendered = to_rsync_error(TransferError::Native {
-                        error: AerorsyncError::new(kind, *detail),
-                        committed,
-                    });
-                    assert_eq!(
-                        mine.is_transient_channel_drop(),
-                        crate::rsync_over_ssh::is_transient_for_reconnect(&rendered),
-                        "retry verdict drifted for {kind:?} committed={committed} detail={detail:?}"
-                    );
-                    checked += 1;
-                }
-            }
-        }
-
-        for io_kind in [
-            std::io::ErrorKind::BrokenPipe,
-            std::io::ErrorKind::ConnectionAborted,
-            std::io::ErrorKind::ConnectionReset,
-            std::io::ErrorKind::UnexpectedEof,
-            std::io::ErrorKind::TimedOut,
-            std::io::ErrorKind::WouldBlock,
-            std::io::ErrorKind::PermissionDenied,
-            std::io::ErrorKind::NotFound,
-        ] {
-            let mine = TransferError::Io(std::io::Error::from(io_kind));
-            let rendered = to_rsync_error(TransferError::Io(std::io::Error::from(io_kind)));
-            assert_eq!(
-                mine.is_transient_channel_drop(),
-                crate::rsync_over_ssh::is_transient_for_reconnect(&rendered),
-                "retry verdict drifted for io kind {io_kind:?}"
-            );
-            checked += 1;
-        }
-
-        // Variants the module builds on its own, envelope-free. Note the
-        // atomic-write soft error: its text starts with "native fallback:"
-        // WITHOUT the parenthesised kind, so it never was an envelope and
-        // never was transient.
-        // The four soft details the module really builds carry the
-        // `Display` of a `std::io::Error`, so a transport drop on the
-        // local side lands inside the text. The three renderings below
-        // are what Linux `strerror` prints for EPIPE, ECONNRESET and
-        // ETIMEDOUT; the negative controls are a soft detail with no
-        // needle and a hard detail that contains one, because a hard
-        // rejection is never retried on its text.
-        const SOFT_TEMPLATES: &[&str] = &[
-            "native fallback: atomic write failed at write (target untouched): {}",
-            "native fallback: cannot open streaming baseline /tmp/base.bin: {}",
-            "native fallback: cannot inspect local baseline /tmp/base.bin: {}",
-            "native fallback: cannot open streaming temp file for /tmp/t.bin: {}",
-        ];
-        let mut soft_hard_cases: Vec<(String, bool)> = Vec::new();
-        for rendered in [
-            "Broken pipe (os error 32)",
-            "Connection reset by peer (os error 104)",
-            "Connection timed out (os error 110)",
-        ] {
-            for template in SOFT_TEMPLATES {
-                soft_hard_cases.push((template.replace("{}", rendered), true));
-            }
-        }
-        // `io::Error::from(kind)` renders a shorter text than the OS
-        // does ("timed out", "connection reset"), so those go through
-        // the parity half only: whatever the two sides answer, they
-        // must answer the same.
-        let mut parity_only: Vec<String> = Vec::new();
-        for io_kind in [
-            std::io::ErrorKind::BrokenPipe,
-            std::io::ErrorKind::TimedOut,
-            std::io::ErrorKind::ConnectionReset,
-            std::io::ErrorKind::UnexpectedEof,
-        ] {
-            let rendered = std::io::Error::from(io_kind).to_string();
-            for template in SOFT_TEMPLATES {
-                parity_only.push(template.replace("{}", &rendered));
-            }
-        }
-        soft_hard_cases.push((
-            "native fallback: atomic write failed at write (target untouched): disk full".into(),
-            false,
-        ));
-        soft_hard_cases.push((
-            "native fallback: local baseline /tmp/base.bin is not a regular file".into(),
-            false,
-        ));
-        soft_hard_cases.push(("connection reset by peer".into(), true));
-
-        for detail in soft_hard_cases
-            .iter()
-            .map(|(d, _)| d.clone())
-            .chain(parity_only.iter().cloned())
-        {
-            for build in [
-                (|d: &str| TransferError::Soft { detail: d.into() }) as fn(&str) -> TransferError,
-                |d: &str| TransferError::Hard { detail: d.into() },
-            ] {
-                let mine = build(&detail);
-                let rendered = to_rsync_error(build(&detail));
-                assert_eq!(
-                    mine.is_transient_channel_drop(),
-                    crate::rsync_over_ssh::is_transient_for_reconnect(&rendered),
-                    "retry verdict drifted for module-built error {detail:?}"
-                );
-                checked += 1;
-            }
-        }
-        // Parity alone would hold if both sides answered "no" to
-        // everything, so state the expected answers too.
-        for (detail, expected_soft) in &soft_hard_cases {
-            assert_eq!(
-                TransferError::Soft {
-                    detail: detail.clone()
-                }
-                .is_transient_channel_drop(),
-                *expected_soft,
-                "soft verdict for {detail:?}"
-            );
-            assert!(
-                !TransferError::Hard {
-                    detail: detail.clone()
-                }
-                .is_transient_channel_drop(),
-                "a hard rejection is never retried on its text: {detail:?}"
-            );
-        }
-
-        let too_small = TransferError::TooSmall {
-            size: 1,
-            threshold: 2,
-        };
-        let rendered = to_rsync_error(TransferError::TooSmall {
-            size: 1,
-            threshold: 2,
-        });
-        assert_eq!(
-            too_small.is_transient_channel_drop(),
-            crate::rsync_over_ssh::is_transient_for_reconnect(&rendered)
-        );
-        checked += 1;
-
-        assert_eq!(
-            checked,
-            PARITY_KINDS.len() * 2 * DETAILS.len()
-                + 8
-                + (soft_hard_cases.len() + parity_only.len()) * 2
-                + 1,
-            "the parity corpus shrank: {checked} cases compared"
-        );
-    }
-
-    // -- build_stats --------------------------------------------------------
-
-    #[test]
-    fn build_stats_handles_zero_bytes_sent_without_div_by_zero() {
-        let ss = SessionStats::default();
-        let stats = report_to_rsync_stats(TransferReport {
-            session: ss,
-            total_size: 100,
-            duration_ms: 50,
-            warnings: vec!["w1".into()],
-        });
-        assert_eq!(stats.bytes_sent, 0);
-        assert_eq!(stats.total_size, 100);
-        assert_eq!(stats.speedup, 1.0);
-        assert_eq!(stats.duration_ms, 50);
-        assert_eq!(stats.warnings, vec!["w1".to_string()]);
-    }
-
-    #[test]
-    fn build_stats_speedup_is_total_over_bytes_sent_when_nonzero() {
-        let ss = SessionStats {
-            bytes_sent: 25,
-            bytes_received: 10,
-            ..SessionStats::default()
-        };
-        let stats = report_to_rsync_stats(TransferReport {
-            session: ss,
-            total_size: 100,
-            duration_ms: 200,
-            warnings: Vec::new(),
-        });
-        assert!((stats.speedup - 4.0).abs() < 1e-9);
-        assert_eq!(stats.bytes_sent, 25);
-        assert_eq!(stats.bytes_received, 10);
-    }
 
     // -- write_atomic_chunked happy path -----------------------------------
 
