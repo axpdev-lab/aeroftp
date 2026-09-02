@@ -38,7 +38,6 @@ pub mod native_driver;
 pub mod progress;
 pub mod real_wire;
 pub mod remote_command;
-pub mod rsync_event_bridge;
 pub mod russh_session_transport;
 pub mod shell_escape;
 pub mod ssh_transport;

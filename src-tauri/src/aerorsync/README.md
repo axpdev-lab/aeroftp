@@ -138,7 +138,7 @@ cargo test --features aerorsync \
 - `native_driver.rs` (~8 300 LOC): state machine upload/download
 - `tests.rs` (~3 800 LOC): unit tests contro frozen transcripts
 - `delta_transport_impl.rs` (~3 300 LOC): `AerorsyncDeltaTransport` (impl `DeltaTransport`) + `AerorsyncBatch` session reuse
-- `events.rs`, `ssh_transport.rs`, `driver.rs`, `server.rs`, `live_tests.rs`, `rsync_event_bridge.rs`: supporto
+- `events.rs`, `progress.rs`, `ssh_transport.rs`, `live_tests.rs`: supporto
 - `mock.rs`, `fixtures.rs`: test scaffolding
 - `streaming_writer.rs` (W2.3): `StreamingAtomicWriter`, counterpart streaming di `delta_transport_impl::write_atomic_chunked` (`AsyncWrite` + `finalize` rename-last)
 - altri: `types.rs`, `protocol.rs`, `planner.rs`, `engine_adapter.rs`, `transport.rs`, `frame_io.rs`, `fallback_policy.rs`, `remote_command.rs`
