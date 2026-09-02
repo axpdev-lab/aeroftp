@@ -8,6 +8,7 @@ import { createTauriListener } from '../../hooks/useTauriListener';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon, NvidiaIcon, ZaiIcon, HyperbolicIcon, NovitaIcon, YiIcon, KiloIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType } from '../../types/ai';
+import { resolveModelContext } from '../../types/aiModelRegistry';
 import { AgentToolCall, AGENT_TOOLS, toNativeDefinitions, isSafeTool, getToolByName, getToolByNameFromAll } from '../../types/tools';
 import { PluginManifest, allPluginTools, findPluginForTool } from '../../types/plugins';
 import { ToolApproval } from './ToolApproval';
@@ -2165,7 +2166,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
             // Check model capabilities (needed for context budget calculation)
             const modelDef = settings.models?.find((m: { id: string }) => m.id === activeModel.modelId);
-            const modelContextWindow = modelDef?.maxContextTokens || modelDef?.maxTokens || 4096;
+            // Output limits are not context windows. Unknown models receive a
+            // deliberately conservative context budget until the registry or
+            // the user provides an explicit context window.
+            const modelContextWindow = resolveModelContext(modelDef).tokens;
 
             // Phase 3: Determine budget mode and build smart context (#70, #71)
             const budgetMode = determineBudgetMode(modelContextWindow);

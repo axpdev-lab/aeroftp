@@ -2532,7 +2532,11 @@
                 "styleConcise": "Kodolīgs",
                 "styleDefault": "Noklusējums",
                 "styleExplanatory": "Skaidrojošs",
-                "styleLearning": "Mācību"
+                "styleLearning": "Mācību",
+                "retiredModel": "Novecojis",
+                "retiredModelHint": "Šis pakalpojumu sniedzējs ir pārtraucis modeļa izmantošanu. Pirms nākamā pieprasījuma izvēlieties aktuālu aizstājēju.",
+                "unverifiedCapabilities": "Nepārbaudītas iespējas",
+                "unverifiedModelHint": "Iespējas nav zināmas. Pirms šī modeļa izmantošanas aģenta uzdevumiem pārskatiet kontekstu, rīkus, redzi un spriešanu."
             },
             "copy": "Kopēt",
             "attachImage": "Pievienot attēlu",

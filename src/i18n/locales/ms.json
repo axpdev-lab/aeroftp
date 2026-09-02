@@ -2532,7 +2532,11 @@
                 "styleConcise": "Ringkas",
                 "styleDefault": "Lalai",
                 "styleExplanatory": "Penjelasan",
-                "styleLearning": "Pembelajaran"
+                "styleLearning": "Pembelajaran",
+                "retiredModel": "Ditamatkan",
+                "retiredModelHint": "Penyedia ini telah menamatkan model tersebut. Pilih pengganti semasa sebelum permintaan seterusnya.",
+                "unverifiedCapabilities": "Keupayaan belum disahkan",
+                "unverifiedModelHint": "Keupayaan tidak diketahui. Semak konteks, alat, penglihatan dan penaakulan sebelum menggunakan model ini untuk tugas ejen."
             },
             "copy": "Salin",
             "attachImage": "Lampirkan imej",

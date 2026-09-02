@@ -2532,7 +2532,11 @@
                 "styleConcise": "Conciso",
                 "styleDefault": "Padrão",
                 "styleExplanatory": "Explicativo",
-                "styleLearning": "Aprendizagem"
+                "styleLearning": "Aprendizagem",
+                "retiredModel": "Descontinuado",
+                "retiredModelHint": "Este fornecedor descontinuou o modelo. Selecione um substituto atual antes do próximo pedido.",
+                "unverifiedCapabilities": "Capacidades não verificadas",
+                "unverifiedModelHint": "As capacidades são desconhecidas. Reveja o contexto, as ferramentas, a visão e o raciocínio antes de utilizar este modelo em tarefas de agente."
             },
             "copy": "Copiar",
             "attachImage": "Anexar imagem",

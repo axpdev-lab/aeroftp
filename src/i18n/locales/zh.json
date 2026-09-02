@@ -2532,7 +2532,11 @@
                 "styleConcise": "简洁",
                 "styleDefault": "默认",
                 "styleExplanatory": "解释性",
-                "styleLearning": "学习"
+                "styleLearning": "学习",
+                "retiredModel": "已弃用",
+                "retiredModelHint": "此提供商已弃用该模型。请在下次请求前选择当前可用的替代模型。",
+                "unverifiedCapabilities": "未经验证的能力",
+                "unverifiedModelHint": "能力未知。在将此模型用于代理任务前，请检查上下文、工具、视觉和推理能力。"
             },
             "copy": "复制",
             "attachImage": "附加图片",

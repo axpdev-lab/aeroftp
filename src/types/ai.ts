@@ -33,8 +33,34 @@ export interface AIModel {
     supportsParallelTools?: boolean;   // Multiple tool calls in single response
     toolCallQuality?: 1 | 2 | 3 | 4 | 5;   // Tool call accuracy rating
     bestFor?: string[];                        // Capability tags
+    capabilitySource?: 'registry' | 'user' | 'unknown';
+    capabilitiesVerifiedAt?: string;           // ISO date for provider-doc verification
+    capabilitiesSourceUrl?: string;            // Public provider documentation, never a secret URL
+    nativeCapabilities?: AIModelNativeCapabilities;
+    lifecycleStatus?: 'active' | 'deprecated' | 'retired';
     isEnabled: boolean;
     isDefault: boolean;
+}
+
+export type AIReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+/** Provider-native features. Availability here does not mean AeroAgent has wired the feature yet. */
+export interface AIModelNativeCapabilities {
+    responses?: boolean;
+    hostedTools?: boolean;
+    toolSearch?: boolean;
+    dynamicToolLoading?: boolean;
+    programmaticToolCalling?: boolean;
+    multiAgent?: boolean;
+    persistedReasoning?: boolean;
+    encryptedReasoningReplay?: boolean;
+    adaptiveThinking?: boolean;
+    contextManagement?: boolean;
+    modelCapabilitiesApi?: boolean;
+    automaticPromptCaching?: boolean;
+    requiresFullAssistantReplay?: boolean;
+    fixedSamplingParameters?: boolean;
+    reasoningEfforts?: AIReasoningEffort[];
 }
 
 // Auto-routing configuration

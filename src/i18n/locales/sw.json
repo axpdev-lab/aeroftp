@@ -2532,7 +2532,11 @@
                 "styleConcise": "Fupi",
                 "styleDefault": "Chaguo-msingi",
                 "styleExplanatory": "Maelezo",
-                "styleLearning": "Kujifunza"
+                "styleLearning": "Kujifunza",
+                "retiredModel": "Imestaafu",
+                "retiredModelHint": "Mtoa huduma huyu ameiondoa modeli. Chagua mbadala wa sasa kabla ya ombi linalofuata.",
+                "unverifiedCapabilities": "Uwezo usiothibitishwa",
+                "unverifiedModelHint": "Uwezo haujulikani. Kagua muktadha, zana, kuona na kufikiri kabla ya kutumia modeli hii kwa kazi za wakala."
             },
             "copy": "Nakili",
             "attachImage": "Ambatanisha picha",

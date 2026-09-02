@@ -17,7 +17,7 @@ import './AISettingsPanel.css';
 import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
 import { ProviderMarketplace } from './ProviderMarketplace';
 import { PluginBrowser } from './PluginBrowser';
-import { applyRegistryDefaults, lookupModelSpec } from '../../types/aiModelRegistry';
+import { applyDiscoveredModelDefaults, applyRegistryDefaults, getModelCapabilitySource, lookupModelSpec } from '../../types/aiModelRegistry';
 import { useTranslation } from '../../i18n';
 import { createTauriListener } from '../../hooks/useTauriListener';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
@@ -106,7 +106,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
         maxTokens: model?.maxTokens || 4096,
         maxContextTokens: model?.maxContextTokens ?? 0,
         supportsStreaming: model?.supportsStreaming ?? true,
-        supportsTools: model?.supportsTools ?? true,
+        supportsTools: model?.supportsTools ?? false,
         supportsVision: model?.supportsVision ?? false,
         supportsThinking: model?.supportsThinking ?? false,
         isEnabled: model?.isEnabled ?? true,
@@ -134,6 +134,8 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
     const handleSave = () => {
         if (!formData.name.trim()) return;
 
+        const knownSpec = lookupModelSpec(formData.name.trim());
+
         const baseModel = {
             ...(model || {}), // preserve fields not in the form (toolCallQuality, bestFor, costs, etc.)
             id: model?.id || generateId(),
@@ -146,6 +148,10 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
             supportsTools: formData.supportsTools,
             supportsVision: formData.supportsVision,
             supportsThinking: formData.supportsThinking,
+            capabilitySource: knownSpec && isNew ? 'registry' as const : 'user' as const,
+            capabilitiesVerifiedAt: knownSpec && isNew ? knownSpec.metadataReviewedAt : undefined,
+            capabilitiesSourceUrl: knownSpec && isNew ? knownSpec.metadataSource : undefined,
+            nativeCapabilities: knownSpec && isNew ? knownSpec.nativeCapabilities : undefined,
             isEnabled: formData.isEnabled,
             isDefault: model?.isDefault ?? false,
         };
@@ -167,6 +173,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                         <label className="block text-sm text-gray-400 mb-1">{t('ai.settings.modelName')}</label>
                         <input type="text" value={formData.name} onChange={(e) => handleNameChange(e.target.value)} placeholder={t('ai.settings.modelNamePlaceholder')} className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" autoFocus />
                         {isNew && lookupModelSpec(formData.name) && <span className="text-xs text-green-400 mt-1 block">{t('ai.settings.knownModelHint')}</span>}
+                        {isNew && formData.name.trim() && !lookupModelSpec(formData.name) && <span className="text-xs text-amber-400 mt-1 block">{t('ai.settings.unverifiedModelHint')}</span>}
                     </div>
 
                     {/* Display Name */}
@@ -562,12 +569,11 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
             const existingNames = settings.models.filter((m) => m.providerId === provider.id).map((m) => m.name);
 
-            const VISION_PATTERNS = /llava|bakllava|moondream|minicpm-v/i;
             const newModels = modelNames
                 .filter((name: string) => !existingNames.includes(name))
                 .map(
                     (name: string, index: number) =>
-                        applyRegistryDefaults({
+                        applyDiscoveredModelDefaults({
                             id: generateId(),
                             providerId: provider.id,
                             name,
@@ -575,10 +581,6 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 .split(':')[0]
                                 .replace(/-/g, ' ')
                                 .replace(/\b\w/g, (c: string) => c.toUpperCase()),
-                            maxTokens: 4096,
-                            supportsStreaming: true,
-                            supportsTools: true,
-                            supportsVision: VISION_PATTERNS.test(name),
                             isEnabled: true,
                             isDefault: existingNames.length === 0 && index === 0,
                         }) as AIModel
@@ -687,7 +689,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             return;
         }
         const noExisting = existingNames.length === 0;
-        const newModel = applyRegistryDefaults({
+        const newModel = applyDiscoveredModelDefaults({
             id: generateId(),
             providerId: provider.id,
             name: modelName,
@@ -698,10 +700,6 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     ?.split(':')[0]
                     ?.replace(/-/g, ' ')
                     .replace(/\b\w/g, (c) => c.toUpperCase()) || modelName,
-            maxTokens: 4096,
-            supportsStreaming: true,
-            supportsTools: true,
-            supportsVision: false,
             isEnabled: true,
             isDefault: noExisting,
         }) as AIModel;
@@ -1079,7 +1077,21 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                             {/* Model Info */}
                                                             <div className="flex-1">
                                                                 <div className="font-mono text-sm text-gray-100">{model.name}</div>
-                                                                <div className="text-xs text-gray-400">{model.displayName}</div>
+                                                                <div className="text-xs text-gray-400 flex items-center gap-1.5">
+                                                                    <span>{model.displayName}</span>
+                                                                    {lookupModelSpec(model.name)?.lifecycleStatus === 'retired' && (
+                                                                        <span className="inline-flex items-center gap-1 text-red-400" title={t('ai.settings.retiredModelHint')}>
+                                                                            <AlertCircle size={11} />
+                                                                            {t('ai.settings.retiredModel')}
+                                                                        </span>
+                                                                    )}
+                                                                    {getModelCapabilitySource(model) === 'unknown' && (
+                                                                        <span className="inline-flex items-center gap-1 text-amber-400" title={t('ai.settings.unverifiedModelHint')}>
+                                                                            <AlertCircle size={11} />
+                                                                            {t('ai.settings.unverifiedCapabilities')}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
 
                                                             {/* Capabilities */}

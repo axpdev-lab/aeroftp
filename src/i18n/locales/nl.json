@@ -2532,7 +2532,11 @@
                 "styleConcise": "Beknopt",
                 "styleDefault": "Standaard",
                 "styleExplanatory": "Verklarend",
-                "styleLearning": "Lerend"
+                "styleLearning": "Lerend",
+                "retiredModel": "Uitgefaseerd",
+                "retiredModelHint": "Deze provider heeft het model uitgefaseerd. Selecteer een actuele vervanger vóór het volgende verzoek.",
+                "unverifiedCapabilities": "Niet-geverifieerde mogelijkheden",
+                "unverifiedModelHint": "De mogelijkheden zijn onbekend. Controleer context, tools, visie en redeneervermogen voordat je dit model voor agenttaken gebruikt."
             },
             "copy": "Kopiëren",
             "attachImage": "Afbeelding bijvoegen",

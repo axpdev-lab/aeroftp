@@ -2532,7 +2532,11 @@
                 "styleConcise": "Jedrnato",
                 "styleDefault": "Privzeto",
                 "styleExplanatory": "Pojasnjevalno",
-                "styleLearning": "Učno"
+                "styleLearning": "Učno",
+                "retiredModel": "Umaknjen",
+                "retiredModelHint": "Ta ponudnik je umaknil model. Pred naslednjo zahtevo izberite trenutno zamenjavo.",
+                "unverifiedCapabilities": "Nepreverjene zmogljivosti",
+                "unverifiedModelHint": "Zmogljivosti niso znane. Pred uporabo tega modela za naloge agenta preglejte kontekst, orodja, vid in sklepanje."
             },
             "copy": "Kopiraj",
             "attachImage": "Priloži sliko",

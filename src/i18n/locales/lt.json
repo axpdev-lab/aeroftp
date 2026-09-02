@@ -2532,7 +2532,11 @@
                 "styleConcise": "Glaustas",
                 "styleDefault": "Numatytasis",
                 "styleExplanatory": "Aiškinamasis",
-                "styleLearning": "Mokomasis"
+                "styleLearning": "Mokomasis",
+                "retiredModel": "Nebenaudojamas",
+                "retiredModelHint": "Šis teikėjas pašalino modelį. Prieš kitą užklausą pasirinkite dabartinį pakaitalą.",
+                "unverifiedCapabilities": "Nepatvirtintos galimybės",
+                "unverifiedModelHint": "Galimybės nežinomos. Prieš naudodami šį modelį agento užduotims peržiūrėkite kontekstą, įrankius, regą ir samprotavimą."
             },
             "copy": "Kopijuoti",
             "attachImage": "Pridėti vaizdą",

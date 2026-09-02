@@ -2734,7 +2734,11 @@
                 "thinkingDeep": "Profondo",
                 "thinkingLight": "Leggero",
                 "thinkingMaximum": "Massimo",
-                "thinkingOff": "Disattivato"
+                "thinkingOff": "Disattivato",
+                "retiredModel": "Ritirato",
+                "retiredModelHint": "Questo provider ha ritirato il modello. Seleziona un sostituto attuale prima della prossima richiesta.",
+                "unverifiedCapabilities": "Funzionalità non verificate",
+                "unverifiedModelHint": "Le funzionalità sono sconosciute. Esamina contesto, strumenti, visione e ragionamento prima di usare questo modello per attività dell'agente."
             },
             "copy": "Copia",
             "attachImage": "Allega immagine",

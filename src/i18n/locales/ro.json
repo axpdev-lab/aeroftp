@@ -2532,7 +2532,11 @@
                 "styleConcise": "Concis",
                 "styleDefault": "Implicit",
                 "styleExplanatory": "Explicativ",
-                "styleLearning": "De învățare"
+                "styleLearning": "De învățare",
+                "retiredModel": "Retras",
+                "retiredModelHint": "Acest furnizor a retras modelul. Selectați un înlocuitor actual înainte de următoarea solicitare.",
+                "unverifiedCapabilities": "Capabilități neverificate",
+                "unverifiedModelHint": "Capabilitățile sunt necunoscute. Examinați contextul, instrumentele, vederea și raționamentul înainte de a folosi acest model pentru sarcini de agent."
             },
             "copy": "Copiază",
             "attachImage": "Atașează imagine",

@@ -2532,7 +2532,11 @@
                 "styleConcise": "Ringkas",
                 "styleDefault": "Bawaan",
                 "styleExplanatory": "Penjelasan",
-                "styleLearning": "Pembelajaran"
+                "styleLearning": "Pembelajaran",
+                "retiredModel": "Dipensiunkan",
+                "retiredModelHint": "Penyedia ini telah menghentikan model. Pilih pengganti yang masih tersedia sebelum permintaan berikutnya.",
+                "unverifiedCapabilities": "Kemampuan belum terverifikasi",
+                "unverifiedModelHint": "Kemampuannya tidak diketahui. Tinjau konteks, alat, visi, dan penalaran sebelum menggunakan model ini untuk tugas agen."
             },
             "copy": "Salin",
             "attachImage": "Lampirkan Gambar",

@@ -2532,7 +2532,11 @@
                 "styleConcise": "Hnitmiðað",
                 "styleDefault": "Sjálfgefið",
                 "styleExplanatory": "Útskýrandi",
-                "styleLearning": "Námsmiðað"
+                "styleLearning": "Námsmiðað",
+                "retiredModel": "Úrelt",
+                "retiredModelHint": "Þessi þjónustuaðili hefur lagt líkanið niður. Veldu núverandi staðgengil áður en næsta beiðni er send.",
+                "unverifiedCapabilities": "Óstaðfestir eiginleikar",
+                "unverifiedModelHint": "Eiginleikarnir eru óþekktir. Farðu yfir samhengi, verkfæri, sjón og rökhugsun áður en þú notar þetta líkan fyrir verkefni umboðsmanns."
             },
             "copy": "Afrita",
             "attachImage": "Hengja mynd við",

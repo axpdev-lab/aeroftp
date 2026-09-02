@@ -2532,7 +2532,11 @@
                 "styleConcise": "Concís",
                 "styleDefault": "Predeterminat",
                 "styleExplanatory": "Explicatiu",
-                "styleLearning": "Aprenentatge"
+                "styleLearning": "Aprenentatge",
+                "retiredModel": "Retirat",
+                "retiredModelHint": "Aquest proveïdor ha retirat el model. Selecciona un substitut actual abans de la propera sol·licitud.",
+                "unverifiedCapabilities": "Capacitats no verificades",
+                "unverifiedModelHint": "Les capacitats són desconegudes. Revisa el context, les eines, la visió i el raonament abans d'utilitzar aquest model per a tasques d'agent."
             },
             "copy": "Copiar",
             "attachImage": "Adjuntar imatge",

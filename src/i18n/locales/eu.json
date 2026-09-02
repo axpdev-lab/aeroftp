@@ -2551,7 +2551,11 @@
                 "styleConcise": "Laburra",
                 "styleDefault": "Lehenetsia",
                 "styleExplanatory": "Azalpenezkoa",
-                "styleLearning": "Ikaskuntza"
+                "styleLearning": "Ikaskuntza",
+                "retiredModel": "Erretiratua",
+                "retiredModelHint": "Hornitzaile honek modeloa erretiratu du. Hautatu egungo ordezko bat hurrengo eskaera egin aurretik.",
+                "unverifiedCapabilities": "Egiaztatu gabeko gaitasunak",
+                "unverifiedModelHint": "Gaitasunak ezezagunak dira. Berrikusi testuingurua, tresnak, ikusmena eta arrazoibidea, eredu hau agentearen zereginetarako erabili aurretik."
             },
             "rag": {
                 "indexing": "Fitxategiak indexatzen...",

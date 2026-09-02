@@ -2532,7 +2532,11 @@
                 "styleConcise": "Ytimekäs",
                 "styleDefault": "Oletus",
                 "styleExplanatory": "Selittävä",
-                "styleLearning": "Oppiva"
+                "styleLearning": "Oppiva",
+                "retiredModel": "Poistettu käytöstä",
+                "retiredModelHint": "Tämä palveluntarjoaja on poistanut mallin käytöstä. Valitse ajantasainen korvaaja ennen seuraavaa pyyntöä.",
+                "unverifiedCapabilities": "Vahvistamattomat ominaisuudet",
+                "unverifiedModelHint": "Ominaisuudet eivät ole tiedossa. Tarkista konteksti, työkalut, näkökyky ja päättely ennen tämän mallin käyttöä agenttitehtäviin."
             },
             "copy": "Kopioi",
             "attachImage": "Liitä kuva",

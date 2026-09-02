@@ -2532,7 +2532,11 @@
                 "styleConcise": "Tömör",
                 "styleDefault": "Alapértelmezett",
                 "styleExplanatory": "Magyarázó",
-                "styleLearning": "Tanulási"
+                "styleLearning": "Tanulási",
+                "retiredModel": "Kivezetve",
+                "retiredModelHint": "Ez a szolgáltató kivezette a modellt. A következő kérés előtt válasszon aktuális helyettesítőt.",
+                "unverifiedCapabilities": "Nem ellenőrzött képességek",
+                "unverifiedModelHint": "A képességek ismeretlenek. Az ügynöki feladatokhoz való használat előtt tekintse át a kontextust, az eszközöket, a látást és a következtetést."
             },
             "copy": "Másolás",
             "attachImage": "Kép csatolása",

@@ -2532,7 +2532,11 @@
                 "styleConcise": "Zwięzły",
                 "styleDefault": "Domyślny",
                 "styleExplanatory": "Wyjaśniający",
-                "styleLearning": "Edukacyjny"
+                "styleLearning": "Edukacyjny",
+                "retiredModel": "Wycofany",
+                "retiredModelHint": "Ten dostawca wycofał model. Przed następnym żądaniem wybierz aktualny zamiennik.",
+                "unverifiedCapabilities": "Niezweryfikowane możliwości",
+                "unverifiedModelHint": "Możliwości są nieznane. Przed użyciem tego modelu do zadań agenta sprawdź kontekst, narzędzia, widzenie i rozumowanie."
             },
             "copy": "Kopiuj",
             "attachImage": "Załącz obraz",

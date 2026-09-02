@@ -2532,7 +2532,11 @@
                 "styleConcise": "Maikli",
                 "styleDefault": "Default",
                 "styleExplanatory": "Paliwanag",
-                "styleLearning": "Pagkatuto"
+                "styleLearning": "Pagkatuto",
+                "retiredModel": "Itinigil",
+                "retiredModelHint": "Itinigil na ng provider na ito ang modelo. Pumili ng kasalukuyang kapalit bago ang susunod na kahilingan.",
+                "unverifiedCapabilities": "Hindi beripikadong kakayahan",
+                "unverifiedModelHint": "Hindi alam ang mga kakayahan. Suriin ang konteksto, mga tool, vision, at pangangatwiran bago gamitin ang modelong ito para sa mga gawain ng ahente."
             },
             "copy": "Kopyahin",
             "attachImage": "Mag-attach ng larawan",

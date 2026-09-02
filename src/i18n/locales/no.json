@@ -2532,7 +2532,11 @@
                 "styleConcise": "Kortfattet",
                 "styleDefault": "Standard",
                 "styleExplanatory": "Forklarende",
-                "styleLearning": "Læring"
+                "styleLearning": "Læring",
+                "retiredModel": "Utfaset",
+                "retiredModelHint": "Denne leverandøren har faset ut modellen. Velg en aktuell erstatning før neste forespørsel.",
+                "unverifiedCapabilities": "Ubekreftede funksjoner",
+                "unverifiedModelHint": "Funksjonene er ukjente. Gå gjennom kontekst, verktøy, syn og resonnering før du bruker denne modellen til agentoppgaver."
             },
             "copy": "Kopier",
             "attachImage": "Legg ved bilde",

@@ -2551,7 +2551,11 @@
                 "styleConcise": "Sažeto",
                 "styleDefault": "Zadano",
                 "styleExplanatory": "Objašnjavajuće",
-                "styleLearning": "Učenje"
+                "styleLearning": "Učenje",
+                "retiredModel": "Povučen",
+                "retiredModelHint": "Ovaj je pružatelj povukao model. Prije sljedećeg zahtjeva odaberite aktualnu zamjenu.",
+                "unverifiedCapabilities": "Nepotvrđene mogućnosti",
+                "unverifiedModelHint": "Mogućnosti su nepoznate. Pregledajte kontekst, alate, vid i zaključivanje prije upotrebe ovog modela za zadatke agenta."
             },
             "rag": {
                 "indexing": "Indeksiranje datoteka...",

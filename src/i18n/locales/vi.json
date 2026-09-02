@@ -2532,7 +2532,11 @@
                 "styleConcise": "Ngắn gọn",
                 "styleDefault": "Mặc định",
                 "styleExplanatory": "Giải thích",
-                "styleLearning": "Học tập"
+                "styleLearning": "Học tập",
+                "retiredModel": "Đã ngừng sử dụng",
+                "retiredModelHint": "Nhà cung cấp này đã ngừng sử dụng mô hình. Hãy chọn một mô hình thay thế hiện hành trước yêu cầu tiếp theo.",
+                "unverifiedCapabilities": "Khả năng chưa được xác minh",
+                "unverifiedModelHint": "Chưa rõ các khả năng. Hãy xem xét ngữ cảnh, công cụ, thị giác và khả năng suy luận trước khi dùng mô hình này cho tác vụ tác nhân."
             },
             "copy": "Sao chép",
             "attachImage": "Đính kèm hình ảnh",

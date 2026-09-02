@@ -2532,7 +2532,11 @@
                 "styleConcise": "Lühike",
                 "styleDefault": "Vaikimisi",
                 "styleExplanatory": "Selgitav",
-                "styleLearning": "Õpetlik"
+                "styleLearning": "Õpetlik",
+                "retiredModel": "Kasutuselt kõrvaldatud",
+                "retiredModelHint": "See teenusepakkuja kõrvaldas mudeli kasutuselt. Valige enne järgmist päringut ajakohane asendus.",
+                "unverifiedCapabilities": "Kinnitamata võimalused",
+                "unverifiedModelHint": "Võimalused pole teada. Enne selle mudeli kasutamist agendi ülesannetes vaadake üle kontekst, tööriistad, nägemine ja arutlemine."
             },
             "copy": "Kopeeri",
             "attachImage": "Lisa pilt",

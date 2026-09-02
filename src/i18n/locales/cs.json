@@ -2532,7 +2532,11 @@
                 "styleConcise": "Stručný",
                 "styleDefault": "Výchozí",
                 "styleExplanatory": "Vysvětlující",
-                "styleLearning": "Výukový"
+                "styleLearning": "Výukový",
+                "retiredModel": "Vyřazený",
+                "retiredModelHint": "Tento poskytovatel model vyřadil. Před dalším požadavkem vyberte aktuální náhradu.",
+                "unverifiedCapabilities": "Neověřené schopnosti",
+                "unverifiedModelHint": "Schopnosti nejsou známé. Před použitím tohoto modelu pro úlohy agenta zkontrolujte kontext, nástroje, vidění a uvažování."
             },
             "copy": "Kopírovat",
             "attachImage": "Přiložit obrázek",

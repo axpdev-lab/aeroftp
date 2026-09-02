@@ -2532,7 +2532,11 @@
                 "styleConcise": "Koncis",
                 "styleDefault": "Standard",
                 "styleExplanatory": "Förklarande",
-                "styleLearning": "Lärande"
+                "styleLearning": "Lärande",
+                "retiredModel": "Utfasad",
+                "retiredModelHint": "Den här leverantören har fasat ut modellen. Välj en aktuell ersättare före nästa förfrågan.",
+                "unverifiedCapabilities": "Overifierade funktioner",
+                "unverifiedModelHint": "Funktionerna är okända. Granska kontext, verktyg, syn och resonemang innan du använder den här modellen för agentuppgifter."
             },
             "copy": "Kopiera",
             "attachImage": "Bifoga bild",

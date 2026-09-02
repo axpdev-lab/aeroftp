@@ -2532,7 +2532,11 @@
                 "styleConcise": "Özlü",
                 "styleDefault": "Varsayılan",
                 "styleExplanatory": "Açıklayıcı",
-                "styleLearning": "Öğrenme"
+                "styleLearning": "Öğrenme",
+                "retiredModel": "Kullanımdan kaldırıldı",
+                "retiredModelHint": "Bu sağlayıcı modeli kullanımdan kaldırdı. Sonraki istekten önce güncel bir alternatif seçin.",
+                "unverifiedCapabilities": "Doğrulanmamış yetenekler",
+                "unverifiedModelHint": "Yetenekler bilinmiyor. Bu modeli aracı görevlerinde kullanmadan önce bağlamı, araçları, görmeyi ve akıl yürütmeyi inceleyin."
             },
             "copy": "Kopyala",
             "attachImage": "Görsel ekle",

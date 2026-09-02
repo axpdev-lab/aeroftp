@@ -2532,7 +2532,11 @@
                 "styleConcise": "Concis",
                 "styleDefault": "Par défaut",
                 "styleExplanatory": "Explicatif",
-                "styleLearning": "Apprentissage"
+                "styleLearning": "Apprentissage",
+                "retiredModel": "Retiré",
+                "retiredModelHint": "Ce fournisseur a retiré le modèle. Sélectionnez un remplacement actuel avant la prochaine requête.",
+                "unverifiedCapabilities": "Capacités non vérifiées",
+                "unverifiedModelHint": "Les capacités sont inconnues. Vérifiez le contexte, les outils, la vision et le raisonnement avant d'utiliser ce modèle pour des tâches d'agent."
             },
             "copy": "Copier",
             "attachImage": "Joindre une image",

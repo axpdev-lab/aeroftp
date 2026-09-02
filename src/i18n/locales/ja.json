@@ -2497,7 +2497,11 @@
                 "styleConcise": "簡潔",
                 "styleDefault": "デフォルト",
                 "styleExplanatory": "説明的",
-                "styleLearning": "学習"
+                "styleLearning": "学習",
+                "retiredModel": "廃止",
+                "retiredModelHint": "このプロバイダーはモデルを廃止しました。次のリクエストの前に、現在利用できる代替モデルを選択してください。",
+                "unverifiedCapabilities": "未検証の機能",
+                "unverifiedModelHint": "機能は不明です。エージェントタスクでこのモデルを使用する前に、コンテキスト、ツール、ビジョン、推論を確認してください。"
             },
             "copy": "コピー",
             "attachImage": "画像を添付",
