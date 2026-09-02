@@ -505,6 +505,208 @@ mod tests {
         AerorsyncErrorKind::Internal,
     ];
 
+    /// The retry decision, case by case, inherited from the application
+    /// classifier this predicate replaced.
+    ///
+    /// `rsync_over_ssh::is_transient_for_reconnect` reached its verdict by
+    /// re-reading the rendered envelope string, and 29 tests pinned it:
+    /// 17 on the two envelope shapes and 12 on the plain variants. It is
+    /// gone; every one of its cases is transcribed here against the
+    /// carrier that produced the string in the first place, with the
+    /// expected answer written out rather than computed, so the table
+    /// reads as the policy and not as a second implementation of it.
+    ///
+    /// Two of its cases have no counterpart on this side, and that is the
+    /// point of the type: an unknown kind label ("SomeBrandNewKind") is
+    /// unrepresentable, because the kind is an enum and a new one has to
+    /// be added to `TRANSIENT_KINDS` deliberately, and an authentication
+    /// error like a missing key never leaves a transfer entry point.
+    #[test]
+    fn transient_channel_drop_cases_from_the_retired_app_classifier() {
+        fn native(kind: AerorsyncErrorKind, detail: &str, committed: bool) -> TransferError {
+            TransferError::Native {
+                error: AerorsyncError::new(kind, detail),
+                committed,
+            }
+        }
+
+        // The post-commit envelope, once `HardRejection`.
+        let post_commit: [(AerorsyncErrorKind, &str, bool); 8] = [
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "next_data_frame: remote closed mid file list",
+                true,
+            ),
+            (AerorsyncErrorKind::NegotiationFailed, "kex blip", true),
+            (
+                AerorsyncErrorKind::NegotiationFailed,
+                "negotiation chose file checksum \"none\", which this client does not implement; falling back",
+                false,
+            ),
+            (
+                AerorsyncErrorKind::HostKeyRejected,
+                "fingerprint mismatch",
+                false,
+            ),
+            (
+                AerorsyncErrorKind::InvalidFrame,
+                "unexpected opcode 0x42",
+                false,
+            ),
+            // Stands in for the retired "unknown kind label" case: a kind
+            // outside the transient list is never retried.
+            (AerorsyncErrorKind::PlannerRejected, "mystery", false),
+            // The denylist wins even under a transient kind.
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "host key verification failed",
+                false,
+            ),
+            // Mixed case in the detail: the match lowercases first.
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "Remote Closed",
+                true,
+            ),
+        ];
+        // The pre-commit envelope, once `TransferFailed { exit: -1 }`.
+        let pre_commit: [(AerorsyncErrorKind, &str, bool); 9] = [
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "next_data_frame: remote closed mid file list",
+                true,
+            ),
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "russh channel_open_session: Channel send error",
+                true,
+            ),
+            (
+                AerorsyncErrorKind::NegotiationFailed,
+                "initial handshake blip",
+                true,
+            ),
+            (
+                AerorsyncErrorKind::NegotiationFailed,
+                "negotiation chose file checksum \"none\", which this client does not implement; falling back",
+                false,
+            ),
+            (
+                AerorsyncErrorKind::NegotiationFailed,
+                "checksum negotiation found no common algorithm (client \"sha1\" vs server \"md5\"); falling back",
+                false,
+            ),
+            (
+                AerorsyncErrorKind::HostKeyRejected,
+                "fingerprint mismatch",
+                false,
+            ),
+            (
+                AerorsyncErrorKind::InvalidFrame,
+                "unexpected opcode 0xff",
+                false,
+            ),
+            (AerorsyncErrorKind::PlannerRejected, "mystery", false),
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "Channel Send Error",
+                true,
+            ),
+        ];
+        let mut checked = 0usize;
+        for (kind, detail, expected) in post_commit {
+            assert_eq!(
+                native(kind, detail, true).is_transient_channel_drop(),
+                expected,
+                "post-commit {kind:?} {detail:?}"
+            );
+            checked += 1;
+        }
+        for (kind, detail, expected) in pre_commit {
+            assert_eq!(
+                native(kind, detail, false).is_transient_channel_drop(),
+                expected,
+                "pre-commit {kind:?} {detail:?}"
+            );
+            checked += 1;
+        }
+
+        // The plain variants, once `Io`, `TransferFailed` without an
+        // envelope, a bare `HardRejection`, and `Cancelled`.
+        for (io_kind, expected) in [
+            (std::io::ErrorKind::BrokenPipe, true),
+            (std::io::ErrorKind::ConnectionReset, true),
+            (std::io::ErrorKind::UnexpectedEof, true),
+            (std::io::ErrorKind::TimedOut, true),
+            (std::io::ErrorKind::WouldBlock, true),
+            (std::io::ErrorKind::ConnectionAborted, true),
+            (std::io::ErrorKind::PermissionDenied, false),
+            (std::io::ErrorKind::NotFound, false),
+        ] {
+            assert_eq!(
+                TransferError::Io(std::io::Error::from(io_kind)).is_transient_channel_drop(),
+                expected,
+                "io {io_kind:?}"
+            );
+            checked += 1;
+        }
+        for (detail, expected) in [
+            ("rsync error: connection reset by peer\n", true),
+            ("rsync error: Permission denied (publickey)\n", false),
+            ("Host key verification failed.\n", false),
+            ("", false),
+            ("Connection Reset By Peer", true),
+            (
+                "native fallback: atomic write failed at write (target untouched): broken pipe",
+                true,
+            ),
+        ] {
+            assert_eq!(
+                TransferError::Soft {
+                    detail: detail.into()
+                }
+                .is_transient_channel_drop(),
+                expected,
+                "soft {detail:?}"
+            );
+            checked += 1;
+        }
+        // A hard rejection is never retried on its text, even when the
+        // text is one that would make a soft failure transient.
+        for detail in [
+            "host key mismatch",
+            "broken pipe",
+            "connection reset by peer",
+        ] {
+            assert!(
+                !TransferError::Hard {
+                    detail: detail.into()
+                }
+                .is_transient_channel_drop(),
+                "hard {detail:?}"
+            );
+            checked += 1;
+        }
+        assert!(
+            !native(AerorsyncErrorKind::Cancelled, "user abort", false).is_transient_channel_drop(),
+            "a cancel is a decision, not a drop"
+        );
+        assert!(
+            !TransferError::TooSmall {
+                size: 1,
+                threshold: 2
+            }
+            .is_transient_channel_drop(),
+            "a size gate is not a failure to retry"
+        );
+        checked += 2;
+
+        assert_eq!(
+            checked, 36,
+            "the inherited case table shrank: {checked} cases checked"
+        );
+    }
+
     /// The carrier does not re-decide the fallback policy: it asks
     /// `classify_fallback`, for every kind and both commit states.
     #[test]
