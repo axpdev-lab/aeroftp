@@ -224,7 +224,7 @@
             "kdriveTokenPlaceholder": "在此粘贴您的 API Token",
             "kdriveDriveIdPlaceholder": "您的 kDrive ID（数字）",
             "kdriveTokenHelp": "在 manager.infomaniak.com → Developer → API Tokens 生成令牌",
-            "kdriveTokenScopes": "令牌需要 drive 和 user_info 两个范围：Fetch 会读取您的账户资料来查找 Drive ID，仅有 drive 范围的令牌会被拒绝。",
+            "kdriveTokenScopes": "令牌需要 drive 和 user_info 两个范围。仅有 drive 时可以连接并列出文件，但“获取”会被拒绝，因为它需要读取您的账户资料来查找 Drive ID。",
             "kdriveFindDriveId": "查找您的 Drive ID",
             "kdriveFindDriveIdHint": "数字 Drive ID 会显示在此页面的地址栏中",
             "kdriveCreateToken": "创建 API 令牌",

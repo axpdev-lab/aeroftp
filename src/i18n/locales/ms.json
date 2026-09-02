@@ -224,7 +224,7 @@
             "kdriveTokenPlaceholder": "Tampalkan token API anda di sini",
             "kdriveDriveIdPlaceholder": "ID kDrive anda (numerik)",
             "kdriveTokenHelp": "Jana token di manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Token memerlukan skop drive dan user_info: Fetch membaca profil akaun anda untuk mencari Drive ID, dan token dengan drive sahaja ditolak.",
+            "kdriveTokenScopes": "Token memerlukan skop drive dan user_info. Dengan drive sahaja ia boleh menyambung dan menyenaraikan fail, tetapi \"Dapatkan\" ditolak, kerana ia membaca profil akaun anda untuk mencari Drive ID.",
             "kdriveFindDriveId": "Cari Drive ID anda",
             "kdriveFindDriveIdHint": "Drive ID berangka muncul dalam bar alamat halaman ini",
             "kdriveCreateToken": "Cipta token API",

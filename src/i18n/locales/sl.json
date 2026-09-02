@@ -224,7 +224,7 @@
             "kdriveTokenPlaceholder": "Prilepite svoj API Token sem",
             "kdriveDriveIdPlaceholder": "Vaš ID kDrive (številčni)",
             "kdriveTokenHelp": "Ustvarite žeton na manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Žeton potrebuje obsega drive in user_info: Fetch prebere profil vašega računa, da najde Drive ID, žeton samo z drive pa je zavrnjen.",
+            "kdriveTokenScopes": "Žeton potrebuje obsega drive in user_info. Samo z drive se poveže in prikaže datoteke, „Pridobi“ pa je zavrnjen, ker bere profil vašega računa, da najde Drive ID.",
             "kdriveFindDriveId": "Poiščite svoj Drive ID",
             "kdriveFindDriveIdHint": "Številčni Drive ID se prikaže v naslovni vrstici te strani",
             "kdriveCreateToken": "Ustvari žeton API",

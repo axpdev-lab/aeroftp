@@ -224,7 +224,7 @@
             "kdriveTokenPlaceholder": "Itsatsi zure API Token hemen",
             "kdriveDriveIdPlaceholder": "Zure kDrive ID (zenbakizkoa)",
             "kdriveTokenHelp": "Sortu token bat manager.infomaniak.com → Developer → API Tokens gunean",
-            "kdriveTokenScopes": "Tokenak drive eta user_info esparruak behar ditu: Fetch-ek zure kontuaren profila irakurtzen du Drive ID aurkitzeko, eta drive bakarrik duen token bat baztertu egiten da.",
+            "kdriveTokenScopes": "Tokenak drive eta user_info esparruak behar ditu. drive bakarrik izanda konektatu eta fitxategiak zerrendatzen ditu, baina \"Eskuratu\" baztertu egiten da, zure kontuaren profila irakurtzen duelako Drive ID aurkitzeko.",
             "kdriveFindDriveId": "Aurkitu zure Drive ID",
             "kdriveFindDriveIdHint": "Drive ID zenbakizkoa orri honen helbide-barran agertzen da",
             "kdriveCreateToken": "Sortu API token bat",

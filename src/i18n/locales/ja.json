@@ -224,7 +224,7 @@
             "kdriveTokenPlaceholder": "APIトークンをここに貼り付けてください",
             "kdriveDriveIdPlaceholder": "kDrive ID（数値）",
             "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens でトークンを生成してください",
-            "kdriveTokenScopes": "トークンには drive と user_info のスコープが必要です。Fetch はアカウントプロファイルを読み取って Drive ID を見つけるため、drive のみのトークンは拒否されます。",
+            "kdriveTokenScopes": "トークンには drive と user_info のスコープが必要です。drive のみでも接続と一覧表示はできますが、「取得」は拒否されます。Drive ID を見つけるためにアカウントプロファイルを読み取るからです。",
             "kdriveFindDriveId": "Drive ID を確認する",
             "kdriveFindDriveIdHint": "数値の Drive ID はこのページのアドレスバーに表示されます",
             "kdriveCreateToken": "API トークンを作成する",

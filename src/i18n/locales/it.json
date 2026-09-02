@@ -354,7 +354,7 @@
             "kdriveTokenPlaceholder": "Incolla qui il tuo token API",
             "kdriveDriveIdPlaceholder": "Il tuo ID kDrive (numerico)",
             "kdriveTokenHelp": "Genera un token in Infomaniak Manager → Profilo Utente → Developer → API Tokens",
-            "kdriveTokenScopes": "Il token deve avere gli ambiti drive e user_info: Fetch legge il profilo del tuo account per trovare il Drive ID, e un token con il solo drive viene rifiutato.",
+            "kdriveTokenScopes": "Il token deve avere gli ambiti drive e user_info. Con il solo drive si connette ed elenca i file, ma \"Recupera\" viene rifiutato, perché legge il profilo del tuo account per trovare il Drive ID.",
             "kdriveFindDriveId": "Trova il tuo Drive ID",
             "kdriveFindDriveIdHint": "Il Drive ID numerico appare nella barra degli indirizzi di questa pagina",
             "kdriveCreateToken": "Crea un token API",

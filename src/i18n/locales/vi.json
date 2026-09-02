@@ -224,7 +224,7 @@
             "kdriveTokenPlaceholder": "Dán API Token của bạn vào đây",
             "kdriveDriveIdPlaceholder": "ID kDrive của bạn (số)",
             "kdriveTokenHelp": "Tạo token tại manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Token cần các phạm vi drive và user_info: Fetch đọc hồ sơ tài khoản của bạn để tìm Drive ID, và token chỉ có drive sẽ bị từ chối.",
+            "kdriveTokenScopes": "Token cần các phạm vi drive và user_info. Chỉ với drive, token vẫn kết nối và liệt kê tệp, nhưng \"Lấy\" bị từ chối, vì nó đọc hồ sơ tài khoản của bạn để tìm Drive ID.",
             "kdriveFindDriveId": "Tìm Drive ID của bạn",
             "kdriveFindDriveIdHint": "Drive ID dạng số xuất hiện trên thanh địa chỉ của trang này",
             "kdriveCreateToken": "Tạo token API",

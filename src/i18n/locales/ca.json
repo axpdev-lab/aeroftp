@@ -224,7 +224,7 @@
             "kdriveTokenPlaceholder": "Enganxeu el vostre API Token aquí",
             "kdriveDriveIdPlaceholder": "El vostre kDrive ID (numèric)",
             "kdriveTokenHelp": "Genereu un token a manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "El token necessita els àmbits drive i user_info: Fetch llegeix el perfil del vostre compte per trobar el Drive ID, i un token només amb drive és rebutjat.",
+            "kdriveTokenScopes": "El token necessita els àmbits drive i user_info. Només amb drive es connecta i llista els fitxers, però \"Obtén\" es rebutja, perquè llegeix el perfil del vostre compte per trobar el Drive ID.",
             "kdriveFindDriveId": "Trobeu el vostre Drive ID",
             "kdriveFindDriveIdHint": "El Drive ID numèric apareix a la barra d'adreces d'aquesta pàgina",
             "kdriveCreateToken": "Creeu un token d'API",

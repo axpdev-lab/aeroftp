@@ -224,7 +224,7 @@
             "kdriveTokenPlaceholder": "API Token'inizi buraya yapıştırın",
             "kdriveDriveIdPlaceholder": "kDrive ID'niz (sayısal)",
             "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens adresinden bir token oluşturun",
-            "kdriveTokenScopes": "Belirtecin drive ve user_info kapsamlarına ihtiyacı var: Fetch, Drive ID'yi bulmak için hesap profilinizi okur ve yalnızca drive kapsamlı bir belirteç reddedilir.",
+            "kdriveTokenScopes": "Belirtecin drive ve user_info kapsamlarına ihtiyacı var. Yalnızca drive ile bağlanır ve dosyaları listeler, ancak \"Getir\" reddedilir, çünkü Drive ID'yi bulmak için hesap profilinizi okur.",
             "kdriveFindDriveId": "Drive ID'nizi bulun",
             "kdriveFindDriveIdHint": "Sayısal Drive ID bu sayfanın adres çubuğunda görünür",
             "kdriveCreateToken": "Bir API token'ı oluşturun",

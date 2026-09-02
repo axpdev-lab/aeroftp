@@ -224,7 +224,7 @@
             "kdriveTokenPlaceholder": "Idikit ang iyong API Token dito",
             "kdriveDriveIdPlaceholder": "Ang iyong kDrive ID (numero)",
             "kdriveTokenHelp": "Bumuo ng token sa manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Kailangan ng token ang mga saklaw na drive at user_info: binabasa ng Fetch ang profile ng iyong account para hanapin ang Drive ID, at tinatanggihan ang token na drive lamang.",
+            "kdriveTokenScopes": "Kailangan ng token ang mga saklaw na drive at user_info. Sa drive lamang ay nakakakonekta ito at nakakapaglista ng mga file, ngunit tinatanggihan ang \"Kunin\", dahil binabasa nito ang profile ng iyong account para hanapin ang Drive ID.",
             "kdriveFindDriveId": "Hanapin ang iyong Drive ID",
             "kdriveFindDriveIdHint": "Lumalabas ang numerikong Drive ID sa address bar ng pahinang ito",
             "kdriveCreateToken": "Gumawa ng token ng API",
