@@ -84,7 +84,9 @@ use crate::aerorsync::streaming_writer::{StreamingAtomicWriter, WriteAtomicError
 use crate::aerorsync::transport::{
     CancelHandle, RawRemoteShellTransport, RemoteExecRequest, RemoteShellTransport,
 };
-use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionStats};
+use crate::aerorsync::types::{
+    AerorsyncError, AerorsyncErrorKind, TransferError, TransferReport,
+};
 use crate::delta_transport::{BatchStats, DeltaBatch, DeltaTransport};
 use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
 
@@ -283,7 +285,10 @@ impl DeltaTransport for AerorsyncDeltaTransport {
         remote_path: &str,
         local_path: &Path,
     ) -> Result<RsyncStats, RsyncError> {
-        self.download_inner(remote_path, local_path, None).await
+        self.download_inner(remote_path, local_path, None)
+            .await
+            .map(report_to_rsync_stats)
+            .map_err(to_rsync_error)
     }
 
     async fn download_with_progress(
@@ -292,11 +297,17 @@ impl DeltaTransport for AerorsyncDeltaTransport {
         local_path: &Path,
         progress: Option<crate::aerorsync::progress::ProgressSink>,
     ) -> Result<RsyncStats, RsyncError> {
-        self.download_inner(remote_path, local_path, progress).await
+        self.download_inner(remote_path, local_path, progress)
+            .await
+            .map(report_to_rsync_stats)
+            .map_err(to_rsync_error)
     }
 
     async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError> {
-        self.upload_inner(local_path, remote_path, None).await
+        self.upload_inner(local_path, remote_path, None)
+            .await
+            .map(report_to_rsync_stats)
+            .map_err(to_rsync_error)
     }
 
     async fn upload_with_progress(
@@ -305,7 +316,10 @@ impl DeltaTransport for AerorsyncDeltaTransport {
         remote_path: &str,
         progress: Option<crate::aerorsync::progress::ProgressSink>,
     ) -> Result<RsyncStats, RsyncError> {
-        self.upload_inner(local_path, remote_path, progress).await
+        self.upload_inner(local_path, remote_path, progress)
+            .await
+            .map(report_to_rsync_stats)
+            .map_err(to_rsync_error)
     }
 
     /// P3-T01 W3.2(b2): open a session-reuse batch backed by russh.
@@ -356,13 +370,16 @@ impl AerorsyncDeltaTransport {
         local_path: &Path,
         remote_path: &str,
         progress: Option<crate::aerorsync::progress::ProgressSink>,
-    ) -> Result<RsyncStats, RsyncError> {
+    ) -> Result<TransferReport, TransferError> {
         let cancel = CancelHandle::inert();
         let preamble_profile = PreambleProfile::for_host(&self.ssh_config.host);
         if self.ssh_config.prefers_russh_leg() {
             let transport = RusshSessionTransport::connect(self.ssh_config.clone())
                 .await
-                .map_err(|e| map_native_error_to_rsync(e, false))?;
+                .map_err(|e| TransferError::Native {
+                    error: e,
+                    committed: false,
+                })?;
             do_upload(
                 transport,
                 cancel,
@@ -417,7 +434,7 @@ async fn do_upload<T>(
     progress: Option<crate::aerorsync::progress::ProgressSink>,
     preserve_xattrs: bool,
     preserve_acls: bool,
-) -> Result<RsyncStats, RsyncError>
+) -> Result<TransferReport, TransferError>
 where
     T: RawRemoteShellTransport + 'static,
 {
@@ -427,8 +444,9 @@ where
     // so a non-Linux caller cannot silently turn `.with_acls(true)` into an
     // ACL-less symlink session.
     if preserve_acls {
-        crate::aerorsync::acl_fs::ensure_linux_acl_support()
-            .map_err(|e| RsyncError::HardRejection(e.to_string()))?;
+        crate::aerorsync::acl_fs::ensure_linux_acl_support().map_err(|e| TransferError::Hard {
+            detail: e.to_string(),
+        })?;
     }
     // Y-RSC.4: lstat semantics. `fs::metadata` follows symlinks, which
     // silently uploaded the link TARGET's content as a regular file;
@@ -437,7 +455,7 @@ where
     // return identical metadata.
     let path_metadata = fs::symlink_metadata(local_path)
         .await
-        .map_err(RsyncError::Io)?;
+        .map_err(TransferError::Io)?;
     if path_metadata.file_type().is_symlink() {
         // Symlinks bypass the `min_file_size` gate on purpose: the gate
         // exists to skip delta overhead on small FILE payloads, but a
@@ -458,10 +476,12 @@ where
         .await;
     }
     if !path_metadata.is_file() {
-        return Err(RsyncError::HardRejection(format!(
-            "native upload only accepts regular files: {} is not regular",
-            local_path.display()
-        )));
+        return Err(TransferError::Hard {
+            detail: format!(
+                "native upload only accepts regular files: {} is not regular",
+                local_path.display()
+            ),
+        });
     }
     // P3-T01 W1.3: upload-side cap removed. Sources of any size now
     // flow through `drive_upload_through_delta_streaming` (W1.2).
@@ -490,20 +510,25 @@ where
         // it has no effect on regular-file reads.
         open_opts.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     }
-    let source_file = open_opts.open(local_path).await.map_err(RsyncError::Io)?;
+    let source_file = open_opts
+        .open(local_path)
+        .await
+        .map_err(TransferError::Io)?;
     // The fd, not the earlier lstat result, is authoritative for every field
     // paired with the streamed bytes and ACL. This closes a regular-to-regular
     // path swap that could otherwise send file B with file A's mode/size/mtime.
-    let metadata = source_file.metadata().await.map_err(RsyncError::Io)?;
+    let metadata = source_file.metadata().await.map_err(TransferError::Io)?;
     if !metadata.is_file() {
-        return Err(RsyncError::HardRejection(format!(
-            "native upload source changed to a non-regular file while opening: {}",
-            local_path.display()
-        )));
+        return Err(TransferError::Hard {
+            detail: format!(
+                "native upload source changed to a non-regular file while opening: {}",
+                local_path.display()
+            ),
+        });
     }
     let file_size = metadata.len();
     if file_size < min_file_size {
-        return Err(RsyncError::TooSmall {
+        return Err(TransferError::TooSmall {
             size: file_size,
             threshold: min_file_size,
         });
@@ -518,14 +543,16 @@ where
                     source_file.as_raw_fd(),
                     file_mode_from_metadata(&metadata),
                 )
-                .map_err(|e| RsyncError::HardRejection(e.to_string()))?,
+                .map_err(|e| TransferError::Hard {
+                    detail: e.to_string(),
+                })?,
             )
         }
         #[cfg(not(unix))]
         {
-            return Err(RsyncError::HardRejection(
-                crate::aerorsync::acl_fs::AclFsError::Unsupported.to_string(),
-            ));
+            return Err(TransferError::Hard {
+                detail: crate::aerorsync::acl_fs::AclFsError::Unsupported.to_string(),
+            });
         }
     } else {
         None
@@ -567,20 +594,26 @@ where
         )
         .await;
     if let Err(e) = drive_res {
-        return Err(map_native_error_to_rsync(e, driver.committed()));
+        return Err(TransferError::Native {
+            error: e,
+            committed: driver.committed(),
+        });
     }
     if let Err(e) = driver.finish_session(&mut collector).await {
-        return Err(map_native_error_to_rsync(e, driver.committed()));
+        return Err(TransferError::Native {
+            error: e,
+            committed: driver.committed(),
+        });
     }
 
     let duration_ms = start.elapsed().as_millis() as u64;
     let warnings = drain_warnings(warnings);
-    Ok(build_stats(
-        driver.session_stats(),
-        file_size,
+    Ok(TransferReport {
+        session: driver.session_stats().clone(),
+        total_size: file_size,
         duration_ms,
         warnings,
-    ))
+    })
 }
 
 /// Y-RSC.4: upload a local symlink as a symlink (never its target's
@@ -607,7 +640,7 @@ async fn do_upload_symlink<T>(
     progress: Option<crate::aerorsync::progress::ProgressSink>,
     start: Instant,
     preserve_xattrs: bool,
-) -> Result<RsyncStats, RsyncError>
+) -> Result<TransferReport, TransferError>
 where
     T: RawRemoteShellTransport + 'static,
 {
@@ -623,23 +656,27 @@ where
             start,
             preserve_xattrs,
         );
-        return Err(RsyncError::HardRejection(format!(
-            "symlink upload is not supported on this platform: {} is a symbolic link and \
+        return Err(TransferError::Hard {
+            detail: format!(
+                "symlink upload is not supported on this platform: {} is a symbolic link and \
              uploading it as a regular file would silently materialise its target's content",
-            local_path.display()
-        )));
+                local_path.display()
+            ),
+        });
     }
     #[cfg(unix)]
     {
-        let target_os = fs::read_link(local_path).await.map_err(RsyncError::Io)?;
+        let target_os = fs::read_link(local_path).await.map_err(TransferError::Io)?;
         let Some(target) = target_os.to_str().map(str::to_owned) else {
             // The proto-31 flist codec transports the target as UTF-8;
             // a non-UTF-8 target cannot round-trip, and degrading to the
             // classic path would materialise the target content instead.
-            return Err(RsyncError::HardRejection(format!(
-                "symlink target of {} is not valid UTF-8; cannot transport it on the wire",
-                local_path.display()
-            )));
+            return Err(TransferError::Hard {
+                detail: format!(
+                    "symlink target of {} is not valid UTF-8; cannot transport it on the wire",
+                    local_path.display()
+                ),
+            });
         };
         // rsync F_LENGTH convention for links: st_size == strlen(target).
         let target_len = target.len() as u64;
@@ -667,20 +704,26 @@ where
             .drive_upload_symlink(spec, source_entry, &mut collector)
             .await
         {
-            return Err(map_native_error_to_rsync(e, driver.committed()));
+            return Err(TransferError::Native {
+                error: e,
+                committed: driver.committed(),
+            });
         }
         if let Err(e) = driver.finish_session(&mut collector).await {
-            return Err(map_native_error_to_rsync(e, driver.committed()));
+            return Err(TransferError::Native {
+                error: e,
+                committed: driver.committed(),
+            });
         }
 
         let duration_ms = start.elapsed().as_millis() as u64;
         let warnings = drain_warnings(warnings);
-        Ok(build_stats(
-            driver.session_stats(),
-            target_len,
+        Ok(TransferReport {
+            session: driver.session_stats().clone(),
+            total_size: target_len,
             duration_ms,
             warnings,
-        ))
+        })
     }
 }
 
@@ -697,13 +740,16 @@ impl AerorsyncDeltaTransport {
         remote_path: &str,
         local_path: &Path,
         progress: Option<crate::aerorsync::progress::ProgressSink>,
-    ) -> Result<RsyncStats, RsyncError> {
+    ) -> Result<TransferReport, TransferError> {
         let cancel = CancelHandle::inert();
         let preamble_profile = PreambleProfile::for_host(&self.ssh_config.host);
         if self.ssh_config.prefers_russh_leg() {
             let transport = RusshSessionTransport::connect(self.ssh_config.clone())
                 .await
-                .map_err(|e| map_native_error_to_rsync(e, false))?;
+                .map_err(|e| TransferError::Native {
+                    error: e,
+                    committed: false,
+                })?;
             do_download(
                 transport,
                 cancel,
@@ -805,12 +851,14 @@ async fn create_symlink_atomic(
     entry: &FileListEntry,
     local_path: &Path,
     remote_path: &str,
-) -> Result<(), RsyncError> {
+) -> Result<(), TransferError> {
     let Some(target) = entry.symlink_target.as_deref().filter(|t| !t.is_empty()) else {
-        return Err(RsyncError::HardRejection(format!(
-            "symlink entry for {} carries no target string; refusing to guess",
-            remote_path
-        )));
+        return Err(TransferError::Hard {
+            detail: format!(
+                "symlink entry for {} carries no target string; refusing to guess",
+                remote_path
+            ),
+        });
     };
     #[cfg(unix)]
     {
@@ -821,11 +869,13 @@ async fn create_symlink_atomic(
         // unsafe target fail-closed (mirror of rsync `--safe-links`), the
         // secure default for a client pulling from an untrusted peer.
         if !symlink_target_is_safe(target) {
-            return Err(RsyncError::HardRejection(format!(
-                "symlink entry for {} has an unsafe target {} (absolute, or escaping the \
+            return Err(TransferError::Hard {
+                detail: format!(
+                    "symlink entry for {} has an unsafe target {} (absolute, or escaping the \
                  download directory); refusing (safe-links)",
-                remote_path, target
-            )));
+                    remote_path, target
+                ),
+            });
         }
         // Same deterministic temp name as `StreamingAtomicWriter` (the
         // writer's temp was discarded just above, so the slot is free);
@@ -835,14 +885,16 @@ async fn create_symlink_atomic(
         temp_os.push(TEMP_SUFFIX);
         let temp_path = PathBuf::from(temp_os);
         let _ = fs::remove_file(&temp_path).await;
-        fs::symlink(target, &temp_path).await.map_err(|e| {
-            RsyncError::HardRejection(format!(
-                "cannot create symlink temp {} -> {}: {}",
-                temp_path.display(),
-                target,
-                e
-            ))
-        })?;
+        fs::symlink(target, &temp_path)
+            .await
+            .map_err(|e| TransferError::Hard {
+                detail: format!(
+                    "cannot create symlink temp {} -> {}: {}",
+                    temp_path.display(),
+                    target,
+                    e
+                ),
+            })?;
         // Best-effort exactly as before: rsync treats a link whose
         // times cannot be set as a warning, never a transfer failure,
         // so a non-applied outcome is recorded and the transfer
@@ -859,24 +911,28 @@ async fn create_symlink_atomic(
         }
         if let Err(e) = fs::rename(&temp_path, local_path).await {
             let _ = fs::remove_file(&temp_path).await;
-            return Err(RsyncError::HardRejection(format!(
-                "cannot commit symlink {} -> {}: {}",
-                local_path.display(),
-                target,
-                e
-            )));
+            return Err(TransferError::Hard {
+                detail: format!(
+                    "cannot commit symlink {} -> {}: {}",
+                    local_path.display(),
+                    target,
+                    e
+                ),
+            });
         }
         Ok(())
     }
     #[cfg(not(unix))]
     {
         let _ = local_path;
-        Err(RsyncError::HardRejection(format!(
-            "remote {} is a symbolic link (target {}); symlink creation is not supported on \
+        Err(TransferError::Hard {
+            detail: format!(
+                "remote {} is a symbolic link (target {}); symlink creation is not supported on \
              this platform and downloading the target's content in its place would be silent \
              corruption",
-            remote_path, target
-        )))
+                remote_path, target
+            ),
+        })
     }
 }
 
@@ -1074,14 +1130,15 @@ async fn do_download<T>(
     preserve_xattrs: bool,
     preserve_acls: bool,
     fail_on_metadata_loss: bool,
-) -> Result<RsyncStats, RsyncError>
+) -> Result<TransferReport, TransferError>
 where
     T: RawRemoteShellTransport + 'static,
 {
     let start = Instant::now();
     if preserve_acls {
-        crate::aerorsync::acl_fs::ensure_linux_acl_support()
-            .map_err(|e| RsyncError::HardRejection(e.to_string()))?;
+        crate::aerorsync::acl_fs::ensure_linux_acl_support().map_err(|e| TransferError::Hard {
+            detail: e.to_string(),
+        })?;
     }
     // Y-RSC.5: open a streaming baseline only (no bulk `fs::read`).
     // Signatures and CopyBlock reconstruction both use
@@ -1103,9 +1160,8 @@ where
         Ok(meta) if meta.is_file() => match FileBaseline::open(local_path).await {
             Ok(fb) => Box::new(fb),
             Err(error) => {
-                return Err(RsyncError::TransferFailed {
-                    exit: -1,
-                    stderr: format!(
+                return Err(TransferError::Soft {
+                    detail: format!(
                         "native fallback: cannot open streaming baseline {}: {}",
                         local_path.display(),
                         error
@@ -1117,9 +1173,8 @@ where
             // Directory / special file: same class as a non-NotFound
             // read failure under the old bulk path (fs::read would have
             // rejected these). Surface rather than silently full-download.
-            return Err(RsyncError::TransferFailed {
-                exit: -1,
-                stderr: format!(
+            return Err(TransferError::Soft {
+                detail: format!(
                     "native fallback: local baseline {} is not a regular file",
                     local_path.display()
                 ),
@@ -1138,9 +1193,8 @@ where
             // degrade to full-size delta. Pre-commit classification
             // routes this through classic fallback with a visible
             // reason in the stderr string.
-            return Err(RsyncError::TransferFailed {
-                exit: -1,
-                stderr: format!(
+            return Err(TransferError::Soft {
+                detail: format!(
                     "native fallback: cannot inspect local baseline {}: {}",
                     local_path.display(),
                     error
@@ -1155,9 +1209,8 @@ where
     let mut writer =
         StreamingAtomicWriter::new(local_path)
             .await
-            .map_err(|e| RsyncError::TransferFailed {
-                exit: -1,
-                stderr: format!(
+            .map_err(|e| TransferError::Soft {
+                detail: format!(
                     "native fallback: cannot open streaming temp file for {}: {}",
                     local_path.display(),
                     e
@@ -1203,14 +1256,20 @@ where
         // that SAME deterministic path with `create_new(true)` and would
         // fail with `AlreadyExists`. Discard the temp so the fallback can
         // proceed; the original `local_path` is untouched (no rename).
-        let mapped = map_native_error_to_rsync(e, driver.committed());
+        let mapped = TransferError::Native {
+            error: e,
+            committed: driver.committed(),
+        };
         discard_streaming_temp(writer).await;
         return Err(mapped);
     }
     if let Err(e) = driver.finish_session(&mut collector).await {
         // Same abandon-path reasoning as the `drive_res` arm above: clear
         // the orphan temp before the classic fallback re-opens it.
-        let mapped = map_native_error_to_rsync(e, driver.committed());
+        let mapped = TransferError::Native {
+            error: e,
+            committed: driver.committed(),
+        };
         discard_streaming_temp(writer).await;
         return Err(mapped);
     }
@@ -1230,12 +1289,12 @@ where
             create_symlink_atomic(entry, local_path, remote_path).await?;
             let duration_ms = start.elapsed().as_millis() as u64;
             let warnings = drain_warnings(warnings);
-            return Ok(build_stats(
-                &stats_snapshot,
-                entry.size.max(0) as u64,
+            return Ok(TransferReport {
+                session: stats_snapshot,
+                total_size: entry.size.max(0) as u64,
                 duration_ms,
                 warnings,
-            ));
+            });
         }
     }
     let preserve_mode = remote_entry
@@ -1277,7 +1336,7 @@ where
                 file_size, entry.size, remote_path
             );
             discard_streaming_temp(writer).await;
-            return Err(RsyncError::TransferFailed { exit: -1, stderr });
+            return Err(TransferError::Soft { detail: stderr });
         }
     }
 
@@ -1336,7 +1395,7 @@ where
                         file_size
                     );
                     discard_streaming_temp(writer).await;
-                    return Err(RsyncError::TransferFailed { exit: -1, stderr });
+                    return Err(TransferError::Soft { detail: stderr });
                 }
             }
         }
@@ -1354,7 +1413,7 @@ where
                         remote_path, e
                     );
                     discard_streaming_temp(writer).await;
-                    return Err(RsyncError::TransferFailed { exit: -1, stderr });
+                    return Err(TransferError::Soft { detail: stderr });
                 }
                 let actual = match algo {
                     MD5_ALGO_NAME => compute_md5_file_streaming(writer.temp_path()).await,
@@ -1373,7 +1432,7 @@ where
                             remote_path, e
                         );
                         discard_streaming_temp(writer).await;
-                        return Err(RsyncError::TransferFailed { exit: -1, stderr });
+                        return Err(TransferError::Soft { detail: stderr });
                     }
                 };
                 if expected != actual.as_slice() {
@@ -1387,7 +1446,7 @@ where
                         file_size
                     );
                     discard_streaming_temp(writer).await;
-                    return Err(RsyncError::TransferFailed { exit: -1, stderr });
+                    return Err(TransferError::Soft { detail: stderr });
                 }
             }
         }
@@ -1406,18 +1465,16 @@ where
         .filter(|_| preserve_xattrs)
         .cloned();
     let apply_acls = if preserve_acls {
-        let entry = remote_entry.as_ref().ok_or_else(|| {
-            RsyncError::HardRejection(
-                "session negotiated -A but the download finished without a file-list entry".into(),
-            )
+        let entry = remote_entry.as_ref().ok_or_else(|| TransferError::Hard {
+            detail: "session negotiated -A but the download finished without a file-list entry"
+                .into(),
         })?;
-        let acls = entry.acls.as_ref().ok_or_else(|| {
-            RsyncError::HardRejection(
-                "session negotiated -A but the file-list entry carries no access ACL".into(),
-            )
+        let acls = entry.acls.as_ref().ok_or_else(|| TransferError::Hard {
+            detail: "session negotiated -A but the file-list entry carries no access ACL".into(),
         })?;
-        crate::aerorsync::acl_fs::access_literal(acls)
-            .map_err(|e| RsyncError::HardRejection(e.to_string()))?;
+        crate::aerorsync::acl_fs::access_literal(acls).map_err(|e| TransferError::Hard {
+            detail: e.to_string(),
+        })?;
         Some(acls.clone())
     } else {
         None
@@ -1440,12 +1497,12 @@ where
     let duration_ms = start.elapsed().as_millis() as u64;
     let mut warnings = drain_warnings(warnings);
     warnings.extend(xattr_warnings);
-    Ok(build_stats(
-        driver.session_stats(),
-        file_size,
+    Ok(TransferReport {
+        session: driver.session_stats().clone(),
+        total_size: file_size,
         duration_ms,
         warnings,
-    ))
+    })
 }
 
 // --- batch (W3.2(b2)) -----------------------------------------------------
@@ -1570,13 +1627,16 @@ impl AerorsyncBatch {
     }
 }
 
-#[async_trait]
-impl DeltaBatch for AerorsyncBatch {
-    async fn upload(
-        &mut self,
+impl AerorsyncBatch {
+    /// Batch upload of one file, crate-owned outcome. The retry
+    /// decision is the crate's own
+    /// [`TransferError::is_transient_channel_drop`]; the application
+    /// adapter renders the result.
+    pub(crate) async fn upload_file(
+        &self,
         local_path: &Path,
         remote_path: &str,
-    ) -> Result<RsyncStats, RsyncError> {
+    ) -> Result<TransferReport, TransferError> {
         // Z.1.2 — single retry budget on transient SSH channel drops.
         // The first attempt uses the existing shared session; if it
         // fails with a transient I/O error or a `TransferFailed` whose
@@ -1604,15 +1664,15 @@ impl DeltaBatch for AerorsyncBatch {
         .await;
         if let Err(ref e) = first {
             tracing::debug!(
-                "AerorsyncBatch::upload: first attempt errored on {} → variant={} transient={}",
+                "AerorsyncBatch::upload: first attempt errored on {} → variant={:?} transient={}",
                 remote_path,
-                rsync_error_variant(e),
-                crate::rsync_over_ssh::is_transient_for_reconnect(e)
+                e,
+                e.is_transient_channel_drop()
             );
         }
-        let stats = match first {
-            Ok(stats) => stats,
-            Err(err) if crate::rsync_over_ssh::is_transient_for_reconnect(&err) => {
+        let report = match first {
+            Ok(report) => report,
+            Err(err) if err.is_transient_channel_drop() => {
                 tracing::warn!(
                     "AerorsyncBatch::upload: transient drop on {} ({}); attempting reconnect",
                     remote_path,
@@ -1645,16 +1705,21 @@ impl DeltaBatch for AerorsyncBatch {
             Err(err) => return Err(err),
         };
         self.files_transferred.fetch_add(1, Ordering::SeqCst);
-        let on_wire = stats.bytes_sent.saturating_add(stats.bytes_received);
+        let on_wire = report
+            .session
+            .bytes_sent
+            .saturating_add(report.session.bytes_received);
         self.bytes_on_wire.fetch_add(on_wire, Ordering::SeqCst);
-        Ok(stats)
+        Ok(report)
     }
 
-    async fn download(
-        &mut self,
+    /// Batch download of one file, crate-owned outcome. Mirror of
+    /// [`AerorsyncBatch::upload_file`].
+    pub(crate) async fn download_file(
+        &self,
         remote_path: &str,
         local_path: &Path,
-    ) -> Result<RsyncStats, RsyncError> {
+    ) -> Result<TransferReport, TransferError> {
         // Z.1.2 — symmetric retry budget on the download leg. Reconnect
         // semantics match the upload branch above; see the matching
         // comment for the classification rules.
@@ -1678,15 +1743,15 @@ impl DeltaBatch for AerorsyncBatch {
         .await;
         if let Err(ref e) = first {
             tracing::debug!(
-                "AerorsyncBatch::download: first attempt errored on {} → variant={} transient={}",
+                "AerorsyncBatch::download: first attempt errored on {} → variant={:?} transient={}",
                 remote_path,
-                rsync_error_variant(e),
-                crate::rsync_over_ssh::is_transient_for_reconnect(e)
+                e,
+                e.is_transient_channel_drop()
             );
         }
-        let stats = match first {
-            Ok(stats) => stats,
-            Err(err) if crate::rsync_over_ssh::is_transient_for_reconnect(&err) => {
+        let report = match first {
+            Ok(report) => report,
+            Err(err) if err.is_transient_channel_drop() => {
                 tracing::warn!(
                     "AerorsyncBatch::download: transient drop on {} ({}); attempting reconnect",
                     remote_path,
@@ -1716,12 +1781,15 @@ impl DeltaBatch for AerorsyncBatch {
             Err(err) => return Err(err),
         };
         self.files_transferred.fetch_add(1, Ordering::SeqCst);
-        let on_wire = stats.bytes_sent.saturating_add(stats.bytes_received);
+        let on_wire = report
+            .session
+            .bytes_sent
+            .saturating_add(report.session.bytes_received);
         self.bytes_on_wire.fetch_add(on_wire, Ordering::SeqCst);
-        Ok(stats)
+        Ok(report)
     }
 
-    fn cancel(&self) {
+    pub(crate) fn cancel_batch(&self) {
         self.cancel_observed.store(true, Ordering::SeqCst);
         self.cancel.cancel();
         // Best-effort async teardown of the russh handle. The DeltaBatch
@@ -1734,14 +1802,55 @@ impl DeltaBatch for AerorsyncBatch {
         });
     }
 
-    async fn finalize(self: Box<Self>) -> Result<BatchStats, RsyncError> {
+    /// Close the shared session and report the batch totals as plain
+    /// numbers: `(files_transferred, bytes_on_wire, session_count,
+    /// partial)`. The adapter shapes them into the application type.
+    pub(crate) async fn batch_totals(self: Box<Self>) -> (u64, u64, u32, bool) {
         let session_count = self.transport.handshake_count();
         let _ = self.transport.close().await;
-        Ok(BatchStats {
-            files_transferred: self.files_transferred.load(Ordering::SeqCst),
-            bytes_on_wire: self.bytes_on_wire.load(Ordering::SeqCst),
+        (
+            self.files_transferred.load(Ordering::SeqCst),
+            self.bytes_on_wire.load(Ordering::SeqCst),
             session_count,
-            partial: self.cancel_observed.load(Ordering::SeqCst),
+            self.cancel_observed.load(Ordering::SeqCst),
+        )
+    }
+}
+#[async_trait]
+impl DeltaBatch for AerorsyncBatch {
+    async fn upload(
+        &mut self,
+        local_path: &Path,
+        remote_path: &str,
+    ) -> Result<RsyncStats, RsyncError> {
+        self.upload_file(local_path, remote_path)
+            .await
+            .map(report_to_rsync_stats)
+            .map_err(to_rsync_error)
+    }
+
+    async fn download(
+        &mut self,
+        remote_path: &str,
+        local_path: &Path,
+    ) -> Result<RsyncStats, RsyncError> {
+        self.download_file(remote_path, local_path)
+            .await
+            .map(report_to_rsync_stats)
+            .map_err(to_rsync_error)
+    }
+
+    fn cancel(&self) {
+        self.cancel_batch();
+    }
+
+    async fn finalize(self: Box<Self>) -> Result<BatchStats, RsyncError> {
+        let (files_transferred, bytes_on_wire, session_count, partial) = self.batch_totals().await;
+        Ok(BatchStats {
+            files_transferred,
+            bytes_on_wire,
+            session_count,
+            partial,
         })
     }
 }
@@ -2144,25 +2253,41 @@ fn drain_warnings(handle: Arc<StdMutex<Vec<String>>>) -> Vec<String> {
     }
 }
 
-fn build_stats(
-    stats: &SessionStats,
-    total_size: u64,
-    duration_ms: u64,
-    warnings: Vec<String>,
-) -> RsyncStats {
-    let speedup = if stats.bytes_sent > 0 {
-        total_size as f64 / stats.bytes_sent as f64
+/// Render a crate-owned [`TransferReport`] into the application
+/// statistics type. Same arithmetic as the `build_stats` it replaces:
+/// the speedup is the total size over the bytes actually sent, and 1.0
+/// when nothing was sent (never a division by zero).
+fn report_to_rsync_stats(report: TransferReport) -> RsyncStats {
+    let speedup = if report.session.bytes_sent > 0 {
+        report.total_size as f64 / report.session.bytes_sent as f64
     } else {
         1.0
     };
     RsyncStats {
-        bytes_sent: stats.bytes_sent,
-        bytes_received: stats.bytes_received,
-        total_size,
+        bytes_sent: report.session.bytes_sent,
+        bytes_received: report.session.bytes_received,
+        total_size: report.total_size,
         speedup,
-        duration_ms,
-        copy_blocks: stats.copy_blocks,
-        warnings,
+        duration_ms: report.duration_ms,
+        copy_blocks: report.session.copy_blocks,
+        warnings: report.warnings,
+    }
+}
+
+/// Render a crate-owned [`TransferError`] into the application error
+/// type. Every string is the one the module produced, verbatim; only
+/// the `Native` arm adds anything, and it adds the same envelope
+/// `map_native_error_to_rsync` has always added.
+fn to_rsync_error(err: TransferError) -> RsyncError {
+    match err {
+        TransferError::Soft { detail } => RsyncError::TransferFailed {
+            exit: -1,
+            stderr: detail,
+        },
+        TransferError::Hard { detail } => RsyncError::HardRejection(detail),
+        TransferError::Io(io) => RsyncError::Io(io),
+        TransferError::TooSmall { size, threshold } => RsyncError::TooSmall { size, threshold },
+        TransferError::Native { error, committed } => map_native_error_to_rsync(error, committed),
     }
 }
 
@@ -2201,35 +2326,11 @@ fn map_native_probe_error_to_rsync(err: AerorsyncError) -> RsyncError {
     RsyncError::RemoteNotAvailable
 }
 
-/// Diagnostic helper: stable short tag for a [`RsyncError`] variant so
-/// `tracing::debug!` calls can log "which arm of the enum did we see"
-/// without dragging the full `Debug` impl (which can spill stderr blobs
-/// onto a single line and confuse log scrapers). Used by Z.1.2 lane
-/// captures to confirm the first attempt's error path matches the
-/// classifier's expectation.
-fn rsync_error_variant(err: &RsyncError) -> &'static str {
-    match err {
-        RsyncError::Io(_) => "Io",
-        RsyncError::TransferFailed { .. } => "TransferFailed",
-        RsyncError::HardRejection(_) => "HardRejection",
-        RsyncError::PasswordAuthUnsupported => "PasswordAuthUnsupported",
-        RsyncError::MissingPassword => "MissingPassword",
-        RsyncError::MissingKey(_) => "MissingKey",
-        RsyncError::VersionTooOld { .. } => "VersionTooOld",
-        RsyncError::RemoteNotAvailable => "RemoteNotAvailable",
-        RsyncError::LocalNotAvailable => "LocalNotAvailable",
-        RsyncError::Cancelled => "Cancelled",
-        RsyncError::TooSmall { .. } => "TooSmall",
-        RsyncError::SpawnFailed(_) => "SpawnFailed",
-        RsyncError::ProbeFailed(_) => "ProbeFailed",
-    }
-}
-
-fn map_write_atomic_error(err: WriteAtomicError) -> RsyncError {
+fn map_write_atomic_error(err: WriteAtomicError) -> TransferError {
     match err {
         // Pre-open: nothing touched on disk yet → treat as Io, the
         // wrapper degrades to classic fallback for free.
-        WriteAtomicError::PreOpen(io) => RsyncError::Io(io),
+        WriteAtomicError::PreOpen(io) => TransferError::Io(io),
         // U-13 post-open split:
         //   * write / flush / sync_all / chmod → `local_path` is
         //     guaranteed untouched (rename has not happened yet) and the
@@ -2243,21 +2344,18 @@ fn map_write_atomic_error(err: WriteAtomicError) -> RsyncError {
         WriteAtomicError::PostOpen {
             stage: "acl",
             source,
-        } => RsyncError::HardRejection(format!(
-            "atomic write failed at acl (target untouched): {source}"
-        )),
-        WriteAtomicError::PostOpen { stage, source } if stage != "rename" => {
-            RsyncError::TransferFailed {
-                exit: -1,
-                stderr: format!(
-                    "native fallback: atomic write failed at {} (target untouched): {}",
-                    stage, source
-                ),
-            }
-        }
-        WriteAtomicError::PostOpen { stage, source } => {
-            RsyncError::HardRejection(format!("atomic write failed at {}: {}", stage, source))
-        }
+        } => TransferError::Hard {
+            detail: format!("atomic write failed at acl (target untouched): {source}"),
+        },
+        WriteAtomicError::PostOpen { stage, source } if stage != "rename" => TransferError::Soft {
+            detail: format!(
+                "native fallback: atomic write failed at {} (target untouched): {}",
+                stage, source
+            ),
+        },
+        WriteAtomicError::PostOpen { stage, source } => TransferError::Hard {
+            detail: format!("atomic write failed at {}: {}", stage, source),
+        },
     }
 }
 
@@ -2269,7 +2367,7 @@ fn map_write_atomic_error(err: WriteAtomicError) -> RsyncError {
 mod tests {
     use super::*;
     use crate::aerorsync::streaming_writer::{write_atomic_chunked, write_atomic_chunked_sparse};
-    use crate::aerorsync::types::AerorsyncErrorKind;
+    use crate::aerorsync::types::{AerorsyncErrorKind, SessionStats};
     use std::io::Write;
     use std::time::Duration;
     use tempfile::TempDir;
@@ -2410,7 +2508,7 @@ mod tests {
         content: &[u8],
         peer_algos: &str,
         trailer: Vec<u8>,
-    ) -> (Result<RsyncStats, RsyncError>, PathBuf) {
+    ) -> (Result<TransferReport, TransferError>, PathBuf) {
         run_download_fixture_with_profile(
             dir,
             content,
@@ -2434,7 +2532,7 @@ mod tests {
         profile: PreambleProfile,
         peer_algos: &str,
         trailer: Vec<u8>,
-    ) -> (Result<RsyncStats, RsyncError>, PathBuf) {
+    ) -> (Result<TransferReport, TransferError>, PathBuf) {
         use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
 
         let local_path = dir.path().join("target.bin");
@@ -2474,14 +2572,13 @@ mod tests {
         .await;
 
         match result {
-            Err(RsyncError::TransferFailed { exit, stderr }) => {
-                assert_eq!(exit, -1, "must be fallback-eligible, not a hard rejection");
+            Err(TransferError::Soft { detail }) => {
                 assert!(
-                    stderr.contains("checksum mismatch") && stderr.contains("/remote/target.bin"),
-                    "stderr must name the failure and the file: {stderr}"
+                    detail.contains("checksum mismatch") && detail.contains("/remote/target.bin"),
+                    "detail must name the failure and the file: {detail}"
                 );
             }
-            other => panic!("expected TransferFailed on checksum mismatch, got {other:?}"),
+            other => panic!("expected a soft error on checksum mismatch, got {other:?}"),
         }
         assert!(
             !local_path.exists(),
@@ -2519,7 +2616,10 @@ mod tests {
         )
         .await;
 
-        match result {
+        // The typed cause is rendered at the module boundary now, so the
+        // pin runs the outcome through the same rendering the trait
+        // methods use.
+        match result.map_err(to_rsync_error) {
             Err(RsyncError::TransferFailed { exit, stderr }) => {
                 assert_eq!(exit, -1, "typed native fallback uses the -1 envelope");
                 assert!(
@@ -2576,8 +2676,7 @@ mod tests {
             run_download_fixture(&dir, &content, "md5", vec![0xCC; 16]).await;
 
         match result {
-            Err(RsyncError::TransferFailed { exit, stderr }) => {
-                assert_eq!(exit, -1, "must be fallback-eligible, not a hard rejection");
+            Err(TransferError::Soft { detail: stderr }) => {
                 assert!(
                     stderr.contains("checksum mismatch")
                         && stderr.contains("md5")
@@ -2636,8 +2735,7 @@ mod tests {
             run_download_fixture(&dir, &content, "md4", vec![0xCC; 16]).await;
 
         match result {
-            Err(RsyncError::TransferFailed { exit, stderr }) => {
-                assert_eq!(exit, -1, "must be fallback-eligible, not a hard rejection");
+            Err(TransferError::Soft { detail: stderr }) => {
                 assert!(
                     stderr.contains("checksum mismatch")
                         && stderr.contains("md4")
@@ -2701,8 +2799,7 @@ mod tests {
         .await;
 
         match result {
-            Err(RsyncError::TransferFailed { exit, stderr }) => {
-                assert_eq!(exit, -1, "must be fallback-eligible, not a hard rejection");
+            Err(TransferError::Soft { detail: stderr }) => {
                 assert!(
                     stderr.contains("checksum mismatch")
                         && stderr.contains("sha1")
@@ -2766,8 +2863,7 @@ mod tests {
             let (result, local_path) =
                 run_download_fixture(&dir, &content, algorithm, vec![0xCC; 8]).await;
             match result {
-                Err(RsyncError::TransferFailed { exit, stderr }) => {
-                    assert_eq!(exit, -1);
+                Err(TransferError::Soft { detail: stderr }) => {
                     assert!(
                         stderr.contains("checksum mismatch")
                             && stderr.contains(algorithm)
@@ -3132,14 +3228,14 @@ mod tests {
         let err = create_symlink_atomic(&entry, &dest, "/remote/no-target.lnk")
             .await
             .unwrap_err();
-        assert!(matches!(err, RsyncError::HardRejection(_)));
+        assert!(matches!(err, TransferError::Hard { .. }));
         // Empty target string is equally refused: readlink can never
         // produce it, so it only appears from a malformed peer.
         entry.symlink_target = Some(String::new());
         let err = create_symlink_atomic(&entry, &dest, "/remote/no-target.lnk")
             .await
             .unwrap_err();
-        assert!(matches!(err, RsyncError::HardRejection(_)));
+        assert!(matches!(err, TransferError::Hard { .. }));
         assert!(!dest.exists(), "nothing may be materialised on refusal");
     }
 
@@ -3185,7 +3281,7 @@ mod tests {
         let err = create_symlink_atomic(&entry, &dest, "/remote/evil.lnk")
             .await
             .unwrap_err();
-        assert!(matches!(err, RsyncError::HardRejection(_)));
+        assert!(matches!(err, TransferError::Hard { .. }));
         assert!(!dest.exists(), "unsafe symlink must not be materialised");
         let mut temp_os = dest.as_os_str().to_owned();
         temp_os.push(TEMP_SUFFIX);
@@ -3421,7 +3517,7 @@ mod tests {
         let err = create_symlink_atomic(&entry, &dest, "/remote/refused.lnk")
             .await
             .unwrap_err();
-        assert!(matches!(err, RsyncError::HardRejection(_)));
+        assert!(matches!(err, TransferError::Hard { .. }));
         assert!(!dest.exists(), "fail closed: nothing on disk");
     }
 
@@ -3515,7 +3611,7 @@ mod tests {
         .await
         .unwrap_err();
         assert!(
-            matches!(err, RsyncError::HardRejection(_)),
+            matches!(err, TransferError::Hard { .. }),
             "non-UTF-8 target must fail closed, got {err:?}"
         );
     }
@@ -4898,12 +4994,337 @@ PY"#
         );
     }
 
+    // -- crate error to application error -------------------------------------
+
+    /// Every string the module hands the application, pinned whole.
+    ///
+    /// The module now speaks [`TransferError`] and the boundary renders
+    /// it. This is the only place the rendering is described, so the
+    /// assertions are on entire strings, never on substrings, and the
+    /// match is exhaustive by construction: a new variant stops
+    /// compiling here first.
+    #[test]
+    fn to_rsync_error_is_exhaustive_and_keeps_every_string() {
+        match to_rsync_error(TransferError::Soft {
+            detail: "soft text".into(),
+        }) {
+            RsyncError::TransferFailed { exit, stderr } => {
+                assert_eq!(exit, -1, "the soft envelope keeps the -1 sentinel");
+                assert_eq!(stderr, "soft text");
+            }
+            other => panic!("expected TransferFailed, got {other:?}"),
+        }
+        match to_rsync_error(TransferError::Hard {
+            detail: "hard text".into(),
+        }) {
+            RsyncError::HardRejection(msg) => assert_eq!(msg, "hard text"),
+            other => panic!("expected HardRejection, got {other:?}"),
+        }
+        match to_rsync_error(TransferError::Io(std::io::Error::from(
+            std::io::ErrorKind::BrokenPipe,
+        ))) {
+            RsyncError::Io(io) => assert_eq!(io.kind(), std::io::ErrorKind::BrokenPipe),
+            other => panic!("expected Io, got {other:?}"),
+        }
+        match to_rsync_error(TransferError::TooSmall {
+            size: 7,
+            threshold: 9,
+        }) {
+            RsyncError::TooSmall { size, threshold } => {
+                assert_eq!((size, threshold), (7, 9));
+            }
+            other => panic!("expected TooSmall, got {other:?}"),
+        }
+        // Native, pre-commit: the fallback envelope, whole.
+        match to_rsync_error(TransferError::Native {
+            error: AerorsyncError::new(AerorsyncErrorKind::TransportFailure, "channel closed"),
+            committed: false,
+        }) {
+            RsyncError::TransferFailed { exit, stderr } => {
+                assert_eq!(exit, -1);
+                assert_eq!(stderr, "native fallback (TransportFailure): channel closed");
+            }
+            other => panic!("expected TransferFailed, got {other:?}"),
+        }
+        // Native, post-commit: the hard rejection envelope, whole.
+        match to_rsync_error(TransferError::Native {
+            error: AerorsyncError::new(AerorsyncErrorKind::TransportFailure, "channel closed"),
+            committed: true,
+        }) {
+            RsyncError::HardRejection(msg) => {
+                assert_eq!(
+                    msg,
+                    "native hard rejection (TransportFailure): channel closed"
+                );
+            }
+            other => panic!("expected HardRejection, got {other:?}"),
+        }
+        // Native, cancelled: no envelope at all.
+        assert!(matches!(
+            to_rsync_error(TransferError::Native {
+                error: AerorsyncError::new(AerorsyncErrorKind::Cancelled, "user asked to stop"),
+                committed: false,
+            }),
+            RsyncError::Cancelled
+        ));
+        // The three atomic-write branches, whole strings.
+        let soft = to_rsync_error(map_write_atomic_error(WriteAtomicError::PostOpen {
+            stage: "write",
+            source: std::io::Error::other("disk full"),
+        }));
+        match soft {
+            RsyncError::TransferFailed { exit, stderr } => {
+                assert_eq!(exit, -1);
+                assert_eq!(
+                    stderr,
+                    "native fallback: atomic write failed at write (target untouched): disk full"
+                );
+            }
+            other => panic!("expected TransferFailed, got {other:?}"),
+        }
+        match to_rsync_error(map_write_atomic_error(WriteAtomicError::PostOpen {
+            stage: "acl",
+            source: std::io::Error::other("no acl"),
+        })) {
+            RsyncError::HardRejection(msg) => {
+                assert_eq!(msg, "atomic write failed at acl (target untouched): no acl");
+            }
+            other => panic!("expected HardRejection, got {other:?}"),
+        }
+        match to_rsync_error(map_write_atomic_error(WriteAtomicError::PostOpen {
+            stage: "rename",
+            source: std::io::Error::other("EXDEV"),
+        })) {
+            RsyncError::HardRejection(msg) => {
+                assert_eq!(msg, "atomic write failed at rename: EXDEV");
+            }
+            other => panic!("expected HardRejection, got {other:?}"),
+        }
+    }
+
+    // -- transient retry predicate -------------------------------------------
+
+    const PARITY_KINDS: [AerorsyncErrorKind; 11] = [
+        AerorsyncErrorKind::UnsupportedVersion,
+        AerorsyncErrorKind::InvalidFrame,
+        AerorsyncErrorKind::TransportFailure,
+        AerorsyncErrorKind::NegotiationFailed,
+        AerorsyncErrorKind::PlannerRejected,
+        AerorsyncErrorKind::IllegalStateTransition,
+        AerorsyncErrorKind::RemoteError,
+        AerorsyncErrorKind::UnexpectedMessage,
+        AerorsyncErrorKind::Cancelled,
+        AerorsyncErrorKind::HostKeyRejected,
+        AerorsyncErrorKind::Internal,
+    ];
+
+    /// Parity gate for the retry decision.
+    ///
+    /// The crate predicate [`TransferError::is_transient_channel_drop`]
+    /// must answer exactly like `rsync_over_ssh::is_transient_for_reconnect`,
+    /// the application classifier it replaces, which reached its verdict by
+    /// re-reading the rendered envelope string. Covered: every error kind
+    /// times both commit states times a detail corpus that carries each of
+    /// the eleven denylist needles plus the real driver texts, the six
+    /// retryable `io::ErrorKind`s plus two that are not, and the variants
+    /// the module builds without the driver. The application function is
+    /// removed in a later commit; this test is what licenses that removal,
+    /// and the case count is asserted so a shrunken corpus cannot pass
+    /// quietly.
+    #[test]
+    fn transient_channel_drop_matches_the_app_classifier() {
+        const DETAILS: &[&str] = &[
+            // real driver texts
+            "next_data_frame: remote closed mid file list",
+            "kex blip",
+            "channel send error",
+            "",
+            // the eleven denylist needles, each in a plausible sentence
+            "peer reported hostkeyrejected during handshake",
+            "host key mismatch for 10.0.0.1",
+            "fingerprint mismatch",
+            "invalidframe at offset 12",
+            "illegalstatetransition: summary before hello",
+            "plannerrejected: no plan for this entry",
+            "unexpectedmessage: data before flist",
+            "internal: unreachable arm",
+            "remoteerror: code 23",
+            "negotiation chose file checksum xxh3",
+            "checksum negotiation found no common algorithm",
+            // an envelope-looking detail: the tag belongs to the kind, not
+            // to the free text, and neither side may be fooled by it
+            "(transportfailure) smuggled into the detail",
+        ];
+
+        let mut checked = 0usize;
+        for kind in PARITY_KINDS {
+            for committed in [false, true] {
+                for detail in DETAILS {
+                    let mine = TransferError::Native {
+                        error: AerorsyncError::new(kind, *detail),
+                        committed,
+                    };
+                    let rendered = to_rsync_error(TransferError::Native {
+                        error: AerorsyncError::new(kind, *detail),
+                        committed,
+                    });
+                    assert_eq!(
+                        mine.is_transient_channel_drop(),
+                        crate::rsync_over_ssh::is_transient_for_reconnect(&rendered),
+                        "retry verdict drifted for {kind:?} committed={committed} detail={detail:?}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+
+        for io_kind in [
+            std::io::ErrorKind::BrokenPipe,
+            std::io::ErrorKind::ConnectionAborted,
+            std::io::ErrorKind::ConnectionReset,
+            std::io::ErrorKind::UnexpectedEof,
+            std::io::ErrorKind::TimedOut,
+            std::io::ErrorKind::WouldBlock,
+            std::io::ErrorKind::PermissionDenied,
+            std::io::ErrorKind::NotFound,
+        ] {
+            let mine = TransferError::Io(std::io::Error::from(io_kind));
+            let rendered = to_rsync_error(TransferError::Io(std::io::Error::from(io_kind)));
+            assert_eq!(
+                mine.is_transient_channel_drop(),
+                crate::rsync_over_ssh::is_transient_for_reconnect(&rendered),
+                "retry verdict drifted for io kind {io_kind:?}"
+            );
+            checked += 1;
+        }
+
+        // Variants the module builds on its own, envelope-free. Note the
+        // atomic-write soft error: its text starts with "native fallback:"
+        // WITHOUT the parenthesised kind, so it never was an envelope and
+        // never was transient.
+        // The four soft details the module really builds carry the
+        // `Display` of a `std::io::Error`, so a transport drop on the
+        // local side lands inside the text. The three renderings below
+        // are what Linux `strerror` prints for EPIPE, ECONNRESET and
+        // ETIMEDOUT; the negative controls are a soft detail with no
+        // needle and a hard detail that contains one, because a hard
+        // rejection is never retried on its text.
+        const SOFT_TEMPLATES: &[&str] = &[
+            "native fallback: atomic write failed at write (target untouched): {}",
+            "native fallback: cannot open streaming baseline /tmp/base.bin: {}",
+            "native fallback: cannot inspect local baseline /tmp/base.bin: {}",
+            "native fallback: cannot open streaming temp file for /tmp/t.bin: {}",
+        ];
+        let mut soft_hard_cases: Vec<(String, bool)> = Vec::new();
+        for rendered in [
+            "Broken pipe (os error 32)",
+            "Connection reset by peer (os error 104)",
+            "Connection timed out (os error 110)",
+        ] {
+            for template in SOFT_TEMPLATES {
+                soft_hard_cases.push((template.replace("{}", rendered), true));
+            }
+        }
+        // `io::Error::from(kind)` renders a shorter text than the OS
+        // does ("timed out", "connection reset"), so those go through
+        // the parity half only: whatever the two sides answer, they
+        // must answer the same.
+        let mut parity_only: Vec<String> = Vec::new();
+        for io_kind in [
+            std::io::ErrorKind::BrokenPipe,
+            std::io::ErrorKind::TimedOut,
+            std::io::ErrorKind::ConnectionReset,
+            std::io::ErrorKind::UnexpectedEof,
+        ] {
+            let rendered = std::io::Error::from(io_kind).to_string();
+            for template in SOFT_TEMPLATES {
+                parity_only.push(template.replace("{}", &rendered));
+            }
+        }
+        soft_hard_cases.push((
+            "native fallback: atomic write failed at write (target untouched): disk full".into(),
+            false,
+        ));
+        soft_hard_cases.push((
+            "native fallback: local baseline /tmp/base.bin is not a regular file".into(),
+            false,
+        ));
+        soft_hard_cases.push(("connection reset by peer".into(), true));
+
+        for detail in soft_hard_cases
+            .iter()
+            .map(|(d, _)| d.clone())
+            .chain(parity_only.iter().cloned())
+        {
+            for build in [
+                (|d: &str| TransferError::Soft { detail: d.into() }) as fn(&str) -> TransferError,
+                |d: &str| TransferError::Hard { detail: d.into() },
+            ] {
+                let mine = build(&detail);
+                let rendered = to_rsync_error(build(&detail));
+                assert_eq!(
+                    mine.is_transient_channel_drop(),
+                    crate::rsync_over_ssh::is_transient_for_reconnect(&rendered),
+                    "retry verdict drifted for module-built error {detail:?}"
+                );
+                checked += 1;
+            }
+        }
+        // Parity alone would hold if both sides answered "no" to
+        // everything, so state the expected answers too.
+        for (detail, expected_soft) in &soft_hard_cases {
+            assert_eq!(
+                TransferError::Soft {
+                    detail: detail.clone()
+                }
+                .is_transient_channel_drop(),
+                *expected_soft,
+                "soft verdict for {detail:?}"
+            );
+            assert!(
+                !TransferError::Hard {
+                    detail: detail.clone()
+                }
+                .is_transient_channel_drop(),
+                "a hard rejection is never retried on its text: {detail:?}"
+            );
+        }
+
+        let too_small = TransferError::TooSmall {
+            size: 1,
+            threshold: 2,
+        };
+        let rendered = to_rsync_error(TransferError::TooSmall {
+            size: 1,
+            threshold: 2,
+        });
+        assert_eq!(
+            too_small.is_transient_channel_drop(),
+            crate::rsync_over_ssh::is_transient_for_reconnect(&rendered)
+        );
+        checked += 1;
+
+        assert_eq!(
+            checked,
+            PARITY_KINDS.len() * 2 * DETAILS.len()
+                + 8
+                + (soft_hard_cases.len() + parity_only.len()) * 2
+                + 1,
+            "the parity corpus shrank: {checked} cases compared"
+        );
+    }
+
     // -- build_stats --------------------------------------------------------
 
     #[test]
     fn build_stats_handles_zero_bytes_sent_without_div_by_zero() {
         let ss = SessionStats::default();
-        let stats = build_stats(&ss, 100, 50, vec!["w1".into()]);
+        let stats = report_to_rsync_stats(TransferReport {
+            session: ss,
+            total_size: 100,
+            duration_ms: 50,
+            warnings: vec!["w1".into()],
+        });
         assert_eq!(stats.bytes_sent, 0);
         assert_eq!(stats.total_size, 100);
         assert_eq!(stats.speedup, 1.0);
@@ -4918,7 +5339,12 @@ PY"#
             bytes_received: 10,
             ..SessionStats::default()
         };
-        let stats = build_stats(&ss, 100, 200, Vec::new());
+        let stats = report_to_rsync_stats(TransferReport {
+            session: ss,
+            total_size: 100,
+            duration_ms: 200,
+            warnings: Vec::new(),
+        });
         assert!((stats.speedup - 4.0).abs() < 1e-9);
         assert_eq!(stats.bytes_sent, 25);
         assert_eq!(stats.bytes_received, 10);
@@ -5222,19 +5648,18 @@ PY"#
             source: ioe,
         });
         match tf {
-            RsyncError::TransferFailed { exit, stderr } => {
-                assert_eq!(exit, -1);
-                assert!(stderr.contains("write"));
-                assert!(stderr.contains("target untouched"));
+            TransferError::Soft { detail } => {
+                assert!(detail.contains("write"));
+                assert!(detail.contains("target untouched"));
             }
-            other => panic!("expected TransferFailed, got {other:?}"),
+            other => panic!("expected a soft error, got {other:?}"),
         }
         let ioe2 = std::io::Error::other("rename EXDEV");
         let hr = map_write_atomic_error(WriteAtomicError::PostOpen {
             stage: "rename",
             source: ioe2,
         });
-        assert!(matches!(hr, RsyncError::HardRejection(_)));
+        assert!(matches!(hr, TransferError::Hard { .. }));
     }
 
     // -- W3.2(b3) batch session-reuse tests ---------------------------------
