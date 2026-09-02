@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Ielīmējiet savu API marķieri šeit",
             "kdriveDriveIdPlaceholder": "Jūsu kDrive ID (ciparu)",
             "kdriveTokenHelp": "Ģenerējiet marķieri vietnē manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Tokenam nepieciešami drive un user_info tvērumi. Tikai ar drive tas pieslēdzas un parāda failus, bet \"Iegūt\" tiek noraidīts, jo Drive ID atrašanai tas nolasa jūsu konta profilu.",
             "kdriveFindDriveId": "Atrodiet savu Drive ID",
             "kdriveFindDriveIdHint": "Skaitliskais Drive ID ir redzams šīs lapas adreses joslā",
             "kdriveCreateToken": "Izveidot API marķieri",

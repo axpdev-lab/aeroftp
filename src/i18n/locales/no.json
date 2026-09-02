@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Lim inn API-tokenet ditt her",
             "kdriveDriveIdPlaceholder": "Din kDrive-ID (numerisk)",
             "kdriveTokenHelp": "Generer et token på manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Tokenet trenger omfangene drive og user_info. Med bare drive kobler det til og viser filer, men \"Hent\" avvises, fordi den leser kontoprofilen din for å finne Drive ID.",
             "kdriveFindDriveId": "Finn din Drive ID",
             "kdriveFindDriveIdHint": "Den numeriske Drive ID-en vises i adresselinjen på denne siden",
             "kdriveCreateToken": "Opprett et API-token",

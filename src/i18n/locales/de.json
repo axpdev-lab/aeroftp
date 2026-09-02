@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Fügen Sie Ihren API Token hier ein",
             "kdriveDriveIdPlaceholder": "Ihre kDrive ID (numerisch)",
             "kdriveTokenHelp": "Generieren Sie einen Token unter manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Das Token braucht die Scopes drive und user_info. Mit drive allein verbindet es sich und listet Dateien, aber „Abrufen“ wird abgelehnt, weil es Ihr Kontoprofil liest, um die Drive ID zu finden.",
             "kdriveFindDriveId": "Ihre Drive ID finden",
             "kdriveFindDriveIdHint": "Die numerische Drive ID erscheint in der Adressleiste dieser Seite",
             "kdriveCreateToken": "Einen API-Token erstellen",

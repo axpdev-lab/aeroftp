@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "วาง API Token ของคุณที่นี่",
             "kdriveDriveIdPlaceholder": "ID kDrive ของคุณ (ตัวเลข)",
             "kdriveTokenHelp": "สร้างโทเคนที่ manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "โทเค็นต้องมีขอบเขต drive และ user_info หากมีเฉพาะ drive จะเชื่อมต่อและแสดงรายการไฟล์ได้ แต่ \"ดึงข้อมูล\" จะถูกปฏิเสธ เพราะต้องอ่านโปรไฟล์บัญชีของคุณเพื่อค้นหา Drive ID",
             "kdriveFindDriveId": "ค้นหา Drive ID ของคุณ",
             "kdriveFindDriveIdHint": "Drive ID ที่เป็นตัวเลขจะปรากฏในแถบที่อยู่ของหน้านี้",
             "kdriveCreateToken": "สร้างโทเคน API",

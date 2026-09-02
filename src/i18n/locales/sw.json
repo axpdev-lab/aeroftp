@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Bandika API Token yako hapa",
             "kdriveDriveIdPlaceholder": "Kitambulisho chako cha kDrive (nambari)",
             "kdriveTokenHelp": "Tengeneza tokeni kwenye manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Tokeni inahitaji upeo wa drive na user_info. Kwa drive pekee inaunganisha na kuorodhesha faili, lakini \"Leta\" inakataliwa, kwa sababu inasoma wasifu wa akaunti yako ili kupata Drive ID.",
             "kdriveFindDriveId": "Tafuta Drive ID yako",
             "kdriveFindDriveIdHint": "Drive ID ya nambari huonekana kwenye upau wa anwani wa ukurasa huu",
             "kdriveCreateToken": "Tengeneza tokeni ya API",

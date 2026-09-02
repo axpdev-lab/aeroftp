@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Zalijepite svoj API Token ovdje",
             "kdriveDriveIdPlaceholder": "Vaš kDrive ID (numerički)",
             "kdriveTokenHelp": "Generirajte token na manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Token treba opsege drive i user_info. Samo s drive povezuje se i prikazuje datoteke, ali „Dohvati“ se odbija, jer čita profil vašeg računa da bi pronašao Drive ID.",
             "kdriveFindDriveId": "Pronađite svoj Drive ID",
             "kdriveFindDriveIdHint": "Numerički Drive ID prikazuje se u adresnoj traci ove stranice",
             "kdriveCreateToken": "Stvorite API token",

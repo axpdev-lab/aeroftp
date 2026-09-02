@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Вставьте ваш API Token сюда",
             "kdriveDriveIdPlaceholder": "Ваш идентификатор kDrive (числовой)",
             "kdriveTokenHelp": "Сгенерируйте токен на manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Токену нужны области drive и user_info. Только с drive он подключается и показывает файлы, но «Получить» отклоняется, потому что читает профиль вашей учётной записи, чтобы найти Drive ID.",
             "kdriveFindDriveId": "Найдите свой Drive ID",
             "kdriveFindDriveIdHint": "Числовой Drive ID отображается в адресной строке этой страницы",
             "kdriveCreateToken": "Создать токен API",

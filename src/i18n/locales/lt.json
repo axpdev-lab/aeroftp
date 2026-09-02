@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Įklijuokite savo API raktą čia",
             "kdriveDriveIdPlaceholder": "Jūsų kDrive ID (skaitinis)",
             "kdriveTokenHelp": "Sukurkite raktą adresu manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Žetonui reikia drive ir user_info aprėpčių. Vien su drive jis prisijungia ir rodo failus, bet „Gauti“ atmetamas, nes Drive ID surasti jis skaito jūsų paskyros profilį.",
             "kdriveFindDriveId": "Raskite savo Drive ID",
             "kdriveFindDriveIdHint": "Skaitinis Drive ID rodomas šio puslapio adreso juostoje",
             "kdriveCreateToken": "Sukurti API raktą",

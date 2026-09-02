@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Plak hier uw API-token",
             "kdriveDriveIdPlaceholder": "Uw kDrive ID (numeriek)",
             "kdriveTokenHelp": "Genereer een token op manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Het token heeft de scopes drive en user_info nodig. Met alleen drive maakt het verbinding en toont het bestanden, maar \"Ophalen\" wordt geweigerd, omdat het je accountprofiel leest om de Drive ID te vinden.",
             "kdriveFindDriveId": "Vind uw Drive ID",
             "kdriveFindDriveIdHint": "Het numerieke Drive ID verschijnt in de adresbalk van deze pagina",
             "kdriveCreateToken": "Maak een API-token aan",

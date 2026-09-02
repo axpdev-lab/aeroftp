@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Gludiwch eich API Token yma",
             "kdriveDriveIdPlaceholder": "Eich kDrive ID (rhifiadol)",
             "kdriveTokenHelp": "Cynhyrchwch docyn ar manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Mae angen y cwmpasau drive a user_info ar y tocyn. Gyda drive yn unig mae'n cysylltu ac yn rhestru ffeiliau, ond mae \"Nôl\" yn cael ei wrthod, am ei fod yn darllen proffil eich cyfrif i ddod o hyd i'r Drive ID.",
             "kdriveFindDriveId": "Dewch o hyd i'ch Drive ID",
             "kdriveFindDriveIdHint": "Mae'r Drive ID rhifiadol yn ymddangos ym mar cyfeiriad y dudalen hon",
             "kdriveCreateToken": "Creu tocyn API",

@@ -224,6 +224,7 @@
             "kdriveTokenPlaceholder": "Liitä API Token tähän",
             "kdriveDriveIdPlaceholder": "kDrive ID (numeerinen)",
             "kdriveTokenHelp": "Luo token osoitteessa manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenScopes": "Tunnus tarvitsee oikeudet drive ja user_info. Pelkällä drive-oikeudella se yhdistää ja listaa tiedostot, mutta \"Hae\" hylätään, koska se lukee tilisi profiilin löytääkseen Drive ID:n.",
             "kdriveFindDriveId": "Etsi Drive ID",
             "kdriveFindDriveIdHint": "Numeerinen Drive ID näkyy tämän sivun osoiterivillä",
             "kdriveCreateToken": "Luo API-token",
