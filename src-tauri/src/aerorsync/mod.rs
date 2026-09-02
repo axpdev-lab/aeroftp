@@ -23,6 +23,7 @@
 //! against stock `rsync --server` only.
 
 pub mod acl_fs;
+pub mod delta_engine;
 pub mod delta_transport_impl;
 pub mod engine_adapter;
 pub mod engine_protocol_types;

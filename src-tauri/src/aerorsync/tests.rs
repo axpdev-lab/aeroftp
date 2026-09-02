@@ -302,7 +302,7 @@ fn delta_instruction_end_of_file_rejects_with_typed_error() {
 
 // ---------------------------------------------------------------------------
 // engine_adapter.rs: Sinergia 4: CurrentDeltaSyncBridge delegates to
-// crate::delta_sync (the production delta engine). These tests pin the
+// crate::aerorsync::delta_engine (the production delta engine). These tests pin the
 // algorithmic invariants that the real engine provides: we are NOT asserting
 // against hardcoded rsync numbers, since rsync's block size heuristic and
 // block-matching priority differ in detail. We assert the invariants every
@@ -326,7 +326,7 @@ fn bridge_compute_block_size_matches_production_engine() {
     let bridge = CurrentDeltaSyncBridge::new();
     let file_size = 8 * 1024 * 1024;
     let bridge_bs = bridge.compute_block_size(file_size);
-    let engine_bs = crate::delta_sync::compute_block_size(file_size);
+    let engine_bs = crate::aerorsync::delta_engine::compute_block_size(file_size);
     assert_eq!(bridge_bs, engine_bs);
     // Must fall within the engine's documented clamp [512, 8192].
     assert!((512..=8192).contains(&bridge_bs));
@@ -410,16 +410,16 @@ fn bridge_localized_change_keeps_most_bytes_matched() {
     // Invariant 3: reconstruction via the engine's apply_delta produces
     // exactly the source file, byte-for-byte. This is the strongest
     // algorithmic check possible without any SSH.
-    let wire_ops: Vec<crate::delta_sync::DeltaOp> = plan
+    let wire_ops: Vec<crate::aerorsync::delta_engine::DeltaOp> = plan
         .ops
         .iter()
         .cloned()
         .map(|op| match op {
-            EngineDeltaOp::CopyBlock(i) => crate::delta_sync::DeltaOp::CopyBlock(i),
-            EngineDeltaOp::Literal(b) => crate::delta_sync::DeltaOp::Literal(b),
+            EngineDeltaOp::CopyBlock(i) => crate::aerorsync::delta_engine::DeltaOp::CopyBlock(i),
+            EngineDeltaOp::Literal(b) => crate::aerorsync::delta_engine::DeltaOp::Literal(b),
         })
         .collect();
-    let reconstructed = crate::delta_sync::apply_delta(&destination, &wire_ops, bs)
+    let reconstructed = crate::aerorsync::delta_engine::apply_delta(&destination, &wire_ops, bs)
         .expect("apply_delta must succeed on bridge-produced ops");
     assert_eq!(
         reconstructed, source,
@@ -2890,4 +2890,153 @@ fn production_unsafe_surface_matches_the_documented_count() {
 
     let total: usize = found.iter().map(|(_, n)| n).sum();
     assert_eq!(total, 19, "documented total in the parity docs is 19");
+}
+
+/// The aerorsync module is on its way to a standalone crate (Fase A of the
+/// standalone-crate plan). Every `crate::<application module>` line inside
+/// it is coupling the crate cannot carry, so the inventory below is a
+/// budget: it may only shrink. Unlike the `unsafe` count above, whole-file
+/// test harnesses are NOT excluded: in the crate, test code cannot import
+/// the application either.
+///
+/// The exclusion is `crate::aerorsync` compared as a whole identifier, never
+/// as a prefix: `crate::aerorsync_adapter`, the application-side adapter the
+/// A2 tranche creates, is an application import and must count, because the
+/// crate must never depend on its own adapter. Grouped imports
+/// (`use crate::{a, b}`) fail outright so a mixed group cannot hide an
+/// application module next to `aerorsync`; `super::super::` is the crate
+/// root seen from a module file and is refused for the same reason.
+/// Source-level escape hatches (a path attribute on a `mod` item, the
+/// `include` and `include_str` macros, a `macro_rules` definition) and `.rs`
+/// files in subdirectories are refused because the counter reads one flat
+/// directory and cannot see through them. `crate :: x`
+/// with spaces is not handled here: `cargo fmt --check` rejects it before
+/// this test runs.
+#[test]
+fn app_import_budget_matches_the_documented_inventory() {
+    // (file, application module, occurrences). Update in the same commit
+    // that removes a line, never to add one.
+    const DOCUMENTED: [(&str, &str, usize); 8] = [
+        ("delta_transport_impl.rs", "delta_transport", 9),
+        ("delta_transport_impl.rs", "rsync_output", 1),
+        ("delta_transport_impl.rs", "rsync_over_ssh", 12),
+        ("live_tests.rs", "delta_transport", 1),
+        ("local_transport.rs", "delta_transport", 1),
+        ("local_transport.rs", "rsync_over_ssh", 1),
+        ("native_driver.rs", "delta_transport", 3),
+        ("rsync_event_bridge.rs", "rsync_output", 1),
+    ];
+    // Assembled from pieces so this file's own source does not trip the scan.
+    let needle = ["crate", "::"].concat();
+    let root_alias = ["super::", "super::"].concat();
+    let escape_hatches = [
+        ["#[", "path"].concat(),
+        ["include", "!("].concat(),
+        ["include_str", "!("].concat(),
+        ["macro_rules", "!"].concat(),
+    ];
+
+    fn dir_holds_rust_source(dir: &std::path::Path) -> bool {
+        std::fs::read_dir(dir)
+            .expect("readable subdirectory")
+            .map(|e| e.expect("readable dir entry").path())
+            .any(|p| {
+                if p.is_dir() {
+                    dir_holds_rust_source(&p)
+                } else {
+                    p.extension().and_then(|e| e.to_str()) == Some("rs")
+                }
+            })
+    }
+
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync");
+    let mut found: Vec<(String, String, usize)> = Vec::new();
+    let mut scanned = 0usize;
+
+    for entry in std::fs::read_dir(&dir).expect("aerorsync module directory must be readable") {
+        let path = entry.expect("readable dir entry").path();
+        if path.is_dir() {
+            assert!(
+                !dir_holds_rust_source(&path),
+                "{} holds a .rs file the flat scan cannot see; keep module sources in \
+                 src/aerorsync/ itself",
+                path.display()
+            );
+            continue;
+        }
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        scanned += 1;
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("utf-8 file name")
+            .to_string();
+        let src = std::fs::read_to_string(&path).expect("readable source file");
+        for hatch in &escape_hatches {
+            assert!(
+                !src.contains(hatch.as_str()),
+                "{name} uses `{hatch}`: the import scan reads one flat directory and cannot \
+                 see through it"
+            );
+        }
+        for (index, line) in src.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") || trimmed.starts_with('*') {
+                continue;
+            }
+            let lineno = index + 1;
+            assert!(
+                !line.contains(root_alias.as_str()),
+                "{name}:{lineno}: `{root_alias}` reaches the crate root; name the module \
+                 through `{needle}` so the budget sees it"
+            );
+            let mut rest = line;
+            while let Some(at) = rest.find(needle.as_str()) {
+                let after = &rest[at + needle.len()..];
+                assert!(
+                    !after.starts_with('{'),
+                    "{name}:{lineno}: split the grouped import; `use {needle}{{..}}` can hide \
+                     an application module next to `aerorsync`"
+                );
+                let ident: String = after
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                if ident != "aerorsync" {
+                    let module = if ident.is_empty() {
+                        after.chars().take(1).collect()
+                    } else {
+                        ident.clone()
+                    };
+                    match found
+                        .iter_mut()
+                        .find(|(f, m, _)| *f == name && *m == module)
+                    {
+                        Some(hit) => hit.2 += 1,
+                        None => found.push((name.clone(), module, 1)),
+                    }
+                }
+                rest = &after[ident.len()..];
+            }
+        }
+    }
+    assert!(
+        scanned > 10,
+        "the scan saw only {scanned} .rs files: is this still the module directory?"
+    );
+
+    found.sort();
+    let mut expected: Vec<(String, String, usize)> = DOCUMENTED
+        .iter()
+        .map(|(f, m, n)| ((*f).to_string(), (*m).to_string(), *n))
+        .collect();
+    expected.sort();
+
+    assert_eq!(
+        found, expected,
+        "the module's import budget moved; it may only shrink, update the inventory in \
+         the same commit"
+    );
 }

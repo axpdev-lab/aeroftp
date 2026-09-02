@@ -2405,7 +2405,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     ///
     /// Walks `baseline` once via [`BaselineSource::read_block`]: for each
     /// block computes the Adler-32 rolling checksum (same primitive as
-    /// `delta_sync::compute_signatures`) and the negotiated wire strong
+    /// `delta_engine::compute_signatures`) and the negotiated wire strong
     /// hash, then emits the same mux-wrapped blob as the bulk path.
     /// Peak RAM is `O(block_size)` plus the encoded payload buffer
     /// (itself proportional to block count, not file size: each sum
@@ -2450,7 +2450,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                         "send_signature_phase_from_baseline: read_block({idx}) failed: {e}"
                     ))
                 })?;
-            let rolling = crate::delta_sync::RollingChecksum::new(&block).value();
+            let rolling = crate::aerorsync::delta_engine::RollingChecksum::new(&block).value();
             let strong_wire = self.wire_block_strong(&block, strong_algo);
             let strong = strong_wire[..s2length_usize.min(strong_wire.len())].to_vec();
             sum_blocks.push(SumBlock { rolling, strong });
@@ -9482,7 +9482,7 @@ mod tests {
     ///
     /// Both paths use [`CurrentDeltaSyncBridge`] so the bulk plan and
     /// the streaming plan come from the SAME algorithm
-    /// (`delta_sync::compute_delta` vs. `RollingDeltaPlanProducer`,
+    /// (`delta_engine::compute_delta` vs. `RollingDeltaPlanProducer`,
     /// already cross-pinned bit-for-bit by `producer_streaming_matches_bulk_*`
     /// in `engine_adapter.rs`).
     async fn assert_send_parity(source: &[u8], head: SumHead, blocks: Vec<SumBlock>) {
@@ -9641,7 +9641,7 @@ mod tests {
         // computable, then place that block at the start of the source
         // followed by disjoint tail bytes. The signature phase advertises
         // exactly that block to the sender.
-        use crate::delta_sync::compute_signatures;
+        use crate::aerorsync::delta_engine::compute_signatures;
         const BLOCK_LEN: usize = 1024;
         let block_bytes: Vec<u8> = (0..BLOCK_LEN as u32)
             .map(|i| (i.wrapping_mul(0x9E37_79B1) >> 24) as u8)

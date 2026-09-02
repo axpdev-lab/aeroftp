@@ -6,13 +6,15 @@
 //! reference for what the current rsync wrapper actually does. They are the
 //! parity target for the first native session subset.
 //!
-//! Number parsing is delegated to `crate::number_parsing`, the locale-tolerant
-//! helpers introduced by Sinergia 1. Keeping one parser means native parity
-//! against rsync output stays correct regardless of the child-process locale.
+//! Number parsing uses a module-owned copy of the locale-tolerant helpers
+//! introduced by Sinergia 1 (`parse_u64_loose`, `parse_f64_loose` and their
+//! three private helpers, at the bottom of this file). The copy keeps the
+//! module free of application imports; `number_parsing::tests::
+//! aerorsync_fixture_parsers_stay_identical` pins it to the application
+//! original so native parity against rsync output stays correct regardless
+//! of the child-process locale.
 
 use std::path::{Path, PathBuf};
-
-use crate::number_parsing::{parse_f64_loose, parse_u64_loose};
 
 /// Observed remote command line for upload (local sends, remote receives).
 /// Source: `capture/artifacts/20260417_154800/upload.remote_command.txt`.
@@ -111,7 +113,8 @@ impl BaselineCounters {
 /// Parse the raw counters out of a rsync `--stats` block like the one in
 /// `upload_actual.stdout.txt`. Keys are matched by prefix after trimming.
 /// Locale-tolerant: handles both en_US (`156,561`) and it_IT (`156.561`)
-/// number shapes through the shared `number_parsing` helpers.
+/// number shapes through the module-owned copy of the `number_parsing`
+/// helpers below.
 ///
 /// Unknown lines are skipped. Missing counter fields default to 0. A missing
 /// "speedup" line leaves `speedup = None`.
@@ -348,5 +351,136 @@ impl RealRsyncBaselineByteTranscript {
         }
         let b = &self.upload_server_to_client[..4];
         Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Locale-tolerant number parsing: copy of `crate::number_parsing`, kept
+// identical by `number_parsing::tests::aerorsync_fixture_parsers_stay_identical`.
+// The module must not import the application (see
+// `tests::app_import_budget_matches_the_documented_inventory`), so the two
+// entry points and their three private helpers live here verbatim.
+// ---------------------------------------------------------------------------
+
+/// Parse an integer from a human-formatted string where thousands may be
+/// separated by `.`, `,`, or whitespace. Trailing non-numeric characters are
+/// ignored (e.g. `"156.561 bytes"` → `Some(156_561)`).
+///
+/// Returns `None` if no digits are found or if the numeric value would
+/// overflow `u64`.
+pub(crate) fn parse_u64_loose(s: &str) -> Option<u64> {
+    let digits = strip_separators_integer_only(s)?;
+    digits.parse().ok()
+}
+
+/// Parse a floating-point value from a human-formatted string. The last
+/// occurrence of `.` or `,` is treated as the decimal separator (rules 2 and 3
+/// in the module doc); all earlier occurrences are dropped as thousands.
+///
+/// Returns `None` if no digits are found or the value would overflow `f64`.
+pub(crate) fn parse_f64_loose(s: &str) -> Option<f64> {
+    let normalized = normalize_for_float(s)?;
+    normalized.parse().ok()
+}
+
+/// Strip every `,`, `.`, and whitespace from the digit run of `s`, stopping
+/// at the first trailing alphabetic character so `"156.561 bytes"` becomes
+/// `"156561"`.
+fn strip_separators_integer_only(s: &str) -> Option<String> {
+    let mut out = String::with_capacity(s.len());
+    let mut seen_digit = false;
+    for c in s.chars() {
+        if c.is_ascii_digit() {
+            out.push(c);
+            seen_digit = true;
+        } else if c == '.' || c == ',' || c.is_whitespace() {
+            if seen_digit {
+                // inside or after the number: treat as a separator; if what
+                // follows is a non-digit, the loop below will break out.
+                continue;
+            }
+            // not yet inside the number: keep scanning leading whitespace.
+        } else if seen_digit {
+            // first truly non-numeric char after digits: done.
+            break;
+        } else {
+            // any other char before we started: skip (leading garbage).
+        }
+    }
+    if seen_digit {
+        Some(out)
+    } else {
+        None
+    }
+}
+
+/// Rewrite `s` into a form `f64::from_str` accepts, deciding decimal vs.
+/// thousands per the module-level rules.
+fn normalize_for_float(s: &str) -> Option<String> {
+    // First isolate the candidate run: digits, '.', ','. Stop at alphabetic
+    // trailer ("bytes/sec", "seconds", etc.).
+    let mut run = String::with_capacity(s.len());
+    let mut seen_digit = false;
+    for c in s.chars() {
+        if c.is_ascii_digit() {
+            run.push(c);
+            seen_digit = true;
+        } else if c == '.' || c == ',' {
+            run.push(c);
+        } else if c.is_whitespace() {
+            if seen_digit {
+                // whitespace after the number: stop
+                break;
+            }
+            // leading whitespace: skip
+        } else if seen_digit {
+            break;
+        }
+    }
+    if !seen_digit {
+        return None;
+    }
+
+    // Decide decimal separator per the rules.
+    let last_dot = run.rfind('.');
+    let last_comma = run.rfind(',');
+    let decimal_pos = match (last_dot, last_comma) {
+        (Some(d), Some(c)) => Some(d.max(c)),
+        (Some(d), None) => decide_single_separator(&run, d),
+        (None, Some(c)) => decide_single_separator(&run, c),
+        (None, None) => None,
+    };
+
+    let mut normalized = String::with_capacity(run.len());
+    for (i, c) in run.char_indices() {
+        match c {
+            '.' | ',' => {
+                if Some(i) == decimal_pos {
+                    normalized.push('.'); // f64::from_str wants '.'
+                }
+                // else: drop thousands separator
+            }
+            d => normalized.push(d),
+        }
+    }
+    Some(normalized)
+}
+
+/// Decide whether the single separator at byte offset `pos` is a decimal
+/// separator or a thousands separator. Rule: it is decimal iff followed by
+/// exactly 1 or 2 digits to the end of the input. Otherwise thousands.
+///
+/// This is the heuristic rsync actually satisfies: speedup is always
+/// formatted with 2 decimal digits, bytes are never formatted with a decimal.
+fn decide_single_separator(run: &str, pos: usize) -> Option<usize> {
+    let tail = &run[pos + 1..];
+    let tail_len = tail.len();
+    if tail_len == 0 || tail_len > 2 {
+        return None;
+    }
+    if tail.chars().all(|c| c.is_ascii_digit()) {
+        Some(pos)
+    } else {
+        None
     }
 }
