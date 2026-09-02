@@ -136,13 +136,19 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
     }
   };
 
+  // Escape dismisses the innermost surface: an open confirmation first, the
+  // manager itself only when no confirmation is pending. One key press must
+  // never both cancel a purge prompt and close the whole window.
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (pendingEmptyConfirm) { setPendingEmptyConfirm(false); return; }
+      if (pendingDeleteConfirm) { setPendingDeleteConfirm(false); return; }
+      onClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [onClose, pendingEmptyConfirm, pendingDeleteConfirm]);
 
   // Normalized for the shared trash table (sorting, Type column,
   // Ctrl/Shift and rubber-band selection live there).
