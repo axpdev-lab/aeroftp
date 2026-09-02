@@ -15,6 +15,11 @@
 #   ./scripts/publish-sourceforge.sh 4.1.3 --force --prune   # also prune old folders
 #
 set -euo pipefail
+# Every aeroftp-cli call in this script runs unattended, so strict mode is set
+# once for all of them rather than per call: any flag that would relax a safety
+# check becomes a hard error (exit 5) instead of silently proceeding, on the
+# listing and delete calls of the prune as much as on the upload.
+export AEROFTP_STRICT=1
 
 PROFILE_NAME="${SF_PROFILE_NAME:-SourceForge}"
 REPO="${SF_GH_REPO:-axpdev-lab/aeroftp}"
@@ -43,7 +48,7 @@ run() {
 }
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
-need gh ; need jq
+need gh ; need jq ; need curl
 CLI="${AEROFTP_CLI:-$(command -v aeroftp-cli || echo /usr/bin/aeroftp-cli)}"
 [ -x "$CLI" ] || { echo "missing: aeroftp-cli" >&2; exit 1; }
 
@@ -118,7 +123,7 @@ SFNOTE
     fi
   fi
   while IFS= read -r f; do
-    "$CLI" --profile "$PROFILE_ID" put --partial --strict "$f" "$SF_ROOT/$TAG/"
+    "$CLI" --profile "$PROFILE_ID" put --partial "$f" "$SF_ROOT/$TAG/"
   done < <(find "$STAGE" -maxdepth 1 -type f | sort)
 
   echo "--- remote listing after upload ---"
@@ -148,8 +153,11 @@ if [ "$PRUNE" -eq 1 ]; then
     local path="$1"; shift
     local out attempt
     for attempt in 1 2 3; do
+      # `entries` must be an ARRAY, not merely present: `null` or an object would
+      # make every later `.entries[]` query answer "not there", and a delete loop
+      # reading "not there" as "gone" would count files it never verified.
       if out="$("$CLI" --profile "$PROFILE_ID" ls "$path" --json --no-banner "$@" 2>/dev/null)" \
-        && jq -e 'has("entries")' >/dev/null 2>&1 <<<"$out"; then
+        && jq -e '.entries | type == "array"' >/dev/null 2>&1 <<<"$out"; then
         printf '%s' "$out"
         return 0
       fi
@@ -173,6 +181,38 @@ if [ "$PRUNE" -eq 1 ]; then
   mapfile -t KEEP < <(printf '%s\n' "${FOLDERS[@]}" | tail -n "$KEEP_COMPLETE")
   echo "keeping complete: ${KEEP[*]}"
 
+  # Delete one file and let the LISTING decide whether it worked, not the exit code.
+  # On the v4.1.9 prune `rm` returned exit 10 ("server or parse error") for a file that
+  # was in fact gone: SourceForge had performed the delete and then answered as if it had
+  # not. Under `set -e` that one false failure would abort the prune halfway and report a
+  # failure for work that succeeded, and whoever re-ran it would re-delete files that were
+  # already gone. It is the mirror image of the empty-listing trap above: there a failed
+  # read looked like a clean folder, here a successful delete looks like a failed one.
+  # So the exit status is a hint and the folder listing is the verdict: a nonzero `rm`
+  # is followed by a re-list, the file being absent counts as deleted, the file being
+  # present stops the script loudly. In a dry run `run` only prints, so nothing is listed.
+  sfrm() {
+    local folder="$1" name="$2"
+    local path="$SF_ROOT/$folder/$name"
+    if run "$CLI" --profile "$PROFILE_ID" rm "$path"; then
+      return 0
+    fi
+    local after present
+    after="$(sfls "$SF_ROOT/$folder" --files-only)" || exit 1
+    # Three outcomes, kept apart on purpose: jq exit 0 = the file is still there,
+    # exit 1 = the listing is valid and the file is absent, anything else = jq could
+    # not evaluate the listing, which is a verification failure and never "gone".
+    set +e
+    jq -e --arg n "$name" '[.entries[] | select(.name==$n)] | length > 0' >/dev/null 2>&1 <<<"$after"
+    present=$?
+    set -e
+    case "$present" in
+      0) echo "delete failed and the file is still there: $path" >&2; exit 1 ;;
+      1) echo "rm exited nonzero but $path is gone on re-listing: counted as deleted" >&2; return 0 ;;
+      *) echo "delete failed and the re-listing of $SF_ROOT/$folder could not be evaluated (jq exit $present): stopping" >&2; exit 1 ;;
+    esac
+  }
+
   PRUNED=0
   for folder in "${FOLDERS[@]}"; do
     printf '%s\n' "${KEEP[@]}" | grep -qx "$folder" && continue
@@ -182,7 +222,7 @@ if [ "$PRUNE" -eq 1 ]; then
       case "$name" in
         README.md|*.sigstore.json|'') continue ;;
       esac
-      run "$CLI" --profile "$PROFILE_ID" rm "$SF_ROOT/$folder/$name"
+      sfrm "$folder" "$name"
       PRUNED=$((PRUNED + 1))
     done
   done
@@ -191,8 +231,36 @@ fi
 
 echo
 if [ "$FORCE" -eq 1 ]; then
-  echo "Done. Now set the SourceForge default download button by hand: the webhook used"
-  echo "to do it, and without it the project page keeps offering the previous release."
+  # The default download button does NOT need setting by hand: that instruction stood
+  # here from v4.1.3 to v4.1.9 and was false every time, SourceForge picks the newest
+  # folder on its own. Verify it instead, from the same endpoint the download button
+  # reads, and say so if it has not caught up yet (it can lag the upload by minutes).
+  SF_PROJECT="$(basename "$SF_ROOT")"
+  BEST_URL="https://sourceforge.net/projects/$SF_PROJECT/best_release.json"
+  echo "Done. Checking the default download button ($BEST_URL) ..."
+  # Parse and validate BEFORE looping: a jq failure inside a process substitution
+  # is invisible, and a body without platform_releases would yield zero rows, so
+  # the loop would end with nothing stale and the script would report a check it
+  # never made. Rows must exist, and each is matched on the release FOLDER
+  # `/v$VERSION/`, not on a substring: 4.1.9 must not accept 4.1.90.
+  ROWS=""
+  if BEST="$(curl -fsS --max-time 30 "$BEST_URL" 2>/dev/null)" \
+     && ROWS="$(jq -r '.platform_releases | to_entries[] | [.key, .value.filename] | @tsv' <<<"$BEST" 2>/dev/null)" \
+     && [ -n "$ROWS" ]; then
+    STALE=0
+    while IFS=$'\t' read -r platform filename; do
+      case "$filename" in
+        "/v$VERSION/"*) echo "  $platform: $filename" ;;
+        *) echo "  $platform: $filename  (NOT $VERSION yet)"; STALE=1 ;;
+      esac
+    done <<<"$ROWS"
+    if [ "$STALE" -eq 1 ]; then
+      echo "  SourceForge has not switched every platform to $VERSION yet; re-check in a few minutes,"
+      echo "  and only if it still lags set the default under Files > folder > (i) on the site."
+    fi
+  else
+    echo "  could not read or parse $BEST_URL; check the download button on the project page."
+  fi
 else
   echo "Dry run. Re-run with --force to upload."
 fi
