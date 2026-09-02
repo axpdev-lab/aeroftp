@@ -9,11 +9,11 @@
 //!     publish locally-computed signatures to the wire, and so a locally-
 //!     computed engine delta plan can be serialised for upload
 //!   - `DeltaEngineAdapter` implemented on `CurrentDeltaSyncBridge` by
-//!     delegating to `crate::delta_sync`, the production delta engine
+//!     delegating to `crate::aerorsync::delta_engine`, the production delta engine
 //!
 //! Separation of concerns: this module DOES translate between prototype
 //! types and the production engine, but DOES NOT replicate any algorithm.
-//! If `delta_sync.rs` changes, only the small conversion block here needs
+//! If `delta_engine.rs` changes, only the small conversion block here needs
 //! maintenance: the rest of the prototype stays stable.
 
 use std::collections::HashMap;
@@ -22,11 +22,11 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt, SeekFrom};
 
+use crate::aerorsync::delta_engine;
+use crate::aerorsync::delta_engine::{strong_hash, RollingChecksum};
 use crate::aerorsync::engine_protocol_types::{
     DeltaInstruction as ProtocolDeltaInstruction, SignatureBlock as ProtocolSignatureBlock,
 };
-use crate::delta_sync;
-use crate::delta_sync::{strong_hash, RollingChecksum};
 use xxhash_rust::xxh3::{xxh3_128, xxh3_128_with_seed, xxh3_64_with_seed};
 use xxhash_rust::xxh64::xxh64;
 
@@ -36,7 +36,7 @@ use xxhash_rust::xxh64::xxh64;
 /// (usually a truncated xxh128-with-seed prefix), NOT the first N bytes
 /// of SHA-256. Comparing `strong_hash(window)[..n]` to the wire prefix
 /// is wrong and would reject every real match. Engine-native signatures
-/// from `delta_sync::compute_signatures` still carry full SHA-256.
+/// from `delta_engine::compute_signatures` still carry full SHA-256.
 ///
 /// CLAUDE-AV-B3-17: md5 per-block digests mirror rsync 3.2.7
 /// `get_checksum2` / `CSUM_MD5` (seeded; seed order gated by
@@ -45,7 +45,7 @@ use xxhash_rust::xxh64::xxh64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BlockStrongAlgo {
     /// Full SHA-256 of the window. Default for engine-native signatures
-    /// (`strong_len == 32` from `delta_sync`).
+    /// (`strong_len == 32` from `delta_engine`).
     #[default]
     Sha256,
     /// xxh3-128 in rsync wire byte order (`lo_u64 LE || hi_u64 LE`),
@@ -322,13 +322,13 @@ pub fn engine_ops_to_wire(ops: Vec<EngineDeltaOp>) -> Vec<ProtocolDeltaInstructi
     out
 }
 
-// --- engine ↔ delta_sync::BlockSignature ----------------------------------
+// --- engine ↔ delta_engine::BlockSignature ----------------------------------
 // These conversions stay private to the module: the real engine type name
 // and field shape is an implementation detail the rest of the prototype
 // should not have to know.
 
-impl From<delta_sync::BlockSignature> for EngineSignatureBlock {
-    fn from(bs: delta_sync::BlockSignature) -> Self {
+impl From<delta_engine::BlockSignature> for EngineSignatureBlock {
+    fn from(bs: delta_engine::BlockSignature) -> Self {
         Self {
             index: bs.index,
             rolling: bs.rolling,
@@ -339,7 +339,7 @@ impl From<delta_sync::BlockSignature> for EngineSignatureBlock {
     }
 }
 
-impl From<&EngineSignatureBlock> for delta_sync::BlockSignature {
+impl From<&EngineSignatureBlock> for delta_engine::BlockSignature {
     fn from(eb: &EngineSignatureBlock) -> Self {
         Self {
             index: eb.index,
@@ -350,11 +350,11 @@ impl From<&EngineSignatureBlock> for delta_sync::BlockSignature {
     }
 }
 
-impl From<delta_sync::DeltaOp> for EngineDeltaOp {
-    fn from(op: delta_sync::DeltaOp) -> Self {
+impl From<delta_engine::DeltaOp> for EngineDeltaOp {
+    fn from(op: delta_engine::DeltaOp) -> Self {
         match op {
-            delta_sync::DeltaOp::CopyBlock(i) => Self::CopyBlock(i),
-            delta_sync::DeltaOp::Literal(d) => Self::Literal(d),
+            delta_engine::DeltaOp::CopyBlock(i) => Self::CopyBlock(i),
+            delta_engine::DeltaOp::Literal(d) => Self::Literal(d),
         }
     }
 }
@@ -426,7 +426,7 @@ pub trait DeltaEngineAdapter: Send + Sync {
     ) -> Result<Vec<u8>, String>;
 }
 
-/// The production bridge: delegates every call to `crate::delta_sync`.
+/// The production bridge: delegates every call to `crate::aerorsync::delta_engine`.
 #[derive(Debug, Default)]
 pub struct CurrentDeltaSyncBridge;
 
@@ -438,7 +438,7 @@ impl CurrentDeltaSyncBridge {
 
 impl DeltaEngineAdapter for CurrentDeltaSyncBridge {
     fn compute_block_size(&self, file_size: u64) -> usize {
-        delta_sync::compute_block_size(file_size)
+        delta_engine::compute_block_size(file_size)
     }
 
     fn build_signatures(
@@ -446,7 +446,7 @@ impl DeltaEngineAdapter for CurrentDeltaSyncBridge {
         destination_data: &[u8],
         block_size: usize,
     ) -> Vec<EngineSignatureBlock> {
-        let table = delta_sync::compute_signatures(destination_data, block_size);
+        let table = delta_engine::compute_signatures(destination_data, block_size);
         table.signatures.into_iter().map(Into::into).collect()
     }
 
@@ -470,22 +470,22 @@ impl DeltaEngineAdapter for CurrentDeltaSyncBridge {
 
         // Reconstruct the engine's SignatureTable from the engine-form input.
         // `file_size` is recovered as the sum of per-block lengths: which is
-        // exact because `delta_sync::compute_signatures` always produces full
+        // exact because `delta_engine::compute_signatures` always produces full
         // `block_size` blocks except for a possibly shorter tail.
-        let signatures: Vec<delta_sync::BlockSignature> = destination_signatures
+        let signatures: Vec<delta_engine::BlockSignature> = destination_signatures
             .iter()
-            .map(delta_sync::BlockSignature::from)
+            .map(delta_engine::BlockSignature::from)
             .collect();
         let file_size: u64 = destination_signatures
             .iter()
             .map(|s| s.block_len as u64)
             .sum();
-        let table = delta_sync::SignatureTable {
+        let table = delta_engine::SignatureTable {
             block_size,
             file_size,
             signatures,
         };
-        let (ops, result) = delta_sync::compute_delta(source_data, &table);
+        let (ops, result) = delta_engine::compute_delta(source_data, &table);
         EngineDeltaPlan {
             ops: ops.into_iter().map(Into::into).collect(),
             copy_blocks: result.copy_blocks,
@@ -522,22 +522,22 @@ impl DeltaEngineAdapter for CurrentDeltaSyncBridge {
         block_size: usize,
     ) -> Result<Vec<u8>, String> {
         // Convert prototype ops back to engine ops, then delegate.
-        let wire_ops: Vec<delta_sync::DeltaOp> = ops
+        let wire_ops: Vec<delta_engine::DeltaOp> = ops
             .iter()
             .cloned()
             .map(|op| match op {
-                EngineDeltaOp::CopyBlock(i) => delta_sync::DeltaOp::CopyBlock(i),
-                EngineDeltaOp::Literal(b) => delta_sync::DeltaOp::Literal(b),
+                EngineDeltaOp::CopyBlock(i) => delta_engine::DeltaOp::CopyBlock(i),
+                EngineDeltaOp::Literal(b) => delta_engine::DeltaOp::Literal(b),
             })
             .collect();
-        delta_sync::apply_delta(destination_data, &wire_ops, block_size)
+        delta_engine::apply_delta(destination_data, &wire_ops, block_size)
     }
 }
 
 // --- W1.1: streaming delta plan producer ---------------------------------
 //
 // `DeltaPlanProducer` is the chunk-fed counterpart of `compute_delta`. The
-// bulk planner (`delta_sync::compute_delta`) requires the full source slice
+// bulk planner (`delta_engine::compute_delta`) requires the full source slice
 // in memory; the producer accepts the source as a sequence of contiguous
 // chunks and emits `EngineDeltaOp`s incrementally. This is the foundational
 // piece of P3-T01 W1: removing the 256 MiB in-memory cap on the upload side
@@ -545,11 +545,11 @@ impl DeltaEngineAdapter for CurrentDeltaSyncBridge {
 //
 // Invariant: for any source slice S and any chunking strategy,
 // `RollingDeltaPlanProducer` driven over S produces the exact same sequence
-// of ops as `delta_sync::compute_delta(S, ...)`. Pinned by
+// of ops as `delta_engine::compute_delta(S, ...)`. Pinned by
 // `producer_streaming_matches_bulk_*` tests below.
 
 /// Aggregate counters accumulated by a `DeltaPlanProducer`. Mirrors the
-/// fields of `delta_sync::DeltaResult` that downstream consumers actually
+/// fields of `delta_engine::DeltaResult` that downstream consumers actually
 /// read (copy_blocks, literal_bytes), plus a running `source_bytes_consumed`
 /// for progress UX.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -579,7 +579,7 @@ pub trait DeltaPlanProducer: Send {
 }
 
 /// `DeltaPlanProducer` impl backed by the same rolling-Adler32 + SHA-256
-/// algorithm `delta_sync::compute_delta` uses, but driven incrementally.
+/// algorithm `delta_engine::compute_delta` uses, but driven incrementally.
 ///
 /// State machine:
 /// - `source_buf` holds the sliding window of bytes not yet drained: at
@@ -613,7 +613,7 @@ pub struct RollingDeltaPlanProducer {
     /// Tracks whether the producer has emitted any op yet. Needed to
     /// match the bulk planner's quirk of emitting a single `Literal(empty)`
     /// for an empty source: see the `source_data.len() < block_size`
-    /// short-circuit in `delta_sync::compute_delta`.
+    /// short-circuit in `delta_engine::compute_delta`.
     has_emitted: bool,
     finalized: bool,
 }
@@ -817,7 +817,7 @@ impl DeltaPlanProducer for RollingDeltaPlanProducer {
 // `FileBaseline`, a `Vec<u8>` for `MemoryBaseline`). No dependence on the
 // total baseline length once the source is opened.
 //
-// Semantic alignment with `delta_sync::apply_delta`: a `CopyBlock(idx)` in
+// Semantic alignment with `delta_engine::apply_delta`: a `CopyBlock(idx)` in
 // the bulk path slices `dest_data[idx*block_size .. min((idx+1)*block_size,
 // dest_data.len())]`. `BaselineSource::read_block(idx, block_size)` returns
 // the same range. The tail block (when `len % block_size != 0`) returns a
@@ -852,7 +852,7 @@ pub trait BaselineSource: Send {
     /// - I/O error from the underlying source on read failure.
     ///
     /// Wire alignment: the returned bytes are byte-identical to
-    /// `delta_sync::apply_delta`'s `dest_data[offset..end]` slice. Pinned
+    /// `delta_engine::apply_delta`'s `dest_data[offset..end]` slice. Pinned
     /// by the W2.1 unit tests.
     async fn read_block(&mut self, block_idx: u32, block_size: u32) -> std::io::Result<Vec<u8>>;
 }
@@ -948,7 +948,7 @@ impl BaselineSource for FileBaseline {
 }
 
 /// `BaselineSource` backed by an in-memory byte buffer. Intended for unit
-/// tests that need to pin parity with `delta_sync::apply_delta` without
+/// tests that need to pin parity with `delta_engine::apply_delta` without
 /// touching the filesystem; can also serve as a small-file fast path if
 /// callers ever need it (no current production user).
 pub struct MemoryBaseline {
@@ -986,7 +986,7 @@ impl BaselineSource for MemoryBaseline {
 // Free function (not a trait method), same rationale as
 // `apply_delta_streaming`: there is one correct implementation (walk
 // `BaselineSource::read_block` with the same Adler-32 + SHA-256
-// primitives as `delta_sync::compute_signatures`), and forcing every
+// primitives as `delta_engine::compute_signatures`), and forcing every
 // mock adapter to re-implement it would only create drift.
 //
 // Wire path note: `AerorsyncDriver::send_signature_phase_from_baseline`
@@ -1024,8 +1024,8 @@ pub async fn build_signatures_streaming(
     let mut out = Vec::with_capacity(n_blocks as usize);
     for index in 0..n_blocks {
         let block = baseline.read_block(index, block_size as u32).await?;
-        let rolling = delta_sync::RollingChecksum::new(&block);
-        let strong = delta_sync::strong_hash(&block);
+        let rolling = delta_engine::RollingChecksum::new(&block);
+        let strong = delta_engine::strong_hash(&block);
         out.push(EngineSignatureBlock {
             index,
             rolling: rolling.value(),
@@ -1040,7 +1040,7 @@ pub async fn build_signatures_streaming(
 // --- W2.2: streaming download apply_delta -------------------------------
 //
 // `apply_delta_streaming` is the chunk-driven counterpart of
-// `delta_sync::apply_delta` (and of the trait method on `DeltaEngineAdapter`).
+// `delta_engine::apply_delta` (and of the trait method on `DeltaEngineAdapter`).
 // Where the bulk path returns the reconstructed file as a single
 // `Vec<u8>`, the streaming path takes a `BaselineSource` (W2.1) for the
 // destination side and an `AsyncWrite` sink, and writes the reconstructed
@@ -1049,7 +1049,7 @@ pub async fn build_signatures_streaming(
 // Why a free function (not a trait method): `DeltaEngineAdapter` exists
 // to abstract the *production* of delta plans (`compute_delta`,
 // `build_signatures`). `apply_delta_streaming` is a *consumer* of an
-// already-produced plan: it does not depend on `delta_sync` internals
+// already-produced plan: it does not depend on `delta_engine` internals
 // at all, only on the `EngineDeltaOp` enum + the W2.1 baseline trait.
 // Putting it on the trait would force every adapter impl (including
 // future ones) to re-implement what is in fact a single, generic loop.
@@ -1057,7 +1057,7 @@ pub async fn build_signatures_streaming(
 // Wire-parity invariant pinned by `streaming_apply_delta_*` tests below:
 // for any (`baseline`, `ops`, `block_size`), the bytes written by
 // `apply_delta_streaming` are byte-identical to the bytes returned by
-// `delta_sync::apply_delta(baseline_as_slice, ops, block_size)`. Holds
+// `delta_engine::apply_delta(baseline_as_slice, ops, block_size)`. Holds
 // because:
 //
 // - `Literal(bytes)` writes `bytes` verbatim: same as the bulk path.
@@ -1069,7 +1069,7 @@ pub async fn build_signatures_streaming(
 // `read_block` allocation. No accumulation of the reconstructed file
 // in memory.
 
-/// Streaming-write counterpart of `delta_sync::apply_delta`. Consumes the
+/// Streaming-write counterpart of `delta_engine::apply_delta`. Consumes the
 /// op stream sequentially, reading destination blocks from `baseline`
 /// (typically a `FileBaseline`) and writing reconstructed bytes to
 /// `writer` (typically a `StreamingAtomicWriter`, W2.3).
@@ -1126,7 +1126,7 @@ where
 #[cfg(test)]
 mod apply_delta_streaming_tests {
     use super::*;
-    use crate::delta_sync::{compute_delta, compute_signatures};
+    use crate::aerorsync::delta_engine::{compute_delta, compute_signatures};
 
     fn deterministic_bytes(len: usize, seed: u64) -> Vec<u8> {
         // Mixing seed into the position so different fixtures don't collide
@@ -1574,7 +1574,7 @@ mod baseline_source_tests {
     }
 
     /// The tail block (when `len % block_size != 0`) returns a `Vec<u8>`
-    /// shorter than `block_size`. This mirrors `delta_sync::apply_delta`'s
+    /// shorter than `block_size`. This mirrors `delta_engine::apply_delta`'s
     /// `min((idx+1)*block_size, dest_data.len())` clamp.
     #[tokio::test]
     async fn baseline_tail_block_is_truncated() {
@@ -1656,7 +1656,7 @@ mod baseline_source_tests {
         std::fs::remove_file(&path).ok();
     }
 
-    /// Pin the slicing parity with `delta_sync::apply_delta`: for every
+    /// Pin the slicing parity with `delta_engine::apply_delta`: for every
     /// block of a synthetic file, `BaselineSource::read_block` returns the
     /// exact same bytes the bulk `apply_delta` would emit for a single
     /// `CopyBlock(idx)` op. This is the invariant W2.2 will rely on to
@@ -1709,14 +1709,14 @@ mod baseline_source_tests {
 #[cfg(test)]
 mod producer_tests {
     use super::*;
-    use crate::delta_sync::{compute_delta, compute_signatures};
+    use crate::aerorsync::delta_engine::{compute_delta, compute_signatures};
 
     fn engine_sigs_from_dest(dest: &[u8], block_size: usize) -> Vec<EngineSignatureBlock> {
         let table = compute_signatures(dest, block_size);
         table.signatures.into_iter().map(Into::into).collect()
     }
 
-    fn ops_to_engine(ops: Vec<delta_sync::DeltaOp>) -> Vec<EngineDeltaOp> {
+    fn ops_to_engine(ops: Vec<delta_engine::DeltaOp>) -> Vec<EngineDeltaOp> {
         ops.into_iter().map(Into::into).collect()
     }
 

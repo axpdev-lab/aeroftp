@@ -7,7 +7,8 @@
 //!
 //! Design (see `BACKUP-APPENDIX/APPENDIX-L_Local-Transport-aerorsync.md`):
 //! - reuse [`CurrentDeltaSyncBridge`] for signature + plan computation
-//! - reuse [`write_atomic_chunked`] for kill-9-safe rename-last writes
+//! - reuse [`write_atomic_chunked`] (from `streaming_writer`) for kill-9-safe
+//!   rename-last writes
 //! - memory cap at 256 MiB (`LOCAL_DELTA_MAX_IN_MEMORY_BYTES`): files larger
 //!   than this return `RsyncError::TransferFailed` and the caller falls back
 //!   to a plain `std::fs::copy`
@@ -26,8 +27,8 @@ use std::time::Instant;
 use async_trait::async_trait;
 use tokio::fs;
 
-use crate::aerorsync::delta_transport_impl::{write_atomic_chunked, write_atomic_chunked_sparse};
-use crate::delta_sync;
+use crate::aerorsync::delta_engine;
+use crate::aerorsync::streaming_writer::{write_atomic_chunked, write_atomic_chunked_sparse};
 use crate::delta_transport::DeltaTransport;
 use crate::rsync_over_ssh::{RsyncCapability, RsyncError, RsyncStats};
 
@@ -103,29 +104,30 @@ impl LocalDeltaTransport {
         // uses; this keeps the local fast path bit-for-bit consistent with
         // what would happen if the user had pointed at a remote.
         let (ops, _result, block_size) = {
-            let block_size = delta_sync::compute_block_size(source.len() as u64);
-            let sig_table = delta_sync::compute_signatures(&baseline, block_size);
-            let (ops, result) = delta_sync::compute_delta(&source, &sig_table);
+            let block_size = delta_engine::compute_block_size(source.len() as u64);
+            let sig_table = delta_engine::compute_signatures(&baseline, block_size);
+            let (ops, result) = delta_engine::compute_delta(&source, &sig_table);
             (ops, result, block_size)
         };
 
         // Apply the plan to the baseline to reconstruct the target bytes.
         // For an identical baseline this is purely CopyBlock ops and the
         // output equals `source`.
-        let reconstructed = delta_sync::apply_delta(&baseline, &ops, block_size).map_err(|e| {
-            RsyncError::TransferFailed {
-                exit: 0,
-                stderr: format!("local delta apply failed: {e}"),
-            }
-        })?;
+        let reconstructed =
+            delta_engine::apply_delta(&baseline, &ops, block_size).map_err(|e| {
+                RsyncError::TransferFailed {
+                    exit: 0,
+                    stderr: format!("local delta apply failed: {e}"),
+                }
+            })?;
 
         // Account literal bytes for the speedup metric: this is the byte
         // count that would have travelled on the wire in a real delta sync.
         let bytes_sent: u64 = ops
             .iter()
             .map(|op| match op {
-                delta_sync::DeltaOp::Literal(b) => b.len() as u64,
-                delta_sync::DeltaOp::CopyBlock(_) => 0,
+                delta_engine::DeltaOp::Literal(b) => b.len() as u64,
+                delta_engine::DeltaOp::CopyBlock(_) => 0,
             })
             .sum();
 

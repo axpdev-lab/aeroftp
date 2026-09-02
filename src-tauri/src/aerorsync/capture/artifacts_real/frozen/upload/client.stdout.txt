@@ -1,0 +1,19 @@
+sending incremental file list
+upload.bin
+
+Number of files: 1 (reg: 1)
+Number of created files: 0
+Number of deleted files: 0
+Number of regular files transferred: 1
+Total file size: 262.144 bytes
+Total transferred file size: 262.144 bytes
+Literal data: 700 bytes
+Matched data: 261.444 bytes
+File list size: 0
+File list generation time: 0,001 seconds
+File list transfer time: 0,000 seconds
+Total bytes sent: 440
+Total bytes received: 2.285
+
+sent 440 bytes  received 2.285 bytes  5.450,00 bytes/sec
+total size is 262.144  speedup is 96,20

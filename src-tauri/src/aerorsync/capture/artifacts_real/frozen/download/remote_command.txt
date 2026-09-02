@@ -1,0 +1,1 @@
+rsync --server --sender -vlogDtprcze.iLsfxCIvu . /workspace/real/download/target.bin
