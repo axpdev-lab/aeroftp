@@ -14678,7 +14678,15 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
         });
     }
 
-    if profiles.is_empty() {
+    // An empty vault is exactly where `-i` / `--tui` matter most: `New`,
+    // `Help` and `refresh` live in the interactive loop, so an interactive
+    // run goes on to the (empty) table and the menu instead of returning
+    // here. Returning early made the menu unreachable for a fresh vault while
+    // the menu itself already offered every verb (#347).
+    let wants_loop = (overrides.interactive || overrides.start_in_tui)
+        && std::io::stdin().is_terminal()
+        && std::io::stderr().is_terminal();
+    if profiles.is_empty() && !wants_loop {
         if matches!(format, OutputFormat::Json) {
             println!("[]");
         } else {
@@ -19250,9 +19258,13 @@ fn interactive_profiles_loop(
             print_profiles_summary_with_tombstones(&current, &tombstones);
             tombstones.clear();
         }
+        // An empty list is not the end of the session: `New` (and Help,
+        // refresh, Groups, Users) need no row, and a fresh vault reaches this
+        // loop precisely to create its first profile. Exiting here made both
+        // `-i` and `--tui` unusable on an empty vault (#347). The hint is the
+        // only thing the empty state adds; the menu or the prompt follows.
         if current.is_empty() {
-            eprintln!("\nNo profiles left. Exiting interactive mode.");
-            return 0;
+            eprintln!("\nNo profiles yet: press N to create one, or Q to leave.");
         }
 
         // Re-open the --tui menu once the previous action has drained, so the
