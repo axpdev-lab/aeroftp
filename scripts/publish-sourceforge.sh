@@ -15,6 +15,11 @@
 #   ./scripts/publish-sourceforge.sh 4.1.3 --force --prune   # also prune old folders
 #
 set -euo pipefail
+# Every aeroftp-cli call in this script runs unattended, so strict mode is set
+# once for all of them rather than per call: any flag that would relax a safety
+# check becomes a hard error (exit 5) instead of silently proceeding, on the
+# listing and delete calls of the prune as much as on the upload.
+export AEROFTP_STRICT=1
 
 PROFILE_NAME="${SF_PROFILE_NAME:-SourceForge}"
 REPO="${SF_GH_REPO:-axpdev-lab/aeroftp}"
@@ -118,7 +123,7 @@ SFNOTE
     fi
   fi
   while IFS= read -r f; do
-    "$CLI" --profile "$PROFILE_ID" put --partial --strict "$f" "$SF_ROOT/$TAG/"
+    "$CLI" --profile "$PROFILE_ID" put --partial "$f" "$SF_ROOT/$TAG/"
   done < <(find "$STAGE" -maxdepth 1 -type f | sort)
 
   echo "--- remote listing after upload ---"
