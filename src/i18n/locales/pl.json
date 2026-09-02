@@ -2448,7 +2448,7 @@
                 "general": "Ogólne",
                 "generalDesc": "Domyślne dla niesklasyfikowanych zadań",
                 "autoDefault": "Auto (domyślnie)",
-                "autoRoutingTip": "Wskazówka: pozostaw «Auto (domyślnie)», aby użyć modelu z nagłówka czatu. Konfiguruj konkretne modele tylko w razie potrzeby.",
+                "autoRoutingTip": "Wskazówka: pozostaw zadanie na „Auto (domyślnie)”, a zostanie użyty model domyślny. Preferowany model ustaw tylko dla zadań, w których chcesz użyć innego modelu, oraz model zapasowy, który odpowie, gdy preferowany zawiedzie.",
                 "advancedDescription": "Skonfiguruj zaawansowane parametry AI do generowania odpowiedzi.",
                 "conversationStyle": "Styl rozmowy",
                 "styleHelp": "Precyzyjny = odpowiedzi faktyczne. Kreatywny = bardziej pomysłowe. Zrównoważony = domyślny.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Zwięzły",
                 "styleDefault": "Domyślny",
                 "styleExplanatory": "Wyjaśniający",
-                "styleLearning": "Edukacyjny"
+                "styleLearning": "Edukacyjny",
+                "routingPreferred": "Preferowany",
+                "routingFallback": "Zapasowy",
+                "routingNoFallback": "Brak"
             },
             "copy": "Kopiuj",
             "attachImage": "Załącz obraz",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Przeglądaj pluginy"
             },
-            "stopGeneration": "Zatrzymaj generowanie"
+            "stopGeneration": "Zatrzymaj generowanie",
+            "routing": {
+                "fallbackUsed": "zapasowy",
+                "fallbackUsedTooltip": "{model} zawiódł, więc odpowiedział model zapasowy"
+            }
         },
         "archive": {
             "passwordRequired": "To archiwum jest chronione hasłem",

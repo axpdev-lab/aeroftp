@@ -2448,7 +2448,7 @@
                 "general": "Általános",
                 "generalDesc": "Alapértelmezés nem kategóriaazált feladatokhoz",
                 "autoDefault": "Automatikus (alapértelmezett)",
-                "autoRoutingTip": "Tipp: Hagyja az \"Automatikus (alapértelmezett)\" értéken a beszélgetésben kiválasztott modell használatához.",
+                "autoRoutingTip": "Tipp: ha egy feladatot a(z) „Automatikus (alapértelmezett)” értéken hagy, az alapértelmezett modellje lesz használva. Elsődleges modellt csak azokhoz a feladatokhoz állítson be, amelyekhez másikat szeretne, tartalék modellt pedig arra az esetre, ha az elsődleges hibázik.",
                 "advancedDescription": "Haladó MI paraméterek beállítása.",
                 "conversationStyle": "Beszélgetési stílus",
                 "styleHelp": "Pontos = tényszerű. Kreatív = képzeletgazdagabb. Kiegyensúlyozott = alapértelmezett.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Tömör",
                 "styleDefault": "Alapértelmezett",
                 "styleExplanatory": "Magyarázó",
-                "styleLearning": "Tanulási"
+                "styleLearning": "Tanulási mód",
+                "routingPreferred": "Elsődleges",
+                "routingFallback": "Tartalék",
+                "routingNoFallback": "Nincs"
             },
             "copy": "Másolás",
             "attachImage": "Kép csatolása",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Pluginok böngészése"
             },
-            "stopGeneration": "Generálás leállítása"
+            "stopGeneration": "Generálás leállítása",
+            "routing": {
+                "fallbackUsed": "tartalék",
+                "fallbackUsedTooltip": "A(z) {model} nem volt elérhető, ezért a tartalék modell válaszolt"
+            }
         },
         "archive": {
             "passwordRequired": "Ez az archívum jelszóval védett",

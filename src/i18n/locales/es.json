@@ -2448,7 +2448,7 @@
                 "general": "General",
                 "generalDesc": "Predeterminado para tareas no clasificadas",
                 "autoDefault": "Automático (Predeterminado)",
-                "autoRoutingTip": "Consejo: Deja como \"Automático (Predeterminado)\" para usar el modelo seleccionado en el encabezado del chat. Configura modelos específicos solo cuando quieras diferentes modelos para diferentes tareas.",
+                "autoRoutingTip": "Consejo: si deja una tarea en «Automático (Predeterminado)», se usa su modelo predeterminado. Defina un modelo preferido solo para las tareas en las que quiera otro, y un modelo alternativo que responda cuando el preferido falle.",
                 "advancedDescription": "Configura parámetros avanzados de IA para la generación de respuestas.",
                 "conversationStyle": "Estilo de conversación",
                 "styleHelp": "Preciso = respuestas factuales. Creativo = más imaginativo. Equilibrado = predeterminado.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Conciso",
                 "styleDefault": "Predeterminado",
                 "styleExplanatory": "Explicativo",
-                "styleLearning": "Aprendizaje"
+                "styleLearning": "Aprendizaje",
+                "routingPreferred": "Preferido",
+                "routingFallback": "Alternativo",
+                "routingNoFallback": "Ninguno"
             },
             "copy": "Copiar",
             "attachImage": "Adjuntar imagen",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Explorar Plugins"
             },
-            "stopGeneration": "Detener generación"
+            "stopGeneration": "Detener generación",
+            "routing": {
+                "fallbackUsed": "alternativo",
+                "fallbackUsedTooltip": "{model} falló, así que respondió el modelo alternativo"
+            }
         },
         "archive": {
             "passwordRequired": "Este archivo está protegido con contraseña",

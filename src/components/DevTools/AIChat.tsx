@@ -17,7 +17,8 @@ import { secureGetWithFallback } from '../../utils/secureStorage';
 import { useTranslation } from '../../i18n';
 import { logger } from '../../utils/logger';
 import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS, TransferPlan, TransferPlanOperation, TransferPlanResultData, CodingPatchResultData, CodingCheckpointRestoreResultData, CodingGitResultData, CodingRunCheckResultData, CodingGitHistoryResultData, CodingVerifyResultData, CodingDiagnosticsResultData, CodingSearchResultData } from './aiChatTypes';
-import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult, formatProviderError } from './aiChatUtils';
+import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult, formatProviderError, isFailoverWorthy } from './aiChatUtils';
+import { resolveRoutedModels } from './aiChatModelRouting';
 import { analyzeToolError } from './aiChatToolRetry';
 import { buildExecutionLevels, executePipeline } from './aiChatToolPipeline';
 import { ToolMacro, resolveMacroSteps, macrosToToolDefinitions, isMacroCall, getMacroName, DEFAULT_MACROS, MAX_TOTAL_MACRO_STEPS, createMacroStepCounter, MacroStepCounter } from './aiChatToolMacros';
@@ -2092,6 +2093,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         dispatchAIStatus('streaming');
 
         let streamingMsgId: string | null = null;
+        // True once the primary model has streamed a visible token: after that a
+        // silent switch to the fallback model would rewrite an answer in progress.
+        let streamProduced = false;
         try {
             // Load settings from vault (with localStorage fallback)
             const settings = await secureGetWithFallback<AISettings>('ai_settings', 'aeroftp_ai_settings');
@@ -2100,530 +2104,536 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             }
             setCachedAiSettings(settings);
 
-            // Auto-routing: detect task type and resolve model (fix M-010: resolve before null guard)
-            let activeModel = selectedModel;
-            if (!activeModel && settings.autoRouting?.enabled) {
-                const taskType = detectTaskType(input);
-                const rule = settings.autoRouting.rules.find(r => r.taskType === taskType);
-                if (rule) {
-                    const routedModel = settings.models.find(m => m.id === rule.preferredModelId);
-                    if (routedModel) {
-                        const routedProvider = settings.providers.find(p => p.id === routedModel.providerId);
-                        if (routedProvider) {
-                            activeModel = {
-                                providerId: routedProvider.id,
-                                providerName: routedProvider.name,
-                                providerType: routedProvider.type,
-                                modelId: routedModel.id,
-                                modelName: routedModel.name,
-                                displayName: routedModel.displayName,
-                            };
-                        }
-                    }
-                }
-                // Fallback: use default model if auto-routing didn't resolve
-                if (!activeModel && settings.defaultModelId) {
-                    const defaultModel = settings.models.find(m => m.id === settings.defaultModelId);
-                    if (defaultModel) {
-                        const defaultProvider = settings.providers.find(p => p.id === defaultModel.providerId);
-                        if (defaultProvider) {
-                            activeModel = {
-                                providerId: defaultProvider.id,
-                                providerName: defaultProvider.name,
-                                providerType: defaultProvider.type,
-                                modelId: defaultModel.id,
-                                modelName: defaultModel.name,
-                                displayName: defaultModel.displayName,
-                            };
-                        }
-                    }
-                }
-            }
-            // When user has explicitly selected a model (activeModel is set),
-            // do NOT apply auto-routing: respect the user's choice.
-
-            if (!activeModel) {
+            // Auto-routing: classify the prompt, then resolve the model that answers
+            // it plus the rule's fallback. An explicit pick in the chat header wins
+            // and carries no fallback, see resolveRoutedModels.
+            const routed = resolveRoutedModels(selectedModel, settings, input);
+            if (!routed.primary) {
                 throw new Error('No model selected. Click ⚙️ to configure a provider.');
             }
 
-            const provider = settings.providers.find(p => p.id === activeModel.providerId);
-            if (!provider) {
-                throw new Error(`Provider not configured for ${activeModel.providerName}`);
-            }
-
-            // Fetch API key from OS Keyring (Ollama doesn't need one)
-            let apiKey: string;
-            if (provider.type === 'ollama') {
-                apiKey = 'ollama';
-            } else {
-                try {
-                    apiKey = await invoke<string>('get_credential', { account: `ai_apikey_${provider.id}` });
-                } catch {
-                    throw new Error(`API key not configured for ${activeModel.providerName}. Open AI Settings to add one.`);
+            const attemptSend = async (activeModel: SelectedModel, fallbackFrom?: string): Promise<void> => {
+                const provider = settings.providers.find(p => p.id === activeModel.providerId);
+                if (!provider) {
+                    throw new Error(`Provider not configured for ${activeModel.providerName}`);
                 }
-            }
 
-            // Check model capabilities (needed for context budget calculation)
-            const modelDef = settings.models?.find((m: { id: string }) => m.id === activeModel.modelId);
-            const modelContextWindow = modelDef?.maxContextTokens || modelDef?.maxTokens || 4096;
+                // Fetch API key from OS Keyring (Ollama doesn't need one)
+                let apiKey: string;
+                if (provider.type === 'ollama') {
+                    apiKey = 'ollama';
+                } else {
+                    try {
+                        apiKey = await invoke<string>('get_credential', { account: `ai_apikey_${provider.id}` });
+                    } catch {
+                        throw new Error(`API key not configured for ${activeModel.providerName}. Open AI Settings to add one.`);
+                    }
+                }
 
-            // Phase 3: Determine budget mode and build smart context (#70, #71)
-            const budgetMode = determineBudgetMode(modelContextWindow);
-            const taskType = detectTaskType(userMessage.content);
-            const relevantAgentMemory = await searchMemory(userMessage.content, 5);
-            const workspaceCtx = await buildCodingWorkspaceContext({
-                projectPath,
-                localPath,
-                remotePath,
-                projectContext: projectContextRef.current,
-                gitBranch: gitBranchRef.current,
-                gitSummary: gitSummaryRef.current,
-                fileImports: fileImportsRef.current,
-                ragIndex: ragIndexRef.current,
-                userPrompt: userMessage.content,
-            });
+                // Check model capabilities (needed for context budget calculation)
+                const modelDef = settings.models?.find((m: { id: string }) => m.id === activeModel.modelId);
+                const modelContextWindow = modelDef?.maxContextTokens || modelDef?.maxTokens || 4096;
 
-            // Build smart context with priority-based allocation
-            const contextTokenBudget = Math.floor(modelContextWindow * 0.15); // 15% for smart context
-            const smartCtx = buildSmartContextForWorkspace(workspaceCtx, {
-                userPrompt: userMessage.content,
-                taskType,
-                agentMemory: relevantAgentMemory || agentMemory,
-                tokenBudget: contextTokenBudget,
-                budgetMode,
-            });
-            const smartContextBlock = formatSmartContextForPrompt(smartCtx);
-            const codingPlanBlock = buildCodingPlanPromptBlock(workspaceCtx, {
-                userPrompt: userMessage.content,
-                taskType,
-                agentMode,
-            });
-            const promptProfile = resolveAgentPromptProfile(workspaceCtx, {
-                userPrompt: userMessage.content,
-                taskType,
-            });
+                // Phase 3: Determine budget mode and build smart context (#70, #71)
+                const budgetMode = determineBudgetMode(modelContextWindow);
+                const taskType = detectTaskType(userMessage.content);
+                const relevantAgentMemory = await searchMemory(userMessage.content, 5);
+                const workspaceCtx = await buildCodingWorkspaceContext({
+                    projectPath,
+                    localPath,
+                    remotePath,
+                    projectContext: projectContextRef.current,
+                    gitBranch: gitBranchRef.current,
+                    gitSummary: gitSummaryRef.current,
+                    fileImports: fileImportsRef.current,
+                    ragIndex: ragIndexRef.current,
+                    userPrompt: userMessage.content,
+                });
 
-            // Build context-aware system prompt with Phase 3 data
-            const contextBlock = buildContextBlock({
-                providerType, isConnected, serverHost, serverPort, serverUser,
-                selectedFiles,
-                activeFilePanel, isCloudConnection,
-                editorFileName, editorFilePath,
-                ragIndex: ragIndexRef.current,
-                macros,
-                agentMemory: relevantAgentMemory || agentMemory,
-                codingPlanBlock: codingPlanBlock || undefined,
-                smartContextBlock: smartContextBlock || undefined,
-                ...workspaceToSystemPromptContext(workspaceCtx),
-            });
-            // Build extra tool definitions for system prompt (plugin + macro, not built-in)
-            const extraToolDefs = toNativeDefinitions([...pluginTools, ...macrosToToolDefinitions(macros)]);
-            const systemPrompt = buildSystemPrompt(settings, contextBlock, activeModel.providerType, budgetMode, activeModel.modelName, {
-                extraTools: extraToolDefs,
-                promptProfile,
-            });
+                // Build smart context with priority-based allocation
+                const contextTokenBudget = Math.floor(modelContextWindow * 0.15); // 15% for smart context
+                const smartCtx = buildSmartContextForWorkspace(workspaceCtx, {
+                    userPrompt: userMessage.content,
+                    taskType,
+                    agentMemory: relevantAgentMemory || agentMemory,
+                    tokenBudget: contextTokenBudget,
+                    budgetMode,
+                });
+                const smartContextBlock = formatSmartContextForPrompt(smartCtx);
+                const codingPlanBlock = buildCodingPlanPromptBlock(workspaceCtx, {
+                    userPrompt: userMessage.content,
+                    taskType,
+                    agentMode,
+                });
+                const promptProfile = resolveAgentPromptProfile(workspaceCtx, {
+                    userPrompt: userMessage.content,
+                    taskType,
+                });
 
-            // Build message history (images only on the current user message)
-            const currentUserMsg: Record<string, unknown> = {
-                role: 'user',
-                content: userMessage.content,
-            };
-            if (messageImages && messageImages.length > 0) {
-                currentUserMsg.images = messageImages.map(img => ({
-                    data: img.data,
-                    media_type: img.mediaType,
-                }));
-            }
+                // Build context-aware system prompt with Phase 3 data
+                const contextBlock = buildContextBlock({
+                    providerType, isConnected, serverHost, serverPort, serverUser,
+                    selectedFiles,
+                    activeFilePanel, isCloudConnection,
+                    editorFileName, editorFilePath,
+                    ragIndex: ragIndexRef.current,
+                    macros,
+                    agentMemory: relevantAgentMemory || agentMemory,
+                    codingPlanBlock: codingPlanBlock || undefined,
+                    smartContextBlock: smartContextBlock || undefined,
+                    ...workspaceToSystemPromptContext(workspaceCtx),
+                });
+                // Build extra tool definitions for system prompt (plugin + macro, not built-in)
+                const extraToolDefs = toNativeDefinitions([...pluginTools, ...macrosToToolDefinitions(macros)]);
+                const systemPrompt = buildSystemPrompt(settings, contextBlock, activeModel.providerType, budgetMode, activeModel.modelName, {
+                    extraTools: extraToolDefs,
+                    promptProfile,
+                });
 
-            // Build context-aware message window based on model's context window
-            const contextBudget = Math.floor(modelContextWindow * 0.7); // 70% for context
-            const systemTokens = estimateTokens(systemPrompt);
-            const currentMsgTokens = estimateTokens(userMessage.content);
-            const { messages: windowMessages, historyTokens } = buildMessageWindow(
-                messages, systemTokens, currentMsgTokens, contextBudget, smartCtx.totalEstimatedTokens,
-            );
-
-            // Phase 3: Update token budget indicator (#71)
-            const budgetData: TokenBudgetData = {
-                modelMaxTokens: modelContextWindow,
-                systemPromptTokens: systemTokens,
-                contextTokens: smartCtx.totalEstimatedTokens,
-                historyTokens: historyTokens || 0,
-                currentMessageTokens: currentMsgTokens,
-                responseBuffer: Math.min(2048, Math.floor(modelContextWindow * 0.15)),
-            };
-            setTokenBudgetData(budgetData);
-
-            const messageHistory = [
-                { role: 'system', content: systemPrompt },
-                ...windowMessages,
-                currentUserMsg,
-            ];
-
-            // Rate limit check
-            const rateCheck = checkRateLimit(provider.id);
-            if (!rateCheck.allowed) {
-                throw new Error(`Rate limit reached for ${activeModel.providerName}. Try again in ${rateCheck.waitSeconds}s.`);
-            }
-            recordRequest(provider.id);
-
-            // Phase 4: Budget check before sending
-            const budgetResult = checkBudget(provider.id);
-            setBudgetCheck(budgetResult);
-            if (!budgetResult.allowed) {
-                throw new Error(budgetResult.message || 'Monthly budget exceeded.');
-            }
-
-            const useNativeTools = modelDef?.supportsTools === true;
-            const useStreaming = modelDef?.supportsStreaming === true;
-
-            // Warn user if tools are disabled on current model
-            if (!useNativeTools) {
-                console.warn('[AeroAgent] Tools disabled for model:', activeModel.modelName, '- file operations will not work. Enable "Tools" in AI Settings > Models.');
-            }
-
-            // Prepare model info for message signature
-            const modelInfo = {
-                modelName: activeModel.displayName,
-                providerName: activeModel.providerName,
-                providerType: activeModel.providerType,
-            };
-
-            // Build thinking budget if model supports it
-            const thinkingBudget = modelDef?.supportsThinking && settings.advancedSettings?.thinkingBudget
-                ? settings.advancedSettings.thinkingBudget
-                : undefined;
-
-            // Resolve task-specific parameter preset (provider + detected task type)
-            const preset = getParameterPreset(activeModel.providerType, taskType);
-
-            const aiRequest = {
-                provider_type: activeModel.providerType,
-                model: activeModel.modelName,
-                api_key: apiKey,
-                base_url: provider.baseUrl,
-                messages: messageHistory,
-                max_tokens: settings.advancedSettings?.maxTokens ?? preset.maxTokens,
-                temperature: settings.advancedSettings?.temperature ?? preset.temperature,
-                ...(() => { const rawTopP = settings.advancedSettings?.topP ?? preset.topP; return rawTopP != null ? { top_p: Math.max(0, Math.min(1, rawTopP)) } : {}; })(),
-                ...(() => { const rawTopK = settings.advancedSettings?.topK ?? preset.topK; return rawTopK != null ? { top_k: Math.max(1, Math.min(500, Math.round(rawTopK))) } : {}; })(),
-                ...(useNativeTools ? { tools: toNativeDefinitions(allTools) } : {}),
-                ...(thinkingBudget ? { thinking_budget: thinkingBudget } : {}),
-                ...(settings.advancedSettings?.webSearchEnabled ? { web_search: true } : {}),
-            };
-
-            const webSearchActive = !!settings.advancedSettings?.webSearchEnabled;
-
-            if (useStreaming) {
-                // Streaming mode: incremental rendering
-                const streamId = `stream_${crypto.randomUUID()}`;
-                const msgId = crypto.randomUUID();
-                streamingMsgId = msgId;
-                streamingMsgIdRef.current = msgId;
-                activeStreamIdRef.current = streamId;
-                let streamContent = '';
-                type ToolCallEntry = { id: string; name: string; arguments: unknown };
-                const streamResult: {
-                    toolCalls: ToolCallEntry[] | null;
-                    inputTokens: number | undefined;
-                    outputTokens: number | undefined;
-                    cacheCreationTokens: number | undefined;
-                    cacheReadTokens: number | undefined;
-                } = { toolCalls: null, inputTokens: undefined, outputTokens: undefined, cacheCreationTokens: undefined, cacheReadTokens: undefined };
-
-                // Add placeholder message
-                const streamMsg: Message = {
-                    id: msgId,
-                    role: 'assistant',
-                    content: '',
-                    timestamp: new Date(),
-                    modelInfo,
-                    ...(webSearchActive ? { webSearchUsed: true } : {}),
+                // Build message history (images only on the current user message)
+                const currentUserMsg: Record<string, unknown> = {
+                    role: 'user',
+                    content: userMessage.content,
                 };
-                setMessages(prev => [...prev, streamMsg]);
-
-                // Extended thinking state
-                let thinkingContent = '';
-                let thinkingStartTime = 0;
-
-                // Promise to track stream completion (fix H-003: unlisten race)
-                let resolveStream: () => void;
-                const streamDone = new Promise<void>(resolve => { resolveStream = resolve; });
-
-                // Listen for stream chunks (with thinking + tool calls support).
-                // createTauriListener returns a synchronous disposer and internally
-                // guards the late-resolution race: if the component unmounts or
-                // cancelActiveStream runs before the underlying `listen()` resolves,
-                // the eventual UnlistenFn is called immediately on arrival instead
-                // of being orphaned.
-                const unlisten = createTauriListener<{
-                    content: string;
-                    done: boolean;
-                    tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
-                    input_tokens?: number;
-                    output_tokens?: number;
-                    cache_creation_input_tokens?: number;
-                    cache_read_input_tokens?: number;
-                    thinking?: string;
-                    thinking_done?: boolean;
-                }>(`ai-stream-${streamId}`, (event) => {
-                    const chunk = event.payload;
-
-                    // Handle thinking blocks (Claude extended thinking)
-                    if (chunk.thinking) {
-                        if (thinkingStartTime === 0) thinkingStartTime = Date.now();
-                        thinkingContent += chunk.thinking;
-                        setMessages(prev => prev.map(m =>
-                            m.id === msgId ? { ...m, thinking: thinkingContent } : m
-                        ));
-                    }
-                    if (chunk.thinking_done) {
-                        const duration = Math.round((Date.now() - thinkingStartTime) / 1000);
-                        setMessages(prev => prev.map(m =>
-                            m.id === msgId ? { ...m, thinking: thinkingContent, thinkingDuration: duration } : m
-                        ));
-                    }
-
-                    // Handle content
-                    if (chunk.content) {
-                        streamContent += chunk.content;
-                        setMessages(prev => prev.map(m =>
-                            m.id === msgId ? { ...m, content: streamContent } : m
-                        ));
-                    }
-                    if (chunk.done) {
-                        if (chunk.tool_calls) streamResult.toolCalls = chunk.tool_calls;
-                        if (chunk.input_tokens) streamResult.inputTokens = chunk.input_tokens;
-                        if (chunk.output_tokens) streamResult.outputTokens = chunk.output_tokens;
-                        if (chunk.cache_creation_input_tokens) streamResult.cacheCreationTokens = chunk.cache_creation_input_tokens;
-                        if (chunk.cache_read_input_tokens) streamResult.cacheReadTokens = chunk.cache_read_input_tokens;
-                        resolveStream();
-                    }
-                });
-
-                // Store unlisten ref for cancellation on conversation switch
-                streamUnlistenRef.current = () => { unlisten(); resolveStream(); };
-
-                // Fire the stream command (don't await its completion for unlisten)
-                invoke('ai_chat_stream', { request: aiRequest, streamId }).catch((err: unknown) => {
-                    const rawErr = err instanceof Error ? err.message : String(err);
-                    streamContent = formatProviderError(rawErr, t);
-                    setMessages(prev => prev.map(m =>
-                        m.id === msgId ? { ...m, content: streamContent } : m
-                    ));
-                    resolveStream();
-                });
-
-                // Wait for the done event with timeout, then unlisten.
-                // The timeout handle is tracked so a successful stream clears it
-                //: previously the setTimeout kept the runtime alive until its
-                // full duration even when the stream had finished seconds earlier.
-                const streamTimeoutMs = (settings.advancedSettings?.streamingTimeoutSecs ?? 120) * 1000;
-                let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-                const timeoutPromise = new Promise<void>((_, reject) => {
-                    timeoutHandle = setTimeout(() => reject(new Error(`Stream timeout after ${Math.round(streamTimeoutMs / 1000)}s`)), streamTimeoutMs);
-                });
-                try {
-                    await Promise.race([streamDone, timeoutPromise]);
-                } catch (_timeoutErr) {
-                    // Timeout occurred - add error message and clean up
-                    streamContent += `\n\n[Stream timeout - no response received for ${Math.round(streamTimeoutMs / 1000)} seconds]`;
-                    setMessages(prev => prev.map(m =>
-                        m.id === msgId ? { ...m, content: streamContent } : m
-                    ));
-                } finally {
-                    if (timeoutHandle !== null) {
-                        clearTimeout(timeoutHandle);
-                        timeoutHandle = null;
-                    }
-                }
-                unlisten();
-                streamUnlistenRef.current = null;
-                activeStreamIdRef.current = null;
-
-                // Calculate cost
-                const tokenInfo = computeTokenInfo(streamResult.inputTokens, streamResult.outputTokens, undefined, modelDef, streamResult.cacheCreationTokens, streamResult.cacheReadTokens);
-
-                // Phase 4: Record spending for cost budget tracking
-                if (tokenInfo && activeModel) {
-                    const cost = tokenInfo.cost || 0;
-                    const tokens = (streamResult.inputTokens || 0) + (streamResult.outputTokens || 0);
-                    recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
-                        .then(result => setBudgetCheck(result));
-                }
-
-                // Check for tool calls from streaming: process ALL (parallel support)
-                let allToolsParsed: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
-                if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
-                    allToolsParsed = streamResult.toolCalls.map(tc => ({
-                        tool: tc.name,
-                        args: (() => {
-                            if (typeof tc.arguments === 'string') {
-                                try { return JSON.parse(tc.arguments as string) as Record<string, unknown>; }
-                                catch { return {} as Record<string, unknown>; }
-                            }
-                            return tc.arguments as Record<string, unknown>;
-                        })(),
-                        id: tc.id || crypto.randomUUID(),
+                if (messageImages && messageImages.length > 0) {
+                    currentUserMsg.images = messageImages.map(img => ({
+                        data: img.data,
+                        media_type: img.mediaType,
                     }));
-                } else {
-                    const fallbacks = parseToolCalls(streamContent);
-                    if (fallbacks.length > 0) allToolsParsed = fallbacks.map(fb => ({ ...fb, id: crypto.randomUUID() }));
                 }
 
-                if (allToolsParsed.length > 0) {
-                    // Separate safe (auto-execute) vs approval-required tools
-                    const safeCalls = allToolsParsed.filter(p => isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
-                    const approvalCalls = allToolsParsed.filter(p => !isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
+                // Build context-aware message window based on model's context window
+                const contextBudget = Math.floor(modelContextWindow * 0.7); // 70% for context
+                const systemTokens = estimateTokens(systemPrompt);
+                const currentMsgTokens = estimateTokens(userMessage.content);
+                const { messages: windowMessages, historyTokens } = buildMessageWindow(
+                    messages, systemTokens, currentMsgTokens, contextBudget, smartCtx.totalEstimatedTokens,
+                );
 
-                    // Execute safe tools in parallel
-                    if (safeCalls.length > 0) {
-                        const safeToolCalls = safeCalls.map(sc => ({
-                            id: sc.id,
-                            toolName: sc.tool,
-                            args: sc.args,
-                            status: 'approved' as const,
-                        }));
-                        // Track initial tool signatures for duplicate detection
-                        for (const sc of safeToolCalls) {
-                            executedToolSignaturesRef.current.add(`${sc.toolName}::${JSON.stringify(sc.args)}`);
-                        }
-                        const levels = buildExecutionLevels(safeToolCalls);
-                        const results = await executePipeline(levels, executeTool);
-                        const combinedResult = results.filter(Boolean).join('\n---\n');
-                        if (combinedResult && !autoStopRef.current && approvalCalls.length === 0) {
-                            await executeMultiStep(combinedResult, aiRequest, [...messageHistory], modelInfo, modelDef);
-                            return;
-                        }
-                    }
+                // Phase 3: Update token budget indicator (#71)
+                const budgetData: TokenBudgetData = {
+                    modelMaxTokens: modelContextWindow,
+                    systemPromptTokens: systemTokens,
+                    contextTokens: smartCtx.totalEstimatedTokens,
+                    historyTokens: historyTokens || 0,
+                    currentMessageTokens: currentMsgTokens,
+                    responseBuffer: Math.min(2048, Math.floor(modelContextWindow * 0.15)),
+                };
+                setTokenBudgetData(budgetData);
 
-                    // Queue approval-required tools
-                    if (approvalCalls.length > 0) {
-                        setMessages(prev => prev.map(m =>
-                            m.id === msgId ? { ...m, content: streamContent || '' } : m
-                        ));
-                        const pending = approvalCalls.map(ac => ({
-                            id: ac.id,
-                            toolName: ac.tool,
-                            args: ac.args,
-                            status: 'pending' as const,
-                        }));
-                        // Validate tool arguments in parallel
-                        const pendingWithValidation = await Promise.all(
-                            pending.map(async (tc) => {
-                                const validation = await validateToolArgs(tc.toolName, tc.args);
-                                return { ...tc, validation };
-                            })
-                        );
-                        multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
-                        setPendingToolCalls(pendingWithValidation);
-                    }
-                } else {
-                    // Update final message with token info
-                    setMessages(prev => prev.map(m =>
-                        m.id === msgId ? { ...m, content: streamContent, tokenInfo } : m
-                    ));
+                const messageHistory = [
+                    { role: 'system', content: systemPrompt },
+                    ...windowMessages,
+                    currentUserMsg,
+                ];
+
+                // Rate limit check
+                const rateCheck = checkRateLimit(provider.id);
+                if (!rateCheck.allowed) {
+                    throw new Error(`Rate limit reached for ${activeModel.providerName}. Try again in ${rateCheck.waitSeconds}s.`);
                 }
-            } else {
-                // Non-streaming mode: single response
-                const response = await withRetry(() =>
-                    invoke<{
+                recordRequest(provider.id);
+
+                // Phase 4: Budget check before sending
+                const budgetResult = checkBudget(provider.id);
+                setBudgetCheck(budgetResult);
+                if (!budgetResult.allowed) {
+                    throw new Error(budgetResult.message || 'Monthly budget exceeded.');
+                }
+
+                const useNativeTools = modelDef?.supportsTools === true;
+                const useStreaming = modelDef?.supportsStreaming === true;
+
+                // Warn user if tools are disabled on current model
+                if (!useNativeTools) {
+                    console.warn('[AeroAgent] Tools disabled for model:', activeModel.modelName, '- file operations will not work. Enable "Tools" in AI Settings > Models.');
+                }
+
+                // Prepare model info for message signature
+                const modelInfo = {
+                    modelName: activeModel.displayName,
+                    providerName: activeModel.providerName,
+                    providerType: activeModel.providerType,
+                    ...(fallbackFrom ? { fallbackFrom } : {}),
+                };
+
+                // Build thinking budget if model supports it
+                const thinkingBudget = modelDef?.supportsThinking && settings.advancedSettings?.thinkingBudget
+                    ? settings.advancedSettings.thinkingBudget
+                    : undefined;
+
+                // Resolve task-specific parameter preset (provider + detected task type)
+                const preset = getParameterPreset(activeModel.providerType, taskType);
+
+                const aiRequest = {
+                    provider_type: activeModel.providerType,
+                    model: activeModel.modelName,
+                    api_key: apiKey,
+                    base_url: provider.baseUrl,
+                    messages: messageHistory,
+                    max_tokens: settings.advancedSettings?.maxTokens ?? preset.maxTokens,
+                    temperature: settings.advancedSettings?.temperature ?? preset.temperature,
+                    ...(() => { const rawTopP = settings.advancedSettings?.topP ?? preset.topP; return rawTopP != null ? { top_p: Math.max(0, Math.min(1, rawTopP)) } : {}; })(),
+                    ...(() => { const rawTopK = settings.advancedSettings?.topK ?? preset.topK; return rawTopK != null ? { top_k: Math.max(1, Math.min(500, Math.round(rawTopK))) } : {}; })(),
+                    ...(useNativeTools ? { tools: toNativeDefinitions(allTools) } : {}),
+                    ...(thinkingBudget ? { thinking_budget: thinkingBudget } : {}),
+                    ...(settings.advancedSettings?.webSearchEnabled ? { web_search: true } : {}),
+                };
+
+                const webSearchActive = !!settings.advancedSettings?.webSearchEnabled;
+
+                if (useStreaming) {
+                    // Streaming mode: incremental rendering
+                    const streamId = `stream_${crypto.randomUUID()}`;
+                    const msgId = crypto.randomUUID();
+                    streamingMsgId = msgId;
+                    streamingMsgIdRef.current = msgId;
+                    activeStreamIdRef.current = streamId;
+                    let streamContent = '';
+                    // The stream command reports provider failures through its own
+                    // catch rather than by rejecting this scope, so the error is
+                    // captured here and rethrown below once it is clear that nothing
+                    // reached the user. Without this, a streaming failure could never
+                    // reach the routing fallback.
+                    let streamError: unknown = null;
+                    type ToolCallEntry = { id: string; name: string; arguments: unknown };
+                    const streamResult: {
+                        toolCalls: ToolCallEntry[] | null;
+                        inputTokens: number | undefined;
+                        outputTokens: number | undefined;
+                        cacheCreationTokens: number | undefined;
+                        cacheReadTokens: number | undefined;
+                    } = { toolCalls: null, inputTokens: undefined, outputTokens: undefined, cacheCreationTokens: undefined, cacheReadTokens: undefined };
+
+                    // Add placeholder message
+                    const streamMsg: Message = {
+                        id: msgId,
+                        role: 'assistant',
+                        content: '',
+                        timestamp: new Date(),
+                        modelInfo,
+                        ...(webSearchActive ? { webSearchUsed: true } : {}),
+                    };
+                    setMessages(prev => [...prev, streamMsg]);
+
+                    // Extended thinking state
+                    let thinkingContent = '';
+                    let thinkingStartTime = 0;
+
+                    // Promise to track stream completion (fix H-003: unlisten race)
+                    let resolveStream: () => void;
+                    const streamDone = new Promise<void>(resolve => { resolveStream = resolve; });
+
+                    // Listen for stream chunks (with thinking + tool calls support).
+                    // createTauriListener returns a synchronous disposer and internally
+                    // guards the late-resolution race: if the component unmounts or
+                    // cancelActiveStream runs before the underlying `listen()` resolves,
+                    // the eventual UnlistenFn is called immediately on arrival instead
+                    // of being orphaned.
+                    const unlisten = createTauriListener<{
                         content: string;
-                        model: string;
-                        tokens_used?: number;
+                        done: boolean;
+                        tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
                         input_tokens?: number;
                         output_tokens?: number;
                         cache_creation_input_tokens?: number;
                         cache_read_input_tokens?: number;
-                        finish_reason?: string;
-                        tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
-                    }>('ai_chat', { request: aiRequest })
-                );
+                        thinking?: string;
+                        thinking_done?: boolean;
+                    }>(`ai-stream-${streamId}`, (event) => {
+                        const chunk = event.payload;
 
-                const tokenInfo = computeTokenInfo(response.input_tokens, response.output_tokens, response.tokens_used, modelDef, response.cache_creation_input_tokens, response.cache_read_input_tokens);
-
-                // Phase 4: Record spending for cost budget tracking (non-streaming path)
-                if (tokenInfo && activeModel) {
-                    const cost = tokenInfo.cost || 0;
-                    const tokens = response.tokens_used || ((response.input_tokens || 0) + (response.output_tokens || 0));
-                    recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
-                        .then(result => setBudgetCheck(result));
-                }
-
-                // Check if AI wants to use tools: process ALL (parallel support)
-                let allToolsParsedNS: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
-                if (response.tool_calls && response.tool_calls.length > 0) {
-                    allToolsParsedNS = response.tool_calls.map((tc: { id: string; name: string; arguments: unknown }) => ({
-                        tool: tc.name,
-                        args: (() => {
-                            if (typeof tc.arguments === 'string') {
-                                try { return JSON.parse(tc.arguments) as Record<string, unknown>; }
-                                catch { return {} as Record<string, unknown>; }
-                            }
-                            return tc.arguments as Record<string, unknown>;
-                        })(),
-                        id: tc.id || crypto.randomUUID(),
-                    }));
-                } else {
-                    const fallbacks = parseToolCalls(response.content);
-                    if (fallbacks.length > 0) allToolsParsedNS = fallbacks.map(fb => ({ ...fb, id: crypto.randomUUID() }));
-                }
-
-                if (allToolsParsedNS.length > 0) {
-                    const safeCalls = allToolsParsedNS.filter(p => isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
-                    const approvalCalls = allToolsParsedNS.filter(p => !isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
-
-                    if (safeCalls.length > 0) {
-                        const safeToolCalls = safeCalls.map(sc => ({
-                            id: sc.id, toolName: sc.tool, args: sc.args, status: 'approved' as const,
-                        }));
-                        // Track initial tool signatures for duplicate detection
-                        for (const sc of safeToolCalls) {
-                            executedToolSignaturesRef.current.add(`${sc.toolName}::${JSON.stringify(sc.args)}`);
+                        // Handle thinking blocks (Claude extended thinking)
+                        if (chunk.thinking) {
+                            if (thinkingStartTime === 0) thinkingStartTime = Date.now();
+                            thinkingContent += chunk.thinking;
+                            setMessages(prev => prev.map(m =>
+                                m.id === msgId ? { ...m, thinking: thinkingContent } : m
+                            ));
                         }
-                        const levels = buildExecutionLevels(safeToolCalls);
-                        const results = await executePipeline(levels, executeTool);
-                        const combinedResult = results.filter(Boolean).join('\n---\n');
-                        if (combinedResult && !autoStopRef.current && approvalCalls.length === 0) {
-                            await executeMultiStep(combinedResult, aiRequest, [...messageHistory], modelInfo, modelDef);
-                            return;
+                        if (chunk.thinking_done) {
+                            const duration = Math.round((Date.now() - thinkingStartTime) / 1000);
+                            setMessages(prev => prev.map(m =>
+                                m.id === msgId ? { ...m, thinking: thinkingContent, thinkingDuration: duration } : m
+                            ));
+                        }
+
+                        // Handle content
+                        if (chunk.content) {
+                            streamProduced = true;
+                            streamContent += chunk.content;
+                            setMessages(prev => prev.map(m =>
+                                m.id === msgId ? { ...m, content: streamContent } : m
+                            ));
+                        }
+                        if (chunk.done) {
+                            if (chunk.tool_calls) streamResult.toolCalls = chunk.tool_calls;
+                            if (chunk.input_tokens) streamResult.inputTokens = chunk.input_tokens;
+                            if (chunk.output_tokens) streamResult.outputTokens = chunk.output_tokens;
+                            if (chunk.cache_creation_input_tokens) streamResult.cacheCreationTokens = chunk.cache_creation_input_tokens;
+                            if (chunk.cache_read_input_tokens) streamResult.cacheReadTokens = chunk.cache_read_input_tokens;
+                            resolveStream();
+                        }
+                    });
+
+                    // Store unlisten ref for cancellation on conversation switch
+                    streamUnlistenRef.current = () => { unlisten(); resolveStream(); };
+
+                    // Fire the stream command (don't await its completion for unlisten)
+                    invoke('ai_chat_stream', { request: aiRequest, streamId }).catch((err: unknown) => {
+                        const rawErr = err instanceof Error ? err.message : String(err);
+                        streamError = err;
+                        streamContent = formatProviderError(rawErr, t);
+                        setMessages(prev => prev.map(m =>
+                            m.id === msgId ? { ...m, content: streamContent } : m
+                        ));
+                        resolveStream();
+                    });
+
+                    // Wait for the done event with timeout, then unlisten.
+                    // The timeout handle is tracked so a successful stream clears it
+                    //: previously the setTimeout kept the runtime alive until its
+                    // full duration even when the stream had finished seconds earlier.
+                    const streamTimeoutMs = (settings.advancedSettings?.streamingTimeoutSecs ?? 120) * 1000;
+                    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+                    const timeoutPromise = new Promise<void>((_, reject) => {
+                        timeoutHandle = setTimeout(() => reject(new Error(`Stream timeout after ${Math.round(streamTimeoutMs / 1000)}s`)), streamTimeoutMs);
+                    });
+                    try {
+                        await Promise.race([streamDone, timeoutPromise]);
+                    } catch (timeoutErr) {
+                        // Timeout occurred - add error message and clean up
+                        if (!streamProduced) streamError = timeoutErr;
+                        // Stop the backend task for this stream before anything
+                        // else starts one. Giving up on the listener does not stop
+                        // the provider: the primary would keep streaming, and
+                        // billing, while the fallback request runs beside it.
+                        invoke('ai_cancel_stream', { streamId }).catch(() => {});
+                        streamContent += `\n\n[Stream timeout - no response received for ${Math.round(streamTimeoutMs / 1000)} seconds]`;
+                        setMessages(prev => prev.map(m =>
+                            m.id === msgId ? { ...m, content: streamContent } : m
+                        ));
+                    } finally {
+                        if (timeoutHandle !== null) {
+                            clearTimeout(timeoutHandle);
+                            timeoutHandle = null;
                         }
                     }
+                    unlisten();
+                    streamUnlistenRef.current = null;
+                    activeStreamIdRef.current = null;
 
-                    if (approvalCalls.length > 0) {
-                        const pendingMessage: Message = {
+                    // Nothing was rendered and the stream failed: surface it as a real
+                    // rejection so the caller can fall back. When tokens did arrive the
+                    // partial answer stays on screen exactly as before.
+                    if (streamError !== null && !streamProduced) {
+                        throw streamError;
+                    }
+
+                    // Calculate cost
+                    const tokenInfo = computeTokenInfo(streamResult.inputTokens, streamResult.outputTokens, undefined, modelDef, streamResult.cacheCreationTokens, streamResult.cacheReadTokens);
+
+                    // Phase 4: Record spending for cost budget tracking
+                    if (tokenInfo && activeModel) {
+                        const cost = tokenInfo.cost || 0;
+                        const tokens = (streamResult.inputTokens || 0) + (streamResult.outputTokens || 0);
+                        recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
+                            .then(result => setBudgetCheck(result));
+                    }
+
+                    // Check for tool calls from streaming: process ALL (parallel support)
+                    let allToolsParsed: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
+                    if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
+                        allToolsParsed = streamResult.toolCalls.map(tc => ({
+                            tool: tc.name,
+                            args: (() => {
+                                if (typeof tc.arguments === 'string') {
+                                    try { return JSON.parse(tc.arguments as string) as Record<string, unknown>; }
+                                    catch { return {} as Record<string, unknown>; }
+                                }
+                                return tc.arguments as Record<string, unknown>;
+                            })(),
+                            id: tc.id || crypto.randomUUID(),
+                        }));
+                    } else {
+                        const fallbacks = parseToolCalls(streamContent);
+                        if (fallbacks.length > 0) allToolsParsed = fallbacks.map(fb => ({ ...fb, id: crypto.randomUUID() }));
+                    }
+
+                    if (allToolsParsed.length > 0) {
+                        // Separate safe (auto-execute) vs approval-required tools
+                        const safeCalls = allToolsParsed.filter(p => isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
+                        const approvalCalls = allToolsParsed.filter(p => !isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
+
+                        // Execute safe tools in parallel
+                        if (safeCalls.length > 0) {
+                            const safeToolCalls = safeCalls.map(sc => ({
+                                id: sc.id,
+                                toolName: sc.tool,
+                                args: sc.args,
+                                status: 'approved' as const,
+                            }));
+                            // Track initial tool signatures for duplicate detection
+                            for (const sc of safeToolCalls) {
+                                executedToolSignaturesRef.current.add(`${sc.toolName}::${JSON.stringify(sc.args)}`);
+                            }
+                            const levels = buildExecutionLevels(safeToolCalls);
+                            const results = await executePipeline(levels, executeTool);
+                            const combinedResult = results.filter(Boolean).join('\n---\n');
+                            if (combinedResult && !autoStopRef.current && approvalCalls.length === 0) {
+                                await executeMultiStep(combinedResult, aiRequest, [...messageHistory], modelInfo, modelDef);
+                                return;
+                            }
+                        }
+
+                        // Queue approval-required tools
+                        if (approvalCalls.length > 0) {
+                            setMessages(prev => prev.map(m =>
+                                m.id === msgId ? { ...m, content: streamContent || '' } : m
+                            ));
+                            const pending = approvalCalls.map(ac => ({
+                                id: ac.id,
+                                toolName: ac.tool,
+                                args: ac.args,
+                                status: 'pending' as const,
+                            }));
+                            // Validate tool arguments in parallel
+                            const pendingWithValidation = await Promise.all(
+                                pending.map(async (tc) => {
+                                    const validation = await validateToolArgs(tc.toolName, tc.args);
+                                    return { ...tc, validation };
+                                })
+                            );
+                            multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
+                            setPendingToolCalls(pendingWithValidation);
+                        }
+                    } else {
+                        // Update final message with token info
+                        setMessages(prev => prev.map(m =>
+                            m.id === msgId ? { ...m, content: streamContent, tokenInfo } : m
+                        ));
+                    }
+                } else {
+                    // Non-streaming mode: single response
+                    const response = await withRetry(() =>
+                        invoke<{
+                            content: string;
+                            model: string;
+                            tokens_used?: number;
+                            input_tokens?: number;
+                            output_tokens?: number;
+                            cache_creation_input_tokens?: number;
+                            cache_read_input_tokens?: number;
+                            finish_reason?: string;
+                            tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
+                        }>('ai_chat', { request: aiRequest })
+                    );
+
+                    const tokenInfo = computeTokenInfo(response.input_tokens, response.output_tokens, response.tokens_used, modelDef, response.cache_creation_input_tokens, response.cache_read_input_tokens);
+
+                    // Phase 4: Record spending for cost budget tracking (non-streaming path)
+                    if (tokenInfo && activeModel) {
+                        const cost = tokenInfo.cost || 0;
+                        const tokens = response.tokens_used || ((response.input_tokens || 0) + (response.output_tokens || 0));
+                        recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
+                            .then(result => setBudgetCheck(result));
+                    }
+
+                    // Check if AI wants to use tools: process ALL (parallel support)
+                    let allToolsParsedNS: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
+                    if (response.tool_calls && response.tool_calls.length > 0) {
+                        allToolsParsedNS = response.tool_calls.map((tc: { id: string; name: string; arguments: unknown }) => ({
+                            tool: tc.name,
+                            args: (() => {
+                                if (typeof tc.arguments === 'string') {
+                                    try { return JSON.parse(tc.arguments) as Record<string, unknown>; }
+                                    catch { return {} as Record<string, unknown>; }
+                                }
+                                return tc.arguments as Record<string, unknown>;
+                            })(),
+                            id: tc.id || crypto.randomUUID(),
+                        }));
+                    } else {
+                        const fallbacks = parseToolCalls(response.content);
+                        if (fallbacks.length > 0) allToolsParsedNS = fallbacks.map(fb => ({ ...fb, id: crypto.randomUUID() }));
+                    }
+
+                    if (allToolsParsedNS.length > 0) {
+                        const safeCalls = allToolsParsedNS.filter(p => isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
+                        const approvalCalls = allToolsParsedNS.filter(p => !isAutoApproved(p.tool) && getToolByNameFromAll(p.tool, allTools));
+
+                        if (safeCalls.length > 0) {
+                            const safeToolCalls = safeCalls.map(sc => ({
+                                id: sc.id, toolName: sc.tool, args: sc.args, status: 'approved' as const,
+                            }));
+                            // Track initial tool signatures for duplicate detection
+                            for (const sc of safeToolCalls) {
+                                executedToolSignaturesRef.current.add(`${sc.toolName}::${JSON.stringify(sc.args)}`);
+                            }
+                            const levels = buildExecutionLevels(safeToolCalls);
+                            const results = await executePipeline(levels, executeTool);
+                            const combinedResult = results.filter(Boolean).join('\n---\n');
+                            if (combinedResult && !autoStopRef.current && approvalCalls.length === 0) {
+                                await executeMultiStep(combinedResult, aiRequest, [...messageHistory], modelInfo, modelDef);
+                                return;
+                            }
+                        }
+
+                        if (approvalCalls.length > 0) {
+                            const pendingMessage: Message = {
+                                id: crypto.randomUUID(),
+                                role: 'assistant',
+                                content: response.content || '',
+                                timestamp: new Date(),
+                                modelInfo,
+                            };
+                            setMessages(prev => [...prev, pendingMessage]);
+                            const pending = approvalCalls.map(ac => ({
+                                id: ac.id, toolName: ac.tool, args: ac.args, status: 'pending' as const,
+                            }));
+                            // Validate tool arguments in parallel
+                            const pendingWithValidation = await Promise.all(
+                                pending.map(async (tc) => {
+                                    const validation = await validateToolArgs(tc.toolName, tc.args);
+                                    return { ...tc, validation };
+                                })
+                            );
+                            multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
+                            setPendingToolCalls(pendingWithValidation);
+                        }
+                    } else {
+                        const assistantMessage: Message = {
                             id: crypto.randomUUID(),
                             role: 'assistant',
-                            content: response.content || '',
+                            content: response.content,
                             timestamp: new Date(),
                             modelInfo,
+                            tokenInfo,
+                            ...(webSearchActive ? { webSearchUsed: true } : {}),
                         };
-                        setMessages(prev => [...prev, pendingMessage]);
-                        const pending = approvalCalls.map(ac => ({
-                            id: ac.id, toolName: ac.tool, args: ac.args, status: 'pending' as const,
-                        }));
-                        // Validate tool arguments in parallel
-                        const pendingWithValidation = await Promise.all(
-                            pending.map(async (tc) => {
-                                const validation = await validateToolArgs(tc.toolName, tc.args);
-                                return { ...tc, validation };
-                            })
-                        );
-                        multiStepContextRef.current = { aiRequest, messageHistory: [...messageHistory], modelInfo, modelDef };
-                        setPendingToolCalls(pendingWithValidation);
+                        setMessages(prev => [...prev, assistantMessage]);
                     }
-                } else {
-                    const assistantMessage: Message = {
-                        id: crypto.randomUUID(),
-                        role: 'assistant',
-                        content: response.content,
-                        timestamp: new Date(),
-                        modelInfo,
-                        tokenInfo,
-                        ...(webSearchActive ? { webSearchUsed: true } : {}),
-                    };
-                    setMessages(prev => [...prev, assistantMessage]);
                 }
+            };
+
+            try {
+                await attemptSend(routed.primary);
+            } catch (primaryError) {
+                // Fail over only when a second endpoint could plausibly do better and
+                // nothing has been shown to the user yet. Once a token has streamed,
+                // swapping models mid-answer would replace a partial reply with a
+                // different voice, which is worse than surfacing the error.
+                if (!routed.fallback || streamProduced || !isFailoverWorthy(primaryError)) {
+                    throw primaryError;
+                }
+                if (streamingMsgId) {
+                    const failedPlaceholderId = streamingMsgId;
+                    setMessages(prev => prev.filter(m => m.id !== failedPlaceholderId));
+                    streamingMsgId = null;
+                    streamingMsgIdRef.current = null;
+                }
+                logger.debug('[AeroAgent] Routing fallback:', routed.primary.displayName, '->', routed.fallback.displayName, String(primaryError));
+                await attemptSend(routed.fallback, routed.primary.displayName);
             }
 
         } catch (error: unknown) {

@@ -2448,7 +2448,7 @@
                 "general": "일반",
                 "generalDesc": "분류되지 않은 작업의 기본값",
                 "autoDefault": "자동 (기본값)",
-                "autoRoutingTip": "팁: 채팅 헤더에서 선택한 모델을 사용하려면 \"자동 (기본값)\"으로 두세요. 다른 작업에 다른 모델을 사용하려는 경우에만 특정 모델을 구성하세요.",
+                "autoRoutingTip": "팁: 작업을 \"자동 (기본값)\"로 두면 기본 모델이 사용됩니다. 다른 모델을 쓰고 싶은 작업에만 선호 모델을 지정하고, 선호 모델이 실패할 때 응답할 대체 모델을 지정하세요.",
                 "advancedDescription": "응답 생성을 위한 고급 AI 매개변수를 구성합니다.",
                 "conversationStyle": "대화 스타일",
                 "styleHelp": "정확 = 사실 기반 응답. 창의적 = 더 상상력 풍부. 균형 = 기본값.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "간결",
                 "styleDefault": "기본값",
                 "styleExplanatory": "설명형",
-                "styleLearning": "학습형"
+                "styleLearning": "학습형",
+                "routingPreferred": "선호 모델",
+                "routingFallback": "대체",
+                "routingNoFallback": "없음"
             },
             "copy": "복사",
             "attachImage": "이미지 첨부",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "플러그인 찾아보기"
             },
-            "stopGeneration": "생성 중지"
+            "stopGeneration": "생성 중지",
+            "routing": {
+                "fallbackUsed": "대체",
+                "fallbackUsedTooltip": "{model}이(가) 실패하여 대체 모델이 대신 응답했습니다"
+            }
         },
         "archive": {
             "passwordRequired": "이 압축 파일은 비밀번호로 보호되어 있습니다",

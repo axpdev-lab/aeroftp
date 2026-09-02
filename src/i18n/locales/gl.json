@@ -2467,7 +2467,7 @@
                 "general": "Xeral",
                 "generalDesc": "Por defecto para tarefas non clasificadas",
                 "autoDefault": "Automático (Por Defecto)",
-                "autoRoutingTip": "Consello: Deixe como \"Automático (Por Defecto)\" para usar o modelo seleccionado na cabeceira do chat. Configure modelos específicos só cando queira diferentes modelos para diferentes tarefas.",
+                "autoRoutingTip": "Consello: se deixa unha tarefa en «Automático (Por Defecto)», úsase o seu modelo predeterminado. Defina un modelo preferido só para as tarefas nas que queira outro, e un modelo alternativo que responda cando o preferido falle.",
                 "advancedDescription": "Configure parámetros avanzados de IA para a xeración de respostas.",
                 "conversationStyle": "Estilo de Conversa",
                 "styleHelp": "Preciso = respostas factuais. Creativo = máis imaxinativo. Equilibrado = por defecto.",
@@ -2551,7 +2551,10 @@
                 "styleConcise": "Conciso",
                 "styleDefault": "Predeterminado",
                 "styleExplanatory": "Explicativo",
-                "styleLearning": "Aprendizaxe"
+                "styleLearning": "Aprendizaxe",
+                "routingPreferred": "Preferido",
+                "routingFallback": "Alternativo",
+                "routingNoFallback": "Ningún"
             },
             "rag": {
                 "indexing": "Indexando ficheiros...",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Explorar Plugins"
             },
-            "stopGeneration": "Deter a xeración"
+            "stopGeneration": "Deter a xeración",
+            "routing": {
+                "fallbackUsed": "alternativo",
+                "fallbackUsedTooltip": "{model} fallou, así que respondeu o modelo alternativo"
+            }
         },
         "archive": {
             "passwordRequired": "Arquivo protexido con contrasinal",

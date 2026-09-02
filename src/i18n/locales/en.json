@@ -480,7 +480,7 @@
                 "autoRouting": "Auto-Routing",
                 "autoRoutingDescription": "Automatically select the best model for each task type",
                 "autoRoutingInstruction": "Configure which model to use for each task type. When auto-routing is enabled, the AI will automatically select the appropriate model based on the task.",
-                "autoRoutingTip": "Tip: Leave as \"Auto (Default)\" to use the model selected in the chat header. Configure specific models only when you want different models for different tasks.",
+                "autoRoutingTip": "Tip: leave a task on \"Auto (Default)\" and it uses your default model. Set a preferred model only for the tasks where you want a different one, and a fallback model to answer when the preferred one fails.",
                 "balanced": "Balanced",
                 "baseUrl": "Base URL",
                 "baseUrlPlaceholder": "https://api.example.com/v1",
@@ -607,7 +607,10 @@
                 "tokens": "tokens",
                 "tools": "Tools",
                 "useCustomPrompt": "Use custom system prompt",
-                "vision": "Vision"
+                "vision": "Vision",
+                "routingPreferred": "Preferred",
+                "routingFallback": "Fallback",
+                "routingNoFallback": "None"
             },
             "shortcuts": {
                 "clearChat": "Clear chat (Ctrl+L)",
@@ -820,7 +823,11 @@
             "welcomePromptLocal3": "Run ls -la and summarize what you see",
             "welcomePromptRemote1": "List all files on the remote server",
             "welcomePromptRemote2": "Compare local and remote folders",
-            "welcomePromptRemote3": "Download all .log files"
+            "welcomePromptRemote3": "Download all .log files",
+            "routing": {
+                "fallbackUsed": "fallback",
+                "fallbackUsedTooltip": "{model} failed, so the fallback model answered instead"
+            }
         },
         "appearance": {
             "patternBubbles": "Bubbles",

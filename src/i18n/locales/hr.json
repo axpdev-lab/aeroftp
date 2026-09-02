@@ -2467,7 +2467,7 @@
                 "general": "Općenito",
                 "generalDesc": "Zadano za neklasificirane zadatke",
                 "autoDefault": "Automatski (zadano)",
-                "autoRoutingTip": "Savjet: Ostavite \"Automatski (zadano)\" za korištenje modela odabranog u zaglavlju razgovora. Konfigurirajte specifične modele samo kada želite različite modele za različite zadatke.",
+                "autoRoutingTip": "Savjet: ostavite zadatak na „Automatski (zadano)“ i koristit će se vaš zadani model. Preferirani model postavite samo za zadatke gdje želite drugi model model, i pričuvni model koji će odgovoriti kada preferirani zakaže.",
                 "advancedDescription": "Konfigurirajte napredne AI parametre za generiranje odgovora.",
                 "conversationStyle": "Stil razgovora",
                 "styleHelp": "Precizno = činjenični odgovori. Kreativno = maštovitije. Uravnoteženo = zadano.",
@@ -2551,7 +2551,10 @@
                 "styleConcise": "Sažeto",
                 "styleDefault": "Zadano",
                 "styleExplanatory": "Objašnjavajuće",
-                "styleLearning": "Učenje"
+                "styleLearning": "Učenje",
+                "routingPreferred": "Preferirani",
+                "routingFallback": "Pričuvni",
+                "routingNoFallback": "Nijedan"
             },
             "rag": {
                 "indexing": "Indeksiranje datoteka...",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Pregledaj plugine"
             },
-            "stopGeneration": "Zaustavi generiranje"
+            "stopGeneration": "Zaustavi generiranje",
+            "routing": {
+                "fallbackUsed": "pričuvni",
+                "fallbackUsedTooltip": "{model} nije uspio, pa je odgovorio pričuvni model"
+            }
         },
         "archive": {
             "passwordRequired": "Arhiva je zaštićena lozinkom",
