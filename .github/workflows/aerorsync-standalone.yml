@@ -52,11 +52,6 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: target/aerorsync-standalone
-
       - name: Install system dependencies
         if: runner.os == 'Linux'
         run: |
@@ -76,13 +71,27 @@ jobs:
         shell: bash
         run: bash scripts/aerorsync-emit.sh
 
+      # After the emission, not before: the workspace this caches does not
+      # exist until the script has written it, and naming a missing directory
+      # fails the action outright on macOS.
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: target/aerorsync-standalone
+
       - name: The emission is reproducible
         shell: bash
         run: |
           set -o pipefail
-          first="$(sha256sum target/aerorsync-standalone/EMITTED.sha256 | cut -d' ' -f1)"
-          bash scripts/aerorsync-emit.sh > /dev/null
-          second="$(sha256sum target/aerorsync-standalone/EMITTED.sha256 | cut -d' ' -f1)"
+          # Into a scratch directory and not over the tree built below: the
+          # script removes its output before writing it, so re-emitting there
+          # would delete the build cache the previous step just restored.
+          # The script prints the manifest hash itself, computed in python3,
+          # because `sha256sum` does not exist on macOS.
+          scratch="${RUNNER_TEMP}/aerorsync-emit-check"
+          first="$(bash scripts/aerorsync-emit.sh "$scratch" | sed -n 's/^manifest: //p')"
+          second="$(bash scripts/aerorsync-emit.sh "$scratch" | sed -n 's/^manifest: //p')"
+          rm -rf "$scratch"
           if [ "$first" != "$second" ]; then
             echo "::error::the emission is not reproducible: $first then $second"
             exit 1

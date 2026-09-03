@@ -160,11 +160,42 @@ DEV
 #    no lockfile is emitted, so `cargo check` resolves compatible versions from
 #    the registry and can pick different ones over time with this manifest
 #    unchanged.
-( cd "$OUT" && find . ! -type d ! -name 'EMITTED.sha256' -printf '%m %p\n' \
-    | LC_ALL=C sort ) > "$OUT/EMITTED.modes"
-( cd "$OUT" && find . -type f ! -name 'EMITTED.sha256' ! -name 'EMITTED.modes' \
-    | LC_ALL=C sort | xargs sha256sum; cat EMITTED.modes ) > "$OUT/EMITTED.sha256"
+#    Written with python3 rather than `find -printf` plus `sha256sum`: the
+#    first is GNU-only and the second is absent on macOS, and this script runs
+#    on all three operating systems the module ships on.
+MANIFEST_SHA="$(python3 - "$OUT" <<'PYEOF'
+import hashlib, os, sys
+
+out = sys.argv[1]
+rows = []
+for root, dirs, files in os.walk(out):
+    dirs.sort()
+    for name in sorted(files):
+        if name in ("EMITTED.sha256",):
+            continue
+        full = os.path.join(root, name)
+        rel = os.path.relpath(full, out)
+        mode = oct(os.lstat(full).st_mode & 0o7777)[2:]
+        if os.path.islink(full):
+            # A symlink's target is what two emissions must agree on, not the
+            # content it happens to point at today.
+            digest = "symlink:" + os.readlink(full)
+        else:
+            h = hashlib.sha256()
+            with open(full, "rb") as f:
+                for block in iter(lambda: f.read(1 << 20), b""):
+                    h.update(block)
+            digest = h.hexdigest()
+        rows.append("%s %s %s" % (digest, mode, rel.replace(os.sep, "/")))
+
+rows.sort()
+body = "\n".join(rows) + "\n"
+with open(os.path.join(out, "EMITTED.sha256"), "w", encoding="utf-8") as f:
+    f.write(body)
+print(hashlib.sha256(body.encode("utf-8")).hexdigest())
+PYEOF
+)"
 
 echo "emesso in $OUT"
 echo "voci: $(grep -c . "$OUT/EMITTED.sha256")"
-echo "manifest: $(sha256sum "$OUT/EMITTED.sha256" | cut -d' ' -f1)"
+echo "manifest: $MANIFEST_SHA"
