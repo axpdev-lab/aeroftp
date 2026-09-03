@@ -269,7 +269,8 @@ impl AerorsyncEvent {
 ///
 /// Produced only by [`AerorsyncEvent::notice`]. The wording is product
 /// behaviour: a `Warning` text lands verbatim in the transfer statistics
-/// (`RsyncStats.warnings`), the same channel the classic rsync wrapper
+/// (the warnings the adapter puts in the application statistics), the
+/// same channel the classic rsync wrapper
 /// feeds from the process output, so the two backends read alike.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Notice {
@@ -335,7 +336,8 @@ impl AerorsyncEvent {
 }
 
 /// `EventSink` that keeps the warning notices of a session, in order, in a
-/// shared vector that the transport reads back into `RsyncStats.warnings`
+/// shared vector that the transport reads back into the warnings the
+/// adapter reports
 /// once the driver has released the sink (hence the `Arc<Mutex<..>>`, not
 /// an owned `Vec`). Error notices are not warnings and are not kept.
 pub struct WarningCollector {

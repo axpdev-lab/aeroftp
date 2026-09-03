@@ -405,7 +405,7 @@ impl RusshSessionTransport {
     /// in that case the handle is left empty and the next
     /// `open_raw_channel` will surface "handle is closed". Callers must
     /// classify the original transfer error before invoking this method
-    /// (see [`is_transient_for_reconnect`](crate::rsync_over_ssh::is_transient_for_reconnect));
+    /// (see [`TransferError::is_transient_channel_drop`](crate::aerorsync::types::TransferError::is_transient_channel_drop));
     /// reconnecting on a hard rejection (host-key mismatch, auth refused)
     /// would silently mask a security-relevant fault.
     pub async fn reconnect(&self) -> Result<(), AerorsyncError> {

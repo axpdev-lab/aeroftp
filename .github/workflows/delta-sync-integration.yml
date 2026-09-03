@@ -207,8 +207,12 @@ jobs:
         working-directory: src-tauri
         # Five module filters, so a module renamed on one side and not here
         # silently narrows what this lane covers, down to nothing in the limit.
-        # 94 is what the five select today (measured on run 33434171154); it is
-        # a floor and not a count, because these modules are meant to grow.
+        # 70 is what the five select today (measured on PR #717); it is a floor
+        # and not a count, because these modules are meant to grow. It came
+        # down from 94 when the A3 crate tranche deleted the 29 tests of
+        # `rsync_over_ssh::is_transient_for_reconnect`, whose cases moved into
+        # the aerorsync module next to the predicate that replaced it, and
+        # added 5 back on this side.
         run: |
           set -o pipefail
           cargo test --lib --no-fail-fast -- \
@@ -217,7 +221,7 @@ jobs:
             ssh_exec:: \
             delta_transport:: \
             delta_sync_rsync:: | tee /tmp/delta-unit.log
-          ../scripts/assert-tests-ran.sh /tmp/delta-unit.log 94 \
+          ../scripts/assert-tests-ran.sh /tmp/delta-unit.log 70 \
             "delta-sync module unit tests"
 
       # Measured at 3m55s and 4m04s.

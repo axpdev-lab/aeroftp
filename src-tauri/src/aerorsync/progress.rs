@@ -9,12 +9,12 @@
 //! so the boxed closure fires at most about once per percent of movement.
 //! `None` costs nothing per chunk: a single `is_none()` check.
 //!
-//! The application keeps its own structurally identical alias
-//! (`crate::delta_transport::DeltaProgressSink`) because that module also
-//! compiles with the `aerorsync` feature off; the two must stay the same
-//! type, which the application-side test
+//! The application keeps its own structurally identical alias, because
+//! the module that holds it also compiles with the `aerorsync` feature
+//! off; the two must stay the same type, which the application-side test
 //! `delta_transport::tests::aerorsync_delta_progress_sink_is_the_crate_progress_sink`
-//! pins at compile time.
+//! pins at compile time. This module never names the application path,
+//! comments included.
 
 #![cfg(feature = "aerorsync")]
 
