@@ -1,0 +1,110 @@
+# The aerorsync module must not depend on the application. Two tests in the
+# repository assert that by reading the source as text, and a text scan can only
+# refuse the spellings someone thought of: a review got one of them to pass while
+# the module really did import `crate::settings`, with `use crate as app;`.
+#
+# This lane proves the same invariant with the compiler instead. The module is
+# re-emitted as its own crate and built there, so a path that reaches the
+# application does not resolve, whatever it is spelled like, and so do the
+# couplings no import scan can see: an undeclared dependency, a feature that is
+# on only because another crate in the application's graph turns it on, a
+# fixture addressed through the application's manifest directory.
+name: Aerorsync Standalone
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/aerorsync/**'
+      - 'src-tauri/Cargo.toml'
+      - 'scripts/aerorsync-emit.sh'
+      - '.github/workflows/aerorsync-standalone.yml'
+  pull_request:
+    paths:
+      - 'src-tauri/src/aerorsync/**'
+      - 'src-tauri/Cargo.toml'
+      - 'scripts/aerorsync-emit.sh'
+      - '.github/workflows/aerorsync-standalone.yml'
+  workflow_dispatch:
+
+jobs:
+  standalone:
+    name: The module compiles and tests as its own crate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: target/aerorsync-standalone
+
+      - name: Install system dependencies
+        run: |
+          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+          # enough to redden a run, and nothing here installs from them.
+          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
+          sudo apt-get update
+          # `libacl1-dev` is not optional here: `acl-sys` declares
+          # `#[link(name = "acl")]` on Linux, so the test binary does not link
+          # without the development symlink, only the runtime `.so.1`.
+          sudo apt-get install -y --no-install-recommends \
+            libacl1-dev \
+            libssl-dev \
+            pkg-config
+
+      - name: Re-emit the module as a standalone crate
+        run: bash scripts/aerorsync-emit.sh
+
+      - name: The emission is reproducible
+        run: |
+          set -o pipefail
+          first="$(sha256sum target/aerorsync-standalone/EMITTED.sha256 | cut -d' ' -f1)"
+          bash scripts/aerorsync-emit.sh > /dev/null
+          second="$(sha256sum target/aerorsync-standalone/EMITTED.sha256 | cut -d' ' -f1)"
+          if [ "$first" != "$second" ]; then
+            echo "::error::the emission is not reproducible: $first then $second"
+            exit 1
+          fi
+          echo "manifest riproducibile: $first"
+
+      - name: The module compiles alone
+        working-directory: target/aerorsync-standalone
+        run: cargo check --all-targets
+
+      # `dead_code` is allowed here and only here, with a reason: everything the
+      # application adapter calls has no caller inside the crate, because the
+      # adapter stays in the application. Alone, the module's own entry points
+      # read as dead. Every other lint stays an error.
+      - name: Clippy on the module alone
+        working-directory: target/aerorsync-standalone
+        run: cargo clippy --all-targets -- -D warnings -A dead_code
+
+      # The same list, kept as output instead of thrown away: it is the
+      # item-level inventory of what the crate will have to export when it is
+      # extracted, which is the input of the public-API phase.
+      - name: What the crate will have to export
+        working-directory: target/aerorsync-standalone
+        run: |
+          cargo clippy --all-targets 2>&1 \
+            | grep -E "never used|never read|never constructed" \
+            | sed 's/^warning: /  /' | sort -u | tee /tmp/api-inventory.txt
+          echo "voci: $(grep -c . /tmp/api-inventory.txt)"
+
+      - name: The module's own suite runs alone
+        working-directory: target/aerorsync-standalone
+        run: |
+          set -o pipefail
+          cargo test 2>&1 | tee /tmp/standalone.log
+          # The frozen oracle tests return early when the transcript is missing,
+          # and a passing test's output is captured, so a missing fixture would
+          # read as green. Count the skips instead of trusting the exit code.
+          skipped="$(grep -c 'skipping' /tmp/standalone.log || true)"
+          if [ "$skipped" != "0" ]; then
+            echo "::error::$skipped test(s) skipped in the standalone crate: the emitted fixtures are incomplete"
+            exit 1
+          fi
