@@ -31,28 +31,47 @@ OUT="${1:-$ROOT/target/aerorsync-standalone}"
 
 [ -d "$SRC" ] || { echo "sorgente assente: $SRC" >&2; exit 1; }
 
-# The script removes the output directory before writing it, so a mistyped
-# argument would delete whatever was named. The first version of this guard
-# enumerated the trees to protect, which is a denylist: a review passed it
-# `public/` and the script replaced 89 tracked files with the crate. The second
-# version was an allowlist but exempted the default destination from every
-# check, and a review made the default a symlink to a directory outside the
-# repository, which the exemption then deleted. So the absolute refusals below
-# run first and always, and the default is not trusted by name: it has to
-# resolve, physically, to the exact child of the physical repository, which a
-# symlink anywhere in the path cannot do.
+# The script removes the output directory before writing it, and then writes
+# into it, so its guard is all that stands between a mistyped argument and a
+# deleted or overwritten tree. Four versions of it have been walked past, and
+# each refusal below is one of them:
 #
-# Canonicalised WITHOUT creating it: an earlier version ran `mkdir -p` before
-# deciding, so a refused invocation still left a new directory inside the tree
-# it was protecting. A refusal must not write.
+#   - a denylist that enumerated the trees to protect accepted `public/` and
+#     replaced 89 tracked files with the crate;
+#   - an allowlist that exempted the default destination from every check
+#     deleted an external directory a symlink on the default pointed at;
+#   - that exemption ran only with no arguments, so naming the same default
+#     explicitly walked around it;
+#   - and the resolver re-appended the missing components of a path verbatim,
+#     so `sibling-that-does-not-exist/../<repo>` matched none of the refusals,
+#     and `mkdir -p` then created the missing component and made `..`
+#     traversable, which put the emission in the repository root.
+#
+# So the destination is validated twice, once as a lexical path with `.` and
+# `..` collapsed, and once as the physical path it resolves to, and both have
+# to pass. A symlink defeats the lexical form and `..` defeats the physical
+# one, which is why neither alone is enough.
+#
+# None of this creates anything: an earlier version canonicalised with
+# `mkdir -p` and a refused invocation still left a directory inside the tree it
+# was protecting. A refusal must not write.
 ROOT_P="$(cd "$ROOT" && pwd -P)"
 DEFAULT_P="$ROOT_P/target/aerorsync-standalone"
-# Risolve fisicamente la parte della path che esiste e riappende quella che
-# manca. Serve perche' su un checkout appena fatto non esiste ne' la
-# destinazione ne' `target/` che la contiene: una prima stesura pretendeva che
-# il genitore esistesse e ha fatto fallire i tre job della lane sul primo
-# emission step, con la destinazione ordinaria e non con un attacco.
-canon_path() {
+
+# Lessicale: assoluta, con `.` e `..` collassati senza toccare il filesystem.
+# python3 e' gia' un requisito di questo script (il manifest).
+lex_path() {
+    python3 -c 'import os,sys
+p = sys.argv[1]
+if not os.path.isabs(p):
+    p = os.path.join(os.getcwd(), p)
+sys.stdout.write(os.path.normpath(p))' "$1"
+}
+# Fisica: risale al primo antenato che esiste e riappende il resto. Serve
+# perche' su un checkout appena fatto non esiste ne' la destinazione ne'
+# `target/` che la contiene, e una stesura che pretendeva il genitore esistente
+# ha fatto rosso su tre OS con la destinazione ORDINARIA, non con un attacco.
+phys_path() {
     local p="$1" tail=""
     while [ ! -d "$p" ]; do
         tail="$(basename "$p")${tail:+/$tail}"
@@ -61,22 +80,30 @@ canon_path() {
     p="$(cd "$p" && pwd -P)" || return 1
     if [ -n "$tail" ]; then printf '%s\n' "$p/$tail"; else printf '%s\n' "$p"; fi
 }
-OUT="$(canon_path "$OUT")" || { echo "outdir non utilizzabile: ${1:-}" >&2; exit 1; }
 
-# 1. Rifiuti assoluti: valgono per ogni destinazione, default compreso.
-case "$OUT" in
-    /|"$HOME")
-        echo "rifiuto: l'outdir e' la radice o la home ($OUT)" >&2; exit 1;;
-esac
-case "$ROOT_P" in
-    "$OUT"/*) echo "rifiuto: l'outdir contiene il repository ($OUT)" >&2; exit 1;;
-esac
+OUT_REQ="$OUT"
+OUT_LEX="$(lex_path "$OUT_REQ")" || { echo "outdir non utilizzabile: $OUT_REQ" >&2; exit 1; }
+OUT="$(phys_path "$OUT_LEX")" || { echo "outdir non utilizzabile: $OUT_REQ" >&2; exit 1; }
 
-# 2. Il default e' ammesso solo se e' davvero lui. Se lo script e' stato
-#    invocato senza argomenti e la risoluzione fisica porta altrove, in mezzo
-#    c'e' un symlink: il target di default e' ignorato da git, quindi puo'
-#    essere preparato cosi' senza che `git status` dica niente.
-if [ $# -eq 0 ] && [ "$OUT" != "$DEFAULT_P" ]; then
+# 1. Rifiuti assoluti, su ENTRAMBE le forme, per ogni destinazione, default
+#    compreso.
+for candidate in "$OUT_LEX" "$OUT"; do
+    case "$candidate" in
+        /|"$HOME")
+            echo "rifiuto: l'outdir e' la radice o la home ($candidate)" >&2; exit 1;;
+    esac
+    case "$ROOT_P" in
+        "$candidate"/*)
+            echo "rifiuto: l'outdir contiene il repository ($candidate)" >&2; exit 1;;
+    esac
+done
+
+# 2. Chi nomina il default deve ottenere il default. Vale comunque sia stato
+#    invocato lo script, senza argomenti o nominando quella stessa path: una
+#    stesura precedente controllava solo il primo caso. Il target di default e'
+#    ignorato da git, quindi puo' essere sostituito da un symlink senza che
+#    `git status` dica niente.
+if [ "$OUT_LEX" = "$DEFAULT_P" ] && [ "$OUT" != "$DEFAULT_P" ]; then
     echo "rifiuto: il target di default non e' una directory dentro il repository" >&2
     echo "  atteso:   $DEFAULT_P" >&2
     echo "  risolto:  $OUT" >&2
@@ -84,15 +111,19 @@ if [ $# -eq 0 ] && [ "$OUT" != "$DEFAULT_P" ]; then
     exit 1
 fi
 
-# 3. Dentro il repository e' ammesso solo il default fisico.
+# 3. Dentro il repository e' ammesso solo il default fisico, e la path lessicale
+#    conta quanto quella fisica: `..` porta dentro senza che la stringa lo dica.
 if [ "$OUT" != "$DEFAULT_P" ]; then
-    case "$OUT" in
-        "$ROOT_P"|"$ROOT_P"/*)
-            echo "rifiuto: l'outdir sta dentro il repository e non e' il target di default" >&2
-            echo "  outdir:  $OUT" >&2
-            echo "  ammessi: $DEFAULT_P, oppure una destinazione fuori da $ROOT_P" >&2
-            exit 1;;
-    esac
+    for candidate in "$OUT_LEX" "$OUT"; do
+        case "$candidate" in
+            "$ROOT_P"|"$ROOT_P"/*)
+                echo "rifiuto: l'outdir sta dentro il repository e non e' il target di default" >&2
+                echo "  richiesto: $OUT_REQ" >&2
+                echo "  risolto:   $candidate" >&2
+                echo "  ammessi:   $DEFAULT_P, oppure una destinazione fuori da $ROOT_P" >&2
+                exit 1;;
+        esac
+    done
     # Fuori dal repository il nome e' arbitrario, quindi risponde il contenuto:
     # una directory gia' piena che non porta il marcatore di una emissione
     # precedente non e' una destinazione di scratch, e non viene cancellata.
@@ -105,6 +136,10 @@ if [ "$OUT" != "$DEFAULT_P" ]; then
     fi
 fi
 
+# La path fisica e quella lessicale coincidono da qui in poi: se differissero,
+# uno dei due rami sopra avrebbe gia' rifiutato oppure la differenza e' un
+# symlink su un antenato che esiste, e in quel caso e' la fisica quella su cui
+# lo script opera.
 rm -rf "$OUT"
 mkdir -p "$OUT/src/aerorsync"
 
@@ -249,6 +284,8 @@ fi
 PY_TMP="$(mktemp "${TMPDIR:-/tmp}/aerorsync-emit-manifest.XXXXXX")"
 # Con `set -e` un fallimento di `cat` o di python3 uscirebbe senza cancellarlo.
 trap 'rm -f "$PY_TMP"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 cat > "$PY_TMP" <<'PYEOF'
 import hashlib, os, sys
 

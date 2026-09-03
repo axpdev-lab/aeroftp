@@ -129,6 +129,24 @@ jobs:
         working-directory: target/aerorsync-standalone
         run: cargo check --all-targets
 
+      # macOS ships two architectures and this runner is one of them. The
+      # product's Intel DMG is cross-compiled to x86_64-apple-darwin on this
+      # same arm64 image, so a dependency on the application behind
+      # `cfg(all(target_os = "macos", target_arch = "x86_64"))` is elided here
+      # and shipped there, and `target_arch` is a builtin cfg so nothing warns
+      # about it. The second triple is checked the way the product builds it.
+      - name: Add the macOS Intel target
+        if: runner.os == 'macOS'
+        run: rustup target add x86_64-apple-darwin
+
+      - name: The module compiles alone for the other macOS architecture
+        if: runner.os == 'macOS'
+        working-directory: target/aerorsync-standalone
+        run: |
+          cargo check --target x86_64-apple-darwin --all-targets
+          cargo check --target x86_64-apple-darwin --release --all-targets
+          cargo clippy --target x86_64-apple-darwin --all-targets -- -D warnings -A dead_code
+
       # `--all-targets` is Cargo targets, and `check` above is the `dev`
       # profile. An item behind `cfg(not(debug_assertions))` is elided there,
       # so a review hid a real dependency on an application source behind one

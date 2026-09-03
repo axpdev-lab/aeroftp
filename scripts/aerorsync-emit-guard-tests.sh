@@ -31,6 +31,12 @@ cleanup() {
     return 0
 }
 trap cleanup EXIT
+# EXIT da solo non basta su ogni shell, e attaccare `cleanup` direttamente a INT
+# e TERM lo eseguirebbe DUE volte (il gestore del segnale, poi EXIT) e senza
+# fermare lo script, perche' un gestore di segnale in bash torna al punto in cui
+# era. Uscire e' quello che serve: l'uscita fa scattare EXIT una volta sola.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 chk() {
     if [ "$1" = "$2" ]; then
@@ -82,6 +88,27 @@ chk 0 "$([ -d "$SCRATCH/vittima-vuota" ] && echo 0 || echo 1)" "e la vittima esi
 rm -f "$DEFAULT"; ln -s "$HOME" "$DEFAULT"
 bash "$EMIT" >/dev/null 2>&1; chk 1 $? "il default e' un symlink verso la home"
 rm -f "$DEFAULT"
+
+# Il quarto giro: nominare esplicitamente la stessa path del default saltava il
+# controllo fisico, che girava solo con zero argomenti. Una vittima VUOTA, o una
+# che porta il marcatore, arrivava fino a `rm -rf`.
+mkdir -p "$SCRATCH/vittima-esplicita"
+rm -rf "$DEFAULT"; ln -s "$SCRATCH/vittima-esplicita" "$DEFAULT"
+bash "$EMIT" "$ROOT/target/aerorsync-standalone" >/dev/null 2>&1; chk 1 $? "il default nominato esplicitamente, ed e' un symlink"
+chk 0 "$([ -d "$SCRATCH/vittima-esplicita" ] && echo 0 || echo 1)" "e la vittima esiste ancora"
+touch "$SCRATCH/vittima-esplicita/EMITTED.sha256"
+bash "$EMIT" "$ROOT/target/aerorsync-standalone" >/dev/null 2>&1; chk 1 $? "lo stesso, con il marcatore di una emissione dentro la vittima"
+chk 0 "$([ -d "$SCRATCH/vittima-esplicita" ] && echo 0 || echo 1)" "e la vittima esiste ancora"
+rm -f "$DEFAULT"
+
+# E il bypass peggiore: un componente che non esiste seguito da `..`. Nessun
+# rifiuto lo vedeva, perche' la stringa non comincia per la radice del
+# repository; poi `mkdir -p` creava il componente mancante, `..` diventava
+# attraversabile e l'emissione scriveva nella radice, `Cargo.toml` compreso.
+sibling="$(dirname "$ROOT")/aerorsync-guard-nonexistent"
+bash "$EMIT" "$sibling/../$(basename "$ROOT")" >/dev/null 2>&1; chk 1 $? "un componente inesistente seguito da .. che rientra nel repository"
+chk 1 "$([ -e "$sibling" ] && echo 0 || echo 1)" "e il componente inesistente non e' stato creato"
+chk 0 "$(cd "$ROOT" && git status --porcelain -- Cargo.toml src 2>/dev/null | wc -l | tr -d ' ')" "e la radice del repository e' intatta"
 
 echo "scenari: $ok superati, $ko falliti"
 [ "$ko" -eq 0 ]
