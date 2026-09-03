@@ -671,7 +671,6 @@ impl SftpProvider {
             // independent socket.
             let native_mode = crate::settings::load_native_rsync_mode();
             if !matches!(native_mode, crate::settings::NativeRsyncMode::Classic) {
-                use crate::aerorsync::delta_transport_impl::AerorsyncDeltaTransport;
                 use crate::aerorsync::ssh_transport::SshHostKeyPolicy;
 
                 let host_key_policy = match self.accepted_host_key_sha256_hex() {
@@ -692,7 +691,10 @@ impl SftpProvider {
                     }
                 };
 
-                match AerorsyncDeltaTransport::from_rsync_config(&rsync_config, host_key_policy) {
+                match crate::aerorsync_adapter::config::transport_from_rsync_config(
+                    &rsync_config,
+                    host_key_policy,
+                ) {
                     Ok(transport) => {
                         // B4 / ACL B4: production metadata opt-ins follow live
                         // stock-rsync acceptance. fail_on_metadata_loss remains

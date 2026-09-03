@@ -19,6 +19,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+pub mod config;
 pub mod delta_transport;
 pub mod errors;
 
@@ -34,6 +35,9 @@ mod tests {
             "events",
             "fallback_policy",
             "progress",
+            // `config.rs` builds an `SshTransportConfig` out of an
+            // application profile, so it names the module that owns it.
+            "ssh_transport",
             "streaming_writer",
             "transport",
             "types",
