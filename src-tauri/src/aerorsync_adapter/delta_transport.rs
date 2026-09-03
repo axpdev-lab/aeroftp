@@ -158,12 +158,12 @@ impl DeltaBatch for AerorsyncBatch {
     }
 
     async fn finalize(self: Box<Self>) -> Result<BatchStats, RsyncError> {
-        let (files_transferred, bytes_on_wire, session_count, partial) = self.batch_totals().await;
+        let totals = self.batch_totals().await;
         Ok(BatchStats {
-            files_transferred,
-            bytes_on_wire,
-            session_count,
-            partial,
+            files_transferred: totals.files_transferred,
+            bytes_on_wire: totals.bytes_on_wire,
+            session_count: totals.session_count,
+            partial: totals.partial,
         })
     }
 }

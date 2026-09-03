@@ -321,6 +321,17 @@ pub const TRANSIENT_KINDS: &[AerorsyncErrorKind] = &[
 /// Compared against the lowercased detail: a host key or fingerprint
 /// mention, a protocol-bug marker, or a deterministic checksum
 /// negotiation refusal means reconnecting would repeat the same failure.
+///
+/// Seven of the eleven are the lowercased names of error kinds that
+/// [`TRANSIENT_KINDS`] already excludes, so as long as a detail does not
+/// quote them they can never decide anything on their own. They are kept
+/// because the classifier they come from read the whole rendered
+/// envelope, kind label included, and dropping them would silently widen
+/// the retry for a detail that quotes one. Matching substrings is the
+/// shape of the policy that exists today, not the intended end state:
+/// replacing it with a structural error class stamped at construction
+/// time is deferred, because that would change which of the construction
+/// sites are retried and needs its own equivalence pin.
 pub const TRANSIENT_DENY_DETAILS: &[&str] = &[
     "hostkeyrejected",
     "host key",

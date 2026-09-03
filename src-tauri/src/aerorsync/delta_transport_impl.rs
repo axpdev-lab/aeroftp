@@ -111,6 +111,18 @@ pub struct AerorsyncDeltaTransport {
     fail_on_metadata_loss: bool,
 }
 
+/// What a batch moved, reported when it closes.
+///
+/// Four numbers with names rather than a tuple: the two `u64` counters
+/// are next to each other and a swap between them would be silent, and
+/// the caller reads them one field at a time.
+pub(crate) struct BatchTotals {
+    pub(crate) files_transferred: u64,
+    pub(crate) bytes_on_wire: u64,
+    pub(crate) session_count: u32,
+    pub(crate) partial: bool,
+}
+
 /// A failed probe, plus the stage it failed at.
 ///
 /// The two stages produce the same application error, but not the same
@@ -1741,18 +1753,17 @@ impl AerorsyncBatch {
         });
     }
 
-    /// Close the shared session and report the batch totals as plain
-    /// numbers: `(files_transferred, bytes_on_wire, session_count,
-    /// partial)`. The adapter shapes them into the application type.
-    pub(crate) async fn batch_totals(self: Box<Self>) -> (u64, u64, u32, bool) {
+    /// Close the shared session and report what the batch moved. The
+    /// adapter shapes it into the application type.
+    pub(crate) async fn batch_totals(self: Box<Self>) -> BatchTotals {
         let session_count = self.transport.handshake_count();
         let _ = self.transport.close().await;
-        (
-            self.files_transferred.load(Ordering::SeqCst),
-            self.bytes_on_wire.load(Ordering::SeqCst),
+        BatchTotals {
+            files_transferred: self.files_transferred.load(Ordering::SeqCst),
+            bytes_on_wire: self.bytes_on_wire.load(Ordering::SeqCst),
             session_count,
-            self.cancel_observed.load(Ordering::SeqCst),
-        )
+            partial: self.cancel_observed.load(Ordering::SeqCst),
+        }
     }
 }
 
