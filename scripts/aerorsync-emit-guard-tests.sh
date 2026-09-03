@@ -46,6 +46,32 @@ chk() {
     fi
 }
 
+# `lex_path` e' meta' della guardia (l'altra meta' e' la risoluzione fisica) e
+# non e' raggiungibile invocando l'emettitore senza fargli scrivere qualcosa,
+# perche' le forme interessanti puntano fuori dal repository. Viene estratta dal
+# sorgente e provata qui, sulle forme che l'hanno gia' rotta due volte: il glob
+# di una espansione non quotata, e una path in sintassi Windows che, non
+# cominciando per `/`, veniva presa per relativa e incollata a `$PWD`.
+echo "== la normalizzazione lessicale =="
+lex_cases() {
+    sed -n '/^lex_path() {/,/^}/p' "$EMIT" > "$SCRATCH/lex.sh"
+    cat >> "$SCRATCH/lex.sh" <<'PROBE'
+cd /tmp || exit 1
+lex_path "$1"
+PROBE
+    bash "$SCRATCH/lex.sh" "$1"
+}
+chk "/d/a/_temp/x"      "$(lex_cases 'D:\a\_temp/x')"   "una path assoluta in sintassi Windows diventa la forma MSYS"
+chk "/c/Users/x"        "$(lex_cases 'C:\Users\x')"     "e la lettera di drive va in minuscolo"
+chk "/d/a/b"            "$(lex_cases 'd:/a/b')"          "anche con gli slash normali"
+chk "/tmp/b"            "$(lex_cases '/tmp/a/../b')"     "un .. viene collassato"
+chk "/tmp/a"            "$(lex_cases '//tmp//a')"        "gli slash doppi si riducono"
+chk "/"                 "$(lex_cases '/..')"             "un .. sopra la radice resta la radice"
+chk "/tmp/con spazio/x" "$(lex_cases '/tmp/con spazio/x')" "uno spazio non spezza la path"
+chk "/tmp/*"            "$(lex_cases '/tmp/*')"          "un asterisco resta un asterisco e non si espande"
+chk "/tmp/relativa/x"   "$(lex_cases 'relativa/x')"      "una path relativa parte dalla directory corrente"
+chk "/tmp/back\slash"    "$(lex_cases '/tmp/back\slash')"  "su POSIX un backslash e' un carattere di nome, non un separatore"
+
 echo "== quello che deve funzionare =="
 rm -rf "$ROOT/target/aerorsync-standalone"
 bash "$EMIT" >/dev/null 2>&1; chk 0 $? "destinazione di default"

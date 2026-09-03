@@ -73,7 +73,23 @@ DEFAULT_P="$ROOT/target/aerorsync-standalone"
 # la meta' lessicale del guardiano, che e' l'unica a fermare
 # `componente-inesistente/../<repo>`, sarebbe stata inerte senza dirlo.
 lex_path() {
-    local p="$1" out="" seg rest
+    local p="$1" out="" seg rest drive restw
+    # Una path in sintassi Windows arriva davvero: su quel runner `RUNNER_TEMP`
+    # vale `D:\a\_temp`, e sotto il bash di Git for Windows tutto il resto
+    # (`$PWD`, la radice del repository) e' invece in forma MSYS, `/d/a/...`.
+    # Senza questa conversione la path non comincia per `/`, viene presa per
+    # relativa e incollata a `$PWD`, ed e' cosi' che la lane Windows si e'
+    # fermata con `risolto: /d/a/aeroftp/aeroftp/D:\a\_temp/...`. La
+    # conversione dei backslash si fa SOLO dentro questo ramo: su un sistema
+    # POSIX un backslash e' un carattere legittimo di un nome di file.
+    case "$p" in
+        [A-Za-z]:[\\/]*)
+            drive="${p%%:*}"
+            restw="${p#?:}"
+            drive="$(printf '%s' "$drive" | tr '[:upper:]' '[:lower:]')"
+            p="/$drive$(printf '%s' "$restw" | tr '\\' '/')"
+            ;;
+    esac
     case "$p" in
         /*) ;;
         *) p="$PWD/$p";;
