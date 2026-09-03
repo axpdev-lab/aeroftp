@@ -1,0 +1,227 @@
+# The aerorsync module must not depend on the application. Two tests in the
+# repository assert that by reading the source as text, and a text scan can only
+# refuse the spellings someone thought of: a review got one of them to pass while
+# the module really did import `crate::settings`, with `use crate as app;`.
+#
+# This lane proves the same invariant with the compiler instead. The module is
+# re-emitted as its own crate and built there, so a path that reaches the
+# application does not resolve, whatever it is spelled like, and so do the
+# couplings no import scan can see: an undeclared dependency, a feature that is
+# on only because another crate in the application's graph turns it on, a
+# fixture addressed through the application's manifest directory.
+name: Aerorsync Standalone
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/aerorsync/**'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/.cargo/config.toml'
+      - 'scripts/aerorsync-emit.sh'
+      - 'scripts/aerorsync-emit-guard-tests.sh'
+      - '.github/workflows/aerorsync-standalone.yml'
+  pull_request:
+    paths:
+      - 'src-tauri/src/aerorsync/**'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/.cargo/config.toml'
+      - 'scripts/aerorsync-emit.sh'
+      - 'scripts/aerorsync-emit-guard-tests.sh'
+      - '.github/workflows/aerorsync-standalone.yml'
+  workflow_dispatch:
+
+# The lane runs a script that comes from the branch under review, so the token
+# `actions/checkout` persists in the local git config would be readable by it.
+# Read access to the contents is all any step here needs.
+permissions:
+  contents: read
+
+jobs:
+  standalone:
+    # One host per operating system the module ships on, and not a
+    # cross-check from Linux. `--all-targets` means Cargo targets, lib and
+    # tests and benches, not operating systems: a dependency on the
+    # application gated on another OS is elided before the compiler resolves
+    # it, and a review proved exactly that with
+    # `#[cfg(target_os = "windows")] ... super::settings`. Cross-checking with
+    # `--target` does not work either, because the native build scripts of
+    # openssl-sys, libz-sys, ring and zstd-sys need that target's toolchain,
+    # so the run fails before reaching any of the module's code. The invariant
+    # is per target, so it is checked where the target is native.
+    name: The module compiles as its own crate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-14]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Same reason as the permissions block above: nothing here pushes,
+          # and the emitter is pull-request-controlled code.
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+          # enough to redden a run, and nothing here installs from them.
+          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
+          sudo apt-get update
+          # `libacl1-dev` is not optional here: `acl-sys` declares
+          # `#[link(name = "acl")]` on Linux, so the test binary does not link
+          # without the development symlink, only the runtime `.so.1`.
+          sudo apt-get install -y --no-install-recommends \
+            libacl1-dev \
+            libssl-dev \
+            pkg-config
+
+      # Before the emission, and before the cache step restores a build tree
+      # into the destination: these scenarios delete and re-create it. The
+      # emitter removes its output before writing it, so its guard is all that
+      # stands between a mistyped argument and a deleted directory, and two
+      # reviews walked past two successive versions of it. Linux only: the
+      # scenarios use symlinks, which are a different animal on a Windows
+      # runner, and the property under test is the script's logic, not the
+      # host's.
+      - name: The emitter refuses what it must refuse
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash scripts/aerorsync-emit-guard-tests.sh
+
+      - name: Re-emit the module as a standalone crate
+        shell: bash
+        run: bash scripts/aerorsync-emit.sh
+
+      # After the emission, not before: the workspace this caches does not
+      # exist until the script has written it, and naming a missing directory
+      # fails the action outright on macOS.
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: target/aerorsync-standalone
+
+      - name: The emission is reproducible
+        shell: bash
+        run: |
+          set -o pipefail
+          # Into a scratch directory and not over the tree built below: the
+          # script removes its output before writing it, so re-emitting there
+          # would delete the build cache the previous step just restored.
+          # The script prints the manifest hash itself, computed in python3,
+          # because `sha256sum` does not exist on macOS. Into a scratch and not
+          # over the build tree also because the emitted lockfile is pruned in
+          # place by the first build, so a manifest taken there afterwards no
+          # longer matches a fresh emission.
+          scratch="${RUNNER_TEMP}/aerorsync-emit-check"
+          first="$(bash scripts/aerorsync-emit.sh "$scratch" | sed -n 's/^manifest: //p')"
+          second="$(bash scripts/aerorsync-emit.sh "$scratch" | sed -n 's/^manifest: //p')"
+          rm -rf "$scratch"
+          if [ "$first" != "$second" ]; then
+            echo "::error::the emission is not reproducible: $first then $second"
+            exit 1
+          fi
+          echo "manifest riproducibile: $first"
+
+      - name: The module compiles alone
+        working-directory: target/aerorsync-standalone
+        run: cargo check --all-targets
+
+      # macOS ships two architectures and this runner is one of them. The
+      # product's Intel DMG is cross-compiled to x86_64-apple-darwin on this
+      # same arm64 image, so a dependency on the application behind
+      # `cfg(all(target_os = "macos", target_arch = "x86_64"))` is elided here
+      # and shipped there, and `target_arch` is a builtin cfg so nothing warns
+      # about it. The second triple is checked the way the product builds it.
+      - name: Add the macOS Intel target
+        if: runner.os == 'macOS'
+        run: rustup target add x86_64-apple-darwin
+
+      - name: The module compiles alone for the other macOS architecture
+        if: runner.os == 'macOS'
+        working-directory: target/aerorsync-standalone
+        run: |
+          cargo check --target x86_64-apple-darwin --all-targets
+          cargo check --target x86_64-apple-darwin --release --all-targets
+          cargo clippy --target x86_64-apple-darwin --all-targets -- -D warnings -A dead_code
+
+      # `--all-targets` is Cargo targets, and `check` above is the `dev`
+      # profile. An item behind `cfg(not(debug_assertions))` is elided there,
+      # so a review hid a real dependency on an application source behind one
+      # and every check on this lane stayed green while `cargo check --release`
+      # failed to read the file. AeroFTP ships release builds, so the profile
+      # that ships is checked too.
+      - name: The module compiles alone in release too
+        working-directory: target/aerorsync-standalone
+        run: cargo check --release --all-targets
+
+      # `dead_code` is allowed here and only here, with a reason: everything the
+      # application adapter calls has no caller inside the crate, because the
+      # adapter stays in the application. Alone, the module's own entry points
+      # read as dead. Every other lint stays an error.
+      - name: Clippy on the module alone
+        working-directory: target/aerorsync-standalone
+        run: cargo clippy --all-targets -- -D warnings -A dead_code
+
+      # The same list, kept as output instead of thrown away: it is the
+      # item-level inventory of what the crate will have to export when it is
+      # extracted, which is the input of the public-API phase.
+      - name: What the crate will have to export
+        if: runner.os == 'Linux'
+        working-directory: target/aerorsync-standalone
+        shell: bash
+        run: |
+          cargo clippy --all-targets 2>&1 \
+            | grep -E "never used|never read|never constructed" \
+            | sed 's/^warning: /  /' | sort -u | tee /tmp/api-inventory.txt
+          echo "voci: $(grep -c . /tmp/api-inventory.txt)"
+
+      # The frozen oracle tests return early when the transcript is missing, and
+      # they PASS when they do. Two things guard that here. The emission itself
+      # fails when the fixture is absent or short of files, which is the check
+      # that does not depend on reading output. And the run below asks for
+      # `--nocapture`, because libtest captures the output of a test that
+      # passes, so without it the sentinel never reaches the log; it then looks
+      # for the frozen-transcript sentinel specifically, not for the word
+      # "skipping", which the live tests and the ACL and xattr probes also print
+      # for their own legitimate reasons.
+      # The suite runs where its fixtures and its native libraries are: the
+      # frozen oracle is byte-level and the ACL and xattr paths are Linux.
+      - name: The module's own suite runs alone, with the oracles really running
+        if: runner.os == 'Linux'
+        working-directory: target/aerorsync-standalone
+        run: |
+          set -o pipefail
+          cargo test -- --nocapture 2>&1 | tee /tmp/standalone.log
+          skipped="$(grep -c 'frozen real-rsync transcript' /tmp/standalone.log || true)"
+          if [ "$skipped" != "0" ]; then
+            echo "::error::the frozen oracle skipped $skipped time(s) in the standalone crate: the emitted transcript is not where the module looks for it"
+            exit 1
+          fi
+
+      # The 34 `#[cfg(ci_lane3)]` regions of the module are compiled by none of
+      # the steps above: that cfg is turned on only by the application's lane 3,
+      # and the emitted manifest DECLARES it in its check-cfg, so here the
+      # regions are elided without even a warning. A review put a real call to
+      # an application module inside one of them and check on both profiles,
+      # clippy and the textual guard were all green.
+      # It is passed with `--config` and not with RUSTFLAGS: the environment
+      # variable REPLACES the config's rustflags instead of merging them, and
+      # would switch off `+crt-static` on the very Windows job that copied
+      # config exists to reproduce. Check and clippy only: `cargo test` must
+      # stay without the cfg, because those tests talk to a real rsync in
+      # Docker that this lane does not have. Last, because changing rustflags
+      # invalidates every unit and the steps above must not pay for it twice.
+      # Linux is enough: 29 of the 34 gates are `all(ci_lane3, unix)` and the
+      # other 5 carry no OS gate at all.
+      - name: The ci_lane3-gated regions compile alone too
+        if: runner.os == 'Linux'
+        working-directory: target/aerorsync-standalone
+        run: |
+          cargo check --all-targets --config .cargo/lane3.toml
+          cargo clippy --all-targets --config .cargo/lane3.toml -- -D warnings -A dead_code

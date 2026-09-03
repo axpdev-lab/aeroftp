@@ -518,6 +518,8 @@ async fn finalize_steps(
             source: e,
         })?;
 
+    // The only writer is the ACL branch below, which is unix-only.
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut warnings = Vec::new();
     #[cfg(unix)]
     {
