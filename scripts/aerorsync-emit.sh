@@ -40,11 +40,20 @@ OUT="${1:-$ROOT/target/aerorsync-standalone}"
 # outdir inside the repository that is not the default is refused whatever it
 # is called, and so is an ancestor of the repository, the filesystem root and
 # the home directory.
-DEFAULT_OUT="$ROOT/target/aerorsync-standalone"
-OUT="$(mkdir -p "$OUT" 2>/dev/null && cd "$OUT" && pwd -P)" || {
-    echo "outdir non utilizzabile: ${1:-}" >&2; exit 1; }
+# Canonicalizzata SENZA crearla: la prima stesura faceva `mkdir -p` prima dei
+# controlli, quindi un'invocazione rifiutata lasciava comunque una directory
+# nuova dentro l'albero che stava proteggendo. Un rifiuto non deve scrivere.
 ROOT_P="$(cd "$ROOT" && pwd -P)"
-DEFAULT_P="$(mkdir -p "$DEFAULT_OUT" && cd "$DEFAULT_OUT" && pwd -P)"
+DEFAULT_P="$ROOT_P/target/aerorsync-standalone"
+if [ -d "$OUT" ]; then
+    OUT="$(cd "$OUT" && pwd -P)" || { echo "outdir non utilizzabile: ${1:-}" >&2; exit 1; }
+else
+    OUT_PARENT="$(dirname "$OUT")"
+    [ -d "$OUT_PARENT" ] || {
+        echo "outdir non utilizzabile: la directory che dovrebbe contenerlo non esiste ($OUT_PARENT)" >&2
+        exit 1; }
+    OUT="$(cd "$OUT_PARENT" && pwd -P)/$(basename "$OUT")"
+fi
 if [ "$OUT" != "$DEFAULT_P" ]; then
     case "$OUT" in
         "$ROOT_P"|"$ROOT_P"/*)
