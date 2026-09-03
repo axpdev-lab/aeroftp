@@ -1,9 +1,15 @@
 # Dependencies
-node_modules/
+# No trailing slash: a worktree may carry `node_modules` as a symlink to the
+# main checkout's, and `node_modules/` does not match a symlink.
+node_modules
 
 # Build outputs
 dist/
 src-tauri/target/
+# The workspace root's own target, where `scripts/aerorsync-emit.sh` writes the
+# standalone crate by default. Only `src-tauri/target/` was listed, so a
+# `git add -A` after an emission staged the 6862 generated files of the crate.
+/target/
 
 # Environment files
 .env

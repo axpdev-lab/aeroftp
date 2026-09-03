@@ -27,6 +27,12 @@ on:
       - '.github/workflows/aerorsync-standalone.yml'
   workflow_dispatch:
 
+# The lane runs a script that comes from the branch under review, so the token
+# `actions/checkout` persists in the local git config would be readable by it.
+# Read access to the contents is all any step here needs.
+permissions:
+  contents: read
+
 jobs:
   standalone:
     # One host per operating system the module ships on, and not a
@@ -48,6 +54,10 @@ jobs:
         os: [ubuntu-24.04, windows-latest, macos-14]
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Same reason as the permissions block above: nothing here pushes,
+          # and the emitter is pull-request-controlled code.
+          persist-credentials: false
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -101,6 +111,16 @@ jobs:
       - name: The module compiles alone
         working-directory: target/aerorsync-standalone
         run: cargo check --all-targets
+
+      # `--all-targets` is Cargo targets, and `check` above is the `dev`
+      # profile. An item behind `cfg(not(debug_assertions))` is elided there,
+      # so a review hid a real dependency on an application source behind one
+      # and every check on this lane stayed green while `cargo check --release`
+      # failed to read the file. AeroFTP ships release builds, so the profile
+      # that ships is checked too.
+      - name: The module compiles alone in release too
+        working-directory: target/aerorsync-standalone
+        run: cargo check --release --all-targets
 
       # `dead_code` is allowed here and only here, with a reason: everything the
       # application adapter calls has no caller inside the crate, because the

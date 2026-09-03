@@ -32,24 +32,45 @@ OUT="${1:-$ROOT/target/aerorsync-standalone}"
 [ -d "$SRC" ] || { echo "sorgente assente: $SRC" >&2; exit 1; }
 
 # The script removes the output directory before writing it, so a mistyped
-# argument would delete whatever was named. Refuse anything that is not clearly
-# a scratch destination: the repository itself, its source trees, and any
-# ancestor of them.
+# argument would delete whatever was named. The first version of this guard
+# enumerated the trees to protect, which is a denylist: a review passed it
+# `public/` and the script replaced 89 tracked files with the crate. What is
+# allowed is the short list, so that is what is written here. Exactly two
+# destinations: the default target, and anything outside the repository. An
+# outdir inside the repository that is not the default is refused whatever it
+# is called, and so is an ancestor of the repository, the filesystem root and
+# the home directory.
+DEFAULT_OUT="$ROOT/target/aerorsync-standalone"
 OUT="$(mkdir -p "$OUT" 2>/dev/null && cd "$OUT" && pwd -P)" || {
     echo "outdir non utilizzabile: ${1:-}" >&2; exit 1; }
-case "$OUT" in
-    "$ROOT"|"$ROOT/"|/|"$HOME")
-        echo "rifiuto: l'outdir e' il repository o la home ($OUT)" >&2; exit 1;;
-esac
-for guarded in "$ROOT/src-tauri" "$ROOT/scripts" "$ROOT/.github" "$ROOT/src" "$ROOT/docs"; do
+ROOT_P="$(cd "$ROOT" && pwd -P)"
+DEFAULT_P="$(mkdir -p "$DEFAULT_OUT" && cd "$DEFAULT_OUT" && pwd -P)"
+if [ "$OUT" != "$DEFAULT_P" ]; then
     case "$OUT" in
-        "$guarded"|"$guarded"/*)
-            echo "rifiuto: l'outdir sta dentro un albero sorgente ($OUT)" >&2; exit 1;;
+        "$ROOT_P"|"$ROOT_P"/*)
+            echo "rifiuto: l'outdir sta dentro il repository e non e' il target di default" >&2
+            echo "  outdir:  $OUT" >&2
+            echo "  ammessi: $DEFAULT_P, oppure una destinazione fuori da $ROOT_P" >&2
+            exit 1;;
     esac
-done
-case "$ROOT" in
-    "$OUT"/*) echo "rifiuto: l'outdir contiene il repository ($OUT)" >&2; exit 1;;
-esac
+    case "$OUT" in
+        /|"$HOME")
+            echo "rifiuto: l'outdir e' la radice o la home ($OUT)" >&2; exit 1;;
+    esac
+    case "$ROOT_P" in
+        "$OUT"/*) echo "rifiuto: l'outdir contiene il repository ($OUT)" >&2; exit 1;;
+    esac
+    # Fuori dal repository il nome e' arbitrario, quindi risponde il contenuto:
+    # una directory gia' piena che non porta il marcatore di una emissione
+    # precedente non e' una destinazione di scratch, e non viene cancellata.
+    # Il target di default e' escluso da questa regola: li' una emissione
+    # interrotta a meta' lascia file senza EMITTED.sha256, e rifiutare la
+    # successiva bloccherebbe la lane invece di proteggerla.
+    if [ -n "$(ls -A "$OUT" 2>/dev/null)" ] && [ ! -f "$OUT/EMITTED.sha256" ]; then
+        echo "rifiuto: $OUT non e' vuota e non contiene EMITTED.sha256, quindi non e' l'output di una emissione precedente" >&2
+        exit 1
+    fi
+fi
 
 rm -rf "$OUT"
 mkdir -p "$OUT/src/aerorsync"
@@ -162,15 +183,25 @@ DEV
 #    unchanged.
 #    Written with python3 rather than `find -printf` plus `sha256sum`: the
 #    first is GNU-only and the second is absent on macOS, and this script runs
-#    on all three operating systems the module ships on.
-MANIFEST_SHA="$(python3 - "$OUT" <<'PYEOF'
+#    on all three operating systems the module ships on. The program goes to a
+#    file before it runs, and not into a here-document inside `$(...)`: the
+#    bash macOS 14 ships (3.2) does not parse that nesting and failed the lane
+#    with `unexpected EOF while looking for matching`, which is the same
+#    portability problem the python was introduced to solve.
+PY_TMP="$(mktemp "${TMPDIR:-/tmp}/aerorsync-emit-manifest.XXXXXX")"
+cat > "$PY_TMP" <<'PYEOF'
 import hashlib, os, sys
 
 out = sys.argv[1]
 rows = []
+# followlinks stays off: a symlink to a directory is an entry to certify, not a
+# tree to walk into. os.walk puts it in `dirs`, so listing only `files` left it
+# out of the manifest entirely, and two trees that differ by one could share a
+# hash.
 for root, dirs, files in os.walk(out):
     dirs.sort()
-    for name in sorted(files):
+    linked_dirs = [d for d in dirs if os.path.islink(os.path.join(root, d))]
+    for name in sorted(files + linked_dirs):
         if name in ("EMITTED.sha256",):
             continue
         full = os.path.join(root, name)
@@ -194,7 +225,8 @@ with open(os.path.join(out, "EMITTED.sha256"), "w", encoding="utf-8") as f:
     f.write(body)
 print(hashlib.sha256(body.encode("utf-8")).hexdigest())
 PYEOF
-)"
+MANIFEST_SHA="$(python3 "$PY_TMP" "$OUT")"
+rm -f "$PY_TMP"
 
 echo "emesso in $OUT"
 echo "voci: $(grep -c . "$OUT/EMITTED.sha256")"

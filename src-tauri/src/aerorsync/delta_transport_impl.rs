@@ -53,7 +53,11 @@
 
 #![cfg(feature = "aerorsync")]
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+// Outside the symlink paths, which are unix-only, `PathBuf` is named by the
+// tests alone.
+#[cfg(any(unix, test))]
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -76,7 +80,11 @@ use crate::aerorsync::real_wire::{is_symlink_mode, FileListEntry};
 use crate::aerorsync::remote_command::{EffectiveMetadataFlags, RemoteCommandSpec};
 use crate::aerorsync::russh_session_transport::RusshSessionTransport;
 use crate::aerorsync::ssh_transport::{SshRemoteShellTransport, SshTransportConfig};
-use crate::aerorsync::streaming_writer::{StreamingAtomicWriter, WriteAtomicError, TEMP_SUFFIX};
+use crate::aerorsync::streaming_writer::{StreamingAtomicWriter, WriteAtomicError};
+// Every reader of the temp suffix here, in the library and in the tests, sits
+// behind `cfg(unix)`: it names the slot the symlink path reuses.
+#[cfg(unix)]
+use crate::aerorsync::streaming_writer::TEMP_SUFFIX;
 use crate::aerorsync::transport::{
     CancelHandle, RawRemoteShellTransport, RemoteShellTransport, TransportProbe,
 };
@@ -550,13 +558,16 @@ where
             start,
             preserve_xattrs,
         );
-        return Err(TransferError::Hard {
+        // The tail expression of the function, not a `return`: with `unix`
+        // off the block below is elided and this one is what the function
+        // evaluates to.
+        Err(TransferError::Hard {
             detail: format!(
                 "symlink upload is not supported on this platform: {} is a symbolic link and \
              uploading it as a regular file would silently materialise its target's content",
                 local_path.display()
             ),
-        });
+        })
     }
     #[cfg(unix)]
     {
