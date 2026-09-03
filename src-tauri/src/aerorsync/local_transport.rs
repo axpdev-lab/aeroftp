@@ -1,7 +1,6 @@
 //! Z.2.1: Local-to-local delta transport.
 //!
-//! Implements [`DeltaTransport`] for the case where both endpoints are file
-//! system paths on the same host. Bypasses the wire protocol 31 entirely:
+//! The local case: both endpoints are file system paths on the same host. Bypasses the wire protocol 31 entirely:
 //! the delta engine runs in-process against two local files, with no SSH,
 //! no multiplex framing, no file-list encoding.
 //!
@@ -10,27 +9,28 @@
 //! - reuse [`write_atomic_chunked`] (from `streaming_writer`) for kill-9-safe
 //!   rename-last writes
 //! - memory cap at 256 MiB (`LOCAL_DELTA_MAX_IN_MEMORY_BYTES`): files larger
-//!   than this return `RsyncError::TransferFailed` and the caller falls back
-//!   to a plain `std::fs::copy`
-//! - min_file_size guard returns `RsyncError::TooSmall` so the caller can
-//!   bypass the delta overhead for small files
+//!   than this return a soft failure and the caller falls back to a
+//!   plain `std::fs::copy`
+//! - min_file_size guard returns `TransferError::TooSmall` so the caller
+//!   can bypass the delta overhead for small files
 //!
 //! No SSH, no remote: this transport's `name()` is `"aerorsync-local"` and
 //! its `probe_remote` returns a synthetic capability flag (`protocol: 31`)
-//! so the rest of the delta dispatch keeps working unchanged.
+//! so the rest of the delta dispatch keeps working unchanged. The trait
+//! implementation that carries these to the application lives in
+//! `aerorsync_adapter::local`.
 
 #![cfg(feature = "aerorsync")]
 
 use std::path::Path;
 use std::time::Instant;
 
-use async_trait::async_trait;
 use tokio::fs;
 
 use crate::aerorsync::delta_engine;
 use crate::aerorsync::streaming_writer::{write_atomic_chunked, write_atomic_chunked_sparse};
-use crate::delta_transport::DeltaTransport;
-use crate::rsync_over_ssh::{RsyncCapability, RsyncError, RsyncStats};
+use crate::aerorsync::transport::TransportProbe;
+use crate::aerorsync::types::{ProtocolVersion, SessionStats, TransferError, TransferReport};
 
 /// Memory cap for the local delta path. Source + baseline + reconstructed
 /// buffers are all held in memory; with 256 MiB we keep peak RSS bounded by
@@ -54,7 +54,8 @@ pub struct LocalDeltaTransport {
 
 impl LocalDeltaTransport {
     /// Construct with a minimum file size below which `TooSmall` is returned.
-    /// Caller typically uses [`crate::rsync_over_ssh::DEFAULT_MIN_FILE_SIZE`].
+    /// The caller passes its own minimum size gate; AeroFTP passes its
+    /// 1 MiB default.
     pub fn new(min_file_size: u64) -> Self {
         Self {
             min_file_size,
@@ -70,22 +71,29 @@ impl LocalDeltaTransport {
         self
     }
 
-    async fn transfer_inner(&self, src: &Path, dst: &Path) -> Result<RsyncStats, RsyncError> {
+    /// Run the local delta and report the outcome in the crate's own
+    /// types. The application adapter renders it: this transport's
+    /// numbers are not the remote one's, and the rendering differs with
+    /// them (see `aerorsync_adapter::local`).
+    pub(crate) async fn transfer(
+        &self,
+        src: &Path,
+        dst: &Path,
+    ) -> Result<TransferReport, TransferError> {
         let start = Instant::now();
 
-        let src_meta = fs::metadata(src).await.map_err(RsyncError::Io)?;
+        let src_meta = fs::metadata(src).await.map_err(TransferError::Io)?;
         let src_size = src_meta.len();
 
         if src_size < self.min_file_size {
-            return Err(RsyncError::TooSmall {
+            return Err(TransferError::TooSmall {
                 size: src_size,
                 threshold: self.min_file_size,
             });
         }
         if src_size > LOCAL_DELTA_MAX_IN_MEMORY_BYTES {
-            return Err(RsyncError::TransferFailed {
-                exit: 0,
-                stderr: format!(
+            return Err(TransferError::Soft {
+                detail: format!(
                     "local delta size {src_size} exceeds in-memory cap {LOCAL_DELTA_MAX_IN_MEMORY_BYTES}; fallback to classic copy"
                 ),
             });
@@ -95,10 +103,10 @@ impl LocalDeltaTransport {
         let baseline = match fs::read(dst).await {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-            Err(e) => return Err(RsyncError::Io(e)),
+            Err(e) => return Err(TransferError::Io(e)),
         };
 
-        let source = fs::read(src).await.map_err(RsyncError::Io)?;
+        let source = fs::read(src).await.map_err(TransferError::Io)?;
 
         // Compute delta against baseline using the same engine the SSH path
         // uses; this keeps the local fast path bit-for-bit consistent with
@@ -115,9 +123,8 @@ impl LocalDeltaTransport {
         // output equals `source`.
         let reconstructed =
             delta_engine::apply_delta(&baseline, &ops, block_size).map_err(|e| {
-                RsyncError::TransferFailed {
-                    exit: 0,
-                    stderr: format!("local delta apply failed: {e}"),
+                TransferError::Soft {
+                    detail: format!("local delta apply failed: {e}"),
                 }
             })?;
 
@@ -171,65 +178,47 @@ impl LocalDeltaTransport {
             )
             .await
         }
-        .map_err(|e| RsyncError::TransferFailed {
-            exit: 0,
-            stderr: format!("local atomic write failed: {e:?}"),
+        .map_err(|e| TransferError::Soft {
+            detail: format!("local atomic write failed: {e:?}"),
         })?;
 
         let total_size = src_size;
         let duration_ms = start.elapsed().as_millis() as u64;
-        let speedup = if bytes_sent == 0 {
-            f64::INFINITY
-        } else {
-            total_size as f64 / bytes_sent as f64
-        };
 
-        Ok(RsyncStats {
-            bytes_sent,
-            bytes_received: src_size,
+        // `bytes_received` is the whole source: locally nothing travels,
+        // so the reconstructed size is what the destination received.
+        // `copy_blocks` stays 0 as it always did on this path. The
+        // speedup is not here on purpose: the local adapter computes it,
+        // because this transport reports an infinite speedup when
+        // nothing was sent and the remote one reports 1.0.
+        Ok(TransferReport {
+            session: SessionStats {
+                bytes_sent,
+                bytes_received: src_size,
+                copy_blocks: 0,
+                ..SessionStats::default()
+            },
             total_size,
-            speedup,
             duration_ms,
-            copy_blocks: 0,
             warnings: Vec::new(),
         })
     }
 }
 
-#[async_trait]
-impl DeltaTransport for LocalDeltaTransport {
-    fn name(&self) -> &'static str {
-        "aerorsync-local"
-    }
+/// Name this transport reports. The application adapter copies it into
+/// the trait implementation and a test pins the two together.
+pub const LOCAL_TRANSPORT_NAME: &str = "aerorsync-local";
 
-    async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
-        Ok(RsyncCapability {
-            version: "aerorsync local in-process".to_string(),
-            protocol: 31,
-        })
-    }
-
-    async fn probe_local(&self) -> Result<(), RsyncError> {
-        Ok(())
-    }
-
-    async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError> {
-        // `remote_path` is interpreted as a local filesystem path.
-        self.transfer_inner(local_path, Path::new(remote_path))
-            .await
-    }
-
-    async fn download(
-        &self,
-        remote_path: &str,
-        local_path: &Path,
-    ) -> Result<RsyncStats, RsyncError> {
-        // Inverted direction: `remote_path` is the source on the local fs.
-        self.transfer_inner(Path::new(remote_path), local_path)
-            .await
+/// The synthetic probe of a transport that has no remote: the delta
+/// dispatch expects a capability record, and this one says "protocol 31,
+/// in process". The adapter renders it like any other probe.
+pub(crate) fn local_probe() -> TransportProbe {
+    TransportProbe {
+        remote_banner: "aerorsync local in-process".to_string(),
+        protocol: ProtocolVersion(31),
+        supports_remote_shell: false,
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,16 +236,16 @@ mod tests {
         tokio::fs::write(&src, &payload).await.unwrap();
 
         let transport = LocalDeltaTransport::new(1024);
-        let stats = transport
-            .transfer_inner(src.as_path(), dst.as_path())
+        let report = transport
+            .transfer(src.as_path(), dst.as_path())
             .await
             .expect("happy path");
 
         let written = tokio::fs::read(&dst).await.unwrap();
         assert_eq!(written, payload);
-        assert_eq!(stats.total_size, payload.len() as u64);
+        assert_eq!(report.total_size, payload.len() as u64);
         // No baseline -> all bytes travelled as literal.
-        assert_eq!(stats.bytes_sent, payload.len() as u64);
+        assert_eq!(report.session.bytes_sent, payload.len() as u64);
     }
 
     #[tokio::test]
@@ -269,8 +258,8 @@ mod tests {
         tokio::fs::write(&dst, &payload).await.unwrap();
 
         let transport = LocalDeltaTransport::new(1024);
-        let stats = transport
-            .transfer_inner(src.as_path(), dst.as_path())
+        let report = transport
+            .transfer(src.as_path(), dst.as_path())
             .await
             .expect("identical baseline path");
 
@@ -280,9 +269,9 @@ mod tests {
         // because compute_signatures pads it; the savings ratio is the
         // metric that matters. Assert << 0.1% of total.
         assert!(
-            stats.bytes_sent < payload.len() as u64 / 1000,
+            report.session.bytes_sent < payload.len() as u64 / 1000,
             "identical baseline should emit << 0.1% literal bytes, got {}",
-            stats.bytes_sent
+            report.session.bytes_sent
         );
     }
 
@@ -300,17 +289,17 @@ mod tests {
         tokio::fs::write(&src, &payload).await.unwrap();
 
         let transport = LocalDeltaTransport::new(1024);
-        let stats = transport
-            .transfer_inner(src.as_path(), dst.as_path())
+        let report = transport
+            .transfer(src.as_path(), dst.as_path())
             .await
             .expect("localized change path");
 
         let written = tokio::fs::read(&dst).await.unwrap();
         assert_eq!(written, payload);
         assert!(
-            stats.bytes_sent < payload.len() as u64 / 4,
+            report.session.bytes_sent < payload.len() as u64 / 4,
             "localized change should match most blocks: sent {}",
-            stats.bytes_sent
+            report.session.bytes_sent
         );
     }
 
@@ -323,11 +312,11 @@ mod tests {
 
         let transport = LocalDeltaTransport::new(1024 * 1024);
         let err = transport
-            .transfer_inner(src.as_path(), dst.as_path())
+            .transfer(src.as_path(), dst.as_path())
             .await
             .expect_err("too small");
         match err {
-            RsyncError::TooSmall { size, threshold } => {
+            TransferError::TooSmall { size, threshold } => {
                 assert_eq!(size, 5);
                 assert_eq!(threshold, 1024 * 1024);
             }
@@ -343,11 +332,11 @@ mod tests {
 
         let transport = LocalDeltaTransport::new(1024);
         let err = transport
-            .transfer_inner(src.as_path(), dst.as_path())
+            .transfer(src.as_path(), dst.as_path())
             .await
             .expect_err("missing source");
         match err {
-            RsyncError::Io(io) => {
+            TransferError::Io(io) => {
                 assert_eq!(io.kind(), std::io::ErrorKind::NotFound);
             }
             other => panic!("expected Io NotFound, got {other:?}"),
@@ -367,48 +356,15 @@ mod tests {
 
         let transport = LocalDeltaTransport::new(1024);
         let err = transport
-            .transfer_inner(src.as_path(), dst.as_path())
+            .transfer(src.as_path(), dst.as_path())
             .await
             .expect_err("oversized");
         match err {
-            RsyncError::TransferFailed { stderr, .. } => {
-                assert!(stderr.contains("exceeds in-memory cap"));
+            TransferError::Soft { detail } => {
+                assert!(detail.contains("exceeds in-memory cap"));
             }
-            other => panic!("expected TransferFailed, got {other:?}"),
+            other => panic!("expected a soft error, got {other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn upload_and_download_are_symmetric() {
-        let dir = tmp_dir();
-        let src = dir.path().join("a.bin");
-        let dst = dir.path().join("b.bin");
-        let payload = vec![0x55u8; 1_500_000];
-        tokio::fs::write(&src, &payload).await.unwrap();
-
-        let transport = LocalDeltaTransport::new(1024);
-        // upload semantics: local -> remote (interpreted as local fs path)
-        transport
-            .upload(&src, dst.to_string_lossy().as_ref())
-            .await
-            .expect("upload");
-        assert_eq!(tokio::fs::read(&dst).await.unwrap(), payload);
-
-        // download semantics: remote -> local
-        let dst2 = dir.path().join("c.bin");
-        transport
-            .download(src.to_string_lossy().as_ref(), &dst2)
-            .await
-            .expect("download");
-        assert_eq!(tokio::fs::read(&dst2).await.unwrap(), payload);
-    }
-
-    #[tokio::test]
-    async fn probe_remote_reports_local_capability() {
-        let transport = LocalDeltaTransport::new(1024);
-        let cap = transport.probe_remote().await.expect("probe");
-        assert_eq!(cap.protocol, 31);
-        assert!(cap.version.contains("local"));
     }
 
     #[tokio::test]
@@ -426,7 +382,7 @@ mod tests {
 
         let transport = LocalDeltaTransport::new(1024).with_sparse(true);
         transport
-            .transfer_inner(src.as_path(), dst.as_path())
+            .transfer(src.as_path(), dst.as_path())
             .await
             .expect("sparse transfer");
 
@@ -452,12 +408,12 @@ mod tests {
         tokio::fs::write(&src, &payload).await.unwrap();
 
         LocalDeltaTransport::new(1024)
-            .transfer_inner(src.as_path(), dense_dst.as_path())
+            .transfer(src.as_path(), dense_dst.as_path())
             .await
             .expect("dense transfer");
         LocalDeltaTransport::new(1024)
             .with_sparse(true)
-            .transfer_inner(src.as_path(), sparse_dst.as_path())
+            .transfer(src.as_path(), sparse_dst.as_path())
             .await
             .expect("sparse transfer");
 
@@ -488,7 +444,7 @@ mod tests {
 
         let transport = LocalDeltaTransport::new(1024);
         transport
-            .transfer_inner(src.as_path(), dst.as_path())
+            .transfer(src.as_path(), dst.as_path())
             .await
             .expect("transfer");
 

@@ -22,6 +22,7 @@
 pub mod config;
 pub mod delta_transport;
 pub mod errors;
+pub mod local;
 
 #[cfg(test)]
 mod tests {
@@ -34,6 +35,8 @@ mod tests {
             "delta_transport_impl",
             "events",
             "fallback_policy",
+            // `local.rs` implements the trait for the local transport.
+            "local_transport",
             "progress",
             // `config.rs` builds an `SshTransportConfig` out of an
             // application profile, so it names the module that owns it.

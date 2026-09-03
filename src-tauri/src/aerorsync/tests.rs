@@ -2917,11 +2917,9 @@ fn production_unsafe_surface_matches_the_documented_count() {
 fn app_import_budget_matches_the_documented_inventory() {
     // (file, application module, occurrences). Update in the same commit
     // that removes a line, never to add one.
-    const DOCUMENTED: [(&str, &str, usize); 4] = [
+    const DOCUMENTED: [(&str, &str, usize); 2] = [
         ("delta_transport_impl.rs", "delta_transport", 1),
         ("live_tests.rs", "delta_transport", 1),
-        ("local_transport.rs", "delta_transport", 1),
-        ("local_transport.rs", "rsync_over_ssh", 1),
     ];
     // Assembled from pieces so this file's own source does not trip the scan.
     let needle = ["crate", "::"].concat();
