@@ -2903,7 +2903,14 @@ fn production_unsafe_surface_matches_the_documented_count() {
 ///
 /// An empty inventory measured by a blind scan would be a false green, so
 /// every refusal the scan needs to stay honest is still here: the forms
-/// below fail the test outright rather than being counted.
+/// below fail the test outright rather than being counted. That list is
+/// a syntactic denylist, and it is worth saying what that means: it
+/// refuses the ways of reaching the crate root we know how to spell, not
+/// every way that exists. A second reviewer got a green out of it with
+/// `use crate as app;`, which is why the rename of the root is refused
+/// now. The end state is a check that reads paths with a parser instead
+/// of substrings; until then, a new spelling that gets through belongs
+/// in this list the day it is found.
 ///
 /// The exclusion is `crate::aerorsync` compared as a whole identifier, never
 /// as a prefix: `crate::aerorsync_adapter`, the application-side adapter,
@@ -2933,6 +2940,14 @@ fn aerorsync_module_imports_nothing_from_the_app() {
         ["include", "!("].concat(),
         ["include_str", "!("].concat(),
         ["macro_rules", "!"].concat(),
+    ];
+    // Renaming the crate root reaches the application without ever writing
+    // the prefix this scan looks for: `use crate as app;` and then
+    // `app::settings`. Both spellings of the rename are refused where the
+    // alias is created, which is the only place a flat scan can see it.
+    let root_aliases = [
+        ["crate", " as "].concat(),
+        ["extern ", "crate self"].concat(),
     ];
 
     fn dir_holds_rust_source(dir: &std::path::Path) -> bool {
@@ -2979,6 +2994,22 @@ fn aerorsync_module_imports_nothing_from_the_app() {
                 "{name} uses `{hatch}`: the import scan reads one flat directory and cannot \
                  see through it"
             );
+        }
+        // Line-based and comment-skipping, unlike the hatches above: a
+        // doc-comment that explains the refusal must not trip it.
+        for (index, line) in src.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") || trimmed.starts_with('*') {
+                continue;
+            }
+            for alias in &root_aliases {
+                assert!(
+                    !line.contains(alias.as_str()),
+                    "{name}:{}: renames the crate root with `{alias}`: an alias reaches the \
+                     application without ever spelling the prefix this scan counts",
+                    index + 1
+                );
+            }
         }
         for (index, line) in src.lines().enumerate() {
             let trimmed = line.trim_start();

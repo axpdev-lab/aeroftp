@@ -6,7 +6,7 @@
 //! `RsyncCapability`. The direction of the dependency is one way. This
 //! adapter reads the module; the module never imports from here, and
 //! that is pinned by
-//! `aerorsync::tests::app_import_budget_matches_the_documented_inventory`,
+//! `aerorsync::tests::aerorsync_module_imports_nothing_from_the_app`,
 //! whose counter compares `aerorsync` as a whole identifier so
 //! `crate::aerorsync_adapter` inside the module would be a violation.
 //!
@@ -75,6 +75,24 @@ mod tests {
         // Assembled so this file's own source does not trip the scan.
         let needle = ["crate", "::"].concat();
         let module_prefix = ["crate", "::aerorsync::"].concat();
+        // The same refusals the module's own guard carries. They are here
+        // and not shared because the adapter must not depend on the
+        // module's test code; keep the two lists in step. A second
+        // reviewer got a green out of this test with two of these, an
+        // alias of the crate root and a `super` chain walking out of the
+        // directory, which is why they are all spelled out.
+        let root_alias_chain = ["super::", "super::"].concat();
+        let conditional_attribute = ["cfg_", "attr"].concat();
+        let escape_hatches = [
+            ["#[", "path"].concat(),
+            ["include", "!("].concat(),
+            ["include_str", "!("].concat(),
+            ["macro_rules", "!"].concat(),
+        ];
+        let root_aliases = [
+            ["crate", " as "].concat(),
+            ["extern ", "crate self"].concat(),
+        ];
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync_adapter");
         let mut toward_app: Vec<(String, String)> = Vec::new();
         let mut toward_module: Vec<String> = Vec::new();
@@ -98,12 +116,45 @@ mod tests {
                 .expect("utf-8 file name")
                 .to_string();
             let src = std::fs::read_to_string(&path).expect("readable source file");
+            for hatch in &escape_hatches {
+                assert!(
+                    !src.contains(hatch.as_str()),
+                    "{name} uses `{hatch}`: the scan reads one flat directory and cannot see \
+                     through it"
+                );
+            }
+            // Line-based and comment-skipping, unlike the hatches above:
+            // a comment that explains the refusal must not trip it.
+            for (index, line) in src.lines().enumerate() {
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("//") || trimmed.starts_with('*') {
+                    continue;
+                }
+                for alias in &root_aliases {
+                    assert!(
+                        !line.contains(alias.as_str()),
+                        "{name}:{}: renames the crate root with `{alias}`: an alias reaches \
+                         the application without ever spelling the prefix this scan reads",
+                        index + 1
+                    );
+                }
+            }
             for (index, line) in src.lines().enumerate() {
                 let trimmed = line.trim_start();
                 if trimmed.starts_with("//") || trimmed.starts_with('*') {
                     continue;
                 }
                 let lineno = index + 1;
+                assert!(
+                    !line.contains(root_alias_chain.as_str()),
+                    "{name}:{lineno}: `{root_alias_chain}` walks out of this directory to the \
+                     crate root; name what you reach"
+                );
+                assert!(
+                    !(line.contains(conditional_attribute.as_str()) && line.contains("path")),
+                    "{name}:{lineno}: `{conditional_attribute}` with a `path` key redirects a \
+                     module to a file the flat scan cannot see"
+                );
                 let mut rest = line;
                 while let Some(at) = rest.find(needle.as_str()) {
                     let after = &rest[at + needle.len()..];

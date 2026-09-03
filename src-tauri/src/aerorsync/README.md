@@ -157,7 +157,7 @@ Elenco allineato a `mod.rs` (una riga per file, dal doc di testa del file).
 
 - `acl_fs.rs`: I/O delle ACL POSIX.1e locali (B2)
 - `delta_engine.rs`: motore delta rolling checksum + block matching, entrato nel modulo con la tranche A1
-- `delta_transport_impl.rs`: `AerorsyncDeltaTransport` (impl `DeltaTransport`) + `AerorsyncBatch` session reuse
+- `delta_transport_impl.rs`: `AerorsyncDeltaTransport`, i suoi entry point crate-owned e `AerorsyncBatch` per il riuso di sessione; l'`impl DeltaTransport` vive nell'adapter (vedi Boundary)
 - `engine_adapter.rs`: ponte fra il layer di protocollo nativo e il motore delta
 - `engine_protocol_types.rs`: tipi di forma protocollare rimasti dopo Y-RSC.8
 - `events.rs`: eventi mux out-of-band, `EventSink`, `AerorsyncEvent::notice()` e `WarningCollector`
