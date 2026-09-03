@@ -29,9 +29,23 @@ on:
 
 jobs:
   standalone:
-    name: The module compiles and tests as its own crate
-    runs-on: ubuntu-24.04
+    # One host per operating system the module ships on, and not a
+    # cross-check from Linux. `--all-targets` means Cargo targets, lib and
+    # tests and benches, not operating systems: a dependency on the
+    # application gated on another OS is elided before the compiler resolves
+    # it, and a review proved exactly that with
+    # `#[cfg(target_os = "windows")] ... super::settings`. Cross-checking with
+    # `--target` does not work either, because the native build scripts of
+    # openssl-sys, libz-sys, ring and zstd-sys need that target's toolchain,
+    # so the run fails before reaching any of the module's code. The invariant
+    # is per target, so it is checked where the target is native.
+    name: The module compiles as its own crate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-14]
     steps:
       - uses: actions/checkout@v5
 
@@ -44,6 +58,7 @@ jobs:
           workspaces: target/aerorsync-standalone
 
       - name: Install system dependencies
+        if: runner.os == 'Linux'
         run: |
           # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
           # enough to redden a run, and nothing here installs from them.
@@ -58,9 +73,11 @@ jobs:
             pkg-config
 
       - name: Re-emit the module as a standalone crate
+        shell: bash
         run: bash scripts/aerorsync-emit.sh
 
       - name: The emission is reproducible
+        shell: bash
         run: |
           set -o pipefail
           first="$(sha256sum target/aerorsync-standalone/EMITTED.sha256 | cut -d' ' -f1)"
@@ -88,23 +105,34 @@ jobs:
       # item-level inventory of what the crate will have to export when it is
       # extracted, which is the input of the public-API phase.
       - name: What the crate will have to export
+        if: runner.os == 'Linux'
         working-directory: target/aerorsync-standalone
+        shell: bash
         run: |
           cargo clippy --all-targets 2>&1 \
             | grep -E "never used|never read|never constructed" \
             | sed 's/^warning: /  /' | sort -u | tee /tmp/api-inventory.txt
           echo "voci: $(grep -c . /tmp/api-inventory.txt)"
 
-      - name: The module's own suite runs alone
+      # The frozen oracle tests return early when the transcript is missing, and
+      # they PASS when they do. Two things guard that here. The emission itself
+      # fails when the fixture is absent or short of files, which is the check
+      # that does not depend on reading output. And the run below asks for
+      # `--nocapture`, because libtest captures the output of a test that
+      # passes, so without it the sentinel never reaches the log; it then looks
+      # for the frozen-transcript sentinel specifically, not for the word
+      # "skipping", which the live tests and the ACL and xattr probes also print
+      # for their own legitimate reasons.
+      # The suite runs where its fixtures and its native libraries are: the
+      # frozen oracle is byte-level and the ACL and xattr paths are Linux.
+      - name: The module's own suite runs alone, with the oracles really running
+        if: runner.os == 'Linux'
         working-directory: target/aerorsync-standalone
         run: |
           set -o pipefail
-          cargo test 2>&1 | tee /tmp/standalone.log
-          # The frozen oracle tests return early when the transcript is missing,
-          # and a passing test's output is captured, so a missing fixture would
-          # read as green. Count the skips instead of trusting the exit code.
-          skipped="$(grep -c 'skipping' /tmp/standalone.log || true)"
+          cargo test -- --nocapture 2>&1 | tee /tmp/standalone.log
+          skipped="$(grep -c 'frozen real-rsync transcript' /tmp/standalone.log || true)"
           if [ "$skipped" != "0" ]; then
-            echo "::error::$skipped test(s) skipped in the standalone crate: the emitted fixtures are incomplete"
+            echo "::error::the frozen oracle skipped $skipped time(s) in the standalone crate: the emitted transcript is not where the module looks for it"
             exit 1
           fi
