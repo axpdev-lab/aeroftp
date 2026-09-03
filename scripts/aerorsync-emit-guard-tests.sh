@@ -101,6 +101,40 @@ bash "$EMIT" "$ROOT/target/aerorsync-standalone" >/dev/null 2>&1; chk 1 $? "lo s
 chk 0 "$([ -d "$SCRATCH/vittima-esplicita" ] && echo 0 || echo 1)" "e la vittima esiste ancora"
 rm -f "$DEFAULT"
 
+# Lo stesso attacco, ma cambiando soltanto la path da cui lo script viene
+# invocato. Una review ha lanciato l'emettitore attraverso un symlink verso il
+# repository: la radice era logica e il default fisico, non si incontravano mai,
+# il confronto che riconosce il default non scattava e si ricadeva
+# sull'euristica del contenuto, che un `EMITTED.sha256` piantato nella vittima
+# soddisfa. Stessa manomissione, esito opposto, per una spelling.
+ln -s "$ROOT" "$SCRATCH/repolink"
+mkdir -p "$SCRATCH/vittima-da-symlink"; echo prezioso > "$SCRATCH/vittima-da-symlink/keep.txt"
+touch "$SCRATCH/vittima-da-symlink/EMITTED.sha256"
+rm -rf "$DEFAULT"; ln -s "$SCRATCH/vittima-da-symlink" "$DEFAULT"
+bash "$SCRATCH/repolink/scripts/aerorsync-emit.sh" >/dev/null 2>&1; chk 1 $? "lo script invocato attraverso un symlink verso il repository"
+chk 0 "$([ -f "$SCRATCH/vittima-da-symlink/keep.txt" ] && echo 0 || echo 1)" "e la vittima e' intatta"
+rm -f "$DEFAULT"
+
+# Un symlink penzolante sul default: non porta da nessuna parte, ma va rifiutato
+# con lo stesso messaggio di uno che punta a una directory, non accettato in
+# silenzio perche' `-d` su di lui e' falso.
+ln -s "$SCRATCH/non-esiste-affatto" "$DEFAULT"
+bash "$EMIT" >/dev/null 2>&1; chk 1 $? "il default e' un symlink penzolante"
+rm -f "$DEFAULT"
+
+# Il glob: `lex_path` faceva una espansione non quotata, quindi una path che
+# contiene `*` veniva sostituita dai nomi presenti nella directory, e quei nomi
+# diventavano COMPONENTI. Il rifiuto stampava un "risolto" inventato e
+# `rm -rf` e `mkdir -p` finivano su una path che nessuno aveva scritto.
+mkdir -p "$SCRATCH/globdir/alfa" "$SCRATCH/globdir/beta"
+bash "$EMIT" "$SCRATCH/globdir/*" >/dev/null 2>&1 || true
+chk 1 "$([ -e "$SCRATCH/globdir/alfa/Cargo.toml" ] && echo 0 || echo 1)" "un asterisco nella path non diventa i nomi della directory"
+chk 1 "$([ -e "$SCRATCH/globdir/beta/Cargo.toml" ] && echo 0 || echo 1)" "e nemmeno il secondo"
+
+# `HOME` non impostata: sotto `set -u` il confronto con la home moriva con
+# `unbound variable` invece di dare un rifiuto o proseguire.
+( unset HOME; bash "$EMIT" "$SCRATCH/senza-home" >/dev/null 2>&1 ); chk 0 $? "senza HOME l'emissione funziona invece di morire"
+
 # E il bypass peggiore: un componente che non esiste seguito da `..`. Nessun
 # rifiuto lo vedeva, perche' la stringa non comincia per la radice del
 # repository; poi `mkdir -p` creava il componente mancante, `..` diventava

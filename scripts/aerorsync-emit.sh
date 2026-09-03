@@ -25,7 +25,14 @@
 # Usage: scripts/aerorsync-emit.sh [outdir]     (default: target/aerorsync-standalone)
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# `pwd -P` e non `pwd`: la radice va confrontata con destinazioni risolte
+# fisicamente, e una review ha lanciato lo script da una path symlinkata verso
+# il repository, cosa che rendeva la forma logica e quella fisica diverse per
+# sempre. Il confronto che riconosce il target di default non scattava mai e si
+# ricadeva sull'euristica del contenuto: stessa manomissione, stesso symlink
+# sul default, e la vittima esterna veniva cancellata a seconda di come si
+# scriveva la path da cui lo script era invocato.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SRC="$ROOT/src-tauri/src/aerorsync"
 OUT="${1:-$ROOT/target/aerorsync-standalone}"
 
@@ -55,18 +62,42 @@ OUT="${1:-$ROOT/target/aerorsync-standalone}"
 # None of this creates anything: an earlier version canonicalised with
 # `mkdir -p` and a refused invocation still left a directory inside the tree it
 # was protecting. A refusal must not write.
-ROOT_P="$(cd "$ROOT" && pwd -P)"
-DEFAULT_P="$ROOT_P/target/aerorsync-standalone"
+# `$ROOT` e' gia' fisico (vedi sopra), quindi il default lo e' per costruzione.
+DEFAULT_P="$ROOT/target/aerorsync-standalone"
 
-# Lessicale: assoluta, con `.` e `..` collassati senza toccare il filesystem.
-# python3 e' gia' un requisito di questo script (il manifest).
+# Lessicale: assoluta, con `.` e `..` collassati, senza toccare il filesystem.
+# In bash puro e non in python3: su Windows il python dell'host e' quello
+# nativo e MSYS traduce gli argomenti che sembrano path, quindi la funzione
+# avrebbe restituito una stringa in sintassi Windows che bash poi confronta con
+# path POSIX. Nessuno dei due confronti sarebbe mai stato vero, e su quel job
+# la meta' lessicale del guardiano, che e' l'unica a fermare
+# `componente-inesistente/../<repo>`, sarebbe stata inerte senza dirlo.
 lex_path() {
-    python3 -c 'import os,sys
-p = sys.argv[1]
-if not os.path.isabs(p):
-    p = os.path.join(os.getcwd(), p)
-sys.stdout.write(os.path.normpath(p))' "$1"
+    local p="$1" out="" seg rest
+    case "$p" in
+        /*) ;;
+        *) p="$PWD/$p";;
+    esac
+    # Taglio a mano invece di `for seg in $p` con IFS=/: quella e' una
+    # espansione NON quotata, quindi oltre al field splitting fa anche il GLOB,
+    # e una review ha misurato `/tmp/*` diventare `/tmp/alfa/beta/gamma`. La
+    # normalizzazione esiste per rendere `..` visibile ai rifiuti, e li' il
+    # numero di componenti fra il `..` e il suo bersaglio lo decideva il
+    # contenuto della directory corrente. `set -f` non va bene come rimedio:
+    # piu' avanti lo script ha bisogno del glob per `for f in "$SRC"/*.rs`.
+    rest="$p"
+    while [ -n "$rest" ]; do
+        seg="${rest%%/*}"
+        if [ "$seg" = "$rest" ]; then rest=""; else rest="${rest#*/}"; fi
+        case "$seg" in
+            ""|.) ;;
+            ..) out="${out%/*}";;
+            *) out="$out/$seg";;
+        esac
+    done
+    printf '%s\n' "${out:-/}"
 }
+
 # Fisica: risale al primo antenato che esiste e riappende il resto. Serve
 # perche' su un checkout appena fatto non esiste ne' la destinazione ne'
 # `target/` che la contiene, e una stesura che pretendeva il genitore esistente
@@ -86,13 +117,24 @@ OUT_LEX="$(lex_path "$OUT_REQ")" || { echo "outdir non utilizzabile: $OUT_REQ" >
 OUT="$(phys_path "$OUT_LEX")" || { echo "outdir non utilizzabile: $OUT_REQ" >&2; exit 1; }
 
 # 1. Rifiuti assoluti, su ENTRAMBE le forme, per ogni destinazione, default
-#    compreso.
+#    compreso. La home si confronta anch'essa nelle due forme: se sta dietro un
+#    symlink, nominarne una sola delle due sfuggirebbe. E se `HOME` non e'
+#    impostata lo script deve rifiutare o proseguire, non morire con
+#    `unbound variable` sotto `set -u`.
+HOME_LEX="${HOME:-}"
+if [ -n "$HOME_LEX" ] && [ -d "$HOME_LEX" ]; then
+    HOME_PHYS="$(cd "$HOME_LEX" && pwd -P)"
+else
+    HOME_PHYS="$HOME_LEX"
+fi
 for candidate in "$OUT_LEX" "$OUT"; do
-    case "$candidate" in
-        /|"$HOME")
-            echo "rifiuto: l'outdir e' la radice o la home ($candidate)" >&2; exit 1;;
-    esac
-    case "$ROOT_P" in
+    if [ "$candidate" = "/" ]; then
+        echo "rifiuto: l'outdir e' la radice del filesystem" >&2; exit 1
+    fi
+    if [ -n "$HOME_LEX" ] && { [ "$candidate" = "$HOME_LEX" ] || [ "$candidate" = "$HOME_PHYS" ]; }; then
+        echo "rifiuto: l'outdir e' la home ($candidate)" >&2; exit 1
+    fi
+    case "$ROOT" in
         "$candidate"/*)
             echo "rifiuto: l'outdir contiene il repository ($candidate)" >&2; exit 1;;
     esac
@@ -103,11 +145,12 @@ done
 #    stesura precedente controllava solo il primo caso. Il target di default e'
 #    ignorato da git, quindi puo' essere sostituito da un symlink senza che
 #    `git status` dica niente.
-if [ "$OUT_LEX" = "$DEFAULT_P" ] && [ "$OUT" != "$DEFAULT_P" ]; then
+if [ "$OUT_LEX" = "$DEFAULT_P" ] && { [ "$OUT" != "$DEFAULT_P" ] || [ -L "$DEFAULT_P" ]; }; then
     echo "rifiuto: il target di default non e' una directory dentro il repository" >&2
     echo "  atteso:   $DEFAULT_P" >&2
     echo "  risolto:  $OUT" >&2
-    echo "  un componente della path e' un symlink che porta fuori" >&2
+    echo "  un componente della path e' un symlink" >&2
+    echo "  se target/ sta su un altro disco per scelta, passa la destinazione esplicitamente" >&2
     exit 1
 fi
 
@@ -116,11 +159,11 @@ fi
 if [ "$OUT" != "$DEFAULT_P" ]; then
     for candidate in "$OUT_LEX" "$OUT"; do
         case "$candidate" in
-            "$ROOT_P"|"$ROOT_P"/*)
+            "$ROOT"|"$ROOT"/*)
                 echo "rifiuto: l'outdir sta dentro il repository e non e' il target di default" >&2
                 echo "  richiesto: $OUT_REQ" >&2
                 echo "  risolto:   $candidate" >&2
-                echo "  ammessi:   $DEFAULT_P, oppure una destinazione fuori da $ROOT_P" >&2
+                echo "  ammessi:   $DEFAULT_P, oppure una destinazione fuori da $ROOT" >&2
                 exit 1;;
         esac
     done
@@ -167,6 +210,19 @@ LIB
 FROZEN_REL="$(sed -n 's/^pub const REAL_RSYNC_FROZEN_TRANSCRIPT_REL: &str = "\(.*\)";$/\1/p' \
     "$SRC/fixtures.rs")"
 [ -n "$FROZEN_REL" ] || { echo "non trovo REAL_RSYNC_FROZEN_TRANSCRIPT_REL in fixtures.rs" >&2; exit 1; }
+# La destinazione delle fixture e' la SECONDA cosa che questo script scrive, e
+# arriva da una costante nel sorgente invece che dal guardrail sopra. Con un
+# refuso (o una manomissione) che la porta fuori da `$OUT` l'emissione scrive
+# altrove e restituisce comunque 0, e il manifest, che cammina solo `$OUT`, non
+# se ne accorge. Una review ci ha messo "../src" e ha scritto 632 file fuori
+# dalla destinazione. Relativa e senza risalite: e' tutto quello che quella
+# costante puo' legittimamente essere.
+case "$FROZEN_REL" in
+    /*) echo "REAL_RSYNC_FROZEN_TRANSCRIPT_REL e' assoluta: $FROZEN_REL" >&2; exit 1;;
+esac
+case "/$FROZEN_REL/" in
+    */../*) echo "REAL_RSYNC_FROZEN_TRANSCRIPT_REL risale fuori dalla destinazione: $FROZEN_REL" >&2; exit 1;;
+esac
 FROZEN_SRC="$ROOT/src-tauri/$FROZEN_REL"
 if [ -d "$FROZEN_SRC" ]; then
     mkdir -p "$OUT/$FROZEN_REL"
@@ -174,7 +230,9 @@ if [ -d "$FROZEN_SRC" ]; then
     emitted="$(find "$OUT/$FROZEN_REL" -type f | wc -l)"
     origin="$(find "$FROZEN_SRC" -type f | wc -l)"
     if [ "$emitted" != "$origin" ] || [ "$emitted" -eq 0 ]; then
-        echo "fixture incomplete: $emitted file emessi contro $origin" >&2
+        echo "fixture incomplete: $emitted righe emesse contro $origin in $FROZEN_REL" >&2
+        echo "  origine:      $FROZEN_SRC" >&2
+        echo "  destinazione: $OUT/$FROZEN_REL" >&2
         exit 1
     fi
     echo "fixture congelate: $emitted file in $FROZEN_REL"
@@ -268,12 +326,64 @@ else
     exit 1
 fi
 
+# 3b-bis. Il lockfile dell'applicazione, copiato per la stessa ragione del
+#     config: senza, il crate emesso risolve libero e compila sorgenti diversi
+#     da quelli spediti. Non e' ipotetico, e' vivo: il prodotto pinna
+#     `russh 0.63.1` (il crate su cui il manifest porta la nota GHSA e che
+#     questo repository tiene pinnato per storia) e la lane risolveva 0.63.2.
+#     I requisiti del manifest sono larghi (`tokio = "1"`, `libc = "0.2"`),
+#     quindi la superficie e' molto piu' ampia di quel singolo caso.
+#     Il verso di questo limite va detto: il drift di versione non puo'
+#     produrre un falso VERDE, perche' un import applicativo non risolve
+#     qualunque sia la versione di tokio. Costa parita' con il prodotto e un
+#     rosso che puo' arrivare senza che nessuno abbia committato niente.
+#     Cargo accetta un lock con un root package diverso e lo pota da solo
+#     (1189 pacchetti in ingresso, 251 dopo la potatura). NON aggiungere
+#     `--locked` agli step: con il lock non ancora potato la prima corsa
+#     fallirebbe, perche' `--locked` vieta proprio la potatura che serve. Il
+#     valore sta nei pin, non nel flag.
+cp "$ROOT/src-tauri/Cargo.lock" "$OUT/Cargo.lock"
+echo "lockfile: copiato da src-tauri/Cargo.lock"
+
+# 3c. Un overlay per le regioni `ci_lane3`. NON viene caricato da solo: cargo
+#     legge `.cargo/config.toml`, non `.cargo/lane3.toml`, quindi questo file
+#     esiste solo per essere passato con `cargo --config` negli step di check e
+#     clippy, e `cargo test` non lo vede mai. Serve perche' quel cfg lo accende
+#     solo la lane 3 dell'applicazione, il manifest emesso lo DICHIARA nella
+#     check-cfg, e quindi le regioni dietro di lui vengono elise qui senza
+#     nemmeno un warning: una review ci ha nascosto dentro una chiamata vera a
+#     un modulo dell'applicazione, e check dev, check release, clippy e la
+#     guardia testuale erano tutti verdi.
+#     Si passa con `--config` e non con RUSTFLAGS perche' la variabile
+#     d'ambiente SOSTITUISCE i rustflags del config invece di fonderli, e
+#     spegnerebbe `+crt-static` proprio sul job Windows che la copia del config
+#     esiste per riprodurre. I blocchi [target.*] sono derivati dal file che lo
+#     script sta gia' copiando e non elencati qui: servono perche' un
+#     [target.<triple>] del file base ha la precedenza su [build] e lo ignora,
+#     mentre con il blocco omonimo nell'overlay i due array si fondono.
+{
+    echo "# Generated by scripts/aerorsync-emit.sh. Do not edit by hand: edit the script."
+    echo "# Passed with \`cargo --config\` on the check and clippy steps only, never on"
+    echo "# \`cargo test\`."
+    echo
+    echo "# I triple senza un blocco proprio nel config dell'app rispondono qui."
+    echo "[build]"
+    echo 'rustflags = ["--cfg", "ci_lane3"]'
+    sed -n 's/^\[target\.\(.*\)\]$/\1/p' "$APP_CARGO_CONFIG" | while read -r triple; do
+        echo
+        echo "# Fuso con l'array omonimo del config copiato, non lo sostituisce."
+        echo "[target.$triple]"
+        echo 'rustflags = ["--cfg", "ci_lane3"]'
+    done
+} > "$OUT/.cargo/lane3.toml"
+
 # 4. A manifest of what was emitted. Every entry that is not a directory, with
 #    its mode, so a symlink or a permission change is part of what two runs
-#    compare. It certifies the emitted TREE, not the dependency resolution:
-#    no lockfile is emitted, so `cargo check` resolves compatible versions from
-#    the registry and can pick different ones over time with this manifest
-#    unchanged.
+#    compare. It now covers the dependency resolution too, because the
+#    application's lockfile is one of the entries: two emissions of the same
+#    source carry the same pins. What it does NOT cover is what cargo does to
+#    that lockfile afterwards, since building prunes it in place, so a manifest
+#    taken after a build differs from the one taken at emission.
 #    Written with python3 rather than `find -printf` plus `sha256sum`: the
 #    first is GNU-only and the second is absent on macOS, and this script runs
 #    on all three operating systems the module ships on. The program goes to a

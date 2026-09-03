@@ -2815,6 +2815,30 @@ fn compress_zstd_literal_stream_round_trips_through_frozen_oracle_payloads() {
 /// Test code is excluded on purpose: `live_tests.rs` is a harness, and its
 /// `unsafe` is not part of what ships.
 ///
+/// True when a trimmed line can only be the tail of a block comment.
+///
+/// The scans below skip such lines so a comment that names a path is not
+/// counted as the path itself, and the shape of this predicate is the whole
+/// question: every line it skips is a line the guard cannot see.
+///
+/// It used to skip every line starting with `*`, which is also how a
+/// dereference starts. `*slot = crate::settings::x();` was invisible to the
+/// guard and `cargo fmt` leaves it alone, so nothing else would have caught
+/// it, and two real lines in `native_driver.rs` already sat in that blind
+/// spot. Narrowing it to `* ` did not close the class either: with the default
+/// `binop_separator = "Front"`, rustfmt itself writes a wrapped multiplication
+/// as `    * crate::settings::CONST`, so the guard would skip a line the
+/// formatter had just produced.
+///
+/// So `* ` is not skipped at all. It costs nothing today, measured: the module
+/// has zero block-comment continuation lines and exactly one line containing
+/// `/*`, which opens and closes on itself. The day someone writes a multi-line
+/// block comment that names `crate::something`, this guard fails and the
+/// comment has to be reworded. That is the direction a guard should fail in.
+fn is_block_comment_continuation(trimmed: &str) -> bool {
+    trimmed == "*" || trimmed.starts_with("*/")
+}
+
 /// If this fails, do not adjust the constant on its own. Update
 /// `docs/PROTOCOL-RSYNC-COMPARE.md` (the Language row and the strengths
 /// bullet) and `docs.aeroftp.app/features/aerorsync.md` in the same
@@ -2866,7 +2890,7 @@ fn production_unsafe_surface_matches_the_documented_count() {
             .map(str::trim_start)
             // Comments mentioning the word must not inflate the count, and
             // `// SAFETY:` notes sit directly above the real blocks.
-            .filter(|l| !l.starts_with("//") && !l.starts_with("*"))
+            .filter(|l| !l.starts_with("//") && !is_block_comment_continuation(l))
             .filter(|l| l.contains("unsafe {") || l.contains("unsafe fn"))
             .count();
         if count > 0 {
@@ -2999,7 +3023,7 @@ fn aerorsync_module_imports_nothing_from_the_app() {
         // doc-comment that explains the refusal must not trip it.
         for (index, line) in src.lines().enumerate() {
             let trimmed = line.trim_start();
-            if trimmed.starts_with("//") || trimmed.starts_with('*') {
+            if trimmed.starts_with("//") || is_block_comment_continuation(trimmed) {
                 continue;
             }
             for alias in &root_aliases {
@@ -3013,7 +3037,7 @@ fn aerorsync_module_imports_nothing_from_the_app() {
         }
         for (index, line) in src.lines().enumerate() {
             let trimmed = line.trim_start();
-            if trimmed.starts_with("//") || trimmed.starts_with('*') {
+            if trimmed.starts_with("//") || is_block_comment_continuation(trimmed) {
                 continue;
             }
             let lineno = index + 1;

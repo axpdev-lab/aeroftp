@@ -114,7 +114,10 @@ jobs:
           # script removes its output before writing it, so re-emitting there
           # would delete the build cache the previous step just restored.
           # The script prints the manifest hash itself, computed in python3,
-          # because `sha256sum` does not exist on macOS.
+          # because `sha256sum` does not exist on macOS. Into a scratch and not
+          # over the build tree also because the emitted lockfile is pruned in
+          # place by the first build, so a manifest taken there afterwards no
+          # longer matches a fresh emission.
           scratch="${RUNNER_TEMP}/aerorsync-emit-check"
           first="$(bash scripts/aerorsync-emit.sh "$scratch" | sed -n 's/^manifest: //p')"
           second="$(bash scripts/aerorsync-emit.sh "$scratch" | sed -n 's/^manifest: //p')"
@@ -200,3 +203,25 @@ jobs:
             echo "::error::the frozen oracle skipped $skipped time(s) in the standalone crate: the emitted transcript is not where the module looks for it"
             exit 1
           fi
+
+      # The 34 `#[cfg(ci_lane3)]` regions of the module are compiled by none of
+      # the steps above: that cfg is turned on only by the application's lane 3,
+      # and the emitted manifest DECLARES it in its check-cfg, so here the
+      # regions are elided without even a warning. A review put a real call to
+      # an application module inside one of them and check on both profiles,
+      # clippy and the textual guard were all green.
+      # It is passed with `--config` and not with RUSTFLAGS: the environment
+      # variable REPLACES the config's rustflags instead of merging them, and
+      # would switch off `+crt-static` on the very Windows job that copied
+      # config exists to reproduce. Check and clippy only: `cargo test` must
+      # stay without the cfg, because those tests talk to a real rsync in
+      # Docker that this lane does not have. Last, because changing rustflags
+      # invalidates every unit and the steps above must not pay for it twice.
+      # Linux is enough: 29 of the 34 gates are `all(ci_lane3, unix)` and the
+      # other 5 carry no OS gate at all.
+      - name: The ci_lane3-gated regions compile alone too
+        if: runner.os == 'Linux'
+        working-directory: target/aerorsync-standalone
+        run: |
+          cargo check --all-targets --config .cargo/lane3.toml
+          cargo clippy --all-targets --config .cargo/lane3.toml -- -D warnings -A dead_code
