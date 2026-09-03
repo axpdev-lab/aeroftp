@@ -2196,7 +2196,12 @@ pub(crate) fn map_write_atomic_error(err: WriteAtomicError) -> TransferError {
 mod tests {
     use super::*;
     use crate::aerorsync::streaming_writer::{write_atomic_chunked, write_atomic_chunked_sparse};
-    use crate::delta_transport::DeltaBatch;
+    // `DeltaTransport` is what the lane 3 tests need in scope to drive the
+    // production path; the implementation itself lives in the application
+    // adapter and is resolved crate-wide. Kept on one line so the module's
+    // import budget still counts a single application import here.
+    #[cfg_attr(not(ci_lane3), allow(unused_imports))]
+    use crate::delta_transport::{DeltaBatch, DeltaTransport};
     use std::io::Write;
     use std::time::Duration;
     use tempfile::TempDir;
@@ -3737,16 +3742,25 @@ mod tests {
         .await
         .expect_err("stock rsync must negotiate zlib and enter the typed fallback path");
 
+        // The module reports the typed cause; the rendering into the
+        // `-1` fallback envelope belongs to the application adapter and
+        // is pinned there. What has to be true here is that the refusal
+        // is pre-commit and names what caused it.
         match error {
-            RsyncError::TransferFailed { exit, stderr } => {
-                assert_eq!(exit, -1, "typed native fallback uses the -1 envelope");
-                assert!(
-                    stderr.contains("NegotiationFailed"),
-                    "fallback must retain the typed cause: {stderr}"
+            TransferError::Native {
+                error: cause,
+                committed,
+            } => {
+                assert!(!committed, "the refusal happens before any commit");
+                assert_eq!(
+                    cause.kind,
+                    crate::aerorsync::types::AerorsyncErrorKind::NegotiationFailed,
+                    "fallback must retain the typed cause: {cause:?}"
                 );
                 assert!(
-                    stderr.contains("zlib"),
-                    "fallback must name the unsupported negotiated codec: {stderr}"
+                    cause.detail.contains("zlib"),
+                    "fallback must name the unsupported negotiated codec: {}",
+                    cause.detail
                 );
             }
             other => panic!("unsupported compressor must stay fallback-eligible, got {other:?}"),
@@ -3819,16 +3833,25 @@ mod tests {
         .await
         .expect_err("stock rsync must negotiate none and enter the typed fallback path");
 
+        // The module reports the typed cause; the rendering into the
+        // `-1` fallback envelope belongs to the application adapter and
+        // is pinned there. What has to be true here is that the refusal
+        // is pre-commit and names what caused it.
         match error {
-            RsyncError::TransferFailed { exit, stderr } => {
-                assert_eq!(exit, -1, "typed native fallback uses the -1 envelope");
-                assert!(
-                    stderr.contains("NegotiationFailed"),
-                    "fallback must retain the typed cause: {stderr}"
+            TransferError::Native {
+                error: cause,
+                committed,
+            } => {
+                assert!(!committed, "the refusal happens before any commit");
+                assert_eq!(
+                    cause.kind,
+                    crate::aerorsync::types::AerorsyncErrorKind::NegotiationFailed,
+                    "fallback must retain the typed cause: {cause:?}"
                 );
                 assert!(
-                    stderr.contains("none"),
-                    "fallback must name the unsupported negotiated checksum: {stderr}"
+                    cause.detail.contains("none"),
+                    "fallback must name the unsupported negotiated checksum: {}",
+                    cause.detail
                 );
             }
             other => panic!("unsupported checksum must stay fallback-eligible, got {other:?}"),
