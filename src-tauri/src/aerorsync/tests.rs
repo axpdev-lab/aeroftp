@@ -2892,17 +2892,30 @@ fn production_unsafe_surface_matches_the_documented_count() {
     assert_eq!(total, 19, "documented total in the parity docs is 19");
 }
 
-/// The aerorsync module is on its way to a standalone crate (Phase A of the
-/// standalone-crate plan). Every `crate::<application module>` line inside
-/// it is coupling the crate cannot carry, so the inventory below is a
-/// budget: it may only shrink. Unlike the `unsafe` count above, whole-file
+/// The module imports nothing from the application. That is the end state
+/// of the standalone-crate plan's first phase, and this is where it is
+/// enforced: every `crate::<application module>` line inside the module is
+/// coupling the crate cannot carry, and there are none left, so the
+/// inventory is empty and the assertion names the file and the line of
+/// anything that comes back. Unlike the `unsafe` count above, whole-file
 /// test harnesses are NOT excluded: in the crate, test code cannot import
 /// the application either.
 ///
+/// An empty inventory measured by a blind scan would be a false green, so
+/// every refusal the scan needs to stay honest is still here: the forms
+/// below fail the test outright rather than being counted. That list is
+/// a syntactic denylist, and it is worth saying what that means: it
+/// refuses the ways of reaching the crate root we know how to spell, not
+/// every way that exists. A second reviewer got a green out of it with
+/// `use crate as app;`, which is why the rename of the root is refused
+/// now. The end state is a check that reads paths with a parser instead
+/// of substrings; until then, a new spelling that gets through belongs
+/// in this list the day it is found.
+///
 /// The exclusion is `crate::aerorsync` compared as a whole identifier, never
-/// as a prefix: `crate::aerorsync_adapter`, the application-side adapter the
-/// A3 tranche creates, is an application import and must count, because the
-/// crate must never depend on its own adapter. Grouped imports
+/// as a prefix: `crate::aerorsync_adapter`, the application-side adapter,
+/// is an application import and must be refused, because the crate must
+/// never depend on its own adapter. Grouped imports
 /// (`use crate::{a, b}`) fail outright so a mixed group cannot hide an
 /// application module next to `aerorsync`; `super::super::` is the crate
 /// root seen from a module file and is refused for the same reason.
@@ -2914,16 +2927,7 @@ fn production_unsafe_surface_matches_the_documented_count() {
 /// with spaces is not handled here: `cargo fmt --check` rejects it before
 /// this test runs.
 #[test]
-fn app_import_budget_matches_the_documented_inventory() {
-    // (file, application module, occurrences). Update in the same commit
-    // that removes a line, never to add one.
-    const DOCUMENTED: [(&str, &str, usize); 5] = [
-        ("delta_transport_impl.rs", "delta_transport", 1),
-        ("delta_transport_impl.rs", "rsync_over_ssh", 8),
-        ("live_tests.rs", "delta_transport", 1),
-        ("local_transport.rs", "delta_transport", 1),
-        ("local_transport.rs", "rsync_over_ssh", 1),
-    ];
+fn aerorsync_module_imports_nothing_from_the_app() {
     // Assembled from pieces so this file's own source does not trip the scan.
     let needle = ["crate", "::"].concat();
     let root_alias = ["super::", "super::"].concat();
@@ -2936,6 +2940,14 @@ fn app_import_budget_matches_the_documented_inventory() {
         ["include", "!("].concat(),
         ["include_str", "!("].concat(),
         ["macro_rules", "!"].concat(),
+    ];
+    // Renaming the crate root reaches the application without ever writing
+    // the prefix this scan looks for: `use crate as app;` and then
+    // `app::settings`. Both spellings of the rename are refused where the
+    // alias is created, which is the only place a flat scan can see it.
+    let root_aliases = [
+        ["crate", " as "].concat(),
+        ["extern ", "crate self"].concat(),
     ];
 
     fn dir_holds_rust_source(dir: &std::path::Path) -> bool {
@@ -2952,7 +2964,7 @@ fn app_import_budget_matches_the_documented_inventory() {
     }
 
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync");
-    let mut found: Vec<(String, String, usize)> = Vec::new();
+    let mut found: Vec<(String, usize, String)> = Vec::new();
     let mut scanned = 0usize;
 
     for entry in std::fs::read_dir(&dir).expect("aerorsync module directory must be readable") {
@@ -2982,6 +2994,22 @@ fn app_import_budget_matches_the_documented_inventory() {
                 "{name} uses `{hatch}`: the import scan reads one flat directory and cannot \
                  see through it"
             );
+        }
+        // Line-based and comment-skipping, unlike the hatches above: a
+        // doc-comment that explains the refusal must not trip it.
+        for (index, line) in src.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") || trimmed.starts_with('*') {
+                continue;
+            }
+            for alias in &root_aliases {
+                assert!(
+                    !line.contains(alias.as_str()),
+                    "{name}:{}: renames the crate root with `{alias}`: an alias reaches the \
+                     application without ever spelling the prefix this scan counts",
+                    index + 1
+                );
+            }
         }
         for (index, line) in src.lines().enumerate() {
             let trimmed = line.trim_start();
@@ -3017,13 +3045,7 @@ fn app_import_budget_matches_the_documented_inventory() {
                     } else {
                         ident.clone()
                     };
-                    match found
-                        .iter_mut()
-                        .find(|(f, m, _)| *f == name && *m == module)
-                    {
-                        Some(hit) => hit.2 += 1,
-                        None => found.push((name.clone(), module, 1)),
-                    }
+                    found.push((name.clone(), lineno, module));
                 }
                 rest = &after[ident.len()..];
             }
@@ -3035,15 +3057,8 @@ fn app_import_budget_matches_the_documented_inventory() {
     );
 
     found.sort();
-    let mut expected: Vec<(String, String, usize)> = DOCUMENTED
-        .iter()
-        .map(|(f, m, n)| ((*f).to_string(), (*m).to_string(), *n))
-        .collect();
-    expected.sort();
-
-    assert_eq!(
-        found, expected,
-        "the module's import budget moved; it may only shrink, update the inventory in \
-         the same commit"
+    assert!(
+        found.is_empty(),
+        "the module imports the application: {found:?}"
     );
 }

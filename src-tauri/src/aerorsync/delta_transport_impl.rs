@@ -1,20 +1,22 @@
-//! A4: `AerorsyncDeltaTransport`: production-facing `DeltaTransport`
-//! implementation backed by the Strada C native rsync driver.
+//! `AerorsyncDeltaTransport`: the transport the native rsync driver
+//! drives, with a crate-owned surface.
 //!
-//! The module is the bridge between the prototype driver
-//! (`AerorsyncDriver` + the `WarningCollector` event sink) and the production
-//! delta-transport trait consumed by the sync loop, whose
-//! implementation lives in the application adapter. It owns:
+//! Everything here speaks the module's own types. The entry points take
+//! paths and an optional progress sink and return a `TransferReport` or a
+//! `TransferError`; nothing in this file names an application type, and
+//! the test that measures it is
+//! `tests::aerorsync_module_imports_nothing_from_the_app`. What the
+//! application does with the outcome, including which of its own error
+//! variants a failure becomes, lives in the adapter. It owns:
 //!
 //! - Construction of the SSH transport, driver and engine adapter for
 //!   each individual transfer (no cross-transfer session caching: the
 //!   trait methods are `&self`, so we avoid locking altogether).
-//! - Reporting a failure as a crate-owned `types::TransferError`, which
-//!   carries the typed `AerorsyncError` and the commit flag observed at
-//!   the failure site. Turning that into an application error, through
-//!   the `fallback_policy::classify_fallback` matrix, belongs to the
-//!   application adapter since the A3 tranche: the module does not name
-//!   the application error type, and cannot import the adapter either.
+//! - Reporting a failure as a `types::TransferError`, which carries the
+//!   typed `AerorsyncError` and the commit flag observed at the failure
+//!   site. Turning that into an application error, through the
+//!   `fallback_policy::classify_fallback` matrix, belongs to the
+//!   application adapter: the module cannot import it, by construction.
 //! - Atomic disk write of the download result via the temp-file + rename
 //!   helper with kill-9 invariant pin (`write_atomic_chunked`, owned by
 //!   `streaming_writer` since the A1 crate tranche; `WriteAtomicError`
@@ -23,7 +25,7 @@
 //! # Q5 PreCommit / PostCommit semantics (recap)
 //!
 //! The driver flips `committed = true` when it writes the first outbound
-//! delta byte. The A4 adapter additionally tracks a `local_committed`
+//! delta byte. The download path additionally tracks a `local_committed`
 //! boolean through `write_atomic_chunked`: once the temp file is open,
 //! subsequent failures must NOT silently fall back to classic (the disk
 //! has been touched). `WriteAtomicError::PostOpen` surfaces as a
@@ -73,15 +75,12 @@ use crate::aerorsync::native_driver::{
 use crate::aerorsync::real_wire::{is_symlink_mode, FileListEntry};
 use crate::aerorsync::remote_command::{EffectiveMetadataFlags, RemoteCommandSpec};
 use crate::aerorsync::russh_session_transport::RusshSessionTransport;
-use crate::aerorsync::ssh_transport::{
-    SshHostKeyPolicy, SshRemoteShellTransport, SshTransportConfig,
-};
+use crate::aerorsync::ssh_transport::{SshRemoteShellTransport, SshTransportConfig};
 use crate::aerorsync::streaming_writer::{StreamingAtomicWriter, WriteAtomicError, TEMP_SUFFIX};
 use crate::aerorsync::transport::{
-    CancelHandle, RawRemoteShellTransport, RemoteExecRequest, RemoteShellTransport, TransportProbe,
+    CancelHandle, RawRemoteShellTransport, RemoteShellTransport, TransportProbe,
 };
 use crate::aerorsync::types::{AerorsyncError, TransferError, TransferReport};
-use crate::rsync_over_ssh::{RsyncConfig, RsyncError};
 
 /// Display name surfaced by `DeltaTransport::name()`.
 pub(crate) const AERORSYNC_TRANSPORT_NAME: &str = "aerorsync-proto-31";
@@ -198,74 +197,18 @@ impl AerorsyncDeltaTransport {
             self.fail_on_metadata_loss,
         )
     }
-
-    /// Convenience constructor that maps the production `RsyncConfig`
-    /// (used by `providers::sftp::delta_transport`) onto the prototype's
-    /// `SshTransportConfig`. `host_key_policy` is provided by the caller
-    /// so the factory (Zona B1) can honour whatever pinning the SFTP
-    /// session established during connect.
-    pub fn from_rsync_config(
-        cfg: &RsyncConfig,
-        host_key_policy: SshHostKeyPolicy,
-    ) -> Result<Self, RsyncError> {
-        // Z.4.5 R1 dispatch step (2026-05-14): the previous boundary
-        // refusal `Err(PasswordAuthUnsupported)` was a placeholder while
-        // the russh transport gained password auth. Now that
-        // `RusshSessionTransport::connect` branches on
-        // `SshTransportConfig::usable_password()`, the gate moves to
-        // `RsyncConfig::validate_auth_material()` which enforces:
-        //   - SshKey  → ssh_key_path required (else MissingKey)
-        //   - Password → ssh_password required and non-empty (else MissingPassword)
-        //   - Neither → HardRejection (integration bug, never silently retry)
-        // Callers that want password-based delta sync can now construct
-        // an `RsyncConfig { auth_method: Password, ssh_password: Some(_), .. }`
-        // and the russh leg picks it up. Subprocess `rsync_over_ssh::build_ssh_e_arg`
-        // still refuses Password upfront so the binary path never accidentally
-        // shells out without auth material.
-        cfg.validate_auth_material()?;
-
-        // Password-only profiles legitimately have no key path. The
-        // russh leg ignores `private_key_path` when `usable_password()`
-        // is Some, so an empty placeholder is safe; it is never opened
-        // or dereferenced. We MUST NOT default to `~/.ssh/id_rsa` or
-        // any other concrete path: that would silently load credentials
-        // the user did not opt into.
-        let key_path = cfg.ssh_key_path.clone().unwrap_or_default();
-        let ssh_config = SshTransportConfig {
-            host: cfg.ssh_host.clone(),
-            port: cfg.ssh_port.unwrap_or(22),
-            username: cfg.ssh_user.clone(),
-            private_key_path: key_path,
-            connect_timeout_ms: 10_000,
-            io_timeout_ms: 30_000,
-            worker_idle_poll_ms: 250,
-            max_frame_size: 1 << 20,
-            host_key_policy,
-            auth_password: cfg.ssh_password.clone(),
-            // An Agent profile carries no key/password; the russh leg
-            // resolves SSH_AUTH_SOCK at connect time. `prefers_russh_leg`
-            // then routes probe + single-shot through russh (libssh2 is
-            // pubkey-file-only).
-            auth_agent: matches!(cfg.auth_method, crate::rsync_over_ssh::AuthMethod::Agent),
-            // B.1/B.4: probe stock `rsync --version` on the remote. The
-            // parser in `parse_probe_protocol` extracts the numeric
-            // protocol version from the multi-line banner. A missing
-            // `rsync` binary surfaces as exit != 0 and is mapped to
-            // `RsyncError::RemoteNotAvailable` (soft classic fallback);
-            // only `HostKeyRejected` escalates to `HardRejection`.
-            probe_request: RemoteExecRequest {
-                program: "rsync".into(),
-                args: vec!["--version".into()],
-                environment: Vec::new(),
-            },
-        };
-        Ok(Self::new(ssh_config, cfg.min_file_size))
-    }
 }
 
 // --- upload flow ---------------------------------------------------------
 
 impl AerorsyncDeltaTransport {
+    /// Read-only view of the SSH configuration this transport was built
+    /// with. The application adapter reads it to check what a profile
+    /// turned into; nothing outside can mutate it.
+    pub fn ssh_config(&self) -> &SshTransportConfig {
+        &self.ssh_config
+    }
+
     /// Endpoint of the configured SSH leg, for the adapter's log lines.
     pub(crate) fn endpoint(&self) -> (&str, u16) {
         (&self.ssh_config.host, self.ssh_config.port)
@@ -2207,12 +2150,6 @@ pub(crate) fn map_write_atomic_error(err: WriteAtomicError) -> TransferError {
 mod tests {
     use super::*;
     use crate::aerorsync::streaming_writer::{write_atomic_chunked, write_atomic_chunked_sparse};
-    // `DeltaTransport` is what the lane 3 tests need in scope to drive the
-    // production path; the implementation itself lives in the application
-    // adapter and is resolved crate-wide. Kept on one line so the module's
-    // import budget still counts a single application import here.
-    #[cfg_attr(not(ci_lane3), allow(unused_imports))]
-    use crate::delta_transport::{DeltaBatch, DeltaTransport};
     use std::io::Write;
     use std::time::Duration;
     use tempfile::TempDir;
@@ -3437,7 +3374,7 @@ mod tests {
             MockTransportConfig::healthy_upload()
                 .with_raw_inbound(symlink_download_session_inbound("down.lnk", target)),
         );
-        let stats = do_download(
+        let report = do_download(
             transport,
             CancelHandle::inert(),
             "/remote/down.lnk",
@@ -3450,7 +3387,7 @@ mod tests {
         )
         .await
         .expect("symlink download must create the link");
-        assert_eq!(stats.total_size, target.len() as u64);
+        assert_eq!(report.total_size, target.len() as u64);
 
         let meta = std::fs::symlink_metadata(&local).unwrap();
         assert!(meta.file_type().is_symlink(), "local must be a symlink");
@@ -3519,6 +3456,7 @@ mod tests {
 
     #[cfg(all(ci_lane3, unix))]
     fn lane3_ssh_config(key_path: PathBuf) -> crate::aerorsync::ssh_transport::SshTransportConfig {
+        use crate::aerorsync::ssh_transport::SshHostKeyPolicy;
         use crate::aerorsync::transport::RemoteExecRequest;
         crate::aerorsync::ssh_transport::SshTransportConfig {
             host: "127.0.0.1".into(),
@@ -3604,7 +3542,7 @@ mod tests {
         let remote_path = format!("/workspace/lane3-symlink-up-{nanos}.lnk");
 
         let transport = SshRemoteShellTransport::new(lane3_ssh_config(key_path.clone()));
-        let stats = do_upload(
+        let report = do_upload(
             transport,
             CancelHandle::inert(),
             &link,
@@ -3617,7 +3555,7 @@ mod tests {
         )
         .await
         .expect("live symlink upload against stock rsync");
-        assert_eq!(stats.total_size, relative_target.len() as u64);
+        assert_eq!(report.total_size, relative_target.len() as u64);
 
         let observed = lane3_ssh_testuser(&key_path, &format!("readlink '{remote_path}'"));
         eprintln!("[lane3-symlink] server readlink: {observed}");
@@ -3665,7 +3603,7 @@ mod tests {
         let dir = fresh_tempdir();
         let local = dir.path().join("lane3-dl.lnk");
         let transport = SshRemoteShellTransport::new(lane3_ssh_config(key_path.clone()));
-        let stats = do_download(
+        let report = do_download(
             transport,
             CancelHandle::inert(),
             &remote_link,
@@ -3678,7 +3616,7 @@ mod tests {
         )
         .await
         .expect("live symlink download against stock rsync");
-        assert_eq!(stats.total_size, relative_target.len() as u64);
+        assert_eq!(report.total_size, relative_target.len() as u64);
 
         let meta = std::fs::symlink_metadata(&local).expect("local link created");
         assert!(meta.file_type().is_symlink(), "local must be a symlink");
@@ -4071,12 +4009,12 @@ PY"#
 
         let transport =
             AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_xattrs(true);
-        let stats = transport
-            .upload(&local, &remote_path)
+        let report = transport
+            .upload_inner(&local, &remote_path, None)
             .await
             .unwrap_or_else(|e| panic!("[{label}] live xattr upload failed: {e:?}"));
         assert_eq!(
-            stats.total_size,
+            report.total_size,
             payload.len() as u64,
             "[{label}] transferred size"
         );
@@ -4223,11 +4161,11 @@ PY"#
         let local = dir.path().join("lane3-xattr-dl.bin");
         let transport =
             AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_xattrs(true);
-        let stats = transport
-            .download(&remote_path, &local)
+        let report = transport
+            .download_inner(&remote_path, &local, None)
             .await
             .expect("live xattr download against stock rsync");
-        assert_eq!(stats.total_size, payload.len() as u64);
+        assert_eq!(report.total_size, payload.len() as u64);
 
         let got_bytes = std::fs::read(&local).expect("read downloaded file");
         assert_eq!(got_bytes.as_slice(), payload, "download content must match");
@@ -4395,11 +4333,11 @@ PY"#
         let remote_path = format!("/workspace/lane3-acl-up-{nanos}.bin");
         let transport =
             AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_acls(true);
-        let stats = transport
-            .upload(&local, &remote_path)
+        let report = transport
+            .upload_inner(&local, &remote_path, None)
             .await
             .expect("live ACL upload against stock rsync");
-        assert_eq!(stats.total_size, payload.len() as u64);
+        assert_eq!(report.total_size, payload.len() as u64);
         assert_eq!(
             lane3_remote_sha256(&key_path, &remote_path),
             lane3_local_sha256(&local),
@@ -4454,11 +4392,11 @@ PY"#
         let local = dir.path().join("lane3-acl-download.bin");
         let transport =
             AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_acls(true);
-        let stats = transport
-            .download(&remote_path, &local)
+        let report = transport
+            .download_inner(&remote_path, &local, None)
             .await
             .expect("live ACL download against stock rsync");
-        assert_eq!(stats.total_size, payload.len() as u64);
+        assert_eq!(report.total_size, payload.len() as u64);
         assert_eq!(
             std::fs::read(&local).expect("read downloaded ACL payload"),
             payload
@@ -4528,39 +4466,36 @@ PY"#
 
         let transport =
             AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_xattrs(true);
-        let mut batch = transport
-            .begin_batch()
-            .await
-            .expect("begin_batch must not error on a reachable harness");
-        // begin_batch degrades to NoopBatch when the russh connect fails, and
-        // NoopBatch::upload would then fail with a message about session reuse
-        // that says nothing about xattrs. Name the real cause here instead.
-        assert!(
-            !batch.is_noop(),
-            "batch degraded to NoopBatch: russh could not connect to the lane 3 harness, \
-             so the batch xattr path was never exercised"
-        );
+        // `open_batch` reports a failed handshake instead of degrading: the
+        // degradation to the application's no-op batch is the adapter's
+        // decision, so here a connect failure names itself.
+        let batch = transport.open_batch().await.unwrap_or_else(|e| {
+            panic!(
+                "russh could not connect to the lane 3 harness, so the batch xattr \
+                 path was never exercised: {e}"
+            )
+        });
 
-        let stats_a = batch
-            .upload(&local_a, &remote_a)
+        let report_a = batch
+            .upload_file(&local_a, &remote_a)
             .await
             .expect("batch upload of file a");
         assert_eq!(
-            stats_a.total_size,
+            report_a.total_size,
             std::fs::metadata(&local_a).unwrap().len(),
             "[batch-a] transferred size"
         );
-        let stats_b = batch
-            .upload(&local_b, &remote_b)
+        let report_b = batch
+            .upload_file(&local_b, &remote_b)
             .await
             .expect("batch upload of file b");
         assert_eq!(
-            stats_b.total_size,
+            report_b.total_size,
             std::fs::metadata(&local_b).unwrap().len(),
             "[batch-b] transferred size"
         );
 
-        let batch_stats = batch.finalize().await.expect("batch finalize");
+        let batch_stats = Box::new(batch).batch_totals().await;
         assert_eq!(
             batch_stats.files_transferred, 2,
             "both files must be counted by the batch"
@@ -4694,11 +4629,11 @@ PY"#
             1_000_000, // prohibitive threshold: a symlink must bypass TooSmall
         )
         .with_xattrs(true);
-        let stats = transport
-            .upload(&link, &remote_link)
+        let report = transport
+            .upload_inner(&link, &remote_link, None)
             .await
             .expect("live symlink upload with -X negotiated must not fail (pre-R2 risk: EPERM)");
-        assert_eq!(stats.total_size, relative_target.len() as u64);
+        assert_eq!(report.total_size, relative_target.len() as u64);
 
         let ftype = lane3_ssh_testuser(
             &key_path,
@@ -5145,14 +5080,14 @@ PY"#
     async fn aerorsync_batch_reuses_ssh_session() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let mut batch = AerorsyncBatch::new(transport, 1, false, false, false);
+        let batch = AerorsyncBatch::new(transport, 1, false, false, false);
         let dir = fresh_tempdir();
         let local = write_test_file(&dir, "batch_reuse.bin", b"1234567890");
 
         // All operations fail because the test transport has no live handle,
         // but they still exercise the per-file open_raw_stream attempt path.
         for _ in 0..3 {
-            let _ = batch.upload(&local, "/remote/reuse.bin").await;
+            let _ = batch.upload_file(&local, "/remote/reuse.bin").await;
         }
 
         assert_eq!(batch.transport.handshake_count(), 1);
@@ -5162,15 +5097,15 @@ PY"#
     async fn aerorsync_batch_per_file_open_raw_stream_count_equals_file_count() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let mut batch = AerorsyncBatch::new(transport, 1, false, false, false);
+        let batch = AerorsyncBatch::new(transport, 1, false, false, false);
         let dir = fresh_tempdir();
         let a = write_test_file(&dir, "a.bin", b"AAAA");
         let b = write_test_file(&dir, "b.bin", b"BBBB");
 
-        let _ = batch.upload(&a, "/remote/a.bin").await;
-        let _ = batch.upload(&b, "/remote/b.bin").await;
+        let _ = batch.upload_file(&a, "/remote/a.bin").await;
+        let _ = batch.upload_file(&b, "/remote/b.bin").await;
         let _ = batch
-            .download("/remote/c.bin", &dir.path().join("c.bin"))
+            .download_file("/remote/c.bin", &dir.path().join("c.bin"))
             .await;
 
         assert_eq!(batch.transport.raw_open_count(), 3);
@@ -5182,12 +5117,9 @@ PY"#
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
         let batch = AerorsyncBatch::new(transport, 1, false, false, false);
 
-        let stats = Box::new(batch)
-            .finalize()
-            .await
-            .expect("finalize should succeed");
+        let totals = Box::new(batch).batch_totals().await;
 
-        assert_eq!(stats.session_count, 1);
+        assert_eq!(totals.session_count, 1);
     }
 
     #[tokio::test]
@@ -5200,207 +5132,9 @@ PY"#
         let batch = AerorsyncBatch::new(transport, 1, false, false, false);
         batch.transport.test_set_handshake_count(2);
 
-        let stats = Box::new(batch)
-            .finalize()
-            .await
-            .expect("finalize should succeed");
+        let totals = Box::new(batch).batch_totals().await;
 
-        assert_eq!(stats.session_count, 2);
-    }
-
-    // -- from_rsync_config: Z.4.5 R1 wire-up --------------------------------
-
-    /// Z.4.5 R1: when the production [`RsyncConfig`] carries an SSH
-    /// password (a password-auth rsync-over-SSH profile), the
-    /// constructor MUST
-    /// propagate it onto [`SshTransportConfig::auth_password`] so the
-    /// russh leg can pick it up. The propagation is independent of the
-    /// `auth_method` discriminant: a profile may legitimately carry
-    /// both a key and a password (e.g. for paranoid two-factor setups
-    /// in the future); the actual selection happens inside
-    /// `RusshSessionTransport::connect`.
-    #[test]
-    fn from_rsync_config_propagates_password_to_transport() {
-        use crate::rsync_over_ssh::AuthMethod;
-        use secrecy::{ExposeSecret, SecretString};
-        use std::path::PathBuf;
-        let dir = fresh_tempdir();
-        let key_path = dir.path().join("id_dummy");
-        std::fs::write(&key_path, b"-----BEGIN OPENSSH PRIVATE KEY-----\nfake\n").unwrap();
-
-        let cfg = RsyncConfig {
-            ssh_user: "tester".into(),
-            ssh_host: "example.invalid".into(),
-            ssh_port: Some(2222),
-            ssh_key_path: Some(key_path.clone()),
-            ssh_password: Some(SecretString::from("rsync-password".to_string())),
-            auth_method: AuthMethod::SshKey,
-            ..Default::default()
-        };
-        let transport =
-            AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
-                .expect("from_rsync_config should accept SshKey method with both materials");
-        assert_eq!(transport.ssh_config.host, "example.invalid");
-        assert_eq!(transport.ssh_config.port, 2222);
-        assert_eq!(transport.ssh_config.private_key_path, key_path);
-        let propagated = transport
-            .ssh_config
-            .auth_password
-            .as_ref()
-            .expect("ssh_password must be propagated");
-        assert_eq!(propagated.expose_secret(), "rsync-password");
-        // And the helper agrees:
-        assert!(transport.ssh_config.usable_password().is_some());
-        let _ = PathBuf::from("placeholder"); // silence unused import warning on some CI configs
-    }
-
-    /// Z.4.5 R1 dispatch step (2026-05-14): the boundary refusal of
-    /// `auth_method=Password` is gone. A password-only `RsyncConfig`
-    /// now produces a transport whose `auth_password` is set and whose
-    /// `private_key_path` is the empty placeholder (the russh leg
-    /// ignores the key path when `usable_password()` is Some).
-    #[test]
-    fn from_rsync_config_accepts_password_only_method() {
-        use crate::rsync_over_ssh::AuthMethod;
-        use secrecy::{ExposeSecret, SecretString};
-
-        let cfg = RsyncConfig {
-            ssh_user: "tester".into(),
-            ssh_host: "example.invalid".into(),
-            ssh_password: Some(SecretString::from("rsync-password".to_string())),
-            auth_method: AuthMethod::Password,
-            ..Default::default()
-        };
-        let transport =
-            AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
-                .expect("password-only RsyncConfig should now produce a transport");
-        // Empty placeholder (NOT a default ~/.ssh path): russh leg ignores it.
-        assert_eq!(
-            transport.ssh_config.private_key_path,
-            std::path::PathBuf::new(),
-            "password-only profile must not silently inject a default key path"
-        );
-        let propagated = transport
-            .ssh_config
-            .auth_password
-            .as_ref()
-            .expect("ssh_password must be propagated");
-        assert_eq!(propagated.expose_secret(), "rsync-password");
-        assert!(transport.ssh_config.usable_password().is_some());
-    }
-
-    /// SSH agent auth: a `RsyncConfig { auth_method: Agent }` with no key
-    /// and no password must produce a transport whose `auth_agent` flag
-    /// is set, no password propagated, and an empty key placeholder. The
-    /// russh leg resolves SSH_AUTH_SOCK at connect time; nothing static
-    /// is validated or injected here.
-    #[test]
-    fn from_rsync_config_agent_method_sets_auth_agent_flag() {
-        use crate::rsync_over_ssh::AuthMethod;
-
-        let cfg = RsyncConfig {
-            ssh_user: "tester".into(),
-            ssh_host: "example.invalid".into(),
-            ssh_key_path: None,
-            ssh_password: None,
-            auth_method: AuthMethod::Agent,
-            ..Default::default()
-        };
-        let transport =
-            AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
-                .expect("agent RsyncConfig should produce a transport");
-        assert!(
-            transport.ssh_config.auth_agent,
-            "auth_agent must be set for AuthMethod::Agent"
-        );
-        assert!(
-            transport.ssh_config.auth_password.is_none(),
-            "agent profile must not carry a password"
-        );
-        assert_eq!(
-            transport.ssh_config.private_key_path,
-            std::path::PathBuf::new(),
-            "agent profile must not inject a default key path"
-        );
-        assert!(
-            transport.ssh_config.prefers_russh_leg(),
-            "agent profile must route through the russh leg"
-        );
-    }
-
-    /// Z.4.5 R1 dispatch step: `validate_auth_material()` now gates the
-    /// boundary instead of the old hard refusal. A `Password` method
-    /// without a non-empty password surfaces `MissingPassword`, NOT
-    /// `PasswordAuthUnsupported` (which has been removed from the
-    /// boundary as of this step).
-    #[test]
-    fn from_rsync_config_password_method_without_password_returns_missing_password() {
-        use crate::rsync_over_ssh::AuthMethod;
-
-        let cfg = RsyncConfig {
-            ssh_user: "tester".into(),
-            ssh_host: "example.invalid".into(),
-            ssh_password: None,
-            ssh_key_path: Some(std::path::PathBuf::from("/tmp/key")),
-            auth_method: AuthMethod::Password,
-            ..Default::default()
-        };
-        match AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny) {
-            Err(RsyncError::MissingPassword) => {}
-            Err(other) => {
-                panic!("expected MissingPassword via validate_auth_material, got Err({other:?})")
-            }
-            Ok(_) => panic!("expected MissingPassword, got Ok(_)"),
-        }
-    }
-
-    /// Z.4.5 R1 dispatch step: empty SecretString must be rejected by
-    /// `validate_auth_material()` so a misconfigured profile cannot
-    /// reach the russh leg with a zero-length password.
-    #[test]
-    fn from_rsync_config_password_method_with_empty_password_returns_missing_password() {
-        use crate::rsync_over_ssh::AuthMethod;
-        use secrecy::SecretString;
-
-        let cfg = RsyncConfig {
-            ssh_user: "tester".into(),
-            ssh_host: "example.invalid".into(),
-            ssh_password: Some(SecretString::from(String::new())),
-            auth_method: AuthMethod::Password,
-            ..Default::default()
-        };
-        match AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny) {
-            Err(RsyncError::MissingPassword) => {}
-            Err(other) => panic!("expected MissingPassword, got Err({other:?})"),
-            Ok(_) => panic!("expected MissingPassword, got Ok(_)"),
-        }
-    }
-
-    /// Z.4.5 R1 dispatch step: a config that carries neither key nor
-    /// password is still rejected as `HardRejection`. This is the
-    /// "integration bug" guard from `validate_auth_material()`: it is
-    /// not a credential failure (which the user can fix with input) but
-    /// a wiring bug (the call site forgot to attach material). The
-    /// dispatch must not silently fall back to another transport.
-    #[test]
-    fn from_rsync_config_with_no_auth_material_is_hard_rejection() {
-        use crate::rsync_over_ssh::AuthMethod;
-
-        let cfg = RsyncConfig {
-            ssh_user: "tester".into(),
-            ssh_host: "example.invalid".into(),
-            ssh_password: None,
-            ssh_key_path: None,
-            auth_method: AuthMethod::SshKey,
-            ..Default::default()
-        };
-        match AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny) {
-            Err(RsyncError::HardRejection(message)) => {
-                assert!(message.contains("neither ssh_key_path nor ssh_password"));
-            }
-            Err(other) => panic!("expected HardRejection, got Err({other:?})"),
-            Ok(_) => panic!("expected HardRejection, got Ok(_)"),
-        }
+        assert_eq!(totals.session_count, 2);
     }
 
     /// Regression: WD MyCloud early-close and transient delta failures.

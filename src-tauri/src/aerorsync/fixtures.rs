@@ -358,7 +358,7 @@ impl RealRsyncBaselineByteTranscript {
 // Locale-tolerant number parsing: copy of `crate::number_parsing`, kept
 // identical by `number_parsing::tests::aerorsync_fixture_parsers_stay_identical`.
 // The module must not import the application (see
-// `tests::app_import_budget_matches_the_documented_inventory`), so the two
+// `tests::aerorsync_module_imports_nothing_from_the_app`), so the two
 // entry points and their three private helpers live here verbatim.
 // ---------------------------------------------------------------------------
 
