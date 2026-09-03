@@ -118,6 +118,9 @@ jobs:
       - name: Install Linux dependencies
         if: matrix.target == 'linux'
         run: |
+          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+          # enough to redden a run, and nothing here installs from them.
+          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
           sudo apt-get update
           # `dbus` is here for the `Rust tests` step below, not for the build.
           # `portal_chooser`'s three cases stand up a throwaway session bus with
@@ -783,6 +786,9 @@ jobs:
         env:
           SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
         run: |
+          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+          # enough to redden a run, and nothing here installs from them.
+          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools binutils file
           ./scripts/snap-abi-check.sh "$SNAP_FILE"
@@ -841,6 +847,9 @@ jobs:
           SNAP_GUI_SCREENSHOT: ${{ runner.temp }}/snap-gui-screenshot.png
         run: |
           set -euo pipefail
+          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+          # enough to redden a run, and nothing here installs from them.
+          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xvfb x11-apps imagemagick
           sudo snap install --dangerous "$SNAP_FILE"

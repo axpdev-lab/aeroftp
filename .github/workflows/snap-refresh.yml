@@ -129,7 +129,11 @@ jobs:
           node-version: '20'
 
       - name: Install audit tooling
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends squashfs-tools
+        # Runner-image extras: Microsoft's apt repos 403 on their InRelease
+        # often enough to redden a run, and nothing here installs from them.
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends squashfs-tools
 
       - name: Audit published revision against the Ubuntu archive
         id: audit
@@ -170,6 +174,9 @@ jobs:
 
       - name: Install Linux build dependencies
         run: |
+          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+          # enough to redden a run, and nothing here installs from them.
+          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
@@ -303,6 +310,9 @@ jobs:
         env:
           SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
         run: |
+          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+          # enough to redden a run, and nothing here installs from them.
+          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools binutils file
           ./ci-tools/scripts/snap-abi-check.sh "$SNAP_FILE" snap/snapcraft.yaml
@@ -349,6 +359,9 @@ jobs:
           SNAP_GUI_SCREENSHOT: ${{ runner.temp }}/snap-gui-screenshot.png
         run: |
           set -euo pipefail
+          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+          # enough to redden a run, and nothing here installs from them.
+          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xvfb x11-apps imagemagick
           sudo snap install --dangerous "$SNAP_FILE"
