@@ -47,15 +47,21 @@ OUT="${1:-$ROOT/target/aerorsync-standalone}"
 # it was protecting. A refusal must not write.
 ROOT_P="$(cd "$ROOT" && pwd -P)"
 DEFAULT_P="$ROOT_P/target/aerorsync-standalone"
-if [ -d "$OUT" ]; then
-    OUT="$(cd "$OUT" && pwd -P)" || { echo "outdir non utilizzabile: ${1:-}" >&2; exit 1; }
-else
-    OUT_PARENT="$(dirname "$OUT")"
-    [ -d "$OUT_PARENT" ] || {
-        echo "outdir non utilizzabile: la directory che dovrebbe contenerlo non esiste ($OUT_PARENT)" >&2
-        exit 1; }
-    OUT="$(cd "$OUT_PARENT" && pwd -P)/$(basename "$OUT")"
-fi
+# Risolve fisicamente la parte della path che esiste e riappende quella che
+# manca. Serve perche' su un checkout appena fatto non esiste ne' la
+# destinazione ne' `target/` che la contiene: una prima stesura pretendeva che
+# il genitore esistesse e ha fatto fallire i tre job della lane sul primo
+# emission step, con la destinazione ordinaria e non con un attacco.
+canon_path() {
+    local p="$1" tail=""
+    while [ ! -d "$p" ]; do
+        tail="$(basename "$p")${tail:+/$tail}"
+        p="$(dirname "$p")"
+    done
+    p="$(cd "$p" && pwd -P)" || return 1
+    if [ -n "$tail" ]; then printf '%s\n' "$p/$tail"; else printf '%s\n' "$p"; fi
+}
+OUT="$(canon_path "$OUT")" || { echo "outdir non utilizzabile: ${1:-}" >&2; exit 1; }
 
 # 1. Rifiuti assoluti: valgono per ogni destinazione, default compreso.
 case "$OUT" in

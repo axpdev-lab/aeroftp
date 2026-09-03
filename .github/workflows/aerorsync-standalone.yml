@@ -19,6 +19,7 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/.cargo/config.toml'
       - 'scripts/aerorsync-emit.sh'
+      - 'scripts/aerorsync-emit-guard-tests.sh'
       - '.github/workflows/aerorsync-standalone.yml'
   pull_request:
     paths:
@@ -26,6 +27,7 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/.cargo/config.toml'
       - 'scripts/aerorsync-emit.sh'
+      - 'scripts/aerorsync-emit-guard-tests.sh'
       - '.github/workflows/aerorsync-standalone.yml'
   workflow_dispatch:
 
@@ -78,6 +80,19 @@ jobs:
             libacl1-dev \
             libssl-dev \
             pkg-config
+
+      # Before the emission, and before the cache step restores a build tree
+      # into the destination: these scenarios delete and re-create it. The
+      # emitter removes its output before writing it, so its guard is all that
+      # stands between a mistyped argument and a deleted directory, and two
+      # reviews walked past two successive versions of it. Linux only: the
+      # scenarios use symlinks, which are a different animal on a Windows
+      # runner, and the property under test is the script's logic, not the
+      # host's.
+      - name: The emitter refuses what it must refuse
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash scripts/aerorsync-emit-guard-tests.sh
 
       - name: Re-emit the module as a standalone crate
         shell: bash
