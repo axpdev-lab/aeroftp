@@ -17,12 +17,14 @@ on:
     paths:
       - 'src-tauri/src/aerorsync/**'
       - 'src-tauri/Cargo.toml'
+      - 'src-tauri/.cargo/config.toml'
       - 'scripts/aerorsync-emit.sh'
       - '.github/workflows/aerorsync-standalone.yml'
   pull_request:
     paths:
       - 'src-tauri/src/aerorsync/**'
       - 'src-tauri/Cargo.toml'
+      - 'src-tauri/.cargo/config.toml'
       - 'scripts/aerorsync-emit.sh'
       - '.github/workflows/aerorsync-standalone.yml'
   workflow_dispatch:

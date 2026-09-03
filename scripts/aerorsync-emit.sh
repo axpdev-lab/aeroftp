@@ -34,15 +34,17 @@ OUT="${1:-$ROOT/target/aerorsync-standalone}"
 # The script removes the output directory before writing it, so a mistyped
 # argument would delete whatever was named. The first version of this guard
 # enumerated the trees to protect, which is a denylist: a review passed it
-# `public/` and the script replaced 89 tracked files with the crate. What is
-# allowed is the short list, so that is what is written here. Exactly two
-# destinations: the default target, and anything outside the repository. An
-# outdir inside the repository that is not the default is refused whatever it
-# is called, and so is an ancestor of the repository, the filesystem root and
-# the home directory.
-# Canonicalizzata SENZA crearla: la prima stesura faceva `mkdir -p` prima dei
-# controlli, quindi un'invocazione rifiutata lasciava comunque una directory
-# nuova dentro l'albero che stava proteggendo. Un rifiuto non deve scrivere.
+# `public/` and the script replaced 89 tracked files with the crate. The second
+# version was an allowlist but exempted the default destination from every
+# check, and a review made the default a symlink to a directory outside the
+# repository, which the exemption then deleted. So the absolute refusals below
+# run first and always, and the default is not trusted by name: it has to
+# resolve, physically, to the exact child of the physical repository, which a
+# symlink anywhere in the path cannot do.
+#
+# Canonicalised WITHOUT creating it: an earlier version ran `mkdir -p` before
+# deciding, so a refused invocation still left a new directory inside the tree
+# it was protecting. A refusal must not write.
 ROOT_P="$(cd "$ROOT" && pwd -P)"
 DEFAULT_P="$ROOT_P/target/aerorsync-standalone"
 if [ -d "$OUT" ]; then
@@ -54,6 +56,29 @@ else
         exit 1; }
     OUT="$(cd "$OUT_PARENT" && pwd -P)/$(basename "$OUT")"
 fi
+
+# 1. Rifiuti assoluti: valgono per ogni destinazione, default compreso.
+case "$OUT" in
+    /|"$HOME")
+        echo "rifiuto: l'outdir e' la radice o la home ($OUT)" >&2; exit 1;;
+esac
+case "$ROOT_P" in
+    "$OUT"/*) echo "rifiuto: l'outdir contiene il repository ($OUT)" >&2; exit 1;;
+esac
+
+# 2. Il default e' ammesso solo se e' davvero lui. Se lo script e' stato
+#    invocato senza argomenti e la risoluzione fisica porta altrove, in mezzo
+#    c'e' un symlink: il target di default e' ignorato da git, quindi puo'
+#    essere preparato cosi' senza che `git status` dica niente.
+if [ $# -eq 0 ] && [ "$OUT" != "$DEFAULT_P" ]; then
+    echo "rifiuto: il target di default non e' una directory dentro il repository" >&2
+    echo "  atteso:   $DEFAULT_P" >&2
+    echo "  risolto:  $OUT" >&2
+    echo "  un componente della path e' un symlink che porta fuori" >&2
+    exit 1
+fi
+
+# 3. Dentro il repository e' ammesso solo il default fisico.
 if [ "$OUT" != "$DEFAULT_P" ]; then
     case "$OUT" in
         "$ROOT_P"|"$ROOT_P"/*)
@@ -61,13 +86,6 @@ if [ "$OUT" != "$DEFAULT_P" ]; then
             echo "  outdir:  $OUT" >&2
             echo "  ammessi: $DEFAULT_P, oppure una destinazione fuori da $ROOT_P" >&2
             exit 1;;
-    esac
-    case "$OUT" in
-        /|"$HOME")
-            echo "rifiuto: l'outdir e' la radice o la home ($OUT)" >&2; exit 1;;
-    esac
-    case "$ROOT_P" in
-        "$OUT"/*) echo "rifiuto: l'outdir contiene il repository ($OUT)" >&2; exit 1;;
     esac
     # Fuori dal repository il nome e' arbitrario, quindi risponde il contenuto:
     # una directory gia' piena che non porta il marcatore di una emissione
@@ -184,6 +202,31 @@ DEV
     done
 } > "$OUT/Cargo.toml"
 
+# 3b. La configurazione Cargo dell'applicazione, copiata e non riscritta. La
+#     build Windows x86_64 dell'app gira da `src-tauri`, che porta
+#     `-C target-feature=+crt-static`; il crate emesso sta altrove e la ricerca
+#     gerarchica di Cargo non visita la directory sorella, quindi
+#     `cfg(target_feature = "crt-static")` era accesa nel binario spedito e
+#     spenta qui. Una review ha nascosto proprio li' una dipendenza reale da un
+#     sorgente dell'applicazione, e check dev, check release, clippy e la
+#     guardia testuale erano tutti verdi. Copiata cosi' com'e', per la stessa
+#     ragione per cui le versioni delle dipendenze si leggono dal manifest
+#     dell'app: un elenco tenuto a mano qui driftrebbe.
+APP_CARGO_CONFIG="$ROOT/src-tauri/.cargo/config.toml"
+if [ -f "$APP_CARGO_CONFIG" ]; then
+    mkdir -p "$OUT/.cargo"
+    {
+        echo "# Copiata da src-tauri/.cargo/config.toml da scripts/aerorsync-emit.sh."
+        echo "# Il crate emesso deve compilare sotto gli stessi rustflags del prodotto"
+        echo "# spedito, altrimenti una cfg che il prodotto accende resta spenta qui."
+        cat "$APP_CARGO_CONFIG"
+    } > "$OUT/.cargo/config.toml"
+    echo "configurazione cargo: copiata da src-tauri/.cargo/config.toml"
+else
+    echo "configurazione cargo dell'app assente: $APP_CARGO_CONFIG" >&2
+    exit 1
+fi
+
 # 4. A manifest of what was emitted. Every entry that is not a directory, with
 #    its mode, so a symlink or a permission change is part of what two runs
 #    compare. It certifies the emitted TREE, not the dependency resolution:
@@ -198,6 +241,8 @@ DEV
 #    with `unexpected EOF while looking for matching`, which is the same
 #    portability problem the python was introduced to solve.
 PY_TMP="$(mktemp "${TMPDIR:-/tmp}/aerorsync-emit-manifest.XXXXXX")"
+# Con `set -e` un fallimento di `cat` o di python3 uscirebbe senza cancellarlo.
+trap 'rm -f "$PY_TMP"' EXIT
 cat > "$PY_TMP" <<'PYEOF'
 import hashlib, os, sys
 
@@ -235,7 +280,6 @@ with open(os.path.join(out, "EMITTED.sha256"), "w", encoding="utf-8") as f:
 print(hashlib.sha256(body.encode("utf-8")).hexdigest())
 PYEOF
 MANIFEST_SHA="$(python3 "$PY_TMP" "$OUT")"
-rm -f "$PY_TMP"
 
 echo "emesso in $OUT"
 echo "voci: $(grep -c . "$OUT/EMITTED.sha256")"
