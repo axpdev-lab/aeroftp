@@ -19,6 +19,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+//! Files: `config.rs` turns an application profile into a module
+//! transport, `delta_transport.rs` and `local.rs` carry the two trait
+//! implementations, `errors.rs` holds the maps onto the application
+//! error, statistics and capability types.
+
 pub mod config;
 pub mod delta_transport;
 pub mod errors;
@@ -26,32 +31,63 @@ pub mod local;
 
 #[cfg(test)]
 mod tests {
-    /// The adapter may only reach the module through the surface the
-    /// module publishes on purpose. A new entry in this list is a
-    /// deliberate widening and belongs in the same commit that needs it.
+    /// The adapter declares what it reaches, in both directions.
+    ///
+    /// Toward the application: the module may not name it at all, so
+    /// every application import in the whole boundary is in this file,
+    /// and the list says which file names which module. Toward the
+    /// module: the set of `crate::aerorsync::` submodules the adapter
+    /// touches is the minimum public surface the crate will have to
+    /// expose once it is extracted, so it is written out now, while it
+    /// is small, and it is the starting inventory of that work.
+    ///
+    /// Both lists may only change in the commit that changes the
+    /// adapter, and the failure message says which side moved. The
+    /// adapter naming itself is neither: it is one file of this
+    /// directory reaching another, and it is skipped explicitly. The
+    /// scan is the module's own counter, copied rather than shared:
+    /// the adapter must not depend on the module's test code. Keep the
+    /// two in step.
     #[test]
-    fn aerorsync_adapter_reaches_only_the_module_public_surface() {
-        const ALLOWED: &[&str] = &[
+    fn aerorsync_adapter_declares_its_imports() {
+        /// Application modules the adapter names, file by file.
+        const TOWARD_THE_APPLICATION: &[(&str, &str)] = &[
+            ("config.rs", "rsync_over_ssh"),
+            ("delta_transport.rs", "delta_transport"),
+            ("delta_transport.rs", "rsync_over_ssh"),
+            ("errors.rs", "rsync_over_ssh"),
+            ("local.rs", "delta_transport"),
+            ("local.rs", "rsync_over_ssh"),
+        ];
+        /// Module submodules the adapter reaches. This is the crate's
+        /// minimum public surface after extraction.
+        const TOWARD_THE_MODULE: &[&str] = &[
             "delta_transport_impl",
-            "events",
             "fallback_policy",
-            // `local.rs` implements the trait for the local transport.
             "local_transport",
             "progress",
-            // `config.rs` builds an `SshTransportConfig` out of an
-            // application profile, so it names the module that owns it.
             "ssh_transport",
             "streaming_writer",
             "transport",
             "types",
         ];
+
         // Assembled so this file's own source does not trip the scan.
-        let needle = ["crate", "::aerorsync::"].concat();
+        let needle = ["crate", "::"].concat();
+        let module_prefix = ["crate", "::aerorsync::"].concat();
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync_adapter");
+        let mut toward_app: Vec<(String, String)> = Vec::new();
+        let mut toward_module: Vec<String> = Vec::new();
         let mut scanned = 0usize;
-        let mut checked = 0usize;
+
         for entry in std::fs::read_dir(&dir).expect("adapter directory must be readable") {
             let path = entry.expect("readable dir entry").path();
+            assert!(
+                !path.is_dir(),
+                "{} is a subdirectory the flat scan cannot see; keep adapter sources in \
+                 src/aerorsync_adapter/ itself",
+                path.display()
+            );
             if path.extension().and_then(|e| e.to_str()) != Some("rs") {
                 continue;
             }
@@ -67,31 +103,70 @@ mod tests {
                 if trimmed.starts_with("//") || trimmed.starts_with('*') {
                     continue;
                 }
+                let lineno = index + 1;
                 let mut rest = line;
                 while let Some(at) = rest.find(needle.as_str()) {
                     let after = &rest[at + needle.len()..];
-                    let module: String = after
+                    assert!(
+                        !after.starts_with('{'),
+                        "{name}:{lineno}: split the grouped import; `use {needle}{{..}}` hides \
+                         which side of the boundary a path is on"
+                    );
+                    let ident: String = after
                         .chars()
                         .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
                         .collect();
-                    assert!(
-                        ALLOWED.contains(&module.as_str()),
-                        "{name}:{}: the adapter reaches `{module}`, which is not part of the \
-                         module surface it is allowed to see",
-                        index + 1
-                    );
-                    checked += 1;
-                    rest = &after[module.len()..];
+                    if ident == "aerorsync" {
+                        let tail = &rest[at..];
+                        assert!(
+                            tail.starts_with(module_prefix.as_str()),
+                            "{name}:{lineno}: name a submodule, not the module root"
+                        );
+                        let sub: String = tail[module_prefix.len()..]
+                            .chars()
+                            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                            .collect();
+                        if !toward_module.contains(&sub) {
+                            toward_module.push(sub);
+                        }
+                    } else if ident == "aerorsync_adapter" {
+                        // The adapter naming itself: one file reaching
+                        // another inside this directory is not a step
+                        // across the boundary, and the scan says so out
+                        // loud rather than folding it into either list.
+                    } else if !ident.is_empty() {
+                        let hit = (name.clone(), ident.clone());
+                        if !toward_app.contains(&hit) {
+                            toward_app.push(hit);
+                        }
+                    }
+                    rest = &after[ident.len()..];
                 }
             }
         }
+
         assert!(
-            scanned >= 3,
+            scanned >= 4,
             "the scan saw only {scanned} .rs files: is this still the adapter directory?"
         );
-        assert!(
-            checked > 0,
-            "the scan matched no module path at all: the needle no longer matches the code"
+
+        toward_app.sort();
+        let expected_app: Vec<(String, String)> = TOWARD_THE_APPLICATION
+            .iter()
+            .map(|(f, m)| ((*f).to_string(), (*m).to_string()))
+            .collect();
+        assert_eq!(
+            toward_app, expected_app,
+            "the adapter's application imports moved; declare them in the same commit"
+        );
+
+        toward_module.sort();
+        let expected_module: Vec<String> =
+            TOWARD_THE_MODULE.iter().map(|m| (*m).to_string()).collect();
+        assert_eq!(
+            toward_module, expected_module,
+            "the adapter reaches a different set of module submodules; this list is the \
+             crate's minimum public surface, so declare the change in the same commit"
         );
     }
 }

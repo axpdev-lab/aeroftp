@@ -1,20 +1,22 @@
-//! A4: `AerorsyncDeltaTransport`: production-facing `DeltaTransport`
-//! implementation backed by the Strada C native rsync driver.
+//! `AerorsyncDeltaTransport`: the transport the native rsync driver
+//! drives, with a crate-owned surface.
 //!
-//! The module is the bridge between the prototype driver
-//! (`AerorsyncDriver` + the `WarningCollector` event sink) and the production
-//! delta-transport trait consumed by the sync loop, whose
-//! implementation lives in the application adapter. It owns:
+//! Everything here speaks the module's own types. The entry points take
+//! paths and an optional progress sink and return a `TransferReport` or a
+//! `TransferError`; nothing in this file names an application type, and
+//! the test that measures it is
+//! `tests::aerorsync_module_imports_nothing_from_the_app`. What the
+//! application does with the outcome, including which of its own error
+//! variants a failure becomes, lives in the adapter. It owns:
 //!
 //! - Construction of the SSH transport, driver and engine adapter for
 //!   each individual transfer (no cross-transfer session caching: the
 //!   trait methods are `&self`, so we avoid locking altogether).
-//! - Reporting a failure as a crate-owned `types::TransferError`, which
-//!   carries the typed `AerorsyncError` and the commit flag observed at
-//!   the failure site. Turning that into an application error, through
-//!   the `fallback_policy::classify_fallback` matrix, belongs to the
-//!   application adapter since the A3 tranche: the module does not name
-//!   the application error type, and cannot import the adapter either.
+//! - Reporting a failure as a `types::TransferError`, which carries the
+//!   typed `AerorsyncError` and the commit flag observed at the failure
+//!   site. Turning that into an application error, through the
+//!   `fallback_policy::classify_fallback` matrix, belongs to the
+//!   application adapter: the module cannot import it, by construction.
 //! - Atomic disk write of the download result via the temp-file + rename
 //!   helper with kill-9 invariant pin (`write_atomic_chunked`, owned by
 //!   `streaming_writer` since the A1 crate tranche; `WriteAtomicError`
@@ -23,7 +25,7 @@
 //! # Q5 PreCommit / PostCommit semantics (recap)
 //!
 //! The driver flips `committed = true` when it writes the first outbound
-//! delta byte. The A4 adapter additionally tracks a `local_committed`
+//! delta byte. The download path additionally tracks a `local_committed`
 //! boolean through `write_atomic_chunked`: once the temp file is open,
 //! subsequent failures must NOT silently fall back to classic (the disk
 //! has been touched). `WriteAtomicError::PostOpen` surfaces as a
@@ -2148,12 +2150,6 @@ pub(crate) fn map_write_atomic_error(err: WriteAtomicError) -> TransferError {
 mod tests {
     use super::*;
     use crate::aerorsync::streaming_writer::{write_atomic_chunked, write_atomic_chunked_sparse};
-    // `DeltaTransport` is what the lane 3 tests need in scope to drive the
-    // production path; the implementation itself lives in the application
-    // adapter and is resolved crate-wide. Kept on one line so the module's
-    // import budget still counts a single application import here.
-    #[cfg_attr(not(ci_lane3), allow(unused_imports))]
-    use crate::delta_transport::{DeltaBatch, DeltaTransport};
     use std::io::Write;
     use std::time::Duration;
     use tempfile::TempDir;
@@ -3378,7 +3374,7 @@ mod tests {
             MockTransportConfig::healthy_upload()
                 .with_raw_inbound(symlink_download_session_inbound("down.lnk", target)),
         );
-        let stats = do_download(
+        let report = do_download(
             transport,
             CancelHandle::inert(),
             "/remote/down.lnk",
@@ -3391,7 +3387,7 @@ mod tests {
         )
         .await
         .expect("symlink download must create the link");
-        assert_eq!(stats.total_size, target.len() as u64);
+        assert_eq!(report.total_size, target.len() as u64);
 
         let meta = std::fs::symlink_metadata(&local).unwrap();
         assert!(meta.file_type().is_symlink(), "local must be a symlink");
@@ -3546,7 +3542,7 @@ mod tests {
         let remote_path = format!("/workspace/lane3-symlink-up-{nanos}.lnk");
 
         let transport = SshRemoteShellTransport::new(lane3_ssh_config(key_path.clone()));
-        let stats = do_upload(
+        let report = do_upload(
             transport,
             CancelHandle::inert(),
             &link,
@@ -3559,7 +3555,7 @@ mod tests {
         )
         .await
         .expect("live symlink upload against stock rsync");
-        assert_eq!(stats.total_size, relative_target.len() as u64);
+        assert_eq!(report.total_size, relative_target.len() as u64);
 
         let observed = lane3_ssh_testuser(&key_path, &format!("readlink '{remote_path}'"));
         eprintln!("[lane3-symlink] server readlink: {observed}");
@@ -3607,7 +3603,7 @@ mod tests {
         let dir = fresh_tempdir();
         let local = dir.path().join("lane3-dl.lnk");
         let transport = SshRemoteShellTransport::new(lane3_ssh_config(key_path.clone()));
-        let stats = do_download(
+        let report = do_download(
             transport,
             CancelHandle::inert(),
             &remote_link,
@@ -3620,7 +3616,7 @@ mod tests {
         )
         .await
         .expect("live symlink download against stock rsync");
-        assert_eq!(stats.total_size, relative_target.len() as u64);
+        assert_eq!(report.total_size, relative_target.len() as u64);
 
         let meta = std::fs::symlink_metadata(&local).expect("local link created");
         assert!(meta.file_type().is_symlink(), "local must be a symlink");
@@ -4013,12 +4009,12 @@ PY"#
 
         let transport =
             AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_xattrs(true);
-        let stats = transport
-            .upload(&local, &remote_path)
+        let report = transport
+            .upload_inner(&local, &remote_path, None)
             .await
             .unwrap_or_else(|e| panic!("[{label}] live xattr upload failed: {e:?}"));
         assert_eq!(
-            stats.total_size,
+            report.total_size,
             payload.len() as u64,
             "[{label}] transferred size"
         );
@@ -4165,11 +4161,11 @@ PY"#
         let local = dir.path().join("lane3-xattr-dl.bin");
         let transport =
             AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_xattrs(true);
-        let stats = transport
-            .download(&remote_path, &local)
+        let report = transport
+            .download_inner(&remote_path, &local, None)
             .await
             .expect("live xattr download against stock rsync");
-        assert_eq!(stats.total_size, payload.len() as u64);
+        assert_eq!(report.total_size, payload.len() as u64);
 
         let got_bytes = std::fs::read(&local).expect("read downloaded file");
         assert_eq!(got_bytes.as_slice(), payload, "download content must match");
@@ -4337,11 +4333,11 @@ PY"#
         let remote_path = format!("/workspace/lane3-acl-up-{nanos}.bin");
         let transport =
             AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_acls(true);
-        let stats = transport
-            .upload(&local, &remote_path)
+        let report = transport
+            .upload_inner(&local, &remote_path, None)
             .await
             .expect("live ACL upload against stock rsync");
-        assert_eq!(stats.total_size, payload.len() as u64);
+        assert_eq!(report.total_size, payload.len() as u64);
         assert_eq!(
             lane3_remote_sha256(&key_path, &remote_path),
             lane3_local_sha256(&local),
@@ -4396,11 +4392,11 @@ PY"#
         let local = dir.path().join("lane3-acl-download.bin");
         let transport =
             AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_acls(true);
-        let stats = transport
-            .download(&remote_path, &local)
+        let report = transport
+            .download_inner(&remote_path, &local, None)
             .await
             .expect("live ACL download against stock rsync");
-        assert_eq!(stats.total_size, payload.len() as u64);
+        assert_eq!(report.total_size, payload.len() as u64);
         assert_eq!(
             std::fs::read(&local).expect("read downloaded ACL payload"),
             payload
@@ -4470,39 +4466,36 @@ PY"#
 
         let transport =
             AerorsyncDeltaTransport::new(lane3_ssh_config(key_path.clone()), 0).with_xattrs(true);
-        let mut batch = transport
-            .begin_batch()
-            .await
-            .expect("begin_batch must not error on a reachable harness");
-        // begin_batch degrades to NoopBatch when the russh connect fails, and
-        // NoopBatch::upload would then fail with a message about session reuse
-        // that says nothing about xattrs. Name the real cause here instead.
-        assert!(
-            !batch.is_noop(),
-            "batch degraded to NoopBatch: russh could not connect to the lane 3 harness, \
-             so the batch xattr path was never exercised"
-        );
+        // `open_batch` reports a failed handshake instead of degrading: the
+        // degradation to the application's no-op batch is the adapter's
+        // decision, so here a connect failure names itself.
+        let batch = transport.open_batch().await.unwrap_or_else(|e| {
+            panic!(
+                "russh could not connect to the lane 3 harness, so the batch xattr \
+                 path was never exercised: {e}"
+            )
+        });
 
-        let stats_a = batch
-            .upload(&local_a, &remote_a)
+        let report_a = batch
+            .upload_file(&local_a, &remote_a)
             .await
             .expect("batch upload of file a");
         assert_eq!(
-            stats_a.total_size,
+            report_a.total_size,
             std::fs::metadata(&local_a).unwrap().len(),
             "[batch-a] transferred size"
         );
-        let stats_b = batch
-            .upload(&local_b, &remote_b)
+        let report_b = batch
+            .upload_file(&local_b, &remote_b)
             .await
             .expect("batch upload of file b");
         assert_eq!(
-            stats_b.total_size,
+            report_b.total_size,
             std::fs::metadata(&local_b).unwrap().len(),
             "[batch-b] transferred size"
         );
 
-        let batch_stats = batch.finalize().await.expect("batch finalize");
+        let batch_stats = Box::new(batch).batch_totals().await;
         assert_eq!(
             batch_stats.files_transferred, 2,
             "both files must be counted by the batch"
@@ -4636,11 +4629,11 @@ PY"#
             1_000_000, // prohibitive threshold: a symlink must bypass TooSmall
         )
         .with_xattrs(true);
-        let stats = transport
-            .upload(&link, &remote_link)
+        let report = transport
+            .upload_inner(&link, &remote_link, None)
             .await
             .expect("live symlink upload with -X negotiated must not fail (pre-R2 risk: EPERM)");
-        assert_eq!(stats.total_size, relative_target.len() as u64);
+        assert_eq!(report.total_size, relative_target.len() as u64);
 
         let ftype = lane3_ssh_testuser(
             &key_path,
@@ -5087,14 +5080,14 @@ PY"#
     async fn aerorsync_batch_reuses_ssh_session() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let mut batch = AerorsyncBatch::new(transport, 1, false, false, false);
+        let batch = AerorsyncBatch::new(transport, 1, false, false, false);
         let dir = fresh_tempdir();
         let local = write_test_file(&dir, "batch_reuse.bin", b"1234567890");
 
         // All operations fail because the test transport has no live handle,
         // but they still exercise the per-file open_raw_stream attempt path.
         for _ in 0..3 {
-            let _ = batch.upload(&local, "/remote/reuse.bin").await;
+            let _ = batch.upload_file(&local, "/remote/reuse.bin").await;
         }
 
         assert_eq!(batch.transport.handshake_count(), 1);
@@ -5104,15 +5097,15 @@ PY"#
     async fn aerorsync_batch_per_file_open_raw_stream_count_equals_file_count() {
         let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
-        let mut batch = AerorsyncBatch::new(transport, 1, false, false, false);
+        let batch = AerorsyncBatch::new(transport, 1, false, false, false);
         let dir = fresh_tempdir();
         let a = write_test_file(&dir, "a.bin", b"AAAA");
         let b = write_test_file(&dir, "b.bin", b"BBBB");
 
-        let _ = batch.upload(&a, "/remote/a.bin").await;
-        let _ = batch.upload(&b, "/remote/b.bin").await;
+        let _ = batch.upload_file(&a, "/remote/a.bin").await;
+        let _ = batch.upload_file(&b, "/remote/b.bin").await;
         let _ = batch
-            .download("/remote/c.bin", &dir.path().join("c.bin"))
+            .download_file("/remote/c.bin", &dir.path().join("c.bin"))
             .await;
 
         assert_eq!(batch.transport.raw_open_count(), 3);
@@ -5124,12 +5117,9 @@ PY"#
         let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
         let batch = AerorsyncBatch::new(transport, 1, false, false, false);
 
-        let stats = Box::new(batch)
-            .finalize()
-            .await
-            .expect("finalize should succeed");
+        let totals = Box::new(batch).batch_totals().await;
 
-        assert_eq!(stats.session_count, 1);
+        assert_eq!(totals.session_count, 1);
     }
 
     #[tokio::test]
@@ -5142,12 +5132,9 @@ PY"#
         let batch = AerorsyncBatch::new(transport, 1, false, false, false);
         batch.transport.test_set_handshake_count(2);
 
-        let stats = Box::new(batch)
-            .finalize()
-            .await
-            .expect("finalize should succeed");
+        let totals = Box::new(batch).batch_totals().await;
 
-        assert_eq!(stats.session_count, 2);
+        assert_eq!(totals.session_count, 2);
     }
 
     /// Regression: WD MyCloud early-close and transient delta failures.

@@ -6,10 +6,21 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::aerorsync::delta_transport_impl::AerorsyncDeltaTransport;
+
+/// The speedup these logs used to print came from the application
+/// statistics; the module reports the numbers it measured and the
+/// application computes the ratio. Same formula, so the log line keeps
+/// saying the same thing.
+fn speedup_of(report: &crate::aerorsync::types::TransferReport) -> f64 {
+    if report.session.bytes_sent > 0 {
+        report.total_size as f64 / report.session.bytes_sent as f64
+    } else {
+        1.0
+    }
+}
 use crate::aerorsync::remote_command::RemoteCommandSpec;
 use crate::aerorsync::ssh_transport::{SshHostKeyPolicy, SshTransportConfig};
 use crate::aerorsync::transport::RemoteExecRequest;
-use crate::delta_transport::DeltaTransport;
 
 fn env_path(name: &str) -> PathBuf {
     PathBuf::from(env::var(name).unwrap_or_else(|_| panic!("missing env var {name}")))
@@ -298,8 +309,8 @@ async fn live_real_rsync_native_delta_download_verifies_whole_file() {
 
     // Baseline is already the older basis on disk (harness seeds it). A
     // successful delta reconstructs `expected` and commits atomically.
-    let stats = transport
-        .download(&remote, &local)
+    let report = transport
+        .download_inner(&remote, &local, None)
         .await
         .unwrap_or_else(|e| panic!("native delta download against real rsync failed: {e:?}"));
 
@@ -309,23 +320,23 @@ async fn live_real_rsync_native_delta_download_verifies_whole_file() {
         "reconstructed local bytes must match the remote source"
     );
     assert_eq!(
-        stats.total_size,
+        report.total_size,
         expected.len() as u64,
-        "stats.total_size must equal reconstructed length"
+        "report.total_size must equal reconstructed length"
     );
     eprintln!(
         "live real-rsync native delta download (default/xxh128): total_size={} bytes_sent={} bytes_received={} speedup={:.2} duration_ms={}",
-        stats.total_size,
-        stats.bytes_sent,
-        stats.bytes_received,
-        stats.speedup,
-        stats.duration_ms
+        report.total_size,
+        report.session.bytes_sent,
+        report.session.bytes_received,
+        speedup_of(&report),
+        report.duration_ms
     );
     assert!(
-        stats.bytes_received < stats.total_size || stats.total_size < 4096,
+        report.session.bytes_received < report.total_size || report.total_size < 4096,
         "expected a real delta (bytes_received < total_size) for the 256 KiB near-identical basis; got bytes_received={} total={}",
-        stats.bytes_received,
-        stats.total_size
+        report.session.bytes_received,
+        report.total_size
     );
 }
 
@@ -353,25 +364,25 @@ async fn live_real_rsync_native_delta_download_md5_peer() {
     let (transport, remote, local, expected) =
         real_rsync_delta_download_inputs("RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_MD5");
 
-    let result = transport.download(&remote, &local).await;
+    let result = transport.download_inner(&remote, &local, None).await;
     unsafe {
         env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
     }
 
-    let stats = result.unwrap_or_else(|e| {
+    let report = result.unwrap_or_else(|e| {
         panic!("native delta download (md5 peer) against real rsync failed: {e:?}")
     });
     let got = fs::read(&local).expect("read reconstructed local target");
     assert_eq!(got, expected, "md5-peer reconstruction must match remote");
     eprintln!(
         "live real-rsync native delta download (md5): total_size={} bytes_sent={} bytes_received={} speedup={:.2}",
-        stats.total_size, stats.bytes_sent, stats.bytes_received, stats.speedup
+        report.total_size, report.session.bytes_sent, report.session.bytes_received, speedup_of(&report)
     );
     assert!(
-        stats.bytes_received < stats.total_size || stats.total_size < 4096,
+        report.session.bytes_received < report.total_size || report.total_size < 4096,
         "expected a real delta under md5 block-strong; got bytes_received={} total={}",
-        stats.bytes_received,
-        stats.total_size
+        report.session.bytes_received,
+        report.total_size
     );
 }
 
@@ -403,25 +414,25 @@ async fn live_real_rsync_native_delta_download_md4_peer() {
     let (transport, remote, local, expected) =
         real_rsync_delta_download_inputs("RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_MD4");
 
-    let result = transport.download(&remote, &local).await;
+    let result = transport.download_inner(&remote, &local, None).await;
     unsafe {
         env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
     }
 
-    let stats = result.unwrap_or_else(|e| {
+    let report = result.unwrap_or_else(|e| {
         panic!("native delta download (md4 peer) against real rsync failed: {e:?}")
     });
     let got = fs::read(&local).expect("read reconstructed local target");
     assert_eq!(got, expected, "md4-peer reconstruction must match remote");
     eprintln!(
         "live real-rsync native delta download (md4): total_size={} bytes_sent={} bytes_received={} speedup={:.2}",
-        stats.total_size, stats.bytes_sent, stats.bytes_received, stats.speedup
+        report.total_size, report.session.bytes_sent, report.session.bytes_received, speedup_of(&report)
     );
     assert!(
-        stats.bytes_received < stats.total_size || stats.total_size < 4096,
+        report.session.bytes_received < report.total_size || report.total_size < 4096,
         "expected a real delta under md4 block-strong; got bytes_received={} total={}",
-        stats.bytes_received,
-        stats.total_size
+        report.session.bytes_received,
+        report.total_size
     );
 }
 
@@ -447,25 +458,25 @@ async fn live_real_rsync_native_delta_download_sha1_peer() {
     let (transport, remote, local, expected) =
         real_rsync_delta_download_inputs("RSNP_TEST_REAL_LOCAL_DOWNLOAD_FILE_SHA1");
 
-    let result = transport.download(&remote, &local).await;
+    let result = transport.download_inner(&remote, &local, None).await;
     unsafe {
         env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
     }
 
-    let stats = result.unwrap_or_else(|e| {
+    let report = result.unwrap_or_else(|e| {
         panic!("native delta download (sha1 peer) against real rsync failed: {e:?}")
     });
     let got = fs::read(&local).expect("read reconstructed local target");
     assert_eq!(got, expected, "sha1-peer reconstruction must match remote");
     eprintln!(
         "live real-rsync native delta download (sha1): total_size={} bytes_sent={} bytes_received={} speedup={:.2}",
-        stats.total_size, stats.bytes_sent, stats.bytes_received, stats.speedup
+        report.total_size, report.session.bytes_sent, report.session.bytes_received, speedup_of(&report)
     );
     assert!(
-        stats.bytes_received < stats.total_size || stats.total_size < 4096,
+        report.session.bytes_received < report.total_size || report.total_size < 4096,
         "expected a real delta under sha1 block-strong; got bytes_received={} total={}",
-        stats.bytes_received,
-        stats.total_size
+        report.session.bytes_received,
+        report.total_size
     );
 }
 
@@ -512,12 +523,12 @@ async fn live_real_rsync_native_download_completes_for_xxh64_and_xxh3_peers() {
         unsafe {
             env::set_var("AEROFTP_RSYNC_CSUM_ALGOS", algorithm);
         }
-        let result = transport.download(&remote, &local).await;
+        let result = transport.download_inner(&remote, &local, None).await;
         unsafe {
             env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
         }
 
-        let stats = result.unwrap_or_else(|e| {
+        let report = result.unwrap_or_else(|e| {
             panic!("native download ({algorithm} peer) against real rsync failed: {e:?}")
         });
         let got = fs::read(&local).expect("read reconstructed local target");
@@ -525,18 +536,18 @@ async fn live_real_rsync_native_download_completes_for_xxh64_and_xxh3_peers() {
             got, expected,
             "{algorithm}-peer reconstruction must match remote"
         );
-        assert_eq!(stats.total_size, expected.len() as u64);
+        assert_eq!(report.total_size, expected.len() as u64);
         eprintln!(
             "live real-rsync native download ({algorithm}): total_size={} bytes_sent={} bytes_received={} copy_blocks={} speedup={:.2} duration_ms={}",
-            stats.total_size,
-            stats.bytes_sent,
-            stats.bytes_received,
-            stats.copy_blocks,
-            stats.speedup,
-            stats.duration_ms
+            report.total_size,
+            report.session.bytes_sent,
+            report.session.bytes_received,
+            report.session.copy_blocks,
+            speedup_of(&report),
+            report.duration_ms
         );
         assert!(
-            stats.copy_blocks > 0,
+            report.session.copy_blocks > 0,
             "{algorithm} download must decode at least one CopyRun block"
         );
     }
@@ -571,12 +582,12 @@ async fn live_real_rsync_native_upload_completes_for_xxh64_and_xxh3_peers() {
         unsafe {
             env::set_var("AEROFTP_RSYNC_CSUM_ALGOS", &algorithm);
         }
-        let result = transport.upload(&local, &remote).await;
+        let result = transport.upload_inner(&local, &remote, None).await;
         unsafe {
             env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
         }
 
-        let stats = result.unwrap_or_else(|e| {
+        let report = result.unwrap_or_else(|e| {
             panic!("native upload ({algorithm} peer) against real rsync failed: {e:?}")
         });
         let got = fs::read(&remote_bind).expect("read reconstructed remote target");
@@ -584,18 +595,18 @@ async fn live_real_rsync_native_upload_completes_for_xxh64_and_xxh3_peers() {
             got, expected,
             "{algorithm}-peer reconstruction must match local source"
         );
-        assert_eq!(stats.total_size, expected.len() as u64);
+        assert_eq!(report.total_size, expected.len() as u64);
         eprintln!(
             "live real-rsync native upload ({algorithm}): total_size={} bytes_sent={} bytes_received={} copy_blocks={} speedup={:.2} duration_ms={}",
-            stats.total_size,
-            stats.bytes_sent,
-            stats.bytes_received,
-            stats.copy_blocks,
-            stats.speedup,
-            stats.duration_ms
+            report.total_size,
+            report.session.bytes_sent,
+            report.session.bytes_received,
+            report.session.copy_blocks,
+            speedup_of(&report),
+            report.duration_ms
         );
         assert!(
-            stats.copy_blocks > 0,
+            report.session.copy_blocks > 0,
             "{algorithm} upload must emit at least one CopyRun block"
         );
     }
@@ -638,12 +649,12 @@ async fn live_real_rsync_native_upload_completes_for_md4_and_sha1_peers() {
         unsafe {
             env::set_var("AEROFTP_RSYNC_CSUM_ALGOS", &algorithm);
         }
-        let result = transport.upload(&local, &remote).await;
+        let result = transport.upload_inner(&local, &remote, None).await;
         unsafe {
             env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
         }
 
-        let stats = result.unwrap_or_else(|e| {
+        let report = result.unwrap_or_else(|e| {
             panic!("native upload ({algorithm} peer) against real rsync failed: {e:?}")
         });
         let got = fs::read(&remote_bind).expect("read reconstructed remote target");
@@ -651,18 +662,18 @@ async fn live_real_rsync_native_upload_completes_for_md4_and_sha1_peers() {
             got, expected,
             "{algorithm}-peer reconstruction must match local source"
         );
-        assert_eq!(stats.total_size, expected.len() as u64);
+        assert_eq!(report.total_size, expected.len() as u64);
         eprintln!(
             "live real-rsync native upload ({algorithm}): total_size={} bytes_sent={} bytes_received={} copy_blocks={} speedup={:.2} duration_ms={}",
-            stats.total_size,
-            stats.bytes_sent,
-            stats.bytes_received,
-            stats.copy_blocks,
-            stats.speedup,
-            stats.duration_ms
+            report.total_size,
+            report.session.bytes_sent,
+            report.session.bytes_received,
+            report.session.copy_blocks,
+            speedup_of(&report),
+            report.duration_ms
         );
         assert!(
-            stats.copy_blocks > 0,
+            report.session.copy_blocks > 0,
             "{algorithm} upload must emit at least one CopyRun block"
         );
     }

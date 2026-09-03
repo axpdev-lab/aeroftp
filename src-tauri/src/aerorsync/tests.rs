@@ -2892,17 +2892,23 @@ fn production_unsafe_surface_matches_the_documented_count() {
     assert_eq!(total, 19, "documented total in the parity docs is 19");
 }
 
-/// The aerorsync module is on its way to a standalone crate (Phase A of the
-/// standalone-crate plan). Every `crate::<application module>` line inside
-/// it is coupling the crate cannot carry, so the inventory below is a
-/// budget: it may only shrink. Unlike the `unsafe` count above, whole-file
+/// The module imports nothing from the application. That is the end state
+/// of the standalone-crate plan's first phase, and this is where it is
+/// enforced: every `crate::<application module>` line inside the module is
+/// coupling the crate cannot carry, and there are none left, so the
+/// inventory is empty and the assertion names the file and the line of
+/// anything that comes back. Unlike the `unsafe` count above, whole-file
 /// test harnesses are NOT excluded: in the crate, test code cannot import
 /// the application either.
 ///
+/// An empty inventory measured by a blind scan would be a false green, so
+/// every refusal the scan needs to stay honest is still here: the forms
+/// below fail the test outright rather than being counted.
+///
 /// The exclusion is `crate::aerorsync` compared as a whole identifier, never
-/// as a prefix: `crate::aerorsync_adapter`, the application-side adapter the
-/// A3 tranche creates, is an application import and must count, because the
-/// crate must never depend on its own adapter. Grouped imports
+/// as a prefix: `crate::aerorsync_adapter`, the application-side adapter,
+/// is an application import and must be refused, because the crate must
+/// never depend on its own adapter. Grouped imports
 /// (`use crate::{a, b}`) fail outright so a mixed group cannot hide an
 /// application module next to `aerorsync`; `super::super::` is the crate
 /// root seen from a module file and is refused for the same reason.
@@ -2914,13 +2920,7 @@ fn production_unsafe_surface_matches_the_documented_count() {
 /// with spaces is not handled here: `cargo fmt --check` rejects it before
 /// this test runs.
 #[test]
-fn app_import_budget_matches_the_documented_inventory() {
-    // (file, application module, occurrences). Update in the same commit
-    // that removes a line, never to add one.
-    const DOCUMENTED: [(&str, &str, usize); 2] = [
-        ("delta_transport_impl.rs", "delta_transport", 1),
-        ("live_tests.rs", "delta_transport", 1),
-    ];
+fn aerorsync_module_imports_nothing_from_the_app() {
     // Assembled from pieces so this file's own source does not trip the scan.
     let needle = ["crate", "::"].concat();
     let root_alias = ["super::", "super::"].concat();
@@ -2949,7 +2949,7 @@ fn app_import_budget_matches_the_documented_inventory() {
     }
 
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync");
-    let mut found: Vec<(String, String, usize)> = Vec::new();
+    let mut found: Vec<(String, usize, String)> = Vec::new();
     let mut scanned = 0usize;
 
     for entry in std::fs::read_dir(&dir).expect("aerorsync module directory must be readable") {
@@ -3014,13 +3014,7 @@ fn app_import_budget_matches_the_documented_inventory() {
                     } else {
                         ident.clone()
                     };
-                    match found
-                        .iter_mut()
-                        .find(|(f, m, _)| *f == name && *m == module)
-                    {
-                        Some(hit) => hit.2 += 1,
-                        None => found.push((name.clone(), module, 1)),
-                    }
+                    found.push((name.clone(), lineno, module));
                 }
                 rest = &after[ident.len()..];
             }
@@ -3032,15 +3026,8 @@ fn app_import_budget_matches_the_documented_inventory() {
     );
 
     found.sort();
-    let mut expected: Vec<(String, String, usize)> = DOCUMENTED
-        .iter()
-        .map(|(f, m, n)| ((*f).to_string(), (*m).to_string(), *n))
-        .collect();
-    expected.sort();
-
-    assert_eq!(
-        found, expected,
-        "the module's import budget moved; it may only shrink, update the inventory in \
-         the same commit"
+    assert!(
+        found.is_empty(),
+        "the module imports the application: {found:?}"
     );
 }

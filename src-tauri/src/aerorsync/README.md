@@ -131,6 +131,26 @@ cargo test --features aerorsync \
 3. ~~**Session reuse**: ogni file apre una nuova sessione SSH~~ Done (P3-T01 W3, `AerorsyncBatch` in `delta_transport_impl.rs`): una sessione SSH racchiude N file, usata da sync-tree core, DAG serial lane e CLI sync. Validata live (Z.1.1, smoke KPI).
 4. **Scope funzionale**: single-file delta accelerator, non sostituto completo di rsync. Le categorie qui sotto non vanno accorpate in un unico backlog (vedi `docs/PROTOCOL-RSYNC-COMPARE.md`, tassonomia operativa). **(a) Fuori scope per design del prodotto integrato**, perche' l'autorita' vive a un altro layer, richiede privilegi incompatibili con il desktop product o e' un altro transport: recursive tree sync, `--delete*`, `--backup`, `--link-dest` (cancellazione e retention sono di AeroSync/AeroCloud, con i gate v4.1.6 AUDIT-03), `--inplace` / `--append` / `--partial-dir` (la strategia di scrittura e' di `StreamingAtomicWriter`), filtri wire `--exclude` / `--include` / `--files-from`, daemon mode `rsync://`, owner/group (`-o`/`-g`) e device/special files (`-D`). **(b) Gate della futura sessione multi-entry e della valutazione standalone**, non promesse del path integrato single-file: hardlink (`-H`, richiede una mappa device/inode tree-scope) e directory default ACL. **Supportati**: symlink end-to-end su Unix; **`user.*` xattr (`-X`) su Unix** con opt-in produzione e ENOTSUP soft di default; **POSIX access ACL (`-A`) su Linux** con read/apply sullo stesso fd, named user + mask live in entrambe le direzioni e opt-in produzione Linux-only. Un errore di lettura ACL sorgente e' hard; ENOTSUP in apply resta soft di default; symlink e non-Linux non entrano nel path ACL. E' supportato anche un analogo `--sparse` opt-in sul local delta path. **`--mkpath` NON e' implementato**.
 
+## Boundary
+
+Il modulo non importa nulla dall'applicazione: nessuna riga
+`crate::<modulo applicativo>` esiste qui, e il test che lo misura e'
+`tests::aerorsync_module_imports_nothing_from_the_app`, che scandisce la
+cartella piatta e rifiuta anche le forme che una scansione cieca non
+vedrebbe (import raggruppati, `super::super::`, attributo `path`, macro
+di inclusione, sottocartelle).
+
+Tutto cio' che l'applicazione deve vedere passa da
+`src-tauri/src/aerorsync_adapter/`: li' vivono gli `impl` di
+`DeltaTransport` e `DeltaBatch` per il transport remoto e per quello
+locale, la costruzione di un transport da un profilo (`config.rs`) e le
+mappe verso `RsyncError`, `RsyncStats` e `RsyncCapability` (`errors.rs`).
+L'adapter dichiara a sua volta il proprio perimetro con
+`aerorsync_adapter::tests::aerorsync_adapter_declares_its_imports`: da un
+lato gli import applicativi, dall'altro i sottomoduli del modulo che
+tocca, che sono la superficie pubblica minima che il crate dovra'
+esporre quando verra' estratto.
+
 ## File del modulo
 
 Elenco allineato a `mod.rs` (una riga per file, dal doc di testa del file).
