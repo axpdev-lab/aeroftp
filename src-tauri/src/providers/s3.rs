@@ -6241,6 +6241,69 @@ mod tests {
         assert!(err.to_string().contains("plain HTTP"), "{err}");
     }
 
+    /// The once-slot is an `Arc`, so it is shared with every clone. Both the
+    /// transfer pool and the list pool clone the provider, and a clone is the
+    /// same profile talking to the same endpoint, so it must not warn again.
+    ///
+    /// This was a sentence in a comment and in the pull request body before it
+    /// was a test: true by how `clone_for_transfer` happens to be written, and
+    /// nothing would have failed if it had been given a `Clone` that rebuilt
+    /// the field. A claim with a green test beside it that does not test the
+    /// claim is the shape this whole change is about.
+    #[tokio::test]
+    async fn a_clone_of_the_provider_does_not_warn_again() {
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let warnings = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let subscriber =
+            tracing_subscriber::registry().with(WarnCounter(std::sync::Arc::clone(&warnings)));
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let provider = cleartext_test_provider("http://minio.example.com:9000", true, None);
+        provider
+            .validate_endpoint_confidentiality()
+            .expect("consent given");
+        let mut pooled = provider.clone_for_transfer().expect("clone for transfer");
+        // Goes through the trait, on the clone, and reaches the guard again.
+        let _ = pooled
+            .create_share_link("/file.bin", ShareLinkOptions::default())
+            .await;
+        let mut listing = provider.clone_for_list().expect("clone for list");
+        let _ = listing
+            .create_share_link("/file.bin", ShareLinkOptions::default())
+            .await;
+
+        assert_eq!(
+            warnings.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "the pool clones are the same profile and must not warn again"
+        );
+    }
+
+    /// The presigned URL path refuses a role profile before the STS exchange
+    /// too, for the same reason discovery does: an AssumeRole burns a one-time
+    /// MFA code and puts the wrong error on screen.
+    #[tokio::test]
+    async fn a_share_link_on_a_role_profile_is_refused_before_the_sts_exchange() {
+        let mut provider = cleartext_test_provider(
+            "http://s3.invalid:9000",
+            false,
+            Some("arn:aws:iam::123456789012:role/review"),
+        );
+        let err = provider
+            .create_share_link("/file.bin", ShareLinkOptions::default())
+            .await
+            .expect_err("a presigned URL must not be minted for a cleartext endpoint");
+        assert!(
+            matches!(err, ProviderError::ConnectionFailed(_)),
+            "the refusal must be the confidentiality one: {err:?}"
+        );
+        assert!(
+            !err.to_string().contains("AssumeRole"),
+            "an AssumeRole error means the exchange was attempted: {err}"
+        );
+    }
+
     /// The choke point itself, one level below the door: signing is where the
     /// Authorization header is built, so it is where the check cannot be
     /// forgotten by a caller that did not exist when the guard was written.
