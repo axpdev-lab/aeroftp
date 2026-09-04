@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ServerProfile } from '../types';
-import { resolveS3Endpoint } from '../providers/registry';
+import { resolveS3Endpoint, s3TemplateParams } from '../providers/registry';
 import {
     SPEEDTEST_SUPPORTED_PROTOCOLS,
     SpeedTestProviderConnectionParams,
@@ -94,7 +94,7 @@ export async function buildSpeedTestConnection(server: ServerProfile): Promise<S
     const options = server.options || {};
     const region = options.region || (server.providerId === 'filelu-s3' ? 'global' : 'us-east-1');
     const endpoint = options.endpoint
-        || resolveS3Endpoint(server.providerId, region as string, options.accountId ? { accountId: options.accountId } : undefined)
+        || resolveS3Endpoint(server.providerId, region as string, s3TemplateParams(options))
         || (protocol === 's3' && server.host && !server.host.includes('amazonaws.com') ? server.host : null);
 
     return {

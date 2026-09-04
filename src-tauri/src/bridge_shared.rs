@@ -668,6 +668,17 @@ mod tests {
             map_s3_provider_from_endpoint("https://abc.r2.cloudflarestorage.com"),
             "cloudflare-r2"
         );
+        // A jurisdiction-scoped bucket has an extra segment in the host. It is
+        // still R2, and the bridge must not fall through to `custom-s3` and
+        // lose the preset's defaults (path-style, region `auto`).
+        assert_eq!(
+            map_s3_provider_from_endpoint("https://abc.eu.r2.cloudflarestorage.com"),
+            "cloudflare-r2"
+        );
+        assert_eq!(
+            map_s3_provider_from_endpoint("https://abc.us.r2.cloudflarestorage.com"),
+            "cloudflare-r2"
+        );
         assert_eq!(
             map_s3_provider_from_endpoint("https://s3.wasabisys.com/bucket"),
             "wasabi"

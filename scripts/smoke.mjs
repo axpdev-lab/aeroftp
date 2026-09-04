@@ -109,6 +109,14 @@ const integrationLanes = [
       why: 'set AEROFTP_TEST_B2_KEY_ID, AEROFTP_TEST_B2_KEY, AEROFTP_TEST_B2_BUCKET to enable',
     },
   },
+  {
+    name: 'integration_b2_s3_compat',
+    desc: 'b2 through its s3-compatible endpoint',
+    gate: {
+      probe: async () => hasEnv('AEROFTP_TEST_B2_KEY_ID', 'AEROFTP_TEST_B2_KEY', 'AEROFTP_TEST_B2_BUCKET', 'AEROFTP_TEST_B2_S3_ENDPOINT'),
+      why: 'set AEROFTP_TEST_B2_KEY_ID, AEROFTP_TEST_B2_KEY, AEROFTP_TEST_B2_BUCKET, AEROFTP_TEST_B2_S3_ENDPOINT to enable',
+    },
+  },
   { name: 'dag_s3_multipart', desc: 's3 multipart upload dag', gate: VAULT },
   { name: 'dag_s3_server_side_copy', desc: 's3 server-side copy dag', gate: VAULT },
   { name: 'dag_webdav_copy', desc: 'webdav copy dag', gate: VAULT },

@@ -14,6 +14,112 @@
 import { ProviderConfig, ProviderCategory, BaseProtocol, ProviderRegistry } from './types';
 
 // ============================================================================
+// Cloudflare R2 jurisdictions
+// ============================================================================
+
+/**
+ * The R2 jurisdictions, as the label the user picks and the segment that goes
+ * into the endpoint host. A bucket created in a jurisdiction answers ONLY on
+ * that host: `<account>.eu.r2.cloudflarestorage.com` for a bucket created with
+ * jurisdiction `eu`, and the plain `<account>.r2.cloudflarestorage.com` for one
+ * created without. The jurisdiction is fixed when the bucket is created and
+ * cannot be changed afterwards, so this is a property of the bucket the user
+ * reports, never something to guess.
+ *
+ * The empty value is the default and MUST stay first: it is what every profile
+ * saved before this field existed resolves to.
+ */
+export const R2_JURISDICTIONS: ReadonlyArray<{ value: string; label: string; segment: string }> = [
+    { value: '', label: 'Default (no jurisdiction)', segment: '' },
+    { value: 'eu', label: 'European Union (eu)', segment: '.eu' },
+    { value: 'us', label: 'United States (us)', segment: '.us' },
+];
+
+/**
+ * Endpoint host segment for a jurisdiction value. Anything unknown, empty or
+ * absent resolves to the default (no segment) rather than to an error: a
+ * profile that never carried the field must keep reaching the endpoint it
+ * reached before.
+ */
+export const jurisdictionSegment = (value?: string | null): string =>
+    R2_JURISDICTIONS.find(j => j.value === (value || '').trim().toLowerCase())?.segment ?? '';
+
+/**
+ * Read back, from an endpoint host, the template parameters that produced it.
+ *
+ * The inverse of `resolveS3Endpoint` for the parameters a saved profile may be
+ * missing: a profile written before a parameter existed carries the endpoint
+ * but not the field, and the form needs the field to show the right thing and
+ * to recompute the host later.
+ *
+ * Built by splitting the template on its placeholders rather than by string
+ * substitution into a regex, because a substituted `{accountId}` leaves any
+ * OTHER placeholder in place as a literal, which then matches nothing. That is
+ * exactly what happened when the R2 template gained `{jurisdiction}`: the
+ * previous one-line regex looked for the characters `{jurisdiction}` inside the
+ * host and silently stopped recovering the account id of every R2 profile
+ * saved in the old format.
+ */
+export const parseS3EndpointParams = (
+    providerId: string | undefined,
+    endpoint: string | undefined,
+): { accountId?: string; jurisdiction?: string } => {
+    if (!providerId || !endpoint) return {};
+    const template = providerRegistry.getById(providerId)?.defaults?.endpointTemplate;
+    if (!template) return {};
+
+    const host = endpoint.replace(/^https?:\/\//i, '').replace(/[/?#].*$/, '');
+    const escape = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const segments = R2_JURISDICTIONS.map(j => j.segment).filter(Boolean);
+
+    const captures: string[] = [];
+    const pattern = template
+        .split(/(\{accountId\}|\{jurisdiction\})/)
+        .map(part => {
+            if (part === '{accountId}') {
+                captures.push('accountId');
+                return '([^.]+)';
+            }
+            if (part === '{jurisdiction}') {
+                captures.push('jurisdiction');
+                return `(${segments.map(escape).join('|')})?`;
+            }
+            return escape(part);
+        })
+        .join('');
+
+    const match = host.match(new RegExp(`^${pattern}$`, 'i'));
+    if (!match) return {};
+
+    const out: { accountId?: string; jurisdiction?: string } = {};
+    captures.forEach((name, i) => {
+        const value = match[i + 1];
+        if (!value) return;
+        if (name === 'accountId') out.accountId = value;
+        if (name === 'jurisdiction') {
+            const code = R2_JURISDICTIONS.find(j => j.segment.toLowerCase() === value.toLowerCase())?.value;
+            if (code) out.jurisdiction = code;
+        }
+    });
+    return out;
+};
+
+/**
+ * Collect, from a saved profile's options, the parameters an S3 endpoint
+ * template can name. One place builds this set, because every caller that
+ * recomputes an endpoint has to pass ALL of them: a caller that passes only the
+ * parameter it knows about produces a host missing the others.
+ */
+export const s3TemplateParams = (
+    options?: { accountId?: unknown; jurisdiction?: unknown } | null,
+): Record<string, string> | undefined => {
+    const params: Record<string, string> = {};
+    if (options?.accountId) params.accountId = String(options.accountId);
+    if (options?.jurisdiction) params.jurisdiction = String(options.jurisdiction);
+    return Object.keys(params).length ? params : undefined;
+};
+
+// ============================================================================
 // Common Field Definitions (reusable)
 // ============================================================================
 
@@ -551,11 +657,21 @@ export const PROVIDERS: ProviderConfig[] = [
                 helpText: 'Cloudflare Dashboard → R2 → Overview → Account ID',
                 group: 'server',
             },
+            {
+                key: 'jurisdiction',
+                label: 'Jurisdiction',
+                type: 'select',
+                required: false,
+                defaultValue: '',
+                options: R2_JURISDICTIONS.map(j => ({ value: j.value, label: j.label })),
+                helpText: 'A bucket created in a jurisdiction is reachable only through that endpoint, and the choice is fixed at bucket creation',
+                group: 'server',
+            },
         ],
         defaults: {
             pathStyle: true,
             region: 'auto',
-            endpointTemplate: '{accountId}.r2.cloudflarestorage.com',
+            endpointTemplate: '{accountId}{jurisdiction}.r2.cloudflarestorage.com',
         },
         features: {
             shareLink: true,
@@ -2115,6 +2231,12 @@ export const resolveS3Endpoint = (providerId: string | undefined, region?: strin
 
     let result = template;
     if (region) result = result.replace('{region}', region);
+    // Jurisdiction before the generic pass: the stored value is the bare code
+    // (`eu`), the host wants the segment (`.eu`), and an absent value is the
+    // default rather than an unresolved placeholder.
+    if (result.includes('{jurisdiction}')) {
+        result = result.replace('{jurisdiction}', jurisdictionSegment(extraParams?.jurisdiction));
+    }
     if (extraParams) {
         for (const [key, value] of Object.entries(extraParams)) {
             result = result.replace(`{${key}}`, value);
