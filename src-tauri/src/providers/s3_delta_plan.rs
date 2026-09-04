@@ -24,6 +24,85 @@ pub const S3_PART_MAX: u64 = 5 * 1024 * 1024 * 1024;
 /// Most parts S3 accepts in one multipart upload.
 pub const S3_MAX_PARTS: u32 = 10_000;
 
+/// Default delta grid: the cell the matcher compares and the part the planner
+/// emits when nothing forces it wider. A small multiple of the floor, so a cell
+/// that matches is likely to become a whole part rather than be absorbed into
+/// an upload run by the repair.
+pub const DELTA_PART_SIZE: u64 = 8 * 1024 * 1024;
+
+/// Below this a delta is not attempted at all.
+///
+/// Mirrors the provider's `MULTIPART_THRESHOLD`: under it `upload` sends a
+/// single PUT, and a multipart made of one part saves nothing. The value is
+/// repeated here rather than imported, so this module stays free of the
+/// provider, and `s3.rs` carries a test that fails if the two ever drift.
+pub const DELTA_MIN_FILE_SIZE: u64 = 200 * 1024 * 1024;
+
+/// Largest file an S3 delta can cover at all.
+///
+/// The protocol arithmetic alone would say `S3_MAX_PARTS * S3_PART_MAX`, 48.8
+/// TiB, and that number is wrong for this planner. The grid is handed to
+/// [`plan_delta_parts`] as its `part_min`, and the planner refuses a floor
+/// above half the ceiling, because above that an over-long run cannot be split
+/// into equal pieces that all still clear the floor. So the real bound is the
+/// part cap times half the part ceiling, 24.4 TiB, and a grid past it would be
+/// a grid the planner then refuses on every file: the two halves have to be
+/// sized against each other rather than each against the protocol.
+pub const DELTA_MAX_FILE_SIZE: u64 = S3_MAX_PARTS as u64 * (S3_PART_MAX / 2);
+
+/// Choose the grid a file of `file_len` bytes is compared and cut on, or refuse
+/// the file.
+///
+/// The default grid is [`DELTA_PART_SIZE`], and it does not survive every size:
+/// a file large enough that `file_len / DELTA_PART_SIZE` exceeds the 10 000
+/// part cap cannot be planned on it, because the worst case for the planner is
+/// one part per cell (a file whose cells alternate between changed and
+/// unchanged produces no coalescing at all). So the grid scales up to at least
+/// `file_len / S3_MAX_PARTS`, which is what keeps that worst case legal rather
+/// than only the average case.
+///
+/// The scaled grid is rounded up to a whole number of default cells, and that
+/// rounding is the point rather than tidiness. The grid is stored next to the
+/// baseline digests and a later delta has to reuse the same one, so a grid that
+/// moved with every byte of length would throw the cache away on every upload.
+/// Rounded, it only moves when `file_len` crosses a multiple of
+/// `S3_MAX_PARTS * DELTA_PART_SIZE`, which is 78.125 GiB, so an append or an
+/// edit keeps the grid it had.
+///
+/// Returns `None` for a file too small for a delta to be worth anything and for
+/// a file past [`DELTA_MAX_FILE_SIZE`], where no legal grid exists.
+pub fn delta_grid_size(file_len: u64) -> Option<u64> {
+    if !(DELTA_MIN_FILE_SIZE..=DELTA_MAX_FILE_SIZE).contains(&file_len) {
+        return None;
+    }
+    let needed = file_len.div_ceil(u64::from(S3_MAX_PARTS));
+    let grid = DELTA_PART_SIZE
+        .max(needed)
+        .div_ceil(DELTA_PART_SIZE)
+        .saturating_mul(DELTA_PART_SIZE);
+    // `needed` is at most half the part ceiling at the maximum file size, and
+    // 2.5 GiB is a whole number of 8 MiB cells, so the rounding never lifts the
+    // grid past what the planner accepts as a floor. Asserted by
+    // `the_grid_never_exceeds_what_the_planner_accepts` rather than left as a
+    // claim in a comment.
+    Some(grid)
+}
+
+/// Whether a grid recorded with an earlier upload can still be used for a file
+/// of `file_len` bytes.
+///
+/// A delta must compare the new file against the baseline on the grid the
+/// baseline's digests were computed with, not on the grid the new length would
+/// choose, or the cells do not line up and nothing matches. The stored grid can
+/// still have gone out of range in the meantime, most obviously when the file
+/// has grown far enough that it no longer fits under the part cap on it, and
+/// then the honest answer is a full upload and a fresh set of digests.
+pub fn delta_grid_fits(grid: u64, file_len: u64) -> bool {
+    (S3_PART_MIN..=S3_PART_MAX).contains(&grid)
+        && (DELTA_MIN_FILE_SIZE..=DELTA_MAX_FILE_SIZE).contains(&file_len)
+        && file_len.div_ceil(grid) <= u64::from(S3_MAX_PARTS)
+}
+
 /// One part of a planned delta upload.
 ///
 /// Parts are emitted in ascending `part_number` and concatenated by S3 in
@@ -950,6 +1029,174 @@ mod tests {
         let parts = plan_delta_parts(file_len, &matches, 5 * MIB, 10_000).expect("plan");
         assert_eq!(parts.len(), 4000);
         assert_plan_is_legal(file_len, &matches, 5 * MIB, S3_PART_MAX, 10_000, &parts);
+    }
+
+    // ---- the grid and its scale-up rule -----------------------------------
+
+    #[test]
+    fn a_file_under_the_delta_floor_gets_no_grid() {
+        assert_eq!(delta_grid_size(DELTA_MIN_FILE_SIZE - 1), None);
+        assert_eq!(delta_grid_size(0), None);
+        assert_eq!(delta_grid_size(DELTA_MIN_FILE_SIZE), Some(DELTA_PART_SIZE));
+    }
+
+    #[test]
+    fn an_ordinary_large_file_uses_the_default_grid() {
+        // 2 GiB on an 8 MiB grid is 256 cells, nowhere near the cap.
+        assert_eq!(delta_grid_size(2 * GIB), Some(DELTA_PART_SIZE));
+    }
+
+    #[test]
+    fn the_default_grid_survives_up_to_the_part_cap_and_not_past_it() {
+        // The default grid covers exactly S3_MAX_PARTS cells, 78.125 GiB.
+        let last = u64::from(S3_MAX_PARTS) * DELTA_PART_SIZE;
+        assert_eq!(delta_grid_size(last), Some(DELTA_PART_SIZE));
+        assert_eq!(delta_grid_size(last + 1), Some(2 * DELTA_PART_SIZE));
+    }
+
+    #[test]
+    fn the_grid_scales_up_when_the_default_would_blow_the_part_cap() {
+        // 200 GiB on the default grid is 25 600 cells. The worst case for the
+        // planner is one part per cell, so the grid has to widen until that
+        // worst case is legal, not until the average case is.
+        let grid = delta_grid_size(200 * GIB).expect("grid");
+        assert_eq!(grid, 24 * MIB);
+        assert!((200 * GIB).div_ceil(grid) <= u64::from(S3_MAX_PARTS));
+        assert_eq!(grid % DELTA_PART_SIZE, 0);
+    }
+
+    #[test]
+    fn the_grid_never_exceeds_what_the_planner_accepts() {
+        // At the largest coverable file the grid lands exactly on half the part
+        // ceiling, which is the largest floor `plan_delta_parts` accepts. Half
+        // of 5 GiB is a whole number of 8 MiB cells, so the rounding does not
+        // push it over; if either constant changes so that it is not, this
+        // fails here rather than by refusing every plan at runtime.
+        assert_eq!(delta_grid_size(DELTA_MAX_FILE_SIZE), Some(S3_PART_MAX / 2));
+        assert_eq!((S3_PART_MAX / 2) % DELTA_PART_SIZE, 0);
+    }
+
+    #[test]
+    fn a_file_past_the_largest_coverable_size_gets_no_grid() {
+        assert_eq!(delta_grid_size(DELTA_MAX_FILE_SIZE + 1), None);
+        assert_eq!(delta_grid_size(u64::MAX), None);
+    }
+
+    #[test]
+    fn an_append_does_not_move_the_grid() {
+        // The grid is stored with the baseline digests and a later delta has to
+        // reuse it. A grid that moved with every byte would throw the cache
+        // away exactly in the case the feature exists for.
+        let before = delta_grid_size(2 * GIB).expect("grid");
+        let after = delta_grid_size(2 * GIB + 50 * MIB).expect("grid");
+        assert_eq!(before, after);
+        // Past the point where the default no longer covers the file, the raw
+        // ratio moves with every byte and only the rounding holds the grid
+        // still. 100 GiB and the same file with 50 MiB appended must land on
+        // the same grid, or the appended upload would have to rehash the whole
+        // baseline it was about to reuse.
+        let before = delta_grid_size(100 * GIB).expect("grid");
+        let after = delta_grid_size(100 * GIB + 50 * MIB).expect("grid");
+        assert_eq!(before, after);
+        assert_eq!(before, 2 * DELTA_PART_SIZE);
+    }
+
+    #[test]
+    fn a_stored_grid_that_no_longer_fits_is_rejected() {
+        // The file grew from 2 GiB to 100 GiB: 12 800 cells on the stored 8 MiB
+        // grid, over the cap. The answer is a full upload and fresh digests,
+        // not a plan the server would refuse.
+        assert!(delta_grid_fits(DELTA_PART_SIZE, 2 * GIB));
+        assert!(!delta_grid_fits(DELTA_PART_SIZE, 100 * GIB));
+        // A grid outside the protocol is never usable, whatever produced it.
+        assert!(!delta_grid_fits(0, 2 * GIB));
+        assert!(!delta_grid_fits(S3_PART_MIN - 1, 2 * GIB));
+        assert!(!delta_grid_fits(S3_PART_MAX + 1, 2 * GIB));
+        assert!(!delta_grid_fits(DELTA_PART_SIZE, DELTA_MIN_FILE_SIZE - 1));
+    }
+
+    #[test]
+    fn every_grid_the_rule_chooses_is_one_the_rule_accepts() {
+        // The two halves have to agree: a grid chosen for a length must still
+        // be judged usable for that same length, or an upload would store a
+        // grid its own delta then refuses.
+        let mut rng = Lcg(0xf00d_4242);
+        let mut chosen = 0usize;
+        let rounds = 3000;
+        for _ in 0..rounds {
+            let file_len = rng.below(DELTA_MAX_FILE_SIZE + DELTA_MAX_FILE_SIZE / 8);
+            match delta_grid_size(file_len) {
+                Some(grid) => {
+                    assert_eq!(
+                        grid % DELTA_PART_SIZE,
+                        0,
+                        "grid is not a whole number of default cells at {file_len}"
+                    );
+                    assert!(
+                        (S3_PART_MIN..=S3_PART_MAX).contains(&grid),
+                        "grid {grid} outside the protocol at {file_len}"
+                    );
+                    assert!(
+                        file_len.div_ceil(grid) <= u64::from(S3_MAX_PARTS),
+                        "grid {grid} leaves {} cells at {file_len}",
+                        file_len.div_ceil(grid)
+                    );
+                    assert!(
+                        delta_grid_fits(grid, file_len),
+                        "chosen grid {grid} rejected for {file_len}"
+                    );
+                    chosen += 1;
+                }
+                None => assert!(
+                    !(DELTA_MIN_FILE_SIZE..=DELTA_MAX_FILE_SIZE).contains(&file_len),
+                    "refused a file of {file_len} bytes that is inside the coverable range"
+                ),
+            }
+        }
+        assert!(
+            chosen > rounds / 4,
+            "the generator produced only {chosen} grids out of {rounds}: the assertions above were barely exercised"
+        );
+    }
+
+    #[test]
+    fn the_chosen_grid_survives_the_planner_s_worst_case() {
+        // The rule sizes the grid for the WORST case rather than the average
+        // one: a file whose cells alternate between changed and unchanged
+        // coalesces nothing and produces one part per cell. This is the seam
+        // between the two halves, and it is where the first version was wrong:
+        // the ceiling on the file size was computed from the protocol alone,
+        // which handed the planner a floor above half its own ceiling and got
+        // every plan refused. Found here, before review.
+        for file_len in [
+            DELTA_MIN_FILE_SIZE,
+            2 * GIB,
+            79 * GIB,
+            200 * GIB,
+            DELTA_MAX_FILE_SIZE,
+        ] {
+            let grid = delta_grid_size(file_len).expect("grid");
+            let cells = file_len.div_ceil(grid);
+            let matches: Vec<(u64, u64, u64)> = (0..cells)
+                .step_by(2)
+                .map(|cell| {
+                    let start = cell * grid;
+                    (start, start, grid.min(file_len - start))
+                })
+                .collect();
+            let parts = plan_delta_parts(file_len, &matches, grid, S3_MAX_PARTS)
+                .unwrap_or_else(|| panic!("no plan for {file_len} bytes on a {grid} byte grid"));
+            assert!(
+                parts.len() <= S3_MAX_PARTS as usize,
+                "{file_len} bytes on a {grid} byte grid needs {} parts",
+                parts.len()
+            );
+            assert_eq!(
+                parts.iter().map(DeltaPart::byte_len).sum::<u64>(),
+                file_len,
+                "the plan must still cover the file exactly"
+            );
+        }
     }
 
     // ---- generated inputs -------------------------------------------------

@@ -7240,6 +7240,19 @@ mod tests {
     /// multipart copy. Validates the part-planning math without touching
     /// any HTTP path: the actual UploadPartCopy sequencing is verified
     /// in the owner-side MinIO smoke documented in the task plan.
+    /// The delta planner repeats the multipart threshold as its own floor so
+    /// it stays free of the provider (see `s3_delta_plan::DELTA_MIN_FILE_SIZE`
+    /// and the note there). A repeated constant is a drift risk, so the guard
+    /// is a test rather than a comment: this is the only place that can see
+    /// both values.
+    #[test]
+    fn delta_min_file_size_matches_the_multipart_threshold() {
+        assert_eq!(
+            crate::providers::s3_delta_plan::DELTA_MIN_FILE_SIZE,
+            S3Provider::MULTIPART_THRESHOLD as u64
+        );
+    }
+
     #[test]
     fn plan_copy_parts_returns_empty_for_zero_size_or_part_size() {
         assert!(plan_copy_parts(0, 100).is_empty());
