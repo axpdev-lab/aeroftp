@@ -325,6 +325,12 @@ pub struct S3Provider {
     /// Serializes STS refreshes so concurrent multipart parts re-assume the
     /// role once instead of stampeding the STS endpoint near expiry.
     sts_refresh_lock: Arc<tokio::sync::Mutex<()>>,
+    /// One cleartext warning per provider, not one per signed request.
+    /// The confidentiality check runs at every signing path now, and its
+    /// consent branch used to log unconditionally, so an N part upload logged
+    /// N identical warnings. Shared across clones on purpose: a clone is the
+    /// same profile talking to the same endpoint.
+    cleartext_warned: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Owned snapshot of the credentials a single signing pass uses, taken under
@@ -403,6 +409,7 @@ impl S3Provider {
             storage_class_override: None,
             temp_credentials: Arc::new(std::sync::RwLock::new(None)),
             sts_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
+            cleartext_warned: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -563,6 +570,16 @@ impl S3Provider {
         if !self.temp_credentials_need_refresh() {
             return Ok(());
         }
+
+        // Second choke point, and it is not the same as the one in
+        // `sign_request`. An AssumeRole is a signed request of its own, made
+        // before anything is signed for S3, so on a door that does not go
+        // through `connect()` a role profile would burn an exchange (and a
+        // one-time MFA code) against an endpoint the user never consented to,
+        // then fail with an STS error instead of the confidentiality one.
+        // Placed after the two early returns above, so a profile without a
+        // role or with fresh credentials pays nothing for it.
+        self.validate_endpoint_confidentiality()?;
 
         let _guard = self.sts_refresh_lock.lock().await;
         // Another task may have refreshed while we waited for the lock.
@@ -777,18 +794,34 @@ impl S3Provider {
             )));
         }
 
-        if self.config.role_arn.is_some() {
-            warn!(
-                "[S3] endpoint {} is CLEARTEXT HTTP and carries an STS session token:                  token and payload are unencrypted (opted in on this profile)",
-                host
-            );
-        } else {
-            warn!(
-                "[S3] endpoint {} is CLEARTEXT HTTP: credentials and payload are                  unencrypted (opted in on this profile)",
-                host
-            );
+        // Once per provider. This runs at every signing path, so an
+        // unconditional log here would put one identical warning per part of a
+        // multipart upload into the user's log and drown the rest of it.
+        if self.take_cleartext_warning_slot() {
+            if self.config.role_arn.is_some() {
+                warn!(
+                    "[S3] endpoint {} is CLEARTEXT HTTP and carries an STS session token:                  token and payload are unencrypted (opted in on this profile)",
+                    host
+                );
+            } else {
+                warn!(
+                    "[S3] endpoint {} is CLEARTEXT HTTP: credentials and payload are                  unencrypted (opted in on this profile)",
+                    host
+                );
+            }
         }
         Ok(())
+    }
+
+    /// True the first time it is called on a provider and false afterwards.
+    ///
+    /// Split out so the once-ness is testable without a tracing subscriber:
+    /// asserting on the slot is asserting on exactly the decision the log line
+    /// depends on.
+    fn take_cleartext_warning_slot(&self) -> bool {
+        !self
+            .cleartext_warned
+            .swap(true, std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Detect MEGA S4 Object Storage endpoints.
@@ -3846,6 +3879,14 @@ impl StorageProvider for S3Provider {
         path: &str,
         options: ShareLinkOptions,
     ) -> Result<ShareLinkResult, ProviderError> {
+        // The eleventh signer, and the only one that does not go through
+        // `sign_request`: this builds a SigV4 QUERY signature instead of an
+        // Authorization header, so it inherits nothing from the choke point
+        // below. A presigned URL for a cleartext endpoint is worse than a
+        // single request, because it is a bearer credential that travels in
+        // the clear every time anyone opens it.
+        self.validate_endpoint_confidentiality()?;
+
         // Generate a presigned URL
         use hmac::{Hmac, Mac};
         use sha2::{Digest, Sha256};
@@ -6089,6 +6130,115 @@ mod tests {
             matches!(err, ProviderError::NetworkError(_)),
             "with consent the failure must come from the network, got {err:?}"
         );
+    }
+
+    /// A role profile reaches the STS exchange before anything is signed for
+    /// S3, so the choke point in `sign_request` is too late for it: the base
+    /// key goes to `sts.<region>.amazonaws.com`, an AssumeRole is burnt on
+    /// every Quick Connect click, a one-time MFA code with it, and what the
+    /// user sees is an STS error instead of the reason the call was refused.
+    /// Not a cleartext exposure, since STS is https, but the wrong behaviour
+    /// and the wrong message.
+    #[tokio::test]
+    async fn a_role_profile_is_refused_before_the_sts_exchange() {
+        let provider = cleartext_test_provider(
+            "http://s3.invalid:9000",
+            false,
+            Some("arn:aws:iam::123456789012:role/review"),
+        );
+        let err = provider
+            .discover_buckets()
+            .await
+            .expect_err("discovery must refuse before assuming a role");
+        assert!(
+            matches!(err, ProviderError::ConnectionFailed(_)),
+            "the refusal must be the confidentiality one, not an STS failure: {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(msg.contains("plain HTTP"), "names the reason: {msg}");
+        assert!(
+            !msg.contains("AssumeRole"),
+            "an AssumeRole error means the exchange was attempted: {msg}"
+        );
+    }
+
+    /// Counts WARN events so the assertion is on the log line itself.
+    ///
+    /// An earlier draft of this test asserted the once-slot instead, which is
+    /// the guard and not the door: removing the `if` around the warning would
+    /// have restored one line per signed request and left that test green.
+    struct WarnCounter(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for WarnCounter {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            if *event.metadata().level() == tracing::Level::WARN {
+                self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+
+    #[test]
+    fn the_cleartext_warning_is_logged_once_per_provider() {
+        use tracing_subscriber::layer::SubscriberExt;
+
+        // The consent branch used to log unconditionally, and it now runs at
+        // every signing path: an upload of N parts would put N identical
+        // warnings into the user's log and drown everything else in it.
+        let warnings = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let subscriber =
+            tracing_subscriber::registry().with(WarnCounter(std::sync::Arc::clone(&warnings)));
+        tracing::subscriber::with_default(subscriber, || {
+            let provider = cleartext_test_provider("http://minio.example.com:9000", true, None);
+            for _ in 0..5 {
+                provider
+                    .validate_endpoint_confidentiality()
+                    .expect("consent given");
+            }
+        });
+        assert_eq!(
+            warnings.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "five signatures on a consenting profile must warn once, not five times"
+        );
+
+        // A different provider is a different session and warns again.
+        let warnings = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let subscriber =
+            tracing_subscriber::registry().with(WarnCounter(std::sync::Arc::clone(&warnings)));
+        tracing::subscriber::with_default(subscriber, || {
+            for _ in 0..2 {
+                cleartext_test_provider("http://minio.example.com:9000", true, None)
+                    .validate_endpoint_confidentiality()
+                    .expect("consent given");
+            }
+        });
+        assert_eq!(
+            warnings.load(std::sync::atomic::Ordering::Relaxed),
+            2,
+            "the warning is once per provider, not once per process"
+        );
+    }
+
+    /// The third door, and the only signer that builds a query signature
+    /// instead of a header one. A presigned URL for a cleartext endpoint is
+    /// worse than one request: it is a bearer credential that travels in the
+    /// clear every time anyone opens it.
+    #[tokio::test]
+    async fn a_share_link_is_refused_for_a_cleartext_endpoint_without_consent() {
+        let mut provider = cleartext_test_provider("http://s3.invalid:9000", false, None);
+        let err = provider
+            .create_share_link("/file.bin", ShareLinkOptions::default())
+            .await
+            .expect_err("a presigned URL must not be minted for a cleartext endpoint");
+        assert!(
+            matches!(err, ProviderError::ConnectionFailed(_)),
+            "the refusal must be the confidentiality one: {err:?}"
+        );
+        assert!(err.to_string().contains("plain HTTP"), "{err}");
     }
 
     /// The choke point itself, one level below the door: signing is where the
