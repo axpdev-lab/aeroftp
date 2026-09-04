@@ -51,7 +51,7 @@ Legend:
 
 | Provider | Unit | Live (auto) | Live (manual) | Notes |
 |----------|:----:|:-----------:|---------------|-------|
-| Backblaze B2 | yes | yes (multipart 250 MB, 5.1 GB rename) | env-gated CI | Best automated cloud coverage |
+| Backblaze B2 | yes | yes (multipart 250 MB, 5.1 GB rename, server-reported digests) | env-gated CI | Best automated cloud coverage. Both code paths: the native B2 API and the S3-compatible endpoint (`integration_b2_s3_compat`, needs `AEROFTP_TEST_B2_S3_ENDPOINT` as well) |
 | Google Drive | yes | - | v4.0.0 (multipart 500 MiB) | |
 | Dropbox | yes | - | v4.0.0 (upload sessions) | |
 | OneDrive | yes | - | v4.0.0 (session upload) | |

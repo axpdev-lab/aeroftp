@@ -84,6 +84,40 @@ fn sha256_hex(bytes: &[u8]) -> String {
     s
 }
 
+fn sha1_hex(bytes: &[u8]) -> String {
+    use sha1::Sha1;
+    let mut h = Sha1::new();
+    h.update(bytes);
+    let d = h.finalize();
+    let mut s = String::with_capacity(d.len() * 2);
+    for b in d {
+        s.push_str(&format!("{:02x}", b));
+    }
+    s
+}
+
+/// Print one server-reported digest on a line that is easy to find in
+/// `--nocapture` output and easy to diff between two runs.
+///
+/// This exists because of a dated change on the service side: from 2026-09-14
+/// Backblaze encrypts new uploads with SSE-B2 by default. What that does to the
+/// digest B2 reports is not something to assume, and the answer is only
+/// measurable while a bucket still holds objects written before the change. The
+/// assertions below fail if the digest disappears; this line records what it
+/// actually was, so a run from before the change and a run from after it can be
+/// compared rather than argued about.
+fn report_server_digest(label: &str, digests: &std::collections::HashMap<String, String>) {
+    if digests.is_empty() {
+        eprintln!("[b2-digest-baseline] {label}: (none reported)");
+        return;
+    }
+    let mut pairs: Vec<_> = digests.iter().collect();
+    pairs.sort();
+    for (algo, value) in pairs {
+        eprintln!("[b2-digest-baseline] {label}: {algo}={value}");
+    }
+}
+
 async fn read_local_sha256(path: &std::path::Path) -> String {
     let bytes = tokio::fs::read(path).await.expect("read local for sha256");
     sha256_hex(&bytes)
@@ -171,6 +205,19 @@ async fn small_upload_download_checksum_match_and_cleanup() {
     let actual_sha = read_local_sha256(&local_out).await;
     assert_eq!(actual_sha, expected_sha, "round-trip checksum mismatch");
 
+    // The round trip above proves the BYTES survive. It says nothing about the
+    // digest B2 reports for the object, which is what `sync`, `dedupe` and
+    // `verify` read instead of downloading. Assert that separately: a digest
+    // that silently stops being reported degrades those three to size+mtime
+    // with no error anywhere, and every byte-comparison test stays green.
+    let digests = p.checksum(&format!("/{}", key)).await.expect("checksum");
+    report_server_digest("single-part", &digests);
+    assert_eq!(
+        digests.get("sha1").map(String::as_str),
+        Some(sha1_hex(&payload).as_str()),
+        "B2 stopped reporting the single-part contentSha1 (or reported a different one)"
+    );
+
     cleanup_prefix(&mut p, &prefix).await;
     let _ = tokio::fs::remove_dir_all(&local_dir).await;
     p.disconnect().await.ok();
@@ -198,6 +245,7 @@ async fn large_upload_forces_chunked_workflow_and_round_trips() {
         *b = ((i.wrapping_mul(2654435761)) & 0xff) as u8;
     }
     let expected_sha = sha256_hex(&payload);
+    let expected_sha1 = sha1_hex(&payload);
 
     let local_dir = std::env::temp_dir().join(format!("aeroftp-it-large-{}", std::process::id()));
     tokio::fs::create_dir_all(&local_dir)
@@ -221,6 +269,22 @@ async fn large_upload_forces_chunked_workflow_and_round_trips() {
         actual_sha, expected_sha,
         "large round-trip checksum mismatch"
     );
+
+    // A large file carries `contentSha1: "none"`, so the provider reports NO
+    // digest here. That is the documented behaviour (`B2_UNVERIFIED` in the
+    // checksum matrix) and it is asserted, not merely tolerated: if B2 ever
+    // starts reporting one it must be the real SHA-1 of the content and not an
+    // opaque value that would pass the 40-hex shape check and be published as a
+    // digest. Either change is worth failing on and looking at.
+    let digests = p.checksum(&format!("/{}", key)).await.expect("checksum");
+    report_server_digest("large-multipart", &digests);
+    match digests.get("sha1") {
+        None => {}
+        Some(reported) => assert_eq!(
+            reported, &expected_sha1,
+            "B2 began reporting a digest for a large file, and it is not the content SHA-1"
+        ),
+    }
 
     cleanup_prefix(&mut p, &prefix).await;
     let _ = tokio::fs::remove_dir_all(&local_dir).await;
@@ -314,9 +378,8 @@ async fn rename_moves_file_and_source_disappears() {
         .await
         .expect("mk tmp dir");
     let local_in = local_dir.join("rename-payload.txt");
-    tokio::fs::write(&local_in, b"rename payload\n")
-        .await
-        .expect("write");
+    let payload: &[u8] = b"rename payload\n";
+    tokio::fs::write(&local_in, payload).await.expect("write");
 
     p.upload(local_in.to_str().unwrap(), &format!("/{}", src_key), None)
         .await
@@ -333,6 +396,22 @@ async fn rename_moves_file_and_source_disappears() {
     assert!(
         p.exists(&format!("/{}", dst_key)).await.unwrap_or(false),
         "destination key missing after rename"
+    );
+
+    // A rename is a server-side copy (`b2_copy_file`), so the destination is an
+    // object B2 wrote itself. Whether it keeps the source's digest is a property
+    // of the copy path, and it is the path most likely to change when the
+    // service starts encrypting what it writes: the source of these bytes is
+    // another object, not an upload carrying a client-computed SHA-1.
+    let digests = p
+        .checksum(&format!("/{}", dst_key))
+        .await
+        .expect("checksum");
+    report_server_digest("server-side-copy", &digests);
+    assert_eq!(
+        digests.get("sha1").map(String::as_str),
+        Some(sha1_hex(payload).as_str()),
+        "the server-side copy lost or changed the content SHA-1"
     );
 
     cleanup_prefix(&mut p, &prefix).await;
