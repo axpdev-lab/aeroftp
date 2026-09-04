@@ -185,16 +185,22 @@ async fn single_part_object_still_reports_its_etag_as_the_content_md5() {
 
     let digests = p.checksum(&format!("/{}", key)).await.expect("checksum");
     report("single-part", &digests);
+    let reported = digests.get("md5").cloned();
+
+    // Clean up BEFORE asserting. A changed digest is the failure this test
+    // exists to catch, so the assertion below is expected to fire one day, and
+    // a panic above the delete would leave the object behind in exactly the
+    // case the test was written for.
+    let _ = p.delete(&format!("/{}", key)).await;
+    let _ = tokio::fs::remove_file(&local).await;
+    p.disconnect().await.ok();
+
     assert_eq!(
-        digests.get("md5").map(String::as_str),
+        reported.as_deref(),
         Some(md5_hex(&payload).as_str()),
         "B2's S3 ETag is no longer the object MD5 for a single-part upload: the digest is gone and \
          sync/dedupe/verify silently fall back to size and mtime"
     );
-
-    let _ = p.delete(&format!("/{}", key)).await;
-    let _ = tokio::fs::remove_file(&local).await;
-    p.disconnect().await.ok();
 }
 
 #[tokio::test]
@@ -224,13 +230,15 @@ async fn server_side_copy_keeps_the_etag_usable() {
 
     let digests = p.checksum(&format!("/{}", dst)).await.expect("checksum");
     report("server-side-copy", &digests);
-    assert_eq!(
-        digests.get("md5").map(String::as_str),
-        Some(md5_hex(&payload).as_str()),
-        "the server-side copy's ETag is no longer the content MD5"
-    );
+    let reported = digests.get("md5").cloned();
 
     let _ = p.delete(&format!("/{}", dst)).await;
     let _ = tokio::fs::remove_file(&local).await;
     p.disconnect().await.ok();
+
+    assert_eq!(
+        reported.as_deref(),
+        Some(md5_hex(&payload).as_str()),
+        "the server-side copy's ETag is no longer the content MD5"
+    );
 }

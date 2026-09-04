@@ -212,15 +212,21 @@ async fn small_upload_download_checksum_match_and_cleanup() {
     // with no error anywhere, and every byte-comparison test stays green.
     let digests = p.checksum(&format!("/{}", key)).await.expect("checksum");
     report_server_digest("single-part", &digests);
-    assert_eq!(
-        digests.get("sha1").map(String::as_str),
-        Some(sha1_hex(&payload).as_str()),
-        "B2 stopped reporting the single-part contentSha1 (or reported a different one)"
-    );
+    let reported_sha1 = digests.get("sha1").cloned();
 
+    // Clean up BEFORE asserting: a digest that stopped being reported is the
+    // failure this assertion exists to catch, so it is expected to fire one
+    // day, and a panic above the cleanup would leave the run's objects in the
+    // bucket in exactly that case.
     cleanup_prefix(&mut p, &prefix).await;
     let _ = tokio::fs::remove_dir_all(&local_dir).await;
     p.disconnect().await.ok();
+
+    assert_eq!(
+        reported_sha1.as_deref(),
+        Some(sha1_hex(&payload).as_str()),
+        "B2 stopped reporting the single-part contentSha1 (or reported a different one)"
+    );
 }
 
 #[tokio::test]
@@ -278,17 +284,21 @@ async fn large_upload_forces_chunked_workflow_and_round_trips() {
     // digest. Either change is worth failing on and looking at.
     let digests = p.checksum(&format!("/{}", key)).await.expect("checksum");
     report_server_digest("large-multipart", &digests);
-    match digests.get("sha1") {
-        None => {}
-        Some(reported) => assert_eq!(
-            reported, &expected_sha1,
-            "B2 began reporting a digest for a large file, and it is not the content SHA-1"
-        ),
-    }
+    let reported_sha1 = digests.get("sha1").cloned();
 
+    // Cleanup first: the leftover here would be a 250 MB object, and this
+    // assertion is the one meant to fire if the service changes what it
+    // publishes for a large file.
     cleanup_prefix(&mut p, &prefix).await;
     let _ = tokio::fs::remove_dir_all(&local_dir).await;
     p.disconnect().await.ok();
+
+    if let Some(reported) = reported_sha1 {
+        assert_eq!(
+            reported, expected_sha1,
+            "B2 began reporting a digest for a large file, and it is not the content SHA-1"
+        );
+    }
 }
 
 /// PD-UP-1: the large-file path now uploads parts concurrently through the
@@ -408,15 +418,17 @@ async fn rename_moves_file_and_source_disappears() {
         .await
         .expect("checksum");
     report_server_digest("server-side-copy", &digests);
-    assert_eq!(
-        digests.get("sha1").map(String::as_str),
-        Some(sha1_hex(payload).as_str()),
-        "the server-side copy lost or changed the content SHA-1"
-    );
+    let reported_sha1 = digests.get("sha1").cloned();
 
     cleanup_prefix(&mut p, &prefix).await;
     let _ = tokio::fs::remove_dir_all(&local_dir).await;
     p.disconnect().await.ok();
+
+    assert_eq!(
+        reported_sha1.as_deref(),
+        Some(sha1_hex(payload).as_str()),
+        "the server-side copy lost or changed the content SHA-1"
+    );
 }
 
 #[tokio::test]
