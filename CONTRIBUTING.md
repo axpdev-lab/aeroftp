@@ -1,6 +1,6 @@
 # Contributing to AeroFTP
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-09-04_
 
 First off, thank you for considering contributing to AeroFTP!
 
@@ -28,10 +28,47 @@ Be respectful, inclusive, and professional. We're here to build great software t
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
-4. Run tests (`cd src-tauri && cargo test`)
+4. Run the local checks in [Development and Pre-Push Gates](#development-and-pre-push-gates)
 5. Commit **with a sign-off** (`git commit -s -m 'Add amazing feature'`), see [Sign-off](#sign-off-developer-certificate-of-origin)
 6. Push (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
+
+## Development and Pre-Push Gates
+
+Owner, 2026-09-04. For a feature/fix PR, GitHub Actions is the green. Do not
+also run a full local `npm run ci:pre-push` (~45 minutes of Clippy + the
+complete Rust suite) on a PR branch: that duplicates CI.
+
+`checks.yml` is not the full PR green. Clippy, Rust tests, `tsc`,
+`i18n:validate`, and the security-regression suite live in `build.yml` on
+Linux. Merge only when those jobs are actually green, not when Checks and
+DCO alone are green.
+
+How to drive the product from an agent (profiles, `ls` / `get` / `put`, no
+credentials) is `AGENTS.md`. That file is not this gate.
+
+### PR branches
+
+Locally, before push, run the short set for what you touched:
+
+- `cargo fmt --all -- --check` in `src-tauri`
+- `npx tsc --noEmit` if TypeScript changed
+- `npm run i18n:validate` if locales changed
+- focused vitest / `cargo test --lib <filter>` for the files you touched
+
+That is about 40 seconds. Do not start a second full Cargo/Tauri compile while
+another worktree is already compiling.
+
+### Direct `main`, release, pre-tag
+
+Full `npm run ci:pre-push` remains required for:
+
+- a push or merge directly to `main`
+- a release or pre-tag
+- CI cannot run, or the change is in a platform-specific area CI does not cover
+
+Do not push while that command is red. If a required gate cannot run, stop and
+report the blocker.
 
 ## Development Setup
 
