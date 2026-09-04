@@ -1927,7 +1927,8 @@
             "peerDesc": "Partilhe pastas diretamente com os seus amigos através de um canal encriptado ponto a ponto, sem qualquer servidor pelo meio.",
             "devicesInfoLine1": "Guarde um dispositivo USB portátil (telemóvel, câmara, tablet) como um perfil de Os Meus Servidores. Detete o dispositivo por MTP, defina pastas predefinidas e volte a ligar com um clique quando estiver ligado.",
             "devicesInfoLine2": "O MTP é exclusivo e a pedido: Ligar reivindica o dispositivo para a sessão; desligar devolve-o. As transferências são de ficheiro completo (sem retoma nem letra de unidade).",
-            "discoverMtpPortable": "Telemóvel, câmara ou tablet por USB MTP"
+            "discoverMtpPortable": "Telemóvel, câmara ou tablet por USB MTP",
+            "s3AllowCleartextEndpoint": "Este ponto de extremidade serve S3 por HTTP sem encriptação através de uma rede. Aceite para este perfil: as credenciais assinadas e todos os ficheiros atravessam a rede sem encriptação."
         },
         "shortcuts": {
             "title": "Atalhos de Teclado",

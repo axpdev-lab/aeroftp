@@ -1927,7 +1927,8 @@
             "peerDesc": "Jagage kaustu otse sõpradega krüptitud peer-to-peer kanali kaudu, ilma vahepealse serverita.",
             "devicesInfoLine1": "Salvesta kaasaskantav USB-seade (telefon, kaamera, tahvelarvuti) profiilina jaotisesse Minu serverid. Tuvasta seade MTP kaudu, määra vaikekaustad ja ühenda ühe klõpsuga uuesti, kui see on ühendatud.",
             "devicesInfoLine2": "MTP on eksklusiivne ja nõudmisel: Ühenda haarab seadme seansiks; lahtiühendamine tagastab selle. Ülekanded on ainult terve fail (ei jätkamist, ei kettatähte).",
-            "discoverMtpPortable": "Telefon, kaamera või tahvelarvuti USB MTP kaudu"
+            "discoverMtpPortable": "Telefon, kaamera või tahvelarvuti USB MTP kaudu",
+            "s3AllowCleartextEndpoint": "See lõpp-punkt pakub S3 krüptimata HTTP kaudu üle võrgu. Nõustu sellega selle profiili puhul: allkirjastatud mandaat ja iga fail liiguvad võrgus krüptimata."
         },
         "shortcuts": {
             "title": "Kiirklahvid",

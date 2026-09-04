@@ -1927,7 +1927,8 @@
             "peerDesc": "Direktang magbahagi ng mga folder sa mga kaibigan sa pamamagitan ng naka-encrypt na peer-to-peer na channel, nang walang server sa pagitan.",
             "devicesInfoLine1": "I-save ang portable na USB device (telepono, camera, tablet) bilang profile sa Aking mga Server. Tuklasin ang device sa pamamagitan ng MTP, itakda ang mga default na folder, at kumonekta muli nang isang click kapag nakasaksak.",
             "devicesInfoLine2": "Ang MTP ay eksklusibo at on-demand: Kinukuha ng Kumonekta ang device para sa session; ibinabalik ito ng pag-disconnect. Buong file lang ang mga paglilipat (walang resume, walang drive letter).",
-            "discoverMtpPortable": "Telepono, camera, o tablet sa pamamagitan ng USB MTP"
+            "discoverMtpPortable": "Telepono, camera, o tablet sa pamamagitan ng USB MTP",
+            "s3AllowCleartextEndpoint": "Naghahain ang endpoint na ito ng S3 sa plain HTTP sa kabila ng isang network. Tanggapin ito para sa profile na ito: ang mga nilagdaang kredensyal at bawat file ay tumatawid sa network nang hindi naka-encrypt."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

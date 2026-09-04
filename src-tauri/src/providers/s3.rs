@@ -167,6 +167,17 @@ fn plan_copy_parts(source_size: u64, part_size: u64) -> Vec<(u32, u64, u64)> {
     out
 }
 
+/// Whether an endpoint is a *local bridge*, for the purpose of accepting a
+/// self-signed certificate from it.
+///
+/// Deliberately WIDER than loopback: `*.local` and `*.localhost` are mDNS names
+/// that local gateways publish, and their certificates are self-signed for the
+/// same reason. That width is correct here and WRONG for confidentiality, which
+/// is why the cleartext consent below asks
+/// `util::endpoint_stays_on_this_machine` instead: bytes to a `.local` host
+/// cross a network segment other machines share, so "I trust this certificate"
+/// and "nobody else can read this" are different questions with different
+/// answers. Do not merge the two predicates.
 fn is_local_s3_endpoint(endpoint: &str) -> bool {
     let lower = endpoint.trim().to_ascii_lowercase();
     let stripped = lower
@@ -713,6 +724,71 @@ impl S3Provider {
                     || (self.config.region == "filen" && is_local_s3_endpoint(ep))
             })
             .unwrap_or(false)
+    }
+
+    /// Refuse an `http://` endpoint that leaves this machine, unless the profile
+    /// said it accepts that.
+    ///
+    /// SigV4 authenticates a request; it does not encrypt one. Over cleartext the
+    /// `Authorization` header, the session token when there is one, and every
+    /// object byte are readable by anything on the path. This is the last hole
+    /// of that shape left open here: redirects are already refused outright
+    /// (`Policy::none()` in `new`, because reqwest does not strip
+    /// `x-amz-security-token` on a cross-origin hop), and no preset ships a
+    /// cleartext remote endpoint, so an endpoint like this arrives either typed
+    /// by hand or through an import from another tool's config.
+    ///
+    /// Loopback is exempt and needs no consent: those bytes never reach a
+    /// network. The predicate is `util::endpoint_stays_on_this_machine` and NOT
+    /// the wider `is_local_s3_endpoint` used for certificates, because the
+    /// latter also accepts `.local` mDNS names, which are on a shared network
+    /// segment. See the note on that function.
+    ///
+    /// Modelled on `SwiftProvider::validate_storage_endpoint`, which made the
+    /// same call for the same reason: an endpoint being authentic is not the
+    /// same as a connection being confidential.
+    fn validate_endpoint_confidentiality(&self) -> Result<(), ProviderError> {
+        let Some(endpoint) = self.config.endpoint.as_deref() else {
+            // No endpoint means AWS, which `endpoint()` builds over https.
+            return Ok(());
+        };
+        let endpoint = endpoint.trim();
+        if !crate::profile_export::endpoint_needs_cleartext_consent(Some(endpoint)) {
+            return Ok(());
+        }
+
+        let host = endpoint
+            .trim_start_matches("http://")
+            .split('/')
+            .next()
+            .unwrap_or(endpoint);
+
+        if !self.config.allow_cleartext_endpoint {
+            // The message names both ways to accept it, because the profiles
+            // that never see a form (CLI, MCP pool, schedulers, AeroCloud) carry
+            // the same key and their user needs the key, not the checkbox.
+            let extra = if self.config.role_arn.is_some() {
+                " This profile assumes an IAM role, so what would cross in the clear                  is the temporary session token STS just issued for that role, not                  only the access key."
+            } else {
+                ""
+            };
+            return Err(ProviderError::ConnectionFailed(format!(
+                "The endpoint {host} is plain HTTP and is not on this machine.                  The request signature authenticates the call but does not encrypt it,                  so the Authorization header and every file byte would cross the network                  readable, and the connection was refused.{extra} Accept it for this                  profile with the cleartext endpoint option in the connection form, or                  set allow_cleartext_endpoint on the profile. Using https:// instead                  needs no option."
+            )));
+        }
+
+        if self.config.role_arn.is_some() {
+            warn!(
+                "[S3] endpoint {} is CLEARTEXT HTTP and carries an STS session token:                  token and payload are unencrypted (opted in on this profile)",
+                host
+            );
+        } else {
+            warn!(
+                "[S3] endpoint {} is CLEARTEXT HTTP: credentials and payload are                  unencrypted (opted in on this profile)",
+                host
+            );
+        }
+        Ok(())
     }
 
     /// Detect MEGA S4 Object Storage endpoints.
@@ -2629,6 +2705,12 @@ impl StorageProvider for S3Provider {
                 self.config.endpoint = Some(fixed);
             }
         }
+        // After the bridge reconciliation above, which can change the scheme, and
+        // before the STS exchange below, which is the first signed request of a
+        // session: nothing is signed until the endpoint is known to be one worth
+        // signing for.
+        self.validate_endpoint_confidentiality()?;
+
         // STS AssumeRole (issue #301): when a role ARN is configured, exchange
         // the long-term base credentials for temporary ones before any signed S3
         // request is made. Runs ahead of the bucket probe (and the
@@ -5897,6 +5979,127 @@ mod tests {
         );
     }
 
+    /// Build a provider whose only interesting property is its endpoint, for the
+    /// cleartext-consent checks. Nothing here touches the network.
+    fn cleartext_test_provider(
+        endpoint: &str,
+        allow_cleartext_endpoint: bool,
+        role_arn: Option<&str>,
+    ) -> S3Provider {
+        S3Provider::new(S3Config {
+            endpoint: Some(endpoint.to_string()),
+            region: "us-east-1".to_string(),
+            access_key_id: "key".to_string(),
+            secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            session_token: None,
+            role_arn: role_arn.map(str::to_string),
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
+            bucket: "b".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+            allow_cleartext_endpoint,
+        })
+        .expect("Failed to create S3Provider")
+    }
+
+    #[test]
+    fn cleartext_endpoint_on_a_network_is_refused_without_consent() {
+        let p = cleartext_test_provider("http://minio.example.com:9000", false, None);
+        let err = p
+            .validate_endpoint_confidentiality()
+            .expect_err("a cleartext endpoint on a network must be refused");
+        let msg = err.to_string();
+        assert!(msg.contains("minio.example.com"), "names the host: {msg}");
+        // Both ways to accept it, because the profiles that never see a form
+        // need the key and not the checkbox.
+        assert!(
+            msg.contains("allow_cleartext_endpoint"),
+            "names the key: {msg}"
+        );
+        assert!(msg.contains("connection form"), "names the form: {msg}");
+    }
+
+    #[test]
+    fn consent_on_the_profile_allows_it() {
+        let p = cleartext_test_provider("http://minio.example.com:9000", true, None);
+        assert!(p.validate_endpoint_confidentiality().is_ok());
+    }
+
+    #[test]
+    fn loopback_cleartext_needs_no_consent() {
+        for endpoint in [
+            "http://localhost:9000",
+            "http://127.0.0.1:9000",
+            "http://[::1]:9000",
+        ] {
+            assert!(
+                cleartext_test_provider(endpoint, false, None)
+                    .validate_endpoint_confidentiality()
+                    .is_ok(),
+                "{endpoint} never leaves this machine and must not ask for consent"
+            );
+        }
+    }
+
+    /// The boundary between the two "local" predicates, and the reason they are
+    /// kept apart. `is_local_s3_endpoint` accepts `.local` so a local bridge's
+    /// self-signed certificate is trusted; an mDNS host is still ON A NETWORK,
+    /// so cleartext to it must ask for consent. If someone ever merges the two
+    /// predicates, this is the test that fails.
+    #[test]
+    fn mdns_local_names_are_trusted_for_certificates_but_not_for_confidentiality() {
+        assert!(
+            is_local_s3_endpoint("http://minio.local:9000"),
+            "precondition: the certificate predicate accepts .local"
+        );
+        assert!(
+            cleartext_test_provider("http://minio.local:9000", false, None)
+                .validate_endpoint_confidentiality()
+                .is_err(),
+            "an mDNS host is on a network: cleartext to it needs consent"
+        );
+    }
+
+    #[test]
+    fn https_needs_no_consent_anywhere() {
+        assert!(
+            cleartext_test_provider("https://s3.example.com", false, None)
+                .validate_endpoint_confidentiality()
+                .is_ok()
+        );
+    }
+
+    /// With a role configured, what would cross in the clear is the session
+    /// token STS just issued, which is worth saying out loud. Same switch, a
+    /// message that names the difference.
+    #[test]
+    fn the_message_names_the_sts_token_when_a_role_is_assumed() {
+        let err = cleartext_test_provider(
+            "http://minio.example.com:9000",
+            false,
+            Some("arn:aws:iam::123456789012:role/r"),
+        )
+        .validate_endpoint_confidentiality()
+        .expect_err("still refused");
+        assert!(
+            err.to_string().contains("session token"),
+            "the STS case must name the token: {err}"
+        );
+        // And the base case must NOT claim there is one.
+        let plain = cleartext_test_provider("http://minio.example.com:9000", false, None)
+            .validate_endpoint_confidentiality()
+            .expect_err("still refused");
+        assert!(!plain.to_string().contains("session token"));
+    }
+
     fn trim_text_test_provider() -> S3Provider {
         S3Provider::new(S3Config {
             endpoint: Some("http://localhost:9000".to_string()),
@@ -5917,6 +6120,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -6091,6 +6295,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -6138,6 +6343,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -6168,6 +6374,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -6295,6 +6502,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -6339,6 +6547,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("provider");
 
@@ -6382,6 +6591,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -6406,6 +6616,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -6714,6 +6925,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("create provider");
         let result = StorageProvider::connect(&mut provider).await;
@@ -6772,6 +6984,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: false,
+            allow_cleartext_endpoint: false,
         })
         .expect("provider");
         assert!(provider.is_filen_s3_endpoint());
@@ -6886,6 +7099,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("provider");
         assert!(!provider.is_filen_s3_endpoint());
@@ -7032,7 +7246,10 @@ mod tests {
     /// path without a server, but the post-call state is observable.
     #[tokio::test]
     async fn no_check_bucket_short_circuits_connect_probe() {
-        let mut provider = make_provider(Some("http://192.0.2.1:9000")); // RFC 5737 unreachable
+        // https, not http: the address only has to be unreachable (RFC 5737), and
+        // over plain HTTP the connect would now be refused for confidentiality
+        // before it ever got to the short-circuit this test is about.
+        let mut provider = make_provider(Some("https://192.0.2.1:9000")); // RFC 5737 unreachable
         provider.set_no_check_bucket(true);
         assert!(provider.no_check_bucket);
         // With no_check_bucket=true, connect() must NOT make a network call
@@ -7042,6 +7259,26 @@ mod tests {
         let res = provider.connect().await;
         assert!(res.is_ok(), "expected Ok(()), got {res:?}");
         assert!(provider.connected);
+    }
+
+    /// `no_check_bucket` skips the bucket probe, not the confidentiality check.
+    ///
+    /// Written because the red that exposed this ordering was mine: the flag's
+    /// own test used a cleartext endpoint, so the refusal fired before the
+    /// short-circuit. That is the right order, and it is worth an assertion of
+    /// its own rather than an accident of another test's fixture: a flag whose
+    /// job is "make connect cheaper" must never become a way to connect over
+    /// cleartext without consent.
+    #[tokio::test]
+    async fn no_check_bucket_does_not_bypass_the_cleartext_refusal() {
+        let mut provider = make_provider(Some("http://192.0.2.1:9000"));
+        provider.set_no_check_bucket(true);
+        let res = provider.connect().await;
+        assert!(
+            res.is_err(),
+            "no_check_bucket must not skip the cleartext refusal, got {res:?}"
+        );
+        assert!(!provider.connected);
     }
 
     /// KE-B1.3: setter toggles the `disable_checksum` flag, and the
@@ -7139,6 +7376,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("provider");
 

@@ -1927,7 +1927,8 @@
             "peerDesc": "Comparte carpetas directamente con tus amigos a través de un canal cifrado de igual a igual, sin ningún servidor en medio.",
             "devicesInfoLine1": "Guarda un dispositivo USB portátil (teléfono, cámara, tableta) como un perfil de Mis Servidores. Detecta el dispositivo por MTP, define carpetas predeterminadas y reconéctate con un clic cuando esté conectado.",
             "devicesInfoLine2": "MTP es exclusivo y bajo demanda: Conectar reclama el dispositivo para la sesión; desconectar lo devuelve. Las transferencias son de archivo completo (sin reanudación ni letra de unidad).",
-            "discoverMtpPortable": "Teléfono, cámara o tableta por USB MTP"
+            "discoverMtpPortable": "Teléfono, cámara o tableta por USB MTP",
+            "s3AllowCleartextEndpoint": "Este punto de conexión sirve S3 por HTTP sin cifrar a través de una red. Acéptalo para este perfil: las credenciales firmadas y todos los archivos cruzan la red sin cifrar."
         },
         "shortcuts": {
             "title": "Atajos de Teclado",

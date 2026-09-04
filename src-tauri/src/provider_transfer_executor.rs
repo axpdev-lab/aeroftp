@@ -2392,6 +2392,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             verify_cert: true,
+            allow_cleartext_endpoint: false,
         })
         .expect("s3 provider");
 

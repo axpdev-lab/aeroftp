@@ -1927,7 +1927,8 @@
             "peerDesc": "Zdieľajte priečinky priamo s priateľmi cez šifrovaný kanál peer-to-peer, bez servera uprostred.",
             "devicesInfoLine1": "Uložte prenosné zariadenie USB (telefón, fotoaparát, tablet) ako profil v Moje servery. Zistite zariadenie cez MTP, nastavte predvolené priečinky a znova sa pripojte jedným kliknutím, keď je pripojené.",
             "devicesInfoLine2": "MTP je výhradné a na požiadanie: Pripojiť si vyžiada zariadenie pre reláciu; odpojenie ho vráti. Prenosy sú iba celé súbory (bez obnovenia, bez písmena jednotky).",
-            "discoverMtpPortable": "Telefón, fotoaparát alebo tablet cez USB MTP"
+            "discoverMtpPortable": "Telefón, fotoaparát alebo tablet cez USB MTP",
+            "s3AllowCleartextEndpoint": "Tento koncový bod poskytuje S3 cez nešifrované HTTP po sieti. Prijmite to pre tento profil: podpísané prihlasovacie údaje aj každý súbor prechádzajú sieťou nezašifrované."
         },
         "shortcuts": {
             "title": "Klávesové skratky",

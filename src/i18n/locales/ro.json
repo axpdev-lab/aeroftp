@@ -1927,7 +1927,8 @@
             "peerDesc": "Partajează foldere direct cu prietenii printr-un canal criptat de la egal la egal, fără niciun server la mijloc.",
             "devicesInfoLine1": "Salvează un dispozitiv USB portabil (telefon, cameră, tabletă) ca profil în Serverele mele. Detectează dispozitivul prin MTP, setează folderele implicite și reconectează-te cu un clic când este conectat.",
             "devicesInfoLine2": "MTP este exclusiv și la cerere: Conectare revendică dispozitivul pentru sesiune; deconectarea îl returnează. Transferurile sunt doar pe fișier întreg (fără reluare, fără literă de unitate).",
-            "discoverMtpPortable": "Telefon, cameră sau tabletă prin USB MTP"
+            "discoverMtpPortable": "Telefon, cameră sau tabletă prin USB MTP",
+            "s3AllowCleartextEndpoint": "Acest punct final oferă S3 prin HTTP necriptat printr-o rețea. Acceptați pentru acest profil: acreditările semnate și fiecare fișier traversează rețeaua necriptate."
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

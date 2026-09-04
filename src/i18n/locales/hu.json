@@ -1927,7 +1927,8 @@
             "peerDesc": "Ossz meg mappákat közvetlenül barátaiddal titkosított peer-to-peer csatornán keresztül, kiszolgáló nélkül.",
             "devicesInfoLine1": "Mentsen egy hordozható USB-eszközt (telefon, kamera, táblagép) profilként a Kiszolgálóim közé. Észlelje az eszközt MTP-n keresztül, állítson be alapértelmezett mappákat, és csatlakozzon újra egy kattintással, amikor csatlakoztatva van.",
             "devicesInfoLine2": "Az MTP kizárólagos és igény szerinti: A Csatlakozás lefoglalja az eszközt a munkamenetre; a leválasztás visszaadja. Az átvitel csak teljes fájl (nincs folytatás, nincs meghajtóbetűjel).",
-            "discoverMtpPortable": "Telefon, kamera vagy táblagép USB MTP-n keresztül"
+            "discoverMtpPortable": "Telefon, kamera vagy táblagép USB MTP-n keresztül",
+            "s3AllowCleartextEndpoint": "Ez a végpont titkosítatlan HTTP-n keresztül, a hálózaton át szolgálja ki az S3-at. Fogadja el ehhez a profilhoz: az aláírt hitelesítő adatok és minden fájl titkosítatlanul halad át a hálózaton."
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

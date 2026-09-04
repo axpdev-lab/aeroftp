@@ -121,6 +121,7 @@ fn s3_config(secret: String) -> S3Config {
         sse_mode: None,
         sse_kms_key_id: None,
         verify_cert: false,
+        allow_cleartext_endpoint: false,
     }
 }
 

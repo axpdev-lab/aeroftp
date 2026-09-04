@@ -1927,7 +1927,8 @@
             "peerDesc": "Comparteix carpetes directament amb els amics a través d'un canal xifrat d'igual a igual, sense cap servidor pel mig.",
             "devicesInfoLine1": "Desa un dispositiu USB portàtil (telèfon, càmera, tauleta) com a perfil dels Meus servidors. Detecta el dispositiu per MTP, defineix les carpetes per defecte i torna a connectar amb un clic quan estigui connectat.",
             "devicesInfoLine2": "L'MTP és exclusiu i sota demanda: Connecta reclama el dispositiu per a la sessió; desconnecta el retorna. Les transferències són de fitxer complet (sense represa ni lletra d'unitat).",
-            "discoverMtpPortable": "Telèfon, càmera o tauleta per USB MTP"
+            "discoverMtpPortable": "Telèfon, càmera o tauleta per USB MTP",
+            "s3AllowCleartextEndpoint": "Aquest punt final serveix S3 per HTTP en text clar a través d'una xarxa. Accepta-ho per a aquest perfil: les credencials signades i tots els fitxers travessen la xarxa sense xifrar."
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",

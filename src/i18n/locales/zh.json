@@ -1927,7 +1927,8 @@
             "peerDesc": "通过加密的点对点通道直接与好友共享文件夹，中间无需任何服务器。",
             "devicesInfoLine1": "将便携 USB 设备（手机、相机、平板）保存为“我的服务器”配置文件。通过 MTP 检测设备、设置默认文件夹，并在接入时一键重新连接。",
             "devicesInfoLine2": "MTP 是独占且按需的：连接会在本次会话中占用设备；断开连接会归还设备。传输仅限整个文件（不支持续传，无驱动器盘符）。",
-            "discoverMtpPortable": "通过 USB MTP 连接的手机、相机或平板"
+            "discoverMtpPortable": "通过 USB MTP 连接的手机、相机或平板",
+            "s3AllowCleartextEndpoint": "此端点通过网络以明文 HTTP 提供 S3。为此配置文件接受：签名凭据和每个文件都将以未加密方式穿越网络。"
         },
         "shortcuts": {
             "title": "键盘快捷键",

@@ -105,6 +105,31 @@ export const parseS3EndpointParams = (
 };
 
 /**
+ * Whether an endpoint would need the profile's explicit cleartext consent:
+ * plain HTTP, and not on this machine.
+ *
+ * Loopback is exempt because those bytes never reach a network, and the test is
+ * deliberately narrower than "local": an mDNS `.local` name is on a shared
+ * network segment, so it needs the consent even though a local bridge's
+ * self-signed certificate is accepted from it. Mirrors
+ * `endpoint_needs_cleartext_consent` in `src-tauri/src/profile_export.rs`.
+ */
+export const endpointNeedsCleartextConsent = (endpoint?: string | null): boolean => {
+    const value = (endpoint || '').trim();
+    if (!/^http:\/\//i.test(value)) return false;
+    const authority = value.slice('http://'.length).split('/')[0];
+    const hostport = authority.split('@').pop() || authority;
+    const host = (hostport.startsWith('[')
+        ? hostport.slice(1).split(']')[0]
+        : hostport.split(':')[0]
+    ).toLowerCase();
+    if (host === 'localhost' || host === '::1') return false;
+    const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (v4 && v4.slice(1).every(n => Number(n) <= 255) && Number(v4[1]) === 127) return false;
+    return true;
+};
+
+/**
  * Collect, from a saved profile's options, the parameters an S3 endpoint
  * template can name. One place builds this set, because every caller that
  * recomputes an endpoint has to pass ALL of them: a caller that passes only the

@@ -23369,6 +23369,7 @@ fn scrub_options_for_mode(opts: &mut serde_json::Map<String, serde_json::Value>)
         "bucket",
         "accountId",
         "jurisdiction",
+        "allowCleartextEndpoint",
         // WebDAV mode
         "webdavScheme",
         "verifyCert",
@@ -34661,8 +34662,14 @@ async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &
                             ""
                         };
                         println!(
-                            "  {} - {}://{}@{}:{}{}",
-                            s.name, proto, s.username, s.host, s.port, cred
+                            "  {} - {}://{}@{}:{}{}{}",
+                            s.name,
+                            proto,
+                            s.username,
+                            s.host,
+                            s.port,
+                            cred,
+                            s.cleartext_endpoint_note()
                         );
                     }
                     println!();
@@ -34922,9 +34929,18 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
                 } else {
                     ""
                 };
+                let cleartext = if ftp_client_gui_lib::endpoint_needs_cleartext_consent(
+                    s.get("options")
+                        .and_then(|o| o.get("endpoint"))
+                        .and_then(|v| v.as_str()),
+                ) {
+                    " [cleartext endpoint]"
+                } else {
+                    ""
+                };
                 println!(
-                    "  {} - {}://{}@{}:{}{}",
-                    name, proto, user, host, port, cred
+                    "  {} - {}://{}@{}:{}{}{}",
+                    name, proto, user, host, port, cred, cleartext
                 );
             }
             println!();
@@ -37540,8 +37556,14 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
                             ""
                         };
                         println!(
-                            "  {} - {}://{}@{}:{}{}",
-                            s.name, proto, s.username, s.host, s.port, cred
+                            "  {} - {}://{}@{}:{}{}{}",
+                            s.name,
+                            proto,
+                            s.username,
+                            s.host,
+                            s.port,
+                            cred,
+                            s.cleartext_endpoint_note()
                         );
                     }
                     println!();
@@ -37648,8 +37670,14 @@ async fn cmd_import_filezilla(path: Option<String>, json: bool) -> i32 {
                             ""
                         };
                         println!(
-                            "  {} - {}://{}@{}:{}{}",
-                            s.name, proto, s.username, s.host, s.port, cred
+                            "  {} - {}://{}@{}:{}{}{}",
+                            s.name,
+                            proto,
+                            s.username,
+                            s.host,
+                            s.port,
+                            cred,
+                            s.cleartext_endpoint_note()
                         );
                     }
                     println!();

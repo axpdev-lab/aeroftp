@@ -1927,7 +1927,8 @@
             "peerDesc": "Udostępniaj foldery bezpośrednio znajomym przez szyfrowany kanał peer-to-peer, bez serwera pośredniczącego.",
             "devicesInfoLine1": "Zapisz przenośne urządzenie USB (telefon, aparat, tablet) jako profil w Moich serwerach. Wykryj urządzenie przez MTP, ustaw domyślne foldery i połącz ponownie jednym kliknięciem, gdy jest podłączone.",
             "devicesInfoLine2": "MTP jest wyłączny i na żądanie: Połącz przejmuje urządzenie na czas sesji; rozłączenie je zwraca. Transfery obejmują tylko całe pliki (bez wznawiania, bez litery dysku).",
-            "discoverMtpPortable": "Telefon, aparat lub tablet przez USB MTP"
+            "discoverMtpPortable": "Telefon, aparat lub tablet przez USB MTP",
+            "s3AllowCleartextEndpoint": "Ten punkt końcowy udostępnia S3 przez nieszyfrowany HTTP w sieci. Zaakceptuj to dla tego profilu: podpisane poświadczenia i każdy plik przechodzą przez sieć bez szyfrowania."
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

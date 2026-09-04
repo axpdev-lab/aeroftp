@@ -846,6 +846,16 @@ pub struct S3Config {
     /// Whether to verify TLS certificates (default: true). Set to false for self-signed
     /// certs, e.g. local-loopback bridges like Filen Desktop S3 over HTTPS.
     pub verify_cert: bool,
+    /// Per-profile consent to an `http://` endpoint that is NOT on this machine.
+    ///
+    /// SigV4 authenticates a request, it does not encrypt it: over cleartext the
+    /// `Authorization` header and every object byte are readable by anything on
+    /// the path. A loopback endpoint has no path to observe and needs no
+    /// consent, so this only governs endpoints that reach a network. Mirrors
+    /// Swift's `allow_cleartext_storage_endpoint`, and like that one it is read
+    /// from the profile, so the CLI, the MCP pool and the schedulers carry it
+    /// without a form.
+    pub allow_cleartext_endpoint: bool,
 }
 
 impl S3Config {
@@ -928,6 +938,14 @@ impl S3Config {
             .map(|v| v != "false")
             .unwrap_or(true);
 
+        // Absent means no consent: the profile has to say so, and only "true"
+        // says it. A stored value this build does not recognise is not consent.
+        let allow_cleartext_endpoint = config
+            .extra
+            .get("allow_cleartext_endpoint")
+            .map(|v| v.trim().eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
         let session_token = config
             .extra
             .get("session_token")
@@ -980,6 +998,7 @@ impl S3Config {
             sse_mode,
             sse_kms_key_id,
             verify_cert,
+            allow_cleartext_endpoint,
         })
     }
 }

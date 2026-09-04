@@ -1927,7 +1927,8 @@
             "peerDesc": "Bendrinkite aplankus tiesiogiai su draugais užšifruotu peer-to-peer kanalu, be serverio tarpininkavimo.",
             "devicesInfoLine1": "Įrašykite nešiojamąjį USB įrenginį (telefoną, kamerą, planšetę) kaip profilį skiltyje Mano serveriai. Aptikite įrenginį per MTP, nustatykite numatytuosius aplankus ir iš naujo prisijunkite vienu spustelėjimu, kai jis prijungtas.",
             "devicesInfoLine2": "MTP yra išskirtinis ir pagal poreikį: Prisijungti užima įrenginį sesijai; atsijungimas jį grąžina. Perkeliami tik ištisi failai (be atnaujinimo, be disko raidės).",
-            "discoverMtpPortable": "Telefonas, kamera ar planšetė per USB MTP"
+            "discoverMtpPortable": "Telefonas, kamera ar planšetė per USB MTP",
+            "s3AllowCleartextEndpoint": "Šis galinis taškas teikia S3 per neužšifruotą HTTP tinklu. Priimkite tai šiam profiliui: pasirašyti prisijungimo duomenys ir kiekvienas failas keliauja tinklu neužšifruoti."
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

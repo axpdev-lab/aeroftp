@@ -1927,7 +1927,8 @@
             "peerDesc": "Jaa kansioita suoraan kavereiden kanssa salatun vertaisyhteyden kautta ilman välissä olevaa palvelinta.",
             "devicesInfoLine1": "Tallenna kannettava USB-laite (puhelin, kamera, tabletti) profiiliksi Omiin palvelimiin. Tunnista laite MTP:n kautta, määritä oletuskansiot ja yhdistä uudelleen yhdellä napsautuksella, kun se on kytketty.",
             "devicesInfoLine2": "MTP on yksinomainen ja tarvittaessa: Yhdistä varaa laitteen istunnolle; yhteyden katkaisu palauttaa sen. Siirrot ovat vain kokonaisia tiedostoja (ei jatkamista, ei asematunnusta).",
-            "discoverMtpPortable": "Puhelin, kamera tai tabletti USB MTP:n kautta"
+            "discoverMtpPortable": "Puhelin, kamera tai tabletti USB MTP:n kautta",
+            "s3AllowCleartextEndpoint": "Tämä päätepiste tarjoaa S3:n salaamattoman HTTP:n kautta verkon yli. Hyväksy se tälle profiilille: allekirjoitetut tunnistetiedot ja jokainen tiedosto kulkevat verkon läpi salaamattomina."
         },
         "shortcuts": {
             "title": "Pikanäppäimet",

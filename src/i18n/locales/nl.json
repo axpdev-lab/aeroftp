@@ -1927,7 +1927,8 @@
             "peerDesc": "Deel mappen rechtstreeks met vrienden via een versleuteld peer-to-peer-kanaal, zonder server ertussen.",
             "devicesInfoLine1": "Sla een draagbaar USB-apparaat (telefoon, camera, tablet) op als een profiel in Mijn servers. Detecteer het apparaat via MTP, stel standaardmappen in en verbind met één klik opnieuw wanneer het is aangesloten.",
             "devicesInfoLine2": "MTP is exclusief en op aanvraag: Verbinden claimt het apparaat voor de sessie; verbreken geeft het terug. Overdrachten zijn alleen als volledig bestand (geen hervatten, geen stationsletter).",
-            "discoverMtpPortable": "Telefoon, camera of tablet via USB MTP"
+            "discoverMtpPortable": "Telefoon, camera of tablet via USB MTP",
+            "s3AllowCleartextEndpoint": "Dit eindpunt levert S3 via onversleutelde HTTP over een netwerk. Accepteer dit voor dit profiel: de ondertekende inloggegevens en elk bestand gaan onversleuteld over het netwerk."
         },
         "shortcuts": {
             "title": "Sneltoetsen",

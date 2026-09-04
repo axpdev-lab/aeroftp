@@ -11,6 +11,7 @@
 //! from rclone's reversible obfuscation to proper authenticated encryption.
 
 use crate::profile_export::ServerProfileExport;
+use crate::util::endpoint_stays_on_this_machine;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -1296,34 +1297,6 @@ fn sanitize_rclone_remote_name(name: &str) -> String {
     collapsed.trim_matches(|c| c == ' ' || c == '-').to_string()
 }
 
-/// Whether an endpoint URL points at the local loopback interface
-/// (127.0.0.0/8, ::1, or `localhost`). Self-signed local bridges such as the
-/// Filen Desktop S3 gateway present a certificate without IP SANs, which rclone
-/// rejects unless `no_check_certificate` is set; AeroFTP itself accepts invalid
-/// certs on loopback, so the export mirrors that.
-fn endpoint_is_loopback(endpoint: &str) -> bool {
-    let without_scheme = endpoint
-        .strip_prefix("https://")
-        .or_else(|| endpoint.strip_prefix("http://"))
-        .unwrap_or(endpoint);
-    let authority = without_scheme.split('/').next().unwrap_or(without_scheme);
-    // Drop any userinfo (`user:pass@host`).
-    let hostport = authority.rsplit('@').next().unwrap_or(authority);
-    // IPv6 literals are bracketed: `[::1]:1800`.
-    let host = if let Some(rest) = hostport.strip_prefix('[') {
-        rest.split(']').next().unwrap_or(rest)
-    } else {
-        hostport.split(':').next().unwrap_or(hostport)
-    };
-    let host = host.to_ascii_lowercase();
-    host == "localhost"
-        || host == "::1"
-        || host
-            .parse::<std::net::Ipv4Addr>()
-            .map(|ip| ip.is_loopback())
-            .unwrap_or(false)
-}
-
 /// Export server profiles to rclone.conf INI format.
 /// Passwords are obscured using rclone's AES-256-CTR scheme for compatibility.
 /// Strip CR/LF from a value bound for an rclone INI `key = value` line.
@@ -1943,7 +1916,7 @@ pub fn export_rclone(
                     // SANs that rclone rejects by default; AeroFTP itself
                     // accepts invalid certs on loopback. Honour an explicit
                     // verify_cert=false from the profile too.
-                    if verify_cert_off || endpoint_is_loopback(&endpoint) {
+                    if verify_cert_off || endpoint_stays_on_this_machine(&endpoint) {
                         body.push_str("no_check_certificate = true\n");
                     }
                 }
@@ -4199,22 +4172,6 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             !conf.contains("/remote.php/"),
             "must not inject a Nextcloud DAV path on generic WebDAV:\n{conf}"
         );
-    }
-
-    #[test]
-    fn test_endpoint_is_loopback() {
-        assert!(endpoint_is_loopback("https://127.0.0.1:1800"));
-        assert!(endpoint_is_loopback("http://localhost:9000"));
-        assert!(endpoint_is_loopback("https://127.0.0.1"));
-        assert!(endpoint_is_loopback("https://[::1]:443"));
-        assert!(endpoint_is_loopback("https://127.5.6.7:8000/path"));
-        assert!(!endpoint_is_loopback("https://storage.googleapis.com"));
-        assert!(!endpoint_is_loopback(
-            "https://s3.eu-central-003.backblazeb2.com"
-        ));
-        // A bucket literally named "localhost" must not be misread: the host
-        // here is the real endpoint, not the path segment.
-        assert!(!endpoint_is_loopback("https://s3.example.com/localhost"));
     }
 
     #[test]
