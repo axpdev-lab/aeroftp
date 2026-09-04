@@ -13,6 +13,114 @@ permissions:
   contents: read
 
 jobs:
+  # C2: Linux lint+test used to sit on the packaging critical path
+  # (clippy ~8m + cargo test ~42m + bundle ~61m serial). This job runs
+  # them on their own ubuntu-22.04 runner so the 4-leg matrix can bundle
+  # in parallel. Coverage unchanged; wall clock ~max(50, 61).
+  linux-validate:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Free disk space (Linux)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/share/swift
+          sudo apt-get clean
+          df -h /
+
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+          components: clippy
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+          # Same prefix as packaging so a warm main cache is a valid restore
+          # key shape, but no shared-key: this job id gets its own cache
+          # after main is warm. That is intended (C1 + C2).
+          prefix-key: 'v2-whisper-vs18'
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install Linux dependencies
+        run: |
+          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+          # enough to redden a run, and nothing here installs from them.
+          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
+          sudo apt-get update
+          # `dbus` is here for `cargo test` / portal_chooser (#510), not for
+          # packaging. `portal_chooser`'s three cases stand up a throwaway
+          # session bus with `dbus-daemon` to prove that a portal-less host
+          # reads as portal-less. Without the daemon those tests skipped, and
+          # a skip is invisible in the log because a passing test's stderr is
+          # captured: the pin would have reported success while proving
+          # nothing. Bundle tools (patchelf, rpm, squashfs-tools, libfuse3-dev)
+          # stay on the packaging Linux leg.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev dbus libacl1-dev libacl1
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # R10 (APPENDIX-CLI-DISPATCH): the three sources of truth for the
+      # AeroFTP version must stay in lockstep. If they drift, an update
+      # ships a CLI that claims one version while the GUI manifest claims
+      # another, the AUR pkgver bump targets the wrong tag, and the
+      # in-app update check compares against the wrong baseline. Cheap
+      # to run (no build, just text parsing). Moved off the packaging
+      # Linux leg so it no longer blocks the Tauri bundle.
+      - name: R10 manifest version match (Cargo.toml, package.json, tauri.conf.json, snapcraft.yaml, and the tag on tag builds)
+        shell: bash
+        run: |
+          CARGO=$(grep -m1 '^version' src-tauri/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          PKG=$(node -p "require('./package.json').version")
+          TAURI=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          SNAP=$(grep -m1 '^version:' snap/snapcraft.yaml | sed "s/.*['\"]\(.*\)['\"].*/\1/")
+          echo "Cargo.toml:        $CARGO"
+          echo "package.json:      $PKG"
+          echo "tauri.conf.json:   $TAURI"
+          echo "snapcraft.yaml:    $SNAP"
+          if [ "$CARGO" != "$PKG" ] || [ "$CARGO" != "$TAURI" ] || [ "$CARGO" != "$SNAP" ]; then
+            echo "::error::R10 version drift: cargo=$CARGO package.json=$PKG tauri.conf.json=$TAURI snapcraft.yaml=$SNAP"
+            exit 1
+          fi
+          # On a tag build the four manifests must also equal the tag itself. R10
+          # previously compared them only to each other, so a release tagged vX.Y.Z
+          # with every manifest left at the prior version passed in silence and
+          # shipped artifacts labelled with the wrong version. The manifests are
+          # already proven equal above, so comparing one of them to the tag suffices.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            echo "tag:               $TAG"
+            if [ "$CARGO" != "$TAG" ]; then
+              echo "::error::R10 tag drift: manifests=$CARGO but tag=$TAG"
+              exit 1
+            fi
+          fi
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: i18n validation
+        run: npm run i18n:validate
+
+      - name: Rust linting (clippy)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
   build-and-release:
     # Required for creating releases and Sigstore keyless signing via GitHub OIDC.
     permissions:
@@ -124,14 +232,9 @@ jobs:
           # enough to redden a run, and nothing here installs from them.
           sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
           sudo apt-get update
-          # `dbus` is here for the `Rust tests` step below, not for the build.
-          # `portal_chooser`'s three cases stand up a throwaway session bus with
-          # `dbus-daemon` to prove that a portal-less host reads as portal-less,
-          # and this is the only job that runs `cargo test` on Linux. Without the
-          # daemon those tests skipped, and a skip is invisible in the log because
-          # a passing test's stderr is captured: the pin would have reported
-          # success while proving nothing. See #510.
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse3-dev dbus libacl1-dev libacl1 binutils rpm squashfs-tools
+          # `dbus` lives on `linux-validate` with `cargo test` / portal_chooser
+          # (#510). This leg only needs the Tauri/bundle toolchain.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse3-dev libacl1-dev libacl1 binutils rpm squashfs-tools
           # No snapcraft here any more: this leg stopped building the snap when
           # PR #172 moved it to its own job, and snapcore/action-build brings
           # its own snapcraft. The leftover install (5 retries, 60 s apart on a
@@ -143,72 +246,6 @@ jobs:
       - name: Run security regression suite (MVP)
         run: npm run security:regression
 
-      # R10 (APPENDIX-CLI-DISPATCH): the three sources of truth for the
-      # AeroFTP version must stay in lockstep. If they drift, an update
-      # ships a CLI that claims one version while the GUI manifest claims
-      # another, the AUR pkgver bump targets the wrong tag, and the
-      # in-app update check compares against the wrong baseline. Cheap
-      # to run (no build, just text parsing). Linux-only because the
-      # source files are identical across the matrix; one check covers
-      # the whole release.
-      - name: R10 manifest version match (Cargo.toml, package.json, tauri.conf.json, snapcraft.yaml, and the tag on tag builds)
-        if: matrix.target == 'linux'
-        shell: bash
-        run: |
-          CARGO=$(grep -m1 '^version' src-tauri/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
-          PKG=$(node -p "require('./package.json').version")
-          TAURI=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          SNAP=$(grep -m1 '^version:' snap/snapcraft.yaml | sed "s/.*['\"]\(.*\)['\"].*/\1/")
-          echo "Cargo.toml:        $CARGO"
-          echo "package.json:      $PKG"
-          echo "tauri.conf.json:   $TAURI"
-          echo "snapcraft.yaml:    $SNAP"
-          if [ "$CARGO" != "$PKG" ] || [ "$CARGO" != "$TAURI" ] || [ "$CARGO" != "$SNAP" ]; then
-            echo "::error::R10 version drift: cargo=$CARGO package.json=$PKG tauri.conf.json=$TAURI snapcraft.yaml=$SNAP"
-            exit 1
-          fi
-          # On a tag build the four manifests must also equal the tag itself. R10
-          # previously compared them only to each other, so a release tagged vX.Y.Z
-          # with every manifest left at the prior version passed in silence and
-          # shipped artifacts labelled with the wrong version. The manifests are
-          # already proven equal above, so comparing one of them to the tag suffices.
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            TAG="${GITHUB_REF_NAME#v}"
-            echo "tag:               $TAG"
-            if [ "$CARGO" != "$TAG" ]; then
-              echo "::error::R10 tag drift: manifests=$CARGO but tag=$TAG"
-              exit 1
-            fi
-          fi
-
-      # Quality gates: run on Linux only to avoid duplicating work across platforms
-      - name: TypeScript type check
-        if: matrix.target == 'linux'
-        run: npx tsc --noEmit
-
-      - name: i18n validation
-        if: matrix.target == 'linux'
-        run: npm run i18n:validate
-
-      - name: Rust linting (clippy)
-        if: matrix.target == 'linux'
-        working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
-
-      - name: Rust tests
-        if: matrix.target == 'linux'
-        working-directory: src-tauri
-        run: cargo test
-
-      # Native build: Linux, Windows, and the macOS arm64 leg (host arch, no
-      # --target). A real/native target dir keeps every package bin in
-      # target/release so the bundler finds them all.
-      #
-      # Linux AppImage packaging downloads AppRun/linuxdeploy helpers from
-      # GitHub during Tauri's bundling phase. GitHub-hosted runners can drop
-      # those connections after the Rust build is already complete, so retry
-      # only the Linux build step and clear partial helper downloads between
-      # attempts.
       - name: Build Tauri app (Linux with AppImage download retry)
         if: matrix.target == 'linux'
         shell: bash
