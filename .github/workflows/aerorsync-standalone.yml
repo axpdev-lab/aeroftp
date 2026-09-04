@@ -17,6 +17,7 @@ on:
     paths:
       - 'src-tauri/src/aerorsync/**'
       - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
       - 'src-tauri/.cargo/config.toml'
       - 'scripts/aerorsync-emit.sh'
       - 'scripts/aerorsync-emit-guard-tests.sh'
@@ -25,6 +26,7 @@ on:
     paths:
       - 'src-tauri/src/aerorsync/**'
       - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
       - 'src-tauri/.cargo/config.toml'
       - 'scripts/aerorsync-emit.sh'
       - 'scripts/aerorsync-emit-guard-tests.sh'
