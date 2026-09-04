@@ -12,6 +12,13 @@ on:
 permissions:
   contents: read
 
+# Same idea as checks.yml: a new SHA on a PR or on main should cancel the
+# previous 4-leg Tauri matrix, not let it keep burning. Do not cancel a tag
+# run: a release build must finish even if something else is dispatched.
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
 jobs:
   build-and-release:
     # Required for creating releases and Sigstore keyless signing via GitHub OIDC.
