@@ -950,6 +950,23 @@ impl S3Provider {
 
         type HmacSha256 = Hmac<Sha256>;
 
+        // The confidentiality check belongs here and not only in `connect()`.
+        // A signature authenticates a request without encrypting it, so the
+        // Authorization header this function is about to build is exactly the
+        // secret that must not cross a cleartext link. `connect()` guarded the
+        // sessions that go through it and left every entry point that does not:
+        // `discover_buckets` is `pub`, is called by Quick Connect without a
+        // connect, and signed a ListBuckets against whatever endpoint the user
+        // had just typed. Guarding each door in turn is how that door was
+        // missed, so the guard sits where all ten signing paths meet, and a
+        // future eleventh inherits it without anyone remembering to ask.
+        //
+        // `connect()` keeps its own call: refusing there is what stops the STS
+        // exchange, which signs through `sts.rs` and never reaches this
+        // function, and it fails the session before any work is done rather
+        // than at the first request.
+        self.validate_endpoint_confidentiality()?;
+
         // Single consistent snapshot of the effective credentials for this
         // signing pass (temporary STS creds when a role is assumed, else base).
         let creds = self.effective_credentials();
@@ -6025,6 +6042,70 @@ mod tests {
             "names the key: {msg}"
         );
         assert!(msg.contains("connection form"), "names the form: {msg}");
+    }
+
+    /// The guard's own tests assert that it refuses a cleartext endpoint, and
+    /// eight of them passed while `discover_buckets` signed and sent anyway.
+    /// This one is on the DOOR instead: it asserts that no request leaves.
+    ///
+    /// The endpoint host is in `.invalid`, which is reserved and never
+    /// resolves, so the two outcomes are distinguishable rather than merely
+    /// different in wording. If the refusal happens before any I/O the error is
+    /// the confidentiality one; if a request were attempted the DNS failure
+    /// would surface as a `NetworkError` naming ListBuckets. Asserting the
+    /// first and denying the second is what makes this a test of the door.
+    #[tokio::test]
+    async fn bucket_discovery_sends_nothing_to_a_cleartext_endpoint_without_consent() {
+        let provider = cleartext_test_provider("http://s3.invalid:9000", false, None);
+        let err = provider
+            .discover_buckets()
+            .await
+            .expect_err("discovery must refuse before signing anything");
+        let msg = err.to_string();
+        assert!(
+            matches!(err, ProviderError::ConnectionFailed(_)),
+            "the refusal must be the confidentiality one, got {err:?}"
+        );
+        assert!(msg.contains("s3.invalid"), "names the host: {msg}");
+        assert!(msg.contains("plain HTTP"), "names the reason: {msg}");
+        assert!(
+            !msg.contains("ListBuckets"),
+            "a ListBuckets error means the request was attempted: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn bucket_discovery_proceeds_once_the_profile_consents() {
+        // With consent the guard steps aside and the call reaches the network,
+        // where the unresolvable host produces the transport error. Without
+        // this half the test above would also pass on a `discover_buckets` that
+        // refuses everything unconditionally.
+        let provider = cleartext_test_provider("http://s3.invalid:9000", true, None);
+        let err = provider
+            .discover_buckets()
+            .await
+            .expect_err("the host does not resolve");
+        assert!(
+            matches!(err, ProviderError::NetworkError(_)),
+            "with consent the failure must come from the network, got {err:?}"
+        );
+    }
+
+    /// The choke point itself, one level below the door: signing is where the
+    /// Authorization header is built, so it is where the check cannot be
+    /// forgotten by a caller that did not exist when the guard was written.
+    #[test]
+    fn signing_refuses_a_cleartext_endpoint_without_consent() {
+        let provider = cleartext_test_provider("http://minio.example.com:9000", false, None);
+        let mut headers = std::collections::HashMap::new();
+        let err = provider
+            .sign_request("GET", "http://minio.example.com:9000/", &mut headers, "")
+            .expect_err("signing must refuse a cleartext endpoint without consent");
+        assert!(err.to_string().contains("plain HTTP"), "{err}");
+        assert!(
+            !headers.contains_key("Authorization"),
+            "nothing may be handed back to a caller that was refused"
+        );
     }
 
     #[test]
