@@ -19,6 +19,7 @@ jobs:
   # in parallel. Coverage unchanged; wall clock ~max(50, 61).
   linux-validate:
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     steps:
       - name: Free disk space (Linux)
         run: |
@@ -246,6 +247,15 @@ jobs:
       - name: Run security regression suite (MVP)
         run: npm run security:regression
 
+      # Native build: Linux, Windows, and the macOS arm64 leg (host arch, no
+      # --target). A real/native target dir keeps every package bin in
+      # target/release so the bundler finds them all.
+      #
+      # Linux AppImage packaging downloads AppRun/linuxdeploy helpers from
+      # GitHub during Tauri's bundling phase. GitHub-hosted runners can drop
+      # those connections after the Rust build is already complete, so retry
+      # only the Linux build step and clear partial helper downloads between
+      # attempts.
       - name: Build Tauri app (Linux with AppImage download retry)
         if: matrix.target == 'linux'
         shell: bash
