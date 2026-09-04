@@ -103,6 +103,8 @@ jobs:
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
           workspaces: './src-tauri -> target'
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # The apt step below fetches 61.5 MB of .deb, and that download is the
       # entire observed failure mode. In run 30488867618 the Azure mirror
@@ -315,6 +317,8 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
           shared-key: delta-sync-fallback
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # See the key-auth job for the measurements this is based on. Separate
       # cache key: this lane installs sshpass on top of the same set.
@@ -491,6 +495,8 @@ jobs:
           # also pinned above as belt-and-suspenders, but if the pin is
           # ever lifted we still want the cache invalidation in place.
           prefix-key: 'v2-whisper-vs18'
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # whisper-rs-sys vendors whisper.cpp and runs CMake at build time.
       # The generator picked by cmake-rs is whichever Visual Studio

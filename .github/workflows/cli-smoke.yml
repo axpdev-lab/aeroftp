@@ -66,6 +66,8 @@ jobs:
           # See "Drop stale whisper-rs-sys CMake artifacts" below for the
           # belt-and-suspenders runtime cleanup. Mirrored from build.yml.
           prefix-key: 'v2-whisper-vs18'
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # whisper-rs-sys vendors whisper.cpp and runs CMake at build time. The
       # generator picked by cmake-rs is whichever Visual Studio CMake finds
@@ -267,6 +269,8 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
           prefix-key: 'v2-whisper-vs18'
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install Linux dependencies
         run: |
@@ -331,6 +335,8 @@ jobs:
           # in this workflow. Linux coverage does not hit the VS18 issue,
           # but a shared prefix avoids partial cache reuse confusion.
           prefix-key: 'v2-whisper-vs18'
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install Linux dependencies
         run: |
