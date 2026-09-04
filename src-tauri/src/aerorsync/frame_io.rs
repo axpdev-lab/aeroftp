@@ -4,6 +4,9 @@
 //! The RSNP envelope defines message content; this module defines how multiple
 //! opaque frames are multiplexed over one byte stream.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 use std::io::{self, Read, Write};
 
 pub fn write_length_prefixed_frame<W: Write>(writer: &mut W, frame: &[u8]) -> io::Result<()> {

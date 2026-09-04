@@ -14,6 +14,9 @@
 //! original so native parity against rsync output stays correct regardless
 //! of the child-process locale.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 use std::path::{Path, PathBuf};
 
 /// Observed remote command line for upload (local sends, remote receives).

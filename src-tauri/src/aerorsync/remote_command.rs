@@ -17,6 +17,9 @@
 //!     enables `--stats` on the remote command line
 //!   - download → remote runs as Sender (`--sender`) without `--stats`
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 use crate::aerorsync::transport::RemoteExecRequest;
 use crate::aerorsync::types::SessionRole;
 

@@ -52,6 +52,9 @@
 //! `NegotiationFailed` immediately after the preamble, before any
 //! file-list byte.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 use crate::aerorsync::engine_adapter::{
     apply_delta_streaming, BaselineSource, BlockStrongAlgo, DeltaEngineAdapter, DeltaPlanProducer,
     EngineDeltaOp, EngineSignatureBlock, RollingDeltaPlanProducer,

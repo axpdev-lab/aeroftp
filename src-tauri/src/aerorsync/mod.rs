@@ -22,6 +22,9 @@
 //! planner, server, aerorsync_serve). Production dispatch is WrapperParity
 //! against stock `rsync --server` only.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 pub mod acl_fs;
 pub mod delta_engine;
 pub mod delta_transport_impl;

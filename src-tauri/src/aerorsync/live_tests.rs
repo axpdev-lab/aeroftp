@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 #![cfg(all(test, feature = "aerorsync"))]
 
 use std::env;

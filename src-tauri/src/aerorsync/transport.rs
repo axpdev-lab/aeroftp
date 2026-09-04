@@ -4,6 +4,9 @@
 //! that opens a bidirectional byte stream. Real SSH is deliberately not wired
 //! here yet. The traits live here; one mock implementation lives in `mock.rs`.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
