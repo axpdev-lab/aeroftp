@@ -15,13 +15,14 @@
 //! turns a raw match list into a legal plan is written and pinned before any
 //! code that spends bandwidth exists.
 
-/// Largest part S3 accepts in a multipart upload.
-///
-/// The minimum (5 MiB) and the part cap (10 000) are parameters of
-/// [`plan_delta_parts`] because the caller varies them: the delta grid size
-/// and the scale-up rule that keeps a large file under the part cap are the
-/// caller's decision. The maximum never varies, so it stays here.
+/// Smallest part S3 accepts, except for the last one.
+pub const S3_PART_MIN: u64 = 5 * 1024 * 1024;
+
+/// Largest part S3 accepts.
 pub const S3_PART_MAX: u64 = 5 * 1024 * 1024 * 1024;
+
+/// Most parts S3 accepts in one multipart upload.
+pub const S3_MAX_PARTS: u32 = 10_000;
 
 /// One part of a planned delta upload.
 ///
@@ -111,17 +112,33 @@ impl Run {
 /// the baseline is the object it thinks it is (pinned with
 /// `x-amz-copy-source-if-match` or a `versionId`), and that every `src_off`
 /// falls inside it.
+///
+/// `part_min` and `max_parts` are parameters because the caller varies them
+/// upward: the delta grid can be coarser than the floor, and the scale-up rule
+/// that keeps a large file under the part cap is the caller's decision. They
+/// cannot be varied downward, and this entry point speaks S3, so a `part_min`
+/// under the protocol floor or a `max_parts` over the protocol cap is refused
+/// here rather than turned into a plan the server would reject at
+/// `CompleteMultipartUpload`. All three protocol limits are enforced at this
+/// door or none of them would be, which is the asymmetry this guard removes.
 pub fn plan_delta_parts(
     file_len: u64,
     matches: &[(u64, u64, u64)],
     part_min: u64,
     max_parts: u32,
 ) -> Option<Vec<DeltaPart>> {
+    if part_min < S3_PART_MIN || max_parts > S3_MAX_PARTS {
+        return None;
+    }
     plan_delta_parts_bounded(file_len, matches, part_min, S3_PART_MAX, max_parts)
 }
 
-/// [`plan_delta_parts`] with the part ceiling as a parameter, so the tests can
-/// exercise the splitting rule on numbers a reader can check by hand.
+/// [`plan_delta_parts`] with the part ceiling as a parameter and without the
+/// S3 protocol limits, so the tests can exercise the splitting rule on numbers
+/// a reader can check by hand. It is also the shape a backend with a different
+/// geometry would reuse: Azure's `Put Block From URL` has no 5 MiB floor, which
+/// is Tier 3 of the appendix and the reason the arithmetic is kept free of the
+/// S3 numbers.
 fn plan_delta_parts_bounded(
     file_len: u64,
     matches: &[(u64, u64, u64)],
@@ -842,6 +859,33 @@ mod tests {
     }
 
     // ---- the real S3 numbers ---------------------------------------------
+
+    #[test]
+    fn a_floor_under_the_s3_minimum_is_refused_at_the_public_entry_point() {
+        // A caller may only coarsen the grid, never take it below the
+        // protocol floor. With a floor of 1 these one-byte matches become
+        // one-byte copy parts that are not last, which S3 rejects at
+        // CompleteMultipartUpload, after the transfer.
+        let matches = [(10, 10, 1), (50, 50, 1)];
+        assert_eq!(plan_delta_parts(100, &matches, 1, 10_000), None);
+        // The guard belongs to the S3 door, not to the arithmetic: the
+        // bounded planner still plans it, which is what a backend without the
+        // 5 MiB floor would reuse.
+        let parts = plan_delta_parts_bounded(100, &matches, 1, S3_PART_MAX, 10_000).expect("plan");
+        assert_plan_is_legal(100, &matches, 1, S3_PART_MAX, 10_000, &parts);
+        assert!(parts.iter().any(|p| p.is_copy() && p.byte_len() == 1));
+    }
+
+    #[test]
+    fn a_part_cap_over_the_s3_maximum_is_refused_at_the_public_entry_point() {
+        let file_len = 2 * GIB + 50 * MIB;
+        let matches = [(0, 0, 2 * GIB)];
+        assert_eq!(
+            plan_delta_parts(file_len, &matches, 5 * MIB, S3_MAX_PARTS + 1),
+            None
+        );
+        assert!(plan_delta_parts(file_len, &matches, 5 * MIB, S3_MAX_PARTS).is_some());
+    }
 
     #[test]
     fn append_to_a_two_gib_object_uploads_only_the_tail() {
