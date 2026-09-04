@@ -71,6 +71,8 @@ snapcraft.login
 # Internal development docs and config (not for public GitHub)
 docs/dev/
 CLAUDE.md
+GROK.md
+CODEX.md
 
 # Native rsync protocol sources live in tree now. Only the
 # multi-hundred-MB capture harness stays out of git (Docker images,
