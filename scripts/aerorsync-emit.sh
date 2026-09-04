@@ -199,6 +199,29 @@ fi
 # uno dei due rami sopra avrebbe gia' rifiutato oppure la differenza e' un
 # symlink su un antenato che esiste, e in quel caso e' la fisica quella su cui
 # lo script opera.
+# La licenza non e' una riga di metadati, e' la sola cosa che dice a chi riceve
+# il crate cosa puo' farne. Il crate esce come `MPL-2.0 OR GPL-3.0-or-later`:
+# MPL per chi lo prende come dipendenza, GPL perche' gli stessi file compilano
+# dentro AeroFTP, che e' GPL. Un file senza il tag esce senza licenza e nessuno
+# se ne accorge, perche' un crate senza header compila esattamente come uno con
+# l'header.
+#
+# Il controllo sta PRIMA di `rm -rf "$OUT"` e guarda il sorgente, non la copia:
+# nella versione precedente girava dopo, quindi un rifiuto lasciava una
+# destinazione mezza scritta, senza manifest e senza licenze, che somiglia a un
+# crate abbastanza da poter essere scambiata per uno. Un cancello che scatta
+# dopo il passo distruttivo protegge il prossimo passo, non questo.
+SPDX_EXPECTED='// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later'
+missing_spdx=""
+for f in "$SRC"/*.rs; do
+    grep -qF "$SPDX_EXPECTED" "$f" || missing_spdx="$missing_spdx $(basename "$f")"
+done
+if [ -n "$missing_spdx" ]; then
+    echo "emissione rifiutata: file senza '$SPDX_EXPECTED':$missing_spdx" >&2
+    echo "aggiungi l'header in $SRC. Niente e' stato scritto in $OUT." >&2
+    exit 1
+fi
+
 rm -rf "$OUT"
 mkdir -p "$OUT/src/aerorsync"
 
@@ -211,24 +234,7 @@ for f in "$SRC"/*.rs; do
         "$f" > "$OUT/src/aerorsync/$(basename "$f")"
 done
 
-# 1b. La licenza non e' una riga di metadati, e' la sola cosa che dice a chi
-#     riceve il crate cosa puo' farne. Il crate esce come `MPL-2.0 OR
-#     GPL-3.0-or-later`: MPL per chi lo prende come dipendenza, GPL perche' gli
-#     stessi file compilano dentro AeroFTP, che e' GPL. Un file senza il tag
-#     esce senza licenza e nessuno se ne accorge, perche' un crate senza header
-#     compila esattamente come uno con l'header: quindi si rifiuta qui.
-SPDX_EXPECTED='// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later'
-missing_spdx=""
-for f in "$OUT"/src/aerorsync/*.rs; do
-    grep -qF "$SPDX_EXPECTED" "$f" || missing_spdx="$missing_spdx $(basename "$f")"
-done
-if [ -n "$missing_spdx" ]; then
-    echo "emissione rifiutata: file senza '$SPDX_EXPECTED':$missing_spdx" >&2
-    echo "aggiungi l'header al sorgente in $SRC, non alla copia emessa" >&2
-    exit 1
-fi
-
-# 1c. I due testi di licenza, copiati verbatim. Il crate ne porta due perche'
+# 1b. I due testi di licenza, copiati verbatim. Il crate ne porta due perche'
 #     l'espressione ne nomina due: un `OR` con un solo testo presente e' una
 #     promessa che il pacchetto non mantiene.
 cp "$SRC/LICENSE-MPL-2.0" "$OUT/LICENSE-MPL-2.0"
