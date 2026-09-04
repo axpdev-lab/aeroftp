@@ -38,17 +38,28 @@ pub const DELTA_PART_SIZE: u64 = 8 * 1024 * 1024;
 /// provider, and `s3.rs` carries a test that fails if the two ever drift.
 pub const DELTA_MIN_FILE_SIZE: u64 = 200 * 1024 * 1024;
 
+/// Largest grid this module will ever use or accept, which is NOT the largest
+/// part S3 allows.
+///
+/// The grid is handed to [`plan_delta_parts`] as its `part_min`, and the
+/// planner refuses a floor above half its ceiling, because above that an
+/// over-long run cannot be split into equal pieces that all still clear the
+/// floor. So the usable grid stops at half the part maximum, and every place
+/// that bounds a grid reads it from here rather than restating the arithmetic:
+/// the first version of this module got the bound right in the function that
+/// chooses a grid and left the protocol value in the function that accepts one,
+/// which is the same defect twice with one of the two occurrences fixed.
+/// `the_planner_accepts_exactly_this_grid_as_a_floor` pins the derivation.
+pub const DELTA_GRID_MAX: u64 = S3_PART_MAX / 2;
+
 /// Largest file an S3 delta can cover at all.
 ///
 /// The protocol arithmetic alone would say `S3_MAX_PARTS * S3_PART_MAX`, 48.8
-/// TiB, and that number is wrong for this planner. The grid is handed to
-/// [`plan_delta_parts`] as its `part_min`, and the planner refuses a floor
-/// above half the ceiling, because above that an over-long run cannot be split
-/// into equal pieces that all still clear the floor. So the real bound is the
-/// part cap times half the part ceiling, 24.4 TiB, and a grid past it would be
-/// a grid the planner then refuses on every file: the two halves have to be
-/// sized against each other rather than each against the protocol.
-pub const DELTA_MAX_FILE_SIZE: u64 = S3_MAX_PARTS as u64 * (S3_PART_MAX / 2);
+/// TiB, and that number is wrong for this planner: past `S3_MAX_PARTS *
+/// DELTA_GRID_MAX`, 24.4 TiB, the grid the rule would choose is one the planner
+/// refuses on every plan. The two halves have to be sized against each other
+/// rather than each against the protocol.
+pub const DELTA_MAX_FILE_SIZE: u64 = S3_MAX_PARTS as u64 * DELTA_GRID_MAX;
 
 /// Choose the grid a file of `file_len` bytes is compared and cut on, or refuse
 /// the file.
@@ -80,9 +91,9 @@ pub fn delta_grid_size(file_len: u64) -> Option<u64> {
         .max(needed)
         .div_ceil(DELTA_PART_SIZE)
         .saturating_mul(DELTA_PART_SIZE);
-    // `needed` is at most half the part ceiling at the maximum file size, and
-    // 2.5 GiB is a whole number of 8 MiB cells, so the rounding never lifts the
-    // grid past what the planner accepts as a floor. Asserted by
+    // `needed` is at most DELTA_GRID_MAX at the maximum file size, and 2.5 GiB
+    // is a whole number of 8 MiB cells, so the rounding never lifts the grid
+    // past what the planner accepts as a floor. Asserted by
     // `the_grid_never_exceeds_what_the_planner_accepts` rather than left as a
     // claim in a comment.
     Some(grid)
@@ -98,7 +109,7 @@ pub fn delta_grid_size(file_len: u64) -> Option<u64> {
 /// has grown far enough that it no longer fits under the part cap on it, and
 /// then the honest answer is a full upload and a fresh set of digests.
 pub fn delta_grid_fits(grid: u64, file_len: u64) -> bool {
-    (S3_PART_MIN..=S3_PART_MAX).contains(&grid)
+    (S3_PART_MIN..=DELTA_GRID_MAX).contains(&grid)
         && (DELTA_MIN_FILE_SIZE..=DELTA_MAX_FILE_SIZE).contains(&file_len)
         && file_len.div_ceil(grid) <= u64::from(S3_MAX_PARTS)
 }
@@ -1072,8 +1083,8 @@ mod tests {
         // of 5 GiB is a whole number of 8 MiB cells, so the rounding does not
         // push it over; if either constant changes so that it is not, this
         // fails here rather than by refusing every plan at runtime.
-        assert_eq!(delta_grid_size(DELTA_MAX_FILE_SIZE), Some(S3_PART_MAX / 2));
-        assert_eq!((S3_PART_MAX / 2) % DELTA_PART_SIZE, 0);
+        assert_eq!(delta_grid_size(DELTA_MAX_FILE_SIZE), Some(DELTA_GRID_MAX));
+        assert_eq!(DELTA_GRID_MAX % DELTA_PART_SIZE, 0);
     }
 
     #[test]
@@ -1108,10 +1119,16 @@ mod tests {
         // not a plan the server would refuse.
         assert!(delta_grid_fits(DELTA_PART_SIZE, 2 * GIB));
         assert!(!delta_grid_fits(DELTA_PART_SIZE, 100 * GIB));
-        // A grid outside the protocol is never usable, whatever produced it.
+        // A grid outside what the planner takes is never usable, whatever
+        // produced it. The upper bound here is DELTA_GRID_MAX and not the
+        // protocol's 5 GiB: a grid between the two is legal for S3 and refused
+        // by the planner on every plan, and this function reads a grid from
+        // storage, so a value written by an older rule can arrive here.
         assert!(!delta_grid_fits(0, 2 * GIB));
         assert!(!delta_grid_fits(S3_PART_MIN - 1, 2 * GIB));
-        assert!(!delta_grid_fits(S3_PART_MAX + 1, 2 * GIB));
+        assert!(delta_grid_fits(DELTA_GRID_MAX, DELTA_MAX_FILE_SIZE));
+        assert!(!delta_grid_fits(DELTA_GRID_MAX + 1, DELTA_MAX_FILE_SIZE));
+        assert!(!delta_grid_fits(S3_PART_MAX, 2 * GIB));
         assert!(!delta_grid_fits(DELTA_PART_SIZE, DELTA_MIN_FILE_SIZE - 1));
     }
 
@@ -1133,7 +1150,7 @@ mod tests {
                         "grid is not a whole number of default cells at {file_len}"
                     );
                     assert!(
-                        (S3_PART_MIN..=S3_PART_MAX).contains(&grid),
+                        (S3_PART_MIN..=DELTA_GRID_MAX).contains(&grid),
                         "grid {grid} outside the protocol at {file_len}"
                     );
                     assert!(
@@ -1156,6 +1173,25 @@ mod tests {
         assert!(
             chosen > rounds / 4,
             "the generator produced only {chosen} grids out of {rounds}: the assertions above were barely exercised"
+        );
+    }
+
+    #[test]
+    fn the_planner_accepts_exactly_this_grid_as_a_floor() {
+        // DELTA_GRID_MAX is derived from a rule that lives in another function,
+        // so it is pinned against that function rather than restated. One byte
+        // more and the planner refuses every plan, which is what makes a grid
+        // above it useless rather than merely large.
+        let file_len = 2 * DELTA_GRID_MAX;
+        let matches = [(0, 0, DELTA_GRID_MAX)];
+        assert!(
+            plan_delta_parts(file_len, &matches, DELTA_GRID_MAX, S3_MAX_PARTS).is_some(),
+            "the planner must accept DELTA_GRID_MAX as a floor"
+        );
+        assert_eq!(
+            plan_delta_parts(file_len, &matches, DELTA_GRID_MAX + 1, S3_MAX_PARTS),
+            None,
+            "one byte over DELTA_GRID_MAX the planner refuses, which is where the constant comes from"
         );
     }
 
