@@ -7246,7 +7246,10 @@ mod tests {
     /// path without a server, but the post-call state is observable.
     #[tokio::test]
     async fn no_check_bucket_short_circuits_connect_probe() {
-        let mut provider = make_provider(Some("http://192.0.2.1:9000")); // RFC 5737 unreachable
+        // https, not http: the address only has to be unreachable (RFC 5737), and
+        // over plain HTTP the connect would now be refused for confidentiality
+        // before it ever got to the short-circuit this test is about.
+        let mut provider = make_provider(Some("https://192.0.2.1:9000")); // RFC 5737 unreachable
         provider.set_no_check_bucket(true);
         assert!(provider.no_check_bucket);
         // With no_check_bucket=true, connect() must NOT make a network call
@@ -7256,6 +7259,26 @@ mod tests {
         let res = provider.connect().await;
         assert!(res.is_ok(), "expected Ok(()), got {res:?}");
         assert!(provider.connected);
+    }
+
+    /// `no_check_bucket` skips the bucket probe, not the confidentiality check.
+    ///
+    /// Written because the red that exposed this ordering was mine: the flag's
+    /// own test used a cleartext endpoint, so the refusal fired before the
+    /// short-circuit. That is the right order, and it is worth an assertion of
+    /// its own rather than an accident of another test's fixture: a flag whose
+    /// job is "make connect cheaper" must never become a way to connect over
+    /// cleartext without consent.
+    #[tokio::test]
+    async fn no_check_bucket_does_not_bypass_the_cleartext_refusal() {
+        let mut provider = make_provider(Some("http://192.0.2.1:9000"));
+        provider.set_no_check_bucket(true);
+        let res = provider.connect().await;
+        assert!(
+            res.is_err(),
+            "no_check_bucket must not skip the cleartext refusal, got {res:?}"
+        );
+        assert!(!provider.connected);
     }
 
     /// KE-B1.3: setter toggles the `disable_checksum` flag, and the
