@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Налепите ваш API Token овде",
             "kdriveDriveIdPlaceholder": "Ваш kDrive ID (нумерички)",
             "kdriveTokenHelp": "Генеришите токен на manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Токен мора да има опсеге drive и user_info. Само са drive повезује се и приказује датотеке, али „Преузми“ се одбија, јер чита профил вашег налога да би пронашао Drive ID.",
             "kdriveFindDriveId": "Пронађите свој Drive ID",
             "kdriveFindDriveIdHint": "Нумерички Drive ID појављује се у адресној траци ове странице",
             "kdriveCreateToken": "Направи API токен",
@@ -323,7 +322,8 @@
                 "found": "Пронађено је {count} доступних одредишта. Куцајте да бисте претраживали или изаберите једно."
             },
             "swiftAuthUrl": "URL за аутентификацију Keystone",
-            "swiftAllowCleartextStorage": "Ова инсталација опслужује складиште објеката преко обичног HTTP-а. Прихватите то за овај профил: приступни токен и свака датотека пролазе кроз мрежу нешифровани."
+            "swiftAllowCleartextStorage": "Ова инсталација опслужује складиште објеката преко обичног HTTP-а. Прихватите то за овај профил: приступни токен и свака датотека пролазе кроз мрежу нешифровани.",
+            "kdriveTokenScopes": "Токен мора да има опсеге drive и user_info. Само са drive повезује се и приказује датотеке, али „Преузми“ се одбија, јер чита профил вашег налога да би пронашао Drive ID."
         },
         "browser": {
             "remote": "Удаљено",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Подразумевано",
                 "styleExplanatory": "Објашњавајуће",
                 "styleLearning": "Учење",
+                "retiredModel": "Повучен",
+                "retiredModelHint": "Овај добављач је повукао модел. Изаберите актуелну замену пре следећег захтева.",
+                "unverifiedCapabilities": "Непроверене могућности",
+                "unverifiedModelHint": "Могућности су непознате. Прегледајте контекст, алате, вид и расуђивање пре коришћења овог модела за задатке агента.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Користите изворни пренос Responses за проверене компатибилне моделе OpenAI. Искључите га да бисте користили Chat Completions.",
+                "openAIResponsesEnable": "Омогући Responses за компатибилне моделе OpenAI",
                 "routingPreferred": "Пожељни",
                 "routingFallback": "Резервни",
                 "routingNoFallback": "Ниједан"

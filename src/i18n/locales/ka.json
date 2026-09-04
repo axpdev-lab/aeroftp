@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "ჩასვით თქვენი API ტოკენი აქ",
             "kdriveDriveIdPlaceholder": "თქვენი kDrive იდენტიფიკატორი (რიცხვითი)",
             "kdriveTokenHelp": "შექმენით ტოკენი manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "ტოკენს სჭირდება drive და user_info სკოუპები. მხოლოდ drive-ით ის უკავშირდება და აჩვენებს ფაილებს, მაგრამ „მიღება“ უარყოფილია, რადგან Drive ID-ის საპოვნელად ის კითხულობს თქვენი ანგარიშის პროფილს.",
             "kdriveFindDriveId": "იპოვეთ თქვენი Drive ID",
             "kdriveFindDriveIdHint": "რიცხვითი Drive ID ჩანს ამ გვერდის მისამართის ველში",
             "kdriveCreateToken": "შექმენით API ტოკენი",
@@ -323,7 +322,8 @@
                 "found": "ნაპოვნია {count} ხელმისაწვდომი სამიზნე. აკრიფეთ საძიებლად ან აირჩიეთ ერთი."
             },
             "swiftAuthUrl": "Keystone-ის ავთენტიფიკაციის URL",
-            "swiftAllowCleartextStorage": "ეს განლაგება ობიექტების საცავს უბრალო HTTP-ით ემსახურება. მიიღეთ ეს ამ პროფილისთვის: წვდომის ტოკენი და ყოველი ფაილი ქსელს დაუშიფრავად კვეთს."
+            "swiftAllowCleartextStorage": "ეს განლაგება ობიექტების საცავს უბრალო HTTP-ით ემსახურება. მიიღეთ ეს ამ პროფილისთვის: წვდომის ტოკენი და ყოველი ფაილი ქსელს დაუშიფრავად კვეთს.",
+            "kdriveTokenScopes": "ტოკენს სჭირდება drive და user_info სკოუპები. მხოლოდ drive-ით ის უკავშირდება და აჩვენებს ფაილებს, მაგრამ „მიღება“ უარყოფილია, რადგან Drive ID-ის საპოვნელად ის კითხულობს თქვენი ანგარიშის პროფილს."
         },
         "browser": {
             "remote": "დისტანციური",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "ნაგულისხმევი",
                 "styleExplanatory": "განმარტებითი",
                 "styleLearning": "სასწავლო",
+                "retiredModel": "ამოღებულია",
+                "retiredModelHint": "ამ პროვაიდერმა მოდელი ამოიღო. შემდეგ მოთხოვნამდე აირჩიეთ მოქმედი შემცვლელი.",
+                "unverifiedCapabilities": "დაუდასტურებელი შესაძლებლობები",
+                "unverifiedModelHint": "შესაძლებლობები უცნობია. აგენტური ამოცანებისთვის ამ მოდელის გამოყენებამდე გადახედეთ კონტექსტს, ხელსაწყოებს, ხედვასა და მსჯელობას.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "დადასტურებული თავსებადი OpenAI მოდელებისთვის გამოიყენეთ Responses-ის მშობლიური ტრანსპორტი. Chat Completions-ის გამოსაყენებლად გამორთეთ.",
+                "openAIResponsesEnable": "Responses-ის ჩართვა თავსებადი OpenAI მოდელებისთვის",
                 "routingPreferred": "სასურველი",
                 "routingFallback": "სარეზერვო",
                 "routingNoFallback": "არცერთი"

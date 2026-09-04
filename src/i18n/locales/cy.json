@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Gludiwch eich API Token yma",
             "kdriveDriveIdPlaceholder": "Eich kDrive ID (rhifiadol)",
             "kdriveTokenHelp": "Cynhyrchwch docyn ar manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Mae angen y cwmpasau drive a user_info ar y tocyn. Gyda drive yn unig mae'n cysylltu ac yn rhestru ffeiliau, ond mae \"Nôl\" yn cael ei wrthod, am ei fod yn darllen proffil eich cyfrif i ddod o hyd i'r Drive ID.",
             "kdriveFindDriveId": "Dewch o hyd i'ch Drive ID",
             "kdriveFindDriveIdHint": "Mae'r Drive ID rhifiadol yn ymddangos ym mar cyfeiriad y dudalen hon",
             "kdriveCreateToken": "Creu tocyn API",
@@ -323,7 +322,8 @@
                 "found": "Cafwyd hyd i {count} targed hygyrch. Teipiwch i chwilio neu dewiswch un."
             },
             "swiftAuthUrl": "URL dilysu Keystone",
-            "swiftAllowCleartextStorage": "Mae'r gosodiad hwn yn gweini storfa gwrthrychau dros HTTP plaen. Derbyniwch hyn ar gyfer y proffil hwn: mae'r tocyn mynediad a phob ffeil yn croesi'r rhwydwaith heb eu hamgryptio."
+            "swiftAllowCleartextStorage": "Mae'r gosodiad hwn yn gweini storfa gwrthrychau dros HTTP plaen. Derbyniwch hyn ar gyfer y proffil hwn: mae'r tocyn mynediad a phob ffeil yn croesi'r rhwydwaith heb eu hamgryptio.",
+            "kdriveTokenScopes": "Mae angen y cwmpasau drive a user_info ar y tocyn. Gyda drive yn unig mae'n cysylltu ac yn rhestru ffeiliau, ond mae \"Nôl\" yn cael ei wrthod, am ei fod yn darllen proffil eich cyfrif i ddod o hyd i'r Drive ID."
         },
         "browser": {
             "remote": "Pell",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Rhagosodedig",
                 "styleExplanatory": "Esboniadol",
                 "styleLearning": "Dysgu",
+                "retiredModel": "Wedi ymddeol",
+                "retiredModelHint": "Mae'r darparwr hwn wedi ymddeol y model. Dewiswch amnewidiad cyfredol cyn y cais nesaf.",
+                "unverifiedCapabilities": "Galluoedd heb eu gwirio",
+                "unverifiedModelHint": "Nid yw'r galluoedd yn hysbys. Adolygwch y cyd-destun, offer, gweledigaeth a rhesymu cyn defnyddio'r model hwn ar gyfer tasgau asiant.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Defnyddiwch gludiant Responses brodorol ar gyfer modelau OpenAI cydnaws sydd wedi'u gwirio. Diffoddwch hwn i ddefnyddio Chat Completions.",
+                "openAIResponsesEnable": "Galluogi Responses ar gyfer modelau OpenAI cydnaws",
                 "routingPreferred": "A ffefrir",
                 "routingFallback": "Wrth gefn",
                 "routingNoFallback": "Dim"

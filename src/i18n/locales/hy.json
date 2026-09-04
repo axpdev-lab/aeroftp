@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Տեղադրեք Ձեր API տոկենը այստեղ",
             "kdriveDriveIdPlaceholder": "Ձեր kDrive իդենտիֆիկատորը (թիվ)",
             "kdriveTokenHelp": "Ստեղծեք տոկեն՝ manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Թոքենին անհրաժեշտ են drive և user_info շրջանակները։ Միայն drive-ով այն միանում և ցուցադրում է ֆայլերը, բայց «Ստանալ»-ը մերժվում է, քանի որ Drive ID-ն գտնելու համար կարդում է ձեր հաշվի պրոֆիլը։",
             "kdriveFindDriveId": "Գտեք ձեր Drive ID-ն",
             "kdriveFindDriveIdHint": "Թվային Drive ID-ն երևում է այս էջի հասցեի տողում",
             "kdriveCreateToken": "Ստեղծել API տոկեն",
@@ -323,7 +322,8 @@
                 "found": "Գտնվել է {count} հասանելի թիրախ։ Որոնելու համար մուտքագրեք տեքստ կամ ընտրեք մեկը։"
             },
             "swiftAuthUrl": "Keystone նույնականացման URL",
-            "swiftAllowCleartextStorage": "Այս տեղակայումը օբյեկտների պահոցը մատուցում է սովորական HTTP-ով։ Ընդունեք այն այս պրոֆիլի համար. մուտքի նշանը և յուրաքանչյուր ֆայլ ցանցով անցնում են չգաղտնագրված։"
+            "swiftAllowCleartextStorage": "Այս տեղակայումը օբյեկտների պահոցը մատուցում է սովորական HTTP-ով։ Ընդունեք այն այս պրոֆիլի համար. մուտքի նշանը և յուրաքանչյուր ֆայլ ցանցով անցնում են չգաղտնագրված։",
+            "kdriveTokenScopes": "Թոքենին անհրաժեշտ են drive և user_info շրջանակները։ Միայն drive-ով այն միանում և ցուցադրում է ֆայլերը, բայց «Ստանալ»-ը մերժվում է, քանի որ Drive ID-ն գտնելու համար կարդում է ձեր հաշվի պրոֆիլը։"
         },
         "browser": {
             "remote": "Հեռավոր",
@@ -2546,6 +2546,13 @@
                 "styleDefault": "Կանխադրված",
                 "styleExplanatory": "Բացատրական",
                 "styleLearning": "Ուսուցողական",
+                "retiredModel": "Դադարեցված",
+                "retiredModelHint": "Այս մատակարարը դադարեցրել է մոդելը։ Հաջորդ հարցումից առաջ ընտրեք արդիական փոխարինող։",
+                "unverifiedCapabilities": "Չստուգված հնարավորություններ",
+                "unverifiedModelHint": "Հնարավորություններն անհայտ են։ Գործակալի առաջադրանքների համար այս մոդելն օգտագործելուց առաջ վերանայեք համատեքստը, գործիքները, տեսողությունն ու դատողությունը։",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Օգտագործեք Responses-ի բնիկ փոխանցումը ստուգված համատեղելի OpenAI մոդելների համար։ Chat Completions-ն օգտագործելու համար անջատեք սա։",
+                "openAIResponsesEnable": "Միացնել Responses-ը համատեղելի OpenAI մոդելների համար",
                 "routingPreferred": "Նախընտրելի",
                 "routingFallback": "Պահեստային",
                 "routingNoFallback": "Չկա"

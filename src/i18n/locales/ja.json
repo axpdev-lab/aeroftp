@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "APIトークンをここに貼り付けてください",
             "kdriveDriveIdPlaceholder": "kDrive ID（数値）",
             "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens でトークンを生成してください",
-            "kdriveTokenScopes": "トークンには drive と user_info のスコープが必要です。drive のみでも接続と一覧表示はできますが、「取得」は拒否されます。Drive ID を見つけるためにアカウントプロファイルを読み取るからです。",
             "kdriveFindDriveId": "Drive ID を確認する",
             "kdriveFindDriveIdHint": "数値の Drive ID はこのページのアドレスバーに表示されます",
             "kdriveCreateToken": "API トークンを作成する",
@@ -323,7 +322,8 @@
                 "found": "アクセス可能なターゲットが {count} 件見つかりました。入力して検索するか、1 つ選択してください。"
             },
             "swiftAuthUrl": "Keystone 認証 URL",
-            "swiftAllowCleartextStorage": "このデプロイメントはオブジェクトストレージを平文の HTTP で提供します。このプロファイルで許可します: アクセストークンとすべてのファイルが暗号化されずにネットワークを通過します。"
+            "swiftAllowCleartextStorage": "このデプロイメントはオブジェクトストレージを平文の HTTP で提供します。このプロファイルで許可します: アクセストークンとすべてのファイルが暗号化されずにネットワークを通過します。",
+            "kdriveTokenScopes": "トークンには drive と user_info のスコープが必要です。drive のみでも接続と一覧表示はできますが、「取得」は拒否されます。Drive ID を見つけるためにアカウントプロファイルを読み取るからです。"
         },
         "browser": {
             "remote": "リモート",
@@ -2499,6 +2499,13 @@
                 "styleDefault": "デフォルト",
                 "styleExplanatory": "説明的",
                 "styleLearning": "学習",
+                "retiredModel": "廃止",
+                "retiredModelHint": "このプロバイダーはモデルを廃止しました。次のリクエストの前に、現在利用できる代替モデルを選択してください。",
+                "unverifiedCapabilities": "未検証の機能",
+                "unverifiedModelHint": "機能は不明です。エージェントタスクでこのモデルを使用する前に、コンテキスト、ツール、ビジョン、推論を確認してください。",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "検証済みの互換性のあるOpenAIモデルにはネイティブのResponsesトランスポートを使用します。Chat Completionsを使用するにはオフにしてください。",
+                "openAIResponsesEnable": "互換性のあるOpenAIモデルでResponsesを有効にする",
                 "routingPreferred": "優先",
                 "routingFallback": "フォールバック",
                 "routingNoFallback": "なし"

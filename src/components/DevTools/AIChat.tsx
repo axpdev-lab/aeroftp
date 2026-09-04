@@ -8,6 +8,7 @@ import { createTauriListener } from '../../hooks/useTauriListener';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon, NvidiaIcon, ZaiIcon, HyperbolicIcon, NovitaIcon, YiIcon, KiloIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType } from '../../types/ai';
+import { reconcilePersistedModel, reconcilePersistedModels, resolveModelContext, shouldUseOpenAIResponses } from '../../types/aiModelRegistry';
 import { AgentToolCall, AGENT_TOOLS, toNativeDefinitions, isSafeTool, getToolByName, getToolByNameFromAll } from '../../types/tools';
 import { PluginManifest, allPluginTools, findPluginForTool } from '../../types/plugins';
 import { ToolApproval } from './ToolApproval';
@@ -1916,7 +1917,13 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     cache_creation_input_tokens?: number;
                     cache_read_input_tokens?: number;
                     tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
-                }>('ai_chat', { request: { ...aiRequest, messages: messageHistory } });
+                }>('ai_chat', {
+                    // AA26-02 keeps Responses foreground turns stateless. Until
+                    // AA26-04 persists the opaque reasoning/output items needed
+                    // for correct chaining, tool continuations use the proven
+                    // Chat Completions fallback instead of faking state.
+                    request: { ...aiRequest, messages: messageHistory, use_responses_api: false },
+                });
 
                 // Parse ALL tool calls from response (parallel support)
                 let allToolsParsedMS: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
@@ -2102,6 +2109,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             if (!settings) {
                 throw new Error('No AI providers configured. Click ⚙️ to add one.');
             }
+            settings.models = reconcilePersistedModels(settings.models);
             setCachedAiSettings(settings);
 
             // Auto-routing: classify the prompt, then resolve the model that answers
@@ -2131,8 +2139,14 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 }
 
                 // Check model capabilities (needed for context budget calculation)
-                const modelDef = settings.models?.find((m: { id: string }) => m.id === activeModel.modelId);
-                const modelContextWindow = modelDef?.maxContextTokens || modelDef?.maxTokens || 4096;
+                const modelDef = (() => {
+                    const found = settings.models?.find((m: { id: string }) => m.id === activeModel.modelId);
+                    return found ? reconcilePersistedModel(found) : found;
+                })();
+                // Output limits are not context windows. Unknown models receive a
+                // deliberately conservative context budget until the registry or
+                // the user provides an explicit context window.
+                const modelContextWindow = resolveModelContext(modelDef).tokens;
 
                 // Phase 3: Determine budget mode and build smart context (#70, #71)
                 const budgetMode = determineBudgetMode(modelContextWindow);
@@ -2258,9 +2272,16 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 };
 
                 // Build thinking budget if model supports it
-                const thinkingBudget = modelDef?.supportsThinking && settings.advancedSettings?.thinkingBudget
-                    ? settings.advancedSettings.thinkingBudget
+                const thinkingBudget = modelDef?.supportsThinking
+                    ? (settings.advancedSettings?.thinkingBudget ?? 0)
                     : undefined;
+
+                const useOpenAIResponses = shouldUseOpenAIResponses(
+                    activeModel.providerType,
+                    modelDef,
+                    settings.advancedSettings?.openAIResponsesEnabled ?? true,
+                    provider.baseUrl,
+                );
 
                 // Resolve task-specific parameter preset (provider + detected task type)
                 const preset = getParameterPreset(activeModel.providerType, taskType);
@@ -2276,8 +2297,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     ...(() => { const rawTopP = settings.advancedSettings?.topP ?? preset.topP; return rawTopP != null ? { top_p: Math.max(0, Math.min(1, rawTopP)) } : {}; })(),
                     ...(() => { const rawTopK = settings.advancedSettings?.topK ?? preset.topK; return rawTopK != null ? { top_k: Math.max(1, Math.min(500, Math.round(rawTopK))) } : {}; })(),
                     ...(useNativeTools ? { tools: toNativeDefinitions(allTools) } : {}),
-                    ...(thinkingBudget ? { thinking_budget: thinkingBudget } : {}),
+                    ...(thinkingBudget !== undefined ? { thinking_budget: thinkingBudget } : {}),
                     ...(settings.advancedSettings?.webSearchEnabled ? { web_search: true } : {}),
+                    ...(useOpenAIResponses ? { use_responses_api: true } : {}),
                 };
 
                 const webSearchActive = !!settings.advancedSettings?.webSearchEnabled;

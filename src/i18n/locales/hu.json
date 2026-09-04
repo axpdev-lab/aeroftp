@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Illessze be az API tokent ide",
             "kdriveDriveIdPlaceholder": "Az Ön kDrive azonosítója (szám)",
             "kdriveTokenHelp": "Token létrehozása: manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "A tokenhez a drive és a user_info hatókör kell. Csak a drive hatókörrel csatlakozik és listázza a fájlokat, de a „Lekérés” elutasításra kerül, mert a Drive ID megtalálásához a fiókprofilodat olvassa.",
             "kdriveFindDriveId": "Keresse meg a Drive ID-t",
             "kdriveFindDriveIdHint": "A numerikus Drive ID az oldal címsorában jelenik meg",
             "kdriveCreateToken": "API token létrehozása",
@@ -323,7 +322,8 @@
                 "found": "{count} elérhető cél található. Gépeljen a kereséshez, vagy válasszon egyet."
             },
             "swiftAuthUrl": "Keystone hitelesítési URL",
-            "swiftAllowCleartextStorage": "Ez a telepítés titkosítatlan HTTP-n keresztül szolgálja ki az objektumtárolót. Fogadja el ehhez a profilhoz: a hozzáférési token és minden fájl titkosítatlanul halad át a hálózaton."
+            "swiftAllowCleartextStorage": "Ez a telepítés titkosítatlan HTTP-n keresztül szolgálja ki az objektumtárolót. Fogadja el ehhez a profilhoz: a hozzáférési token és minden fájl titkosítatlanul halad át a hálózaton.",
+            "kdriveTokenScopes": "A tokenhez a drive és a user_info hatókör kell. Csak a drive hatókörrel csatlakozik és listázza a fájlokat, de a „Lekérés” elutasításra kerül, mert a Drive ID megtalálásához a fiókprofilodat olvassa."
         },
         "browser": {
             "remote": "Távoli",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Alapértelmezett",
                 "styleExplanatory": "Magyarázó",
                 "styleLearning": "Tanulási mód",
+                "retiredModel": "Kivezetve",
+                "retiredModelHint": "Ez a szolgáltató kivezette a modellt. A következő kérés előtt válasszon aktuális helyettesítőt.",
+                "unverifiedCapabilities": "Nem ellenőrzött képességek",
+                "unverifiedModelHint": "A képességek ismeretlenek. Az ügynöki feladatokhoz való használat előtt tekintse át a kontextust, az eszközöket, a látást és a következtetést.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Használja a natív Responses-átvitelt az ellenőrzött, kompatibilis OpenAI-modellekhez. Kapcsolja ki a Chat Completions használatához.",
+                "openAIResponsesEnable": "Responses engedélyezése kompatibilis OpenAI-modellekhez",
                 "routingPreferred": "Elsődleges",
                 "routingFallback": "Tartalék",
                 "routingNoFallback": "Nincs"

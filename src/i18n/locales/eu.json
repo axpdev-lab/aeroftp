@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Itsatsi zure API Token hemen",
             "kdriveDriveIdPlaceholder": "Zure kDrive ID (zenbakizkoa)",
             "kdriveTokenHelp": "Sortu token bat manager.infomaniak.com → Developer → API Tokens gunean",
-            "kdriveTokenScopes": "Tokenak drive eta user_info esparruak behar ditu. drive bakarrik izanda konektatu eta fitxategiak zerrendatzen ditu, baina \"Eskuratu\" baztertu egiten da, zure kontuaren profila irakurtzen duelako Drive ID aurkitzeko.",
             "kdriveFindDriveId": "Aurkitu zure Drive ID",
             "kdriveFindDriveIdHint": "Drive ID zenbakizkoa orri honen helbide-barran agertzen da",
             "kdriveCreateToken": "Sortu API token bat",
@@ -323,7 +322,8 @@
                 "found": "{count} helburu eskuragarri aurkitu dira. Idatzi bilatzeko edo hautatu bat."
             },
             "swiftAuthUrl": "Keystone autentifikazio URLa",
-            "swiftAllowCleartextStorage": "Inplementazio honek objektu-biltegiratzea HTTP soilaren bidez zerbitzatzen du. Onartu profil honetarako: sarbide-tokena eta fitxategi guztiak zifratu gabe zeharkatzen dute sarea."
+            "swiftAllowCleartextStorage": "Inplementazio honek objektu-biltegiratzea HTTP soilaren bidez zerbitzatzen du. Onartu profil honetarako: sarbide-tokena eta fitxategi guztiak zifratu gabe zeharkatzen dute sarea.",
+            "kdriveTokenScopes": "Tokenak drive eta user_info esparruak behar ditu. drive bakarrik izanda konektatu eta fitxategiak zerrendatzen ditu, baina \"Eskuratu\" baztertu egiten da, zure kontuaren profila irakurtzen duelako Drive ID aurkitzeko."
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -2553,6 +2553,13 @@
                 "styleDefault": "Lehenetsia",
                 "styleExplanatory": "Azalpenezkoa",
                 "styleLearning": "Ikaskuntza",
+                "retiredModel": "Erretiratua",
+                "retiredModelHint": "Hornitzaile honek modeloa erretiratu du. Hautatu egungo ordezko bat hurrengo eskaera egin aurretik.",
+                "unverifiedCapabilities": "Egiaztatu gabeko gaitasunak",
+                "unverifiedModelHint": "Gaitasunak ezezagunak dira. Berrikusi testuingurua, tresnak, ikusmena eta arrazoibidea, eredu hau agentearen zereginetarako erabili aurretik.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Erabili Responses jatorrizko garraioa egiaztatutako OpenAI eredu bateragarrietarako. Desaktibatu Chat Completions erabiltzeko.",
+                "openAIResponsesEnable": "Gaitu Responses OpenAI eredu bateragarrietarako",
                 "routingPreferred": "Hobetsia",
                 "routingFallback": "Ordezkoa",
                 "routingNoFallback": "Bat ere ez"

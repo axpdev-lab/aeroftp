@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Vložte sem svoj API Token",
             "kdriveDriveIdPlaceholder": "Vaše ID kDrive (číselné)",
             "kdriveTokenHelp": "Vygenerujte token na manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Token potrebuje rozsahy drive a user_info. Iba s drive sa pripojí a zobrazí súbory, ale „Načítať“ je odmietnuté, pretože číta profil vášho účtu, aby našlo Drive ID.",
             "kdriveFindDriveId": "Nájdite svoj Drive ID",
             "kdriveFindDriveIdHint": "Číselný Drive ID sa zobrazuje v paneli s adresou tejto stránky",
             "kdriveCreateToken": "Vytvoriť token API",
@@ -323,7 +322,8 @@
                 "found": "Nájdených {count} dostupných cieľov. Píšte na vyhľadávanie alebo niektorý vyberte."
             },
             "swiftAuthUrl": "Overovacia URL Keystone",
-            "swiftAllowCleartextStorage": "Toto nasadenie poskytuje objektové úložisko cez nešifrované HTTP. Prijmite to pre tento profil: prístupový token aj každý súbor prechádzajú sieťou nezašifrované."
+            "swiftAllowCleartextStorage": "Toto nasadenie poskytuje objektové úložisko cez nešifrované HTTP. Prijmite to pre tento profil: prístupový token aj každý súbor prechádzajú sieťou nezašifrované.",
+            "kdriveTokenScopes": "Token potrebuje rozsahy drive a user_info. Iba s drive sa pripojí a zobrazí súbory, ale „Načítať“ je odmietnuté, pretože číta profil vášho účtu, aby našlo Drive ID."
         },
         "browser": {
             "remote": "Vzdialený",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Predvolené",
                 "styleExplanatory": "Vysvetľujúci",
                 "styleLearning": "Vzdelávací",
+                "retiredModel": "Vyradený",
+                "retiredModelHint": "Tento poskytovateľ vyradil model. Pred ďalšou požiadavkou vyberte aktuálnu náhradu.",
+                "unverifiedCapabilities": "Neoverené schopnosti",
+                "unverifiedModelHint": "Schopnosti nie sú známe. Pred použitím tohto modelu na úlohy agenta skontrolujte kontext, nástroje, videnie a uvažovanie.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Použite natívny prenos Responses pre overené kompatibilné modely OpenAI. Vypnite ho, ak chcete používať Chat Completions.",
+                "openAIResponsesEnable": "Povoliť Responses pre kompatibilné modely OpenAI",
                 "routingPreferred": "Preferovaný",
                 "routingFallback": "Záložný",
                 "routingNoFallback": "Žiadny"

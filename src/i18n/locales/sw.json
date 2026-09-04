@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Bandika API Token yako hapa",
             "kdriveDriveIdPlaceholder": "Kitambulisho chako cha kDrive (nambari)",
             "kdriveTokenHelp": "Tengeneza tokeni kwenye manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Tokeni inahitaji upeo wa drive na user_info. Kwa drive pekee inaunganisha na kuorodhesha faili, lakini \"Leta\" inakataliwa, kwa sababu inasoma wasifu wa akaunti yako ili kupata Drive ID.",
             "kdriveFindDriveId": "Tafuta Drive ID yako",
             "kdriveFindDriveIdHint": "Drive ID ya nambari huonekana kwenye upau wa anwani wa ukurasa huu",
             "kdriveCreateToken": "Tengeneza tokeni ya API",
@@ -323,7 +322,8 @@
                 "found": "Zimepatikana shabaha {count} zinazofikika. Andika ili kutafuta au chagua moja."
             },
             "swiftAuthUrl": "URL ya uthibitishaji wa Keystone",
-            "swiftAllowCleartextStorage": "Usakinishaji huu hutoa hifadhi ya vitu kupitia HTTP wazi. Ikubali kwa wasifu huu: tokeni ya ufikiaji na kila faili hupita kwenye mtandao bila kusimbwa."
+            "swiftAllowCleartextStorage": "Usakinishaji huu hutoa hifadhi ya vitu kupitia HTTP wazi. Ikubali kwa wasifu huu: tokeni ya ufikiaji na kila faili hupita kwenye mtandao bila kusimbwa.",
+            "kdriveTokenScopes": "Tokeni inahitaji upeo wa drive na user_info. Kwa drive pekee inaunganisha na kuorodhesha faili, lakini \"Leta\" inakataliwa, kwa sababu inasoma wasifu wa akaunti yako ili kupata Drive ID."
         },
         "browser": {
             "remote": "Mbali",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Chaguo-msingi",
                 "styleExplanatory": "Maelezo",
                 "styleLearning": "Kujifunza",
+                "retiredModel": "Imestaafu",
+                "retiredModelHint": "Mtoa huduma huyu ameiondoa modeli. Chagua mbadala wa sasa kabla ya ombi linalofuata.",
+                "unverifiedCapabilities": "Uwezo usiothibitishwa",
+                "unverifiedModelHint": "Uwezo haujulikani. Kagua muktadha, zana, kuona na kufikiri kabla ya kutumia modeli hii kwa kazi za wakala.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Tumia usafirishaji wa asili wa Responses kwa miundo ya OpenAI inayooana iliyothibitishwa. Zima hii ili kutumia Chat Completions.",
+                "openAIResponsesEnable": "Washa Responses kwa miundo ya OpenAI inayooana",
                 "routingPreferred": "Inayopendelewa",
                 "routingFallback": "Mbadala",
                 "routingNoFallback": "Hakuna"

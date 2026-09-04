@@ -61617,6 +61617,7 @@ async fn agent_tool_loop(
             top_k: None,
             cached_content: None,
             web_search: None,
+            use_responses_api: None,
         };
 
         // T4: stream the assistant response token-by-token via ai_chat_stream_with_sink.

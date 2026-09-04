@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Enganxeu el vostre API Token aquí",
             "kdriveDriveIdPlaceholder": "El vostre kDrive ID (numèric)",
             "kdriveTokenHelp": "Genereu un token a manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "El token necessita els àmbits drive i user_info. Només amb drive es connecta i llista els fitxers, però \"Obtén\" es rebutja, perquè llegeix el perfil del vostre compte per trobar el Drive ID.",
             "kdriveFindDriveId": "Trobeu el vostre Drive ID",
             "kdriveFindDriveIdHint": "El Drive ID numèric apareix a la barra d'adreces d'aquesta pàgina",
             "kdriveCreateToken": "Creeu un token d'API",
@@ -323,7 +322,8 @@
                 "found": "S'han trobat {count} destinacions accessibles. Escriu per cercar o selecciona'n una."
             },
             "swiftAuthUrl": "URL d'autenticació de Keystone",
-            "swiftAllowCleartextStorage": "Aquest desplegament serveix l'emmagatzematge d'objectes per HTTP en text clar. Accepta-ho per a aquest perfil: el testimoni d'accés i tots els fitxers travessen la xarxa sense xifrar."
+            "swiftAllowCleartextStorage": "Aquest desplegament serveix l'emmagatzematge d'objectes per HTTP en text clar. Accepta-ho per a aquest perfil: el testimoni d'accés i tots els fitxers travessen la xarxa sense xifrar.",
+            "kdriveTokenScopes": "El token necessita els àmbits drive i user_info. Només amb drive es connecta i llista els fitxers, però \"Obtén\" es rebutja, perquè llegeix el perfil del vostre compte per trobar el Drive ID."
         },
         "browser": {
             "remote": "Remot",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Predeterminat",
                 "styleExplanatory": "Explicatiu",
                 "styleLearning": "Aprenentatge",
+                "retiredModel": "Retirat",
+                "retiredModelHint": "Aquest proveïdor ha retirat el model. Selecciona un substitut actual abans de la propera sol·licitud.",
+                "unverifiedCapabilities": "Capacitats no verificades",
+                "unverifiedModelHint": "Les capacitats són desconegudes. Revisa el context, les eines, la visió i el raonament abans d'utilitzar aquest model per a tasques d'agent.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Utilitza el transport natiu de Responses per als models d'OpenAI compatibles verificats. Desactiva'l per utilitzar Chat Completions.",
+                "openAIResponsesEnable": "Activa Responses per als models d'OpenAI compatibles",
                 "routingPreferred": "Preferit",
                 "routingFallback": "Alternatiu",
                 "routingNoFallback": "Cap"

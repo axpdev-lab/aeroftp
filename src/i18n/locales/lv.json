@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Ielīmējiet savu API marķieri šeit",
             "kdriveDriveIdPlaceholder": "Jūsu kDrive ID (ciparu)",
             "kdriveTokenHelp": "Ģenerējiet marķieri vietnē manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Tokenam nepieciešami drive un user_info tvērumi. Tikai ar drive tas pieslēdzas un parāda failus, bet \"Iegūt\" tiek noraidīts, jo Drive ID atrašanai tas nolasa jūsu konta profilu.",
             "kdriveFindDriveId": "Atrodiet savu Drive ID",
             "kdriveFindDriveIdHint": "Skaitliskais Drive ID ir redzams šīs lapas adreses joslā",
             "kdriveCreateToken": "Izveidot API marķieri",
@@ -323,7 +322,8 @@
                 "found": "Atrasti {count} pieejami mērķi. Rakstiet, lai meklētu, vai izvēlieties vienu."
             },
             "swiftAuthUrl": "Keystone autentifikācijas URL",
-            "swiftAllowCleartextStorage": "Šī izvietošana nodrošina objektu krātuvi caur nešifrētu HTTP. Pieņemiet to šim profilam: piekļuves marķieris un katrs fails šķērso tīklu nešifrēts."
+            "swiftAllowCleartextStorage": "Šī izvietošana nodrošina objektu krātuvi caur nešifrētu HTTP. Pieņemiet to šim profilam: piekļuves marķieris un katrs fails šķērso tīklu nešifrēts.",
+            "kdriveTokenScopes": "Tokenam nepieciešami drive un user_info tvērumi. Tikai ar drive tas pieslēdzas un parāda failus, bet \"Iegūt\" tiek noraidīts, jo Drive ID atrašanai tas nolasa jūsu konta profilu."
         },
         "browser": {
             "remote": "Attālināts",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Noklusējums",
                 "styleExplanatory": "Skaidrojošs",
                 "styleLearning": "Mācību",
+                "retiredModel": "Novecojis",
+                "retiredModelHint": "Šis pakalpojumu sniedzējs ir pārtraucis modeļa izmantošanu. Pirms nākamā pieprasījuma izvēlieties aktuālu aizstājēju.",
+                "unverifiedCapabilities": "Nepārbaudītas iespējas",
+                "unverifiedModelHint": "Iespējas nav zināmas. Pirms šī modeļa izmantošanas aģenta uzdevumiem pārskatiet kontekstu, rīkus, redzi un spriešanu.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Izmantojiet vietējo Responses transportu pārbaudītiem saderīgiem OpenAI modeļiem. Izslēdziet šo, lai izmantotu Chat Completions.",
+                "openAIResponsesEnable": "Iespējot Responses saderīgiem OpenAI modeļiem",
                 "routingPreferred": "Vēlamais",
                 "routingFallback": "Rezerves",
                 "routingNoFallback": "Nav"

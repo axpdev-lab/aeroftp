@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Límdu API lykilorðið þitt hér",
             "kdriveDriveIdPlaceholder": "kDrive auðkennið þitt (tala)",
             "kdriveTokenHelp": "Búðu til lykil á manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Lykillinn þarf bæði umfangið drive og umfangið user_info. Með aðeins drive tengist hann og sýnir skrár, en „Sækja“ er hafnað, því hún les reikningssnið þitt til að finna Drive ID.",
             "kdriveFindDriveId": "Finndu Drive ID-ið þitt",
             "kdriveFindDriveIdHint": "Tölulega Drive ID-ið birtist í veffangastiku þessarar síðu",
             "kdriveCreateToken": "Búa til API-lykil",
@@ -323,7 +322,8 @@
                 "found": "Fundust {count} aðgengilegir áfangastaðir. Skrifaðu til að leita eða veldu einn."
             },
             "swiftAuthUrl": "Keystone auðkenningarslóð",
-            "swiftAllowCleartextStorage": "Þessi uppsetning þjónar hlutageymslu um ódulkóðað HTTP. Samþykktu það fyrir þennan prófíl: aðgangsteiknið og hver skrá fara ódulkóðuð um netið."
+            "swiftAllowCleartextStorage": "Þessi uppsetning þjónar hlutageymslu um ódulkóðað HTTP. Samþykktu það fyrir þennan prófíl: aðgangsteiknið og hver skrá fara ódulkóðuð um netið.",
+            "kdriveTokenScopes": "Lykillinn þarf bæði umfangið drive og umfangið user_info. Með aðeins drive tengist hann og sýnir skrár, en „Sækja“ er hafnað, því hún les reikningssnið þitt til að finna Drive ID."
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Sjálfgefið",
                 "styleExplanatory": "Útskýrandi",
                 "styleLearning": "Námsmiðað",
+                "retiredModel": "Úrelt",
+                "retiredModelHint": "Þessi þjónustuaðili hefur lagt líkanið niður. Veldu núverandi staðgengil áður en næsta beiðni er send.",
+                "unverifiedCapabilities": "Óstaðfestir eiginleikar",
+                "unverifiedModelHint": "Eiginleikarnir eru óþekktir. Farðu yfir samhengi, verkfæri, sjón og rökhugsun áður en þú notar þetta líkan fyrir verkefni umboðsmanns.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Notaðu innbyggðan Responses-flutning fyrir staðfest samhæf OpenAI-líkön. Slökktu á þessu til að nota Chat Completions.",
+                "openAIResponsesEnable": "Virkja Responses fyrir samhæf OpenAI-líkön",
                 "routingPreferred": "Valið",
                 "routingFallback": "Varalíkan",
                 "routingNoFallback": "Ekkert"

@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Prilepite svoj API Token sem",
             "kdriveDriveIdPlaceholder": "Vaš ID kDrive (številčni)",
             "kdriveTokenHelp": "Ustvarite žeton na manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Žeton potrebuje obsega drive in user_info. Samo z drive se poveže in prikaže datoteke, „Pridobi“ pa je zavrnjen, ker bere profil vašega računa, da najde Drive ID.",
             "kdriveFindDriveId": "Poiščite svoj Drive ID",
             "kdriveFindDriveIdHint": "Številčni Drive ID se prikaže v naslovni vrstici te strani",
             "kdriveCreateToken": "Ustvari žeton API",
@@ -323,7 +322,8 @@
                 "found": "Najdenih je {count} dosegljivih ciljev. Tipkajte za iskanje ali izberite enega."
             },
             "swiftAuthUrl": "URL za overjanje Keystone",
-            "swiftAllowCleartextStorage": "Ta namestitev streže objektno shrambo prek nešifriranega HTTP. Sprejmite to za ta profil: dostopni žeton in vsaka datoteka potujeta prek omrežja nešifrirana."
+            "swiftAllowCleartextStorage": "Ta namestitev streže objektno shrambo prek nešifriranega HTTP. Sprejmite to za ta profil: dostopni žeton in vsaka datoteka potujeta prek omrežja nešifrirana.",
+            "kdriveTokenScopes": "Žeton potrebuje obsega drive in user_info. Samo z drive se poveže in prikaže datoteke, „Pridobi“ pa je zavrnjen, ker bere profil vašega računa, da najde Drive ID."
         },
         "browser": {
             "remote": "Oddaljeno",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Privzeto",
                 "styleExplanatory": "Pojasnjevalno",
                 "styleLearning": "Učno",
+                "retiredModel": "Umaknjen",
+                "retiredModelHint": "Ta ponudnik je umaknil model. Pred naslednjo zahtevo izberite trenutno zamenjavo.",
+                "unverifiedCapabilities": "Nepreverjene zmogljivosti",
+                "unverifiedModelHint": "Zmogljivosti niso znane. Pred uporabo tega modela za naloge agenta preglejte kontekst, orodja, vid in sklepanje.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Uporabite izvorni prenos Responses za preverjene združljive modele OpenAI. Izklopite ga, če želite uporabljati Chat Completions.",
+                "openAIResponsesEnable": "Omogoči Responses za združljive modele OpenAI",
                 "routingPreferred": "Prednostni",
                 "routingFallback": "Rezervni",
                 "routingNoFallback": "Brez"

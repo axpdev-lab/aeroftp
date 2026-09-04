@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Dán API Token của bạn vào đây",
             "kdriveDriveIdPlaceholder": "ID kDrive của bạn (số)",
             "kdriveTokenHelp": "Tạo token tại manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Token cần các phạm vi drive và user_info. Chỉ với drive, token vẫn kết nối và liệt kê tệp, nhưng \"Lấy\" bị từ chối, vì nó đọc hồ sơ tài khoản của bạn để tìm Drive ID.",
             "kdriveFindDriveId": "Tìm Drive ID của bạn",
             "kdriveFindDriveIdHint": "Drive ID dạng số xuất hiện trên thanh địa chỉ của trang này",
             "kdriveCreateToken": "Tạo token API",
@@ -323,7 +322,8 @@
                 "found": "Đã tìm thấy {count} đích có thể truy cập. Nhập để tìm kiếm hoặc chọn một mục."
             },
             "swiftAuthUrl": "URL xác thực Keystone",
-            "swiftAllowCleartextStorage": "Triển khai này phục vụ lưu trữ đối tượng qua HTTP không mã hóa. Chấp nhận cho hồ sơ này: mã thông báo truy cập và mọi tệp đi qua mạng mà không được mã hóa."
+            "swiftAllowCleartextStorage": "Triển khai này phục vụ lưu trữ đối tượng qua HTTP không mã hóa. Chấp nhận cho hồ sơ này: mã thông báo truy cập và mọi tệp đi qua mạng mà không được mã hóa.",
+            "kdriveTokenScopes": "Token cần các phạm vi drive và user_info. Chỉ với drive, token vẫn kết nối và liệt kê tệp, nhưng \"Lấy\" bị từ chối, vì nó đọc hồ sơ tài khoản của bạn để tìm Drive ID."
         },
         "browser": {
             "remote": "Từ xa",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Mặc định",
                 "styleExplanatory": "Giải thích",
                 "styleLearning": "Học tập",
+                "retiredModel": "Đã ngừng sử dụng",
+                "retiredModelHint": "Nhà cung cấp này đã ngừng sử dụng mô hình. Hãy chọn một mô hình thay thế hiện hành trước yêu cầu tiếp theo.",
+                "unverifiedCapabilities": "Khả năng chưa được xác minh",
+                "unverifiedModelHint": "Chưa rõ các khả năng. Hãy xem xét ngữ cảnh, công cụ, thị giác và khả năng suy luận trước khi dùng mô hình này cho tác vụ tác nhân.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Sử dụng giao thức Responses gốc cho các mô hình OpenAI tương thích đã được xác minh. Tắt tùy chọn này để sử dụng Chat Completions.",
+                "openAIResponsesEnable": "Bật Responses cho các mô hình OpenAI tương thích",
                 "routingPreferred": "Ưu tiên",
                 "routingFallback": "Dự phòng",
                 "routingNoFallback": "Không có"

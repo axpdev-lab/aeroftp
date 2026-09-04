@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Plak hier uw API-token",
             "kdriveDriveIdPlaceholder": "Uw kDrive ID (numeriek)",
             "kdriveTokenHelp": "Genereer een token op manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Het token heeft de scopes drive en user_info nodig. Met alleen drive maakt het verbinding en toont het bestanden, maar \"Ophalen\" wordt geweigerd, omdat het je accountprofiel leest om de Drive ID te vinden.",
             "kdriveFindDriveId": "Vind uw Drive ID",
             "kdriveFindDriveIdHint": "Het numerieke Drive ID verschijnt in de adresbalk van deze pagina",
             "kdriveCreateToken": "Maak een API-token aan",
@@ -323,7 +322,8 @@
                 "found": "{count} bereikbare doelen gevonden. Typ om te zoeken of selecteer er een."
             },
             "swiftAuthUrl": "Keystone-authenticatie-URL",
-            "swiftAllowCleartextStorage": "Deze installatie levert objectopslag via onversleutelde HTTP. Accepteer dit voor dit profiel: het toegangstoken en elk bestand gaan onversleuteld over het netwerk."
+            "swiftAllowCleartextStorage": "Deze installatie levert objectopslag via onversleutelde HTTP. Accepteer dit voor dit profiel: het toegangstoken en elk bestand gaan onversleuteld over het netwerk.",
+            "kdriveTokenScopes": "Het token heeft de scopes drive en user_info nodig. Met alleen drive maakt het verbinding en toont het bestanden, maar \"Ophalen\" wordt geweigerd, omdat het je accountprofiel leest om de Drive ID te vinden."
         },
         "browser": {
             "remote": "Extern",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Standaard",
                 "styleExplanatory": "Verklarend",
                 "styleLearning": "Lerend",
+                "retiredModel": "Uitgefaseerd",
+                "retiredModelHint": "Deze provider heeft het model uitgefaseerd. Selecteer een actuele vervanger vóór het volgende verzoek.",
+                "unverifiedCapabilities": "Niet-geverifieerde mogelijkheden",
+                "unverifiedModelHint": "De mogelijkheden zijn onbekend. Controleer context, tools, visie en redeneervermogen voordat je dit model voor agenttaken gebruikt.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Gebruik het native Responses-transport voor geverifieerde compatibele OpenAI-modellen. Schakel dit uit om Chat Completions te gebruiken.",
+                "openAIResponsesEnable": "Responses inschakelen voor compatibele OpenAI-modellen",
                 "routingPreferred": "Voorkeur",
                 "routingFallback": "Reserve",
                 "routingNoFallback": "Geen"

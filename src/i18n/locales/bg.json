@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Поставете вашия API Token тук",
             "kdriveDriveIdPlaceholder": "Вашият kDrive ID (числов)",
             "kdriveTokenHelp": "Генерирайте токен на manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Токенът трябва да има обхватите drive и user_info. Само с drive той се свързва и показва файловете, но „Извличане“ се отхвърля, защото чете профила на акаунта ви, за да намери Drive ID.",
             "kdriveFindDriveId": "Намерете вашия Drive ID",
             "kdriveFindDriveIdHint": "Числовият Drive ID се показва в адресната лента на тази страница",
             "kdriveCreateToken": "Създайте API токен",
@@ -323,7 +322,8 @@
                 "found": "Намерени са {count} достъпни цели. Пишете, за да търсите, или изберете една."
             },
             "swiftAuthUrl": "URL за удостоверяване Keystone",
-            "swiftAllowCleartextStorage": "Тази инсталация обслужва обектното хранилище през обикновен HTTP. Приемете го за този профил: токенът за достъп и всеки файл преминават през мрежата некриптирани."
+            "swiftAllowCleartextStorage": "Тази инсталация обслужва обектното хранилище през обикновен HTTP. Приемете го за този профил: токенът за достъп и всеки файл преминават през мрежата некриптирани.",
+            "kdriveTokenScopes": "Токенът трябва да има обхватите drive и user_info. Само с drive той се свързва и показва файловете, но „Извличане“ се отхвърля, защото чете профила на акаунта ви, за да намери Drive ID."
         },
         "browser": {
             "remote": "Отдалечен",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "По подразбиране",
                 "styleExplanatory": "Обяснителен",
                 "styleLearning": "Обучаващ",
+                "retiredModel": "Спрян",
+                "retiredModelHint": "Този доставчик спря модела. Изберете актуален заместител преди следващата заявка.",
+                "unverifiedCapabilities": "Непотвърдени възможности",
+                "unverifiedModelHint": "Възможностите са неизвестни. Прегледайте контекста, инструментите, зрението и разсъждението, преди да използвате този модел за агентски задачи.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Използвайте нативния транспорт Responses за проверени съвместими модели на OpenAI. Изключете го, за да използвате Chat Completions.",
+                "openAIResponsesEnable": "Активиране на Responses за съвместими модели на OpenAI",
                 "routingPreferred": "Предпочитан",
                 "routingFallback": "Резервен",
                 "routingNoFallback": "Няма"

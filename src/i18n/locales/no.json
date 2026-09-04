@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Lim inn API-tokenet ditt her",
             "kdriveDriveIdPlaceholder": "Din kDrive-ID (numerisk)",
             "kdriveTokenHelp": "Generer et token på manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Tokenet trenger omfangene drive og user_info. Med bare drive kobler det til og viser filer, men \"Hent\" avvises, fordi den leser kontoprofilen din for å finne Drive ID.",
             "kdriveFindDriveId": "Finn din Drive ID",
             "kdriveFindDriveIdHint": "Den numeriske Drive ID-en vises i adresselinjen på denne siden",
             "kdriveCreateToken": "Opprett et API-token",
@@ -323,7 +322,8 @@
                 "found": "Fant {count} tilgjengelige mål. Skriv for å søke, eller velg ett."
             },
             "swiftAuthUrl": "Keystone-autentiserings-URL",
-            "swiftAllowCleartextStorage": "Denne installasjonen leverer objektlagring over ukryptert HTTP. Godta det for denne profilen: tilgangstokenet og hver fil krysser nettverket ukryptert."
+            "swiftAllowCleartextStorage": "Denne installasjonen leverer objektlagring over ukryptert HTTP. Godta det for denne profilen: tilgangstokenet og hver fil krysser nettverket ukryptert.",
+            "kdriveTokenScopes": "Tokenet trenger omfangene drive og user_info. Med bare drive kobler det til og viser filer, men \"Hent\" avvises, fordi den leser kontoprofilen din for å finne Drive ID."
         },
         "browser": {
             "remote": "Ekstern",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Standard",
                 "styleExplanatory": "Forklarende",
                 "styleLearning": "Læring",
+                "retiredModel": "Utfaset",
+                "retiredModelHint": "Denne leverandøren har faset ut modellen. Velg en aktuell erstatning før neste forespørsel.",
+                "unverifiedCapabilities": "Ubekreftede funksjoner",
+                "unverifiedModelHint": "Funksjonene er ukjente. Gå gjennom kontekst, verktøy, syn og resonnering før du bruker denne modellen til agentoppgaver.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Bruk den innebygde Responses-transporten for bekreftede kompatible OpenAI-modeller. Slå dette av for å bruke Chat Completions.",
+                "openAIResponsesEnable": "Aktiver Responses for kompatible OpenAI-modeller",
                 "routingPreferred": "Foretrukket",
                 "routingFallback": "Reserve",
                 "routingNoFallback": "Ingen"

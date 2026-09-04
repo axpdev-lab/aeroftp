@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Kleepige oma API Token siia",
             "kdriveDriveIdPlaceholder": "Teie kDrive ID (numbriline)",
             "kdriveTokenHelp": "Looge token aadressil manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Token vajab õigusi drive ja user_info. Ainult drive õigusega see ühendub ja kuvab faile, kuid \"Too\" lükatakse tagasi, sest see loeb teie konto profiili, et leida Drive ID.",
             "kdriveFindDriveId": "Leidke oma Drive ID",
             "kdriveFindDriveIdHint": "Numbriline Drive ID kuvatakse selle lehe aadressiribal",
             "kdriveCreateToken": "Looge API token",
@@ -323,7 +322,8 @@
                 "found": "Leiti {count} ligipääsetavat sihtkohta. Otsimiseks tipi teksti või vali üks."
             },
             "swiftAuthUrl": "Keystone'i autentimise URL",
-            "swiftAllowCleartextStorage": "See juurutus pakub objektisalvestust krüptimata HTTP kaudu. Nõustu sellega selle profiili puhul: juurdepääsuluba ja iga fail liiguvad võrgus krüptimata."
+            "swiftAllowCleartextStorage": "See juurutus pakub objektisalvestust krüptimata HTTP kaudu. Nõustu sellega selle profiili puhul: juurdepääsuluba ja iga fail liiguvad võrgus krüptimata.",
+            "kdriveTokenScopes": "Token vajab õigusi drive ja user_info. Ainult drive õigusega see ühendub ja kuvab faile, kuid \"Too\" lükatakse tagasi, sest see loeb teie konto profiili, et leida Drive ID."
         },
         "browser": {
             "remote": "Kaugserver",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Vaikimisi",
                 "styleExplanatory": "Selgitav",
                 "styleLearning": "Õpetlik",
+                "retiredModel": "Kasutuselt kõrvaldatud",
+                "retiredModelHint": "See teenusepakkuja kõrvaldas mudeli kasutuselt. Valige enne järgmist päringut ajakohane asendus.",
+                "unverifiedCapabilities": "Kinnitamata võimalused",
+                "unverifiedModelHint": "Võimalused pole teada. Enne selle mudeli kasutamist agendi ülesannetes vaadake üle kontekst, tööriistad, nägemine ja arutlemine.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Kasutage kinnitatud ühilduvate OpenAI mudelite jaoks natiivset Responses-edastust. Chat Completionsi kasutamiseks lülitage see välja.",
+                "openAIResponsesEnable": "Luba Responses ühilduvate OpenAI mudelite jaoks",
                 "routingPreferred": "Eelistatud",
                 "routingFallback": "Varumudel",
                 "routingNoFallback": "Puudub"

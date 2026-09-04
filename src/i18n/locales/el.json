@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Επικολλήστε το API Token σας εδώ",
             "kdriveDriveIdPlaceholder": "Το kDrive ID σας (αριθμητικό)",
             "kdriveTokenHelp": "Δημιουργήστε ένα token στο manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Το token χρειάζεται τα scopes drive και user_info. Μόνο με drive συνδέεται και εμφανίζει αρχεία, αλλά το «Ανάκτηση» απορρίπτεται, επειδή διαβάζει το προφίλ του λογαριασμού σας για να βρει το Drive ID.",
             "kdriveFindDriveId": "Βρείτε το Drive ID σας",
             "kdriveFindDriveIdHint": "Το αριθμητικό Drive ID εμφανίζεται στη γραμμή διευθύνσεων αυτής της σελίδας",
             "kdriveCreateToken": "Δημιουργήστε ένα token API",
@@ -323,7 +322,8 @@
                 "found": "Βρέθηκαν {count} προσβάσιμοι προορισμοί. Πληκτρολογήστε για αναζήτηση ή επιλέξτε έναν."
             },
             "swiftAuthUrl": "URL ελέγχου ταυτότητας Keystone",
-            "swiftAllowCleartextStorage": "Αυτή η εγκατάσταση παρέχει αποθήκευση αντικειμένων μέσω απλού HTTP. Αποδεχτείτε το για αυτό το προφίλ: το διακριτικό πρόσβασης και κάθε αρχείο διασχίζουν το δίκτυο χωρίς κρυπτογράφηση."
+            "swiftAllowCleartextStorage": "Αυτή η εγκατάσταση παρέχει αποθήκευση αντικειμένων μέσω απλού HTTP. Αποδεχτείτε το για αυτό το προφίλ: το διακριτικό πρόσβασης και κάθε αρχείο διασχίζουν το δίκτυο χωρίς κρυπτογράφηση.",
+            "kdriveTokenScopes": "Το token χρειάζεται τα scopes drive και user_info. Μόνο με drive συνδέεται και εμφανίζει αρχεία, αλλά το «Ανάκτηση» απορρίπτεται, επειδή διαβάζει το προφίλ του λογαριασμού σας για να βρει το Drive ID."
         },
         "browser": {
             "remote": "Απομακρυσμένο",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Προεπιλογή",
                 "styleExplanatory": "Επεξηγηματικό",
                 "styleLearning": "Εκπαιδευτικό",
+                "retiredModel": "Αποσυρμένο",
+                "retiredModelHint": "Αυτός ο πάροχος απέσυρε το μοντέλο. Επιλέξτε ένα τρέχον αντικαταστάτη πριν από το επόμενο αίτημα.",
+                "unverifiedCapabilities": "Μη επαληθευμένες δυνατότητες",
+                "unverifiedModelHint": "Οι δυνατότητες είναι άγνωστες. Ελέγξτε το πλαίσιο, τα εργαλεία, την όραση και τη συλλογιστική πριν χρησιμοποιήσετε αυτό το μοντέλο για εργασίες πράκτορα.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Χρησιμοποιήστε την εγγενή μεταφορά Responses για επαληθευμένα συμβατά μοντέλα OpenAI. Απενεργοποιήστε την για να χρησιμοποιήσετε το Chat Completions.",
+                "openAIResponsesEnable": "Ενεργοποίηση Responses για συμβατά μοντέλα OpenAI",
                 "routingPreferred": "Προτιμώμενο",
                 "routingFallback": "Εφεδρικό",
                 "routingNoFallback": "Κανένα"

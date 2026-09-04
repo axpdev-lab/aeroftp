@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "បិទភ្ជាប់ API token របស់អ្នកនៅទីនេះ",
             "kdriveDriveIdPlaceholder": "លេខសម្គាល់ kDrive របស់អ្នក (ជាលេខ)",
             "kdriveTokenHelp": "បង្កើត token នៅ manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "ថូខិនត្រូវការវិសាលភាព drive និង user_info។ ដោយមានតែ drive វាភ្ជាប់ និងបង្ហាញឯកសារបាន ប៉ុន្តែ \"ទាញយក\" ត្រូវបានបដិសេធ ព្រោះវាអានប្រវត្តិរូបគណនីរបស់អ្នកដើម្បីរក Drive ID។",
             "kdriveFindDriveId": "ស្វែងរក Drive ID របស់អ្នក",
             "kdriveFindDriveIdHint": "Drive ID ជាលេខបង្ហាញនៅក្នុងរបារអាសយដ្ឋាននៃទំព័រនេះ",
             "kdriveCreateToken": "បង្កើត token API",
@@ -323,7 +322,8 @@
                 "found": "រកឃើញគោលដៅដែលអាចចូលបាន {count}។ វាយបញ្ចូលដើម្បីស្វែងរក ឬជ្រើសរើសមួយ។"
             },
             "swiftAuthUrl": "URL ផ្ទៀងផ្ទាត់ Keystone",
-            "swiftAllowCleartextStorage": "ការដំឡើងនេះផ្តល់ការផ្ទុកវត្ថុតាម HTTP ធម្មតា។ ទទួលយកវាសម្រាប់ប្រវត្តិរូបនេះ៖ ថូខឹនចូលប្រើ និងឯកសារទាំងអស់ឆ្លងកាត់បណ្តាញដោយមិនបានអ៊ិនគ្រីប។"
+            "swiftAllowCleartextStorage": "ការដំឡើងនេះផ្តល់ការផ្ទុកវត្ថុតាម HTTP ធម្មតា។ ទទួលយកវាសម្រាប់ប្រវត្តិរូបនេះ៖ ថូខឹនចូលប្រើ និងឯកសារទាំងអស់ឆ្លងកាត់បណ្តាញដោយមិនបានអ៊ិនគ្រីប។",
+            "kdriveTokenScopes": "ថូខិនត្រូវការវិសាលភាព drive និង user_info។ ដោយមានតែ drive វាភ្ជាប់ និងបង្ហាញឯកសារបាន ប៉ុន្តែ \"ទាញយក\" ត្រូវបានបដិសេធ ព្រោះវាអានប្រវត្តិរូបគណនីរបស់អ្នកដើម្បីរក Drive ID។"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "លំនាំដើម",
                 "styleExplanatory": "ពន្យល់",
                 "styleLearning": "សិក្សា",
+                "retiredModel": "បានលែងប្រើ",
+                "retiredModelHint": "អ្នកផ្តល់សេវានេះបានលែងប្រើម៉ូដែលនេះហើយ។ ជ្រើសរើសម៉ូដែលជំនួសបច្ចុប្បន្ន មុនសំណើបន្ទាប់។",
+                "unverifiedCapabilities": "សមត្ថភាពមិនបានផ្ទៀងផ្ទាត់",
+                "unverifiedModelHint": "សមត្ថភាពមិនត្រូវបានដឹងទេ។ ពិនិត្យបរិបទ ឧបករណ៍ ចក្ខុវិស័យ និងការវែកញែក មុនប្រើម៉ូដែលនេះសម្រាប់កិច្ចការភ្នាក់ងារ។",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "ប្រើការដឹកជញ្ជូន Responses ដើម សម្រាប់ម៉ូដែល OpenAI ដែលត្រូវគ្នា និងបានផ្ទៀងផ្ទាត់។ បិទវា ដើម្បីប្រើ Chat Completions។",
+                "openAIResponsesEnable": "បើក Responses សម្រាប់ម៉ូដែល OpenAI ដែលត្រូវគ្នា",
                 "routingPreferred": "ដែលពេញចិត្ត",
                 "routingFallback": "បម្រុង",
                 "routingNoFallback": "គ្មាន"

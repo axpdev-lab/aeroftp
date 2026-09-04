@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "วาง API Token ของคุณที่นี่",
             "kdriveDriveIdPlaceholder": "ID kDrive ของคุณ (ตัวเลข)",
             "kdriveTokenHelp": "สร้างโทเคนที่ manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "โทเค็นต้องมีขอบเขต drive และ user_info หากมีเฉพาะ drive จะเชื่อมต่อและแสดงรายการไฟล์ได้ แต่ \"ดึงข้อมูล\" จะถูกปฏิเสธ เพราะต้องอ่านโปรไฟล์บัญชีของคุณเพื่อค้นหา Drive ID",
             "kdriveFindDriveId": "ค้นหา Drive ID ของคุณ",
             "kdriveFindDriveIdHint": "Drive ID ที่เป็นตัวเลขจะปรากฏในแถบที่อยู่ของหน้านี้",
             "kdriveCreateToken": "สร้างโทเคน API",
@@ -323,7 +322,8 @@
                 "found": "พบเป้าหมายที่เข้าถึงได้ {count} รายการ พิมพ์เพื่อค้นหาหรือเลือกหนึ่งรายการ"
             },
             "swiftAuthUrl": "URL การตรวจสอบสิทธิ์ Keystone",
-            "swiftAllowCleartextStorage": "การติดตั้งนี้ให้บริการที่เก็บอ็อบเจ็กต์ผ่าน HTTP แบบไม่เข้ารหัส ยอมรับสำหรับโปรไฟล์นี้: โทเค็นการเข้าถึงและไฟล์ทุกไฟล์จะผ่านเครือข่ายโดยไม่ถูกเข้ารหัส"
+            "swiftAllowCleartextStorage": "การติดตั้งนี้ให้บริการที่เก็บอ็อบเจ็กต์ผ่าน HTTP แบบไม่เข้ารหัส ยอมรับสำหรับโปรไฟล์นี้: โทเค็นการเข้าถึงและไฟล์ทุกไฟล์จะผ่านเครือข่ายโดยไม่ถูกเข้ารหัส",
+            "kdriveTokenScopes": "โทเค็นต้องมีขอบเขต drive และ user_info หากมีเฉพาะ drive จะเชื่อมต่อและแสดงรายการไฟล์ได้ แต่ \"ดึงข้อมูล\" จะถูกปฏิเสธ เพราะต้องอ่านโปรไฟล์บัญชีของคุณเพื่อค้นหา Drive ID"
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "ค่าเริ่มต้น",
                 "styleExplanatory": "อธิบาย",
                 "styleLearning": "การเรียนรู้",
+                "retiredModel": "เลิกใช้งานแล้ว",
+                "retiredModelHint": "ผู้ให้บริการนี้เลิกใช้โมเดลแล้ว เลือกโมเดลทดแทนที่ใช้งานอยู่ก่อนคำขอถัดไป",
+                "unverifiedCapabilities": "ความสามารถที่ยังไม่ได้ตรวจสอบ",
+                "unverifiedModelHint": "ไม่ทราบความสามารถ ตรวจสอบบริบท เครื่องมือ การมองเห็น และการให้เหตุผลก่อนใช้โมเดลนี้กับงานของเอเจนต์",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "ใช้การส่งข้อมูล Responses แบบเนทีฟสำหรับโมเดล OpenAI ที่เข้ากันได้และผ่านการตรวจสอบแล้ว ปิดตัวเลือกนี้เพื่อใช้ Chat Completions",
+                "openAIResponsesEnable": "เปิดใช้ Responses สำหรับโมเดล OpenAI ที่เข้ากันได้",
                 "routingPreferred": "ที่ต้องการ",
                 "routingFallback": "สำรอง",
                 "routingNoFallback": "ไม่มี"

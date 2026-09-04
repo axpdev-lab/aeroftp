@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "API Token'inizi buraya yapıştırın",
             "kdriveDriveIdPlaceholder": "kDrive ID'niz (sayısal)",
             "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens adresinden bir token oluşturun",
-            "kdriveTokenScopes": "Belirtecin drive ve user_info kapsamlarına ihtiyacı var. Yalnızca drive ile bağlanır ve dosyaları listeler, ancak \"Getir\" reddedilir, çünkü Drive ID'yi bulmak için hesap profilinizi okur.",
             "kdriveFindDriveId": "Drive ID'nizi bulun",
             "kdriveFindDriveIdHint": "Sayısal Drive ID bu sayfanın adres çubuğunda görünür",
             "kdriveCreateToken": "Bir API token'ı oluşturun",
@@ -323,7 +322,8 @@
                 "found": "{count} erişilebilir hedef bulundu. Aramak için yazın veya birini seçin."
             },
             "swiftAuthUrl": "Keystone kimlik doğrulama URL'si",
-            "swiftAllowCleartextStorage": "Bu dağıtım nesne depolamayı şifrelenmemiş HTTP üzerinden sunuyor. Bu profil için kabul edin: erişim belirteci ve her dosya ağı şifrelenmemiş olarak geçer."
+            "swiftAllowCleartextStorage": "Bu dağıtım nesne depolamayı şifrelenmemiş HTTP üzerinden sunuyor. Bu profil için kabul edin: erişim belirteci ve her dosya ağı şifrelenmemiş olarak geçer.",
+            "kdriveTokenScopes": "Belirtecin drive ve user_info kapsamlarına ihtiyacı var. Yalnızca drive ile bağlanır ve dosyaları listeler, ancak \"Getir\" reddedilir, çünkü Drive ID'yi bulmak için hesap profilinizi okur."
         },
         "browser": {
             "remote": "Uzak",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Varsayılan",
                 "styleExplanatory": "Açıklayıcı",
                 "styleLearning": "Öğrenme",
+                "retiredModel": "Kullanımdan kaldırıldı",
+                "retiredModelHint": "Bu sağlayıcı modeli kullanımdan kaldırdı. Sonraki istekten önce güncel bir alternatif seçin.",
+                "unverifiedCapabilities": "Doğrulanmamış yetenekler",
+                "unverifiedModelHint": "Yetenekler bilinmiyor. Bu modeli aracı görevlerinde kullanmadan önce bağlamı, araçları, görmeyi ve akıl yürütmeyi inceleyin.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Doğrulanmış uyumlu OpenAI modelleri için yerel Responses aktarımını kullanın. Chat Completions kullanmak için bunu kapatın.",
+                "openAIResponsesEnable": "Uyumlu OpenAI modelleri için Responses'ı etkinleştir",
                 "routingPreferred": "Tercih edilen",
                 "routingFallback": "Yedek",
                 "routingNoFallback": "Yok"

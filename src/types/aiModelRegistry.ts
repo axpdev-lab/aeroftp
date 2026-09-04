@@ -1,7 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { AIModel } from './ai';
+import { AIModel, AIModelNativeCapabilities, AIProviderType } from './ai';
+
+export const MODEL_REGISTRY_REVIEWED_AT = '2026-09-02';
+export const UNKNOWN_MODEL_CONTEXT_BUDGET = 8192;
+
+export type ModelCapabilitySource = 'registry' | 'user' | 'unknown';
+
+export interface ModelContextResolution {
+    tokens: number;
+    source: 'model' | 'registry' | 'conservative';
+    verified: boolean;
+}
 
 /**
  * Specification for a known AI model, including capabilities, pricing, and quality ratings.
@@ -10,8 +21,8 @@ export interface KnownModelSpec {
     displayName: string;
     maxTokens: number;
     maxContextTokens: number;
-    inputCostPer1k: number;
-    outputCostPer1k: number;
+    inputCostPer1k?: number;
+    outputCostPer1k?: number;
     supportsStreaming: boolean;
     supportsTools: boolean;
     supportsVision: boolean;
@@ -19,6 +30,10 @@ export interface KnownModelSpec {
     supportsParallelTools: boolean;
     toolCallQuality: 1 | 2 | 3 | 4 | 5;
     bestFor: string[];
+    metadataReviewedAt?: string;
+    metadataSource?: string;
+    nativeCapabilities?: AIModelNativeCapabilities;
+    lifecycleStatus?: 'active' | 'deprecated' | 'retired';
 }
 
 // FEAT-01: best-effort metadata layer for pricing/capability hints. The live
@@ -27,10 +42,115 @@ export interface KnownModelSpec {
 // and DO NOT guess pricing: an entry with a wrong price shows the user a wrong
 // cost (worse than the "no cost shown" fallback for an unknown model). Verify
 // per-1k pricing against the provider's published rates before adding a model.
-// Last reviewed: 2026-06-04 (Anthropic 4.x family current; refresh OpenAI /
-// Google / xAI flagship entries once their public pricing is confirmed).
+// Registry sweep last reviewed: 2026-09-02. Each newly verified provider entry
+// should carry its own metadataReviewedAt + metadataSource; the sweep date does
+// not silently certify older entries whose provider metadata was not rechecked.
 export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
     // OpenAI
+    // Official model pages, reviewed 2026-09-02:
+    // https://developers.openai.com/api/docs/models/gpt-5.6-sol
+    // https://developers.openai.com/api/docs/models/gpt-5.6-terra
+    // https://developers.openai.com/api/docs/models/gpt-5.6-luna
+    'gpt-5.6-sol': {
+        displayName: 'GPT-5.6 Sol',
+        maxTokens: 128000,
+        maxContextTokens: 1050000,
+        inputCostPer1k: 0.004,
+        outputCostPer1k: 0.02,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://developers.openai.com/api/docs/models/gpt-5.6-sol',
+        nativeCapabilities: {
+            responses: true,
+            hostedTools: true,
+            toolSearch: true,
+            programmaticToolCalling: true,
+            multiAgent: true,
+            persistedReasoning: true,
+            reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+        },
+    },
+    'gpt-5.6': {
+        displayName: 'GPT-5.6 (Sol alias)',
+        maxTokens: 128000,
+        maxContextTokens: 1050000,
+        inputCostPer1k: 0.004,
+        outputCostPer1k: 0.02,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://developers.openai.com/api/docs/models/gpt-5.6-sol',
+        nativeCapabilities: {
+            responses: true,
+            hostedTools: true,
+            toolSearch: true,
+            programmaticToolCalling: true,
+            multiAgent: true,
+            persistedReasoning: true,
+            reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+        },
+    },
+    'gpt-5.6-terra': {
+        displayName: 'GPT-5.6 Terra',
+        maxTokens: 128000,
+        maxContextTokens: 1050000,
+        inputCostPer1k: 0.002,
+        outputCostPer1k: 0.012,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://developers.openai.com/api/docs/models/gpt-5.6-terra',
+        nativeCapabilities: {
+            responses: true,
+            hostedTools: true,
+            toolSearch: true,
+            programmaticToolCalling: true,
+            multiAgent: true,
+            persistedReasoning: true,
+            reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+        },
+    },
+    'gpt-5.6-luna': {
+        displayName: 'GPT-5.6 Luna',
+        maxTokens: 128000,
+        maxContextTokens: 1050000,
+        inputCostPer1k: 0.0002,
+        outputCostPer1k: 0.0012,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['fast', 'code', 'reasoning', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://developers.openai.com/api/docs/models/gpt-5.6-luna',
+        nativeCapabilities: {
+            responses: true,
+            hostedTools: true,
+            toolSearch: true,
+            programmaticToolCalling: true,
+            multiAgent: true,
+            persistedReasoning: true,
+            reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+        },
+    },
     'gpt-4o': {
         displayName: 'GPT-4o',
         maxTokens: 16384,
@@ -102,13 +222,78 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['code', 'reasoning', 'analysis'],
     },
 
-    // Anthropic
+    // Anthropic. Current model table and Models API, reviewed 2026-09-02:
+    // https://platform.claude.com/docs/en/models/overview
+    // https://platform.claude.com/docs/en/api/models/retrieve
+    'claude-fable-5-1': {
+        displayName: 'Claude Fable 5.1',
+        maxTokens: 128000,
+        maxContextTokens: 1000000,
+        inputCostPer1k: 0.01,
+        outputCostPer1k: 0.05,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://platform.claude.com/docs/en/models/overview',
+        nativeCapabilities: {
+            adaptiveThinking: true,
+            contextManagement: true,
+            modelCapabilitiesApi: true,
+        },
+    },
+    'claude-opus-5': {
+        displayName: 'Claude Opus 5',
+        maxTokens: 128000,
+        maxContextTokens: 1000000,
+        inputCostPer1k: 0.005,
+        outputCostPer1k: 0.025,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://platform.claude.com/docs/en/models/overview',
+        nativeCapabilities: {
+            adaptiveThinking: true,
+            contextManagement: true,
+            modelCapabilitiesApi: true,
+        },
+    },
+    'claude-sonnet-5': {
+        displayName: 'Claude Sonnet 5',
+        maxTokens: 128000,
+        maxContextTokens: 1000000,
+        inputCostPer1k: 0.002,
+        outputCostPer1k: 0.01,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://platform.claude.com/docs/en/models/overview',
+        nativeCapabilities: {
+            adaptiveThinking: true,
+            contextManagement: true,
+            modelCapabilitiesApi: true,
+        },
+    },
     'claude-opus-4-8': {
         displayName: 'Claude Opus 4.8',
-        maxTokens: 8192,
-        maxContextTokens: 200000,
-        inputCostPer1k: 0.015,
-        outputCostPer1k: 0.075,
+        maxTokens: 128000,
+        maxContextTokens: 1000000,
+        inputCostPer1k: 0.005,
+        outputCostPer1k: 0.025,
         supportsStreaming: true,
         supportsTools: true,
         supportsVision: true,
@@ -116,6 +301,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         supportsParallelTools: true,
         toolCallQuality: 5,
         bestFor: ['code', 'reasoning', 'analysis'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://platform.claude.com/docs/en/about-claude/models/overview',
+        nativeCapabilities: {
+            adaptiveThinking: true,
+            contextManagement: true,
+            modelCapabilitiesApi: true,
+        },
     },
     'claude-opus-4-7': {
         displayName: 'Claude Opus 4.7',
@@ -147,8 +339,8 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
     },
     'claude-sonnet-4-6': {
         displayName: 'Claude Sonnet 4.6',
-        maxTokens: 8192,
-        maxContextTokens: 200000,
+        maxTokens: 128000,
+        maxContextTokens: 1000000,
         inputCostPer1k: 0.003,
         outputCostPer1k: 0.015,
         supportsStreaming: true,
@@ -158,6 +350,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         supportsParallelTools: true,
         toolCallQuality: 5,
         bestFor: ['code', 'analysis'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://platform.claude.com/docs/en/about-claude/models/overview',
+        nativeCapabilities: {
+            adaptiveThinking: true,
+            contextManagement: true,
+            modelCapabilitiesApi: true,
+        },
     },
     'claude-sonnet-4-5-20250929': {
         displayName: 'Claude Sonnet 4.5',
@@ -246,7 +445,34 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['fast'],
     },
 
-    // xAI
+    // xAI, reviewed 2026-09-02:
+    // https://docs.x.ai/developers/models/grok-4.6
+    'grok-4.6': {
+        displayName: 'Grok 4.6',
+        // xAI documents the 500K context window but not a separate maximum
+        // output value on the model card; keep an explicit conservative app cap.
+        maxTokens: 8192,
+        maxContextTokens: 500000,
+        inputCostPer1k: 0.002,
+        outputCostPer1k: 0.006,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://docs.x.ai/developers/models/grok-4.6',
+        nativeCapabilities: {
+            responses: true,
+            hostedTools: true,
+            multiAgent: true,
+            contextManagement: true,
+            encryptedReasoningReplay: true,
+            reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+        },
+    },
     'grok-3': {
         displayName: 'Grok 3',
         maxTokens: 8192,
@@ -260,6 +486,9 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         supportsParallelTools: true,
         toolCallQuality: 4,
         bestFor: ['code', 'creative'],
+        lifecycleStatus: 'retired',
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://docs.x.ai/developers/migration/may-15-retirement',
     },
     'grok-3-mini': {
         displayName: 'Grok 3 Mini',
@@ -376,10 +605,50 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['general', 'code'],
     },
 
-    // Kimi (Moonshot)
-    'moonshot-v1-8k': { displayName: 'Moonshot v1 8K', maxTokens: 4096, maxContextTokens: 8192, inputCostPer1k: 0.0012, outputCostPer1k: 0.0012, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['general', 'code'] },
-    'moonshot-v1-32k': { displayName: 'Moonshot v1 32K', maxTokens: 4096, maxContextTokens: 32768, inputCostPer1k: 0.0024, outputCostPer1k: 0.0024, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['general', 'long-context'] },
-    'moonshot-v1-128k': { displayName: 'Moonshot v1 128K', maxTokens: 4096, maxContextTokens: 131072, inputCostPer1k: 0.006, outputCostPer1k: 0.006, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['long-context', 'analysis'] },
+    // Kimi / Moonshot, reviewed 2026-09-02. K3 uses Chat Completions with
+    // provider-specific reasoning and dynamic tool declarations.
+    'kimi-k3': {
+        displayName: 'Kimi K3',
+        maxTokens: 131072,
+        maxContextTokens: 1048576,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://platform.kimi.ai/docs/guide/kimi-k3-quickstart',
+        nativeCapabilities: {
+            hostedTools: true,
+            dynamicToolLoading: true,
+            automaticPromptCaching: true,
+            requiresFullAssistantReplay: true,
+            fixedSamplingParameters: true,
+            reasoningEfforts: ['low', 'high', 'max'],
+        },
+    },
+    'kimi-k2.7-code': {
+        displayName: 'Kimi K2.7 Code',
+        maxTokens: 32768,
+        maxContextTokens: 262144,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'vision', 'agent'],
+        metadataReviewedAt: '2026-09-02',
+        metadataSource: 'https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart',
+        nativeCapabilities: {
+            requiresFullAssistantReplay: true,
+        },
+    },
+    'moonshot-v1-8k': { displayName: 'Moonshot v1 8K', maxTokens: 4096, maxContextTokens: 8192, inputCostPer1k: 0.0012, outputCostPer1k: 0.0012, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['general', 'code'], lifecycleStatus: 'retired', metadataReviewedAt: '2026-09-02', metadataSource: 'https://platform.kimi.ai/docs/models' },
+    'moonshot-v1-32k': { displayName: 'Moonshot v1 32K', maxTokens: 4096, maxContextTokens: 32768, inputCostPer1k: 0.0024, outputCostPer1k: 0.0024, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['general', 'long-context'], lifecycleStatus: 'retired', metadataReviewedAt: '2026-09-02', metadataSource: 'https://platform.kimi.ai/docs/models' },
+    'moonshot-v1-128k': { displayName: 'Moonshot v1 128K', maxTokens: 4096, maxContextTokens: 131072, inputCostPer1k: 0.006, outputCostPer1k: 0.006, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 4, bestFor: ['long-context', 'analysis'], lifecycleStatus: 'retired', metadataReviewedAt: '2026-09-02', metadataSource: 'https://platform.kimi.ai/docs/models' },
 
     // Qwen (Alibaba Cloud)
     'qwen-max': { displayName: 'Qwen Max', maxTokens: 8192, maxContextTokens: 32768, inputCostPer1k: 0.016, outputCostPer1k: 0.064, supportsStreaming: true, supportsTools: true, supportsVision: true, supportsThinking: true, supportsParallelTools: true, toolCallQuality: 5, bestFor: ['reasoning', 'analysis'] },
@@ -415,16 +684,169 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
 };
 
 /**
- * Lookup a model spec by name. Tries exact match first, then prefix match
- * for versioned model names (e.g., "gpt-4o-2024-11-20" matches "gpt-4o").
+ * Lookup a model spec by name. Tries exact match first, then a documented
+ * dated snapshot suffix (e.g. "gpt-4o-2024-11-20" matches "gpt-4o").
+ * Family lookalikes such as "gpt-5.6-sol-preview" must not inherit Responses.
  */
 export function lookupModelSpec(modelName: string): KnownModelSpec | null {
     if (MODEL_REGISTRY[modelName]) return MODEL_REGISTRY[modelName];
     const keys = Object.keys(MODEL_REGISTRY).sort((a, b) => b.length - a.length);
     for (const key of keys) {
-        if (modelName.startsWith(key)) return MODEL_REGISTRY[key];
+        if (isDocumentedSnapshotId(modelName, key)) return MODEL_REGISTRY[key];
     }
     return null;
+}
+
+/** True when `modelName` is exactly `key-YYYY-MM-DD` with a real calendar date. */
+function isDocumentedSnapshotId(modelName: string, key: string): boolean {
+    if (!modelName.startsWith(`${key}-`)) return false;
+    const suffix = modelName.slice(key.length + 1);
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(suffix);
+    if (!match) return false;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year
+        && date.getUTCMonth() === month - 1
+        && date.getUTCDate() === day;
+}
+
+/** First-party OpenAI hosts only. A custom OpenAI-compatible proxy is not Responses. */
+export function isFirstPartyOpenAIBaseUrl(baseUrl?: string | null): boolean {
+    if (!baseUrl || !baseUrl.trim()) return true;
+    try {
+        const host = new URL(baseUrl).hostname.toLowerCase();
+        return host === 'api.openai.com' || host.endsWith('.openai.com');
+    } catch {
+        return false;
+    }
+}
+
+/** Resolve how much context AeroAgent may safely budget without confusing output tokens for context. */
+export function resolveModelContext(model: Partial<AIModel> | null | undefined): ModelContextResolution {
+    if (model?.maxContextTokens && model.maxContextTokens > 0) {
+        const source = getModelCapabilitySource(model);
+        return {
+            tokens: model.maxContextTokens,
+            source: 'model',
+            verified: source !== 'unknown',
+        };
+    }
+
+    const spec = model?.name ? lookupModelSpec(model.name) : null;
+    if (spec) {
+        return { tokens: spec.maxContextTokens, source: 'registry', verified: true };
+    }
+
+    return {
+        tokens: UNKNOWN_MODEL_CONTEXT_BUDGET,
+        source: 'conservative',
+        verified: false,
+    };
+}
+
+/** Derive status for old saved settings that predate capabilitySource. */
+export function getModelCapabilitySource(model: Partial<AIModel>): ModelCapabilitySource {
+    if (model.capabilitySource === 'registry') {
+        return model.nativeCapabilities ? 'registry' : 'unknown';
+    }
+    if (model.capabilitySource) return model.capabilitySource;
+    if (model.maxContextTokens && model.maxContextTokens > 0) return 'user';
+    return 'unknown';
+}
+
+/** Keep the first-party Responses transport behind verified model metadata and an explicit flag. */
+export function shouldUseOpenAIResponses(
+    providerType: AIProviderType,
+    model: Partial<AIModel> | null | undefined,
+    enabled: boolean,
+    baseUrl?: string | null,
+): boolean {
+    return enabled
+        && providerType === 'openai'
+        && isFirstPartyOpenAIBaseUrl(baseUrl)
+        && model?.nativeCapabilities?.responses === true;
+}
+
+/**
+ * Reconcile a persisted model with the current registry. Idempotent.
+ * Known names receive native capabilities and a clamped context. Unknown names
+ * lose a stale registry label so the UI cannot claim verification it did not do.
+ */
+export function reconcilePersistedModel(
+    model: Partial<AIModel> & { name: string },
+): Partial<AIModel> {
+    if (lookupModelSpec(model.name)) {
+        return applyRegistryDefaults(model);
+    }
+    if (model.capabilitySource === 'registry' || model.nativeCapabilities) {
+        return {
+            ...model,
+            capabilitySource: model.maxContextTokens && model.maxContextTokens > 0 ? 'user' : 'unknown',
+            capabilitiesVerifiedAt: undefined,
+            capabilitiesSourceUrl: undefined,
+            nativeCapabilities: undefined,
+        };
+    }
+    return model;
+}
+
+export function reconcilePersistedModels(models: AIModel[] | undefined): AIModel[] {
+    return (models ?? []).map((model) => reconcilePersistedModel(model) as AIModel);
+}
+
+export interface ModelEditorForm {
+    name: string;
+    displayName: string;
+    maxTokens: number;
+    maxContextTokens: number;
+    supportsStreaming: boolean;
+    supportsTools: boolean;
+    supportsVision: boolean;
+    supportsThinking: boolean;
+    isEnabled: boolean;
+}
+
+/** Build the record written by the model editor, including rename and clamp. */
+export function buildSavedModelRecord(args: {
+    previous: AIModel | null;
+    isNew: boolean;
+    providerId: string;
+    id: string;
+    form: ModelEditorForm;
+}): Partial<AIModel> {
+    const name = args.form.name.trim();
+    const spec = lookupModelSpec(name);
+    const identityChanged = !args.isNew && args.previous?.name !== name;
+    if (spec && (args.isNew || identityChanged)) {
+        return applyRegistryDefaults({
+            id: args.id,
+            providerId: args.providerId,
+            name,
+            displayName: args.form.displayName.trim() || spec.displayName,
+            maxTokens: args.form.maxTokens,
+            maxContextTokens: args.form.maxContextTokens || spec.maxContextTokens,
+            isEnabled: args.form.isEnabled,
+            isDefault: args.previous?.isDefault ?? false,
+        });
+    }
+    const base = {
+        ...(args.previous || {}),
+        id: args.id,
+        providerId: args.providerId,
+        name,
+        displayName: args.form.displayName.trim() || spec?.displayName || name,
+        maxTokens: args.form.maxTokens,
+        maxContextTokens: args.form.maxContextTokens || undefined,
+        supportsStreaming: args.form.supportsStreaming,
+        supportsTools: args.form.supportsTools,
+        supportsVision: args.form.supportsVision,
+        supportsThinking: args.form.supportsThinking,
+        isEnabled: args.form.isEnabled,
+        isDefault: args.previous?.isDefault ?? false,
+    };
+    return reconcilePersistedModel(base);
 }
 
 /**
@@ -434,10 +856,12 @@ export function lookupModelSpec(modelName: string): KnownModelSpec | null {
 export function applyRegistryDefaults(model: Partial<AIModel> & { name: string }): Partial<AIModel> {
     const spec = lookupModelSpec(model.name);
     if (!spec) return model;
+    const explicitContext = model.maxContextTokens && model.maxContextTokens > 0
+        ? Math.min(model.maxContextTokens, spec.maxContextTokens)
+        : spec.maxContextTokens;
     return {
         displayName: spec.displayName,
         maxTokens: spec.maxTokens,
-        maxContextTokens: spec.maxContextTokens,
         inputCostPer1k: spec.inputCostPer1k,
         outputCostPer1k: spec.outputCostPer1k,
         supportsStreaming: spec.supportsStreaming,
@@ -447,6 +871,47 @@ export function applyRegistryDefaults(model: Partial<AIModel> & { name: string }
         supportsParallelTools: spec.supportsParallelTools,
         toolCallQuality: spec.toolCallQuality,
         bestFor: [...spec.bestFor],
+        nativeCapabilities: spec.nativeCapabilities
+            ? {
+                ...spec.nativeCapabilities,
+                reasoningEfforts: spec.nativeCapabilities.reasoningEfforts
+                    ? [...spec.nativeCapabilities.reasoningEfforts]
+                    : undefined,
+            }
+            : undefined,
+        lifecycleStatus: spec.lifecycleStatus || 'active',
         ...model,
+        maxContextTokens: explicitContext,
+        capabilitySource: 'registry',
+        capabilitiesVerifiedAt: spec.metadataReviewedAt,
+        capabilitiesSourceUrl: spec.metadataSource,
+    };
+}
+
+/**
+ * Defaults for a model returned by a provider's list endpoint. Discovery proves
+ * availability, not vision/tool/context support, so unknown models start from a
+ * conservative and visibly unverified profile.
+ */
+export function applyDiscoveredModelDefaults(
+    model: Partial<AIModel> & { name: string },
+): Partial<AIModel> {
+    if (lookupModelSpec(model.name)) return applyRegistryDefaults(model);
+
+    return {
+        ...model,
+        maxTokens: model.maxTokens && model.maxTokens > 0 ? model.maxTokens : 4096,
+        maxContextTokens: model.maxContextTokens && model.maxContextTokens > 0
+            ? model.maxContextTokens
+            : undefined,
+        supportsStreaming: true,
+        supportsTools: false,
+        supportsVision: false,
+        supportsThinking: false,
+        supportsParallelTools: false,
+        capabilitySource: 'unknown',
+        capabilitiesVerifiedAt: undefined,
+        capabilitiesSourceUrl: undefined,
+        nativeCapabilities: undefined,
     };
 }

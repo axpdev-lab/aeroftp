@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Tampalkan token API anda di sini",
             "kdriveDriveIdPlaceholder": "ID kDrive anda (numerik)",
             "kdriveTokenHelp": "Jana token di manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Token memerlukan skop drive dan user_info. Dengan drive sahaja ia boleh menyambung dan menyenaraikan fail, tetapi \"Dapatkan\" ditolak, kerana ia membaca profil akaun anda untuk mencari Drive ID.",
             "kdriveFindDriveId": "Cari Drive ID anda",
             "kdriveFindDriveIdHint": "Drive ID berangka muncul dalam bar alamat halaman ini",
             "kdriveCreateToken": "Cipta token API",
@@ -323,7 +322,8 @@
                 "found": "Ditemui {count} sasaran yang boleh diakses. Taip untuk mencari atau pilih satu."
             },
             "swiftAuthUrl": "URL pengesahan Keystone",
-            "swiftAllowCleartextStorage": "Penggunaan ini menyediakan storan objek melalui HTTP biasa. Terima untuk profil ini: token akses dan setiap fail melintasi rangkaian tanpa penyulitan."
+            "swiftAllowCleartextStorage": "Penggunaan ini menyediakan storan objek melalui HTTP biasa. Terima untuk profil ini: token akses dan setiap fail melintasi rangkaian tanpa penyulitan.",
+            "kdriveTokenScopes": "Token memerlukan skop drive dan user_info. Dengan drive sahaja ia boleh menyambung dan menyenaraikan fail, tetapi \"Dapatkan\" ditolak, kerana ia membaca profil akaun anda untuk mencari Drive ID."
         },
         "browser": {
             "remote": "Jauh",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Lalai",
                 "styleExplanatory": "Penjelasan",
                 "styleLearning": "Pembelajaran",
+                "retiredModel": "Ditamatkan",
+                "retiredModelHint": "Penyedia ini telah menamatkan model tersebut. Pilih pengganti semasa sebelum permintaan seterusnya.",
+                "unverifiedCapabilities": "Keupayaan belum disahkan",
+                "unverifiedModelHint": "Keupayaan tidak diketahui. Semak konteks, alat, penglihatan dan penaakulan sebelum menggunakan model ini untuk tugas ejen.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Gunakan pengangkutan Responses asli untuk model OpenAI yang serasi dan disahkan. Matikannya untuk menggunakan Chat Completions.",
+                "openAIResponsesEnable": "Dayakan Responses untuk model OpenAI yang serasi",
                 "routingPreferred": "Pilihan",
                 "routingFallback": "Sandaran",
                 "routingNoFallback": "Tiada"

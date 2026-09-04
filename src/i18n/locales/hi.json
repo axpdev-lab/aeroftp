@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "अपना API Token यहाँ पेस्ट करें",
             "kdriveDriveIdPlaceholder": "आपका kDrive ID (संख्यात्मक)",
             "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens पर टोकन बनाएँ",
-            "kdriveTokenScopes": "टोकन में drive और user_info स्कोप होने चाहिए। केवल drive के साथ यह कनेक्ट होकर फ़ाइलें सूचीबद्ध करता है, लेकिन \"प्राप्त करें\" अस्वीकार हो जाता है, क्योंकि यह Drive ID खोजने के लिए आपके खाते की प्रोफ़ाइल पढ़ता है।",
             "kdriveFindDriveId": "अपना Drive ID खोजें",
             "kdriveFindDriveIdHint": "संख्यात्मक Drive ID इस पृष्ठ के पता बार में दिखाई देता है",
             "kdriveCreateToken": "एक API टोकन बनाएँ",
@@ -323,7 +322,8 @@
                 "found": "{count} सुलभ लक्ष्य मिले। खोजने के लिए टाइप करें या कोई एक चुनें।"
             },
             "swiftAuthUrl": "Keystone प्रमाणीकरण URL",
-            "swiftAllowCleartextStorage": "यह परिनियोजन सादे HTTP पर ऑब्जेक्ट स्टोरेज देता है। इस प्रोफ़ाइल के लिए इसे स्वीकार करें: एक्सेस टोकन और हर फ़ाइल बिना एन्क्रिप्शन के नेटवर्क से गुज़रते हैं।"
+            "swiftAllowCleartextStorage": "यह परिनियोजन सादे HTTP पर ऑब्जेक्ट स्टोरेज देता है। इस प्रोफ़ाइल के लिए इसे स्वीकार करें: एक्सेस टोकन और हर फ़ाइल बिना एन्क्रिप्शन के नेटवर्क से गुज़रते हैं।",
+            "kdriveTokenScopes": "टोकन में drive और user_info स्कोप होने चाहिए। केवल drive के साथ यह कनेक्ट होकर फ़ाइलें सूचीबद्ध करता है, लेकिन \"प्राप्त करें\" अस्वीकार हो जाता है, क्योंकि यह Drive ID खोजने के लिए आपके खाते की प्रोफ़ाइल पढ़ता है।"
         },
         "browser": {
             "remote": "दूरस्थ",
@@ -2553,6 +2553,13 @@
                 "styleDefault": "डिफ़ॉल्ट",
                 "styleExplanatory": "व्याख्यात्मक",
                 "styleLearning": "सीखने वाला",
+                "retiredModel": "सेवानिवृत्त",
+                "retiredModelHint": "इस प्रदाता ने मॉडल को सेवानिवृत्त कर दिया है। अगले अनुरोध से पहले वर्तमान विकल्प चुनें।",
+                "unverifiedCapabilities": "असत्यापित क्षमताएँ",
+                "unverifiedModelHint": "क्षमताएँ अज्ञात हैं। एजेंट कार्यों के लिए इस मॉडल का उपयोग करने से पहले संदर्भ, टूल, विज़न और तर्क की समीक्षा करें।",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "सत्यापित संगत OpenAI मॉडल के लिए नेटिव Responses ट्रांसपोर्ट का उपयोग करें। Chat Completions का उपयोग करने के लिए इसे बंद करें।",
+                "openAIResponsesEnable": "संगत OpenAI मॉडल के लिए Responses सक्षम करें",
                 "routingPreferred": "पसंदीदा",
                 "routingFallback": "वैकल्पिक",
                 "routingNoFallback": "कोई नहीं"

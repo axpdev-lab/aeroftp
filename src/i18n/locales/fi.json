@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Liitä API Token tähän",
             "kdriveDriveIdPlaceholder": "kDrive ID (numeerinen)",
             "kdriveTokenHelp": "Luo token osoitteessa manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Tunnus tarvitsee oikeudet drive ja user_info. Pelkällä drive-oikeudella se yhdistää ja listaa tiedostot, mutta \"Hae\" hylätään, koska se lukee tilisi profiilin löytääkseen Drive ID:n.",
             "kdriveFindDriveId": "Etsi Drive ID",
             "kdriveFindDriveIdHint": "Numeerinen Drive ID näkyy tämän sivun osoiterivillä",
             "kdriveCreateToken": "Luo API-token",
@@ -323,7 +322,8 @@
                 "found": "Löytyi {count} käytettävissä olevaa kohdetta. Hae kirjoittamalla tai valitse yksi."
             },
             "swiftAuthUrl": "Keystone-todennuksen URL",
-            "swiftAllowCleartextStorage": "Tämä asennus tarjoaa objektitallennuksen salaamattoman HTTP:n kautta. Hyväksy se tälle profiilille: käyttöoikeustunnus ja jokainen tiedosto kulkevat verkon läpi salaamattomina."
+            "swiftAllowCleartextStorage": "Tämä asennus tarjoaa objektitallennuksen salaamattoman HTTP:n kautta. Hyväksy se tälle profiilille: käyttöoikeustunnus ja jokainen tiedosto kulkevat verkon läpi salaamattomina.",
+            "kdriveTokenScopes": "Tunnus tarvitsee oikeudet drive ja user_info. Pelkällä drive-oikeudella se yhdistää ja listaa tiedostot, mutta \"Hae\" hylätään, koska se lukee tilisi profiilin löytääkseen Drive ID:n."
         },
         "browser": {
             "remote": "Etä",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Oletus",
                 "styleExplanatory": "Selittävä",
                 "styleLearning": "Oppiva",
+                "retiredModel": "Poistettu käytöstä",
+                "retiredModelHint": "Tämä palveluntarjoaja on poistanut mallin käytöstä. Valitse ajantasainen korvaaja ennen seuraavaa pyyntöä.",
+                "unverifiedCapabilities": "Vahvistamattomat ominaisuudet",
+                "unverifiedModelHint": "Ominaisuudet eivät ole tiedossa. Tarkista konteksti, työkalut, näkökyky ja päättely ennen tämän mallin käyttöä agenttitehtäviin.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Käytä natiivia Responses-siirtoa vahvistetuille yhteensopiville OpenAI-malleille. Poista tämä käytöstä käyttääksesi Chat Completionsia.",
+                "openAIResponsesEnable": "Ota Responses käyttöön yhteensopiville OpenAI-malleille",
                 "routingPreferred": "Ensisijainen",
                 "routingFallback": "Varamalli",
                 "routingNoFallback": "Ei mitään"

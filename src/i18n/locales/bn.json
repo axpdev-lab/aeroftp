@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "আপনার API Token এখানে পেস্ট করুন",
             "kdriveDriveIdPlaceholder": "আপনার kDrive ID (সংখ্যাসূচক)",
             "kdriveTokenHelp": "manager.infomaniak.com → Developer → API Tokens এ একটি টোকেন তৈরি করুন",
-            "kdriveTokenScopes": "টোকেনে drive এবং user_info স্কোপ থাকতে হবে। শুধু drive থাকলে এটি সংযোগ করে ও ফাইল তালিকা দেখায়, কিন্তু \"আনুন\" প্রত্যাখ্যাত হয়, কারণ Drive ID খুঁজতে এটি আপনার অ্যাকাউন্টের প্রোফাইল পড়ে।",
             "kdriveFindDriveId": "আপনার Drive ID খুঁজুন",
             "kdriveFindDriveIdHint": "সংখ্যাসূচক Drive ID এই পৃষ্ঠার ঠিকানা বারে দেখা যায়",
             "kdriveCreateToken": "একটি API টোকেন তৈরি করুন",
@@ -323,7 +322,8 @@
                 "found": "{count} টি অ্যাক্সেসযোগ্য লক্ষ্য পাওয়া গেছে। খুঁজতে টাইপ করুন বা একটি বেছে নিন।"
             },
             "swiftAuthUrl": "Keystone প্রমাণীকরণ URL",
-            "swiftAllowCleartextStorage": "এই ডিপ্লয়মেন্ট সাধারণ HTTP-এর মাধ্যমে অবজেক্ট স্টোরেজ সরবরাহ করে। এই প্রোফাইলের জন্য এটি গ্রহণ করুন: অ্যাক্সেস টোকেন এবং প্রতিটি ফাইল এনক্রিপশন ছাড়াই নেটওয়ার্ক অতিক্রম করে।"
+            "swiftAllowCleartextStorage": "এই ডিপ্লয়মেন্ট সাধারণ HTTP-এর মাধ্যমে অবজেক্ট স্টোরেজ সরবরাহ করে। এই প্রোফাইলের জন্য এটি গ্রহণ করুন: অ্যাক্সেস টোকেন এবং প্রতিটি ফাইল এনক্রিপশন ছাড়াই নেটওয়ার্ক অতিক্রম করে।",
+            "kdriveTokenScopes": "টোকেনে drive এবং user_info স্কোপ থাকতে হবে। শুধু drive থাকলে এটি সংযোগ করে ও ফাইল তালিকা দেখায়, কিন্তু \"আনুন\" প্রত্যাখ্যাত হয়, কারণ Drive ID খুঁজতে এটি আপনার অ্যাকাউন্টের প্রোফাইল পড়ে।"
         },
         "browser": {
             "remote": "রিমোট",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "ডিফল্ট",
                 "styleExplanatory": "ব্যাখ্যামূলক",
                 "styleLearning": "শিক্ষামূলক",
+                "retiredModel": "অবসরপ্রাপ্ত",
+                "retiredModelHint": "এই প্রদানকারী মডেলটি অবসর দিয়েছে। পরবর্তী অনুরোধের আগে একটি বর্তমান বিকল্প নির্বাচন করুন।",
+                "unverifiedCapabilities": "যাচাই না-করা সক্ষমতা",
+                "unverifiedModelHint": "সক্ষমতাগুলি অজানা। এজেন্টের কাজে এই মডেল ব্যবহারের আগে প্রসঙ্গ, টুল, ভিশন ও যুক্তি পর্যালোচনা করুন।",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "যাচাই করা সামঞ্জস্যপূর্ণ OpenAI মডেলের জন্য নেটিভ Responses পরিবহন ব্যবহার করুন। Chat Completions ব্যবহার করতে এটি বন্ধ করুন।",
+                "openAIResponsesEnable": "সামঞ্জস্যপূর্ণ OpenAI মডেলের জন্য Responses চালু করুন",
                 "routingPreferred": "পছন্দসই",
                 "routingFallback": "বিকল্প",
                 "routingNoFallback": "কোনোটি নয়"

@@ -33,8 +33,34 @@ export interface AIModel {
     supportsParallelTools?: boolean;   // Multiple tool calls in single response
     toolCallQuality?: 1 | 2 | 3 | 4 | 5;   // Tool call accuracy rating
     bestFor?: string[];                        // Capability tags
+    capabilitySource?: 'registry' | 'user' | 'unknown';
+    capabilitiesVerifiedAt?: string;           // ISO date for provider-doc verification
+    capabilitiesSourceUrl?: string;            // Public provider documentation, never a secret URL
+    nativeCapabilities?: AIModelNativeCapabilities;
+    lifecycleStatus?: 'active' | 'deprecated' | 'retired';
     isEnabled: boolean;
     isDefault: boolean;
+}
+
+export type AIReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+/** Provider-native features. Availability here does not mean AeroAgent has wired the feature yet. */
+export interface AIModelNativeCapabilities {
+    responses?: boolean;
+    hostedTools?: boolean;
+    toolSearch?: boolean;
+    dynamicToolLoading?: boolean;
+    programmaticToolCalling?: boolean;
+    multiAgent?: boolean;
+    persistedReasoning?: boolean;
+    encryptedReasoningReplay?: boolean;
+    adaptiveThinking?: boolean;
+    contextManagement?: boolean;
+    modelCapabilitiesApi?: boolean;
+    automaticPromptCaching?: boolean;
+    requiresFullAssistantReplay?: boolean;
+    fixedSamplingParameters?: boolean;
+    reasoningEfforts?: AIReasoningEffort[];
 }
 
 // Auto-routing configuration
@@ -63,6 +89,7 @@ export interface AISettings {
         useCustomPrompt?: boolean;
         thinkingBudget?: number;    // Extended thinking budget tokens (0 = disabled, default 10000)
         webSearchEnabled?: boolean;    // Provider web search (Kimi $web_search, Qwen enable_search)
+        openAIResponsesEnabled?: boolean; // First-party OpenAI Responses API for verified models
         streamingTimeoutSecs?: number; // Streaming response timeout in seconds (default 120)
         chatHistoryRetentionDays?: number; // 0 = unlimited, 30/60/90/180/365 days
         enableAutoRAGIndexing?: boolean;   // B07: opt-in auto-index workspace for RAG context (default: true)
@@ -301,6 +328,7 @@ export const getDefaultAISettings = (): AISettings => ({
         temperature: 0.7,
         maxTokens: 4096,
         conversationStyle: 'balanced',
+        openAIResponsesEnabled: true,
     },
     defaultModelId: null,
 });

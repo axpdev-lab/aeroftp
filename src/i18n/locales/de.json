@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Fügen Sie Ihren API Token hier ein",
             "kdriveDriveIdPlaceholder": "Ihre kDrive ID (numerisch)",
             "kdriveTokenHelp": "Generieren Sie einen Token unter manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Das Token braucht die Scopes drive und user_info. Mit drive allein verbindet es sich und listet Dateien, aber „Abrufen“ wird abgelehnt, weil es Ihr Kontoprofil liest, um die Drive ID zu finden.",
             "kdriveFindDriveId": "Ihre Drive ID finden",
             "kdriveFindDriveIdHint": "Die numerische Drive ID erscheint in der Adressleiste dieser Seite",
             "kdriveCreateToken": "Einen API-Token erstellen",
@@ -323,7 +322,8 @@
                 "found": "{count} erreichbare Ziele gefunden. Tippen Sie, um zu suchen, oder wählen Sie eines aus."
             },
             "swiftAuthUrl": "Keystone-Authentifizierungs-URL",
-            "swiftAllowCleartextStorage": "Diese Installation stellt den Objektspeicher über unverschlüsseltes HTTP bereit. Für dieses Profil akzeptieren: Das Zugriffstoken und jede Datei durchqueren das Netzwerk unverschlüsselt."
+            "swiftAllowCleartextStorage": "Diese Installation stellt den Objektspeicher über unverschlüsseltes HTTP bereit. Für dieses Profil akzeptieren: Das Zugriffstoken und jede Datei durchqueren das Netzwerk unverschlüsselt.",
+            "kdriveTokenScopes": "Das Token braucht die Scopes drive und user_info. Mit drive allein verbindet es sich und listet Dateien, aber „Abrufen“ wird abgelehnt, weil es Ihr Kontoprofil liest, um die Drive ID zu finden."
         },
         "browser": {
             "remote": "Remote",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Standard",
                 "styleExplanatory": "Erklärend",
                 "styleLearning": "Lernend",
+                "retiredModel": "Ausgemustert",
+                "retiredModelHint": "Dieser Anbieter hat das Modell ausgemustert. Wählen Sie vor der nächsten Anfrage einen aktuellen Ersatz aus.",
+                "unverifiedCapabilities": "Unbestätigte Fähigkeiten",
+                "unverifiedModelHint": "Die Fähigkeiten sind unbekannt. Prüfen Sie Kontext, Tools, Vision und Schlussfolgern, bevor Sie dieses Modell für Agentenaufgaben verwenden.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Verwenden Sie den nativen Responses-Transport für verifizierte kompatible OpenAI-Modelle. Deaktivieren Sie dies, um Chat Completions zu verwenden.",
+                "openAIResponsesEnable": "Responses für kompatible OpenAI-Modelle aktivieren",
                 "routingPreferred": "Bevorzugt",
                 "routingFallback": "Ersatz",
                 "routingNoFallback": "Keiner"

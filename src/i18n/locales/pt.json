@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Cole o seu API Token aqui",
             "kdriveDriveIdPlaceholder": "O seu ID do kDrive (numérico)",
             "kdriveTokenHelp": "Gere um token em manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "O token precisa dos escopos drive e user_info. Só com drive ele se conecta e lista arquivos, mas \"Obter\" é recusado, porque lê o perfil da sua conta para encontrar o Drive ID.",
             "kdriveFindDriveId": "Encontre o seu Drive ID",
             "kdriveFindDriveIdHint": "O Drive ID numérico aparece na barra de endereço desta página",
             "kdriveCreateToken": "Criar um token de API",
@@ -323,7 +322,8 @@
                 "found": "Foram encontrados {count} destinos acessíveis. Escreva para pesquisar ou selecione um."
             },
             "swiftAuthUrl": "URL de autenticação do Keystone",
-            "swiftAllowCleartextStorage": "Esta implantação serve o armazenamento de objetos por HTTP sem encriptação. Aceite para este perfil: o token de acesso e todos os ficheiros atravessam a rede sem encriptação."
+            "swiftAllowCleartextStorage": "Esta implantação serve o armazenamento de objetos por HTTP sem encriptação. Aceite para este perfil: o token de acesso e todos os ficheiros atravessam a rede sem encriptação.",
+            "kdriveTokenScopes": "O token precisa dos escopos drive e user_info. Só com drive ele se conecta e lista arquivos, mas \"Obter\" é recusado, porque lê o perfil da sua conta para encontrar o Drive ID."
         },
         "browser": {
             "remote": "Remoto",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Padrão",
                 "styleExplanatory": "Explicativo",
                 "styleLearning": "Aprendizagem",
+                "retiredModel": "Descontinuado",
+                "retiredModelHint": "Este fornecedor descontinuou o modelo. Selecione um substituto atual antes do próximo pedido.",
+                "unverifiedCapabilities": "Capacidades não verificadas",
+                "unverifiedModelHint": "As capacidades são desconhecidas. Reveja o contexto, as ferramentas, a visão e o raciocínio antes de utilizar este modelo em tarefas de agente.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Utilize o transporte nativo de Responses para modelos OpenAI compatíveis verificados. Desative-o para utilizar o Chat Completions.",
+                "openAIResponsesEnable": "Ativar Responses para modelos OpenAI compatíveis",
                 "routingPreferred": "Preferido",
                 "routingFallback": "Alternativo",
                 "routingNoFallback": "Nenhum"

@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Indsæt dit API Token her",
             "kdriveDriveIdPlaceholder": "Dit kDrive ID (numerisk)",
             "kdriveTokenHelp": "Generér et token på manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Tokenet skal have scopes drive og user_info. Med drive alene forbinder det og viser filer, men \"Hent\" afvises, fordi den læser din kontoprofil for at finde Drive ID.",
             "kdriveFindDriveId": "Find dit Drive ID",
             "kdriveFindDriveIdHint": "Det numeriske Drive ID vises i adresselinjen på denne side",
             "kdriveCreateToken": "Opret et API-token",
@@ -323,7 +322,8 @@
                 "found": "Fandt {count} tilgængelige mål. Skriv for at søge, eller vælg et."
             },
             "swiftAuthUrl": "Keystone-godkendelses-URL",
-            "swiftAllowCleartextStorage": "Denne installation leverer objektlagring over almindelig HTTP. Accepter det for denne profil: adgangstokenet og alle filer krydser netværket ukrypteret."
+            "swiftAllowCleartextStorage": "Denne installation leverer objektlagring over almindelig HTTP. Accepter det for denne profil: adgangstokenet og alle filer krydser netværket ukrypteret.",
+            "kdriveTokenScopes": "Tokenet skal have scopes drive og user_info. Med drive alene forbinder det og viser filer, men \"Hent\" afvises, fordi den læser din kontoprofil for at finde Drive ID."
         },
         "browser": {
             "remote": "Ekstern",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Standard",
                 "styleExplanatory": "Forklarende",
                 "styleLearning": "Læring",
+                "retiredModel": "Udgået",
+                "retiredModelHint": "Denne udbyder har udfaset modellen. Vælg en aktuel erstatning før næste anmodning.",
+                "unverifiedCapabilities": "Ubekræftede funktioner",
+                "unverifiedModelHint": "Funktionerne er ukendte. Gennemgå kontekst, værktøjer, syn og ræsonnement, før du bruger denne model til agentopgaver.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Brug den indbyggede Responses-transport til verificerede kompatible OpenAI-modeller. Slå dette fra for at bruge Chat Completions.",
+                "openAIResponsesEnable": "Aktivér Responses for kompatible OpenAI-modeller",
                 "routingPreferred": "Foretrukken",
                 "routingFallback": "Reserve",
                 "routingNoFallback": "Ingen"

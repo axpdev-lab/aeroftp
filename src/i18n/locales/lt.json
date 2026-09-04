@@ -224,7 +224,6 @@
             "kdriveTokenPlaceholder": "Įklijuokite savo API raktą čia",
             "kdriveDriveIdPlaceholder": "Jūsų kDrive ID (skaitinis)",
             "kdriveTokenHelp": "Sukurkite raktą adresu manager.infomaniak.com → Developer → API Tokens",
-            "kdriveTokenScopes": "Žetonui reikia drive ir user_info aprėpčių. Vien su drive jis prisijungia ir rodo failus, bet „Gauti“ atmetamas, nes Drive ID surasti jis skaito jūsų paskyros profilį.",
             "kdriveFindDriveId": "Raskite savo Drive ID",
             "kdriveFindDriveIdHint": "Skaitinis Drive ID rodomas šio puslapio adreso juostoje",
             "kdriveCreateToken": "Sukurti API raktą",
@@ -323,7 +322,8 @@
                 "found": "Rasta pasiekiamų taikinių: {count}. Rašykite, kad ieškotumėte, arba pasirinkite vieną."
             },
             "swiftAuthUrl": "Keystone autentifikavimo URL",
-            "swiftAllowCleartextStorage": "Ši diegtis teikia objektų saugyklą per neužšifruotą HTTP. Priimkite tai šiam profiliui: prieigos raktas ir kiekvienas failas keliauja tinklu neužšifruoti."
+            "swiftAllowCleartextStorage": "Ši diegtis teikia objektų saugyklą per neužšifruotą HTTP. Priimkite tai šiam profiliui: prieigos raktas ir kiekvienas failas keliauja tinklu neužšifruoti.",
+            "kdriveTokenScopes": "Žetonui reikia drive ir user_info aprėpčių. Vien su drive jis prisijungia ir rodo failus, bet „Gauti“ atmetamas, nes Drive ID surasti jis skaito jūsų paskyros profilį."
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -2534,6 +2534,13 @@
                 "styleDefault": "Numatytasis",
                 "styleExplanatory": "Aiškinamasis",
                 "styleLearning": "Mokomasis",
+                "retiredModel": "Nebenaudojamas",
+                "retiredModelHint": "Šis teikėjas pašalino modelį. Prieš kitą užklausą pasirinkite dabartinį pakaitalą.",
+                "unverifiedCapabilities": "Nepatvirtintos galimybės",
+                "unverifiedModelHint": "Galimybės nežinomos. Prieš naudodami šį modelį agento užduotims peržiūrėkite kontekstą, įrankius, regą ir samprotavimą.",
+                "openAIResponses": "OpenAI Responses API",
+                "openAIResponsesDesc": "Naudokite savąjį Responses perdavimą patikrintiems suderinamiems OpenAI modeliams. Išjunkite, jei norite naudoti Chat Completions.",
+                "openAIResponsesEnable": "Įjungti Responses suderinamiems OpenAI modeliams",
                 "routingPreferred": "Pageidaujamas",
                 "routingFallback": "Atsarginis",
                 "routingNoFallback": "Nėra"
