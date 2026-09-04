@@ -30,12 +30,18 @@ pub const S3_MAX_PARTS: u32 = 10_000;
 /// an upload run by the repair.
 pub const DELTA_PART_SIZE: u64 = 8 * 1024 * 1024;
 
-/// Below this a delta is not attempted at all.
+/// A delta is attempted only strictly ABOVE this.
 ///
-/// Mirrors the provider's `MULTIPART_THRESHOLD`: under it `upload` sends a
-/// single PUT, and a multipart made of one part saves nothing. The value is
-/// repeated here rather than imported, so this module stays free of the
-/// provider, and `s3.rs` carries a test that fails if the two ever drift.
+/// Mirrors the provider's `MULTIPART_THRESHOLD`, and mirrors its comparison
+/// too: `upload` goes multipart when `total_size > MULTIPART_THRESHOLD`, so a
+/// file of exactly that size takes the single PUT path and has nothing for a
+/// delta to attach to. Matching the constant and not the comparison would
+/// leave one byte on which the two halves disagree, which is the seam this
+/// module has already been bitten by twice.
+///
+/// The value is repeated here rather than imported, so this module stays free
+/// of the provider, and `s3.rs` carries a test that fails if either the
+/// constants or the comparisons drift apart.
 pub const DELTA_MIN_FILE_SIZE: u64 = 200 * 1024 * 1024;
 
 /// Largest grid this module will ever use or accept, which is NOT the largest
@@ -52,13 +58,16 @@ pub const DELTA_MIN_FILE_SIZE: u64 = 200 * 1024 * 1024;
 /// `the_planner_accepts_exactly_this_grid_as_a_floor` pins the derivation.
 pub const DELTA_GRID_MAX: u64 = S3_PART_MAX / 2;
 
-/// Largest file an S3 delta can cover at all.
+/// Largest file this PLANNER can cover, which is well above what the backends
+/// allow an object to be: AWS, MinIO, R2 and Wasabi cap an object at 5 TiB and
+/// B2 at 10 TB, so in practice the object limit is what a user meets first.
 ///
-/// The protocol arithmetic alone would say `S3_MAX_PARTS * S3_PART_MAX`, 48.8
-/// TiB, and that number is wrong for this planner: past `S3_MAX_PARTS *
-/// DELTA_GRID_MAX`, 24.4 TiB, the grid the rule would choose is one the planner
-/// refuses on every plan. The two halves have to be sized against each other
-/// rather than each against the protocol.
+/// It is stated anyway because it is the planner's own bound and the rule that
+/// chooses a grid has to stop somewhere. The protocol arithmetic alone would
+/// say `S3_MAX_PARTS * S3_PART_MAX`, 48.8 TiB, and that is wrong here: past
+/// `S3_MAX_PARTS * DELTA_GRID_MAX`, 24.4 TiB, the grid the rule would choose is
+/// one the planner refuses on every plan. The two halves have to be sized
+/// against each other rather than each against the protocol.
 pub const DELTA_MAX_FILE_SIZE: u64 = S3_MAX_PARTS as u64 * DELTA_GRID_MAX;
 
 /// Choose the grid a file of `file_len` bytes is compared and cut on, or refuse
@@ -83,7 +92,7 @@ pub const DELTA_MAX_FILE_SIZE: u64 = S3_MAX_PARTS as u64 * DELTA_GRID_MAX;
 /// Returns `None` for a file too small for a delta to be worth anything and for
 /// a file past [`DELTA_MAX_FILE_SIZE`], where no legal grid exists.
 pub fn delta_grid_size(file_len: u64) -> Option<u64> {
-    if !(DELTA_MIN_FILE_SIZE..=DELTA_MAX_FILE_SIZE).contains(&file_len) {
+    if file_len <= DELTA_MIN_FILE_SIZE || file_len > DELTA_MAX_FILE_SIZE {
         return None;
     }
     let needed = file_len.div_ceil(u64::from(S3_MAX_PARTS));
@@ -109,8 +118,13 @@ pub fn delta_grid_size(file_len: u64) -> Option<u64> {
 /// has grown far enough that it no longer fits under the part cap on it, and
 /// then the honest answer is a full upload and a fresh set of digests.
 pub fn delta_grid_fits(grid: u64, file_len: u64) -> bool {
+    // The upper bound on `file_len` cannot be the clause that refuses: a grid
+    // at most DELTA_GRID_MAX and a cell count at most S3_MAX_PARTS already
+    // imply it. It is kept so the function reads as a complete statement of
+    // what it accepts rather than one that leans on arithmetic done elsewhere.
     (S3_PART_MIN..=DELTA_GRID_MAX).contains(&grid)
-        && (DELTA_MIN_FILE_SIZE..=DELTA_MAX_FILE_SIZE).contains(&file_len)
+        && file_len > DELTA_MIN_FILE_SIZE
+        && file_len <= DELTA_MAX_FILE_SIZE
         && file_len.div_ceil(grid) <= u64::from(S3_MAX_PARTS)
 }
 
@@ -1048,7 +1062,14 @@ mod tests {
     fn a_file_under_the_delta_floor_gets_no_grid() {
         assert_eq!(delta_grid_size(DELTA_MIN_FILE_SIZE - 1), None);
         assert_eq!(delta_grid_size(0), None);
-        assert_eq!(delta_grid_size(DELTA_MIN_FILE_SIZE), Some(DELTA_PART_SIZE));
+        // Exactly at the floor there is no delta, because `upload` sends a
+        // single PUT at exactly that size. Matching the constant without
+        // matching the comparison would leave one byte of disagreement.
+        assert_eq!(delta_grid_size(DELTA_MIN_FILE_SIZE), None);
+        assert_eq!(
+            delta_grid_size(DELTA_MIN_FILE_SIZE + 1),
+            Some(DELTA_PART_SIZE)
+        );
     }
 
     #[test]
@@ -1130,6 +1151,8 @@ mod tests {
         assert!(!delta_grid_fits(DELTA_GRID_MAX + 1, DELTA_MAX_FILE_SIZE));
         assert!(!delta_grid_fits(S3_PART_MAX, 2 * GIB));
         assert!(!delta_grid_fits(DELTA_PART_SIZE, DELTA_MIN_FILE_SIZE - 1));
+        assert!(!delta_grid_fits(DELTA_PART_SIZE, DELTA_MIN_FILE_SIZE));
+        assert!(delta_grid_fits(DELTA_PART_SIZE, DELTA_MIN_FILE_SIZE + 1));
     }
 
     #[test]
@@ -1165,7 +1188,7 @@ mod tests {
                     chosen += 1;
                 }
                 None => assert!(
-                    !(DELTA_MIN_FILE_SIZE..=DELTA_MAX_FILE_SIZE).contains(&file_len),
+                    file_len <= DELTA_MIN_FILE_SIZE || file_len > DELTA_MAX_FILE_SIZE,
                     "refused a file of {file_len} bytes that is inside the coverable range"
                 ),
             }
@@ -1205,7 +1228,7 @@ mod tests {
         // which handed the planner a floor above half its own ceiling and got
         // every plan refused. Found here, before review.
         for file_len in [
-            DELTA_MIN_FILE_SIZE,
+            DELTA_MIN_FILE_SIZE + 1,
             2 * GIB,
             79 * GIB,
             200 * GIB,
