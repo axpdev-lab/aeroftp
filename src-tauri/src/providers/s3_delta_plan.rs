@@ -118,11 +118,21 @@ pub fn delta_grid_size(file_len: u64) -> Option<u64> {
 /// has grown far enough that it no longer fits under the part cap on it, and
 /// then the honest answer is a full upload and a fresh set of digests.
 pub fn delta_grid_fits(grid: u64, file_len: u64) -> bool {
-    // The upper bound on `file_len` cannot be the clause that refuses: a grid
-    // at most DELTA_GRID_MAX and a cell count at most S3_MAX_PARTS already
-    // imply it. It is kept so the function reads as a complete statement of
-    // what it accepts rather than one that leans on arithmetic done elsewhere.
-    (S3_PART_MIN..=DELTA_GRID_MAX).contains(&grid)
+    // Everything the planner itself requires comes from the planner, not from
+    // a copy of its rules: that shared call is what stops this function from
+    // saying yes to a shape `plan_delta_parts` then refuses. A file that shrank
+    // below its stored cell is one such shape, and it was the third one found.
+    //
+    // Two of the clauses below can no longer be the one that refuses, and both
+    // are kept so the function reads as a complete statement of what it accepts
+    // rather than one leaning on arithmetic done elsewhere. The grid ceiling is
+    // implied by the shared call, since a floor above half the part ceiling
+    // fails `part_max < part_min * 2` there; the file ceiling is implied by
+    // that grid bound together with the cell count. Measured, not assumed: the
+    // mutation battery records both as knowingly equivalent, so an uncaught
+    // mutation there is the expected result and not an untested clause.
+    plan_preconditions_hold(file_len, grid, S3_PART_MAX, S3_MAX_PARTS)
+        && (S3_PART_MIN..=DELTA_GRID_MAX).contains(&grid)
         && file_len > DELTA_MIN_FILE_SIZE
         && file_len <= DELTA_MAX_FILE_SIZE
         && file_len.div_ceil(grid) <= u64::from(S3_MAX_PARTS)
@@ -243,6 +253,31 @@ pub fn plan_delta_parts(
 /// geometry would reuse: Azure's `Put Block From URL` has no 5 MiB floor, which
 /// is Tier 3 of the appendix and the reason the arithmetic is kept free of the
 /// S3 numbers.
+/// The shape a plan needs before any matching is looked at, in one place.
+///
+/// It is a function rather than three checks at the top of the planner because
+/// a second caller has to ask the same question: `delta_grid_fits` decides
+/// whether a grid recorded with an earlier upload can still be used, and the
+/// only honest meaning of "can" is "the planner will accept it". Restating the
+/// conditions there instead of sharing them is how that function came to
+/// disagree with this one three separate times, each in a different clause.
+fn plan_preconditions_hold(file_len: u64, part_min: u64, part_max: u64, max_parts: u32) -> bool {
+    if file_len == 0 || part_min == 0 || max_parts == 0 {
+        return false;
+    }
+    // A run longer than the ceiling is cut into equal pieces, and every piece
+    // has to clear the floor. Below a ceiling of two floors that is not
+    // always possible, so refuse rather than emit a plan the server rejects.
+    // The real S3 numbers are 5 MiB and 5 GiB, a factor of 1024.
+    if part_max < part_min.saturating_mul(2) {
+        return false;
+    }
+    // Under one full part there is nothing a multipart can win: a single PUT
+    // is both legal and cheaper. This is also the clause a stored grid fails
+    // when the file has shrunk below the cell it was uploaded on.
+    file_len >= part_min
+}
+
 fn plan_delta_parts_bounded(
     file_len: u64,
     matches: &[(u64, u64, u64)],
@@ -250,19 +285,7 @@ fn plan_delta_parts_bounded(
     part_max: u64,
     max_parts: u32,
 ) -> Option<Vec<DeltaPart>> {
-    if file_len == 0 || part_min == 0 || max_parts == 0 {
-        return None;
-    }
-    // A run longer than the ceiling is cut into equal pieces, and every piece
-    // has to clear the floor. Below a ceiling of two floors that is not
-    // always possible, so refuse rather than emit a plan the server rejects.
-    // The real S3 numbers are 5 MiB and 5 GiB, a factor of 1024.
-    if part_max < part_min.saturating_mul(2) {
-        return None;
-    }
-    // Under one full part there is nothing a multipart can win: a single PUT
-    // is both legal and cheaper.
-    if file_len < part_min {
+    if !plan_preconditions_hold(file_len, part_min, part_max, max_parts) {
         return None;
     }
 
@@ -1153,6 +1176,68 @@ mod tests {
         assert!(!delta_grid_fits(DELTA_PART_SIZE, DELTA_MIN_FILE_SIZE - 1));
         assert!(!delta_grid_fits(DELTA_PART_SIZE, DELTA_MIN_FILE_SIZE));
         assert!(delta_grid_fits(DELTA_PART_SIZE, DELTA_MIN_FILE_SIZE + 1));
+    }
+
+    #[test]
+    fn a_stored_grid_wider_than_the_file_is_rejected() {
+        // A file that shrank below the cell it was uploaded on. The grid is
+        // legal, the cell count is one, every bound this function states on its
+        // own is satisfied, and the planner refuses it because a file shorter
+        // than one part has nothing a multipart can win. Third disagreement
+        // between these two halves, and the reason they now share a function
+        // instead of each restating the rules.
+        assert!(!delta_grid_fits(DELTA_GRID_MAX, DELTA_MIN_FILE_SIZE + 1));
+        assert!(delta_grid_fits(DELTA_GRID_MAX, DELTA_GRID_MAX));
+        assert!(!delta_grid_fits(DELTA_GRID_MAX, DELTA_GRID_MAX - 1));
+    }
+
+    #[test]
+    fn what_the_grid_check_accepts_is_what_the_planner_accepts() {
+        // The cross-check the three disagreements would each have failed. It
+        // does not test either half against the specification: it tests them
+        // against each other, which is the only thing that can catch a rule
+        // restated in two places and then changed in one.
+        let mut rng = Lcg(0xc0ff_ee11);
+        let mut accepted = 0usize;
+        let rounds = 4000;
+        for _ in 0..rounds {
+            let grid = match rng.below(4) {
+                0 => DELTA_PART_SIZE,
+                1 => DELTA_GRID_MAX,
+                2 => S3_PART_MIN + rng.below(64 * MIB),
+                _ => DELTA_PART_SIZE * (1 + rng.below(400)),
+            };
+            // Sampled by scale rather than uniformly. A uniform draw over the
+            // whole range is almost always enormous next to a grid of at most
+            // a few GiB, so the region where the two halves can disagree, a
+            // file comparable to or smaller than its own cell, would come up
+            // about twice in four thousand rounds. The first version of this
+            // test drew uniformly and did NOT catch the disagreement it was
+            // written for; a generator that never visits the boundary is a
+            // green light pointed away from the road.
+            let file_len = match rng.below(4) {
+                0 => DELTA_MIN_FILE_SIZE + rng.below(4 * GIB),
+                1 => grid.saturating_sub(rng.below(2 * grid)),
+                2 => rng.below(100 * GIB),
+                _ => rng.below(DELTA_MAX_FILE_SIZE / 4),
+            };
+            if !delta_grid_fits(grid, file_len) {
+                continue;
+            }
+            accepted += 1;
+            // A grid the check accepts must produce a plan for the shape the
+            // matcher emits on it: whole cells, worst case all of them changed
+            // except the first.
+            let matches = [(0, 0, grid.min(file_len))];
+            assert!(
+                plan_delta_parts(file_len, &matches, grid, S3_MAX_PARTS).is_some(),
+                "delta_grid_fits accepted grid {grid} for {file_len} bytes and the planner refused it"
+            );
+        }
+        assert!(
+            accepted > 200,
+            "only {accepted} of {rounds} pairs were accepted: the cross-check barely ran"
+        );
     }
 
     #[test]
