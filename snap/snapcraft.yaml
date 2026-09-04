@@ -1,6 +1,6 @@
 name: aeroftp
 title: AeroFTP
-version: '4.1.8'
+version: '4.1.9'
 summary: Modern Multi-Protocol File Transfer & Cloud Client for Humans and Agents
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
@@ -76,7 +76,7 @@ contact: https://github.com/axpdev-lab/aeroftp/discussions
 issues: https://github.com/axpdev-lab/aeroftp/issues
 source-code: https://github.com/axpdev-lab/aeroftp
 website: https://aeroftp.app
-license: GPL-3.0
+license: GPL-3.0-or-later
 
 architectures:
   - build-on: amd64

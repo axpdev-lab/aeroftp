@@ -11,10 +11,16 @@
 
 #![cfg(feature = "aerorsync")]
 
+// `io` is read only by the Linux implementation below, and `AclPrincipal` by
+// that implementation and by the tests. Ungated, both are unused imports on
+// Windows and macOS, which the standalone lane compiles with `-D warnings`.
+#[cfg(target_os = "linux")]
 use std::io;
 
+#[cfg(any(target_os = "linux", test))]
+use crate::aerorsync::real_wire::AclPrincipal;
 use crate::aerorsync::real_wire::{
-    AclNamedEntry, AclPrincipal, AclWireEntry, FileListAcls, RsyncAcl, MAX_ACL_NAMED_ENTRIES,
+    AclNamedEntry, AclWireEntry, FileListAcls, RsyncAcl, MAX_ACL_NAMED_ENTRIES,
 };
 
 /// Outcome of applying an access ACL to an open file descriptor.

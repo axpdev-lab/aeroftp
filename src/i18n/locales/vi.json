@@ -322,7 +322,8 @@
                 "found": "Đã tìm thấy {count} đích có thể truy cập. Nhập để tìm kiếm hoặc chọn một mục."
             },
             "swiftAuthUrl": "URL xác thực Keystone",
-            "swiftAllowCleartextStorage": "Triển khai này phục vụ lưu trữ đối tượng qua HTTP không mã hóa. Chấp nhận cho hồ sơ này: mã thông báo truy cập và mọi tệp đi qua mạng mà không được mã hóa."
+            "swiftAllowCleartextStorage": "Triển khai này phục vụ lưu trữ đối tượng qua HTTP không mã hóa. Chấp nhận cho hồ sơ này: mã thông báo truy cập và mọi tệp đi qua mạng mà không được mã hóa.",
+            "kdriveTokenScopes": "Token cần các phạm vi drive và user_info. Chỉ với drive, token vẫn kết nối và liệt kê tệp, nhưng \"Lấy\" bị từ chối, vì nó đọc hồ sơ tài khoản của bạn để tìm Drive ID."
         },
         "browser": {
             "remote": "Từ xa",
@@ -2448,7 +2449,7 @@
                 "general": "Chung",
                 "generalDesc": "Mặc định cho các tác vụ chưa phân loại",
                 "autoDefault": "Tự động (Mặc định)",
-                "autoRoutingTip": "Mẹo: Để \"Tự động (Mặc định)\" để sử dụng mô hình đã chọn trong tiêu đề trò chuyện. Chỉ cấu hình mô hình cụ thể khi bạn muốn dùng mô hình khác cho các tác vụ khác nhau.",
+                "autoRoutingTip": "Mẹo: để một tác vụ ở «Tự động (Mặc định)» thì mô hình mặc định của bạn sẽ được dùng. Chỉ đặt mô hình ưu tiên cho những tác vụ bạn muốn dùng mô hình khác, và một mô hình dự phòng để trả lời khi mô hình ưu tiên thất bại.",
                 "advancedDescription": "Cấu hình các tham số AI nâng cao cho việc tạo phản hồi.",
                 "conversationStyle": "Phong cách hội thoại",
                 "styleHelp": "Chính xác = phản hồi thực tế. Sáng tạo = giàu trí tưởng tượng hơn. Cân bằng = mặc định.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Chưa rõ các khả năng. Hãy xem xét ngữ cảnh, công cụ, thị giác và khả năng suy luận trước khi dùng mô hình này cho tác vụ tác nhân.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Sử dụng giao thức Responses gốc cho các mô hình OpenAI tương thích đã được xác minh. Tắt tùy chọn này để sử dụng Chat Completions.",
-                "openAIResponsesEnable": "Bật Responses cho các mô hình OpenAI tương thích"
+                "openAIResponsesEnable": "Bật Responses cho các mô hình OpenAI tương thích",
+                "routingPreferred": "Ưu tiên",
+                "routingFallback": "Dự phòng",
+                "routingNoFallback": "Không có"
             },
             "copy": "Sao chép",
             "attachImage": "Đính kèm hình ảnh",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Duyệt plugin"
             },
-            "stopGeneration": "Dừng tạo"
+            "stopGeneration": "Dừng tạo",
+            "routing": {
+                "fallbackUsed": "dự phòng",
+                "fallbackUsedTooltip": "{model} đã thất bại, nên mô hình dự phòng đã trả lời thay"
+            }
         },
         "archive": {
             "passwordRequired": "Tệp lưu trữ này được bảo vệ bằng mật khẩu",

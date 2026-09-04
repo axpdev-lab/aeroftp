@@ -322,7 +322,8 @@
                 "found": "Ditemui {count} sasaran yang boleh diakses. Taip untuk mencari atau pilih satu."
             },
             "swiftAuthUrl": "URL pengesahan Keystone",
-            "swiftAllowCleartextStorage": "Penggunaan ini menyediakan storan objek melalui HTTP biasa. Terima untuk profil ini: token akses dan setiap fail melintasi rangkaian tanpa penyulitan."
+            "swiftAllowCleartextStorage": "Penggunaan ini menyediakan storan objek melalui HTTP biasa. Terima untuk profil ini: token akses dan setiap fail melintasi rangkaian tanpa penyulitan.",
+            "kdriveTokenScopes": "Token memerlukan skop drive dan user_info. Dengan drive sahaja ia boleh menyambung dan menyenaraikan fail, tetapi \"Dapatkan\" ditolak, kerana ia membaca profil akaun anda untuk mencari Drive ID."
         },
         "browser": {
             "remote": "Jauh",
@@ -2448,7 +2449,7 @@
                 "general": "Umum",
                 "generalDesc": "Lalai untuk tugas tidak diklasifikasikan",
                 "autoDefault": "Automatik (Lalai)",
-                "autoRoutingTip": "Petua: Biarkan sebagai \"Automatik (Lalai)\" untuk menggunakan model yang dipilih dalam pengepala sembang. Konfigurasikan model tertentu hanya apabila anda mahukan model berbeza untuk tugas berbeza.",
+                "autoRoutingTip": "Petua: biarkan tugas pada \"Automatik (Lalai)\" dan model lalai anda akan digunakan. Tetapkan model pilihan hanya untuk tugas yang memerlukan model berbeza, dan model sandaran yang menjawab apabila model pilihan gagal.",
                 "advancedDescription": "Konfigurasikan parameter AI lanjutan untuk penjanaan respons.",
                 "conversationStyle": "Gaya Perbualan",
                 "styleHelp": "Tepat = respons faktual. Kreatif = lebih imaginatif. Seimbang = lalai.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Keupayaan tidak diketahui. Semak konteks, alat, penglihatan dan penaakulan sebelum menggunakan model ini untuk tugas ejen.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Gunakan pengangkutan Responses asli untuk model OpenAI yang serasi dan disahkan. Matikannya untuk menggunakan Chat Completions.",
-                "openAIResponsesEnable": "Dayakan Responses untuk model OpenAI yang serasi"
+                "openAIResponsesEnable": "Dayakan Responses untuk model OpenAI yang serasi",
+                "routingPreferred": "Pilihan",
+                "routingFallback": "Sandaran",
+                "routingNoFallback": "Tiada"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan imej",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Layari Plugin"
             },
-            "stopGeneration": "Hentikan penjanaan"
+            "stopGeneration": "Hentikan penjanaan",
+            "routing": {
+                "fallbackUsed": "sandaran",
+                "fallbackUsedTooltip": "{model} gagal, jadi model sandaran yang menjawab"
+            }
         },
         "archive": {
             "passwordRequired": "Arkib ini dilindungi kata laluan",

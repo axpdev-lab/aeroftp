@@ -671,7 +671,6 @@ impl SftpProvider {
             // independent socket.
             let native_mode = crate::settings::load_native_rsync_mode();
             if !matches!(native_mode, crate::settings::NativeRsyncMode::Classic) {
-                use crate::aerorsync::delta_transport_impl::AerorsyncDeltaTransport;
                 use crate::aerorsync::ssh_transport::SshHostKeyPolicy;
 
                 let host_key_policy = match self.accepted_host_key_sha256_hex() {
@@ -692,7 +691,10 @@ impl SftpProvider {
                     }
                 };
 
-                match AerorsyncDeltaTransport::from_rsync_config(&rsync_config, host_key_policy) {
+                match crate::aerorsync_adapter::config::transport_from_rsync_config(
+                    &rsync_config,
+                    host_key_policy,
+                ) {
                     Ok(transport) => {
                         // B4 / ACL B4: production metadata opt-ins follow live
                         // stock-rsync acceptance. fail_on_metadata_loss remains
@@ -1933,6 +1935,52 @@ impl StorageProvider for SftpProvider {
             transferred
         );
         Ok(())
+    }
+
+    /// SFTP resumes an interrupted upload by appending from a byte offset, so
+    /// the answer here is yes. It was left at the trait default of `false`
+    /// while [`Self::resume_upload`] below was implemented and
+    /// [`Self::supports_resume_upload_append`] answered true, which made the
+    /// capability real and unreachable: the GUI resumed an interrupted SFTP
+    /// upload and the CLI's `--partial` did not, because it consults THIS
+    /// method and this one alone.
+    ///
+    /// Deliberately NOT unified with the two neighbours. `supports_resume_upload_append`
+    /// is kept separate from the DAG hints on purpose, and that intent is
+    /// documented on it; the three answer related questions to different
+    /// callers, and only this one was wrong.
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    /// Resume an interrupted download.
+    ///
+    /// `download` already does the whole job: it opens the `.aerotmp` through
+    /// `ResumableFile`, reads the offset OFF THAT FILE, discards a partial
+    /// larger than the current remote (a changed remote must not be appended
+    /// to), finalizes without reading when the partial is already complete,
+    /// and seeks the remote read to the partial's end. So this method
+    /// delegates rather than reimplementing, and the `offset` argument is
+    /// deliberately not used: the caller measured it by stat'ing the same
+    /// `.aerotmp` that `ResumableFile` opens, so re-deriving it there keeps
+    /// one source of truth instead of two that can disagree.
+    ///
+    /// It exists because [`Self::supports_resume`] is a SHARED gate. The CLI
+    /// reads it for `--partial` on upload, and `provider_transfer_executor`
+    /// reads it on a download RETRY, where a non-zero partial routes to this
+    /// method. Answering true without this override would have sent that retry
+    /// into the trait default, which returns `NotSupported`, so a retry that
+    /// used to restart the download would have failed instead. Implementing
+    /// the capability on one side and advertising it on both is the defect
+    /// this pairing exists to prevent.
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        self.download(remote_path, local_path, on_progress).await
     }
 
     /// SFTP can append the tail of an interrupted upload from a byte offset

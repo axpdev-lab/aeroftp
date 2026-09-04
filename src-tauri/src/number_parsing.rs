@@ -272,4 +272,44 @@ mod tests {
         assert!((parse_f64_loose("48.22").unwrap() - 48.22).abs() < 0.001);
         assert!((parse_f64_loose("48,22").unwrap() - 48.22).abs() < 0.001);
     }
+
+    /// `src/aerorsync/fixtures.rs` carries a verbatim copy of the two entry
+    /// points above and their three helpers so the aerorsync module imports
+    /// nothing from the application. This pins the copy to the original on
+    /// every shape the rsync `--stats` parsers meet, plus the edge cases.
+    #[cfg(feature = "aerorsync")]
+    #[test]
+    fn aerorsync_fixture_parsers_stay_identical() {
+        use crate::aerorsync::fixtures;
+        const INPUTS: [&str; 16] = [
+            "156,561",
+            "156.561 bytes",
+            "8.388.608",
+            "48,22",
+            "1.5",
+            "",
+            "abc",
+            "1,048,576",
+            "  42 seconds",
+            "1,234",
+            "1.234",
+            "12.5 bytes/sec",
+            "0",
+            "999999999999999999999999",
+            "3,14,15",
+            "7 8",
+        ];
+        for input in INPUTS {
+            assert_eq!(
+                parse_u64_loose(input),
+                fixtures::parse_u64_loose(input),
+                "parse_u64_loose diverged on {input:?}"
+            );
+            assert_eq!(
+                parse_f64_loose(input),
+                fixtures::parse_f64_loose(input),
+                "parse_f64_loose diverged on {input:?}"
+            );
+        }
+    }
 }

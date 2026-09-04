@@ -90,6 +90,30 @@ function toTemplateVerify(value: VerifyPolicy | AeroSyncVerifyPolicy | undefined
 }
 
 /**
+ * The `compare_*` triple a verify policy implies. The backend serialises the
+ * named preset, so an exported template carried the preset's comparison
+ * fields (true / true / false for every stock preset) whatever the Plan tab
+ * said, and a reader of the file, human or the CLI's `sync`, saw "size and
+ * mtime" on a template exported with full checksum (#514). The verify
+ * policy is the only comparison knob the Plan tab exposes, so it is the
+ * source of truth for all four fields; `none` verifies nothing after the
+ * transfer and says nothing about how to compare, so the preset's own
+ * fields stand.
+ */
+function compareFieldsForVerify(verify: VerifyPolicy): Partial<SyncTemplate['profile']> {
+    switch (verify) {
+        case 'full':
+            return { compare_size: true, compare_timestamp: true, compare_checksum: true };
+        case 'size_and_mtime':
+            return { compare_size: true, compare_timestamp: true, compare_checksum: false };
+        case 'size_only':
+            return { compare_size: true, compare_timestamp: false, compare_checksum: false };
+        case 'none':
+            return {};
+    }
+}
+
+/**
  * Stamp the live Plan-tab values onto an exported .aerosync document.
  * The backend serialises the named preset (Mirror → compression off, no
  * canary, no verify_policy). Without this overlay those knobs round-trip
@@ -102,7 +126,7 @@ export function overlayLivePlanOnTemplate(template: SyncTemplate, live: LivePlan
         profile: {
             ...template.profile,
             ...(live.compressionMode ? { compression_mode: live.compressionMode } : {}),
-            ...(verify ? { verify_policy: verify } : {}),
+            ...(verify ? { verify_policy: verify, ...compareFieldsForVerify(verify) } : {}),
             ...(live.canary
                 ? { canary: { percent: live.canary.percent, selection: live.canary.selection } }
                 : { canary: undefined }),

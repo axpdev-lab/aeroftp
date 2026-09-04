@@ -322,7 +322,8 @@
                 "found": "접근 가능한 대상 {count}개를 찾았습니다. 입력하여 검색하거나 하나를 선택하세요."
             },
             "swiftAuthUrl": "Keystone 인증 URL",
-            "swiftAllowCleartextStorage": "이 배포는 일반 HTTP로 오브젝트 스토리지를 제공합니다. 이 프로필에서 허용합니다: 액세스 토큰과 모든 파일이 암호화되지 않은 채 네트워크를 통과합니다."
+            "swiftAllowCleartextStorage": "이 배포는 일반 HTTP로 오브젝트 스토리지를 제공합니다. 이 프로필에서 허용합니다: 액세스 토큰과 모든 파일이 암호화되지 않은 채 네트워크를 통과합니다.",
+            "kdriveTokenScopes": "토큰에는 drive와 user_info 범위가 필요합니다. drive만 있어도 연결과 파일 목록 조회는 되지만, \"가져오기\"는 Drive ID를 찾기 위해 계정 프로필을 읽으므로 거부됩니다."
         },
         "browser": {
             "remote": "원격",
@@ -2448,7 +2449,7 @@
                 "general": "일반",
                 "generalDesc": "분류되지 않은 작업의 기본값",
                 "autoDefault": "자동 (기본값)",
-                "autoRoutingTip": "팁: 채팅 헤더에서 선택한 모델을 사용하려면 \"자동 (기본값)\"으로 두세요. 다른 작업에 다른 모델을 사용하려는 경우에만 특정 모델을 구성하세요.",
+                "autoRoutingTip": "팁: 작업을 \"자동 (기본값)\"로 두면 기본 모델이 사용됩니다. 다른 모델을 쓰고 싶은 작업에만 선호 모델을 지정하고, 선호 모델이 실패할 때 응답할 대체 모델을 지정하세요.",
                 "advancedDescription": "응답 생성을 위한 고급 AI 매개변수를 구성합니다.",
                 "conversationStyle": "대화 스타일",
                 "styleHelp": "정확 = 사실 기반 응답. 창의적 = 더 상상력 풍부. 균형 = 기본값.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "기능을 알 수 없습니다. 에이전트 작업에 이 모델을 사용하기 전에 컨텍스트, 도구, 비전 및 추론을 검토하세요.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "검증된 호환 OpenAI 모델에 기본 Responses 전송을 사용합니다. Chat Completions를 사용하려면 끄세요.",
-                "openAIResponsesEnable": "호환되는 OpenAI 모델에 Responses 사용"
+                "openAIResponsesEnable": "호환되는 OpenAI 모델에 Responses 사용",
+                "routingPreferred": "선호 모델",
+                "routingFallback": "대체",
+                "routingNoFallback": "없음"
             },
             "copy": "복사",
             "attachImage": "이미지 첨부",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "플러그인 찾아보기"
             },
-            "stopGeneration": "생성 중지"
+            "stopGeneration": "생성 중지",
+            "routing": {
+                "fallbackUsed": "대체",
+                "fallbackUsedTooltip": "{model}이(가) 실패하여 대체 모델이 대신 응답했습니다"
+            }
         },
         "archive": {
             "passwordRequired": "이 압축 파일은 비밀번호로 보호되어 있습니다",

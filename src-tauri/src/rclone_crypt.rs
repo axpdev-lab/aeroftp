@@ -175,17 +175,61 @@ pub fn derive_keys(password: &str, salt: &str) -> Result<([u8; 32], [u8; 32]), S
     Ok((name_key, data_key))
 }
 
+/// Which secret is being revealed. The two are NOT interchangeable and the
+/// difference decides one ambiguous case, so the caller has to say.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum RcloneSecret {
+    /// `password` in rclone terms. rclone has no concept of an empty crypt
+    /// password: `rclone obscure ""` is accepted for a salt and meaningless
+    /// here, so an empty reveal is PROOF the input was a literal password.
+    Password,
+    /// `password2`, the salt. Here `obscure("")` is documented and means
+    /// "no salt", which selects rclone's built-in default salt, so an empty
+    /// reveal is a legitimate value and not a failure.
+    Salt,
+}
+
 /// If `value` is an rclone-obscured secret (`rclone obscure` / `rclone.conf`
 /// password / password2), return the revealed plaintext. Otherwise return
 /// `value` unchanged. Closed: a string that is not valid rclone-obscure is
 /// never modified (#600: Ehud pasted rclone.conf password1/password2).
-fn maybe_rclone_reveal(value: &str) -> String {
+///
+/// # The empty reveal, and why the answer depends on the field
+///
+/// rclone-obscure is AES-CTR with a 16-byte IV prepended, base64url without
+/// padding. A 22-character string decodes to exactly 16 bytes: all IV and no
+/// ciphertext, so it reveals as the empty string.
+///
+/// Measured rather than assumed, because the first statement of this was wider
+/// than the truth: it is NOT every 22-character string over `[A-Za-z0-9_-]`.
+/// Strict base64 requires the discarded low bits of the final symbol to be
+/// zero, so the last character must be one of `A`, `Q`, `g`, `w`. That is 4 of
+/// 64, one in sixteen of such passwords, which is rare enough to never appear
+/// in testing and common enough to reach a user: password managers generate
+/// inside that alphabet.
+///
+/// Treating that empty result as the secret would derive the key from nothing
+/// and encrypt with it, silently, which is the worst available outcome: the
+/// data is written, no error is raised, and rclone cannot open it.
+///
+/// The ambiguity is only resolvable per field, and it resolves completely:
+/// for a PASSWORD an empty result cannot be what the user meant, because
+/// rclone has no empty crypt password, so the input must have been a literal
+/// that happened to look like base64. For a SALT it is exactly what
+/// `password2 = obscure("")` means. Same bytes, opposite reading, and the
+/// field is the only thing that tells them apart.
+fn maybe_rclone_reveal(value: &str, secret: RcloneSecret) -> String {
     if value.is_empty() {
         return String::new();
     }
     match crate::rclone_import::reveal_obscured(value) {
-        // Empty reveal is rclone `password2 = obscure("")`: omitted salt,
-        // which must collapse to the default salt — not stay as the blob.
+        Ok(plain) if plain.is_empty() => match secret {
+            // Never plausible: keep the literal the user typed.
+            RcloneSecret::Password => value.to_string(),
+            // rclone `password2 = obscure("")`: omitted salt, which must
+            // collapse to the default salt, not stay as the blob.
+            RcloneSecret::Salt => plain,
+        },
         Ok(plain) if plain != value && plain.chars().all(|c| !c.is_control()) => plain,
         _ => value.to_string(),
     }
@@ -198,8 +242,8 @@ pub fn derive_keys_with_tweak(
     password: &str,
     salt: &str,
 ) -> Result<RcloneCryptKeyMaterial, String> {
-    let password = maybe_rclone_reveal(password);
-    let salt = maybe_rclone_reveal(salt);
+    let password = maybe_rclone_reveal(password, RcloneSecret::Password);
+    let salt = maybe_rclone_reveal(salt, RcloneSecret::Salt);
     // scrypt 0.11 limits Params::len to <=64 for password-hash metadata, but
     // the raw scrypt() function accepts rclone's 80-byte output buffer.
     let params = ScryptParams::new(SCRYPT_LOG_N, SCRYPT_R, SCRYPT_P, SCRYPT_PARAMS_LEN)
@@ -1527,6 +1571,56 @@ mod tests {
         assert_eq!(from_obscured.0, from_plain.0);
         assert_eq!(from_obscured.1, from_plain.1);
         assert_eq!(from_obscured.2, from_plain.2);
+    }
+
+    /// A 22-character password drawn from `[A-Za-z0-9_-]` decodes to exactly
+    /// 16 bytes under base64url, which is the IV and nothing else, so
+    /// rclone-reveal returns the EMPTY STRING for it. Before this was decided
+    /// per field, such a password was silently replaced by nothing and the
+    /// content was encrypted under a key derived from an empty password: no
+    /// error, no sign, and unopenable by rclone. Password managers generate
+    /// inside that alphabet, so the input is ordinary rather than exotic.
+    ///
+    /// The assertion is that the 22-character password behaves like a
+    /// password and NOT like the empty one, which is stronger than asserting
+    /// its literal survival: it would still fail if the value were replaced by
+    /// any other constant.
+    #[test]
+    fn a_22_char_password_is_not_swallowed_by_the_reveal() {
+        let colliding = "Aa0-_Bb1cDd2eEf3gHh4iA";
+        assert_eq!(colliding.len(), 22, "the collision needs exactly 22 chars");
+        assert_eq!(
+            crate::rclone_import::reveal_obscured(colliding).as_deref(),
+            Ok(""),
+            "precondition: this input really does reveal as empty"
+        );
+
+        let from_literal = derive_keys_with_tweak(colliding, "").unwrap();
+        let from_empty = derive_keys_with_tweak("", "").unwrap();
+        assert_ne!(
+            from_literal.0, from_empty.0,
+            "a 22-char password must not derive the same key as no password at all"
+        );
+
+        // And it must be the key of THAT password, not of some other value.
+        let control = derive_keys_with_tweak("Aa0-_Bb1cDd2eEf3gHh4iQ", "").unwrap();
+        assert_ne!(from_literal.0, control.0);
+    }
+
+    /// The other half of the same ambiguity, kept adjacent on purpose: for the
+    /// SALT an empty reveal is `password2 = obscure("")`, which is rclone
+    /// saying "no salt" and must still collapse to the built-in default. The
+    /// two tests fail in opposite directions if the field is ever ignored
+    /// again, which is what makes them a pair rather than a duplicate.
+    #[test]
+    fn a_22_char_salt_still_reads_as_the_default_salt() {
+        let colliding = "Aa0-_Bb1cDd2eEf3gHh4iA";
+        let with_colliding_salt = derive_keys_with_tweak("pw-600", colliding).unwrap();
+        let with_omitted_salt = derive_keys_with_tweak("pw-600", "").unwrap();
+        assert_eq!(
+            with_colliding_salt.0, with_omitted_salt.0,
+            "an empty reveal on the salt is rclone's omitted salt"
+        );
     }
 
     #[test]

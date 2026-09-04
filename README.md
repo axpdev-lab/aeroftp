@@ -312,7 +312,7 @@ AeroFTP defines seven user-facing file formats. Each has a single purpose and a 
 
 ```
 AeroFTP
-├── AeroCloud    - Personal cloud (7 transport protocols + 24 native providers + 6 media services, sync, share)
+├── AeroCloud    - Personal cloud (7 transport protocols + 24 native providers + 5 media services, sync, share)
 ├── AeroFile     - Professional file manager (multi-file Properties, recursive search, default-app routing)
 ├── AeroShare    - Peer-to-peer user-to-user transfer (end-to-end encrypted, no server in the middle) [Beta]
 ├── AeroMount    - Persistent FUSE / WebDAV mounts with cross-platform autostart (the Mount Manager)
@@ -411,13 +411,13 @@ Repeated across three runs the timings move by a few percent and the byte counts
 
 #### What is verified
 
-- **605 unit tests** on the module, pinned against frozen rsync 3.2.7 byte transcripts.
-- **11 live tests in CI lane 3** against a real `rsync --server` in Docker: a byte-identical upload (sha256 match), streaming upload, symlinks both directions, `user.*` xattrs inline, out-of-band, binary-with-NUL and empty, the batch path over a single session, and a symlink proving it does not inherit its target's attributes.
+- **677 unit tests** on the module, pinned against frozen rsync 3.2.7 byte transcripts.
+- **15 live tests in CI lane 3** against a real `rsync --server` in Docker: a byte-identical upload (sha256 match), streaming upload, symlinks both directions, `user.*` xattrs inline, out-of-band, binary-with-NUL and empty, the batch path over a single session, a symlink proving it does not inherit its target's attributes, POSIX access ACLs in both directions, and an unsupported compressor or checksum routing to the classic fallback.
 - **8 live tests across the negotiated checksum matrix** - xxh128, xxh3, xxh64, md5, md4, sha1 - driving the production upload and download transports.
 
 #### Known limits
 
-Single file per invocation: AeroRsync is a delta accelerator, not a tree walker - enumeration, deletion and retention stay with AeroSync, which owns its own safety gates. Protocol 31 only, SSH remote-shell only: no `rsync://` daemon mode, and an endpoint negotiating protocol 27-30 is served by the stock binary instead. Metadata preserved today is mtime, permissions, symlinks (Unix) and `user.*` xattrs (Unix, `-X`); **ACL, owner/group and device files are not implemented**, and hardlinks are structurally blocked until recursive scope exists, because detecting that two paths share an inode needs the whole file list.
+Single file per invocation: AeroRsync is a delta accelerator, not a tree walker - enumeration, deletion and retention stay with AeroSync, which owns its own safety gates. Protocol 31 only, SSH remote-shell only: no `rsync://` daemon mode, and an endpoint negotiating protocol 27-30 is served by the stock binary instead. Metadata preserved today is mtime, permissions, symlinks (Unix), `user.*` xattrs (Unix, `-X`) and POSIX.1e access ACLs (Linux only, opt-in, `-A`); **owner/group and device files are not implemented**, and hardlinks are structurally blocked until recursive scope exists, because detecting that two paths share an inode needs the whole file list.
 
 One version note worth stating plainly: upstream rsync **dropped `sha1`** from the negotiated checksum list between 3.2.7 and 3.4.1. AeroRsync still implements it, and it works against peers that still offer it, but against a modern rsync it is simply not negotiable.
 
@@ -533,7 +533,7 @@ Integrated development panel with three tools in a tabbed interface: **Monaco Ed
 
 #### AeroAgent - AI-Powered Assistant
 
-An AI assistant with **39 tools** that work across local files and remote providers. Supports **24 AI providers** (OpenAI, Anthropic, Gemini, xAI, Ollama, DeepSeek, Mistral, Cerebras, SambaNova, Fireworks, Nvidia, and 13 more). Vision/multimodal, RAG indexing, plugin ecosystem, streaming responses, multi-step autonomous execution, native MCP server mode (73 MCP tools), and Command Palette (Ctrl+Shift+P).
+An AI assistant with **39 tools** that work across local files and remote providers. Supports **24 AI providers** (OpenAI, Anthropic, Gemini, xAI, Ollama, DeepSeek, Mistral, Cerebras, SambaNova, Fireworks, Nvidia, and 13 more). Vision/multimodal, RAG indexing, plugin ecosystem, streaming responses, multi-step autonomous execution, native MCP server mode (77 MCP tools), and Command Palette (Ctrl+Shift+P).
 
 ---
 
@@ -845,7 +845,7 @@ Contributions are welcome. Please open an issue to discuss proposed changes befo
 
 ## License
 
-GPL-3.0 - See [LICENSE](LICENSE) for details.
+GPL-3.0-or-later - See [LICENSE](LICENSE) for details.
 
 ---
 

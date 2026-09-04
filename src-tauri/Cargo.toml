@@ -1,9 +1,9 @@
 [package]
 name = "aeroftp"
-version = "4.1.8"
+version = "4.1.9"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
-license = "GPL-3.0"
+license = "GPL-3.0-or-later"
 repository = "https://github.com/axpdev-lab/aeroftp"
 edition = "2021"
 rust-version = "1.85.0"
@@ -204,7 +204,7 @@ jsonwebtoken = { version = "10.4", default-features = false, features = ["aws_lc
 # AeroVault v2 - Military-Grade Encryption (v1.8.0)
 # T7 convergence: the app consumes the crate's AEROVAULT3 core (aerovault::v3);
 # the vault_v3_* handlers are thin wrappers over it (see src/aerovault_v3.rs).
-aerovault = "0.6.3"                                                    # M7: converged AEROVAULT3 core + standalone/AeroSync EC engine (published on crates.io)
+aerovault = "0.6.4"                                                    # M7: converged AEROVAULT3 core + standalone/AeroSync EC engine (published on crates.io)
 aes-gcm-siv = "0.11"                                                   # AeroVault v3 AEAD content encryption
 # Keep on 0.10.1 until aerovault publishes a release that accepts
 # chacha20poly1305 0.11; aerovault 0.6.3 depends on 0.10.
@@ -441,3 +441,46 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 # time -- exit 1 means still needed, exit 0 means this section can go.
 [patch.crates-io]
 n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35e827f642635a1028606f0bbd4e9c530ae0" }
+# suppaftp: the v10.0.2 release commit plus ONE method,
+# `buffered_reply_bytes()`, on the tokio stream, so the data-channel watch in
+# `providers/ftp.rs` can see a reply that the control reader has already
+# pulled off the socket. A server that sends `150` and the final reply in one
+# segment leaves the socket empty and the refusal inside the BufReader, and a
+# peek on the bare socket is blind to it: the transfer then waits out the
+# full data idle timeout for an answer that arrived with the first one. The
+# fork can be audited at a glance: `git diff v10.0.2` shows only that method.
+#
+# EXIT CONDITION: delete this entry as soon as an upstream release exposes
+# the reader's buffered bytes (or an equivalent readiness) on the tokio
+# stream. Pinned by `rev` on purpose, for the same reason as n0-mainline
+# above.
+#
+# UPSTREAM: NOTHING FILED as of 2026-09-01, and the branch being ready is not
+# the same as the contribution being ready. suppaftp asks for an issue first
+# (CONTRIBUTING.md), and its PR checklist wants tests and a local
+# `just check_code`, neither of which exists for this method yet. It also has
+# a binding AI_POLICY.md: disclosure is mandatory and must go through their PR
+# template, and the contributor has to be a person who understands the change
+# and answers review in their own words. The branch `buffered-reply-bytes` is
+# pushed on axpdev-lab/suppaftp and the issue text, the disclosure wording and
+# the remaining work are in `BATON-suppaftp-upstream-pr.md` outside this repo.
+# Filing it is an action on somebody else's repository under somebody's name,
+# so it belongs to the account owner rather than to whoever edits this file.
+#
+# COST OF STAYING FORKED, stated because it is easy to forget once it builds:
+# `cargo audit` matches advisories by crate name and version against the
+# crates.io index, and a git source is not that. So for as long as this entry
+# exists, suppaftp is outside the advisory scanning the released version would
+# get, and a RUSTSEC advisory landing on it may not turn the audit lane red.
+# The pin is v10.0.2 plus one method, so the exposure is that of v10.0.2, but
+# nothing here will TELL us if that changes. That is a reason to file upstream
+# rather than to keep the fork comfortable.
+#
+# When it is sent, REPLACE the two lines above with its URL. That is the
+# whole point of writing the state here: "we will upstream it" is a sentence
+# nobody can check six months later, while "not opened as of a date" and a
+# link are both things a reader can verify in a second. A fork does not
+# become permanent because the exit condition is missing; it becomes
+# permanent because the exit condition is written in a form nobody can
+# verify.
+suppaftp = { git = "https://github.com/axpdev-lab/suppaftp", rev = "2d39fadca96b4be37998c3097cb97c36b39231e1" }

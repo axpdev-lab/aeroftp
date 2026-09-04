@@ -322,7 +322,8 @@
                 "found": "Fandt {count} tilgængelige mål. Skriv for at søge, eller vælg et."
             },
             "swiftAuthUrl": "Keystone-godkendelses-URL",
-            "swiftAllowCleartextStorage": "Denne installation leverer objektlagring over almindelig HTTP. Accepter det for denne profil: adgangstokenet og alle filer krydser netværket ukrypteret."
+            "swiftAllowCleartextStorage": "Denne installation leverer objektlagring over almindelig HTTP. Accepter det for denne profil: adgangstokenet og alle filer krydser netværket ukrypteret.",
+            "kdriveTokenScopes": "Tokenet skal have scopes drive og user_info. Med drive alene forbinder det og viser filer, men \"Hent\" afvises, fordi den læser din kontoprofil for at finde Drive ID."
         },
         "browser": {
             "remote": "Ekstern",
@@ -2448,7 +2449,7 @@
                 "general": "Generelt",
                 "generalDesc": "Standard for uklassificerede opgaver",
                 "autoDefault": "Auto (Standard)",
-                "autoRoutingTip": "Tip: Lad stå som \"Auto (Standard)\" for at bruge den model, der er valgt i chatheaderen. Konfigurér specifikke modeller kun når du ønsker forskellige modeller til forskellige opgaver.",
+                "autoRoutingTip": "Tip: lad en opgave stå på \"Auto (Standard)\", så bruges din standardmodel. Angiv kun en foretrukken model til de opgaver, hvor du vil have en anden, og en reservemodel, der svarer, når den foretrukne fejler.",
                 "advancedDescription": "Konfigurér avancerede AI-parametre for svargenerering.",
                 "conversationStyle": "Samtalestil",
                 "styleHelp": "Præcis = faktuelle svar. Kreativ = mere fantasifuld. Balanceret = standard.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Funktionerne er ukendte. Gennemgå kontekst, værktøjer, syn og ræsonnement, før du bruger denne model til agentopgaver.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Brug den indbyggede Responses-transport til verificerede kompatible OpenAI-modeller. Slå dette fra for at bruge Chat Completions.",
-                "openAIResponsesEnable": "Aktivér Responses for kompatible OpenAI-modeller"
+                "openAIResponsesEnable": "Aktivér Responses for kompatible OpenAI-modeller",
+                "routingPreferred": "Foretrukken",
+                "routingFallback": "Reserve",
+                "routingNoFallback": "Ingen"
             },
             "copy": "Kopiér",
             "attachImage": "Vedhæft billede",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Gennemse Plugins"
             },
-            "stopGeneration": "Stop generering"
+            "stopGeneration": "Stop generering",
+            "routing": {
+                "fallbackUsed": "reserve",
+                "fallbackUsedTooltip": "{model} fejlede, så reservemodellen svarede i stedet"
+            }
         },
         "archive": {
             "passwordRequired": "Dette arkiv er adgangskodebeskyttet",

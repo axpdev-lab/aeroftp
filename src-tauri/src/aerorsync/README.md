@@ -127,23 +127,61 @@ cargo test --features aerorsync \
 1. ~~**Stock rsync interop**: production dispatch still uses `aerorsync_serve`~~ Done: Blocco B chiuso il 2026-04-26. Production dispatch usa stock `rsync --server` (WrapperParity); pin test in `remote_command::tests`. Live gate verde con sha256 match contro rsync 3.4.1.
 1a. ~~**Multi-chunk DEFLATED_DATA splitting (S8j)**: cap 16 KiB per literal~~ Done (2026-04-26): `send_delta_phase_single_file` splitta i blob zstd oltre `MAX_DELTA_LITERAL_LEN` in N DEFLATED_DATA consecutivi (mirror di `token.c::send_zstd_token`). Live upload 1 MiB contro rsync 3.4.1 passa con sha256 match in ~330 ms.
 2a. ~~**Cap in-memory 256 MiB upload-side** (`AERORSYNC_MAX_IN_MEMORY_BYTES`)~~ Done (P3-T01 W1.3 + #658): `upload_inner` apre la sorgente come `tokio::fs::File` e la fa scorrere via `drive_upload_through_delta_streaming`. #658 completa lo streaming fino al wire: ogni slab viene pianificato, compresso, codificato in token e scritto in un frame mux prima della lettura successiva. Il picco RSS è quindi `O(read_slab + codec_state + mux_payload)` anche per un target assente (`block_size == 0`) e per baseline senza match; nessuna generazione raw/compressa resta proporzionale a `source_len`.
-2b. ~~**Cap in-memory 256 MiB download-side**~~ Done (P3-T01 W2.5): `download_inner` apre il baseline locale come `FileBaseline` per il `CopyBlock` dispatch e i bytes ricostruiti scorrono attraverso `StreamingAtomicWriter` (`<target>.aerotmp` → `finalize` con rename atomico). Il cap `AERORSYNC_MAX_IN_MEMORY_BYTES` è eliminato. RSS scala con `O(baseline + writer_buffer)` invece di `O(baseline + reconstructed)`. Y-RSC.5: signature phase streams via `send_signature_phase_from_baseline` (no bulk `tokio::fs::read`); peak RSS `O(block_size + writer_buffer)`. **W2.1** (additivo): `BaselineSource` trait + `FileBaseline` + `MemoryBaseline`. **W2.2** (additivo): `apply_delta_streaming(baseline, ops, block_size, writer) -> io::Result<u64>` con pin parity bit-for-bit contro `delta_sync::apply_delta`. **W2.3** (additivo): `StreamingAtomicWriter` in `streaming_writer.rs`, kill-9 invariant: drop senza finalize lascia il temp orfano e il `target` originale intatto. **W2.4+W2.5** (refactor): `drive_download_through_delta_streaming(spec, baseline, writer, adapter, bridge)` accetta il writer come `&mut (dyn AsyncWrite + Send + Unpin)` parametro. Il caller mantiene full ownership del `StreamingAtomicWriter` per chiamare `finalize(mode, mtime)` dopo che il driver ritorna. I 3 test mock download esistenti (`driver_download_delta_*`) restano la non-regression del path bulk.
+2b. ~~**Cap in-memory 256 MiB download-side**~~ Done (P3-T01 W2.5): `download_inner` apre il baseline locale come `FileBaseline` per il `CopyBlock` dispatch e i bytes ricostruiti scorrono attraverso `StreamingAtomicWriter` (`<target>.aerotmp` → `finalize` con rename atomico). Il cap `AERORSYNC_MAX_IN_MEMORY_BYTES` è eliminato. RSS scala con `O(baseline + writer_buffer)` invece di `O(baseline + reconstructed)`. Y-RSC.5: signature phase streams via `send_signature_phase_from_baseline` (no bulk `tokio::fs::read`); peak RSS `O(block_size + writer_buffer)`. **W2.1** (additivo): `BaselineSource` trait + `FileBaseline` + `MemoryBaseline`. **W2.2** (additivo): `apply_delta_streaming(baseline, ops, block_size, writer) -> io::Result<u64>` con pin parity bit-for-bit contro `delta_engine::apply_delta`. **W2.3** (additivo): `StreamingAtomicWriter` in `streaming_writer.rs`, kill-9 invariant: drop senza finalize lascia il temp orfano e il `target` originale intatto. **W2.4+W2.5** (refactor): `drive_download_through_delta_streaming(spec, baseline, writer, adapter, bridge)` accetta il writer come `&mut (dyn AsyncWrite + Send + Unpin)` parametro. Il caller mantiene full ownership del `StreamingAtomicWriter` per chiamare `finalize(mode, mtime)` dopo che il driver ritorna. I 3 test mock download esistenti (`driver_download_delta_*`) restano la non-regression del path bulk.
 3. ~~**Session reuse**: ogni file apre una nuova sessione SSH~~ Done (P3-T01 W3, `AerorsyncBatch` in `delta_transport_impl.rs`): una sessione SSH racchiude N file, usata da sync-tree core, DAG serial lane e CLI sync. Validata live (Z.1.1, smoke KPI).
 4. **Scope funzionale**: single-file delta accelerator, non sostituto completo di rsync. Le categorie qui sotto non vanno accorpate in un unico backlog (vedi `docs/PROTOCOL-RSYNC-COMPARE.md`, tassonomia operativa). **(a) Fuori scope per design del prodotto integrato**, perche' l'autorita' vive a un altro layer, richiede privilegi incompatibili con il desktop product o e' un altro transport: recursive tree sync, `--delete*`, `--backup`, `--link-dest` (cancellazione e retention sono di AeroSync/AeroCloud, con i gate v4.1.6 AUDIT-03), `--inplace` / `--append` / `--partial-dir` (la strategia di scrittura e' di `StreamingAtomicWriter`), filtri wire `--exclude` / `--include` / `--files-from`, daemon mode `rsync://`, owner/group (`-o`/`-g`) e device/special files (`-D`). **(b) Gate della futura sessione multi-entry e della valutazione standalone**, non promesse del path integrato single-file: hardlink (`-H`, richiede una mappa device/inode tree-scope) e directory default ACL. **Supportati**: symlink end-to-end su Unix; **`user.*` xattr (`-X`) su Unix** con opt-in produzione e ENOTSUP soft di default; **POSIX access ACL (`-A`) su Linux** con read/apply sullo stesso fd, named user + mask live in entrambe le direzioni e opt-in produzione Linux-only. Un errore di lettura ACL sorgente e' hard; ENOTSUP in apply resta soft di default; symlink e non-Linux non entrano nel path ACL. E' supportato anche un analogo `--sparse` opt-in sul local delta path. **`--mkpath` NON e' implementato**.
 
+## Boundary
+
+Il modulo non importa nulla dall'applicazione: nessuna riga
+`crate::<modulo applicativo>` esiste qui, e il test che lo misura e'
+`tests::aerorsync_module_imports_nothing_from_the_app`, che scandisce la
+cartella piatta e rifiuta anche le forme che una scansione cieca non
+vedrebbe (import raggruppati, `super::super::`, attributo `path`, macro
+di inclusione, sottocartelle).
+
+Tutto cio' che l'applicazione deve vedere passa da
+`src-tauri/src/aerorsync_adapter/`: li' vivono gli `impl` di
+`DeltaTransport` e `DeltaBatch` per il transport remoto e per quello
+locale, la costruzione di un transport da un profilo (`config.rs`) e le
+mappe verso `RsyncError`, `RsyncStats` e `RsyncCapability` (`errors.rs`).
+L'adapter dichiara a sua volta il proprio perimetro con
+`aerorsync_adapter::tests::aerorsync_adapter_declares_its_imports`: da un
+lato gli import applicativi, dall'altro i sottomoduli del modulo che
+tocca, che sono la superficie pubblica minima che il crate dovra'
+esporre quando verra' estratto.
+
 ## File del modulo
 
-- `mod.rs`: dichiarazione modulo + gating `aerorsync`
-- `real_wire.rs` (~6 200 LOC): wire format encode/decode rsync 31/32
-- `native_driver.rs` (~8 300 LOC): state machine upload/download
-- `tests.rs` (~3 800 LOC): unit tests contro frozen transcripts
-- `delta_transport_impl.rs` (~3 300 LOC): `AerorsyncDeltaTransport` (impl `DeltaTransport`) + `AerorsyncBatch` session reuse
-- `events.rs`, `ssh_transport.rs`, `driver.rs`, `server.rs`, `live_tests.rs`, `rsync_event_bridge.rs`: supporto
-- `mock.rs`, `fixtures.rs`: test scaffolding
-- `streaming_writer.rs` (W2.3): `StreamingAtomicWriter`, counterpart streaming di `delta_transport_impl::write_atomic_chunked` (`AsyncWrite` + `finalize` rename-last)
-- altri: `types.rs`, `protocol.rs`, `planner.rs`, `engine_adapter.rs`, `transport.rs`, `frame_io.rs`, `fallback_policy.rs`, `remote_command.rs`
+Elenco allineato a `mod.rs` (una riga per file, dal doc di testa del file).
 
-Totale: 26 file `.rs` + harness `capture/` (snapshot 2026-07-21).
+- `acl_fs.rs`: I/O delle ACL POSIX.1e locali (B2)
+- `delta_engine.rs`: motore delta rolling checksum + block matching, entrato nel modulo con la tranche A1
+- `delta_transport_impl.rs`: `AerorsyncDeltaTransport`, i suoi entry point crate-owned e `AerorsyncBatch` per il riuso di sessione; l'`impl DeltaTransport` vive nell'adapter (vedi Boundary)
+- `engine_adapter.rs`: ponte fra il layer di protocollo nativo e il motore delta
+- `engine_protocol_types.rs`: tipi di forma protocollare rimasti dopo Y-RSC.8
+- `events.rs`: eventi mux out-of-band, `EventSink`, `AerorsyncEvent::notice()` e `WarningCollector`
+- `fallback_policy.rs`: matrice della policy di fallback (A5)
+- `fixtures.rs`: golden fixtures derivate dalla capture reale del wrapper
+- `frame_io.rs`: framing stdio length-prefixed del transport prototipale
+- `live_tests.rs`: test live opt-in contro un server reale, guidati da variabili d'ambiente
+- `local_transport.rs`: delta transport local-to-local (Z.2.1)
+- `mock.rs`: transport mock in-process
+- `mod.rs`: dichiarazione del modulo + gating `aerorsync`
+- `native_driver.rs`: state machine upload/download sul wire reale
+- `progress.rs`: contratto di progress del driver (`ProgressSink`)
+- `real_wire.rs`: wire format rsync 31/32, encode/decode
+- `remote_command.rs`: command line remota in remote-shell mode
+- `russh_session_transport.rs`: transport di sessione SSH su russh per il path batch
+- `shell_escape.rs`: escaping POSIX per le command line di `exec` SSH
+- `ssh_transport.rs`: transport SSH live
+- `streaming_writer.rs`: `StreamingAtomicWriter` e gli helper di scrittura atomica
+- `tests.rs`: unit test del modulo contro i transcript congelati
+- `transport.rs`: astrazione di transport
+- `types.rs`: tipi core
+- `xattr_fs.rs`: I/O degli extended attribute locali (B3)
+
+Totale: 25 file `.rs` + harness `capture/`.
 
 ## Cross-reference
 

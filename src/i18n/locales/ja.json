@@ -322,7 +322,8 @@
                 "found": "アクセス可能なターゲットが {count} 件見つかりました。入力して検索するか、1 つ選択してください。"
             },
             "swiftAuthUrl": "Keystone 認証 URL",
-            "swiftAllowCleartextStorage": "このデプロイメントはオブジェクトストレージを平文の HTTP で提供します。このプロファイルで許可します: アクセストークンとすべてのファイルが暗号化されずにネットワークを通過します。"
+            "swiftAllowCleartextStorage": "このデプロイメントはオブジェクトストレージを平文の HTTP で提供します。このプロファイルで許可します: アクセストークンとすべてのファイルが暗号化されずにネットワークを通過します。",
+            "kdriveTokenScopes": "トークンには drive と user_info のスコープが必要です。drive のみでも接続と一覧表示はできますが、「取得」は拒否されます。Drive ID を見つけるためにアカウントプロファイルを読み取るからです。"
         },
         "browser": {
             "remote": "リモート",
@@ -2413,7 +2414,7 @@
                 "general": "一般",
                 "generalDesc": "未分類タスクの既定",
                 "autoDefault": "自動（既定）",
-                "autoRoutingTip": "ヒント: チャットヘッダーで選択したモデルを使うには「自動（既定）」のままにしてください。タスク別に異なるモデルを使う場合のみ個別設定します。",
+                "autoRoutingTip": "ヒント: タスクを「自動（既定）」のままにすると既定のモデルが使われます。別のモデルを使いたいタスクにだけ優先モデルを設定し、優先モデルが失敗したときに応答するフォールバックモデルを指定してください。",
                 "advancedDescription": "応答生成の高度なAIパラメータを設定します。",
                 "conversationStyle": "会話スタイル",
                 "styleHelp": "Precise = 事実重視。Creative = より創造的。Balanced = 既定。",
@@ -2504,7 +2505,10 @@
                 "unverifiedModelHint": "機能は不明です。エージェントタスクでこのモデルを使用する前に、コンテキスト、ツール、ビジョン、推論を確認してください。",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "検証済みの互換性のあるOpenAIモデルにはネイティブのResponsesトランスポートを使用します。Chat Completionsを使用するにはオフにしてください。",
-                "openAIResponsesEnable": "互換性のあるOpenAIモデルでResponsesを有効にする"
+                "openAIResponsesEnable": "互換性のあるOpenAIモデルでResponsesを有効にする",
+                "routingPreferred": "優先",
+                "routingFallback": "フォールバック",
+                "routingNoFallback": "なし"
             },
             "copy": "コピー",
             "attachImage": "画像を添付",
@@ -2872,7 +2876,11 @@
             "plugins": {
                 "browsePlugins": "プラグインを閲覧"
             },
-            "stopGeneration": "生成を停止"
+            "stopGeneration": "生成を停止",
+            "routing": {
+                "fallbackUsed": "フォールバック",
+                "fallbackUsedTooltip": "{model} が失敗したため、フォールバックのモデルが応答しました"
+            }
         },
         "archive": {
             "passwordRequired": "このアーカイブはパスワードで保護されています",

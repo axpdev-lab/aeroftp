@@ -146,6 +146,9 @@ jobs:
             # next apt-get would refuse to run until it is told to finish.
             sudo dpkg --configure -a || true
             mkdir -p "$HOME/apt-archives/partial"
+            # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+            # enough to redden a run, and nothing here installs from them.
+            sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
             sudo apt-get update
             # rsync + ssh client for the host side of the integration test.
             # Webkit/GTK stack is needed because compiling the aeroftp
@@ -205,27 +208,52 @@ jobs:
       - name: "Unit tests: delta-sync modules"
         timeout-minutes: 25
         working-directory: src-tauri
+        # Five module filters, so a module renamed on one side and not here
+        # silently narrows what this lane covers, down to nothing in the limit.
+        # 70 is what the five select today (measured on PR #717); it is a floor
+        # and not a count, because these modules are meant to grow. It came
+        # down from 94 when the A3 crate tranche deleted the 29 tests of
+        # `rsync_over_ssh::is_transient_for_reconnect`, whose cases moved into
+        # the aerorsync module next to the predicate that replaced it, and
+        # added 5 back on this side.
         run: |
+          set -o pipefail
           cargo test --lib --no-fail-fast -- \
             rsync_output:: \
             rsync_over_ssh:: \
             ssh_exec:: \
             delta_transport:: \
-            delta_sync_rsync::
+            delta_sync_rsync:: | tee /tmp/delta-unit.log
+          ../scripts/assert-tests-ran.sh /tmp/delta-unit.log 70 \
+            "delta-sync module unit tests"
 
       # Measured at 3m55s and 4m04s.
       - name: "Integration test: delta sync over SSH"
         timeout-minutes: 15
         working-directory: src-tauri
-        run: cargo test --test integration_delta_sync -- --ignored --nocapture
+        # 12 is the ignored set of this binary today. Selecting with `--ignored`
+        # means removing those attributes empties the lane, so the count is what
+        # separates "the fixture proved the round-trip" from "nothing ran".
+        run: |
+          set -o pipefail
+          cargo test --test integration_delta_sync -- --ignored --nocapture \
+            | tee /tmp/delta-integration.log
+          ../scripts/assert-tests-ran.sh /tmp/delta-integration.log 12 \
+            "delta sync over SSH"
 
       - name: Product-path native delta preserves ACL and xattr
         timeout-minutes: 10
         working-directory: src-tauri
+        # `--exact` on one name: the tightest possible filter and therefore the
+        # one that most easily matches nothing after a rename, with no signal
+        # that it did. Exactly one, because this step promises one named test.
         run: |
+          set -o pipefail
           cargo test --test integration_delta_sync \
             product_path_native_delta_preserves_acl_and_xattr -- \
-            --ignored --nocapture --exact
+            --ignored --nocapture --exact | tee /tmp/delta-acl-xattr.log
+          ../scripts/assert-tests-ran.sh /tmp/delta-acl-xattr.log =1 \
+            "Product-path ACL and xattr"
 
       - name: Dump fixture logs on failure
         if: failure()
@@ -317,6 +345,9 @@ jobs:
             set -euo pipefail
             sudo dpkg --configure -a || true
             mkdir -p "$HOME/apt-archives/partial"
+            # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+            # enough to redden a run, and nothing here installs from them.
+            sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends \
               -o Dir::Cache::archives="$HOME/apt-archives/" \
@@ -369,20 +400,34 @@ jobs:
         # here too so a change that breaks the string contract without
         # touching the key-auth lane's paths is still caught.
         run: |
+          set -o pipefail
           cargo test --test integration_delta_sync -- \
             hard_rejection_string_contract_is_pinned_offline \
             hard_error_branch_runs_before_classic_fallback_in_bivio \
-            --nocapture
+            --nocapture | tee /tmp/delta-hard-rejection.log
+          ../scripts/assert-tests-ran.sh /tmp/delta-hard-rejection.log 2 \
+            "Offline hard-rejection contract"
 
       # Measured at 3m51s and 4m15s.
+      #
+      # The test named here was `product_path_falls_through_silently_when_
+      # session_not_eligible` until 2026-05-16, when making password-backed
+      # SFTP eligible for the native leg (host key pinned) inverted what it
+      # asserts and it was renamed. This line was not updated, so from that day
+      # the job built the password-only fixture, ran ZERO tests, printed
+      # "test result: ok" and reported success: 0 executed on run 33434171154,
+      # which is what the assertion below now makes impossible.
       - name: "Fallback integration test: password-only fixture"
         timeout-minutes: 15
         working-directory: src-tauri
         run: |
+          set -o pipefail
           cargo test --test integration_delta_sync -- \
             --ignored \
-            product_path_falls_through_silently_when_session_not_eligible \
-            --nocapture
+            product_path_uses_native_delta_for_password_sftp_with_pinned_host_key \
+            --nocapture | tee /tmp/delta-fallback.log
+          ../scripts/assert-tests-ran.sh /tmp/delta-fallback.log =1 \
+            "Password-only fixture contract"
 
       - name: Dump fixture logs on failure
         if: failure()

@@ -322,7 +322,8 @@
                 "found": "{count} helburu eskuragarri aurkitu dira. Idatzi bilatzeko edo hautatu bat."
             },
             "swiftAuthUrl": "Keystone autentifikazio URLa",
-            "swiftAllowCleartextStorage": "Inplementazio honek objektu-biltegiratzea HTTP soilaren bidez zerbitzatzen du. Onartu profil honetarako: sarbide-tokena eta fitxategi guztiak zifratu gabe zeharkatzen dute sarea."
+            "swiftAllowCleartextStorage": "Inplementazio honek objektu-biltegiratzea HTTP soilaren bidez zerbitzatzen du. Onartu profil honetarako: sarbide-tokena eta fitxategi guztiak zifratu gabe zeharkatzen dute sarea.",
+            "kdriveTokenScopes": "Tokenak drive eta user_info esparruak behar ditu. drive bakarrik izanda konektatu eta fitxategiak zerrendatzen ditu, baina \"Eskuratu\" baztertu egiten da, zure kontuaren profila irakurtzen duelako Drive ID aurkitzeko."
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -2467,7 +2468,7 @@
                 "general": "Orokorra",
                 "generalDesc": "Sailkatu gabeko zereginen lehenetsia",
                 "autoDefault": "Automatikoa (Lehenetsia)",
-                "autoRoutingTip": "Aholkua: Utzi \"Automatikoa (Lehenetsia)\" gisa txataren goiburuan hautatutako eredua erabiltzeko. Konfiguratu eredu zehatzak zeregin desberdinetarako eredu desberdinak nahi dituzunean soilik.",
+                "autoRoutingTip": "Aholkua: utzi ataza bat „Automatikoa (Lehenetsia)“ aukeran eta zure eredu lehenetsia erabiliko da. Ezarri eredu hobetsi bat beste bat nahi duzun atazetan bakarrik, eta ordezko eredu bat hobetsiak huts egiten duenean erantzuteko.",
                 "advancedDescription": "Konfiguratu AI parametro aurreratuak erantzunen sorkuntzarako.",
                 "conversationStyle": "Elkarrizketa Estiloa",
                 "styleHelp": "Zehatza = erantzun faktualak. Sortzailea = irudimentsuagoa. Orekatua = lehenetsia.",
@@ -2558,7 +2559,10 @@
                 "unverifiedModelHint": "Gaitasunak ezezagunak dira. Berrikusi testuingurua, tresnak, ikusmena eta arrazoibidea, eredu hau agentearen zereginetarako erabili aurretik.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Erabili Responses jatorrizko garraioa egiaztatutako OpenAI eredu bateragarrietarako. Desaktibatu Chat Completions erabiltzeko.",
-                "openAIResponsesEnable": "Gaitu Responses OpenAI eredu bateragarrietarako"
+                "openAIResponsesEnable": "Gaitu Responses OpenAI eredu bateragarrietarako",
+                "routingPreferred": "Hobetsia",
+                "routingFallback": "Ordezkoa",
+                "routingNoFallback": "Bat ere ez"
             },
             "rag": {
                 "indexing": "Fitxategiak indexatzen...",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Arakatu Plugins"
             },
-            "stopGeneration": "Gelditu sorkuntza"
+            "stopGeneration": "Gelditu sorkuntza",
+            "routing": {
+                "fallbackUsed": "ordezkoa",
+                "fallbackUsedTooltip": "{model} huts egin du, beraz ordezko ereduak erantzun du"
+            }
         },
         "archive": {
             "passwordRequired": "Artxibo hau pasahitzarekin babestuta dago",

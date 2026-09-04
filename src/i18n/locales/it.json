@@ -439,7 +439,8 @@
                 "found": "Trovate {count} destinazioni raggiungibili. Digita per cercare oppure selezionane una."
             },
             "swiftAuthUrl": "URL di autenticazione Keystone",
-            "swiftAllowCleartextStorage": "Questo deployment serve lo storage a oggetti su HTTP in chiaro. Accettalo per questo profilo: il token di accesso e ogni file attraversano la rete non cifrati."
+            "swiftAllowCleartextStorage": "Questo deployment serve lo storage a oggetti su HTTP in chiaro. Accettalo per questo profilo: il token di accesso e ogni file attraversano la rete non cifrati.",
+            "kdriveTokenScopes": "Il token deve avere gli ambiti drive e user_info. Con il solo drive si connette ed elenca i file, ma \"Recupera\" viene rifiutato, perché legge il profilo del tuo account per trovare il Drive ID."
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
@@ -2650,7 +2651,7 @@
                 "general": "Generale",
                 "generalDesc": "Predefinito per attività non classificate",
                 "autoDefault": "Auto (Predefinito)",
-                "autoRoutingTip": "Suggerimento: Lascia \"Auto (Predefinito)\" per usare il modello selezionato nell'intestazione della chat. Configura modelli specifici solo quando vuoi modelli diversi per attività diverse.",
+                "autoRoutingTip": "Suggerimento: lascia un'attività su «Auto (Predefinito)» e viene usato il tuo modello predefinito. Imposta un modello preferito solo per le attività in cui ne vuoi uno diverso, e un modello di riserva che risponda quando il preferito fallisce.",
                 "advancedDescription": "Configura i parametri avanzati dell'AI per la generazione delle risposte.",
                 "conversationStyle": "Stile Conversazione",
                 "styleHelp": "Preciso = risposte fattuali. Creativo = più fantasioso. Bilanciato = predefinito.",
@@ -2741,7 +2742,10 @@
                 "unverifiedModelHint": "Le funzionalità sono sconosciute. Esamina contesto, strumenti, visione e ragionamento prima di usare questo modello per attività dell'agente.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Usa il trasporto nativo Responses per i modelli OpenAI compatibili verificati. Disattivalo per usare Chat Completions.",
-                "openAIResponsesEnable": "Abilita Responses per i modelli OpenAI compatibili"
+                "openAIResponsesEnable": "Abilita Responses per i modelli OpenAI compatibili",
+                "routingPreferred": "Preferito",
+                "routingFallback": "Riserva",
+                "routingNoFallback": "Nessuno"
             },
             "copy": "Copia",
             "attachImage": "Allega immagine",
@@ -3101,7 +3105,11 @@
                 "roleAI": "AI",
                 "roleUser": "Utente"
             },
-            "stopGeneration": "Interrompi generazione"
+            "stopGeneration": "Interrompi generazione",
+            "routing": {
+                "fallbackUsed": "riserva",
+                "fallbackUsedTooltip": "{model} non ha risposto, ha risposto il modello di riserva"
+            }
         },
         "archive": {
             "passwordRequired": "Questo archivio è protetto da password",

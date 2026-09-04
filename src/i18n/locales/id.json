@@ -322,7 +322,8 @@
                 "found": "Ditemukan {count} target yang dapat diakses. Ketik untuk mencari atau pilih salah satu."
             },
             "swiftAuthUrl": "URL autentikasi Keystone",
-            "swiftAllowCleartextStorage": "Penerapan ini menyajikan penyimpanan objek melalui HTTP biasa. Terima untuk profil ini: token akses dan setiap berkas melintasi jaringan tanpa enkripsi."
+            "swiftAllowCleartextStorage": "Penerapan ini menyajikan penyimpanan objek melalui HTTP biasa. Terima untuk profil ini: token akses dan setiap berkas melintasi jaringan tanpa enkripsi.",
+            "kdriveTokenScopes": "Token memerlukan cakupan drive dan user_info. Dengan drive saja token dapat terhubung dan menampilkan berkas, tetapi \"Ambil\" ditolak, karena membaca profil akun Anda untuk menemukan Drive ID."
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -2448,7 +2449,7 @@
                 "general": "Umum",
                 "generalDesc": "Default untuk tugas yang tidak dikategorikan",
                 "autoDefault": "Otomatis (Default)",
-                "autoRoutingTip": "Tips: Biarkan sebagai \"Otomatis (Default)\" untuk menggunakan model yang dipilih di header obrolan. Konfigurasikan model tertentu hanya jika Anda menginginkan model yang berbeda untuk tugas yang berbeda.",
+                "autoRoutingTip": "Tips: biarkan tugas pada \"Otomatis (Default)\" dan model bawaan Anda akan digunakan. Tetapkan model pilihan hanya untuk tugas yang memerlukan model berbeda, dan model cadangan yang menjawab saat model pilihan gagal.",
                 "advancedDescription": "Konfigurasikan parameter AI lanjutan untuk pembuatan respons.",
                 "conversationStyle": "Gaya Percakapan",
                 "styleHelp": "Tepat = respons faktual. Kreatif = lebih imajinatif. Seimbang = default.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Kemampuannya tidak diketahui. Tinjau konteks, alat, visi, dan penalaran sebelum menggunakan model ini untuk tugas agen.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Gunakan transport Responses bawaan untuk model OpenAI kompatibel yang telah diverifikasi. Matikan ini untuk menggunakan Chat Completions.",
-                "openAIResponsesEnable": "Aktifkan Responses untuk model OpenAI yang kompatibel"
+                "openAIResponsesEnable": "Aktifkan Responses untuk model OpenAI yang kompatibel",
+                "routingPreferred": "Pilihan",
+                "routingFallback": "Cadangan",
+                "routingNoFallback": "Tidak ada"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan Gambar",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Jelajahi Plugin"
             },
-            "stopGeneration": "Hentikan pembuatan"
+            "stopGeneration": "Hentikan pembuatan",
+            "routing": {
+                "fallbackUsed": "cadangan",
+                "fallbackUsedTooltip": "{model} gagal, sehingga model cadangan yang menjawab"
+            }
         },
         "archive": {
             "passwordRequired": "Arsip ini dilindungi kata sandi",

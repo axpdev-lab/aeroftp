@@ -1,9 +1,15 @@
 # Dependencies
-node_modules/
+# No trailing slash: a worktree may carry `node_modules` as a symlink to the
+# main checkout's, and `node_modules/` does not match a symlink.
+node_modules
 
 # Build outputs
 dist/
 src-tauri/target/
+# The workspace root's own target, where `scripts/aerorsync-emit.sh` writes the
+# standalone crate by default. Only `src-tauri/target/` was listed, so a
+# `git add -A` after an emission staged the 6862 generated files of the crate.
+/target/
 
 # Environment files
 .env
@@ -73,7 +79,8 @@ CLAUDE.md
 src-tauri/src/aerorsync/capture/bin/
 src-tauri/src/aerorsync/capture/artifacts/
 src-tauri/src/aerorsync/capture/artifacts_deflate/
-src-tauri/src/aerorsync/capture/artifacts_real/
+src-tauri/src/aerorsync/capture/artifacts_real/*
+!src-tauri/src/aerorsync/capture/artifacts_real/frozen/
 src-tauri/src/aerorsync/capture/workspace/
 
 # Upstream rsync 3.2.7 source extracted at repo root for CVE inspection
@@ -97,6 +104,7 @@ run-clean.sh
 /scripts/*
 # Exception: CI-required scripts
 !/scripts/apply-i18n-batch.py
+!/scripts/aerorsync-emit-guard-tests.sh
 !/scripts/i18n-validate.ts
 !/scripts/i18n-sync.ts
 !/scripts/i18n-stats.ts
@@ -113,6 +121,9 @@ run-clean.sh
 !/scripts/snap-stale-packages.mjs
 # Exception: Linux ACL packaging contracts for AeroRsync (G4)
 !/scripts/assert-linux-acl-packaging.sh
+# Exception: re-emits the aerorsync module as a standalone crate, so the CI can
+# prove with the compiler that it does not depend on the application
+!/scripts/aerorsync-emit.sh
 # Exception: regenerates the providers table from the GUI SSOT (#270 17104681)
 !/scripts/gen-providers-table.ts
 # Exception: derives every published provider/preset/protocol figure into
@@ -128,6 +139,9 @@ run-clean.sh
 !/scripts/i18n-untranslated-accepted.json
 # Exception: single pre-release smoke entrypoint (`npm run smoke`, #408 row 1)
 !/scripts/smoke.mjs
+# Exception: asserts a CI lane actually executed the tests it selects, called by
+# ftp-mlsd, delta-sync-integration, aerorsync-protocol and nightly-telemetry
+!/scripts/assert-tests-ran.sh
 
 # Security reports: keep latest snapshot in repo, ignore dated copies
 /docs/security/security-report-20*.html

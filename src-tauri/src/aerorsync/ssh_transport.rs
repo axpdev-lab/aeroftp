@@ -965,11 +965,9 @@ pub(crate) fn parse_probe_protocol(stdout: &str) -> Result<ProtocolVersion, Aero
 #[cfg(test)]
 mod tests {
     use super::{parse_probe_protocol, sha256_hex_of, SshHostKeyPolicy};
-    use std::io::Read;
-    use std::net::{Shutdown, TcpListener, TcpStream};
+    use std::net::{TcpListener, TcpStream};
     use std::sync::Arc;
     use std::thread;
-    use std::time::{Duration, Instant};
 
     #[test]
     fn parses_probe_banner_single_line() {
@@ -1095,6 +1093,12 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn tcp_shutdown_from_other_thread_unblocks_read() {
+        // Imported here and not at the top of the module: this is the only
+        // reader of the four, and it is unix-only.
+        use std::io::Read;
+        use std::net::Shutdown;
+        use std::time::{Duration, Instant};
+
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
 

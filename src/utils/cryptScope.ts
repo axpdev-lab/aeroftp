@@ -1,5 +1,5 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // CWP-20B (navigate-out scope): plaintext-absolute scope predicate shared by
 // the path-bar badge and (later) the transfer routing, so the two can never

@@ -322,7 +322,8 @@
                 "found": "{count} bereikbare doelen gevonden. Typ om te zoeken of selecteer er een."
             },
             "swiftAuthUrl": "Keystone-authenticatie-URL",
-            "swiftAllowCleartextStorage": "Deze installatie levert objectopslag via onversleutelde HTTP. Accepteer dit voor dit profiel: het toegangstoken en elk bestand gaan onversleuteld over het netwerk."
+            "swiftAllowCleartextStorage": "Deze installatie levert objectopslag via onversleutelde HTTP. Accepteer dit voor dit profiel: het toegangstoken en elk bestand gaan onversleuteld over het netwerk.",
+            "kdriveTokenScopes": "Het token heeft de scopes drive en user_info nodig. Met alleen drive maakt het verbinding en toont het bestanden, maar \"Ophalen\" wordt geweigerd, omdat het je accountprofiel leest om de Drive ID te vinden."
         },
         "browser": {
             "remote": "Extern",
@@ -2448,7 +2449,7 @@
                 "general": "Algemeen",
                 "generalDesc": "Standaard voor niet-geclassificeerde taken",
                 "autoDefault": "Automatisch (Standaard)",
-                "autoRoutingTip": "Tip: Laat op \"Automatisch (Standaard)\" staan om het model te gebruiken dat in de chatbalk is geselecteerd. Configureer specifieke modellen alleen als u verschillende modellen voor verschillende taken wilt.",
+                "autoRoutingTip": "Tip: laat een taak op \"Automatisch (Standaard)\" staan en je standaardmodel wordt gebruikt. Stel alleen een voorkeursmodel in voor taken waarvoor je een ander model wilt, en een reservemodel dat antwoordt wanneer het voorkeursmodel faalt.",
                 "advancedDescription": "Configureer geavanceerde AI-parameters voor het genereren van antwoorden.",
                 "conversationStyle": "Gespreksstijl",
                 "styleHelp": "Precies = feitelijke antwoorden. Creatief = meer verbeelding. Gebalanceerd = standaard.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "De mogelijkheden zijn onbekend. Controleer context, tools, visie en redeneervermogen voordat je dit model voor agenttaken gebruikt.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Gebruik het native Responses-transport voor geverifieerde compatibele OpenAI-modellen. Schakel dit uit om Chat Completions te gebruiken.",
-                "openAIResponsesEnable": "Responses inschakelen voor compatibele OpenAI-modellen"
+                "openAIResponsesEnable": "Responses inschakelen voor compatibele OpenAI-modellen",
+                "routingPreferred": "Voorkeur",
+                "routingFallback": "Reserve",
+                "routingNoFallback": "Geen"
             },
             "copy": "Kopiëren",
             "attachImage": "Afbeelding bijvoegen",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Plugins verkennen"
             },
-            "stopGeneration": "Genereren stoppen"
+            "stopGeneration": "Genereren stoppen",
+            "routing": {
+                "fallbackUsed": "reserve",
+                "fallbackUsedTooltip": "{model} is mislukt, daarom antwoordde het reservemodel"
+            }
         },
         "archive": {
             "passwordRequired": "Dit archief is beveiligd met een wachtwoord",

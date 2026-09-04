@@ -5,6 +5,8 @@
 
 use std::fmt;
 
+use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
+
 use serde::{Deserialize, Serialize};
 
 /// rsync wire protocol version we target in the first native subset.
@@ -302,10 +304,603 @@ impl fmt::Display for AerorsyncError {
 
 impl std::error::Error for AerorsyncError {}
 
+/// Error kinds a reconnect can plausibly clear.
+///
+/// Single source of truth for the retry policy. The application-side
+/// envelope classifier (`rsync_over_ssh::is_transient_native_envelope`)
+/// derives its own needles from this list, so the two can never drift.
+pub const TRANSIENT_KINDS: &[AerorsyncErrorKind] = &[
+    AerorsyncErrorKind::TransportFailure,
+    AerorsyncErrorKind::NegotiationFailed,
+    AerorsyncErrorKind::UnsupportedVersion,
+];
+
+/// Detail substrings that veto a retry even when the kind is transient.
+///
+/// Copied verbatim from the application classifier this crate replaced.
+/// Compared against the lowercased detail: a host key or fingerprint
+/// mention, a protocol-bug marker, or a deterministic checksum
+/// negotiation refusal means reconnecting would repeat the same failure.
+///
+/// Seven of the eleven are the lowercased names of error kinds that
+/// [`TRANSIENT_KINDS`] already excludes, so as long as a detail does not
+/// quote them they can never decide anything on their own. They are kept
+/// because the classifier they come from read the whole rendered
+/// envelope, kind label included, and dropping them would silently widen
+/// the retry for a detail that quotes one. Matching substrings is the
+/// shape of the policy that exists today, not the intended end state:
+/// replacing it with a structural error class stamped at construction
+/// time is deferred, because that would change which of the construction
+/// sites are retried and needs its own equivalence pin.
+pub const TRANSIENT_DENY_DETAILS: &[&str] = &[
+    "hostkeyrejected",
+    "host key",
+    "fingerprint",
+    "invalidframe",
+    "illegalstatetransition",
+    "plannerrejected",
+    "unexpectedmessage",
+    "internal",
+    "remoteerror",
+    "negotiation chose file checksum",
+    "checksum negotiation found no common algorithm",
+];
+
+/// Detail substrings that make a soft failure worth one reconnect.
+///
+/// Copied verbatim from the application classifier this crate replaced,
+/// where they described a dropped SSH channel on the classic rsync path.
+/// They live here because the module's own streaming writer produces
+/// them too: a soft detail carries the `Display` of a `std::io::Error`,
+/// and a write to a network-backed target fails with "broken pipe",
+/// "connection reset by peer" or "connection timed out" like any other
+/// transport drop. Matching a substring is not the end state: the
+/// structural error class that replaces it is Phase D work.
+///
+/// Applies to [`TransferError::Soft`] only, exactly as the application
+/// applied it to `TransferFailed` only.
+pub const TRANSIENT_SOFT_DETAILS: &[&str] = &[
+    "connection reset by peer",
+    "connection closed by remote",
+    "broken pipe",
+    "channel closed",
+    "unexpected eof",
+    "connection timed out",
+    "network is unreachable",
+];
+
+/// Outcome carrier of every transfer entry point of the module.
+///
+/// The application adapter renders it into its own error type; the
+/// module never names that type. Not `Clone` and not `Serialize`:
+/// [`TransferError::Io`] owns a `std::io::Error`, which is neither.
+/// [`AerorsyncError`] stays `Clone + Serialize` and travels inside
+/// [`TransferError::Native`].
+#[derive(Debug)]
+pub enum TransferError {
+    /// Nothing reached the destination and nothing was committed: the
+    /// caller may retry through another transport. `detail` is
+    /// user-visible verbatim.
+    Soft { detail: String },
+    /// Surface to the user, never retry silently. `detail` verbatim.
+    Hard { detail: String },
+    /// Local I/O before anything was touched.
+    Io(std::io::Error),
+    /// Below the caller's minimum size gate.
+    TooSmall { size: u64, threshold: u64 },
+    /// A driver error that still has to go through [`classify_fallback`]
+    /// with the commit flag observed at the failure site.
+    ///
+    /// [`classify_fallback`]: crate::aerorsync::fallback_policy::classify_fallback
+    Native {
+        error: AerorsyncError,
+        committed: bool,
+    },
+}
+
+impl TransferError {
+    /// Stable short tag for a log line: the variant, and for a driver
+    /// failure the kind that caused it.
+    ///
+    /// Deliberately a `&'static str` and deliberately without the detail:
+    /// the detail carries local paths and remote stderr, and a debug line
+    /// that fires on every failed attempt would spill both into the log
+    /// on one line. This replaces the application-side helper that did
+    /// the same job for the rendered error before the module owned one.
+    pub fn variant_name(&self) -> &'static str {
+        match self {
+            TransferError::Soft { .. } => "Soft",
+            TransferError::Hard { .. } => "Hard",
+            TransferError::Io(_) => "Io",
+            TransferError::TooSmall { .. } => "TooSmall",
+            TransferError::Native { error, .. } => match error.kind {
+                AerorsyncErrorKind::UnsupportedVersion => "Native(UnsupportedVersion)",
+                AerorsyncErrorKind::InvalidFrame => "Native(InvalidFrame)",
+                AerorsyncErrorKind::TransportFailure => "Native(TransportFailure)",
+                AerorsyncErrorKind::NegotiationFailed => "Native(NegotiationFailed)",
+                AerorsyncErrorKind::PlannerRejected => "Native(PlannerRejected)",
+                AerorsyncErrorKind::IllegalStateTransition => "Native(IllegalStateTransition)",
+                AerorsyncErrorKind::RemoteError => "Native(RemoteError)",
+                AerorsyncErrorKind::UnexpectedMessage => "Native(UnexpectedMessage)",
+                AerorsyncErrorKind::Cancelled => "Native(Cancelled)",
+                AerorsyncErrorKind::HostKeyRejected => "Native(HostKeyRejected)",
+                AerorsyncErrorKind::Internal => "Native(Internal)",
+            },
+        }
+    }
+
+    /// Fallback verdict of a driver error, `None` for the other variants.
+    ///
+    /// The adapter needs the verdict to pick its own error variant; the
+    /// module needs it to know that a cancelled transfer is never
+    /// retried.
+    pub fn verdict(&self) -> Option<FallbackVerdict> {
+        match self {
+            TransferError::Native { error, committed } => {
+                Some(classify_fallback(error, *committed))
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether a batch may reconnect and retry this failure.
+    ///
+    /// Counter-intuitive but deliberate: `committed` does not enter the
+    /// decision. The application classifier this replaced inspected the
+    /// rendered envelope string, and both envelopes (the pre-commit
+    /// `TransferFailed` one and the post-commit `HardRejection` one) went
+    /// through the same kind allowlist and detail denylist, so a
+    /// post-commit transport drop was retried exactly like a pre-commit
+    /// one. The batch retry boundary is what makes that safe: every file
+    /// gets its own temporary file and an atomic rename, so a retry never
+    /// observes a partial commit. Only a cancelled transfer is excluded,
+    /// because a cancel is a user decision, not a channel drop.
+    pub fn is_transient_channel_drop(&self) -> bool {
+        match self {
+            TransferError::Io(io_err) => matches!(
+                io_err.kind(),
+                std::io::ErrorKind::BrokenPipe
+                    | std::io::ErrorKind::ConnectionAborted
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::UnexpectedEof
+                    | std::io::ErrorKind::TimedOut
+                    | std::io::ErrorKind::WouldBlock
+            ),
+            TransferError::Native { error, .. } => {
+                if self.verdict() == Some(FallbackVerdict::Cancel) {
+                    return false;
+                }
+                if !TRANSIENT_KINDS.contains(&error.kind) {
+                    return false;
+                }
+                let lower = error.detail.to_ascii_lowercase();
+                !TRANSIENT_DENY_DETAILS
+                    .iter()
+                    .any(|needle| lower.contains(needle))
+            }
+            // A soft failure the module decided on its own. Its detail
+            // often carries the `Display` of a `std::io::Error`, so a
+            // transport drop on the local side reads exactly like one on
+            // the wire: same needles, same answer as before.
+            TransferError::Soft { detail } => {
+                let lower = detail.to_ascii_lowercase();
+                TRANSIENT_SOFT_DETAILS
+                    .iter()
+                    .any(|needle| lower.contains(needle))
+            }
+            // A hard rejection is never retried on its text: the
+            // application only ever inspected the envelope tag on this
+            // path, so a "broken pipe" inside a hard detail stays hard.
+            // A size gate is not a failure to retry at all.
+            TransferError::Hard { .. } | TransferError::TooSmall { .. } => false,
+        }
+    }
+}
+
+impl fmt::Display for TransferError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TransferError::Soft { detail } => write!(f, "soft: {detail}"),
+            TransferError::Hard { detail } => write!(f, "hard: {detail}"),
+            TransferError::Io(io) => write!(f, "io: {io}"),
+            TransferError::TooSmall { size, threshold } => {
+                write!(f, "too small: {size} bytes, gate at {threshold}")
+            }
+            TransferError::Native { error, committed } => {
+                write!(f, "native ({error}), committed={committed}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for TransferError {}
+
+/// Everything a successful transfer entry point reports back.
+///
+/// The adapter turns it into the application statistics type; the module
+/// only fills it.
+#[derive(Debug, Clone, Default)]
+pub struct TransferReport {
+    pub session: SessionStats,
+    pub total_size: u64,
+    pub duration_ms: u64,
+    pub warnings: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::aerorsync::events::AerorsyncEvent;
+
+    const ALL_KINDS: [AerorsyncErrorKind; 11] = [
+        AerorsyncErrorKind::UnsupportedVersion,
+        AerorsyncErrorKind::InvalidFrame,
+        AerorsyncErrorKind::TransportFailure,
+        AerorsyncErrorKind::NegotiationFailed,
+        AerorsyncErrorKind::PlannerRejected,
+        AerorsyncErrorKind::IllegalStateTransition,
+        AerorsyncErrorKind::RemoteError,
+        AerorsyncErrorKind::UnexpectedMessage,
+        AerorsyncErrorKind::Cancelled,
+        AerorsyncErrorKind::HostKeyRejected,
+        AerorsyncErrorKind::Internal,
+    ];
+
+    /// The retry decision, case by case, inherited from the application
+    /// classifier this predicate replaced.
+    ///
+    /// The application classifier reached its verdict by re-reading the
+    /// rendered envelope string, and 29 tests pinned it:
+    /// 17 on the two envelope shapes and 12 on the plain variants. It is
+    /// gone; every one of its cases is transcribed here against the
+    /// carrier that produced the string in the first place, with the
+    /// expected answer written out rather than computed, so the table
+    /// reads as the policy and not as a second implementation of it.
+    ///
+    /// Two of its cases have no counterpart on this side, and that is the
+    /// point of the type: an unknown kind label ("SomeBrandNewKind") is
+    /// unrepresentable, because the kind is an enum and a new one has to
+    /// be added to `TRANSIENT_KINDS` deliberately, and an authentication
+    /// error like a missing key never leaves a transfer entry point.
+    #[test]
+    fn transient_channel_drop_cases_from_the_retired_app_classifier() {
+        fn native(kind: AerorsyncErrorKind, detail: &str, committed: bool) -> TransferError {
+            TransferError::Native {
+                error: AerorsyncError::new(kind, detail),
+                committed,
+            }
+        }
+
+        // The post-commit envelope, once `HardRejection`.
+        let post_commit: [(AerorsyncErrorKind, &str, bool); 8] = [
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "next_data_frame: remote closed mid file list",
+                true,
+            ),
+            (AerorsyncErrorKind::NegotiationFailed, "kex blip", true),
+            (
+                AerorsyncErrorKind::NegotiationFailed,
+                "negotiation chose file checksum \"none\", which this client does not implement; falling back",
+                false,
+            ),
+            (
+                AerorsyncErrorKind::HostKeyRejected,
+                "fingerprint mismatch",
+                false,
+            ),
+            (
+                AerorsyncErrorKind::InvalidFrame,
+                "unexpected opcode 0x42",
+                false,
+            ),
+            // Stands in for the retired "unknown kind label" case: a kind
+            // outside the transient list is never retried.
+            (AerorsyncErrorKind::PlannerRejected, "mystery", false),
+            // The denylist wins even under a transient kind.
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "host key verification failed",
+                false,
+            ),
+            // Mixed case in the detail: the match lowercases first.
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "Remote Closed",
+                true,
+            ),
+        ];
+        // The pre-commit envelope, once `TransferFailed { exit: -1 }`.
+        let pre_commit: [(AerorsyncErrorKind, &str, bool); 9] = [
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "next_data_frame: remote closed mid file list",
+                true,
+            ),
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "russh channel_open_session: Channel send error",
+                true,
+            ),
+            (
+                AerorsyncErrorKind::NegotiationFailed,
+                "initial handshake blip",
+                true,
+            ),
+            (
+                AerorsyncErrorKind::NegotiationFailed,
+                "negotiation chose file checksum \"none\", which this client does not implement; falling back",
+                false,
+            ),
+            (
+                AerorsyncErrorKind::NegotiationFailed,
+                "checksum negotiation found no common algorithm (client \"sha1\" vs server \"md5\"); falling back",
+                false,
+            ),
+            (
+                AerorsyncErrorKind::HostKeyRejected,
+                "fingerprint mismatch",
+                false,
+            ),
+            (
+                AerorsyncErrorKind::InvalidFrame,
+                "unexpected opcode 0xff",
+                false,
+            ),
+            (AerorsyncErrorKind::PlannerRejected, "mystery", false),
+            (
+                AerorsyncErrorKind::TransportFailure,
+                "Channel Send Error",
+                true,
+            ),
+        ];
+        let mut checked = 0usize;
+        for (kind, detail, expected) in post_commit {
+            assert_eq!(
+                native(kind, detail, true).is_transient_channel_drop(),
+                expected,
+                "post-commit {kind:?} {detail:?}"
+            );
+            checked += 1;
+        }
+        for (kind, detail, expected) in pre_commit {
+            assert_eq!(
+                native(kind, detail, false).is_transient_channel_drop(),
+                expected,
+                "pre-commit {kind:?} {detail:?}"
+            );
+            checked += 1;
+        }
+
+        // The plain variants, once `Io`, `TransferFailed` without an
+        // envelope, a bare `HardRejection`, and `Cancelled`.
+        for (io_kind, expected) in [
+            (std::io::ErrorKind::BrokenPipe, true),
+            (std::io::ErrorKind::ConnectionReset, true),
+            (std::io::ErrorKind::UnexpectedEof, true),
+            (std::io::ErrorKind::TimedOut, true),
+            (std::io::ErrorKind::WouldBlock, true),
+            (std::io::ErrorKind::ConnectionAborted, true),
+            (std::io::ErrorKind::PermissionDenied, false),
+            (std::io::ErrorKind::NotFound, false),
+        ] {
+            assert_eq!(
+                TransferError::Io(std::io::Error::from(io_kind)).is_transient_channel_drop(),
+                expected,
+                "io {io_kind:?}"
+            );
+            checked += 1;
+        }
+        for (detail, expected) in [
+            ("rsync error: connection reset by peer\n", true),
+            ("rsync error: Permission denied (publickey)\n", false),
+            ("Host key verification failed.\n", false),
+            ("", false),
+            ("Connection Reset By Peer", true),
+            (
+                "native fallback: atomic write failed at write (target untouched): broken pipe",
+                true,
+            ),
+            // Negative controls from the same family: a soft failure whose
+            // io error is not a drop, and one the module builds with no io
+            // error at all.
+            (
+                "native fallback: atomic write failed at write (target untouched): disk full",
+                false,
+            ),
+            (
+                "native fallback: local baseline /tmp/base.bin is not a regular file",
+                false,
+            ),
+        ] {
+            assert_eq!(
+                TransferError::Soft {
+                    detail: detail.into()
+                }
+                .is_transient_channel_drop(),
+                expected,
+                "soft {detail:?}"
+            );
+            checked += 1;
+        }
+        // The denylist, needle by needle, under every kind a reconnect
+        // could otherwise clear and under both commit states: a deny
+        // marker in the detail always wins. Expected answer: false.
+        const DENY_CORPUS: [&str; 11] = [
+            "peer reported hostkeyrejected during handshake",
+            "host key mismatch for 10.0.0.1",
+            "fingerprint mismatch",
+            "invalidframe at offset 12",
+            "illegalstatetransition: summary before hello",
+            "plannerrejected: no plan for this entry",
+            "unexpectedmessage: data before flist",
+            "internal: unreachable arm",
+            "remoteerror: code 23",
+            "negotiation chose file checksum xxh3",
+            "checksum negotiation found no common algorithm",
+        ];
+        const RETRYABLE_KINDS: [AerorsyncErrorKind; 3] = [
+            AerorsyncErrorKind::TransportFailure,
+            AerorsyncErrorKind::NegotiationFailed,
+            AerorsyncErrorKind::UnsupportedVersion,
+        ];
+        for detail in DENY_CORPUS {
+            for kind in RETRYABLE_KINDS {
+                for committed in [false, true] {
+                    assert!(
+                        !native(kind, detail, committed).is_transient_channel_drop(),
+                        "deny wins: {kind:?} committed={committed} {detail:?}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        // The same kinds with a detail that carries no deny marker, the
+        // real driver texts included, and one that only looks like an
+        // envelope: the tag belongs to the kind, not to the free text, so
+        // it changes nothing. Expected answer: true.
+        const NON_DENY_CORPUS: [&str; 5] = [
+            "next_data_frame: remote closed mid file list",
+            "kex blip",
+            "channel send error",
+            "",
+            "(transportfailure) smuggled into the detail",
+        ];
+        for detail in NON_DENY_CORPUS {
+            for kind in RETRYABLE_KINDS {
+                for committed in [false, true] {
+                    assert!(
+                        native(kind, detail, committed).is_transient_channel_drop(),
+                        "retryable kind, no deny marker: {kind:?} committed={committed} {detail:?}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        // Every kind a reconnect cannot clear, under both commit states,
+        // with a detail that would be transient under a retryable kind:
+        // the kind decides. Expected answer: false.
+        for kind in [
+            AerorsyncErrorKind::InvalidFrame,
+            AerorsyncErrorKind::PlannerRejected,
+            AerorsyncErrorKind::IllegalStateTransition,
+            AerorsyncErrorKind::RemoteError,
+            AerorsyncErrorKind::UnexpectedMessage,
+            AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::Internal,
+            AerorsyncErrorKind::Cancelled,
+        ] {
+            for detail in ["next_data_frame: remote closed mid file list", ""] {
+                for committed in [false, true] {
+                    assert!(
+                        !native(kind, detail, committed).is_transient_channel_drop(),
+                        "kind is not retryable: {kind:?} committed={committed} {detail:?}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        // The four soft details the module really builds, each carrying the
+        // `Display` of a `std::io::Error`. The three renderings are what
+        // Linux `strerror` prints for EPIPE, ECONNRESET and ETIMEDOUT, and
+        // all twelve are transient: this is the case the parity run caught,
+        // where reading only the envelope would have stopped retrying them.
+        for template in [
+            "native fallback: atomic write failed at write (target untouched): {}",
+            "native fallback: cannot open streaming baseline /tmp/base.bin: {}",
+            "native fallback: cannot inspect local baseline /tmp/base.bin: {}",
+            "native fallback: cannot open streaming temp file for /tmp/t.bin: {}",
+        ] {
+            for rendered in [
+                "Broken pipe (os error 32)",
+                "Connection reset by peer (os error 104)",
+                "Connection timed out (os error 110)",
+            ] {
+                let detail = template.replace("{}", rendered);
+                assert!(
+                    TransferError::Soft {
+                        detail: detail.clone()
+                    }
+                    .is_transient_channel_drop(),
+                    "soft with a real io drop inside: {detail:?}"
+                );
+                // The same text inside a hard rejection is never retried.
+                assert!(
+                    !TransferError::Hard { detail }.is_transient_channel_drop(),
+                    "hard is never retried on its text"
+                );
+                checked += 2;
+            }
+        }
+        // A hard rejection is never retried on its text, even when the
+        // text is one that would make a soft failure transient.
+        for detail in [
+            "host key mismatch",
+            "broken pipe",
+            "connection reset by peer",
+        ] {
+            assert!(
+                !TransferError::Hard {
+                    detail: detail.into()
+                }
+                .is_transient_channel_drop(),
+                "hard {detail:?}"
+            );
+            checked += 1;
+        }
+        assert!(
+            !native(AerorsyncErrorKind::Cancelled, "user abort", false).is_transient_channel_drop(),
+            "a cancel is a decision, not a drop"
+        );
+        assert!(
+            !TransferError::TooSmall {
+                size: 1,
+                threshold: 2
+            }
+            .is_transient_channel_drop(),
+            "a size gate is not a failure to retry"
+        );
+        checked += 2;
+
+        assert_eq!(
+            checked, 190,
+            "the inherited case table shrank: {checked} cases checked"
+        );
+    }
+
+    /// The carrier does not re-decide the fallback policy: it asks
+    /// `classify_fallback`, for every kind and both commit states.
+    #[test]
+    fn transfer_error_verdict_matches_classify_fallback() {
+        for kind in ALL_KINDS {
+            for committed in [false, true] {
+                let error = AerorsyncError::new(kind, "detail");
+                let carried = TransferError::Native {
+                    error: error.clone(),
+                    committed,
+                };
+                assert_eq!(
+                    carried.verdict(),
+                    Some(classify_fallback(&error, committed)),
+                    "verdict drifted for {kind:?} committed={committed}"
+                );
+            }
+        }
+        assert_eq!(TransferError::Soft { detail: "s".into() }.verdict(), None);
+        assert_eq!(TransferError::Hard { detail: "h".into() }.verdict(), None);
+        assert_eq!(
+            TransferError::TooSmall {
+                size: 1,
+                threshold: 2
+            }
+            .verdict(),
+            None
+        );
+        assert_eq!(
+            TransferError::Io(std::io::Error::other("x")).verdict(),
+            None
+        );
+    }
 
     #[test]
     fn from_oob_event_error_maps_to_remote_error_with_message() {

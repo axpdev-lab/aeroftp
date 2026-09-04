@@ -1,5 +1,6 @@
 //! W2.3: `StreamingAtomicWriter`: chunk-driven counterpart of
-//! `delta_transport_impl::write_atomic_chunked`.
+//! `write_atomic_chunked`, which lives in this file too (both atomic write
+//! paths are owned by the writer module since the A1 crate tranche).
 //!
 //! Where `write_atomic_chunked` takes a fully-materialized `&[u8]`,
 //! `StreamingAtomicWriter` exposes the `AsyncWrite` trait so producers
@@ -38,7 +39,7 @@
 //! `data.json` to the same `data.aerotmp` and silently destroy one of
 //! them. We instead **append** `.aerotmp` so `data.csv` becomes
 //! `data.csv.aerotmp`: same naming convention used by
-//! `delta_transport_impl::temp_path_for` (minus its uniqueness salt).
+//! `temp_path_for` (minus its uniqueness salt).
 //! The single-`.aerotmp`-per-target shape is intentional: it gives the
 //! W2.3 acceptance test 7 (orphan recovery via truncate) a deterministic
 //! filename to find, and it matches the kill-9 invariant the test pins.
@@ -60,14 +61,21 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use tokio::fs::{self, OpenOptions};
-use tokio::io::AsyncWrite;
+use tokio::io::{AsyncSeekExt, AsyncWrite, AsyncWriteExt};
 
-use crate::aerorsync::delta_transport_impl::WriteAtomicError;
+/// Suffix appended to the destination path while a write is in progress.
+/// The rename onto the final path is the atomic commit. Shared with
+/// `delta_transport_impl` (symlink temp names and tests) so the two atomic
+/// write paths keep one suffix.
+pub(crate) const TEMP_SUFFIX: &str = ".aerotmp";
 
-/// Fixed temp suffix appended to the destination path.
-const TEMP_SUFFIX: &str = ".aerotmp";
+/// Counter used to salt the per-instance temp suffix so two concurrent
+/// AeroFTP processes (or two threads in the same app) downloading to the
+/// same path do not contend on the same `.aerotmp` filename.
+static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Append `TEMP_SUFFIX` to `target` preserving the original extension.
 /// `data.tar.gz` becomes `data.tar.gz.aerotmp`, not `data.tar.aerotmp`.
@@ -75,6 +83,283 @@ fn temp_path_for_streaming(target: &Path) -> PathBuf {
     let mut os: OsString = target.as_os_str().to_os_string();
     os.push(TEMP_SUFFIX);
     PathBuf::from(os)
+}
+
+/// Build a per-invocation temp path. U-14: the suffix carries the
+/// process id, a monotonic counter, and the hi-res clock so two
+/// concurrent transfers to the same `local_path` do not race on the
+/// same `.aerotmp` filename. The shape is still human-readable and
+/// collision-recovery friendly for the stale-temp path below.
+fn temp_path_for(local: &Path) -> PathBuf {
+    let counter = TEMP_SUFFIX_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or_default();
+    let suffix = format!(
+        "{}.{}.{}.{}",
+        TEMP_SUFFIX,
+        std::process::id(),
+        counter,
+        nanos
+    );
+    let mut os = local.as_os_str().to_os_string();
+    os.push(suffix);
+    PathBuf::from(os)
+}
+
+/// Error type for `write_atomic_chunked`. Splits "temp file never
+/// opened" from "temp file partially written" so the caller can pick
+/// the right `RsyncError` variant (the former still allows classic
+/// fallback; the latter MUST NOT at the rename stage).
+#[derive(Debug)]
+pub enum WriteAtomicError {
+    /// Failed before the temp file was successfully opened: includes
+    /// `create_new` contention with a stale `.aerotmp` that could not be
+    /// removed and re-opened, and initial metadata errors. No disk state
+    /// changed on `local_path`.
+    PreOpen(std::io::Error),
+    /// Failed after the temp file was opened. `stage` distinguishes
+    /// pre-rename failures (target untouched → classic fallback safe,
+    /// U-13) from rename failures (user-visible cutover boundary →
+    /// hard rejection).
+    PostOpen {
+        stage: &'static str,
+        source: std::io::Error,
+    },
+}
+
+/// Atomic-ish write of `data` to `local_path`:
+///
+/// 1. Open `<local_path>.aerotmp.<pid>.<counter>.<nanos>` with
+///    `create_new` (U-14 uniqueness). If it already exists (stale from
+///    a prior crash), remove it once and retry.
+/// 2. Write `data` in chunks of `chunk_size` bytes; optionally sleep
+///    `inter_chunk_delay` between chunks (test-only knob used to
+///    reproduce a stable mid-write drop window).
+/// 3. `sync_all()` the temp file: durability commit on the temp before
+///    the rename that makes the new data visible under `local_path`.
+/// 4. If `preserve_mode` is provided, apply it to the temp before
+///    rename (U-09) so the final inode keeps the caller-specified
+///    perms. Skipped silently on non-unix.
+/// 5. If `preserve_mtime` is provided, apply it to the temp before
+///    rename so the final inode reflects the remote file-list metadata.
+/// 6. `rename` onto `local_path`. Atomic within the same filesystem; an
+///    `EXDEV` error surfaces as `PostOpen { stage: "rename" }`.
+///
+/// On any post-open failure the function best-effort `remove_file`s the
+/// temp to avoid leaking it. If the caller's future is dropped mid-write
+/// the temp may survive on disk but `local_path` is guaranteed to still
+/// hold either the original contents or the new contents complete -
+/// never half-written bytes (rename-last invariant).
+pub async fn write_atomic_chunked(
+    local_path: &Path,
+    data: &[u8],
+    chunk_size: usize,
+    inter_chunk_delay: Option<Duration>,
+    preserve_mode: Option<u32>,
+    preserve_mtime: Option<(i64, Option<i32>)>,
+) -> Result<(), WriteAtomicError> {
+    write_atomic_chunked_core(
+        local_path,
+        data,
+        chunk_size,
+        inter_chunk_delay,
+        preserve_mode,
+        preserve_mtime,
+        false,
+    )
+    .await
+}
+
+/// Sparse variant of [`write_atomic_chunked`]. Identical atomicity,
+/// metadata-preservation and kill-9 invariants, but chunks that are
+/// entirely zero are turned into filesystem holes (`seek` past them
+/// instead of writing zeros) and the final length is fixed with
+/// `set_len`, so a trailing run of zeros is also a hole.
+///
+/// This is the AeroRsync analogue of rsync's `--sparse`: the output is
+/// byte-identical on read (a hole reads back as zeros) but consumes
+/// fewer allocated blocks for files with large zero regions (VM images,
+/// pre-allocated DB files, core dumps). Hole granularity is `chunk_size`
+/// (sub-chunk zero runs are written literally), matching rsync's
+/// block-granular sparse behaviour. Opt-in only: callers that want the
+/// dense representation keep using [`write_atomic_chunked`].
+pub async fn write_atomic_chunked_sparse(
+    local_path: &Path,
+    data: &[u8],
+    chunk_size: usize,
+    inter_chunk_delay: Option<Duration>,
+    preserve_mode: Option<u32>,
+    preserve_mtime: Option<(i64, Option<i32>)>,
+) -> Result<(), WriteAtomicError> {
+    write_atomic_chunked_core(
+        local_path,
+        data,
+        chunk_size,
+        inter_chunk_delay,
+        preserve_mode,
+        preserve_mtime,
+        true,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn write_atomic_chunked_core(
+    local_path: &Path,
+    data: &[u8],
+    chunk_size: usize,
+    inter_chunk_delay: Option<Duration>,
+    preserve_mode: Option<u32>,
+    preserve_mtime: Option<(i64, Option<i32>)>,
+    sparse: bool,
+) -> Result<(), WriteAtomicError> {
+    if chunk_size == 0 {
+        return Err(WriteAtomicError::PreOpen(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "chunk_size must be > 0",
+        )));
+    }
+
+    let tmp_path = temp_path_for(local_path);
+
+    // Open with create_new. If a stale `.aerotmp` is in the way, remove
+    // it once (this recovers from a prior crash between temp open and
+    // rename) and retry. A second `AlreadyExists` is a real conflict -
+    // another process is writing concurrently: and we bail with
+    // `PreOpen` so the caller can pick a fallback.
+    let mut file = match OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&tmp_path)
+        .await
+    {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            if let Err(remove_err) = fs::remove_file(&tmp_path).await {
+                return Err(WriteAtomicError::PreOpen(remove_err));
+            }
+            OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&tmp_path)
+                .await
+                .map_err(WriteAtomicError::PreOpen)?
+        }
+        Err(e) => return Err(WriteAtomicError::PreOpen(e)),
+    };
+
+    let write_result = async {
+        let mut offset = 0usize;
+        while offset < data.len() {
+            let end = (offset + chunk_size).min(data.len());
+            let chunk = &data[offset..end];
+            if sparse && chunk.iter().all(|&b| b == 0) {
+                // Hole: advance the file cursor without writing. The gap
+                // becomes an unallocated extent on sparse-capable
+                // filesystems. `set_len` below fixes the final size so a
+                // trailing hole keeps the correct length. Reads still
+                // return zeros, so the file is byte-identical to `data`.
+                file.seek(std::io::SeekFrom::Current(chunk.len() as i64))
+                    .await
+                    .map_err(|e| WriteAtomicError::PostOpen {
+                        stage: "seek",
+                        source: e,
+                    })?;
+            } else {
+                file.write_all(chunk)
+                    .await
+                    .map_err(|e| WriteAtomicError::PostOpen {
+                        stage: "write",
+                        source: e,
+                    })?;
+            }
+            offset = end;
+            if let Some(d) = inter_chunk_delay {
+                if offset < data.len() {
+                    tokio::time::sleep(d).await;
+                }
+            }
+        }
+        if sparse {
+            // Materialise the exact file length. Required when the file
+            // ends on a hole (the last op was a seek, not a write, so
+            // the on-disk size would stop at the last written byte). A
+            // no-op when the final chunk was written densely.
+            file.set_len(data.len() as u64)
+                .await
+                .map_err(|e| WriteAtomicError::PostOpen {
+                    stage: "set_len",
+                    source: e,
+                })?;
+        }
+        file.flush().await.map_err(|e| WriteAtomicError::PostOpen {
+            stage: "flush",
+            source: e,
+        })?;
+        file.sync_all()
+            .await
+            .map_err(|e| WriteAtomicError::PostOpen {
+                stage: "sync_all",
+                source: e,
+            })?;
+        // Drop the handle before rename: on some Linux kernels a
+        // pending-for-rename target behind a still-open write handle can
+        // exhibit cache-coherency oddities. Cheap to drop explicitly.
+        drop(file);
+        // U-09: restore the caller-supplied mode onto the temp file
+        // before the rename cutover. Post-rename chmod would be a race;
+        // pre-rename chmod is fully atomic with the final inode.
+        #[cfg(unix)]
+        if let Some(mode) = preserve_mode {
+            use std::os::unix::fs::PermissionsExt;
+            // Mask to the ordinary rwx bits. `preserve_mode` reaches us from
+            // the peer's file list, so the setuid/setgid/sticky bits in
+            // 0o7000 are attacker-supplied: a hostile sender could ask us to
+            // land a setuid binary. Harmless when we run as an ordinary user
+            // (the file is ours, so setuid grants nothing new), but a real
+            // escalation when aerorsync runs as root or a service account.
+            // rclone reached the same conclusion in GHSA-945v-v9p3-v5xw.
+            let perms = std::fs::Permissions::from_mode(mode & 0o0777);
+            fs::set_permissions(&tmp_path, perms).await.map_err(|e| {
+                WriteAtomicError::PostOpen {
+                    stage: "chmod",
+                    source: e,
+                }
+            })?;
+        }
+        #[cfg(not(unix))]
+        let _ = preserve_mode;
+        if let Some((secs, nanos)) = preserve_mtime {
+            let nanos = nanos
+                .filter(|n| (0..1_000_000_000).contains(n))
+                .unwrap_or(0) as u32;
+            let file_time = filetime::FileTime::from_unix_time(secs, nanos);
+            filetime::set_file_mtime(&tmp_path, file_time).map_err(|e| {
+                WriteAtomicError::PostOpen {
+                    stage: "mtime",
+                    source: e,
+                }
+            })?;
+        }
+        fs::rename(&tmp_path, local_path)
+            .await
+            .map_err(|e| WriteAtomicError::PostOpen {
+                stage: "rename",
+                source: e,
+            })?;
+        Ok(())
+    }
+    .await;
+
+    if write_result.is_err() {
+        // Best-effort cleanup; errors are swallowed (we are already on
+        // the failure path). If rename already succeeded, `tmp_path`
+        // is gone and this is a no-op.
+        let _ = fs::remove_file(&tmp_path).await;
+    }
+    write_result
 }
 
 /// Streaming counterpart of `write_atomic_chunked`. Accepts incremental
@@ -233,6 +518,8 @@ async fn finalize_steps(
             source: e,
         })?;
 
+    // The only writer is the ACL branch below, which is unix-only.
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut warnings = Vec::new();
     #[cfg(unix)]
     {
@@ -909,5 +1196,15 @@ mod tests {
         let reread = read_access_acl_model_fd(file.as_raw_fd()).expect("reread");
         assert_eq!(reread.mask_obj, Some(4));
         assert!(reread.names.iter().any(|n| n.id == 65534 && n.access == 4));
+    }
+
+    #[tokio::test]
+    async fn temp_path_for_is_unique_per_invocation() {
+        // U-14 regression pin: two calls with the same target produce
+        // distinct temp paths so concurrent writers do not race.
+        let target = Path::new("/tmp/does-not-exist.bin");
+        let a = temp_path_for(target);
+        let b = temp_path_for(target);
+        assert_ne!(a, b, "concurrent writers must get distinct temp paths");
     }
 }

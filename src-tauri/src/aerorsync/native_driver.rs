@@ -861,7 +861,7 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// via [`report_wire_progress`](Self::report_wire_progress). `None` for
     /// AeroSync and the CLI, so their hot path stays a single `is_none()`
     /// check per chunk. See `docs/dev/roadmap/APPENDIX-AERORSYNC-DELTA-REDESIGN`.
-    progress_sink: Option<crate::delta_transport::DeltaProgressSink>,
+    progress_sink: Option<crate::aerorsync::progress::ProgressSink>,
     /// Throttle cursor for `report_wire_progress`: the last `transferred`
     /// value the sink was actually called with.
     last_progress_report: u64,
@@ -932,7 +932,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// transfers keep `progress_sink = None` and pay no per-chunk cost.
     pub fn with_progress_sink(
         mut self,
-        sink: Option<crate::delta_transport::DeltaProgressSink>,
+        sink: Option<crate::aerorsync::progress::ProgressSink>,
     ) -> Self {
         self.progress_sink = sink;
         self
@@ -2405,7 +2405,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     ///
     /// Walks `baseline` once via [`BaselineSource::read_block`]: for each
     /// block computes the Adler-32 rolling checksum (same primitive as
-    /// `delta_sync::compute_signatures`) and the negotiated wire strong
+    /// `delta_engine::compute_signatures`) and the negotiated wire strong
     /// hash, then emits the same mux-wrapped blob as the bulk path.
     /// Peak RAM is `O(block_size)` plus the encoded payload buffer
     /// (itself proportional to block count, not file size: each sum
@@ -2450,7 +2450,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                         "send_signature_phase_from_baseline: read_block({idx}) failed: {e}"
                     ))
                 })?;
-            let rolling = crate::delta_sync::RollingChecksum::new(&block).value();
+            let rolling = crate::aerorsync::delta_engine::RollingChecksum::new(&block).value();
             let strong_wire = self.wire_block_strong(&block, strong_algo);
             let strong = strong_wire[..s2length_usize.min(strong_wire.len())].to_vec();
             sum_blocks.push(SumBlock { rolling, strong });
@@ -6282,10 +6282,9 @@ mod tests {
 
         let calls: Arc<Mutex<Vec<(u64, u64)>>> = Arc::new(Mutex::new(Vec::new()));
         let calls_for_sink = calls.clone();
-        let sink: crate::delta_transport::DeltaProgressSink =
-            Box::new(move |transferred, total| {
-                calls_for_sink.lock().unwrap().push((transferred, total));
-            });
+        let sink: crate::aerorsync::progress::ProgressSink = Box::new(move |transferred, total| {
+            calls_for_sink.lock().unwrap().push((transferred, total));
+        });
 
         let transport = mock_transport_with_raw_inbound(Vec::new());
         let last_raw_outbound = transport.last_raw_outbound.clone();
@@ -7218,15 +7217,17 @@ mod tests {
         let (first_block, _) = decode_sum_block(&app[cursor..], head.checksum_length as usize)
             .expect("first sum block");
 
-        let baseline = std::fs::read(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("src/aerorsync/capture/workspace/real/local/download.bin"),
-        )
-        .expect("frozen download baseline");
-        let expected = compute_xxh128_wire_with_seed(
-            &baseline[..head.block_length as usize],
-            server_pre.checksum_seed as u64,
-        );
+        // The capture harness seeds the download basis as
+        // `make_payload(size) = bytes(i % 251 for i in range(size))`
+        // (capture/run_real_rsync_capture.sh). Derive the first block from
+        // that formula rather than reading capture/workspace/real/local/
+        // download.bin: the workspace is gitignored, so a fresh checkout has
+        // no such file, and rsync rewrites it during the capture, so the copy
+        // on disk is the post-transfer content, not the basis. Only the first
+        // block is compared, and it lies inside the untouched prefix.
+        let block_len = head.block_length as usize;
+        let baseline: Vec<u8> = (0..block_len).map(|i| (i % 251) as u8).collect();
+        let expected = compute_xxh128_wire_with_seed(&baseline, server_pre.checksum_seed as u64);
 
         assert_eq!(
             first_block.strong,
@@ -9480,7 +9481,7 @@ mod tests {
     ///
     /// Both paths use [`CurrentDeltaSyncBridge`] so the bulk plan and
     /// the streaming plan come from the SAME algorithm
-    /// (`delta_sync::compute_delta` vs. `RollingDeltaPlanProducer`,
+    /// (`delta_engine::compute_delta` vs. `RollingDeltaPlanProducer`,
     /// already cross-pinned bit-for-bit by `producer_streaming_matches_bulk_*`
     /// in `engine_adapter.rs`).
     async fn assert_send_parity(source: &[u8], head: SumHead, blocks: Vec<SumBlock>) {
@@ -9639,7 +9640,7 @@ mod tests {
         // computable, then place that block at the start of the source
         // followed by disjoint tail bytes. The signature phase advertises
         // exactly that block to the sender.
-        use crate::delta_sync::compute_signatures;
+        use crate::aerorsync::delta_engine::compute_signatures;
         const BLOCK_LEN: usize = 1024;
         let block_bytes: Vec<u8> = (0..BLOCK_LEN as u32)
             .map(|i| (i.wrapping_mul(0x9E37_79B1) >> 24) as u8)

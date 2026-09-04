@@ -62,6 +62,24 @@ describe('status bar language chip', () => {
         expect(chipBlock(STATUS_BAR)).not.toContain('flag');
     });
 
+    it('sits at the far right, after every app button', () => {
+        // It used to sit between AeroAgent and DevTools, splitting the Aero
+        // family and reading as one more app button. The property pinned here
+        // is the ORDER, not the styling: a readout belongs at the edge of the
+        // cluster, behind a divider, and any button added later must go before
+        // it rather than after.
+        const chipAt = STATUS_BAR.indexOf('{onOpenLanguageSettings && (');
+        const devToolsAt = STATUS_BAR.indexOf("{/* DevTools Toggle */}");
+        const aeroAgentAt = STATUS_BAR.indexOf("{/* AeroAgent Button");
+        expect(chipAt).toBeGreaterThan(devToolsAt);
+        expect(chipAt).toBeGreaterThan(aeroAgentAt);
+    });
+
+    it('is separated from the buttons by a divider', () => {
+        const chip = chipBlock(STATUS_BAR);
+        expect(chip).toContain('w-px h-4');
+    });
+
     it('is optional, so a caller that has nowhere to send the user gets no chip', () => {
         expect(STATUS_BAR).toContain('onOpenLanguageSettings?: () => void;');
     });

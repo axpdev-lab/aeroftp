@@ -322,7 +322,8 @@
                 "found": "Cafwyd hyd i {count} targed hygyrch. Teipiwch i chwilio neu dewiswch un."
             },
             "swiftAuthUrl": "URL dilysu Keystone",
-            "swiftAllowCleartextStorage": "Mae'r gosodiad hwn yn gweini storfa gwrthrychau dros HTTP plaen. Derbyniwch hyn ar gyfer y proffil hwn: mae'r tocyn mynediad a phob ffeil yn croesi'r rhwydwaith heb eu hamgryptio."
+            "swiftAllowCleartextStorage": "Mae'r gosodiad hwn yn gweini storfa gwrthrychau dros HTTP plaen. Derbyniwch hyn ar gyfer y proffil hwn: mae'r tocyn mynediad a phob ffeil yn croesi'r rhwydwaith heb eu hamgryptio.",
+            "kdriveTokenScopes": "Mae angen y cwmpasau drive a user_info ar y tocyn. Gyda drive yn unig mae'n cysylltu ac yn rhestru ffeiliau, ond mae \"Nôl\" yn cael ei wrthod, am ei fod yn darllen proffil eich cyfrif i ddod o hyd i'r Drive ID."
         },
         "browser": {
             "remote": "Pell",
@@ -2448,7 +2449,7 @@
                 "general": "Cyffredinol",
                 "generalDesc": "Diofyn ar gyfer tasgau heb eu dosbarthu",
                 "autoDefault": "Awtomatig (Diofyn)",
-                "autoRoutingTip": "Awgrym: Gadewch fel \"Awtomatig (Diofyn)\" i ddefnyddio'r model a ddewiswyd yn yr pennyn sgwrs. Ffurfweddwch fodelau penodol dim ond pan fyddwch eisiau modelau gwahanol ar gyfer tasgau gwahanol.",
+                "autoRoutingTip": "Awgrym: gadewch dasg ar „Awtomatig (Diofyn)“ a defnyddir eich model rhagosodedig. Gosodwch y model a ffefrir dim ond ar gyfer y tasgau lle rydych am un gwahanol, a model wrth gefn i ateb pan fydd yr un dewisol yn methu.",
                 "advancedDescription": "Ffurfweddu paramedrau AI uwch ar gyfer cynhyrchu ymatebion.",
                 "conversationStyle": "Arddull Sgwrs",
                 "styleHelp": "Manwl = ymatebion ffeithiol. Creadigol = mwy dychmygus. Cytbwys = diofyn.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Nid yw'r galluoedd yn hysbys. Adolygwch y cyd-destun, offer, gweledigaeth a rhesymu cyn defnyddio'r model hwn ar gyfer tasgau asiant.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Defnyddiwch gludiant Responses brodorol ar gyfer modelau OpenAI cydnaws sydd wedi'u gwirio. Diffoddwch hwn i ddefnyddio Chat Completions.",
-                "openAIResponsesEnable": "Galluogi Responses ar gyfer modelau OpenAI cydnaws"
+                "openAIResponsesEnable": "Galluogi Responses ar gyfer modelau OpenAI cydnaws",
+                "routingPreferred": "A ffefrir",
+                "routingFallback": "Wrth gefn",
+                "routingNoFallback": "Dim"
             },
             "copy": "Copïo",
             "attachImage": "Atodi delwedd",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Pori Plugins"
             },
-            "stopGeneration": "Stopio cynhyrchu"
+            "stopGeneration": "Stopio cynhyrchu",
+            "routing": {
+                "fallbackUsed": "wrth gefn",
+                "fallbackUsedTooltip": "Methodd {model}, felly atebodd y model wrth gefn"
+            }
         },
         "archive": {
             "passwordRequired": "Mae'r archif hwn wedi'i ddiogelu â chyfrinair",

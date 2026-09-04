@@ -48,6 +48,9 @@ jobs:
       # system dev packages. Same set as cli-smoke.yml.
       - name: Install Linux dependencies
         run: |
+          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
+          # enough to redden a run, and nothing here installs from them.
+          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev \
@@ -65,18 +68,38 @@ jobs:
         # transfer_dag_single_file, transfer_dag_sync and the adaptive /
         # metrics / engine_stats / ttfb / executor / work_source telemetry
         # modules under transfer_dag::.
-        run: cargo test --lib transfer_dag -- --nocapture
+        # 358 today (run 33377726369). A substring filter that stops matching
+        # reports "ok" over an empty run, and a nightly nobody watches is exactly
+        # where that goes unnoticed.
+        run: |
+          set -o pipefail
+          cargo test --lib transfer_dag -- --nocapture | tee /tmp/telemetry-dag.log
+          ../scripts/assert-tests-ran.sh /tmp/telemetry-dag.log 358 \
+            "DAG telemetry suites"
 
       - name: Process resource sampler suite
         working-directory: ./src-tauri
-        run: cargo test --lib proc_stats -- --nocapture
+        run: |
+          set -o pipefail
+          cargo test --lib proc_stats -- --nocapture | tee /tmp/telemetry-proc.log
+          ../scripts/assert-tests-ran.sh /tmp/telemetry-proc.log 9 \
+            "Process resource sampler suite"
 
       - name: Local telemetry benchmark cell (emits JSON)
         working-directory: ./src-tauri
         env:
           AEROFTP_TELEMETRY_JSON: ${{ github.workspace }}/telemetry-nightly.json
           AEROFTP_TELEMETRY_BYTES: '16777216'
-        run: cargo test --test telemetry_nightly -- --ignored --nocapture
+        # The artifact upload below has `if-no-files-found: error`, which catches
+        # a cell that ran and wrote nothing. It cannot catch a cell that never
+        # ran: `--ignored` selecting nothing prints "ok" and writes no JSON, and
+        # the two failures would then be told apart only by reading the log.
+        run: |
+          set -o pipefail
+          cargo test --test telemetry_nightly -- --ignored --nocapture \
+            | tee /tmp/telemetry-cell.log
+          ../scripts/assert-tests-ran.sh /tmp/telemetry-cell.log 1 \
+            "Local telemetry benchmark cell"
 
       - name: Upload telemetry metrics artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

@@ -322,7 +322,8 @@
                 "found": "Fundust {count} aðgengilegir áfangastaðir. Skrifaðu til að leita eða veldu einn."
             },
             "swiftAuthUrl": "Keystone auðkenningarslóð",
-            "swiftAllowCleartextStorage": "Þessi uppsetning þjónar hlutageymslu um ódulkóðað HTTP. Samþykktu það fyrir þennan prófíl: aðgangsteiknið og hver skrá fara ódulkóðuð um netið."
+            "swiftAllowCleartextStorage": "Þessi uppsetning þjónar hlutageymslu um ódulkóðað HTTP. Samþykktu það fyrir þennan prófíl: aðgangsteiknið og hver skrá fara ódulkóðuð um netið.",
+            "kdriveTokenScopes": "Lykillinn þarf bæði umfangið drive og umfangið user_info. Með aðeins drive tengist hann og sýnir skrár, en „Sækja“ er hafnað, því hún les reikningssnið þitt til að finna Drive ID."
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -2448,7 +2449,7 @@
                 "general": "Almennt",
                 "generalDesc": "Sjálfgefið fyrir óflokkuð verkefni",
                 "autoDefault": "Sjálfvirkt (Sjálfgefið)",
-                "autoRoutingTip": "Ábending: Láttu vera \"Sjálfvirkt (Sjálfgefið)\" til að nota líkanið sem valið er í spjallhausnum. Stilltu sérstök líkön aðeins ef þú vilt mismunandi líkön fyrir mismunandi verkefni.",
+                "autoRoutingTip": "Ábending: skildu verkefni eftir á „Sjálfvirkt (Sjálfgefið)“ og sjálfgefna líkanið þitt er notað. Stilltu valið líkan aðeins fyrir þau verkefni þar sem þú vilt annað, og varalíkan sem svarar þegar valið líkan bregst.",
                 "advancedDescription": "Stilla ítarlegar AI færibreytur fyrir svörun.",
                 "conversationStyle": "Spjallstíll",
                 "styleHelp": "Nákvæm = staðreyndasvör. Skapandi = meira ímyndunarafl. Jafnvægi = sjálfgefið.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Eiginleikarnir eru óþekktir. Farðu yfir samhengi, verkfæri, sjón og rökhugsun áður en þú notar þetta líkan fyrir verkefni umboðsmanns.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Notaðu innbyggðan Responses-flutning fyrir staðfest samhæf OpenAI-líkön. Slökktu á þessu til að nota Chat Completions.",
-                "openAIResponsesEnable": "Virkja Responses fyrir samhæf OpenAI-líkön"
+                "openAIResponsesEnable": "Virkja Responses fyrir samhæf OpenAI-líkön",
+                "routingPreferred": "Valið",
+                "routingFallback": "Varalíkan",
+                "routingNoFallback": "Ekkert"
             },
             "copy": "Afrita",
             "attachImage": "Hengja mynd við",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Skoða viðbætur"
             },
-            "stopGeneration": "Stöðva myndun"
+            "stopGeneration": "Stöðva myndun",
+            "routing": {
+                "fallbackUsed": "varalíkan",
+                "fallbackUsedTooltip": "{model} brást, svo varalíkanið svaraði í staðinn"
+            }
         },
         "archive": {
             "passwordRequired": "Þessi skjalasafn er varið með lykilorði",

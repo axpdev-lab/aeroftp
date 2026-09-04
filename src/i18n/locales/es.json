@@ -322,7 +322,8 @@
                 "found": "Se han encontrado {count} destinos accesibles. Escribe para buscar o selecciona uno."
             },
             "swiftAuthUrl": "URL de autenticación de Keystone",
-            "swiftAllowCleartextStorage": "Esta implementación sirve el almacenamiento de objetos por HTTP sin cifrar. Acéptalo para este perfil: el token de acceso y todos los archivos cruzan la red sin cifrar."
+            "swiftAllowCleartextStorage": "Esta implementación sirve el almacenamiento de objetos por HTTP sin cifrar. Acéptalo para este perfil: el token de acceso y todos los archivos cruzan la red sin cifrar.",
+            "kdriveTokenScopes": "El token necesita los ámbitos drive y user_info. Solo con drive se conecta y lista archivos, pero \"Obtener\" se rechaza, porque lee el perfil de tu cuenta para encontrar el Drive ID."
         },
         "browser": {
             "remote": "Remoto",
@@ -2448,7 +2449,7 @@
                 "general": "General",
                 "generalDesc": "Predeterminado para tareas no clasificadas",
                 "autoDefault": "Automático (Predeterminado)",
-                "autoRoutingTip": "Consejo: Deja como \"Automático (Predeterminado)\" para usar el modelo seleccionado en el encabezado del chat. Configura modelos específicos solo cuando quieras diferentes modelos para diferentes tareas.",
+                "autoRoutingTip": "Consejo: si deja una tarea en «Automático (Predeterminado)», se usa su modelo predeterminado. Defina un modelo preferido solo para las tareas en las que quiera otro, y un modelo alternativo que responda cuando el preferido falle.",
                 "advancedDescription": "Configura parámetros avanzados de IA para la generación de respuestas.",
                 "conversationStyle": "Estilo de conversación",
                 "styleHelp": "Preciso = respuestas factuales. Creativo = más imaginativo. Equilibrado = predeterminado.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Las capacidades son desconocidas. Revisa el contexto, las herramientas, la visión y el razonamiento antes de usar este modelo para tareas de agente.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Usa el transporte nativo de Responses para modelos de OpenAI compatibles y verificados. Desactívalo para usar Chat Completions.",
-                "openAIResponsesEnable": "Activar Responses para modelos de OpenAI compatibles"
+                "openAIResponsesEnable": "Activar Responses para modelos de OpenAI compatibles",
+                "routingPreferred": "Preferido",
+                "routingFallback": "Alternativo",
+                "routingNoFallback": "Ninguno"
             },
             "copy": "Copiar",
             "attachImage": "Adjuntar imagen",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Explorar Plugins"
             },
-            "stopGeneration": "Detener generación"
+            "stopGeneration": "Detener generación",
+            "routing": {
+                "fallbackUsed": "alternativo",
+                "fallbackUsedTooltip": "{model} falló, así que respondió el modelo alternativo"
+            }
         },
         "archive": {
             "passwordRequired": "Este archivo está protegido con contraseña",

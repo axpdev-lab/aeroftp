@@ -322,7 +322,8 @@
                 "found": "S-au găsit {count} ținte accesibile. Scrie pentru a căuta sau selectează una."
             },
             "swiftAuthUrl": "URL de autentificare Keystone",
-            "swiftAllowCleartextStorage": "Această implementare oferă stocarea de obiecte prin HTTP necriptat. Acceptați pentru acest profil: tokenul de acces și fiecare fișier traversează rețeaua necriptate."
+            "swiftAllowCleartextStorage": "Această implementare oferă stocarea de obiecte prin HTTP necriptat. Acceptați pentru acest profil: tokenul de acces și fiecare fișier traversează rețeaua necriptate.",
+            "kdriveTokenScopes": "Tokenul are nevoie de permisiunile drive și user_info. Doar cu drive se conectează și listează fișierele, dar „Preia” este respins, pentru că citește profilul contului tău pentru a găsi Drive ID."
         },
         "browser": {
             "remote": "La distanță",
@@ -2448,7 +2449,7 @@
                 "general": "General",
                 "generalDesc": "Implicit pentru sarcinile neclasificate",
                 "autoDefault": "Auto (Implicit)",
-                "autoRoutingTip": "Sfat: Lăsați pe \"Auto (Implicit)\" pentru a folosi modelul selectat în antetul conversației. Configurați modele specifice doar când doriți modele diferite pentru sarcini diferite.",
+                "autoRoutingTip": "Sfat: lăsați o sarcină pe „Auto (Implicit)” și se folosește modelul dumneavoastră implicit. Setați un model preferat doar pentru sarcinile unde doriți altul, și un model de rezervă care să răspundă când cel preferat eșuează.",
                 "advancedDescription": "Configurați parametrii avansați AI pentru generarea răspunsurilor.",
                 "conversationStyle": "Stil conversație",
                 "styleHelp": "Precis = răspunsuri factuale. Creativ = mai imaginativ. Echilibrat = implicit.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Capabilitățile sunt necunoscute. Examinați contextul, instrumentele, vederea și raționamentul înainte de a folosi acest model pentru sarcini de agent.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Utilizați transportul nativ Responses pentru modelele OpenAI compatibile verificate. Dezactivați-l pentru a utiliza Chat Completions.",
-                "openAIResponsesEnable": "Activați Responses pentru modelele OpenAI compatibile"
+                "openAIResponsesEnable": "Activați Responses pentru modelele OpenAI compatibile",
+                "routingPreferred": "Preferat",
+                "routingFallback": "Rezervă",
+                "routingNoFallback": "Niciunul"
             },
             "copy": "Copiază",
             "attachImage": "Atașează imagine",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Răsfoiește pluginuri"
             },
-            "stopGeneration": "Oprește generarea"
+            "stopGeneration": "Oprește generarea",
+            "routing": {
+                "fallbackUsed": "rezervă",
+                "fallbackUsedTooltip": "{model} a eșuat, așa că a răspuns modelul de rezervă"
+            }
         },
         "archive": {
             "passwordRequired": "Această arhivă este protejată cu parolă",

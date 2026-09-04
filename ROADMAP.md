@@ -204,7 +204,7 @@ _Nothing actively in flight right now; the next items are queued under Up Next b
 | **Immich** | REST API (self-hosted) | 🟢 Just Shipped |
 | **Bitbucket** | REST 2.0 | 🔵 Up Next: Git forge Tier 1 |
 | **Gitea / Forgejo** | REST v1 | 🔵 Up Next: Git forge Tier 1 (~90% GitHub reuse) |
-| **Photo & Media services** | OAuth / REST | 🔵 Up Next: phased rollout on top of the 4 shipped (Immich, Cloudinary, ImageKit, Uploadcare) |
+| **Photo & Media services** | OAuth / REST | 🔵 Up Next: phased rollout on top of the 5 shipped (Immich, Cloudinary, ImageKit, Uploadcare, PixelUnion) |
 | **ImageKit** | REST API | 🟢 Just Shipped (v3.7.2): media CDN + storage |
 | **Uploadcare** | REST + Upload API | 🟢 Just Shipped (v3.7.2): media CDN, EU/GDPR |
 | **GitLab Tier 2-3** | REST API v4 | 🔵 Up Next: Tier 1 already shipped |

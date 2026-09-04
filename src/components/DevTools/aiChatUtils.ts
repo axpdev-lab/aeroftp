@@ -70,6 +70,63 @@ export async function withRetry<T>(
     throw lastError;
 }
 
+/** HTTP statuses where a different endpoint is a real remedy. 404 is here
+ *  because a provider answers an unknown model with it, and `formatProviderError`
+ *  already maps it to the model-not-found message. */
+const FAILOVER_STATUS_CODES = new Set([401, 403, 404, 408, 429, 500, 502, 503, 504, 529]);
+
+/** Phrases that identify an endpoint failure when no status code is present.
+ *  Anchored on word boundaries: a bare substring test read the "500" inside
+ *  "max_tokens must be <= 5000" as a server error and burned a second call. */
+const FAILOVER_MARKERS: RegExp[] = [
+    /\btimeout\b/, /\btimed out\b/,
+    /\bnetwork\b/, /\bfailed to fetch\b/,
+    /\brate limit/, /\boverloaded\b/, /\bcapacity\b/, /\bunavailable\b/,
+    /\bunauthorized\b/, /\bforbidden\b/, /\bapi key\b/, /\binvalid key\b/,
+    /\bmodel not found\b/, /\bunknown model\b/, /\bunsupported model\b/,
+    /\bdoes not exist\b/, /\bnot available\b/,
+];
+
+/**
+ * Whether a failed request is worth retrying on a different model.
+ *
+ * The test is whether the failure is a property of the endpoint rather than of
+ * the request or of a limit the user set on purpose. A provider that is down,
+ * throttling, overloaded, or holding a dead key will answer no better on the
+ * second attempt, so a different provider is a real remedy. A blown monthly
+ * budget or a cancelled request is the opposite: failing over would spend money
+ * the user capped, or resurrect work the user stopped.
+ *
+ * A status code decides when the message carries one, because the status is the
+ * fact and the prose around it is not. Only when there is no status does this
+ * fall back to phrase matching, and then on word boundaries.
+ */
+export function isFailoverWorthy(error: unknown): boolean {
+    const err = String(error).toLowerCase();
+
+    // The user's own ceilings and choices: never route around them.
+    //
+    // The stop guard anchors on the ERROR NAME rather than on the word, because
+    // the question it asks is "did the user stop this", and a transport failure
+    // is a different sentence. "connection aborted by peer" is not the user
+    // stopping anything: it is exactly the case where another provider is a real
+    // remedy, and a bare /abort/ refused it.
+    //
+    // Worth recording, because it decides how much this guard carries: AeroFTP's
+    // own cancellation produces no error string at all. `ai_cancel_stream` sets a
+    // flag and returns Ok, the stream loop `break`s out normally, and
+    // `cancelActiveStream` resolves the promise rather than rejecting it. So this
+    // guard covers a DOM or library error that reaches here by another route, and
+    // nothing that the cancel button itself emits.
+    if (/\bbudget\b/.test(err)) return false;
+    if (/\b(?:abort|cancell?ed)error\b/.test(err)) return false;
+
+    const status = err.match(/\b([45]\d{2})\b/);
+    if (status && FAILOVER_STATUS_CODES.has(Number(status[1]))) return true;
+
+    return FAILOVER_MARKERS.some(marker => marker.test(err));
+}
+
 // Estimate token count for a string (~4 chars per token heuristic)
 export function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);

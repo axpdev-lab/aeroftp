@@ -322,7 +322,8 @@
                 "found": "{count} erişilebilir hedef bulundu. Aramak için yazın veya birini seçin."
             },
             "swiftAuthUrl": "Keystone kimlik doğrulama URL'si",
-            "swiftAllowCleartextStorage": "Bu dağıtım nesne depolamayı şifrelenmemiş HTTP üzerinden sunuyor. Bu profil için kabul edin: erişim belirteci ve her dosya ağı şifrelenmemiş olarak geçer."
+            "swiftAllowCleartextStorage": "Bu dağıtım nesne depolamayı şifrelenmemiş HTTP üzerinden sunuyor. Bu profil için kabul edin: erişim belirteci ve her dosya ağı şifrelenmemiş olarak geçer.",
+            "kdriveTokenScopes": "Belirtecin drive ve user_info kapsamlarına ihtiyacı var. Yalnızca drive ile bağlanır ve dosyaları listeler, ancak \"Getir\" reddedilir, çünkü Drive ID'yi bulmak için hesap profilinizi okur."
         },
         "browser": {
             "remote": "Uzak",
@@ -2448,7 +2449,7 @@
                 "general": "Genel",
                 "generalDesc": "Sınıflandırılmamış görevler için varsayılan",
                 "autoDefault": "Otomatik (Varsayılan)",
-                "autoRoutingTip": "İpucu: Sohbet başlığında seçilen modeli kullanmak için \"Otomatik (Varsayılan)\" olarak bırakın. Yalnızca farklı görevler için farklı modeller istediğinizde belirli modelleri yapılandırın.",
+                "autoRoutingTip": "İpucu: bir görevi „Otomatik (Varsayılan)“ olarak bırakırsanız varsayılan modeliniz kullanılır. Tercih edilen modeli yalnızca farklı bir model istediğiniz görevler için ayarlayın ve tercih edilen model başarısız olduğunda yanıt verecek bir yedek model belirleyin.",
                 "advancedDescription": "Yanıt üretimi için gelişmiş AI parametrelerini yapılandırın.",
                 "conversationStyle": "Konuşma Stili",
                 "styleHelp": "Kesin = olgusal yanıtlar. Yaratıcı = daha hayal gücüne dayalı. Dengeli = varsayılan.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Yetenekler bilinmiyor. Bu modeli aracı görevlerinde kullanmadan önce bağlamı, araçları, görmeyi ve akıl yürütmeyi inceleyin.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Doğrulanmış uyumlu OpenAI modelleri için yerel Responses aktarımını kullanın. Chat Completions kullanmak için bunu kapatın.",
-                "openAIResponsesEnable": "Uyumlu OpenAI modelleri için Responses'ı etkinleştir"
+                "openAIResponsesEnable": "Uyumlu OpenAI modelleri için Responses'ı etkinleştir",
+                "routingPreferred": "Tercih edilen",
+                "routingFallback": "Yedek",
+                "routingNoFallback": "Yok"
             },
             "copy": "Kopyala",
             "attachImage": "Görsel ekle",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Eklentilere göz at"
             },
-            "stopGeneration": "Üretimi durdur"
+            "stopGeneration": "Üretimi durdur",
+            "routing": {
+                "fallbackUsed": "yedek",
+                "fallbackUsedTooltip": "{model} başarısız oldu, bu nedenle yedek model yanıt verdi"
+            }
         },
         "archive": {
             "passwordRequired": "Bu arşiv parola korumalı",

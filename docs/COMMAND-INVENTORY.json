@@ -160,7 +160,7 @@
       }
     ]
   },
-  "app_version": "4.1.8",
+  "app_version": "4.1.9",
   "cli": {
     "count": 94,
     "subcommands": [
@@ -554,7 +554,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 850
+    "tauri_commands": 851
   },
   "mcp": {
     "count": 77,
@@ -947,7 +947,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 479,
+    "name_matched_count": 480,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1834,6 +1834,7 @@
       "jottacloud_list_trash",
       "jottacloud_restore_from_trash",
       "jottacloud_permanent_delete",
+      "jottacloud_empty_trash",
       "mega_move_to_trash",
       "mega_list_trash",
       "mega_restore_from_trash",
@@ -2178,6 +2179,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 850
+    "count": 851
   }
 }

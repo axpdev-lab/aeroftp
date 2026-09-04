@@ -34,6 +34,7 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingEmptyConfirm, setPendingEmptyConfirm] = useState(false);
 
   const loadTrash = useCallback(async () => {
     setLoading(true);
@@ -68,8 +69,13 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
     const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Jottacloud', count: paths.length });
     setActionLoading('restore');
     try {
-      await invoke('jottacloud_restore_from_trash', { paths });
-      humanLog.updateEntry(logId, { status: 'success', message: `[Jottacloud] Restored ${paths.length} item(s) from trash` });
+      const report = await invoke<{ files_restored: number; files_already_present: number; dirs_restored: number; failed: string[] }>('jottacloud_restore_from_trash', { paths });
+      // Show what the server confirmed, not what was selected (#397): a
+      // folder restore revives its descendants one file at a time.
+      const parts = [`${report.files_restored} file(s)`];
+      if (report.dirs_restored > 0) parts.push(`${report.dirs_restored} folder(s)`);
+      if (report.files_already_present > 0) parts.push(`${report.files_already_present} already present`);
+      humanLog.updateEntry(logId, { status: 'success', message: `[Jottacloud] Restored ${parts.join(', ')} from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
@@ -107,13 +113,42 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
     }
   };
 
+  // Whole-bin purge through `files/v1/purge_trash` (rclone's `cleanup`),
+  // measured 2026-09-01 (#397): the server answers with what it removed,
+  // so the log line carries the confirmed counts, not the selection.
+  const confirmEmptyTrash = async () => {
+    if (actionLoading !== null) return;
+    setPendingEmptyConfirm(false);
+    const totalCount = items.length;
+    const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'Jottacloud', count: totalCount });
+    setActionLoading('empty');
+    setError(null);
+    try {
+      const [files, folders] = await invoke<[number, number]>('jottacloud_empty_trash');
+      humanLog.updateEntry(logId, { status: 'success', message: `[Jottacloud] Emptied trash (${files} file(s), ${folders} folder(s) purged)` });
+      await loadTrash();
+      onRefreshFiles?.();
+    } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Jottacloud] Failed to empty trash` });
+      setError(String(err));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Escape dismisses the innermost surface: an open confirmation first, the
+  // manager itself only when no confirmation is pending. One key press must
+  // never both cancel a purge prompt and close the whole window.
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (pendingEmptyConfirm) { setPendingEmptyConfirm(false); return; }
+      if (pendingDeleteConfirm) { setPendingDeleteConfirm(false); return; }
+      onClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [onClose, pendingEmptyConfirm, pendingDeleteConfirm]);
 
   // Normalized for the shared trash table (sorting, Type column,
   // Ctrl/Shift and rubber-band selection live there).
@@ -194,6 +229,15 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
               {actionLoading === 'delete' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}
               {t('contextMenu.permanentDelete')} {selected.size > 0 && `(${selected.size})`}
             </button>
+            <button
+              onClick={() => setPendingEmptyConfirm(true)}
+              disabled={items.length === 0 || actionLoading !== null}
+              title={t('contextMenu.emptyTrashHint')}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {actionLoading === 'empty' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}
+              {t('contextMenu.emptyTrash')}
+            </button>
           </div>
         )}
 
@@ -228,7 +272,7 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
 
       {/* Styled confirmation dialog (replaces window.confirm) */}
       {pendingDeleteConfirm && (
-        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={() => setPendingDeleteConfirm(false)}>
+        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={(e) => { e.stopPropagation(); setPendingDeleteConfirm(false); }}>
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
             <p className="text-gray-900 dark:text-gray-100 mb-4">
               {t('contextMenu.permanentDeleteConfirm', { count: selected.size })}
@@ -245,6 +289,31 @@ export function JottacloudTrashManager({ onClose, onRefreshFiles }: JottacloudTr
                 className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600"
               >
                 {t('contextMenu.permanentDelete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingEmptyConfirm && (
+        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={(e) => { e.stopPropagation(); setPendingEmptyConfirm(false); }}>
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
+            <p className="text-gray-900 dark:text-gray-100 mb-4">
+              {t('contextMenu.emptyTrashConfirm')}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingEmptyConfirm(false)}
+                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={confirmEmptyTrash}
+                disabled={actionLoading !== null}
+                className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {t('contextMenu.emptyTrash')}
               </button>
             </div>
           </div>

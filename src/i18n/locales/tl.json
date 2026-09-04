@@ -322,7 +322,8 @@
                 "found": "May nakitang {count} na naa-access na target. Mag-type para maghanap o pumili ng isa."
             },
             "swiftAuthUrl": "URL ng pagpapatotoo ng Keystone",
-            "swiftAllowCleartextStorage": "Naghahain ang deployment na ito ng object storage sa plain HTTP. Tanggapin ito para sa profile na ito: ang access token at bawat file ay tumatawid sa network nang hindi naka-encrypt."
+            "swiftAllowCleartextStorage": "Naghahain ang deployment na ito ng object storage sa plain HTTP. Tanggapin ito para sa profile na ito: ang access token at bawat file ay tumatawid sa network nang hindi naka-encrypt.",
+            "kdriveTokenScopes": "Kailangan ng token ang mga saklaw na drive at user_info. Sa drive lamang ay nakakakonekta ito at nakakapaglista ng mga file, ngunit tinatanggihan ang \"Kunin\", dahil binabasa nito ang profile ng iyong account para hanapin ang Drive ID."
         },
         "browser": {
             "remote": "Remote",
@@ -2448,7 +2449,7 @@
                 "general": "Pangkalahatan",
                 "generalDesc": "Default para sa mga hindi nakategoryang gawain",
                 "autoDefault": "Auto (Default)",
-                "autoRoutingTip": "Tip: Iwanan bilang \"Auto (Default)\" para gamitin ang model na napili sa chat header. Mag-configure lang ng tiyak na model kung gusto mong gumamit ng ibang model para sa ibang gawain.",
+                "autoRoutingTip": "Tip: iwanan ang isang gawain sa \"Auto (Default)\" at gagamitin ang iyong default na modelo. Magtakda ng piniling modelo para lamang sa mga gawaing gusto mo ng ibang modelo, at ng panghaliling modelo na sasagot kapag nabigo ang pinili.",
                 "advancedDescription": "I-configure ang mga advanced na AI parameter para sa paggawa ng tugon.",
                 "conversationStyle": "Estilo ng Pag-uusap",
                 "styleHelp": "Precise = tumpak na tugon. Creative = mas malikhain. Balanced = default.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Hindi alam ang mga kakayahan. Suriin ang konteksto, mga tool, vision, at pangangatwiran bago gamitin ang modelong ito para sa mga gawain ng ahente.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Gamitin ang native na Responses transport para sa na-verify na tugmang mga modelo ng OpenAI. I-off ito para gamitin ang Chat Completions.",
-                "openAIResponsesEnable": "I-enable ang Responses para sa tugmang mga modelo ng OpenAI"
+                "openAIResponsesEnable": "I-enable ang Responses para sa tugmang mga modelo ng OpenAI",
+                "routingPreferred": "Piniling modelo",
+                "routingFallback": "Panghalili",
+                "routingNoFallback": "Wala"
             },
             "copy": "Kopyahin",
             "attachImage": "Mag-attach ng larawan",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Mag-browse ng mga plugin"
             },
-            "stopGeneration": "Itigil ang pagbuo"
+            "stopGeneration": "Itigil ang pagbuo",
+            "routing": {
+                "fallbackUsed": "panghalili",
+                "fallbackUsedTooltip": "Nabigo ang {model}, kaya ang panghaliling modelo ang sumagot"
+            }
         },
         "archive": {
             "passwordRequired": "Ang archive na ito ay protektado ng password",

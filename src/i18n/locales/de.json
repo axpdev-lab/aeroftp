@@ -322,7 +322,8 @@
                 "found": "{count} erreichbare Ziele gefunden. Tippen Sie, um zu suchen, oder wählen Sie eines aus."
             },
             "swiftAuthUrl": "Keystone-Authentifizierungs-URL",
-            "swiftAllowCleartextStorage": "Diese Installation stellt den Objektspeicher über unverschlüsseltes HTTP bereit. Für dieses Profil akzeptieren: Das Zugriffstoken und jede Datei durchqueren das Netzwerk unverschlüsselt."
+            "swiftAllowCleartextStorage": "Diese Installation stellt den Objektspeicher über unverschlüsseltes HTTP bereit. Für dieses Profil akzeptieren: Das Zugriffstoken und jede Datei durchqueren das Netzwerk unverschlüsselt.",
+            "kdriveTokenScopes": "Das Token braucht die Scopes drive und user_info. Mit drive allein verbindet es sich und listet Dateien, aber „Abrufen“ wird abgelehnt, weil es Ihr Kontoprofil liest, um die Drive ID zu finden."
         },
         "browser": {
             "remote": "Remote",
@@ -2448,7 +2449,7 @@
                 "general": "Allgemein",
                 "generalDesc": "Standard für nicht klassifizierte Aufgaben",
                 "autoDefault": "Auto (Standard)",
-                "autoRoutingTip": "Tipp: Belassen Sie \"Auto (Standard)\", um das im Chat-Header ausgewählte Modell zu verwenden. Konfigurieren Sie spezifische Modelle nur, wenn Sie verschiedene Modelle für verschiedene Aufgaben möchten.",
+                "autoRoutingTip": "Tipp: Wenn eine Aufgabe auf „Auto (Standard)“ bleibt, wird Ihr Standardmodell verwendet. Legen Sie ein bevorzugtes Modell nur für die Aufgaben fest, bei denen Sie ein anderes möchten, und ein Ersatzmodell, das antwortet, wenn das bevorzugte fehlschlägt.",
                 "advancedDescription": "Erweiterte KI-Parameter für die Antwortgenerierung konfigurieren.",
                 "conversationStyle": "Gesprächsstil",
                 "styleHelp": "Präzise = sachliche Antworten. Kreativ = einfallsreicher. Ausgewogen = Standard.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Die Fähigkeiten sind unbekannt. Prüfen Sie Kontext, Tools, Vision und Schlussfolgern, bevor Sie dieses Modell für Agentenaufgaben verwenden.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Verwenden Sie den nativen Responses-Transport für verifizierte kompatible OpenAI-Modelle. Deaktivieren Sie dies, um Chat Completions zu verwenden.",
-                "openAIResponsesEnable": "Responses für kompatible OpenAI-Modelle aktivieren"
+                "openAIResponsesEnable": "Responses für kompatible OpenAI-Modelle aktivieren",
+                "routingPreferred": "Bevorzugt",
+                "routingFallback": "Ersatz",
+                "routingNoFallback": "Keiner"
             },
             "copy": "Kopieren",
             "attachImage": "Bild anhängen",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Plugins durchsuchen"
             },
-            "stopGeneration": "Generierung stoppen"
+            "stopGeneration": "Generierung stoppen",
+            "routing": {
+                "fallbackUsed": "Ersatz",
+                "fallbackUsedTooltip": "{model} ist fehlgeschlagen, daher hat das Ersatzmodell geantwortet"
+            }
         },
         "archive": {
             "passwordRequired": "Dieses Archiv ist passwortgeschützt",

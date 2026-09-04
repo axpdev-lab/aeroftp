@@ -68,6 +68,19 @@
 //! - `Noop` (42) has empty payload: keep-alive only.
 //! - `Unknown(tag)` never panics; raw payload is preserved byte-for-byte
 //!   so a future protocol bump doesn't silently corrupt data.
+//!
+//! # User-facing notices
+//!
+//! `AerorsyncEvent::notice()` is the single source of the texts a user may
+//! see for an out-of-band event: a `Notice::Warning` (surfaced, session
+//! continues), a `Notice::Error` (surfaced, session ends) or `None`
+//! (pipe-internal traffic and state markers, never shown). The
+//! `WarningCollector` sink below gathers the warning notices of a session
+//! for the transfer statistics; the application-side adapter translates
+//! notices into its own event type. Nothing outside this file decides
+//! wording.
+
+use std::sync::{Arc, Mutex};
 
 use crate::aerorsync::real_wire::MuxTag;
 
@@ -248,6 +261,101 @@ impl AerorsyncEvent {
             | AerorsyncEvent::ErrorUtf8 { message } => Some(message.as_str()),
             AerorsyncEvent::Deleted { path } => Some(path.as_str()),
             _ => None,
+        }
+    }
+}
+
+/// What the user sees for an out-of-band event, if anything.
+///
+/// Produced only by [`AerorsyncEvent::notice`]. The wording is product
+/// behaviour: a `Warning` text lands verbatim in the transfer statistics
+/// (the warnings the adapter puts in the application statistics), the
+/// same channel the classic rsync wrapper
+/// feeds from the process output, so the two backends read alike.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Notice {
+    /// Surfaced to the user; the session continues.
+    Warning(String),
+    /// Surfaced to the user; the session ends.
+    Error(String),
+}
+
+impl AerorsyncEvent {
+    /// The user-facing notice for this event, or `None` when the event is
+    /// pipe-internal traffic or a state marker with no display value
+    /// (the classic wrapper's stdout parser ignores those too).
+    ///
+    /// Single source of truth for the wording. The `match` is exhaustive on
+    /// purpose: a new variant must decide its notice at compile time rather
+    /// than drift into silence. `Deleted` is `EventSeverity::Info` but
+    /// yields a warning notice: that is what the user has always seen, and
+    /// reconciling severity and notice is an API decision, not a refactor.
+    pub fn notice(&self) -> Option<Notice> {
+        match self {
+            // Terminal textual events surface verbatim as errors.
+            AerorsyncEvent::Error { message }
+            | AerorsyncEvent::ErrorXfer { message }
+            | AerorsyncEvent::ErrorSocket { message } => Some(Notice::Error(message.clone())),
+
+            // ErrorExit has dual semantics: None / Some(0) = cleanup, non-terminal,
+            // nothing to show. Some(code!=0) = terminal, render with the code.
+            AerorsyncEvent::ErrorExit { code } => match code {
+                None | Some(0) => None,
+                Some(c) => Some(Notice::Error(format!(
+                    "remote rsync exited with code {}",
+                    c
+                ))),
+            },
+
+            // Non-terminal warnings.
+            AerorsyncEvent::Warning { message } => Some(Notice::Warning(message.clone())),
+            AerorsyncEvent::ErrorUtf8 { message } => Some(Notice::Warning(format!(
+                "utf-8 decode warning: {}",
+                message
+            ))),
+            AerorsyncEvent::IoError { flags } => {
+                Some(Notice::Warning(format!("io_error flags: 0x{:08X}", flags)))
+            }
+            AerorsyncEvent::IoTimeout { seconds } => {
+                Some(Notice::Warning(format!("io_timeout refresh: {}s", seconds)))
+            }
+            AerorsyncEvent::Deleted { path } => Some(Notice::Warning(format!("deleted: {}", path))),
+
+            // Pipe-internal traffic and state markers: nothing to show.
+            AerorsyncEvent::Info { .. }
+            | AerorsyncEvent::Log { .. }
+            | AerorsyncEvent::Client { .. }
+            | AerorsyncEvent::Redo { .. }
+            | AerorsyncEvent::Stats { .. }
+            | AerorsyncEvent::Noop
+            | AerorsyncEvent::Success { .. }
+            | AerorsyncEvent::NoSend { .. }
+            | AerorsyncEvent::Unknown { .. } => None,
+        }
+    }
+}
+
+/// `EventSink` that keeps the warning notices of a session, in order, in a
+/// shared vector that the transport reads back into the warnings the
+/// adapter reports
+/// once the driver has released the sink (hence the `Arc<Mutex<..>>`, not
+/// an owned `Vec`). Error notices are not warnings and are not kept.
+pub struct WarningCollector {
+    warnings: Arc<Mutex<Vec<String>>>,
+}
+
+impl WarningCollector {
+    pub fn new(warnings: Arc<Mutex<Vec<String>>>) -> Self {
+        Self { warnings }
+    }
+}
+
+impl EventSink for WarningCollector {
+    fn handle(&mut self, event: AerorsyncEvent) {
+        if let Some(Notice::Warning(message)) = event.notice() {
+            if let Ok(mut v) = self.warnings.lock() {
+                v.push(message);
+            }
         }
     }
 }
@@ -871,5 +979,247 @@ mod tests {
         sink.handle(classify_oob_frame(MuxTag::ErrorExit, &[5, 0, 0, 0]));
 
         assert_eq!(sink.seen, vec!["info", "warning", "terminal", "terminal"]);
+    }
+
+    // --- user-facing notices: one pin per row of the notice table --------------
+
+    #[test]
+    fn notice_error_is_error_verbatim() {
+        let e = AerorsyncEvent::Error {
+            message: "remote kaboom".to_string(),
+        };
+        assert_eq!(e.notice(), Some(Notice::Error("remote kaboom".to_string())));
+    }
+
+    #[test]
+    fn notice_error_xfer_is_error_verbatim() {
+        let e = AerorsyncEvent::ErrorXfer {
+            message: "xfer failed".to_string(),
+        };
+        assert_eq!(e.notice(), Some(Notice::Error("xfer failed".to_string())));
+    }
+
+    #[test]
+    fn notice_error_socket_is_error_verbatim() {
+        let e = AerorsyncEvent::ErrorSocket {
+            message: "socket broken".to_string(),
+        };
+        assert_eq!(e.notice(), Some(Notice::Error("socket broken".to_string())));
+    }
+
+    #[test]
+    fn notice_error_exit_nonzero_is_error_with_code() {
+        let e = AerorsyncEvent::ErrorExit { code: Some(11) };
+        assert_eq!(
+            e.notice(),
+            Some(Notice::Error(
+                "remote rsync exited with code 11".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn notice_warning_is_warning_verbatim() {
+        let e = AerorsyncEvent::Warning {
+            message: "the thing".to_string(),
+        };
+        assert_eq!(e.notice(), Some(Notice::Warning("the thing".to_string())));
+    }
+
+    #[test]
+    fn notice_error_utf8_is_warning_with_prefix() {
+        let e = AerorsyncEvent::ErrorUtf8 {
+            message: "bad filename".to_string(),
+        };
+        assert_eq!(
+            e.notice(),
+            Some(Notice::Warning(
+                "utf-8 decode warning: bad filename".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn notice_io_error_is_warning_with_hex_flags() {
+        let e = AerorsyncEvent::IoError { flags: 0xDEAD_BEEF };
+        assert_eq!(
+            e.notice(),
+            Some(Notice::Warning("io_error flags: 0xDEADBEEF".to_string()))
+        );
+    }
+
+    #[test]
+    fn notice_io_timeout_is_warning_with_seconds() {
+        let e = AerorsyncEvent::IoTimeout { seconds: 60 };
+        assert_eq!(
+            e.notice(),
+            Some(Notice::Warning("io_timeout refresh: 60s".to_string()))
+        );
+    }
+
+    #[test]
+    fn notice_deleted_is_warning_with_prefix() {
+        let e = AerorsyncEvent::Deleted {
+            path: "foo/bar.txt".to_string(),
+        };
+        assert_eq!(
+            e.notice(),
+            Some(Notice::Warning("deleted: foo/bar.txt".to_string()))
+        );
+    }
+
+    #[test]
+    fn notice_drops_pipe_internal_and_state_markers() {
+        let dropped = [
+            AerorsyncEvent::Info {
+                message: "x".to_string(),
+            },
+            AerorsyncEvent::Log {
+                message: "x".to_string(),
+            },
+            AerorsyncEvent::Client {
+                message: "x".to_string(),
+            },
+            AerorsyncEvent::Redo { flist_index: 7 },
+            AerorsyncEvent::Stats { total_read: 4096 },
+            AerorsyncEvent::Noop,
+            AerorsyncEvent::Success { flist_index: 5 },
+            AerorsyncEvent::NoSend { flist_index: 9 },
+            AerorsyncEvent::Unknown {
+                tag: 77,
+                payload: vec![1, 2, 3],
+            },
+            AerorsyncEvent::ErrorExit { code: None },
+            AerorsyncEvent::ErrorExit { code: Some(0) },
+        ];
+        for e in dropped {
+            assert_eq!(e.notice(), None, "{e:?} must not surface");
+        }
+    }
+
+    #[test]
+    fn every_terminal_event_yields_an_error_notice() {
+        // For every OOB frame classified as terminal, the notice MUST be an
+        // Error. This pins the cross-layer invariant "terminal => Error" so
+        // a refactor of either side cannot silently break it.
+        let terminal_cases: Vec<AerorsyncEvent> = vec![
+            classify_oob_frame(MuxTag::Error, b"boom"),
+            classify_oob_frame(MuxTag::ErrorXfer, b"xfer"),
+            classify_oob_frame(MuxTag::ErrorSocket, b"sock"),
+            classify_oob_frame(MuxTag::ErrorExit, &[0x05, 0x00, 0x00, 0x00]),
+        ];
+        for e in terminal_cases {
+            assert!(
+                e.is_terminal(),
+                "{e:?} must be terminal per the severity policy"
+            );
+            match e.notice() {
+                Some(Notice::Error(_)) => {}
+                other => panic!("terminal {e:?} -> {other:?}, expected an Error notice"),
+            }
+        }
+    }
+
+    #[test]
+    fn non_terminal_event_never_yields_an_error_notice() {
+        // Symmetric pin: no non-terminal OOB frame may surface as an Error.
+        // Drift here would present recoverable warnings as fatal.
+        let cases: Vec<AerorsyncEvent> = vec![
+            AerorsyncEvent::Warning {
+                message: "w".into(),
+            },
+            AerorsyncEvent::ErrorUtf8 {
+                message: "u".into(),
+            },
+            AerorsyncEvent::IoError { flags: 1 },
+            AerorsyncEvent::IoTimeout { seconds: 30 },
+            AerorsyncEvent::ErrorExit { code: None },
+            AerorsyncEvent::ErrorExit { code: Some(0) },
+            AerorsyncEvent::Info {
+                message: "i".into(),
+            },
+            AerorsyncEvent::Log {
+                message: "l".into(),
+            },
+            AerorsyncEvent::Client {
+                message: "c".into(),
+            },
+            AerorsyncEvent::Redo { flist_index: 0 },
+            AerorsyncEvent::Stats { total_read: 0 },
+            AerorsyncEvent::Noop,
+            AerorsyncEvent::Success { flist_index: 0 },
+            AerorsyncEvent::Deleted { path: "p".into() },
+            AerorsyncEvent::NoSend { flist_index: 0 },
+            AerorsyncEvent::Unknown {
+                tag: 77,
+                payload: vec![],
+            },
+        ];
+        for e in cases {
+            assert!(
+                !e.is_terminal(),
+                "{e:?} must NOT be terminal per the severity policy"
+            );
+            if let Some(Notice::Error(_)) = e.notice() {
+                panic!("non-terminal {e:?} surfaced as an Error notice: severity drift");
+            }
+        }
+    }
+
+    #[test]
+    fn deleted_yields_a_warning_notice_despite_info_severity() {
+        // Pre-existing behaviour, kept verbatim and pinned on purpose: the
+        // severity gradient files `Deleted` under Info, the user sees a
+        // warning. Reconciling the two is an API decision, not a refactor.
+        let e = AerorsyncEvent::Deleted {
+            path: "foo/bar.txt".to_string(),
+        };
+        assert_eq!(e.severity(), EventSeverity::Info);
+        assert_eq!(
+            e.notice(),
+            Some(Notice::Warning("deleted: foo/bar.txt".to_string()))
+        );
+    }
+
+    #[test]
+    fn warning_collector_keeps_only_warning_notices_in_order() {
+        let warnings = Arc::new(Mutex::new(Vec::new()));
+        let mut sink = WarningCollector::new(warnings.clone());
+        for e in [
+            AerorsyncEvent::Warning {
+                message: "w1".to_string(),
+            },
+            AerorsyncEvent::Info {
+                message: "i".to_string(),
+            },
+            AerorsyncEvent::ErrorUtf8 {
+                message: "u".to_string(),
+            },
+            AerorsyncEvent::Error {
+                message: "e".to_string(),
+            },
+            AerorsyncEvent::IoError { flags: 1 },
+            AerorsyncEvent::ErrorExit { code: Some(0) },
+            AerorsyncEvent::Deleted {
+                path: "p".to_string(),
+            },
+        ] {
+            sink.handle(e);
+        }
+        drop(sink);
+        let got = Arc::try_unwrap(warnings)
+            .expect("sink released its handle")
+            .into_inner()
+            .expect("unpoisoned");
+        assert_eq!(
+            got,
+            vec![
+                "w1".to_string(),
+                "utf-8 decode warning: u".to_string(),
+                "io_error flags: 0x00000001".to_string(),
+                "deleted: p".to_string(),
+            ],
+            "only warning notices, in order; errors never enter the statistics"
+        );
     }
 }

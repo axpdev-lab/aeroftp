@@ -322,7 +322,8 @@
                 "found": "Pronađeno je {count} dostupnih odredišta. Tipkajte za pretraživanje ili odaberite jedno."
             },
             "swiftAuthUrl": "URL za autentifikaciju Keystone",
-            "swiftAllowCleartextStorage": "Ova implementacija poslužuje objektnu pohranu preko nešifriranog HTTP-a. Prihvatite to za ovaj profil: pristupni token i svaka datoteka prelaze mrežu nešifrirani."
+            "swiftAllowCleartextStorage": "Ova implementacija poslužuje objektnu pohranu preko nešifriranog HTTP-a. Prihvatite to za ovaj profil: pristupni token i svaka datoteka prelaze mrežu nešifrirani.",
+            "kdriveTokenScopes": "Token treba opsege drive i user_info. Samo s drive povezuje se i prikazuje datoteke, ali „Dohvati“ se odbija, jer čita profil vašeg računa da bi pronašao Drive ID."
         },
         "browser": {
             "remote": "Udaljeno",
@@ -2467,7 +2468,7 @@
                 "general": "Općenito",
                 "generalDesc": "Zadano za neklasificirane zadatke",
                 "autoDefault": "Automatski (zadano)",
-                "autoRoutingTip": "Savjet: Ostavite \"Automatski (zadano)\" za korištenje modela odabranog u zaglavlju razgovora. Konfigurirajte specifične modele samo kada želite različite modele za različite zadatke.",
+                "autoRoutingTip": "Savjet: ostavite zadatak na „Automatski (zadano)“ i koristit će se vaš zadani model. Preferirani model postavite samo za zadatke gdje želite drugi model model, i pričuvni model koji će odgovoriti kada preferirani zakaže.",
                 "advancedDescription": "Konfigurirajte napredne AI parametre za generiranje odgovora.",
                 "conversationStyle": "Stil razgovora",
                 "styleHelp": "Precizno = činjenični odgovori. Kreativno = maštovitije. Uravnoteženo = zadano.",
@@ -2558,7 +2559,10 @@
                 "unverifiedModelHint": "Mogućnosti su nepoznate. Pregledajte kontekst, alate, vid i zaključivanje prije upotrebe ovog modela za zadatke agenta.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Koristite izvorni Responses prijenos za provjerene kompatibilne modele OpenAI. Isključite ga za korištenje Chat Completionsa.",
-                "openAIResponsesEnable": "Omogući Responses za kompatibilne modele OpenAI"
+                "openAIResponsesEnable": "Omogući Responses za kompatibilne modele OpenAI",
+                "routingPreferred": "Preferirani",
+                "routingFallback": "Pričuvni",
+                "routingNoFallback": "Nijedan"
             },
             "rag": {
                 "indexing": "Indeksiranje datoteka...",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Pregledaj plugine"
             },
-            "stopGeneration": "Zaustavi generiranje"
+            "stopGeneration": "Zaustavi generiranje",
+            "routing": {
+                "fallbackUsed": "pričuvni",
+                "fallbackUsedTooltip": "{model} nije uspio, pa je odgovorio pričuvni model"
+            }
         },
         "archive": {
             "passwordRequired": "Arhiva je zaštićena lozinkom",

@@ -296,445 +296,137 @@ impl std::fmt::Display for RsyncError {
 
 impl std::error::Error for RsyncError {}
 
-/// Z.1.2 — classify a [`RsyncError`] as a transient SSH channel drop
-/// (worth a single reconnect-then-retry) versus a terminal failure that
-/// MUST propagate.
-///
-/// The retry window is intentionally narrow:
-///
-/// - `Io` whose `ErrorKind` is one of `BrokenPipe`, `ConnectionAborted`,
-///   `ConnectionReset`, `UnexpectedEof`, `TimedOut`, `WouldBlock` → the
-///   wire was healthy enough to authenticate but the SSH channel
-///   dropped mid-transfer. Re-authing on the saved
-///   [`crate::aerorsync::ssh_transport::SshTransportConfig`] gets a new
-///   channel without surfacing the blip to the user.
-/// - `TransferFailed` whose stderr mentions a recognisable channel-drop
-///   string (server logs vary slightly across OpenSSH versions, so we
-///   match on a small allowlist of substrings).
-///
-/// Everything else is terminal:
-///
-/// - `HardRejection` — host-key mismatch or other security-flagged
-///   condition. Retrying would silently mask a fault.
-/// - `PasswordAuthUnsupported`, `MissingKey`, `VersionTooOld`,
-///   `RemoteNotAvailable`, `LocalNotAvailable` — credential or capability
-///   issues that no retry can fix.
-/// - `Cancelled` — caller intent, must not be overridden.
-/// - `TooSmall`, `SpawnFailed`, `ProbeFailed` — non-recoverable for this
-///   file (caller should treat as "skip and continue", not "retry").
-pub fn is_transient_for_reconnect(err: &RsyncError) -> bool {
-    use std::io::ErrorKind;
-
-    match err {
-        RsyncError::Io(io_err) => matches!(
-            io_err.kind(),
-            ErrorKind::BrokenPipe
-                | ErrorKind::ConnectionAborted
-                | ErrorKind::ConnectionReset
-                | ErrorKind::UnexpectedEof
-                | ErrorKind::TimedOut
-                | ErrorKind::WouldBlock
-        ),
-        RsyncError::TransferFailed { stderr, .. } => {
-            // Two paths land here:
-            //
-            // 1. Classic rsync wire failure — OpenSSH/rsync produce a
-            //    handful of stable substrings when the SSH channel drops
-            //    (we keep the list narrow so we never retry on
-            //    "Permission denied" or "Host key verification failed").
-            //
-            // 2. Native delta fallback envelope produced by
-            //    `map_native_error_to_rsync` when `classify_fallback`
-            //    returns `AttemptClassicSftpFallback`. The format is
-            //    `"native fallback ({Kind:?}): {detail}"`. This is the
-            //    pre-commit twin of the `HardRejection` envelope that
-            //    fires post-commit. Same Kind allowlist applies (see
-            //    `is_transient_native_envelope` below).
-            //
-            // Lane 2026-05-14 confirmed the live pulse delivers the
-            // failure as `TransferFailed` (pre-commit path), not
-            // `HardRejection`. Z.1.2 retry MUST pick this case up too.
-            let lower = stderr.to_ascii_lowercase();
-            if lower.contains("native fallback (") {
-                return is_transient_native_envelope(&lower);
-            }
-            const TRANSIENT_NEEDLES: &[&str] = &[
-                "connection reset by peer",
-                "connection closed by remote",
-                "broken pipe",
-                "channel closed",
-                "unexpected eof",
-                "connection timed out",
-                "network is unreachable",
-            ];
-            TRANSIENT_NEEDLES
-                .iter()
-                .any(|needle| lower.contains(needle))
-        }
-        // Z.1.2 (refined 2026-05-14 lane): `HardRejection` is the
-        // formatter-injected envelope `"native hard rejection
-        // ({Kind:?}): {detail}"`. The `Kind` substring tells us whether
-        // the rejection is a wire-level transport drop (russh channel
-        // closed mid-stream → safe to reconnect+retry) or a true hard
-        // fault (host-key mismatch, protocol bug → must propagate).
-        //
-        // Post-commit + TransportFailure is the path the live lane
-        // exercised: classify_fallback() promotes it to HardError
-        // because the AerorsyncDriver already started writing wire
-        // bytes for the failing file, but the AerorsyncBatch retry
-        // boundary lives ABOVE that — each file gets its own .aerotmp
-        // + atomic rename, so retrying the file is safe.
-        RsyncError::HardRejection(msg) => is_transient_native_envelope(&msg.to_ascii_lowercase()),
-        RsyncError::PasswordAuthUnsupported
-        | RsyncError::MissingPassword
-        | RsyncError::MissingKey(_)
-        | RsyncError::VersionTooOld { .. }
-        | RsyncError::RemoteNotAvailable
-        | RsyncError::LocalNotAvailable
-        | RsyncError::Cancelled
-        | RsyncError::TooSmall { .. }
-        | RsyncError::SpawnFailed(_)
-        | RsyncError::ProbeFailed(_) => false,
-    }
-}
-
 /// Shared classifier for the formatter-injected native delta envelope.
 ///
-/// The same Kind set is produced by both `map_native_error_to_rsync`
-/// arms: `HardRejection("native hard rejection ({Kind:?}): {detail}")`
-/// (post-commit, classify_fallback → HardError) and
-/// `TransferFailed { stderr: "native fallback ({Kind:?}): {detail}" }`
-/// (pre-commit, classify_fallback → AttemptClassicSftpFallback).
+/// The envelope is `native fallback ({Kind:?}): {detail}` pre-commit and
+/// `native hard rejection ({Kind:?}): {detail}` post-commit, both built
+/// by the aerorsync adapter. `delta_sync_rsync` consults this to demote
+/// a wire-level hard rejection to a classic-path fallback on the
+/// single-shot lane.
 ///
-/// Z.1.2 batch retry is safe in both cases because every file gets its
-/// own `.aerotmp` + atomic rename, so a reconnect+retry never observes
-/// a partial commit. The Kind tells us whether the failure is wire-level
-/// (TransportFailure / transient NegotiationFailed / UnsupportedVersion → safe)
-/// or a security / protocol fault (HostKeyRejected / InvalidFrame /
-/// IllegalStateTransition / PlannerRejected / UnexpectedMessage /
-/// Internal / RemoteError → must propagate). Deterministic checksum
-/// negotiation refusals are also terminal: reconnecting cannot change either
-/// advertisement and would repeat the same pre-commit failure.
+/// The two lists it reads are the module's, not this file's:
+/// `TRANSIENT_KINDS` says which kinds a reconnect can plausibly clear,
+/// `TRANSIENT_DENY_DETAILS` says which texts veto a retry even then. The
+/// kind needles are derived from the enum itself, so adding a kind to
+/// the crate list is enough and the two policies cannot drift apart.
+/// The denylist wins: any deny marker returns false even when a
+/// transient kind is also mentioned.
 ///
-/// The caller passes the message lowercased (Debug output of the kind
-/// enum is mixed-case, e.g. `TransportFailure`, but the substring match
-/// stays case-insensitive). The denylist wins: any deny marker present
-/// returns false even if a transient kind is also mentioned.
-///
-/// pub(crate): `delta_sync_rsync` consults the same classifier to demote a
-/// wire-level HardRejection to a classic-path fallback on the single-shot
-/// lane, so the two policies can never drift apart.
+/// The caller passes the message lowercased, because the `Debug` output
+/// of the kind enum is mixed case while the substring match is not.
+#[cfg(feature = "aerorsync")]
 pub(crate) fn is_transient_native_envelope(lower: &str) -> bool {
-    const DENY: &[&str] = &[
-        "hostkeyrejected",
-        "host key",
-        "fingerprint",
-        "invalidframe",
-        "illegalstatetransition",
-        "plannerrejected",
-        "unexpectedmessage",
-        "internal",
-        "remoteerror",
-        "negotiation chose file checksum",
-        "checksum negotiation found no common algorithm",
-    ];
-    if DENY.iter().any(|needle| lower.contains(needle)) {
+    use crate::aerorsync::types::{TRANSIENT_DENY_DETAILS, TRANSIENT_KINDS};
+
+    if TRANSIENT_DENY_DETAILS
+        .iter()
+        .any(|needle| lower.contains(needle))
+    {
         return false;
     }
-    const TRANSIENT_KINDS: &[&str] = &[
-        "(transportfailure)",
-        "(negotiationfailed)",
-        "(unsupportedversion)",
-    ];
-    TRANSIENT_KINDS.iter().any(|needle| lower.contains(needle))
+    TRANSIENT_KINDS.iter().any(|kind| {
+        let needle = format!("({kind:?})").to_ascii_lowercase();
+        lower.contains(&needle)
+    })
 }
 
-#[cfg(test)]
-mod is_transient_hard_rejection_tests {
-    //! Z.1.2 (refined): HardRejection envelope inspection. The post-
-    //! commit fallback policy maps russh channel drops to HardRejection
-    //! even though the batch retry boundary above can safely reconnect.
-    //! Pin the allowlist/denylist explicitly so future kind additions
-    //! force a conscious choice.
-
-    use super::*;
-
-    #[test]
-    fn hard_rejection_transport_failure_is_transient() {
-        let err = RsyncError::HardRejection(
-            "native hard rejection (TransportFailure): next_data_frame: remote closed mid file list"
-                .to_string(),
-        );
-        assert!(is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn hard_rejection_negotiation_failed_is_transient() {
-        let err = RsyncError::HardRejection(
-            "native hard rejection (NegotiationFailed): kex blip".to_string(),
-        );
-        assert!(is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn hard_rejection_unsupported_checksum_is_not_transient() {
-        let err = RsyncError::HardRejection(
-            "native hard rejection (NegotiationFailed): negotiation chose file checksum \"none\", which this client does not implement; falling back"
-                .to_string(),
-        );
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn hard_rejection_host_key_rejected_is_not_transient() {
-        let err = RsyncError::HardRejection(
-            "native hard rejection (HostKeyRejected): fingerprint mismatch".to_string(),
-        );
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn hard_rejection_invalid_frame_is_not_transient() {
-        let err = RsyncError::HardRejection(
-            "native hard rejection (InvalidFrame): unexpected opcode 0x42".to_string(),
-        );
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn hard_rejection_with_unknown_kind_is_not_transient() {
-        // Conservative default: an unrecognised kind label inside the
-        // envelope should NOT be retried. Adding a new transient kind
-        // requires explicit allowlist entry.
-        let err = RsyncError::HardRejection(
-            "native hard rejection (SomeBrandNewKind): mystery".to_string(),
-        );
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn hard_rejection_with_host_key_substring_anywhere_is_not_transient() {
-        // Even a formatted message that mentions transport BUT also
-        // contains a host-key marker must NOT retry: denylist wins.
-        let err = RsyncError::HardRejection(
-            "native hard rejection (TransportFailure): host key verification failed".to_string(),
-        );
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn hard_rejection_match_is_case_insensitive() {
-        let err = RsyncError::HardRejection(
-            "Native Hard Rejection (TransportFailure): Remote Closed".to_string(),
-        );
-        assert!(is_transient_for_reconnect(&err));
-    }
-
-    // --- TransferFailed envelope (pre-commit fallback) ----------------
-    //
-    // Pre-commit `classify_fallback` returns `AttemptClassicSftpFallback`,
-    // which `map_native_error_to_rsync` maps to
-    // `TransferFailed { exit: -1, stderr: "native fallback (Kind): detail" }`.
-    // The live Z.1.2 lane on 2026-05-14 saw 65/100 files arrive via this
-    // envelope (only 1 via HardRejection), so it MUST be classified the
-    // same as the HardRejection counterpart.
-
-    #[test]
-    fn transfer_failed_native_fallback_transport_failure_is_transient() {
-        let err = RsyncError::TransferFailed {
-            exit: -1,
-            stderr:
-                "native fallback (TransportFailure): next_data_frame: remote closed mid file list"
-                    .to_string(),
-        };
-        assert!(is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn transfer_failed_native_fallback_channel_send_error_is_transient() {
-        // Variant observed live: russh channel_open_session error after
-        // an iptables REJECT pulse on the SSH port.
-        let err = RsyncError::TransferFailed {
-            exit: -1,
-            stderr:
-                "native fallback (TransportFailure): russh channel_open_session: Channel send error"
-                    .to_string(),
-        };
-        assert!(is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn transfer_failed_native_fallback_negotiation_failed_is_transient() {
-        let err = RsyncError::TransferFailed {
-            exit: -1,
-            stderr: "native fallback (NegotiationFailed): initial handshake blip".to_string(),
-        };
-        assert!(is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn transfer_failed_native_fallback_unsupported_checksum_is_not_transient() {
-        let err = RsyncError::TransferFailed {
-            exit: -1,
-            stderr: "native fallback (NegotiationFailed): negotiation chose file checksum \"none\", which this client does not implement; falling back"
-                .to_string(),
-        };
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn transfer_failed_native_fallback_disjoint_checksums_is_not_transient() {
-        let err = RsyncError::TransferFailed {
-            exit: -1,
-            stderr: "native fallback (NegotiationFailed): checksum negotiation found no common algorithm (client \"sha1\" vs server \"md5\"); falling back"
-                .to_string(),
-        };
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn transfer_failed_native_fallback_host_key_rejected_is_not_transient() {
-        let err = RsyncError::TransferFailed {
-            exit: -1,
-            stderr: "native fallback (HostKeyRejected): fingerprint mismatch".to_string(),
-        };
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn transfer_failed_native_fallback_invalid_frame_is_not_transient() {
-        let err = RsyncError::TransferFailed {
-            exit: -1,
-            stderr: "native fallback (InvalidFrame): unexpected opcode 0xff".to_string(),
-        };
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn transfer_failed_native_fallback_unknown_kind_is_not_transient() {
-        // Conservative default: unknown Kind label is not retried.
-        let err = RsyncError::TransferFailed {
-            exit: -1,
-            stderr: "native fallback (SomeBrandNewKind): mystery".to_string(),
-        };
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn transfer_failed_native_fallback_envelope_match_is_case_insensitive() {
-        let err = RsyncError::TransferFailed {
-            exit: -1,
-            stderr: "Native Fallback (TransportFailure): Channel Send Error".to_string(),
-        };
-        assert!(is_transient_for_reconnect(&err));
-    }
+/// Without the `aerorsync` feature no native envelope can exist: the only
+/// hard rejection reachable outside the module is the auth-material
+/// refusal above, which carries no kind tag, so the answer is the same
+/// `false` the list-driven version would return.
+#[cfg(not(feature = "aerorsync"))]
+pub(crate) fn is_transient_native_envelope(_lower: &str) -> bool {
+    false
 }
 
-#[cfg(test)]
-mod is_transient_tests {
+#[cfg(all(test, feature = "aerorsync"))]
+mod native_envelope_tests {
+    //! The envelope classifier is the application half of a policy whose
+    //! lists live in the crate. These pin the derivation itself: that the
+    //! kind needles come from `TRANSIENT_KINDS` rather than from a copy
+    //! kept here, that the denylist wins over a transient kind, that an
+    //! envelope without a kind tag is never transient, and that the match
+    //! survives the mixed case of the `Debug` output.
+
     use super::*;
+    use crate::aerorsync::types::{AerorsyncErrorKind, TRANSIENT_KINDS};
 
     #[test]
-    fn io_broken_pipe_is_transient() {
-        let err = RsyncError::Io(std::io::Error::new(
-            std::io::ErrorKind::BrokenPipe,
-            "pipe gone",
+    fn envelope_kind_needles_are_derived_from_the_crate_kinds() {
+        for kind in TRANSIENT_KINDS {
+            let envelope =
+                format!("native hard rejection ({kind:?}): remote closed").to_ascii_lowercase();
+            assert!(
+                is_transient_native_envelope(&envelope),
+                "{kind:?} is a transient kind in the crate and must be one here"
+            );
+        }
+        // The three needles the list produces today, spelled out so a
+        // silent change to the enum's Debug output is visible here.
+        for needle in [
+            "(transportfailure)",
+            "(negotiationfailed)",
+            "(unsupportedversion)",
+        ] {
+            assert!(
+                is_transient_native_envelope(&format!("native fallback {needle}: blip")),
+                "{needle} must be one of the derived needles"
+            );
+        }
+        for kind in [
+            AerorsyncErrorKind::InvalidFrame,
+            AerorsyncErrorKind::PlannerRejected,
+            AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::Internal,
+            AerorsyncErrorKind::RemoteError,
+            AerorsyncErrorKind::UnexpectedMessage,
+            AerorsyncErrorKind::IllegalStateTransition,
+            AerorsyncErrorKind::Cancelled,
+        ] {
+            let envelope =
+                format!("native hard rejection ({kind:?}): whatever").to_ascii_lowercase();
+            assert!(
+                !is_transient_native_envelope(&envelope),
+                "{kind:?} is not a transient kind and must not be retried"
+            );
+        }
+    }
+
+    #[test]
+    fn envelope_deny_wins_over_kind() {
+        assert!(!is_transient_native_envelope(
+            "native hard rejection (transportfailure): host key verification failed"
         ));
-        assert!(is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn io_connection_reset_is_transient() {
-        let err = RsyncError::Io(std::io::Error::new(
-            std::io::ErrorKind::ConnectionReset,
-            "RST",
+        assert!(!is_transient_native_envelope(
+            "native fallback (negotiationfailed): negotiation chose file checksum \"none\""
         ));
-        assert!(is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn io_unexpected_eof_is_transient() {
-        let err = RsyncError::Io(std::io::Error::new(
-            std::io::ErrorKind::UnexpectedEof,
-            "EOF mid-stream",
+        assert!(!is_transient_native_envelope(
+            "native fallback (negotiationfailed): checksum negotiation found no common algorithm"
         ));
-        assert!(is_transient_for_reconnect(&err));
     }
 
     #[test]
-    fn io_permission_denied_is_not_transient() {
-        let err = RsyncError::Io(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "perm",
+    fn envelope_without_kind_tag_is_not_transient() {
+        assert!(!is_transient_native_envelope("host key mismatch"));
+        assert!(!is_transient_native_envelope(""));
+        assert!(!is_transient_native_envelope(
+            "native fallback (somebrandnewkind): mystery"
         ));
-        assert!(!is_transient_for_reconnect(&err));
+        assert!(!is_transient_native_envelope(
+            "native fallback: atomic write failed at write (target untouched): broken pipe"
+        ));
     }
 
     #[test]
-    fn transfer_failed_with_connection_reset_substring_is_transient() {
-        let err = RsyncError::TransferFailed {
-            exit: 12,
-            stderr: "rsync error: connection reset by peer\n".to_string(),
-        };
-        assert!(is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn transfer_failed_with_permission_denied_is_not_transient() {
-        let err = RsyncError::TransferFailed {
-            exit: 12,
-            stderr: "rsync error: Permission denied (publickey)\n".to_string(),
-        };
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn transfer_failed_with_host_key_mismatch_is_not_transient() {
-        let err = RsyncError::TransferFailed {
-            exit: 255,
-            stderr: "Host key verification failed.\n".to_string(),
-        };
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn hard_rejection_without_envelope_kind_is_not_transient() {
-        // Bare HardRejection without the formatter envelope: conservative
-        // default is "do not retry". The richer envelope-aware tests
-        // live in the `is_transient_hard_rejection_tests` module below.
-        let err = RsyncError::HardRejection("host key mismatch".into());
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn cancelled_is_never_transient() {
-        assert!(!is_transient_for_reconnect(&RsyncError::Cancelled));
-    }
-
-    #[test]
-    fn missing_key_is_never_transient() {
-        let err = RsyncError::MissingKey("~/.ssh/id_rsa".into());
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn empty_transfer_failed_stderr_is_not_transient() {
-        // Empty stderr → no needle match → terminal. We don't blindly
-        // retry on exit code alone.
-        let err = RsyncError::TransferFailed {
-            exit: 1,
-            stderr: String::new(),
-        };
-        assert!(!is_transient_for_reconnect(&err));
-    }
-
-    #[test]
-    fn transient_needle_match_is_case_insensitive() {
-        let err = RsyncError::TransferFailed {
-            exit: 12,
-            stderr: "Connection Reset By Peer".to_string(),
-        };
-        assert!(is_transient_for_reconnect(&err));
+    fn envelope_match_is_case_insensitive() {
+        // The caller lowercases before asking, which is the contract:
+        // the needles are lowercase and the kind Debug output is not.
+        assert!(is_transient_native_envelope(
+            &"Native Hard Rejection (TransportFailure): Remote Closed".to_ascii_lowercase()
+        ));
+        assert!(is_transient_native_envelope(
+            &"Native Fallback (TransportFailure): Channel Send Error".to_ascii_lowercase()
+        ));
     }
 }
 

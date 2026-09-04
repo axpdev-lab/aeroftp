@@ -302,7 +302,7 @@ fn delta_instruction_end_of_file_rejects_with_typed_error() {
 
 // ---------------------------------------------------------------------------
 // engine_adapter.rs: Sinergia 4: CurrentDeltaSyncBridge delegates to
-// crate::delta_sync (the production delta engine). These tests pin the
+// crate::aerorsync::delta_engine (the production delta engine). These tests pin the
 // algorithmic invariants that the real engine provides: we are NOT asserting
 // against hardcoded rsync numbers, since rsync's block size heuristic and
 // block-matching priority differ in detail. We assert the invariants every
@@ -326,7 +326,7 @@ fn bridge_compute_block_size_matches_production_engine() {
     let bridge = CurrentDeltaSyncBridge::new();
     let file_size = 8 * 1024 * 1024;
     let bridge_bs = bridge.compute_block_size(file_size);
-    let engine_bs = crate::delta_sync::compute_block_size(file_size);
+    let engine_bs = crate::aerorsync::delta_engine::compute_block_size(file_size);
     assert_eq!(bridge_bs, engine_bs);
     // Must fall within the engine's documented clamp [512, 8192].
     assert!((512..=8192).contains(&bridge_bs));
@@ -410,16 +410,16 @@ fn bridge_localized_change_keeps_most_bytes_matched() {
     // Invariant 3: reconstruction via the engine's apply_delta produces
     // exactly the source file, byte-for-byte. This is the strongest
     // algorithmic check possible without any SSH.
-    let wire_ops: Vec<crate::delta_sync::DeltaOp> = plan
+    let wire_ops: Vec<crate::aerorsync::delta_engine::DeltaOp> = plan
         .ops
         .iter()
         .cloned()
         .map(|op| match op {
-            EngineDeltaOp::CopyBlock(i) => crate::delta_sync::DeltaOp::CopyBlock(i),
-            EngineDeltaOp::Literal(b) => crate::delta_sync::DeltaOp::Literal(b),
+            EngineDeltaOp::CopyBlock(i) => crate::aerorsync::delta_engine::DeltaOp::CopyBlock(i),
+            EngineDeltaOp::Literal(b) => crate::aerorsync::delta_engine::DeltaOp::Literal(b),
         })
         .collect();
-    let reconstructed = crate::delta_sync::apply_delta(&destination, &wire_ops, bs)
+    let reconstructed = crate::aerorsync::delta_engine::apply_delta(&destination, &wire_ops, bs)
         .expect("apply_delta must succeed on bridge-produced ops");
     assert_eq!(
         reconstructed, source,
@@ -2815,6 +2815,30 @@ fn compress_zstd_literal_stream_round_trips_through_frozen_oracle_payloads() {
 /// Test code is excluded on purpose: `live_tests.rs` is a harness, and its
 /// `unsafe` is not part of what ships.
 ///
+/// True when a trimmed line can only be the tail of a block comment.
+///
+/// The scans below skip such lines so a comment that names a path is not
+/// counted as the path itself, and the shape of this predicate is the whole
+/// question: every line it skips is a line the guard cannot see.
+///
+/// It used to skip every line starting with `*`, which is also how a
+/// dereference starts. `*slot = crate::settings::x();` was invisible to the
+/// guard and `cargo fmt` leaves it alone, so nothing else would have caught
+/// it, and two real lines in `native_driver.rs` already sat in that blind
+/// spot. Narrowing it to `* ` did not close the class either: with the default
+/// `binop_separator = "Front"`, rustfmt itself writes a wrapped multiplication
+/// as `    * crate::settings::CONST`, so the guard would skip a line the
+/// formatter had just produced.
+///
+/// So `* ` is not skipped at all. It costs nothing today, measured: the module
+/// has zero block-comment continuation lines and exactly one line containing
+/// `/*`, which opens and closes on itself. The day someone writes a multi-line
+/// block comment that names `crate::something`, this guard fails and the
+/// comment has to be reworded. That is the direction a guard should fail in.
+fn is_block_comment_continuation(trimmed: &str) -> bool {
+    trimmed == "*" || trimmed.starts_with("*/")
+}
+
 /// If this fails, do not adjust the constant on its own. Update
 /// `docs/PROTOCOL-RSYNC-COMPARE.md` (the Language row and the strengths
 /// bullet) and `docs.aeroftp.app/features/aerorsync.md` in the same
@@ -2866,7 +2890,7 @@ fn production_unsafe_surface_matches_the_documented_count() {
             .map(str::trim_start)
             // Comments mentioning the word must not inflate the count, and
             // `// SAFETY:` notes sit directly above the real blocks.
-            .filter(|l| !l.starts_with("//") && !l.starts_with("*"))
+            .filter(|l| !l.starts_with("//") && !is_block_comment_continuation(l))
             .filter(|l| l.contains("unsafe {") || l.contains("unsafe fn"))
             .count();
         if count > 0 {
@@ -2890,4 +2914,175 @@ fn production_unsafe_surface_matches_the_documented_count() {
 
     let total: usize = found.iter().map(|(_, n)| n).sum();
     assert_eq!(total, 19, "documented total in the parity docs is 19");
+}
+
+/// The module imports nothing from the application. That is the end state
+/// of the standalone-crate plan's first phase, and this is where it is
+/// enforced: every `crate::<application module>` line inside the module is
+/// coupling the crate cannot carry, and there are none left, so the
+/// inventory is empty and the assertion names the file and the line of
+/// anything that comes back. Unlike the `unsafe` count above, whole-file
+/// test harnesses are NOT excluded: in the crate, test code cannot import
+/// the application either.
+///
+/// An empty inventory measured by a blind scan would be a false green, so
+/// every refusal the scan needs to stay honest is still here: the forms
+/// below fail the test outright rather than being counted. That list is
+/// a syntactic denylist, and it is worth saying what that means: it
+/// refuses the ways of reaching the crate root we know how to spell, not
+/// every way that exists. A second reviewer got a green out of it with
+/// `use crate as app;`, which is why the rename of the root is refused
+/// now. The end state is a check that reads paths with a parser instead
+/// of substrings; until then, a new spelling that gets through belongs
+/// in this list the day it is found.
+///
+/// The exclusion is `crate::aerorsync` compared as a whole identifier, never
+/// as a prefix: `crate::aerorsync_adapter`, the application-side adapter,
+/// is an application import and must be refused, because the crate must
+/// never depend on its own adapter. Grouped imports
+/// (`use crate::{a, b}`) fail outright so a mixed group cannot hide an
+/// application module next to `aerorsync`; `super::super::` is the crate
+/// root seen from a module file and is refused for the same reason.
+/// Source-level escape hatches (a path attribute on a `mod` item, also when
+/// it is smuggled in through a conditional attribute with a `path` key, the
+/// `include` and `include_str` macros, a `macro_rules` definition) and `.rs`
+/// files in subdirectories are refused because the counter reads one flat
+/// directory and cannot see through them. `crate :: x`
+/// with spaces is not handled here: `cargo fmt --check` rejects it before
+/// this test runs.
+#[test]
+fn aerorsync_module_imports_nothing_from_the_app() {
+    // Assembled from pieces so this file's own source does not trip the scan.
+    let needle = ["crate", "::"].concat();
+    let root_alias = ["super::", "super::"].concat();
+    // A conditional attribute carrying a `path` key redirects a `mod` item to
+    // a file outside the flat directory without spelling the plain path
+    // attribute, so the two halves are refused whenever they share a line.
+    let conditional_attribute = ["cfg_", "attr"].concat();
+    let escape_hatches = [
+        ["#[", "path"].concat(),
+        ["include", "!("].concat(),
+        ["include_str", "!("].concat(),
+        ["macro_rules", "!"].concat(),
+    ];
+    // Renaming the crate root reaches the application without ever writing
+    // the prefix this scan looks for: `use crate as app;` and then
+    // `app::settings`. Both spellings of the rename are refused where the
+    // alias is created, which is the only place a flat scan can see it.
+    let root_aliases = [
+        ["crate", " as "].concat(),
+        ["extern ", "crate self"].concat(),
+    ];
+
+    fn dir_holds_rust_source(dir: &std::path::Path) -> bool {
+        std::fs::read_dir(dir)
+            .expect("readable subdirectory")
+            .map(|e| e.expect("readable dir entry").path())
+            .any(|p| {
+                if p.is_dir() {
+                    dir_holds_rust_source(&p)
+                } else {
+                    p.extension().and_then(|e| e.to_str()) == Some("rs")
+                }
+            })
+    }
+
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/aerorsync");
+    let mut found: Vec<(String, usize, String)> = Vec::new();
+    let mut scanned = 0usize;
+
+    for entry in std::fs::read_dir(&dir).expect("aerorsync module directory must be readable") {
+        let path = entry.expect("readable dir entry").path();
+        if path.is_dir() {
+            assert!(
+                !dir_holds_rust_source(&path),
+                "{} holds a .rs file the flat scan cannot see; keep module sources in \
+                 src/aerorsync/ itself",
+                path.display()
+            );
+            continue;
+        }
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        scanned += 1;
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("utf-8 file name")
+            .to_string();
+        let src = std::fs::read_to_string(&path).expect("readable source file");
+        for hatch in &escape_hatches {
+            assert!(
+                !src.contains(hatch.as_str()),
+                "{name} uses `{hatch}`: the import scan reads one flat directory and cannot \
+                 see through it"
+            );
+        }
+        // Line-based and comment-skipping, unlike the hatches above: a
+        // doc-comment that explains the refusal must not trip it.
+        for (index, line) in src.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") || is_block_comment_continuation(trimmed) {
+                continue;
+            }
+            for alias in &root_aliases {
+                assert!(
+                    !line.contains(alias.as_str()),
+                    "{name}:{}: renames the crate root with `{alias}`: an alias reaches the \
+                     application without ever spelling the prefix this scan counts",
+                    index + 1
+                );
+            }
+        }
+        for (index, line) in src.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") || is_block_comment_continuation(trimmed) {
+                continue;
+            }
+            let lineno = index + 1;
+            assert!(
+                !line.contains(root_alias.as_str()),
+                "{name}:{lineno}: `{root_alias}` reaches the crate root; name the module \
+                 through `{needle}` so the budget sees it"
+            );
+            assert!(
+                !(line.contains(conditional_attribute.as_str()) && line.contains("path")),
+                "{name}:{lineno}: `{conditional_attribute}` with a `path` key redirects a \
+                 module to a file the flat scan cannot see"
+            );
+            let mut rest = line;
+            while let Some(at) = rest.find(needle.as_str()) {
+                let after = &rest[at + needle.len()..];
+                assert!(
+                    !after.starts_with('{'),
+                    "{name}:{lineno}: split the grouped import; `use {needle}{{..}}` can hide \
+                     an application module next to `aerorsync`"
+                );
+                let ident: String = after
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                if ident != "aerorsync" {
+                    let module = if ident.is_empty() {
+                        after.chars().take(1).collect()
+                    } else {
+                        ident.clone()
+                    };
+                    found.push((name.clone(), lineno, module));
+                }
+                rest = &after[ident.len()..];
+            }
+        }
+    }
+    assert!(
+        scanned > 10,
+        "the scan saw only {scanned} .rs files: is this still the module directory?"
+    );
+
+    found.sort();
+    assert!(
+        found.is_empty(),
+        "the module imports the application: {found:?}"
+    );
 }

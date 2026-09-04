@@ -1,0 +1,1 @@
+rsync --server -vlogDtprcze.iLsfxCIvu --stats . /workspace/real/upload/target.bin

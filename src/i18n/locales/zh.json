@@ -322,7 +322,8 @@
                 "found": "找到 {count} 个可访问的目标。输入以搜索，或选择其中一个。"
             },
             "swiftAuthUrl": "Keystone 认证 URL",
-            "swiftAllowCleartextStorage": "此部署通过明文 HTTP 提供对象存储。为此配置文件接受：访问令牌和每个文件都将以未加密方式穿越网络。"
+            "swiftAllowCleartextStorage": "此部署通过明文 HTTP 提供对象存储。为此配置文件接受：访问令牌和每个文件都将以未加密方式穿越网络。",
+            "kdriveTokenScopes": "令牌需要 drive 和 user_info 两个范围。仅有 drive 时可以连接并列出文件，但“获取”会被拒绝，因为它需要读取您的账户资料来查找 Drive ID。"
         },
         "browser": {
             "remote": "远程",
@@ -2448,7 +2449,7 @@
                 "general": "常规",
                 "generalDesc": "未分类任务的默认设置",
                 "autoDefault": "自动（默认）",
-                "autoRoutingTip": "提示：保持\"自动（默认）\"将使用聊天窗口顶部选择的模型。仅在需要为不同任务使用不同模型时才配置特定模型。",
+                "autoRoutingTip": "提示：将某项任务保留为「自动（默认）」即使用你的默认模型。仅为需要不同模型的任务设置首选模型，并设置一个在首选模型失败时作答的备用模型。",
                 "advancedDescription": "配置高级 AI 参数以控制响应生成。",
                 "conversationStyle": "对话风格",
                 "styleHelp": "精确 = 事实性回答。创意 = 更有想象力。均衡 = 默认。",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "能力未知。在将此模型用于代理任务前，请检查上下文、工具、视觉和推理能力。",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "对已验证的兼容 OpenAI 模型使用原生 Responses 传输。关闭此选项即可使用 Chat Completions。",
-                "openAIResponsesEnable": "为兼容的 OpenAI 模型启用 Responses"
+                "openAIResponsesEnable": "为兼容的 OpenAI 模型启用 Responses",
+                "routingPreferred": "首选",
+                "routingFallback": "备用",
+                "routingNoFallback": "无"
             },
             "copy": "复制",
             "attachImage": "附加图片",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "浏览插件"
             },
-            "stopGeneration": "停止生成"
+            "stopGeneration": "停止生成",
+            "routing": {
+                "fallbackUsed": "备用",
+                "fallbackUsedTooltip": "{model} 失败，因此由备用模型作答"
+            }
         },
         "archive": {
             "passwordRequired": "此压缩包受密码保护",

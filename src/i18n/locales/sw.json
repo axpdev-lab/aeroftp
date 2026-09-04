@@ -322,7 +322,8 @@
                 "found": "Zimepatikana shabaha {count} zinazofikika. Andika ili kutafuta au chagua moja."
             },
             "swiftAuthUrl": "URL ya uthibitishaji wa Keystone",
-            "swiftAllowCleartextStorage": "Usakinishaji huu hutoa hifadhi ya vitu kupitia HTTP wazi. Ikubali kwa wasifu huu: tokeni ya ufikiaji na kila faili hupita kwenye mtandao bila kusimbwa."
+            "swiftAllowCleartextStorage": "Usakinishaji huu hutoa hifadhi ya vitu kupitia HTTP wazi. Ikubali kwa wasifu huu: tokeni ya ufikiaji na kila faili hupita kwenye mtandao bila kusimbwa.",
+            "kdriveTokenScopes": "Tokeni inahitaji upeo wa drive na user_info. Kwa drive pekee inaunganisha na kuorodhesha faili, lakini \"Leta\" inakataliwa, kwa sababu inasoma wasifu wa akaunti yako ili kupata Drive ID."
         },
         "browser": {
             "remote": "Mbali",
@@ -2448,7 +2449,7 @@
                 "general": "Jumla",
                 "generalDesc": "Chaguo-msingi kwa kazi zisizoainishwa",
                 "autoDefault": "Otomatiki (Chaguo-msingi)",
-                "autoRoutingTip": "Dokezo: Acha kama \"Otomatiki (Chaguo-msingi)\" kutumia modeli iliyochaguliwa kwenye kichwa cha mazungumzo. Sanidi modeli maalum tu unapotaka modeli tofauti kwa kazi tofauti.",
+                "autoRoutingTip": "Kidokezo: acha kazi kwenye \"Otomatiki (Chaguo-msingi)\" na modeli yako chaguo-msingi itatumika. Weka modeli inayopendelewa kwa kazi zile tu unazotaka modeli tofauti, na modeli mbadala itakayojibu pale inayopendelewa inaposhindwa.",
                 "advancedDescription": "Sanidi vigezo vya juu vya AI kwa kuzalisha majibu.",
                 "conversationStyle": "Mtindo wa Mazungumzo",
                 "styleHelp": "Sahihi = majibu ya ukweli. Ubunifu = mawazo zaidi. Wastani = chaguo-msingi.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Uwezo haujulikani. Kagua muktadha, zana, kuona na kufikiri kabla ya kutumia modeli hii kwa kazi za wakala.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Tumia usafirishaji wa asili wa Responses kwa miundo ya OpenAI inayooana iliyothibitishwa. Zima hii ili kutumia Chat Completions.",
-                "openAIResponsesEnable": "Washa Responses kwa miundo ya OpenAI inayooana"
+                "openAIResponsesEnable": "Washa Responses kwa miundo ya OpenAI inayooana",
+                "routingPreferred": "Inayopendelewa",
+                "routingFallback": "Mbadala",
+                "routingNoFallback": "Hakuna"
             },
             "copy": "Nakili",
             "attachImage": "Ambatanisha picha",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Vinjari plugini"
             },
-            "stopGeneration": "Simamisha uzalishaji"
+            "stopGeneration": "Simamisha uzalishaji",
+            "routing": {
+                "fallbackUsed": "mbadala",
+                "fallbackUsedTooltip": "{model} imeshindwa, kwa hivyo modeli mbadala ndiyo iliyojibu"
+            }
         },
         "archive": {
             "passwordRequired": "Kumbukumbu hii inalindwa na nenosiri",

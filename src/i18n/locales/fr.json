@@ -322,7 +322,8 @@
                 "found": "{count} cibles accessibles trouvées. Saisissez du texte pour rechercher ou sélectionnez-en une."
             },
             "swiftAuthUrl": "URL d'authentification Keystone",
-            "swiftAllowCleartextStorage": "Ce déploiement sert le stockage objet en HTTP non chiffré. Acceptez-le pour ce profil : le jeton d'accès et chaque fichier traversent le réseau sans chiffrement."
+            "swiftAllowCleartextStorage": "Ce déploiement sert le stockage objet en HTTP non chiffré. Acceptez-le pour ce profil : le jeton d'accès et chaque fichier traversent le réseau sans chiffrement.",
+            "kdriveTokenScopes": "Le jeton doit avoir les portées drive et user_info. Avec drive seul il se connecte et liste les fichiers, mais « Récupérer » est refusé, car il lit le profil de votre compte pour trouver le Drive ID."
         },
         "browser": {
             "remote": "Distant",
@@ -2448,7 +2449,7 @@
                 "general": "Général",
                 "generalDesc": "Par défaut pour les tâches non classifiées",
                 "autoDefault": "Auto (Par défaut)",
-                "autoRoutingTip": "Conseil : Laissez sur \"Auto (Par défaut)\" pour utiliser le modèle sélectionné dans l'en-tête du chat. Ne configurez des modèles spécifiques que si vous souhaitez des modèles différents pour différentes tâches.",
+                "autoRoutingTip": "Astuce : si vous laissez une tâche sur « Auto (Par défaut) », votre modèle par défaut est utilisé. Définissez un modèle préféré uniquement pour les tâches où vous en voulez un autre, et un modèle de secours qui répond lorsque le préféré échoue.",
                 "advancedDescription": "Configurez les paramètres avancés de l'IA pour la génération de réponses.",
                 "conversationStyle": "Style de conversation",
                 "styleHelp": "Précis = réponses factuelles. Créatif = plus imaginatif. Équilibré = par défaut.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Les capacités sont inconnues. Vérifiez le contexte, les outils, la vision et le raisonnement avant d'utiliser ce modèle pour des tâches d'agent.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Utilisez le transport Responses natif pour les modèles OpenAI compatibles et vérifiés. Désactivez-le pour utiliser Chat Completions.",
-                "openAIResponsesEnable": "Activer Responses pour les modèles OpenAI compatibles"
+                "openAIResponsesEnable": "Activer Responses pour les modèles OpenAI compatibles",
+                "routingPreferred": "Préféré",
+                "routingFallback": "Secours",
+                "routingNoFallback": "Aucun"
             },
             "copy": "Copier",
             "attachImage": "Joindre une image",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Parcourir les Plugins"
             },
-            "stopGeneration": "Arrêter la génération"
+            "stopGeneration": "Arrêter la génération",
+            "routing": {
+                "fallbackUsed": "secours",
+                "fallbackUsedTooltip": "{model} a échoué, le modèle de secours a répondu à la place"
+            }
         },
         "archive": {
             "passwordRequired": "Cette archive est protégée par mot de passe",

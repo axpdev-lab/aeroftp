@@ -322,7 +322,8 @@
                 "found": "Leiti {count} ligipääsetavat sihtkohta. Otsimiseks tipi teksti või vali üks."
             },
             "swiftAuthUrl": "Keystone'i autentimise URL",
-            "swiftAllowCleartextStorage": "See juurutus pakub objektisalvestust krüptimata HTTP kaudu. Nõustu sellega selle profiili puhul: juurdepääsuluba ja iga fail liiguvad võrgus krüptimata."
+            "swiftAllowCleartextStorage": "See juurutus pakub objektisalvestust krüptimata HTTP kaudu. Nõustu sellega selle profiili puhul: juurdepääsuluba ja iga fail liiguvad võrgus krüptimata.",
+            "kdriveTokenScopes": "Token vajab õigusi drive ja user_info. Ainult drive õigusega see ühendub ja kuvab faile, kuid \"Too\" lükatakse tagasi, sest see loeb teie konto profiili, et leida Drive ID."
         },
         "browser": {
             "remote": "Kaugserver",
@@ -2448,7 +2449,7 @@
                 "general": "Üldine",
                 "generalDesc": "Vaikimisi klassifitseerimata ülesannete jaoks",
                 "autoDefault": "Automaatne (vaikimisi)",
-                "autoRoutingTip": "Vihje: Jätke \"Automaatne (vaikimisi)\" vestluse päises valitud mudeli kasutamiseks. Seadistage kindlad mudelid ainult siis, kui soovite eri mudeleid eri ülesannete jaoks.",
+                "autoRoutingTip": "Nõuanne: jätke ülesanne valikule „Automaatne (vaikimisi)“ ja kasutatakse teie vaikemudelit. Määrake eelistatud mudel ainult nendele ülesannetele, kus soovite teistsugust, ja varumudel, mis vastab siis, kui eelistatu ebaõnnestub.",
                 "advancedDescription": "Seadistage täpsemad AI parameetrid vastuste genereerimiseks.",
                 "conversationStyle": "Vestluse stiil",
                 "styleHelp": "Täpne = faktipõhised vastused. Loov = loomingulisem. Tasakaalus = vaikimisi.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Võimalused pole teada. Enne selle mudeli kasutamist agendi ülesannetes vaadake üle kontekst, tööriistad, nägemine ja arutlemine.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Kasutage kinnitatud ühilduvate OpenAI mudelite jaoks natiivset Responses-edastust. Chat Completionsi kasutamiseks lülitage see välja.",
-                "openAIResponsesEnable": "Luba Responses ühilduvate OpenAI mudelite jaoks"
+                "openAIResponsesEnable": "Luba Responses ühilduvate OpenAI mudelite jaoks",
+                "routingPreferred": "Eelistatud",
+                "routingFallback": "Varumudel",
+                "routingNoFallback": "Puudub"
             },
             "copy": "Kopeeri",
             "attachImage": "Lisa pilt",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Sirvi Plugins"
             },
-            "stopGeneration": "Peata genereerimine"
+            "stopGeneration": "Peata genereerimine",
+            "routing": {
+                "fallbackUsed": "varumudel",
+                "fallbackUsedTooltip": "{model} ebaõnnestus, seetõttu vastas varumudel"
+            }
         },
         "archive": {
             "passwordRequired": "See arhiiv on parooliga kaitstud",

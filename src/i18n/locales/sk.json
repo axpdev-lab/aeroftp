@@ -322,7 +322,8 @@
                 "found": "Nájdených {count} dostupných cieľov. Píšte na vyhľadávanie alebo niektorý vyberte."
             },
             "swiftAuthUrl": "Overovacia URL Keystone",
-            "swiftAllowCleartextStorage": "Toto nasadenie poskytuje objektové úložisko cez nešifrované HTTP. Prijmite to pre tento profil: prístupový token aj každý súbor prechádzajú sieťou nezašifrované."
+            "swiftAllowCleartextStorage": "Toto nasadenie poskytuje objektové úložisko cez nešifrované HTTP. Prijmite to pre tento profil: prístupový token aj každý súbor prechádzajú sieťou nezašifrované.",
+            "kdriveTokenScopes": "Token potrebuje rozsahy drive a user_info. Iba s drive sa pripojí a zobrazí súbory, ale „Načítať“ je odmietnuté, pretože číta profil vášho účtu, aby našlo Drive ID."
         },
         "browser": {
             "remote": "Vzdialený",
@@ -2448,7 +2449,7 @@
                 "general": "Všeobecné",
                 "generalDesc": "Predvolene pre nezaradené úlohy",
                 "autoDefault": "Auto (predvolené)",
-                "autoRoutingTip": "Tip: nechajte «Auto (predvolené)» pre použitie modelu z hlavičky chatu. Konfigurujte konkrétne modely iba v prípade potreby.",
+                "autoRoutingTip": "Tip: ponechajte úlohu na „Auto (predvolené)“ a použije sa váš predvolený model. Preferovaný model nastavte len pri úlohách, kde chcete iný, a záložný model, ktorý odpovie, keď preferovaný zlyhá.",
                 "advancedDescription": "Nakonfigurujte pokročilé parametre AI pre generovanie odpovedí.",
                 "conversationStyle": "Štýl konverzácie",
                 "styleHelp": "Presný = vecné odpovede. Kreatívny = viac imaginatívne. Vyvážený = predvolené.",
@@ -2539,7 +2540,10 @@
                 "unverifiedModelHint": "Schopnosti nie sú známe. Pred použitím tohto modelu na úlohy agenta skontrolujte kontext, nástroje, videnie a uvažovanie.",
                 "openAIResponses": "OpenAI Responses API",
                 "openAIResponsesDesc": "Použite natívny prenos Responses pre overené kompatibilné modely OpenAI. Vypnite ho, ak chcete používať Chat Completions.",
-                "openAIResponsesEnable": "Povoliť Responses pre kompatibilné modely OpenAI"
+                "openAIResponsesEnable": "Povoliť Responses pre kompatibilné modely OpenAI",
+                "routingPreferred": "Preferovaný",
+                "routingFallback": "Záložný",
+                "routingNoFallback": "Žiadny"
             },
             "copy": "Kopírovať",
             "attachImage": "Priložiť obrázok",
@@ -2907,7 +2911,11 @@
             "plugins": {
                 "browsePlugins": "Prechádzať pluginy"
             },
-            "stopGeneration": "Zastaviť generovanie"
+            "stopGeneration": "Zastaviť generovanie",
+            "routing": {
+                "fallbackUsed": "záložný",
+                "fallbackUsedTooltip": "{model} zlyhal, preto odpovedal záložný model"
+            }
         },
         "archive": {
             "passwordRequired": "Tento archív je chránený heslom",
