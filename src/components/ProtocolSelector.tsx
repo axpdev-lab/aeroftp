@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
-import { getProviderById, resolveS3Endpoint } from '../providers';
+import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplateParams } from '../providers';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
 import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
@@ -687,6 +687,7 @@ interface ProtocolFieldsProps {
         region?: string;
         endpoint?: string;
         accountId?: string;
+        jurisdiction?: string;
         pathStyle?: boolean;
         // S3 temporary credentials (AWS STS AssumeRole / SSO), issue #301
         sessionToken?: string;
@@ -848,6 +849,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         const regionField = providerConfig?.fields?.find(f => f.key === 'region');
         const endpointField = providerConfig?.fields?.find(f => f.key === 'endpoint');
         const accountIdField = providerConfig?.fields?.find(f => f.key === 'accountId');
+        const jurisdictionField = providerConfig?.fields?.find(f => f.key === 'jurisdiction');
         const hasRegionSelect = regionField?.type === 'select' && regionField?.options;
 
         // Endpoint architecture:
@@ -863,17 +865,28 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
 
         // For accountId templates, extract the fixed suffix (e.g. ".r2.cloudflarestorage.com")
         const endpointFixedPart = hasAccountIdTemplate
-            ? providerConfig!.defaults!.endpointTemplate!.replace(/\{accountId\}/, '')
+            ? providerConfig!.defaults!.endpointTemplate!
+                .replace(/\{accountId\}/, '')
+                .replace(/\{jurisdiction\}/, jurisdictionSegment(options.jurisdiction))
             : undefined;
 
         // Show endpoint row: for accountId providers show fixed part inline, otherwise full endpoint
         const showEndpoint = (hasPresetEndpoint && !hasAccountIdTemplate) || hasUserEndpointField;
 
+        // Every handler that recomputes the endpoint must pass the WHOLE set of
+        // template parameters, not just the one it changed: a template can carry
+        // more than one placeholder (R2 carries accountId and jurisdiction), and
+        // an omitted one either resolves to a stale value or leaves the endpoint
+        // unresolved. `override` is what this particular edit changed, since
+        // `options` still holds the pre-edit value.
+        const endpointExtraParams = (override?: Record<string, string>): Record<string, string> | undefined =>
+            s3TemplateParams({ ...options, ...(override || {}) });
+
         // Region change handler: for endpointTemplate providers, also recompute endpoint
         const handleRegionChange = (newRegion: string) => {
             const updatedOptions = { ...options, region: newRegion };
             if (hasEndpointTemplate && selectedProviderId) {
-                const computed = resolveS3Endpoint(selectedProviderId, newRegion, options.accountId ? { accountId: options.accountId } : undefined);
+                const computed = resolveS3Endpoint(selectedProviderId, newRegion, endpointExtraParams());
                 if (computed) updatedOptions.endpoint = computed;
             }
             onChange(updatedOptions);
@@ -883,7 +896,18 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         const handleAccountIdChange = (newAccountId: string) => {
             const updatedOptions = { ...options, accountId: newAccountId };
             if (hasEndpointTemplate && selectedProviderId) {
-                const computed = resolveS3Endpoint(selectedProviderId, options.region, newAccountId ? { accountId: newAccountId } : undefined);
+                const computed = resolveS3Endpoint(selectedProviderId, options.region, endpointExtraParams({ accountId: newAccountId }));
+                if (computed) updatedOptions.endpoint = computed;
+            }
+            onChange(updatedOptions);
+        };
+
+        // Jurisdiction change handler: an R2 bucket created in a jurisdiction
+        // answers only on that host, so the endpoint is recomputed with it.
+        const handleJurisdictionChange = (newJurisdiction: string) => {
+            const updatedOptions = { ...options, jurisdiction: newJurisdiction || undefined };
+            if (hasEndpointTemplate && selectedProviderId) {
+                const computed = resolveS3Endpoint(selectedProviderId, options.region, endpointExtraParams({ jurisdiction: newJurisdiction }));
                 if (computed) updatedOptions.endpoint = computed;
             }
             onChange(updatedOptions);
@@ -1131,14 +1155,38 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     required={accountIdField.required}
                                 />
                                 {endpointFixedPart && (
-                                    <span className="px-3 py-2.5 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-r-lg text-sm text-gray-500 dark:text-gray-300 whitespace-nowrap">
-                                        {endpointFixedPart}
-                                    </span>
+                                    jurisdictionField?.options?.length ? (
+                                        /* The suffix is not fixed for this preset: the jurisdiction
+                                           chooses it, so it is picked here and the user reads the
+                                           host they will actually get. */
+                                        <select
+                                            value={options.jurisdiction || ''}
+                                            onChange={(e) => handleJurisdictionChange(e.target.value)}
+                                            disabled={disabled}
+                                            aria-label={jurisdictionField.label || 'Jurisdiction'}
+                                            className="px-3 py-2.5 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-r-lg text-sm text-gray-600 dark:text-gray-200 whitespace-nowrap"
+                                        >
+                                            {jurisdictionField.options.map(opt => (
+                                                <option key={opt.value} value={opt.value}>
+                                                    {providerConfig!.defaults!.endpointTemplate!
+                                                        .replace(/\{accountId\}/, '')
+                                                        .replace(/\{jurisdiction\}/, jurisdictionSegment(opt.value))}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <span className="px-3 py-2.5 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-r-lg text-sm text-gray-500 dark:text-gray-300 whitespace-nowrap">
+                                            {endpointFixedPart}
+                                        </span>
+                                    )
                                 )}
                             </div>
                         )}
                         {!isEditing && accountIdField.helpText && !presetUnlocked['endpointSuffix'] && (
                             <p className="text-xs text-gray-500 mt-1">{accountIdField.helpText}</p>
+                        )}
+                        {!isEditing && jurisdictionField?.helpText && !presetUnlocked['endpointSuffix'] && (
+                            <p className="text-xs text-gray-500 mt-1">{jurisdictionField.helpText}</p>
                         )}
                     </div>
                 )}

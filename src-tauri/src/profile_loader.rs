@@ -250,10 +250,26 @@ fn s3_profile_static_endpoint(provider_id: &str) -> Option<&'static str> {
     }
 }
 
+/// Endpoint host segment for a Cloudflare R2 jurisdiction code.
+///
+/// `eu` and `us` are the two jurisdictions R2 publishes; everything else,
+/// including the empty string, is the default placement and contributes no
+/// segment. Kept deliberately total (no `Option`): the caller substitutes into
+/// a host template, where "unknown" and "not set" must both mean the default
+/// endpoint rather than a failure to resolve. Mirrors `jurisdictionSegment` in
+/// `src/providers/registry.ts`.
+pub fn r2_jurisdiction_segment(value: &str) -> &'static str {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "eu" => ".eu",
+        "us" => ".us",
+        _ => "",
+    }
+}
+
 fn s3_profile_endpoint_template(provider_id: &str) -> Option<&'static str> {
     match provider_id {
         "mega-s4" => Some("s3.{region}.s4.mega.io"),
-        "cloudflare-r2" => Some("{accountId}.r2.cloudflarestorage.com"),
+        "cloudflare-r2" => Some("{accountId}{jurisdiction}.r2.cloudflarestorage.com"),
         "google-cloud-storage" => Some("https://storage.googleapis.com"),
         "wasabi" => Some("https://s3.{region}.wasabisys.com"),
         "alibaba-oss" => Some("https://oss-{region}.aliyuncs.com"),
@@ -333,6 +349,21 @@ pub fn apply_s3_profile_defaults(
         if endpoint.contains("{region}") {
             let region = extra.get("region").map(String::as_str)?;
             endpoint = endpoint.replace("{region}", region);
+        }
+
+        // Jurisdiction: a bucket created in one answers ONLY on its own host
+        // (`<account>.eu.r2.cloudflarestorage.com`). An absent or unknown value
+        // is the default (no segment), never an error: every profile saved
+        // before this option existed has no such key and must keep resolving to
+        // the host it resolved to before.
+        if endpoint.contains("{jurisdiction}") {
+            let segment = r2_jurisdiction_segment(
+                extra
+                    .get("jurisdiction")
+                    .map(String::as_str)
+                    .unwrap_or_default(),
+            );
+            endpoint = endpoint.replace("{jurisdiction}", segment);
         }
 
         if endpoint.contains("{accountId}") {
@@ -538,6 +569,79 @@ mod tests {
             extra.get(S3_ENDPOINT_SOURCE_META_KEY).map(String::as_str),
             Some("profile")
         );
+    }
+
+    #[test]
+    fn r2_profile_without_jurisdiction_resolves_the_default_endpoint() {
+        // The regression this guards: every R2 profile saved before the
+        // jurisdiction option existed carries no such key, and the template now
+        // has a `{jurisdiction}` placeholder. An unresolved placeholder makes
+        // `apply_s3_profile_defaults` return None, which would leave those
+        // profiles with no endpoint at all.
+        let profile = json!({
+            "providerId": "cloudflare-r2",
+            "options": { "accountId": "a1b2c3d4e5f6", "bucket": "my-r2-bucket" }
+        });
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &profile);
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"));
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("a1b2c3d4e5f6.r2.cloudflarestorage.com")
+        );
+    }
+
+    #[test]
+    fn r2_jurisdiction_selects_its_own_endpoint_host() {
+        for (code, expected) in [
+            ("eu", "a1b2c3d4e5f6.eu.r2.cloudflarestorage.com"),
+            ("us", "a1b2c3d4e5f6.us.r2.cloudflarestorage.com"),
+            // Unknown and empty both mean "no jurisdiction": a value this build
+            // does not know must not strand the profile without an endpoint.
+            ("", "a1b2c3d4e5f6.r2.cloudflarestorage.com"),
+            ("mars", "a1b2c3d4e5f6.r2.cloudflarestorage.com"),
+            // The user picked it from a list, but a profile can be hand-edited
+            // or come from an import, so case is not assumed.
+            ("EU", "a1b2c3d4e5f6.eu.r2.cloudflarestorage.com"),
+        ] {
+            let profile = json!({
+                "providerId": "cloudflare-r2",
+                "options": {
+                    "accountId": "a1b2c3d4e5f6",
+                    "bucket": "my-r2-bucket",
+                    "jurisdiction": code,
+                }
+            });
+            let mut extra = HashMap::new();
+            apply_profile_options(&mut extra, &profile);
+            let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"));
+            assert_eq!(
+                endpoint.as_deref(),
+                Some(expected),
+                "jurisdiction {:?} resolved to the wrong host",
+                code
+            );
+        }
+    }
+
+    #[test]
+    fn r2_endpoint_saved_on_the_profile_wins_over_the_jurisdiction() {
+        // An endpoint already on the profile is pass-through everywhere else in
+        // this function; the jurisdiction must not start overriding it, or a
+        // user who unlocked the endpoint field to type a host by hand would
+        // have it silently rewritten.
+        let profile = json!({
+            "providerId": "cloudflare-r2",
+            "options": {
+                "accountId": "a1b2c3d4e5f6",
+                "jurisdiction": "eu",
+                "endpoint": "https://r2.example.test",
+            }
+        });
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &profile);
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("cloudflare-r2"));
+        assert_eq!(endpoint.as_deref(), Some("https://r2.example.test"));
     }
 
     #[test]

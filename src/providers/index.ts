@@ -25,4 +25,8 @@ export {
     getAllProviders,
     getStableProviders,
     resolveS3Endpoint,
+    jurisdictionSegment,
+    s3TemplateParams,
+    parseS3EndpointParams,
+    R2_JURISDICTIONS,
 } from './registry';

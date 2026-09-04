@@ -336,6 +336,7 @@ export interface ProviderOptions {
   region?: string;
   endpoint?: string; // For S3-compatible (MinIO, etc.)
   accountId?: string; // Cloudflare R2 account ID (used to compute endpoint)
+  jurisdiction?: string; // Cloudflare R2 jurisdiction ("", "eu", "us"): part of the endpoint host, fixed at bucket creation
   pathStyle?: boolean;
   storage_class?: string; // S3 default storage class for uploads
   sse_mode?: string; // S3 server-side encryption (AES256, aws:kms)

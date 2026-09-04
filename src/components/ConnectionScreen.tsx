@@ -43,7 +43,7 @@ import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
-import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers';
+import { getProviderById, resolveS3Endpoint, s3TemplateParams, parseS3EndpointParams, ProviderConfig } from '../providers';
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
@@ -2210,14 +2210,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (profile.protocol === 's3' && profile.providerId) {
             const provider = getProviderById(profile.providerId);
             if (provider) {
-                // Extract accountId from old-format endpoint (e.g. Cloudflare R2 migration)
+                // Recover template parameters from an endpoint saved before the
+                // corresponding field existed (Cloudflare R2 account id, and the
+                // jurisdiction added later). Only fields the profile is missing
+                // are filled in: what the profile already states wins.
                 const template = provider.defaults?.endpointTemplate;
-                if (template?.includes('{accountId}') && profileOptions.endpoint && !profileOptions.accountId) {
-                    // Reverse-extract accountId from stored endpoint using template pattern
-                    const templateRegex = template.replace('{accountId}', '(.+)').replace(/\./g, '\\.');
-                    const match = profileOptions.endpoint.match(new RegExp(templateRegex));
-                    if (match?.[1]) {
-                        profileOptions = { ...profileOptions, accountId: match[1] };
+                if (template?.includes('{accountId}') && profileOptions.endpoint) {
+                    const recovered = parseS3EndpointParams(provider.id, profileOptions.endpoint);
+                    if (recovered.accountId && !profileOptions.accountId) {
+                        profileOptions = { ...profileOptions, accountId: recovered.accountId };
+                    }
+                    if (recovered.jurisdiction && !profileOptions.jurisdiction) {
+                        profileOptions = { ...profileOptions, jurisdiction: recovered.jurisdiction };
                     }
                 }
 
@@ -2230,7 +2234,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             effectiveRegion = regionField.options[0].value;
                         }
                     }
-                    const extraParams = profileOptions.accountId ? { accountId: profileOptions.accountId } : undefined;
+                    const extraParams = s3TemplateParams(profileOptions);
                     const resolvedEndpoint = provider.defaults?.endpoint
                         || resolveS3Endpoint(provider.id, effectiveRegion, extraParams)
                         || undefined;

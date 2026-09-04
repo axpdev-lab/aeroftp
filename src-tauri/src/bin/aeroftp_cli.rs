@@ -23368,6 +23368,7 @@ fn scrub_options_for_mode(opts: &mut serde_json::Map<String, serde_json::Value>)
         "anonymous",
         "bucket",
         "accountId",
+        "jurisdiction",
         // WebDAV mode
         "webdavScheme",
         "verifyCert",
