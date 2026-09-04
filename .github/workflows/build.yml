@@ -79,6 +79,8 @@ jobs:
           # See "Drop stale whisper-rs-sys CMake artifacts" below for the
           # belt-and-suspenders runtime cleanup.
           prefix-key: 'v2-whisper-vs18'
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Add macOS Intel cross target
         if: matrix.target == 'macos' && matrix.arch == 'x64'

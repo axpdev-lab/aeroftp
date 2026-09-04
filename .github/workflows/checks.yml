@@ -44,6 +44,8 @@ jobs:
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
           workspaces: './src-tauri -> target'
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install npm dependencies
         run: npm ci

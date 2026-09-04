@@ -51,6 +51,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # The three packages are the right ones and were not the whole answer.
       # delta-sync-integration.yml caches these archives because that download
@@ -192,6 +194,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # The three steps below are copied from the `mlsd` job, deliberately and
       # in full. This job was added beside that one and inherits nothing from

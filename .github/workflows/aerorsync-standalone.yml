@@ -105,6 +105,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: target/aerorsync-standalone
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: The emission is reproducible
         shell: bash

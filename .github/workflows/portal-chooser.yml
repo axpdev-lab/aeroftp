@@ -68,6 +68,8 @@ jobs:
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
           workspaces: './tests/portal-chooser/fake-portal -> target'
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install D-Bus
         run: |
@@ -125,6 +127,8 @@ jobs:
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
           workspaces: './src-tauri -> target'
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # at-spi2-core + python3-pyatspi are what make the trigger name-based
       # instead of coordinate-based. xdotool is used only to count and describe

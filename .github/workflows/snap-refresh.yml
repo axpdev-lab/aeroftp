@@ -171,6 +171,8 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
           prefix-key: 'v2-whisper-vs18'
+          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install Linux build dependencies
         run: |
