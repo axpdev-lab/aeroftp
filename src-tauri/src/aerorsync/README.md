@@ -20,15 +20,25 @@ complements that path; it does not supplant it.
 
 ## Notice & licensing
 
-This is an **independent, clean-room Rust re-implementation** of the rsync
-wire protocol. No rsync source code was copied into this tree. The module
-depends only on permissively-licensed Rust crates (`russh`, `ssh2`,
-`zstd`, `xxhash-rust`) for SSH transport, compression and hashing: it
-neither links against librsync nor spawns the rsync binary.
+Licence: **`MPL-2.0 OR GPL-3.0-or-later`**, stated as an SPDX tag in every
+file of the module, in the emitted crate's manifest, and in full in
+[`LICENSING.md`](LICENSING.md), which also records the provenance evidence
+behind it. The recipient chooses: MPL-2.0 to take the crate as a dependency,
+GPL-3.0-or-later for the same files as they compile into AeroFTP. The emitter
+refuses to produce a crate if any file is missing the tag.
 
-The rsync project (rsync.samba.org) is GPL-3.0-or-later. AeroFTP is also
-distributed under GPL-3.0-or-later (see the repo-level [`LICENSE`](../../../LICENSE)),
-so licence compatibility is unconditional. The wire protocol itself
+This is an **independent, clean-room Rust re-implementation** of the rsync
+wire protocol. No rsync source code was copied into this tree. That claim is
+about the protocol, not about `scripts/aerorsync-emit.sh`: the emitter performs
+a mechanical copy of these files into a standalone package, which is a build
+step and not an independent re-implementation. The module depends only on
+permissively-licensed Rust crates (`russh`, `ssh2`, `zstd`, `xxhash-rust`) for
+SSH transport, compression and hashing: it neither links against librsync nor
+spawns the rsync binary.
+
+The rsync project (rsync.samba.org) is GPL-3.0-or-later, and the GPL half of
+the expression above makes compatibility unconditional (see the repo-level
+[`LICENSE`](../../../LICENSE)). The wire protocol itself
 (bytes on wire, handshake sequence, file-list format) is not copyrightable:
 interface specifications are idea/method, not expression (Sega v. Accolade,
 Oracle v. Google). Precedent of an rsync-named clean-room reimplementation

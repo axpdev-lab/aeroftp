@@ -54,6 +54,9 @@
 //! for that reason; `StreamingAtomicWriter` deliberately does not, so the
 //! orphan cleanup story stays simple.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 #![cfg(feature = "aerorsync")]
 
 use std::ffi::OsString;

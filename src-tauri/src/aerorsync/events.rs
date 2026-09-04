@@ -80,6 +80,9 @@
 //! notices into its own event type. Nothing outside this file decides
 //! wording.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 use std::sync::{Arc, Mutex};
 
 use crate::aerorsync::real_wire::MuxTag;

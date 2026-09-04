@@ -6,6 +6,9 @@
 //! protocol-engine `From` / `TryFrom` bridges used by unit tests and by
 //! any residual wire-planning helpers (`engine_ops_to_wire`).
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 /// Destination-side signature block as presented to the engine bridge.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignatureBlock {

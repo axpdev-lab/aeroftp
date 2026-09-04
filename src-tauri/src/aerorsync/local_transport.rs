@@ -20,6 +20,9 @@
 //! implementation that carries these to the application lives in
 //! `aerorsync_adapter::local`.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 #![cfg(feature = "aerorsync")]
 
 use std::path::Path;

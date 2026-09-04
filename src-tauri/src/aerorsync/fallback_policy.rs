@@ -26,6 +26,9 @@
 //! classic wrapper would double-apply or race. Hence the broad
 //! "committed → HardError" rule.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind};
 
 /// What the A4 adapter should do after the driver returns an error.

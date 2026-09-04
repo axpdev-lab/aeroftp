@@ -12,6 +12,9 @@
 //! - capability probe once per destination directory, not per file, and
 //!   read-only: it inspects the directory, it never writes to it (R5)
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 #![cfg(feature = "aerorsync")]
 
 use std::collections::HashMap;

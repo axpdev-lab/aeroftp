@@ -15,6 +15,9 @@
 //!   early-checked before I/O round-trips so cancellation surfaces as a
 //!   typed `Cancelled` error instead of a transport failure.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use secrecy::SecretString;
 use sha2::{Digest, Sha256};

@@ -4,6 +4,9 @@
 //! servers hand that string to the user's login shell, so every argv segment
 //! must be quoted before joining.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 /// Escape one argument for a POSIX shell command line.
 ///
 /// Safe atoms are left unchanged to preserve the byte shape of the existing

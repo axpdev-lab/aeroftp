@@ -5,6 +5,9 @@
 //!
 //! Spec: `docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/tasks/2026-05-01_P3-T01_W3_2b1_Spec_Session_Caching.md`.
 
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 #![cfg(feature = "aerorsync")]
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
