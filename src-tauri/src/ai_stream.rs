@@ -235,6 +235,7 @@ async fn stream_openai_responses(
             }
             // Skip a non-JSON data payload, as Chat Completions / Anthropic / Gemini do.
             let Ok(event) = serde_json::from_str::<serde_json::Value>(data) else {
+                log::debug!("skipped non-JSON Responses SSE payload");
                 continue;
             };
             if let Some(update) = state.ingest(&event)? {
@@ -254,17 +255,10 @@ async fn stream_openai_responses(
         }
     }
 
-    if cancelled {
-        if !state.completed() {
-            emit_responses_update(sink, stream_id, state.finish());
-        }
-        return Ok(());
+    if cancelled && !state.completed() {
+        emit_responses_update(sink, stream_id, state.finish());
     }
-
-    if !state.completed() {
-        return Err("Responses stream ended before response.completed".into());
-    }
-    Ok(())
+    crate::openai_responses::responses_stream_end(cancelled, state.completed()).map_err(Into::into)
 }
 
 // OpenAI-compatible SSE streaming (OpenAI, xAI, OpenRouter, Custom)

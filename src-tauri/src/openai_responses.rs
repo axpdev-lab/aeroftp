@@ -17,14 +17,56 @@ use serde_json::{json, Value};
 use crate::ai::{truncate_safe, AIError, AIRequest, AIResponse, AIToolCall};
 
 fn reasoning_effort(thinking_budget: Option<u32>) -> Option<&'static str> {
-    let budget = thinking_budget.filter(|budget| *budget > 0)?;
-    Some(match budget {
-        0..=5_000 => "low",
+    Some(match thinking_budget? {
+        0 => "none",
+        1..=5_000 => "low",
         5_001..=20_000 => "medium",
         20_001..=50_000 => "high",
-        50_001..=100_000 => "xhigh",
+        50_001..=99_999 => "xhigh",
         _ => "max",
     })
+}
+
+fn append_output_part(text: &mut String, part: &Value) {
+    match part.get("type").and_then(Value::as_str) {
+        Some("output_text") => {
+            if let Some(delta) = part.get("text").and_then(Value::as_str) {
+                text.push_str(delta);
+            }
+        }
+        Some("refusal") => {
+            if let Some(refusal) = part
+                .get("refusal")
+                .and_then(Value::as_str)
+                .or_else(|| part.get("text").and_then(Value::as_str))
+            {
+                if !text.is_empty() && !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text.push_str(refusal);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn incomplete_notice(response: &Value) -> String {
+    let reason = response
+        .pointer("/incomplete_details/reason")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    format!("[incomplete: {reason}]")
+}
+
+/// Terminal outcome after the Responses SSE reader stops.
+pub(crate) fn responses_stream_end(cancelled: bool, completed: bool) -> Result<(), String> {
+    if cancelled {
+        return Ok(());
+    }
+    if !completed {
+        return Err("Responses stream ended before response.completed".into());
+    }
+    Ok(())
 }
 
 fn input_message(message: &crate::ai::ChatMessage) -> Value {
@@ -186,6 +228,16 @@ pub(crate) fn parse_response_body(body: &str, fallback_model: &str) -> Result<AI
         return Err(AIError::Api(message.to_string()));
     }
 
+    let status = response.get("status").and_then(Value::as_str).unwrap_or("");
+    if status == "failed" {
+        let detail = response
+            .pointer("/error/message")
+            .or_else(|| response.pointer("/incomplete_details/reason"))
+            .and_then(Value::as_str)
+            .unwrap_or("OpenAI Responses request failed");
+        return Err(AIError::Api(detail.to_string()));
+    }
+
     let mut text = String::new();
     let mut tool_calls = Vec::new();
     if let Some(output) = response.get("output").and_then(Value::as_array) {
@@ -194,13 +246,12 @@ pub(crate) fn parse_response_body(body: &str, fallback_model: &str) -> Result<AI
                 Some("message") => {
                     if let Some(content) = item.get("content").and_then(Value::as_array) {
                         for part in content {
-                            if part.get("type").and_then(Value::as_str) == Some("output_text") {
-                                if let Some(delta) = part.get("text").and_then(Value::as_str) {
-                                    text.push_str(delta);
-                                }
-                            }
+                            append_output_part(&mut text, part);
                         }
                     }
+                }
+                Some("refusal") => {
+                    append_output_part(&mut text, item);
                 }
                 Some("function_call") => {
                     if let (Some(id), Some(name)) = (
@@ -221,6 +272,16 @@ pub(crate) fn parse_response_body(body: &str, fallback_model: &str) -> Result<AI
                 }
                 _ => {}
             }
+        }
+    }
+
+    if status == "incomplete" {
+        let notice = incomplete_notice(&response);
+        if text.is_empty() {
+            text = notice;
+        } else {
+            text.push_str("\n\n");
+            text.push_str(&notice);
         }
     }
 
@@ -321,9 +382,10 @@ impl ResponsesStreamAccumulator {
             .and_then(Value::as_str)
             .unwrap_or_default();
         match event_type {
-            "response.output_text.delta" => Ok(event
+            "response.output_text.delta" | "response.refusal.delta" => Ok(event
                 .get("delta")
                 .and_then(Value::as_str)
+                .or_else(|| event.get("refusal").and_then(Value::as_str))
                 .filter(|delta| !delta.is_empty())
                 .map(|delta| ResponsesStreamUpdate {
                     content: Some(delta.to_string()),
@@ -378,12 +440,22 @@ impl ResponsesStreamAccumulator {
                 }
                 Ok(None)
             }
-            "response.completed" | "response.incomplete" => {
+            "response.completed" => {
                 if let Some(response) = event.get("response") {
                     self.read_usage(response);
                 }
                 self.completed = true;
                 Ok(Some(self.finish()))
+            }
+            "response.incomplete" => {
+                if let Some(response) = event.get("response") {
+                    self.read_usage(response);
+                }
+                self.completed = true;
+                let mut update = self.finish();
+                let notice = incomplete_notice(event.get("response").unwrap_or(event));
+                update.content = Some(format!("\n\n{notice}"));
+                Ok(Some(update))
             }
             "response.failed" | "error" => {
                 let message = event
@@ -569,5 +641,88 @@ mod tests {
             done.tool_calls.unwrap()[0].arguments,
             json!({"path":"b.txt"})
         );
+    }
+
+    #[test]
+    fn parses_refusal_content_instead_of_a_blank_success() {
+        let body = json!({
+            "model":"gpt-5.6-sol",
+            "status":"completed",
+            "output":[{"type":"message","content":[{"type":"refusal","refusal":"I cannot help with that."}]}]
+        });
+        let parsed = parse_response_body(&body.to_string(), "fallback").unwrap();
+        assert_eq!(parsed.content, "I cannot help with that.");
+    }
+
+    #[test]
+    fn surfaces_incomplete_status_and_reason() {
+        let body = json!({
+            "model":"gpt-5.6-sol",
+            "status":"incomplete",
+            "incomplete_details":{"reason":"max_output_tokens"},
+            "output":[{"type":"message","content":[{"type":"output_text","text":"Partial"}]}]
+        });
+        let parsed = parse_response_body(&body.to_string(), "fallback").unwrap();
+        assert!(parsed.content.contains("Partial"));
+        assert!(parsed.content.contains("[incomplete: max_output_tokens]"));
+        assert_eq!(parsed.finish_reason.as_deref(), Some("incomplete"));
+    }
+
+    #[test]
+    fn failed_status_is_an_error() {
+        let body = json!({
+            "status":"failed",
+            "error":{"message":"provider refused"}
+        });
+        let err = parse_response_body(&body.to_string(), "fallback").unwrap_err();
+        assert!(format!("{err:?}").contains("provider refused"));
+    }
+
+    #[test]
+    fn streams_refusal_deltas_and_distinguishes_incomplete_from_completed() {
+        let mut state = ResponsesStreamAccumulator::default();
+        let delta = state
+            .ingest(&json!({"type":"response.refusal.delta","delta":"No."}))
+            .unwrap()
+            .unwrap();
+        assert_eq!(delta.content.as_deref(), Some("No."));
+        let done = state
+            .ingest(&json!({
+                "type":"response.incomplete",
+                "response":{"incomplete_details":{"reason":"content_filter"},"usage":{"input_tokens":3,"output_tokens":1}}
+            }))
+            .unwrap()
+            .unwrap();
+        assert!(done.done);
+        assert!(done
+            .content
+            .unwrap()
+            .contains("[incomplete: content_filter]"));
+        assert!(state.completed());
+    }
+
+    #[test]
+    fn reasoning_off_is_none_and_maximum_is_max() {
+        let mut off = request();
+        off.thinking_budget = Some(0);
+        let body = build_request_body(&off, false).unwrap();
+        assert_eq!(body["reasoning"]["effort"], "none");
+
+        let mut maximum = request();
+        maximum.thinking_budget = Some(100_000);
+        let body = build_request_body(&maximum, false).unwrap();
+        assert_eq!(body["reasoning"]["effort"], "max");
+
+        let mut xhigh = request();
+        xhigh.thinking_budget = Some(50_001);
+        let body = build_request_body(&xhigh, false).unwrap();
+        assert_eq!(body["reasoning"]["effort"], "xhigh");
+    }
+
+    #[test]
+    fn stream_end_errors_on_drop_but_not_on_cancel() {
+        assert!(responses_stream_end(false, false).is_err());
+        assert!(responses_stream_end(true, false).is_ok());
+        assert!(responses_stream_end(false, true).is_ok());
     }
 }

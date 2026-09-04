@@ -8,7 +8,7 @@ import { createTauriListener } from '../../hooks/useTauriListener';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon, NvidiaIcon, ZaiIcon, HyperbolicIcon, NovitaIcon, YiIcon, KiloIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType } from '../../types/ai';
-import { resolveModelContext, shouldUseOpenAIResponses } from '../../types/aiModelRegistry';
+import { reconcilePersistedModel, reconcilePersistedModels, resolveModelContext, shouldUseOpenAIResponses } from '../../types/aiModelRegistry';
 import { AgentToolCall, AGENT_TOOLS, toNativeDefinitions, isSafeTool, getToolByName, getToolByNameFromAll } from '../../types/tools';
 import { PluginManifest, allPluginTools, findPluginForTool } from '../../types/plugins';
 import { ToolApproval } from './ToolApproval';
@@ -2109,6 +2109,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             if (!settings) {
                 throw new Error('No AI providers configured. Click ⚙️ to add one.');
             }
+            settings.models = reconcilePersistedModels(settings.models);
             setCachedAiSettings(settings);
 
             // Auto-routing: classify the prompt, then resolve the model that answers
@@ -2138,7 +2139,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 }
 
                 // Check model capabilities (needed for context budget calculation)
-                const modelDef = settings.models?.find((m: { id: string }) => m.id === activeModel.modelId);
+                const modelDef = (() => {
+                    const found = settings.models?.find((m: { id: string }) => m.id === activeModel.modelId);
+                    return found ? reconcilePersistedModel(found) : found;
+                })();
                 // Output limits are not context windows. Unknown models receive a
                 // deliberately conservative context budget until the registry or
                 // the user provides an explicit context window.
@@ -2268,14 +2272,15 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 };
 
                 // Build thinking budget if model supports it
-                const thinkingBudget = modelDef?.supportsThinking && settings.advancedSettings?.thinkingBudget
-                    ? settings.advancedSettings.thinkingBudget
+                const thinkingBudget = modelDef?.supportsThinking
+                    ? (settings.advancedSettings?.thinkingBudget ?? 0)
                     : undefined;
 
                 const useOpenAIResponses = shouldUseOpenAIResponses(
                     activeModel.providerType,
                     modelDef,
                     settings.advancedSettings?.openAIResponsesEnabled ?? true,
+                    provider.baseUrl,
                 );
 
                 // Resolve task-specific parameter preset (provider + detected task type)
@@ -2292,7 +2297,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     ...(() => { const rawTopP = settings.advancedSettings?.topP ?? preset.topP; return rawTopP != null ? { top_p: Math.max(0, Math.min(1, rawTopP)) } : {}; })(),
                     ...(() => { const rawTopK = settings.advancedSettings?.topK ?? preset.topK; return rawTopK != null ? { top_k: Math.max(1, Math.min(500, Math.round(rawTopK))) } : {}; })(),
                     ...(useNativeTools ? { tools: toNativeDefinitions(allTools) } : {}),
-                    ...(thinkingBudget ? { thinking_budget: thinkingBudget } : {}),
+                    ...(thinkingBudget !== undefined ? { thinking_budget: thinkingBudget } : {}),
                     ...(settings.advancedSettings?.webSearchEnabled ? { web_search: true } : {}),
                     ...(useOpenAIResponses ? { use_responses_api: true } : {}),
                 };

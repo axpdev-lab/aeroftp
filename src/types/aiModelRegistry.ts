@@ -697,11 +697,30 @@ export function lookupModelSpec(modelName: string): KnownModelSpec | null {
     return null;
 }
 
-/** True when `modelName` is `key-YYYY-MM-DD` with an optional extra suffix. */
+/** True when `modelName` is exactly `key-YYYY-MM-DD` with a real calendar date. */
 function isDocumentedSnapshotId(modelName: string, key: string): boolean {
     if (!modelName.startsWith(`${key}-`)) return false;
     const suffix = modelName.slice(key.length + 1);
-    return /^\d{4}-\d{2}-\d{2}(?:[-.].*)?$/.test(suffix);
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(suffix);
+    if (!match) return false;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year
+        && date.getUTCMonth() === month - 1
+        && date.getUTCDate() === day;
+}
+
+/** First-party OpenAI hosts only. A custom OpenAI-compatible proxy is not Responses. */
+export function isFirstPartyOpenAIBaseUrl(baseUrl?: string | null): boolean {
+    if (!baseUrl || !baseUrl.trim()) return true;
+    try {
+        const host = new URL(baseUrl).hostname.toLowerCase();
+        return host === 'api.openai.com' || host.endsWith('.openai.com');
+    } catch {
+        return false;
+    }
 }
 
 /** Resolve how much context AeroAgent may safely budget without confusing output tokens for context. */
@@ -729,8 +748,10 @@ export function resolveModelContext(model: Partial<AIModel> | null | undefined):
 
 /** Derive status for old saved settings that predate capabilitySource. */
 export function getModelCapabilitySource(model: Partial<AIModel>): ModelCapabilitySource {
+    if (model.capabilitySource === 'registry') {
+        return model.nativeCapabilities ? 'registry' : 'unknown';
+    }
     if (model.capabilitySource) return model.capabilitySource;
-    if (model.name && lookupModelSpec(model.name)) return 'registry';
     if (model.maxContextTokens && model.maxContextTokens > 0) return 'user';
     return 'unknown';
 }
@@ -740,10 +761,92 @@ export function shouldUseOpenAIResponses(
     providerType: AIProviderType,
     model: Partial<AIModel> | null | undefined,
     enabled: boolean,
+    baseUrl?: string | null,
 ): boolean {
     return enabled
         && providerType === 'openai'
+        && isFirstPartyOpenAIBaseUrl(baseUrl)
         && model?.nativeCapabilities?.responses === true;
+}
+
+/**
+ * Reconcile a persisted model with the current registry. Idempotent.
+ * Known names receive native capabilities and a clamped context. Unknown names
+ * lose a stale registry label so the UI cannot claim verification it did not do.
+ */
+export function reconcilePersistedModel(
+    model: Partial<AIModel> & { name: string },
+): Partial<AIModel> {
+    if (lookupModelSpec(model.name)) {
+        return applyRegistryDefaults(model);
+    }
+    if (model.capabilitySource === 'registry' || model.nativeCapabilities) {
+        return {
+            ...model,
+            capabilitySource: model.maxContextTokens && model.maxContextTokens > 0 ? 'user' : 'unknown',
+            capabilitiesVerifiedAt: undefined,
+            capabilitiesSourceUrl: undefined,
+            nativeCapabilities: undefined,
+        };
+    }
+    return model;
+}
+
+export function reconcilePersistedModels(models: AIModel[] | undefined): AIModel[] {
+    return (models ?? []).map((model) => reconcilePersistedModel(model) as AIModel);
+}
+
+export interface ModelEditorForm {
+    name: string;
+    displayName: string;
+    maxTokens: number;
+    maxContextTokens: number;
+    supportsStreaming: boolean;
+    supportsTools: boolean;
+    supportsVision: boolean;
+    supportsThinking: boolean;
+    isEnabled: boolean;
+}
+
+/** Build the record written by the model editor, including rename and clamp. */
+export function buildSavedModelRecord(args: {
+    previous: AIModel | null;
+    isNew: boolean;
+    providerId: string;
+    id: string;
+    form: ModelEditorForm;
+}): Partial<AIModel> {
+    const name = args.form.name.trim();
+    const spec = lookupModelSpec(name);
+    const identityChanged = !args.isNew && args.previous?.name !== name;
+    if (spec && (args.isNew || identityChanged)) {
+        return applyRegistryDefaults({
+            id: args.id,
+            providerId: args.providerId,
+            name,
+            displayName: args.form.displayName.trim() || spec.displayName,
+            maxTokens: args.form.maxTokens,
+            maxContextTokens: args.form.maxContextTokens || spec.maxContextTokens,
+            isEnabled: args.form.isEnabled,
+            isDefault: args.previous?.isDefault ?? false,
+        });
+    }
+    const base = {
+        ...(args.previous || {}),
+        id: args.id,
+        providerId: args.providerId,
+        name,
+        displayName: args.form.displayName.trim() || spec?.displayName || name,
+        maxTokens: args.form.maxTokens,
+        maxContextTokens: args.form.maxContextTokens || undefined,
+        supportsStreaming: args.form.supportsStreaming,
+        supportsTools: args.form.supportsTools,
+        supportsVision: args.form.supportsVision,
+        supportsThinking: args.form.supportsThinking,
+        isEnabled: args.form.isEnabled,
+        isDefault: args.previous?.isDefault ?? false,
+    };
+    return reconcilePersistedModel(base);
 }
 
 /**
@@ -759,7 +862,6 @@ export function applyRegistryDefaults(model: Partial<AIModel> & { name: string }
     return {
         displayName: spec.displayName,
         maxTokens: spec.maxTokens,
-        maxContextTokens: spec.maxContextTokens,
         inputCostPer1k: spec.inputCostPer1k,
         outputCostPer1k: spec.outputCostPer1k,
         supportsStreaming: spec.supportsStreaming,

@@ -17,7 +17,7 @@ import './AISettingsPanel.css';
 import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
 import { ProviderMarketplace } from './ProviderMarketplace';
 import { PluginBrowser } from './PluginBrowser';
-import { applyDiscoveredModelDefaults, applyRegistryDefaults, getModelCapabilitySource, lookupModelSpec } from '../../types/aiModelRegistry';
+import { applyDiscoveredModelDefaults, buildSavedModelRecord, getModelCapabilitySource, lookupModelSpec, reconcilePersistedModels } from '../../types/aiModelRegistry';
 import { useTranslation } from '../../i18n';
 import { createTauriListener } from '../../hooks/useTauriListener';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
@@ -112,15 +112,14 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
         isEnabled: model?.isEnabled ?? true,
     });
 
-    // Auto-fill from registry when model name changes (new models only)
     const handleNameChange = (name: string) => {
         setFormData((prev) => {
             const spec = lookupModelSpec(name);
-            if (!spec || !isNew) return { ...prev, name };
+            if (!spec) return { ...prev, name };
             return {
                 ...prev,
                 name,
-                displayName: prev.displayName || spec.displayName,
+                displayName: spec.displayName,
                 maxTokens: spec.maxTokens,
                 maxContextTokens: spec.maxContextTokens,
                 supportsStreaming: spec.supportsStreaming,
@@ -133,47 +132,13 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
 
     const handleSave = () => {
         if (!formData.name.trim()) return;
-
-        const knownSpec = lookupModelSpec(formData.name.trim());
-        const nameUnchanged = !isNew && model?.name === formData.name.trim();
-        const keepExistingCaps = nameUnchanged;
-
-        const baseModel = {
-            ...(model || {}), // preserve fields not in the form (toolCallQuality, bestFor, costs, etc.)
-            id: model?.id || generateId(),
+        onSave(buildSavedModelRecord({
+            previous: model,
+            isNew,
             providerId,
-            name: formData.name.trim(),
-            displayName: formData.displayName.trim() || formData.name.trim(),
-            maxTokens: formData.maxTokens,
-            maxContextTokens: formData.maxContextTokens || undefined,
-            supportsStreaming: formData.supportsStreaming,
-            supportsTools: formData.supportsTools,
-            supportsVision: formData.supportsVision,
-            supportsThinking: formData.supportsThinking,
-            capabilitySource: isNew
-                ? (knownSpec ? 'registry' as const : 'user' as const)
-                : keepExistingCaps
-                    ? (model?.capabilitySource ?? (knownSpec ? 'registry' as const : 'user' as const))
-                    : (knownSpec ? 'registry' as const : 'user' as const),
-            capabilitiesVerifiedAt: isNew
-                ? knownSpec?.metadataReviewedAt
-                : keepExistingCaps
-                    ? model?.capabilitiesVerifiedAt
-                    : knownSpec?.metadataReviewedAt,
-            capabilitiesSourceUrl: isNew
-                ? knownSpec?.metadataSource
-                : keepExistingCaps
-                    ? model?.capabilitiesSourceUrl
-                    : knownSpec?.metadataSource,
-            nativeCapabilities: isNew
-                ? knownSpec?.nativeCapabilities
-                : keepExistingCaps
-                    ? model?.nativeCapabilities
-                    : knownSpec?.nativeCapabilities,
-            isEnabled: formData.isEnabled,
-            isDefault: model?.isDefault ?? false,
-        };
-        onSave(isNew ? (applyRegistryDefaults(baseModel) as AIModel) : baseModel);
+            id: model?.id || generateId(),
+            form: formData,
+        }) as AIModel);
     };
 
     return (
@@ -396,6 +361,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved) as AISettings;
+                    parsed.models = reconcilePersistedModels(parsed.models);
                     const { settings: hydrated, migrated } = await hydrateApiKeys(parsed);
                     setSettings(hydrated);
 
@@ -420,6 +386,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             try {
                 const vaultData = await secureGetWithFallback<AISettings>('ai_settings', AI_SETTINGS_KEY);
                 if (vaultData && vaultData.providers && vaultData.providers.length > 0) {
+                    vaultData.models = reconcilePersistedModels(vaultData.models);
                     const { settings: vaultHydrated } = await hydrateApiKeys(vaultData);
                     setSettings(vaultHydrated);
                 }

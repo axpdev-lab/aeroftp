@@ -9,8 +9,10 @@ import {
     UNKNOWN_MODEL_CONTEXT_BUDGET,
     applyDiscoveredModelDefaults,
     applyRegistryDefaults,
+    buildSavedModelRecord,
     getModelCapabilitySource,
     lookupModelSpec,
+    reconcilePersistedModel,
     resolveModelContext,
     shouldUseOpenAIResponses,
 } from './aiModelRegistry';
@@ -96,6 +98,8 @@ describe('model capability resolution', () => {
         expect(lookupModelSpec('gpt-5.6-sol-2026-08-01')).toBe(MODEL_REGISTRY['gpt-5.6-sol']);
         expect(lookupModelSpec('gpt-5.60')).toBeNull();
         expect(lookupModelSpec('gpt-5.6-sol-preview')).toBeNull();
+        expect(lookupModelSpec('gpt-5.6-sol-2026-08-01-preview')).toBeNull();
+        expect(lookupModelSpec('gpt-5.6-sol-2026-99-99')).toBeNull();
     });
 
     it('does not confuse an unknown model output cap with its context window', () => {
@@ -162,10 +166,24 @@ describe('model capability resolution', () => {
         expect(lowered.maxContextTokens).toBe(64_000);
     });
 
-    it('derives provenance for saved models created before the provenance field existed', () => {
-        expect(getModelCapabilitySource({ name: 'gpt-5.6' })).toBe('registry');
+    it('does not infer registry verification from a name alone', () => {
+        expect(getModelCapabilitySource({ name: 'gpt-5.6' })).toBe('unknown');
         expect(getModelCapabilitySource({ name: 'private-model', maxContextTokens: 32_000 })).toBe('user');
         expect(getModelCapabilitySource({ name: 'private-model', maxTokens: 4096 })).toBe('unknown');
+        expect(getModelCapabilitySource({
+            name: 'gpt-5.6-sol',
+            capabilitySource: 'registry',
+        })).toBe('unknown');
+    });
+
+    it('hydrates a legacy saved known model so Responses can actually be selected', () => {
+        const legacy = reconcilePersistedModel({
+            ...baseModel({ name: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol' }),
+        });
+        expect(legacy.capabilitySource).toBe('registry');
+        expect(legacy.nativeCapabilities?.responses).toBe(true);
+        expect(shouldUseOpenAIResponses('openai', legacy, true, 'https://api.openai.com/v1')).toBe(true);
+        expect(shouldUseOpenAIResponses('openai', { name: 'gpt-5.6-sol' }, true, 'https://api.openai.com/v1')).toBe(false);
     });
 
     it('enables first-party Responses only for verified OpenAI models', () => {
@@ -176,5 +194,85 @@ describe('model capability resolution', () => {
         expect(shouldUseOpenAIResponses('anthropic', sol, true)).toBe(false);
         expect(shouldUseOpenAIResponses('kimi', sol, true)).toBe(false);
         expect(shouldUseOpenAIResponses('openai', baseModel(), true)).toBe(false);
+        expect(shouldUseOpenAIResponses('openai', sol, true, 'https://proxy.example/v1')).toBe(false);
+    });
+
+    it('clamps context when saving an existing known model, not only on create', () => {
+        const previous = applyRegistryDefaults({
+            ...baseModel({ name: 'gpt-5.6-sol' }),
+        }) as AIModel;
+        const saved = buildSavedModelRecord({
+            previous,
+            isNew: false,
+            providerId: previous.providerId,
+            id: previous.id,
+            form: {
+                name: 'gpt-5.6-sol',
+                displayName: previous.displayName,
+                maxTokens: previous.maxTokens,
+                maxContextTokens: 9_000_000,
+                supportsStreaming: true,
+                supportsTools: true,
+                supportsVision: true,
+                supportsThinking: true,
+                isEnabled: true,
+            },
+        });
+        expect(saved.maxContextTokens).toBe(MODEL_REGISTRY['gpt-5.6-sol'].maxContextTokens);
+        expect(saved.nativeCapabilities?.responses).toBe(true);
+    });
+
+    it('rebuilds registry fields when renaming a known model to another known model', () => {
+        const previous = applyRegistryDefaults({
+            ...baseModel({ name: 'gpt-5.6-sol', maxContextTokens: 1_050_000 }),
+        }) as AIModel;
+        const saved = buildSavedModelRecord({
+            previous,
+            isNew: false,
+            providerId: previous.providerId,
+            id: previous.id,
+            form: {
+                name: 'claude-opus-5',
+                displayName: previous.displayName,
+                maxTokens: previous.maxTokens,
+                maxContextTokens: 9_000_000,
+                supportsStreaming: true,
+                supportsTools: true,
+                supportsVision: true,
+                supportsThinking: true,
+                isEnabled: true,
+            },
+        });
+        expect(saved.name).toBe('claude-opus-5');
+        expect(saved.nativeCapabilities?.responses).toBeUndefined();
+        expect(saved.nativeCapabilities?.adaptiveThinking).toBe(true);
+        expect(saved.maxContextTokens).toBeLessThanOrEqual(MODEL_REGISTRY['claude-opus-5'].maxContextTokens);
+        expect(saved.capabilitySource).toBe('registry');
+    });
+
+    it('strips registry labels when renaming a known model to an unknown id', () => {
+        const previous = applyRegistryDefaults({
+            ...baseModel({ name: 'gpt-5.6-sol' }),
+        }) as AIModel;
+        const saved = buildSavedModelRecord({
+            previous,
+            isNew: false,
+            providerId: previous.providerId,
+            id: previous.id,
+            form: {
+                name: 'my-local-finetune',
+                displayName: 'Local',
+                maxTokens: 4096,
+                maxContextTokens: 8192,
+                supportsStreaming: true,
+                supportsTools: false,
+                supportsVision: false,
+                supportsThinking: false,
+                isEnabled: true,
+            },
+        });
+        expect(saved.nativeCapabilities).toBeUndefined();
+        expect(saved.capabilitySource).not.toBe('registry');
+        expect(shouldUseOpenAIResponses('openai', saved, true)).toBe(false);
     });
 });
