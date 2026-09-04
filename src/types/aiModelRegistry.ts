@@ -684,16 +684,24 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
 };
 
 /**
- * Lookup a model spec by name. Tries exact match first, then prefix match
- * for versioned model names (e.g., "gpt-4o-2024-11-20" matches "gpt-4o").
+ * Lookup a model spec by name. Tries exact match first, then a documented
+ * dated snapshot suffix (e.g. "gpt-4o-2024-11-20" matches "gpt-4o").
+ * Family lookalikes such as "gpt-5.6-sol-preview" must not inherit Responses.
  */
 export function lookupModelSpec(modelName: string): KnownModelSpec | null {
     if (MODEL_REGISTRY[modelName]) return MODEL_REGISTRY[modelName];
     const keys = Object.keys(MODEL_REGISTRY).sort((a, b) => b.length - a.length);
     for (const key of keys) {
-        if (modelName.startsWith(`${key}-`)) return MODEL_REGISTRY[key];
+        if (isDocumentedSnapshotId(modelName, key)) return MODEL_REGISTRY[key];
     }
     return null;
+}
+
+/** True when `modelName` is `key-YYYY-MM-DD` with an optional extra suffix. */
+function isDocumentedSnapshotId(modelName: string, key: string): boolean {
+    if (!modelName.startsWith(`${key}-`)) return false;
+    const suffix = modelName.slice(key.length + 1);
+    return /^\d{4}-\d{2}-\d{2}(?:[-.].*)?$/.test(suffix);
 }
 
 /** Resolve how much context AeroAgent may safely budget without confusing output tokens for context. */
@@ -745,6 +753,9 @@ export function shouldUseOpenAIResponses(
 export function applyRegistryDefaults(model: Partial<AIModel> & { name: string }): Partial<AIModel> {
     const spec = lookupModelSpec(model.name);
     if (!spec) return model;
+    const explicitContext = model.maxContextTokens && model.maxContextTokens > 0
+        ? Math.min(model.maxContextTokens, spec.maxContextTokens)
+        : spec.maxContextTokens;
     return {
         displayName: spec.displayName,
         maxTokens: spec.maxTokens,
@@ -768,6 +779,7 @@ export function applyRegistryDefaults(model: Partial<AIModel> & { name: string }
             : undefined,
         lifecycleStatus: spec.lifecycleStatus || 'active',
         ...model,
+        maxContextTokens: explicitContext,
         capabilitySource: 'registry',
         capabilitiesVerifiedAt: spec.metadataReviewedAt,
         capabilitiesSourceUrl: spec.metadataSource,

@@ -95,6 +95,7 @@ describe('model capability resolution', () => {
         expect(lookupModelSpec('gpt-5.6-sol')).toBe(MODEL_REGISTRY['gpt-5.6-sol']);
         expect(lookupModelSpec('gpt-5.6-sol-2026-08-01')).toBe(MODEL_REGISTRY['gpt-5.6-sol']);
         expect(lookupModelSpec('gpt-5.60')).toBeNull();
+        expect(lookupModelSpec('gpt-5.6-sol-preview')).toBeNull();
     });
 
     it('does not confuse an unknown model output cap with its context window', () => {
@@ -144,6 +145,21 @@ describe('model capability resolution', () => {
         expect(applied.nativeCapabilities?.reasoningEfforts).not.toBe(
             MODEL_REGISTRY['gpt-5.6-sol'].nativeCapabilities?.reasoningEfforts,
         );
+    });
+
+    it('clamps an above-limit explicit context to the registry window', () => {
+        const applied = applyRegistryDefaults({
+            name: 'gpt-5.6-sol',
+            maxContextTokens: 9_000_000,
+        });
+        expect(applied.maxContextTokens).toBe(MODEL_REGISTRY['gpt-5.6-sol'].maxContextTokens);
+        expect(applied.capabilitySource).toBe('registry');
+
+        const lowered = applyRegistryDefaults({
+            name: 'gpt-5.6-sol',
+            maxContextTokens: 64_000,
+        });
+        expect(lowered.maxContextTokens).toBe(64_000);
     });
 
     it('derives provenance for saved models created before the provenance field existed', () => {

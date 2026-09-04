@@ -197,12 +197,16 @@ async fn stream_openai_responses(
     let mut buffer = String::new();
     let mut raw_buffer = Vec::new();
     let mut state = crate::openai_responses::ResponsesStreamAccumulator::default();
+    let mut cancelled = false;
 
     loop {
         let chunk = tokio::select! {
             biased;
             chunk = stream.next() => chunk,
-            _ = wait_for_cancel(cancel) => break,
+            _ = wait_for_cancel(cancel) => {
+                cancelled = true;
+                break;
+            }
         };
         let Some(chunk) = chunk else { break };
         let bytes = chunk?;
@@ -229,7 +233,10 @@ async fn stream_openai_responses(
             if data.is_empty() || data == "[DONE]" {
                 continue;
             }
-            let event: serde_json::Value = serde_json::from_str(data)?;
+            // Skip a non-JSON data payload, as Chat Completions / Anthropic / Gemini do.
+            let Ok(event) = serde_json::from_str::<serde_json::Value>(data) else {
+                continue;
+            };
             if let Some(update) = state.ingest(&event)? {
                 emit_responses_update(sink, stream_id, update);
             }
@@ -239,15 +246,23 @@ async fn stream_openai_responses(
     let remaining = buffer.trim();
     if let Some(data) = remaining.strip_prefix("data:").map(str::trim) {
         if !data.is_empty() && data != "[DONE]" {
-            let event: serde_json::Value = serde_json::from_str(data)?;
-            if let Some(update) = state.ingest(&event)? {
-                emit_responses_update(sink, stream_id, update);
+            if let Ok(event) = serde_json::from_str::<serde_json::Value>(data) {
+                if let Some(update) = state.ingest(&event)? {
+                    emit_responses_update(sink, stream_id, update);
+                }
             }
         }
     }
 
+    if cancelled {
+        if !state.completed() {
+            emit_responses_update(sink, stream_id, state.finish());
+        }
+        return Ok(());
+    }
+
     if !state.completed() {
-        emit_responses_update(sink, stream_id, state.finish());
+        return Err("Responses stream ended before response.completed".into());
     }
     Ok(())
 }

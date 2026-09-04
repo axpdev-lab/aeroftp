@@ -135,6 +135,8 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
         if (!formData.name.trim()) return;
 
         const knownSpec = lookupModelSpec(formData.name.trim());
+        const nameUnchanged = !isNew && model?.name === formData.name.trim();
+        const keepExistingCaps = nameUnchanged;
 
         const baseModel = {
             ...(model || {}), // preserve fields not in the form (toolCallQuality, bestFor, costs, etc.)
@@ -148,10 +150,26 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
             supportsTools: formData.supportsTools,
             supportsVision: formData.supportsVision,
             supportsThinking: formData.supportsThinking,
-            capabilitySource: knownSpec && isNew ? 'registry' as const : 'user' as const,
-            capabilitiesVerifiedAt: knownSpec && isNew ? knownSpec.metadataReviewedAt : undefined,
-            capabilitiesSourceUrl: knownSpec && isNew ? knownSpec.metadataSource : undefined,
-            nativeCapabilities: knownSpec && isNew ? knownSpec.nativeCapabilities : undefined,
+            capabilitySource: isNew
+                ? (knownSpec ? 'registry' as const : 'user' as const)
+                : keepExistingCaps
+                    ? (model?.capabilitySource ?? (knownSpec ? 'registry' as const : 'user' as const))
+                    : (knownSpec ? 'registry' as const : 'user' as const),
+            capabilitiesVerifiedAt: isNew
+                ? knownSpec?.metadataReviewedAt
+                : keepExistingCaps
+                    ? model?.capabilitiesVerifiedAt
+                    : knownSpec?.metadataReviewedAt,
+            capabilitiesSourceUrl: isNew
+                ? knownSpec?.metadataSource
+                : keepExistingCaps
+                    ? model?.capabilitiesSourceUrl
+                    : knownSpec?.metadataSource,
+            nativeCapabilities: isNew
+                ? knownSpec?.nativeCapabilities
+                : keepExistingCaps
+                    ? model?.nativeCapabilities
+                    : knownSpec?.nativeCapabilities,
             isEnabled: formData.isEnabled,
             isDefault: model?.isDefault ?? false,
         };
