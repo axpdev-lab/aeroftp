@@ -5,15 +5,23 @@ state it, and what the "clean-room" claim in the README does and does not cover.
 
 ## The expression
 
-```
+```text
 MPL-2.0 OR GPL-3.0-or-later
 ```
 
-Every source file under `src/aerorsync/` carries that expression as an SPDX tag,
-the emitted manifest declares it in `[package].license`, and both licence texts
-travel with the crate as `LICENSE-MPL-2.0` and `LICENSE-GPL-3.0`. The emitter
-refuses to produce a crate if any file is missing the tag, because a file without
-a licence header compiles exactly like a file with one.
+Every **Rust** source file (`*.rs`) under `src/aerorsync/` carries that expression
+as an SPDX tag, the emitted manifest declares it in `[package].license`, and both
+licence texts travel with the crate as `LICENSE-MPL-2.0` and `LICENSE-GPL-3.0`.
+The emitter refuses to produce a crate if any `*.rs` file is missing the tag,
+because a file without a licence header compiles exactly like a file with one.
+
+The other tracked files under the module (the capture harness scripts, the
+Dockerfiles and compose files, the frozen transcript artifacts and these
+documents) carry no per-file tag and are not checked by that guard. They are
+covered by the package-level `license` field and the two licence texts, which is
+what a recipient reads. Stating it here rather than leaving the earlier sentence
+to imply otherwise: the guard is narrower than "every file", and a guard
+described as wider than it is invites exactly the assumption it cannot support.
 
 `OR` is the SPDX disjunction: the recipient chooses. Take the crate under
 MPL-2.0 as a dependency, or under GPL-3.0-or-later, whichever fits.
@@ -36,16 +44,32 @@ rather than reached through the secondary-licence clause, and Exhibit B
 
 ## Who may state this
 
-Sole authorship, measured rather than assumed on 2026-09-04: the 25 source files
-of the module carry four e-mail identities in the git history, all belonging to
-the project owner, whose canonical address is `45786925+axpnet@users.noreply.github.com`.
-The only known external contribution to the repository, PR #97, never touched
-this module. No third-party code was merged into it and no contributor licence
-agreement is outstanding, so the copyright holder can license the work under
-both terms.
+The dual statement is made by the project's copyright holder. Two things support
+it, and they are different in kind, so they are written separately.
 
-Contributions accepted into this module in the future must be made under the same
-dual expression, and this file is the place that says so.
+**What the history records, measured on 2026-09-04.** Every commit touching
+`src-tauri/src/aerorsync` is authored under one of four e-mail addresses, all of
+them the project owner's, whose canonical address is
+`45786925+axpnet@users.noreply.github.com`. A spot check of PR #97, an external
+contribution to this repository, shows it changed only
+`src-tauri/src/providers/webdav.rs`, outside this module.
+
+**What that does and does not establish.** It is evidence about who committed,
+not a proof that no third-party code was ever incorporated, and a spot check of
+one pull request is not an enumeration of every external contribution. Read it as
+what it is: the history shows no external authorship in this module, which is
+consistent with sole authorship without demonstrating it.
+
+**What licenses the work.** The project accepts contributions under the Developer
+Certificate of Origin (see [`DCO`](../../../DCO) and
+[`CONTRIBUTING.md`](../../../CONTRIBUTING.md)), not a contributor licence
+agreement: each contribution carries a `Signed-off-by` line in which its author
+certifies the right to submit it under the project's licence. That, together with
+the copyright the owner holds in their own contributions, is what makes the dual
+expression theirs to state.
+
+Contributions accepted into this module in the future are made under the same dual
+expression, and this file is the place that says so.
 
 ## What "clean-room" covers, and what it does not
 

@@ -25,7 +25,7 @@ file of the module, in the emitted crate's manifest, and in full in
 [`LICENSING.md`](LICENSING.md), which also records the provenance evidence
 behind it. The recipient chooses: MPL-2.0 to take the crate as a dependency,
 GPL-3.0-or-later for the same files as they compile into AeroFTP. The emitter
-refuses to produce a crate if any file is missing the tag.
+refuses to produce a crate if any Rust source file is missing the tag.
 
 This is an **independent, clean-room Rust re-implementation** of the rsync
 wire protocol. No rsync source code was copied into this tree. That claim is
