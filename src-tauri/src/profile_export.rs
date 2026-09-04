@@ -205,6 +205,43 @@ pub struct ServerProfileExport {
     pub persist_mode_credentials: Option<bool>,
 }
 
+/// Whether an endpoint would need the profile's explicit cleartext consent to
+/// connect: plain HTTP, and not on this machine.
+///
+/// The one place that decides it, so the import listing and the S3 provider
+/// cannot drift into disagreeing about which endpoints are a problem.
+pub fn endpoint_needs_cleartext_consent(endpoint: Option<&str>) -> bool {
+    let Some(endpoint) = endpoint.map(str::trim).filter(|e| !e.is_empty()) else {
+        return false;
+    };
+    endpoint.to_ascii_lowercase().starts_with("http://")
+        && !crate::util::endpoint_stays_on_this_machine(endpoint)
+}
+
+impl ServerProfileExport {
+    /// A note for the import listing when this profile would reach a cleartext
+    /// endpoint that is not on this machine.
+    ///
+    /// The import is where the problem is still legible: the endpoint comes from
+    /// another tool's configuration file, so the user has not looked at its
+    /// scheme and may never look at it, while the refusal at connect time can
+    /// land weeks later when nobody remembers where the profile came from. The
+    /// note says what it is; consent stays an explicit act on the profile, so
+    /// nothing here sets it.
+    pub fn cleartext_endpoint_note(&self) -> &'static str {
+        let endpoint = self
+            .options
+            .as_ref()
+            .and_then(|o| o.get("endpoint"))
+            .and_then(|v| v.as_str());
+        if endpoint_needs_cleartext_consent(endpoint) {
+            " [cleartext endpoint]"
+        } else {
+            ""
+        }
+    }
+}
+
 // ============ Export/Import ============
 
 /// Keys under `ServerProfileExport.options` that carry long-lived secrets
@@ -915,5 +952,79 @@ mod tests {
             "a BYO OAuth client_secret alone is a credential"
         );
         let _ = std::fs::remove_file(&tmp);
+    }
+}
+
+#[cfg(test)]
+mod cleartext_consent_tests {
+    use super::*;
+
+    #[test]
+    fn only_cleartext_off_this_machine_needs_consent() {
+        assert!(endpoint_needs_cleartext_consent(Some(
+            "http://minio.example.com:9000"
+        )));
+        // On a LAN, and on an mDNS name, the bytes are on a wire other machines
+        // share: still consent.
+        assert!(endpoint_needs_cleartext_consent(Some(
+            "http://192.168.1.10:9000"
+        )));
+        assert!(endpoint_needs_cleartext_consent(Some(
+            "http://minio.local:9000"
+        )));
+
+        assert!(!endpoint_needs_cleartext_consent(Some(
+            "http://127.0.0.1:9000"
+        )));
+        assert!(!endpoint_needs_cleartext_consent(Some(
+            "http://localhost:9000"
+        )));
+        assert!(!endpoint_needs_cleartext_consent(Some(
+            "https://s3.example.com"
+        )));
+        assert!(!endpoint_needs_cleartext_consent(None));
+        assert!(!endpoint_needs_cleartext_consent(Some("   ")));
+    }
+
+    #[test]
+    fn the_import_listing_marks_the_profile_that_would_need_it() {
+        let with_cleartext = ServerProfileExport {
+            options: Some(serde_json::json!({ "endpoint": "http://minio.example.com:9000" })),
+            ..sample()
+        };
+        let over_tls = ServerProfileExport {
+            options: Some(serde_json::json!({ "endpoint": "https://s3.example.com" })),
+            ..sample()
+        };
+        let no_endpoint = ServerProfileExport {
+            options: None,
+            ..sample()
+        };
+        assert_eq!(
+            with_cleartext.cleartext_endpoint_note(),
+            " [cleartext endpoint]"
+        );
+        assert_eq!(over_tls.cleartext_endpoint_note(), "");
+        assert_eq!(no_endpoint.cleartext_endpoint_note(), "");
+    }
+
+    fn sample() -> ServerProfileExport {
+        serde_json::from_value(serde_json::json!({
+            "id": "srv_1",
+            "name": "s",
+            "host": "h",
+            "port": 443,
+            "username": "u",
+            "protocol": "s3",
+            "initialPath": null,
+            "localInitialPath": null,
+            "color": null,
+            "lastConnected": null,
+            "options": null,
+            "providerId": "minio",
+            "credential": null,
+            "hasStoredCredential": null
+        }))
+        .expect("sample profile")
     }
 }

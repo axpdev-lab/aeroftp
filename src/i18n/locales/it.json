@@ -710,7 +710,8 @@
             "peerDesc": "Condividi cartelle direttamente con gli amici su un canale peer-to-peer cifrato, senza alcun server di mezzo.",
             "devicesInfoLine1": "Salva un dispositivo USB portatile (telefono, fotocamera, tablet) come profilo in I miei server. Rileva il dispositivo via MTP, imposta le cartelle predefinite e riconnettiti con un clic quando è collegato.",
             "devicesInfoLine2": "MTP è esclusivo e su richiesta: Connetti riserva il dispositivo per la sessione; disconnetti lo restituisce. I trasferimenti sono a file intero (nessuna ripresa, nessuna lettera di unità).",
-            "discoverMtpPortable": "Telefono, fotocamera o tablet via USB MTP"
+            "discoverMtpPortable": "Telefono, fotocamera o tablet via USB MTP",
+            "s3AllowCleartextEndpoint": "Questo endpoint serve S3 su HTTP in chiaro attraverso una rete. Accettalo per questo profilo: le credenziali firmate e ogni file attraversano la rete non cifrati."
         },
         "browser": {
             "remote": "Remoto",

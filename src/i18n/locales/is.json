@@ -1927,7 +1927,8 @@
             "peerDesc": "Deildu möppum beint með vinum um dulkóðaða jafningjarás, án nokkurs þjóns á milli.",
             "devicesInfoLine1": "Vistaðu færanlegt USB-tæki (síma, myndavél, spjaldtölvu) sem snið í Þjónarnir mínir. Greindu tækið um MTP, stilltu sjálfgefnar möppur og tengstu aftur með einum smelli þegar það er tengt.",
             "devicesInfoLine2": "MTP er einkaréttur og eftir þörfum: Tengjast krefst tækisins fyrir lotuna; aftengja skilar því. Flutningar eru aðeins heilar skrár (engin endurupptaka, enginn drifstafur).",
-            "discoverMtpPortable": "Sími, myndavél eða spjaldtölva um USB MTP"
+            "discoverMtpPortable": "Sími, myndavél eða spjaldtölva um USB MTP",
+            "s3AllowCleartextEndpoint": "Þessi endapunktur þjónar S3 um ódulkóðað HTTP yfir net. Samþykktu það fyrir þennan prófíl: undirrituðu auðkennin og hver skrá fara ódulkóðuð um netið."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

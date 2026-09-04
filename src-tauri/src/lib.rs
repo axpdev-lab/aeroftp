@@ -178,6 +178,10 @@ mod plugins;
 pub mod proc_stats;
 pub mod profile_auth_state;
 mod profile_export;
+// The CLI's import listings mark a profile whose endpoint would need cleartext
+// consent, and they share the predicate with the S3 provider rather than
+// re-deciding it. The module stays private; only the predicate is re-exported.
+pub use profile_export::endpoint_needs_cleartext_consent;
 mod provider_commands;
 // PD-CLI-CONV-B: the next four modules are exposed for the `aeroftp-cli`
 // bin so the CLI file-level batch can converge on the same provider

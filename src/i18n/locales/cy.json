@@ -1927,7 +1927,8 @@
             "peerDesc": "Rhannwch ffolderi yn uniongyrchol gyda ffrindiau dros sianel peer-to-peer wedi'i hamgryptio, heb weinydd yn y canol.",
             "devicesInfoLine1": "Cadwch ddyfais USB gludadwy (ffôn, camera, llechen) fel proffil yn Fy Ngweinyddion. Canfyddwch y ddyfais dros MTP, gosodwch ffolderi rhagosodedig, ac ailgysylltwch ag un clic pan fydd wedi'i chysylltu.",
             "devicesInfoLine2": "Mae MTP yn unigryw ac ar-alw: Mae Cysylltu yn hawlio'r ddyfais ar gyfer y sesiwn; mae datgysylltu yn ei dychwelyd. Trosglwyddiadau ffeil gyfan yn unig (dim ailddechrau, dim llythyren gyriant).",
-            "discoverMtpPortable": "Ffôn, camera, neu lechen dros USB MTP"
+            "discoverMtpPortable": "Ffôn, camera, neu lechen dros USB MTP",
+            "s3AllowCleartextEndpoint": "Mae'r pwynt terfyn hwn yn gweini S3 dros HTTP plaen ar draws rhwydwaith. Derbyniwch hyn ar gyfer y proffil hwn: mae'r manylion llofnodedig a phob ffeil yn croesi'r rhwydwaith heb eu hamgryptio."
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

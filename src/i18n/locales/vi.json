@@ -1927,7 +1927,8 @@
             "peerDesc": "Chia sẻ thư mục trực tiếp với bạn bè qua kênh ngang hàng được mã hóa, không có máy chủ trung gian.",
             "devicesInfoLine1": "Lưu thiết bị USB di động (điện thoại, máy ảnh, máy tính bảng) làm hồ sơ trong Máy chủ của tôi. Phát hiện thiết bị qua MTP, đặt thư mục mặc định và kết nối lại bằng một cú nhấp khi được cắm.",
             "devicesInfoLine2": "MTP là độc quyền và theo yêu cầu: Kết nối chiếm thiết bị cho phiên; ngắt kết nối sẽ trả lại. Truyền chỉ toàn bộ tệp (không tiếp tục, không ký tự ổ đĩa).",
-            "discoverMtpPortable": "Điện thoại, máy ảnh hoặc máy tính bảng qua USB MTP"
+            "discoverMtpPortable": "Điện thoại, máy ảnh hoặc máy tính bảng qua USB MTP",
+            "s3AllowCleartextEndpoint": "Điểm cuối này phục vụ S3 qua HTTP không mã hóa trên mạng. Chấp nhận cho hồ sơ này: thông tin xác thực đã ký và mọi tệp đi qua mạng mà không được mã hóa."
         },
         "shortcuts": {
             "title": "Phím tắt",

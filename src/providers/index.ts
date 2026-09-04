@@ -27,6 +27,7 @@ export {
     resolveS3Endpoint,
     jurisdictionSegment,
     s3TemplateParams,
+    endpointNeedsCleartextConsent,
     parseS3EndpointParams,
     R2_JURISDICTIONS,
 } from './registry';

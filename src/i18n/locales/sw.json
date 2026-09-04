@@ -1927,7 +1927,8 @@
             "peerDesc": "Shiriki folda moja kwa moja na marafiki kupitia njia ya peer-to-peer iliyosimbwa, bila seva katikati.",
             "devicesInfoLine1": "Hifadhi kifaa cha USB kinachobebeka (simu, kamera, kompyuta kibao) kama wasifu katika Seva Zangu. Tambua kifaa kupitia MTP, weka folda chaguo-msingi, na uunganishe tena kwa mbofyo mmoja kinapochomeka.",
             "devicesInfoLine2": "MTP ni ya kipekee na kwa mahitaji: Unganisha inadai kifaa kwa kipindi; kukata muunganisho kunakirudisha. Uhamishaji ni faili nzima pekee (hakuna kuendelea, hakuna herufi ya diski).",
-            "discoverMtpPortable": "Simu, kamera, au kompyuta kibao kupitia USB MTP"
+            "discoverMtpPortable": "Simu, kamera, au kompyuta kibao kupitia USB MTP",
+            "s3AllowCleartextEndpoint": "Sehemu hii ya mwisho hutoa S3 kupitia HTTP wazi kwenye mtandao. Ikubali kwa wasifu huu: vitambulisho vilivyotiwa saini na kila faili hupita kwenye mtandao bila kusimbwa."
         },
         "shortcuts": {
             "title": "Njia za Mkato",

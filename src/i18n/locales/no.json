@@ -1927,7 +1927,8 @@
             "peerDesc": "Del mapper direkte med venner via en kryptert peer-to-peer-kanal, uten noen server i mellom.",
             "devicesInfoLine1": "Lagre en bærbar USB-enhet (telefon, kamera, nettbrett) som en profil i Mine servere. Oppdag enheten via MTP, angi standardmapper og koble til igjen med ett klikk når den er tilkoblet.",
             "devicesInfoLine2": "MTP er eksklusivt og på forespørsel: Koble til krever enheten for økten; koble fra gir den tilbake. Overføringer er kun hele filer (ingen gjenopptaking, ingen stasjonsbokstav).",
-            "discoverMtpPortable": "Telefon, kamera eller nettbrett via USB MTP"
+            "discoverMtpPortable": "Telefon, kamera eller nettbrett via USB MTP",
+            "s3AllowCleartextEndpoint": "Dette endepunktet leverer S3 over ukryptert HTTP via et nettverk. Godta det for denne profilen: den signerte påloggingsinformasjonen og hver fil krysser nettverket ukryptert."
         },
         "shortcuts": {
             "title": "Tastatursnarveier",

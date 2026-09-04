@@ -34,6 +34,12 @@ pub fn normalize_profile_option_key(key: &str) -> &str {
         // profile loaded outside the GUI keeps the camelCase key, the provider
         // sees nothing and fails closed, so a working profile stops connecting.
         "allowCleartextStorage" => "allow_cleartext_storage_endpoint",
+        // S3: same shape as the Swift line above, and here for the same reason.
+        // The GUI stores `options.allowCleartextEndpoint`; `S3Config` reads
+        // `allow_cleartext_endpoint`. Without this line a profile loaded outside
+        // the GUI keeps the camelCase key, the consent is not seen, and a
+        // deployment the user already accepted stops connecting from the CLI.
+        "allowCleartextEndpoint" => "allow_cleartext_endpoint",
         "pathStyle" => "path_style",
         "accountName" => "account_name",
         "accessKey" => "access_key",
@@ -569,6 +575,35 @@ mod tests {
             extra.get(S3_ENDPOINT_SOURCE_META_KEY).map(String::as_str),
             Some("profile")
         );
+    }
+
+    #[test]
+    fn s3_cleartext_consent_survives_the_trip_from_the_gui_to_the_provider() {
+        // The GUI writes `allowCleartextEndpoint`; `S3Config` reads
+        // `allow_cleartext_endpoint`. Without the normalization line the consent
+        // is invisible outside the GUI and a deployment the user already
+        // accepted stops connecting from the CLI, the MCP pool and schedulers.
+        let profile = json!({
+            "providerId": "minio",
+            "options": { "endpoint": "http://minio.example.com:9000", "allowCleartextEndpoint": true }
+        });
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &profile);
+        assert_eq!(
+            extra.get("allow_cleartext_endpoint").map(String::as_str),
+            Some("true")
+        );
+    }
+
+    #[test]
+    fn a_profile_that_never_consented_carries_no_consent_key() {
+        let profile = json!({
+            "providerId": "minio",
+            "options": { "endpoint": "http://minio.example.com:9000" }
+        });
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &profile);
+        assert!(!extra.contains_key("allow_cleartext_endpoint"));
     }
 
     #[test]

@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
-import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplateParams } from '../providers';
+import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplateParams, endpointNeedsCleartextConsent } from '../providers';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
 import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
@@ -688,6 +688,7 @@ interface ProtocolFieldsProps {
         endpoint?: string;
         accountId?: string;
         jurisdiction?: string;
+        allowCleartextEndpoint?: boolean;
         pathStyle?: boolean;
         // S3 temporary credentials (AWS STS AssumeRole / SSO), issue #301
         sessionToken?: string;
@@ -1303,6 +1304,19 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         onChange={(v) => onChange({ ...options, pathStyle: v })}
                         disabled={disabled}
                         label={<span className="text-sm">{t('protocol.pathStyle')}</span>}
+                    />
+                )}
+
+                {/* Cleartext endpoint consent. Shown only when the endpoint actually
+                    needs it (plain HTTP, not on this machine), and NOT tucked into
+                    Advanced even when the endpoint field is: a connection refused for
+                    a reason whose switch is hidden reads as a broken client. */}
+                {endpointNeedsCleartextConsent(options.endpoint) && (
+                    <Checkbox
+                        checked={options.allowCleartextEndpoint === true}
+                        onChange={(v) => onChange({ ...options, allowCleartextEndpoint: v ? true : undefined })}
+                        disabled={disabled}
+                        label={<span className="text-xs text-gray-500 dark:text-gray-400">{t('protocol.s3AllowCleartextEndpoint')}</span>}
                     />
                 )}
 

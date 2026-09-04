@@ -1927,7 +1927,8 @@
             "peerDesc": "Partekatu karpetak zuzenean lagunekin enkriptatutako peer-to-peer kanal baten bidez, tarteko zerbitzaririk gabe.",
             "devicesInfoLine1": "Gorde USB gailu eramangarri bat (telefonoa, kamera, tableta) Nire zerbitzariak ataleko profil gisa. Detektatu gailua MTP bidez, ezarri karpeta lehenetsiak eta birkonektatu klik bakarrarekin konektatuta dagoenean.",
             "devicesInfoLine2": "MTP esklusiboa eta eskaeraren araberakoa da: Konektatu-k gailua sesiorako hartzen du; deskonektatzeak itzuli egiten du. Transferentziak fitxategi osokoak baino ez dira (berrekiterik gabe, unitate-letrarik gabe).",
-            "discoverMtpPortable": "Telefonoa, kamera edo tableta USB MTP bidez"
+            "discoverMtpPortable": "Telefonoa, kamera edo tableta USB MTP bidez",
+            "s3AllowCleartextEndpoint": "Amaiera-puntu honek S3 zerbitzatzen du HTTP soilaren bidez, sarea zeharkatuz. Onartu profil honetarako: sinatutako kredentzialak eta fitxategi guztiak zifratu gabe zeharkatzen dute sarea."
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

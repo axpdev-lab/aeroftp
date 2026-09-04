@@ -1927,7 +1927,8 @@
             "peerDesc": "Dijelite mape izravno s prijateljima putem šifriranog peer-to-peer kanala, bez poslužitelja u sredini.",
             "devicesInfoLine1": "Spremite prijenosni USB uređaj (telefon, kameru, tablet) kao profil u Moji poslužitelji. Otkrijte uređaj putem MTP-a, postavite zadane mape i ponovno se povežite jednim klikom kada je priključen.",
             "devicesInfoLine2": "MTP je isključiv i na zahtjev: Poveži preuzima uređaj za sesiju; prekid ga vraća. Prijenosi su samo cijele datoteke (bez nastavka, bez slova pogona).",
-            "discoverMtpPortable": "Telefon, kamera ili tablet putem USB MTP"
+            "discoverMtpPortable": "Telefon, kamera ili tablet putem USB MTP",
+            "s3AllowCleartextEndpoint": "Ova krajnja točka poslužuje S3 preko nešifriranog HTTP-a putem mreže. Prihvatite to za ovaj profil: potpisani pristupni podaci i svaka datoteka prelaze mrežu nešifrirani."
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",

@@ -1927,7 +1927,8 @@
             "peerDesc": "Bagikan folder langsung dengan teman melalui saluran peer-to-peer terenkripsi, tanpa server perantara.",
             "devicesInfoLine1": "Simpan perangkat USB portabel (ponsel, kamera, tablet) sebagai profil di Server Saya. Deteksi perangkat melalui MTP, atur folder default, dan sambungkan kembali dengan satu klik saat terpasang.",
             "devicesInfoLine2": "MTP bersifat eksklusif dan sesuai permintaan: Hubungkan mengklaim perangkat untuk sesi; memutuskan sambungan mengembalikannya. Transfer hanya seluruh file (tanpa lanjut, tanpa huruf drive).",
-            "discoverMtpPortable": "Ponsel, kamera, atau tablet melalui USB MTP"
+            "discoverMtpPortable": "Ponsel, kamera, atau tablet melalui USB MTP",
+            "s3AllowCleartextEndpoint": "Endpoint ini menyajikan S3 melalui HTTP biasa lewat jaringan. Terima untuk profil ini: kredensial bertanda tangan dan setiap berkas melintasi jaringan tanpa enkripsi."
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

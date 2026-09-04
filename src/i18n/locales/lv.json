@@ -1927,7 +1927,8 @@
             "peerDesc": "Kopīgojiet mapes tieši ar draugiem, izmantojot šifrētu peer-to-peer kanālu, bez servera pa vidu.",
             "devicesInfoLine1": "Saglabājiet pārnēsājamu USB ierīci (tālruni, kameru, planšetdatoru) kā profilu sadaļā Mani serveri. Nosakiet ierīci, izmantojot MTP, iestatiet noklusējuma mapes un atkārtoti savienojieties ar vienu klikšķi, kad tā ir pievienota.",
             "devicesInfoLine2": "MTP ir ekskluzīvs un pēc pieprasījuma: Savienot pieprasa ierīci sesijai; atvienošana to atdod. Pārsūtīšana notiek tikai ar veseliem failiem (bez atsākšanas, bez diska burta).",
-            "discoverMtpPortable": "Tālrunis, kamera vai planšetdators, izmantojot USB MTP"
+            "discoverMtpPortable": "Tālrunis, kamera vai planšetdators, izmantojot USB MTP",
+            "s3AllowCleartextEndpoint": "Šis galapunkts nodrošina S3 caur nešifrētu HTTP tīklā. Pieņemiet to šim profilam: parakstītie akreditācijas dati un katrs fails šķērso tīklu nešifrēti."
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

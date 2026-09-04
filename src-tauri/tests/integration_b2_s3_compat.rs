@@ -125,6 +125,7 @@ fn make_provider(c: &Creds) -> S3Provider {
         sse_mode: None,
         sse_kms_key_id: None,
         verify_cert: true,
+        allow_cleartext_endpoint: false,
     })
     .expect("build S3 provider for the B2 S3-compatible endpoint")
 }

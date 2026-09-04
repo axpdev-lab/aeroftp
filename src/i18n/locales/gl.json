@@ -1927,7 +1927,8 @@
             "peerDesc": "Comparte cartafoles directamente cos teus amigos a través dunha canle cifrada de igual a igual, sen ningún servidor polo medio.",
             "devicesInfoLine1": "Garda un dispositivo USB portátil (teléfono, cámara, tableta) como un perfil dos Meus servidores. Detecta o dispositivo por MTP, define os cartafoles predeterminados e reconéctate cun clic cando estea conectado.",
             "devicesInfoLine2": "MTP é exclusivo e baixo demanda: Conectar reclama o dispositivo para a sesión; desconectar devólveo. As transferencias son de ficheiro completo (sen retoma nin letra de unidade).",
-            "discoverMtpPortable": "Teléfono, cámara ou tableta por USB MTP"
+            "discoverMtpPortable": "Teléfono, cámara ou tableta por USB MTP",
+            "s3AllowCleartextEndpoint": "Este punto de conexión serve S3 por HTTP sen cifrar a través dunha rede. Acéptao para este perfil: as credenciais asinadas e todos os ficheiros atravesan a rede sen cifrar."
         },
         "shortcuts": {
             "title": "Atallos de teclado",
