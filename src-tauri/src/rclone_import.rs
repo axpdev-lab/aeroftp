@@ -1770,6 +1770,12 @@ pub fn export_rclone(
                 body.push_str(&format!("host = {}\n", server.host));
                 body.push_str(&format!("port = {}\n", server.port));
                 body.push_str(&format!("user = {}\n", server.username));
+                // AeroFTP verifies the server key against ~/.ssh/known_hosts
+                // (russh `check_known_hosts`); an rclone remote without this key
+                // performs no host-key validation at all and says so on every
+                // run. Point it at the same file so the exported remote keeps
+                // the trust the profile had (rclone expands the leading `~`).
+                body.push_str("known_hosts_file = ~/.ssh/known_hosts\n");
                 if let Some(pw) = password.filter(|p| !p.is_empty()) {
                     body.push_str(&format!(
                         "pass = {}\n",
@@ -2344,6 +2350,54 @@ pub fn export_rclone(
                     &format!("protocol '{}' has no rclone backend", proto),
                 );
                 continue;
+            }
+        }
+
+        // A path-rooted profile (sftp/ftp/webdav) that starts in a sub-folder:
+        // rclone has no "start here" key for these backends, so the folder is
+        // carried as an `alias` remote, exactly like a pinned S3 bucket. The
+        // alias name is generated, so it yields to every real profile name.
+        if matches!(proto, "sftp" | "ftp" | "ftps" | "webdav") {
+            if let Some(path) = options
+                .and_then(|o| o.get("initial_path"))
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|p| !p.is_empty() && *p != "/")
+            {
+                // sftp addresses an absolute folder as `remote:/abs`; ftp and
+                // webdav paths are relative to the account/URL root.
+                let alias_path = if proto == "sftp" {
+                    path.to_string()
+                } else {
+                    path.trim_start_matches('/').to_string()
+                };
+                let desired = sanitize_rclone_remote_name(&format!("{remote_name}-path"));
+                match names.claim_generated(&desired) {
+                    Some(alias_name) if !alias_name.is_empty() && alias_name != remote_name => {
+                        if alias_name != desired {
+                            trailing.push_str(&format!(
+                                "\n# renamed from '{}': that name is taken by another remote\n",
+                                desired
+                            ));
+                        }
+                        trailing.push_str(&format!(
+                            "\n# '{}' opens in '{}' in AeroFTP; address that folder as `{}:`.\n",
+                            server.name.replace(['\n', '\r'], " "),
+                            alias_path,
+                            alias_name
+                        ));
+                        trailing.push_str(&format!("[{}]\n", alias_name));
+                        trailing.push_str("type = alias\n");
+                        trailing.push_str(&format!("remote = {}:{}\n", remote_name, alias_path));
+                    }
+                    _ => {
+                        trailing.push_str(&format!(
+                            "\n# start-folder alias for '{}' omitted: no free remote name near '{}'\n",
+                            server.name.replace(['\n', '\r'], " "),
+                            desired
+                        ));
+                    }
+                }
             }
         }
 
@@ -3169,6 +3223,86 @@ user = t
             !conf.contains("\ntls = true\n"),
             "must not also enable implicit FTPS:\n{conf}"
         );
+    }
+
+    #[test]
+    fn test_export_rclone_sftp_pins_known_hosts_and_carries_start_folder() {
+        // The exported SFTP remote must keep the profile's trust posture (host
+        // key checked against ~/.ssh/known_hosts) and its starting folder,
+        // which rclone can only express as an alias remote.
+        let servers = vec![RcloneExportServer {
+            name: "nas".to_string(),
+            host: "nas.example.test".to_string(),
+            port: 2222,
+            username: "sshd".to_string(),
+            protocol: Some("sftp".to_string()),
+            options: Some(serde_json::json!({
+                "initial_path": "/mnt/HD/cloud/AeroSyncFolder"
+            })),
+            provider_id: None,
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("nas".to_string(), "secret".to_string());
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-sftp-path-alias.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            conf.contains("known_hosts_file = ~/.ssh/known_hosts"),
+            "sftp remote must validate host keys like the profile does:\n{conf}"
+        );
+        assert!(
+            conf.contains("[nas-path]"),
+            "expected start-folder alias:\n{conf}"
+        );
+        assert!(
+            conf.contains("remote = nas:/mnt/HD/cloud/AeroSyncFolder"),
+            "sftp alias keeps the absolute folder:\n{conf}"
+        );
+        // The alias is a section of its own, after the sftp section.
+        let sftp_at = conf.find("[nas]").expect("sftp section");
+        let alias_at = conf.find("[nas-path]").expect("alias section");
+        assert!(alias_at > sftp_at);
+    }
+
+    #[test]
+    fn test_export_rclone_root_folder_carries_no_alias_and_webdav_alias_is_relative() {
+        let root = vec![RcloneExportServer {
+            name: "plainftp".to_string(),
+            host: "ftp.example.test".to_string(),
+            port: 21,
+            username: "u".to_string(),
+            protocol: Some("ftp".to_string()),
+            options: Some(serde_json::json!({ "initial_path": "/" })),
+            provider_id: None,
+        }];
+        let dav = vec![RcloneExportServer {
+            name: "dav".to_string(),
+            host: "https://dav.example.test/".to_string(),
+            port: 443,
+            username: "u".to_string(),
+            protocol: Some("webdav".to_string()),
+            options: Some(serde_json::json!({ "initial_path": "/team/docs" })),
+            provider_id: None,
+        }];
+        for (servers, tag) in [(root, "root"), (dav, "dav")] {
+            let tmp = std::env::temp_dir().join(format!("aeroftp-test-export-path-{tag}.conf"));
+            export_rclone(&servers, &HashMap::new(), &tmp).expect("should export");
+            let conf = std::fs::read_to_string(&tmp).expect("read conf");
+            std::fs::remove_file(&tmp).ok();
+            if tag == "root" {
+                assert!(
+                    !conf.contains("type = alias"),
+                    "a root start folder is the remote itself:\n{conf}"
+                );
+            } else {
+                assert!(
+                    conf.contains("remote = dav:team/docs"),
+                    "webdav alias path is relative to the URL root:\n{conf}"
+                );
+            }
+        }
     }
 
     #[test]

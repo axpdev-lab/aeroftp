@@ -31909,6 +31909,40 @@ async fn cmd_put(
         return code;
     }
 
+    // A single `put` into a folder that does not exist yet used to fail on the
+    // path-rooted protocols ("Failed to create remote file: No such file" on
+    // SFTP), while `put -r` creates every missing ancestor and rclone's
+    // `copyto` creates parents as a matter of course. Same policy here, paid
+    // only when the parent is really missing (one `exists` round trip) and
+    // only where folders are real: object stores have no parent to create.
+    if matches!(
+        provider.provider_type(),
+        ProviderType::Sftp | ProviderType::Ftp | ProviderType::Ftps | ProviderType::WebDav
+    ) {
+        if let Some(parent) = remote_parent_dir(remote_path) {
+            if matches!(provider.exists(&parent).await, Ok(false)) {
+                for ancestor in benchmark_mkdir_ladder(&parent) {
+                    match provider.mkdir(&ancestor).await {
+                        Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
+                        Err(mkd_err) => {
+                            let code = provider_error_to_exit_code(&mkd_err);
+                            print_error(
+                                format,
+                                &format!(
+                                    "Cannot create remote directory '{}': {}",
+                                    ancestor, mkd_err
+                                ),
+                                code,
+                            );
+                            let _ = provider.disconnect().await;
+                            return code;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // --immutable / --no-clobber: skip upload if remote file already exists
     if no_clobber || cli.immutable {
         let flag_name = if cli.immutable {
@@ -35438,6 +35472,11 @@ async fn cmd_export_rclone(
             &p.id,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_zoho_export_options(
+            &mut options,
+            &p.protocol,
+            p.initial_path.as_deref(),
+        );
+        ftp_client_gui_lib::bridge_commands::inject_rclone_path_export_options(
             &mut options,
             &p.protocol,
             p.initial_path.as_deref(),
@@ -41539,6 +41578,18 @@ async fn benchmark_mkdir_p(
 /// the ordered list of cumulative ancestor paths to create, preserving a
 /// leading slash for absolute paths. `"a/b/c"` yields `[a, a/b, a/b/c]`;
 /// `"/x/y"` yields `[/x, /x/y]`. An empty (or slash-only) path yields `[]`.
+/// The folder a remote file path lives in, or `None` when that folder is the
+/// root (nothing to create) or the path has no folder component.
+fn remote_parent_dir(remote_path: &str) -> Option<String> {
+    let trimmed = remote_path.trim_end_matches('/');
+    let (parent, _) = trimmed.rsplit_once('/')?;
+    if parent.trim_start_matches('/').is_empty() {
+        None
+    } else {
+        Some(parent.to_string())
+    }
+}
+
 fn benchmark_mkdir_ladder(path: &str) -> Vec<String> {
     let trimmed = path.trim_end_matches('/');
     if trimmed.trim_start_matches('/').is_empty() {
@@ -69299,6 +69350,27 @@ mod tests {
         cli.trust_host_key = true;
         cli.aimd_disable = true;
         assert_eq!(strict_mode_violations(&cli).len(), 3);
+    }
+
+    #[test]
+    fn remote_parent_dir_names_only_a_folder_that_could_be_missing() {
+        assert_eq!(
+            remote_parent_dir("/home/u/fable/2026/a.bin"),
+            Some("/home/u/fable/2026".to_string())
+        );
+        assert_eq!(
+            remote_parent_dir("rel/dir/a.bin"),
+            Some("rel/dir".to_string())
+        );
+        // Root and bare names have no folder to create.
+        assert_eq!(remote_parent_dir("/a.bin"), None);
+        assert_eq!(remote_parent_dir("a.bin"), None);
+        assert_eq!(remote_parent_dir("/"), None);
+        // The ladder then yields every ancestor top-down.
+        assert_eq!(
+            benchmark_mkdir_ladder("/home/u/fable"),
+            vec!["/home", "/home/u", "/home/u/fable"]
+        );
     }
 
     #[test]
