@@ -45196,6 +45196,30 @@ fn apply_default_time<'a>(mtime: Option<&'a str>, default: Option<&'a str>) -> O
     mtime.or(default)
 }
 
+/// Tolerance for "same instant" decisions between two stores: FAT and FTP
+/// `MDTM` keep 2-second granularity, and clocks on two machines are never
+/// exactly aligned.
+const SYNC_MTIME_TOLERANCE_SECS: i64 = 2;
+
+/// One-way sync, sizes already equal: is the destination copy current?
+///
+/// The destination is current when its mtime is not older than the source's
+/// (within tolerance): a copy written after the source last changed already
+/// holds that content. Backends that do not preserve mtime (S3 reports the
+/// upload time) therefore stop re-uploading every file on every run, and a
+/// source edited after the last sync (newer than the destination) is still
+/// transferred. When either timestamp cannot be parsed the rule falls back to
+/// the exact comparison the planner always used.
+fn destination_is_current(src_mtime: Option<&str>, dst_mtime: Option<&str>) -> bool {
+    match (
+        src_mtime.and_then(parse_mtime_secs),
+        dst_mtime.and_then(parse_mtime_secs),
+    ) {
+        (Some(src), Some(dst)) => dst + SYNC_MTIME_TOLERANCE_SECS >= src,
+        _ => compare_mtime(src_mtime, dst_mtime) == std::cmp::Ordering::Equal,
+    }
+}
+
 fn compare_mtime(a: Option<&str>, b: Option<&str>) -> std::cmp::Ordering {
     match (a, b) {
         (Some(a), Some(b)) => {
@@ -46163,9 +46187,19 @@ async fn cmd_sync(
             if let Some((rsize, rmtime)) = remote_map.get(path) {
                 let lm = apply_default_time(*mtime, default_time_ref);
                 let rm = apply_default_time(*rmtime, default_time_ref);
-                if size == rsize
-                    && (skip_matching || compare_mtime(lm, rm) == std::cmp::Ordering::Equal)
-                {
+                // One-way upload: the remote copy is current when it is at
+                // least as new as the local file (it was written after the
+                // local file last changed). Exact equality is impossible on
+                // backends that do not preserve mtime (S3 reports the upload
+                // time), and demanding it re-uploaded every file on every run.
+                // Bidirectional sync keeps exact equality: a difference there
+                // is a conflict to resolve, not a copy to skip.
+                let current = if direction == "upload" {
+                    skip_matching || destination_is_current(lm, rm)
+                } else {
+                    skip_matching || compare_mtime(lm, rm) == std::cmp::Ordering::Equal
+                };
+                if size == rsize && current {
                     skipped += 1;
                 } else if direction == "both" {
                     // Conflict: file exists on both sides with different content
@@ -46228,9 +46262,14 @@ async fn cmd_sync(
             if let Some((lsize, lmtime)) = local_map.get(path) {
                 let rm = apply_default_time(*mtime, default_time_ref);
                 let lm = apply_default_time(*lmtime, default_time_ref);
-                if size == lsize
-                    && (skip_matching || compare_mtime(rm, lm) == std::cmp::Ordering::Equal)
-                {
+                // Mirror of the upload rule: in one-way download the local copy
+                // is current when it is at least as new as the remote file.
+                let current = if direction == "download" {
+                    skip_matching || destination_is_current(rm, lm)
+                } else {
+                    skip_matching || compare_mtime(rm, lm) == std::cmp::Ordering::Equal
+                };
+                if size == lsize && current {
                     if direction == "download" {
                         skipped += 1;
                     }
@@ -69431,6 +69470,28 @@ mod tests {
         cli.trust_host_key = true;
         cli.aimd_disable = true;
         assert_eq!(strict_mode_violations(&cli).len(), 3);
+    }
+
+    #[test]
+    fn destination_is_current_when_not_older_than_the_source() {
+        let src = Some("2026-09-05T04:36:40Z");
+        // Written after the source last changed (S3 upload time): current.
+        assert!(destination_is_current(src, Some("2026-09-05T06:11:32Z")));
+        // Same second: current.
+        assert!(destination_is_current(src, Some("2026-09-05T04:36:40Z")));
+        // Within the 2 s tolerance either way: current.
+        assert!(destination_is_current(src, Some("2026-09-05T04:36:38Z")));
+        // Source edited after the destination was written: not current, transfer.
+        assert!(!destination_is_current(src, Some("2026-09-05T04:36:37Z")));
+        assert!(!destination_is_current(
+            Some("2026-09-05T07:00:00Z"),
+            Some("2026-09-05T06:11:32Z")
+        ));
+        // Unparsable or missing timestamps fall back to exact equality.
+        assert!(!destination_is_current(src, None));
+        assert!(destination_is_current(None, None));
+        assert!(destination_is_current(Some("weird"), Some("weird")));
+        assert!(!destination_is_current(Some("weird"), Some("other")));
     }
 
     #[test]
