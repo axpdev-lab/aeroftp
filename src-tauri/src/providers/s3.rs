@@ -7236,6 +7236,26 @@ mod tests {
         assert_eq!(file.size, 1024);
     }
 
+    /// The delta planner repeats the multipart threshold as its own floor so it
+    /// stays free of the provider (see `s3_delta_plan::DELTA_MIN_FILE_SIZE` and
+    /// the note there). A repeated constant is a drift risk, so the guard is a
+    /// test rather than a comment: this is the only place that can see both
+    /// values.
+    ///
+    /// It pins the COMPARISON as well as the constant. `upload` goes multipart
+    /// only above the threshold, so a file of exactly that size takes the
+    /// single PUT path and the planner must refuse it: matching one and not the
+    /// other would leave a byte on which the two halves disagree.
+    #[test]
+    fn delta_min_file_size_matches_the_multipart_threshold() {
+        use crate::providers::s3_delta_plan::{delta_grid_size, DELTA_MIN_FILE_SIZE};
+        assert_eq!(DELTA_MIN_FILE_SIZE, S3Provider::MULTIPART_THRESHOLD as u64);
+        // At the threshold `upload` does not go multipart, and the planner
+        // agrees; one byte above, both change their minds together.
+        assert_eq!(delta_grid_size(DELTA_MIN_FILE_SIZE), None);
+        assert!(delta_grid_size(DELTA_MIN_FILE_SIZE + 1).is_some());
+    }
+
     /// T-DEBT-08: `plan_copy_parts` is the pure half of server-side
     /// multipart copy. Validates the part-planning math without touching
     /// any HTTP path: the actual UploadPartCopy sequencing is verified

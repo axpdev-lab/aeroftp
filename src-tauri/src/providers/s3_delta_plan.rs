@@ -24,6 +24,120 @@ pub const S3_PART_MAX: u64 = 5 * 1024 * 1024 * 1024;
 /// Most parts S3 accepts in one multipart upload.
 pub const S3_MAX_PARTS: u32 = 10_000;
 
+/// Default delta grid: the cell the matcher compares and the part the planner
+/// emits when nothing forces it wider. A small multiple of the floor, so a cell
+/// that matches is likely to become a whole part rather than be absorbed into
+/// an upload run by the repair.
+pub const DELTA_PART_SIZE: u64 = 8 * 1024 * 1024;
+
+/// A delta is attempted only strictly ABOVE this.
+///
+/// Mirrors the provider's `MULTIPART_THRESHOLD`, and mirrors its comparison
+/// too: `upload` goes multipart when `total_size > MULTIPART_THRESHOLD`, so a
+/// file of exactly that size takes the single PUT path and has nothing for a
+/// delta to attach to. Matching the constant and not the comparison would
+/// leave one byte on which the two halves disagree, which is the seam this
+/// module has already been bitten by twice.
+///
+/// The value is repeated here rather than imported, so this module stays free
+/// of the provider, and `s3.rs` carries a test that fails if either the
+/// constants or the comparisons drift apart.
+pub const DELTA_MIN_FILE_SIZE: u64 = 200 * 1024 * 1024;
+
+/// Largest grid this module will ever use or accept, which is NOT the largest
+/// part S3 allows.
+///
+/// The grid is handed to [`plan_delta_parts`] as its `part_min`, and the
+/// planner refuses a floor above half its ceiling, because above that an
+/// over-long run cannot be split into equal pieces that all still clear the
+/// floor. So the usable grid stops at half the part maximum, and every place
+/// that bounds a grid reads it from here rather than restating the arithmetic:
+/// the first version of this module got the bound right in the function that
+/// chooses a grid and left the protocol value in the function that accepts one,
+/// which is the same defect twice with one of the two occurrences fixed.
+/// `the_planner_accepts_exactly_this_grid_as_a_floor` pins the derivation.
+pub const DELTA_GRID_MAX: u64 = S3_PART_MAX / 2;
+
+/// Largest file this PLANNER can cover, which is well above what the backends
+/// allow an object to be: AWS, MinIO, R2 and Wasabi cap an object at 5 TiB and
+/// B2 at 10 TB, so in practice the object limit is what a user meets first.
+///
+/// It is stated anyway because it is the planner's own bound and the rule that
+/// chooses a grid has to stop somewhere. The protocol arithmetic alone would
+/// say `S3_MAX_PARTS * S3_PART_MAX`, 48.8 TiB, and that is wrong here: past
+/// `S3_MAX_PARTS * DELTA_GRID_MAX`, 24.4 TiB, the grid the rule would choose is
+/// one the planner refuses on every plan. The two halves have to be sized
+/// against each other rather than each against the protocol.
+pub const DELTA_MAX_FILE_SIZE: u64 = S3_MAX_PARTS as u64 * DELTA_GRID_MAX;
+
+/// Choose the grid a file of `file_len` bytes is compared and cut on, or refuse
+/// the file.
+///
+/// The default grid is [`DELTA_PART_SIZE`], and it does not survive every size:
+/// a file large enough that `file_len / DELTA_PART_SIZE` exceeds the 10 000
+/// part cap cannot be planned on it, because the worst case for the planner is
+/// one part per cell (a file whose cells alternate between changed and
+/// unchanged produces no coalescing at all). So the grid scales up to at least
+/// `file_len / S3_MAX_PARTS`, which is what keeps that worst case legal rather
+/// than only the average case.
+///
+/// The scaled grid is rounded up to a whole number of default cells, and that
+/// rounding is the point rather than tidiness. The grid is stored next to the
+/// baseline digests and a later delta has to reuse the same one, so a grid that
+/// moved with every byte of length would throw the cache away on every upload.
+/// Rounded, it only moves when `file_len` crosses a multiple of
+/// `S3_MAX_PARTS * DELTA_PART_SIZE`, which is 78.125 GiB, so an append or an
+/// edit keeps the grid it had.
+///
+/// Returns `None` for a file too small for a delta to be worth anything and for
+/// a file past [`DELTA_MAX_FILE_SIZE`], where no legal grid exists.
+pub fn delta_grid_size(file_len: u64) -> Option<u64> {
+    if file_len <= DELTA_MIN_FILE_SIZE || file_len > DELTA_MAX_FILE_SIZE {
+        return None;
+    }
+    let needed = file_len.div_ceil(u64::from(S3_MAX_PARTS));
+    let grid = DELTA_PART_SIZE
+        .max(needed)
+        .div_ceil(DELTA_PART_SIZE)
+        .saturating_mul(DELTA_PART_SIZE);
+    // `needed` is at most DELTA_GRID_MAX at the maximum file size, and 2.5 GiB
+    // is a whole number of 8 MiB cells, so the rounding never lifts the grid
+    // past what the planner accepts as a floor. Asserted by
+    // `the_grid_never_exceeds_what_the_planner_accepts` rather than left as a
+    // claim in a comment.
+    Some(grid)
+}
+
+/// Whether a grid recorded with an earlier upload can still be used for a file
+/// of `file_len` bytes.
+///
+/// A delta must compare the new file against the baseline on the grid the
+/// baseline's digests were computed with, not on the grid the new length would
+/// choose, or the cells do not line up and nothing matches. The stored grid can
+/// still have gone out of range in the meantime, most obviously when the file
+/// has grown far enough that it no longer fits under the part cap on it, and
+/// then the honest answer is a full upload and a fresh set of digests.
+pub fn delta_grid_fits(grid: u64, file_len: u64) -> bool {
+    // Everything the planner itself requires comes from the planner, not from
+    // a copy of its rules: that shared call is what stops this function from
+    // saying yes to a shape `plan_delta_parts` then refuses. A file that shrank
+    // below its stored cell is one such shape, and it was the third one found.
+    //
+    // Two of the clauses below can no longer be the one that refuses, and both
+    // are kept so the function reads as a complete statement of what it accepts
+    // rather than one leaning on arithmetic done elsewhere. The grid ceiling is
+    // implied by the shared call, since a floor above half the part ceiling
+    // fails `part_max < part_min * 2` there; the file ceiling is implied by
+    // that grid bound together with the cell count. Measured, not assumed: the
+    // mutation battery records both as knowingly equivalent, so an uncaught
+    // mutation there is the expected result and not an untested clause.
+    plan_preconditions_hold(file_len, grid, S3_PART_MAX, S3_MAX_PARTS)
+        && (S3_PART_MIN..=DELTA_GRID_MAX).contains(&grid)
+        && file_len > DELTA_MIN_FILE_SIZE
+        && file_len <= DELTA_MAX_FILE_SIZE
+        && file_len.div_ceil(grid) <= u64::from(S3_MAX_PARTS)
+}
+
 /// One part of a planned delta upload.
 ///
 /// Parts are emitted in ascending `part_number` and concatenated by S3 in
@@ -139,6 +253,31 @@ pub fn plan_delta_parts(
 /// geometry would reuse: Azure's `Put Block From URL` has no 5 MiB floor, which
 /// is Tier 3 of the appendix and the reason the arithmetic is kept free of the
 /// S3 numbers.
+/// The shape a plan needs before any matching is looked at, in one place.
+///
+/// It is a function rather than three checks at the top of the planner because
+/// a second caller has to ask the same question: `delta_grid_fits` decides
+/// whether a grid recorded with an earlier upload can still be used, and the
+/// only honest meaning of "can" is "the planner will accept it". Restating the
+/// conditions there instead of sharing them is how that function came to
+/// disagree with this one three separate times, each in a different clause.
+fn plan_preconditions_hold(file_len: u64, part_min: u64, part_max: u64, max_parts: u32) -> bool {
+    if file_len == 0 || part_min == 0 || max_parts == 0 {
+        return false;
+    }
+    // A run longer than the ceiling is cut into equal pieces, and every piece
+    // has to clear the floor. Below a ceiling of two floors that is not
+    // always possible, so refuse rather than emit a plan the server rejects.
+    // The real S3 numbers are 5 MiB and 5 GiB, a factor of 1024.
+    if part_max < part_min.saturating_mul(2) {
+        return false;
+    }
+    // Under one full part there is nothing a multipart can win: a single PUT
+    // is both legal and cheaper. This is also the clause a stored grid fails
+    // when the file has shrunk below the cell it was uploaded on.
+    file_len >= part_min
+}
+
 fn plan_delta_parts_bounded(
     file_len: u64,
     matches: &[(u64, u64, u64)],
@@ -146,19 +285,7 @@ fn plan_delta_parts_bounded(
     part_max: u64,
     max_parts: u32,
 ) -> Option<Vec<DeltaPart>> {
-    if file_len == 0 || part_min == 0 || max_parts == 0 {
-        return None;
-    }
-    // A run longer than the ceiling is cut into equal pieces, and every piece
-    // has to clear the floor. Below a ceiling of two floors that is not
-    // always possible, so refuse rather than emit a plan the server rejects.
-    // The real S3 numbers are 5 MiB and 5 GiB, a factor of 1024.
-    if part_max < part_min.saturating_mul(2) {
-        return None;
-    }
-    // Under one full part there is nothing a multipart can win: a single PUT
-    // is both legal and cheaper.
-    if file_len < part_min {
+    if !plan_preconditions_hold(file_len, part_min, part_max, max_parts) {
         return None;
     }
 
@@ -950,6 +1077,270 @@ mod tests {
         let parts = plan_delta_parts(file_len, &matches, 5 * MIB, 10_000).expect("plan");
         assert_eq!(parts.len(), 4000);
         assert_plan_is_legal(file_len, &matches, 5 * MIB, S3_PART_MAX, 10_000, &parts);
+    }
+
+    // ---- the grid and its scale-up rule -----------------------------------
+
+    #[test]
+    fn a_file_under_the_delta_floor_gets_no_grid() {
+        assert_eq!(delta_grid_size(DELTA_MIN_FILE_SIZE - 1), None);
+        assert_eq!(delta_grid_size(0), None);
+        // Exactly at the floor there is no delta, because `upload` sends a
+        // single PUT at exactly that size. Matching the constant without
+        // matching the comparison would leave one byte of disagreement.
+        assert_eq!(delta_grid_size(DELTA_MIN_FILE_SIZE), None);
+        assert_eq!(
+            delta_grid_size(DELTA_MIN_FILE_SIZE + 1),
+            Some(DELTA_PART_SIZE)
+        );
+    }
+
+    #[test]
+    fn an_ordinary_large_file_uses_the_default_grid() {
+        // 2 GiB on an 8 MiB grid is 256 cells, nowhere near the cap.
+        assert_eq!(delta_grid_size(2 * GIB), Some(DELTA_PART_SIZE));
+    }
+
+    #[test]
+    fn the_default_grid_survives_up_to_the_part_cap_and_not_past_it() {
+        // The default grid covers exactly S3_MAX_PARTS cells, 78.125 GiB.
+        let last = u64::from(S3_MAX_PARTS) * DELTA_PART_SIZE;
+        assert_eq!(delta_grid_size(last), Some(DELTA_PART_SIZE));
+        assert_eq!(delta_grid_size(last + 1), Some(2 * DELTA_PART_SIZE));
+    }
+
+    #[test]
+    fn the_grid_scales_up_when_the_default_would_blow_the_part_cap() {
+        // 200 GiB on the default grid is 25 600 cells. The worst case for the
+        // planner is one part per cell, so the grid has to widen until that
+        // worst case is legal, not until the average case is.
+        let grid = delta_grid_size(200 * GIB).expect("grid");
+        assert_eq!(grid, 24 * MIB);
+        assert!((200 * GIB).div_ceil(grid) <= u64::from(S3_MAX_PARTS));
+        assert_eq!(grid % DELTA_PART_SIZE, 0);
+    }
+
+    #[test]
+    fn the_grid_never_exceeds_what_the_planner_accepts() {
+        // At the largest coverable file the grid lands exactly on half the part
+        // ceiling, which is the largest floor `plan_delta_parts` accepts. Half
+        // of 5 GiB is a whole number of 8 MiB cells, so the rounding does not
+        // push it over; if either constant changes so that it is not, this
+        // fails here rather than by refusing every plan at runtime.
+        assert_eq!(delta_grid_size(DELTA_MAX_FILE_SIZE), Some(DELTA_GRID_MAX));
+        assert_eq!(DELTA_GRID_MAX % DELTA_PART_SIZE, 0);
+    }
+
+    #[test]
+    fn a_file_past_the_largest_coverable_size_gets_no_grid() {
+        assert_eq!(delta_grid_size(DELTA_MAX_FILE_SIZE + 1), None);
+        assert_eq!(delta_grid_size(u64::MAX), None);
+    }
+
+    #[test]
+    fn an_append_does_not_move_the_grid() {
+        // The grid is stored with the baseline digests and a later delta has to
+        // reuse it. A grid that moved with every byte would throw the cache
+        // away exactly in the case the feature exists for.
+        let before = delta_grid_size(2 * GIB).expect("grid");
+        let after = delta_grid_size(2 * GIB + 50 * MIB).expect("grid");
+        assert_eq!(before, after);
+        // Past the point where the default no longer covers the file, the raw
+        // ratio moves with every byte and only the rounding holds the grid
+        // still. 100 GiB and the same file with 50 MiB appended must land on
+        // the same grid, or the appended upload would have to rehash the whole
+        // baseline it was about to reuse.
+        let before = delta_grid_size(100 * GIB).expect("grid");
+        let after = delta_grid_size(100 * GIB + 50 * MIB).expect("grid");
+        assert_eq!(before, after);
+        assert_eq!(before, 2 * DELTA_PART_SIZE);
+    }
+
+    #[test]
+    fn a_stored_grid_that_no_longer_fits_is_rejected() {
+        // The file grew from 2 GiB to 100 GiB: 12 800 cells on the stored 8 MiB
+        // grid, over the cap. The answer is a full upload and fresh digests,
+        // not a plan the server would refuse.
+        assert!(delta_grid_fits(DELTA_PART_SIZE, 2 * GIB));
+        assert!(!delta_grid_fits(DELTA_PART_SIZE, 100 * GIB));
+        // A grid outside what the planner takes is never usable, whatever
+        // produced it. The upper bound here is DELTA_GRID_MAX and not the
+        // protocol's 5 GiB: a grid between the two is legal for S3 and refused
+        // by the planner on every plan, and this function reads a grid from
+        // storage, so a value written by an older rule can arrive here.
+        assert!(!delta_grid_fits(0, 2 * GIB));
+        assert!(!delta_grid_fits(S3_PART_MIN - 1, 2 * GIB));
+        assert!(delta_grid_fits(DELTA_GRID_MAX, DELTA_MAX_FILE_SIZE));
+        assert!(!delta_grid_fits(DELTA_GRID_MAX + 1, DELTA_MAX_FILE_SIZE));
+        assert!(!delta_grid_fits(S3_PART_MAX, 2 * GIB));
+        assert!(!delta_grid_fits(DELTA_PART_SIZE, DELTA_MIN_FILE_SIZE - 1));
+        assert!(!delta_grid_fits(DELTA_PART_SIZE, DELTA_MIN_FILE_SIZE));
+        assert!(delta_grid_fits(DELTA_PART_SIZE, DELTA_MIN_FILE_SIZE + 1));
+    }
+
+    #[test]
+    fn a_stored_grid_wider_than_the_file_is_rejected() {
+        // A file that shrank below the cell it was uploaded on. The grid is
+        // legal, the cell count is one, every bound this function states on its
+        // own is satisfied, and the planner refuses it because a file shorter
+        // than one part has nothing a multipart can win. Third disagreement
+        // between these two halves, and the reason they now share a function
+        // instead of each restating the rules.
+        assert!(!delta_grid_fits(DELTA_GRID_MAX, DELTA_MIN_FILE_SIZE + 1));
+        assert!(delta_grid_fits(DELTA_GRID_MAX, DELTA_GRID_MAX));
+        assert!(!delta_grid_fits(DELTA_GRID_MAX, DELTA_GRID_MAX - 1));
+    }
+
+    #[test]
+    fn what_the_grid_check_accepts_is_what_the_planner_accepts() {
+        // The cross-check the three disagreements would each have failed. It
+        // does not test either half against the specification: it tests them
+        // against each other, which is the only thing that can catch a rule
+        // restated in two places and then changed in one.
+        let mut rng = Lcg(0xc0ff_ee11);
+        let mut accepted = 0usize;
+        let rounds = 4000;
+        for _ in 0..rounds {
+            let grid = match rng.below(4) {
+                0 => DELTA_PART_SIZE,
+                1 => DELTA_GRID_MAX,
+                2 => S3_PART_MIN + rng.below(64 * MIB),
+                _ => DELTA_PART_SIZE * (1 + rng.below(400)),
+            };
+            // Sampled by scale rather than uniformly. A uniform draw over the
+            // whole range is almost always enormous next to a grid of at most
+            // a few GiB, so the region where the two halves can disagree, a
+            // file comparable to or smaller than its own cell, would come up
+            // about twice in four thousand rounds. The first version of this
+            // test drew uniformly and did NOT catch the disagreement it was
+            // written for; a generator that never visits the boundary is a
+            // green light pointed away from the road.
+            let file_len = match rng.below(4) {
+                0 => DELTA_MIN_FILE_SIZE + rng.below(4 * GIB),
+                1 => grid.saturating_sub(rng.below(2 * grid)),
+                2 => rng.below(100 * GIB),
+                _ => rng.below(DELTA_MAX_FILE_SIZE / 4),
+            };
+            if !delta_grid_fits(grid, file_len) {
+                continue;
+            }
+            accepted += 1;
+            // A grid the check accepts must produce a plan for the shape the
+            // matcher emits on it: whole cells, worst case all of them changed
+            // except the first.
+            let matches = [(0, 0, grid.min(file_len))];
+            assert!(
+                plan_delta_parts(file_len, &matches, grid, S3_MAX_PARTS).is_some(),
+                "delta_grid_fits accepted grid {grid} for {file_len} bytes and the planner refused it"
+            );
+        }
+        assert!(
+            accepted > 200,
+            "only {accepted} of {rounds} pairs were accepted: the cross-check barely ran"
+        );
+    }
+
+    #[test]
+    fn every_grid_the_rule_chooses_is_one_the_rule_accepts() {
+        // The two halves have to agree: a grid chosen for a length must still
+        // be judged usable for that same length, or an upload would store a
+        // grid its own delta then refuses.
+        let mut rng = Lcg(0xf00d_4242);
+        let mut chosen = 0usize;
+        let rounds = 3000;
+        for _ in 0..rounds {
+            let file_len = rng.below(DELTA_MAX_FILE_SIZE + DELTA_MAX_FILE_SIZE / 8);
+            match delta_grid_size(file_len) {
+                Some(grid) => {
+                    assert_eq!(
+                        grid % DELTA_PART_SIZE,
+                        0,
+                        "grid is not a whole number of default cells at {file_len}"
+                    );
+                    assert!(
+                        (S3_PART_MIN..=DELTA_GRID_MAX).contains(&grid),
+                        "grid {grid} outside the protocol at {file_len}"
+                    );
+                    assert!(
+                        file_len.div_ceil(grid) <= u64::from(S3_MAX_PARTS),
+                        "grid {grid} leaves {} cells at {file_len}",
+                        file_len.div_ceil(grid)
+                    );
+                    assert!(
+                        delta_grid_fits(grid, file_len),
+                        "chosen grid {grid} rejected for {file_len}"
+                    );
+                    chosen += 1;
+                }
+                None => assert!(
+                    file_len <= DELTA_MIN_FILE_SIZE || file_len > DELTA_MAX_FILE_SIZE,
+                    "refused a file of {file_len} bytes that is inside the coverable range"
+                ),
+            }
+        }
+        assert!(
+            chosen > rounds / 4,
+            "the generator produced only {chosen} grids out of {rounds}: the assertions above were barely exercised"
+        );
+    }
+
+    #[test]
+    fn the_planner_accepts_exactly_this_grid_as_a_floor() {
+        // DELTA_GRID_MAX is derived from a rule that lives in another function,
+        // so it is pinned against that function rather than restated. One byte
+        // more and the planner refuses every plan, which is what makes a grid
+        // above it useless rather than merely large.
+        let file_len = 2 * DELTA_GRID_MAX;
+        let matches = [(0, 0, DELTA_GRID_MAX)];
+        assert!(
+            plan_delta_parts(file_len, &matches, DELTA_GRID_MAX, S3_MAX_PARTS).is_some(),
+            "the planner must accept DELTA_GRID_MAX as a floor"
+        );
+        assert_eq!(
+            plan_delta_parts(file_len, &matches, DELTA_GRID_MAX + 1, S3_MAX_PARTS),
+            None,
+            "one byte over DELTA_GRID_MAX the planner refuses, which is where the constant comes from"
+        );
+    }
+
+    #[test]
+    fn the_chosen_grid_survives_the_planner_s_worst_case() {
+        // The rule sizes the grid for the WORST case rather than the average
+        // one: a file whose cells alternate between changed and unchanged
+        // coalesces nothing and produces one part per cell. This is the seam
+        // between the two halves, and it is where the first version was wrong:
+        // the ceiling on the file size was computed from the protocol alone,
+        // which handed the planner a floor above half its own ceiling and got
+        // every plan refused. Found here, before review.
+        for file_len in [
+            DELTA_MIN_FILE_SIZE + 1,
+            2 * GIB,
+            79 * GIB,
+            200 * GIB,
+            DELTA_MAX_FILE_SIZE,
+        ] {
+            let grid = delta_grid_size(file_len).expect("grid");
+            let cells = file_len.div_ceil(grid);
+            let matches: Vec<(u64, u64, u64)> = (0..cells)
+                .step_by(2)
+                .map(|cell| {
+                    let start = cell * grid;
+                    (start, start, grid.min(file_len - start))
+                })
+                .collect();
+            let parts = plan_delta_parts(file_len, &matches, grid, S3_MAX_PARTS)
+                .unwrap_or_else(|| panic!("no plan for {file_len} bytes on a {grid} byte grid"));
+            assert!(
+                parts.len() <= S3_MAX_PARTS as usize,
+                "{file_len} bytes on a {grid} byte grid needs {} parts",
+                parts.len()
+            );
+            assert_eq!(
+                parts.iter().map(DeltaPart::byte_len).sum::<u64>(),
+                file_len,
+                "the plan must still cover the file exactly"
+            );
+        }
     }
 
     // ---- generated inputs -------------------------------------------------
