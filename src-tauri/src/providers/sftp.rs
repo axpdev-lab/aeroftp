@@ -2555,6 +2555,24 @@ impl StorageProvider for SftpProvider {
     /// connection spec exists to re-dial independent SSH connections from.
     /// Without it (never connected, or credentials unavailable) SFTP stays
     /// a single locked lease: honest non-regression, no overclaim.
+    /// Opt into warm-connection reuse across the files of one batch, like FTP.
+    ///
+    /// The batch executor mints a clone worker per file and, unless the
+    /// provider opts in, drops it afterwards: on SFTP that was a full SSH
+    /// handshake (key exchange plus authentication, several round trips) for
+    /// every file. The review battery of 2026-09-05 measured it on 5000 small
+    /// files over a 53 ms link: about 3 files per second with four leases.
+    /// Reuse is safe here for the same reasons it is on FTP: `upload` and
+    /// `download` short-circuit `ensure_connected` while the channel is open
+    /// and address every path through `normalize_path`, so a recycled worker
+    /// carries no per-file state; the executor parks a worker only after a
+    /// SUCCESSFUL transfer, and a parked worker whose channel has since died
+    /// fails its next file loudly rather than silently, exactly as a fresh
+    /// dial that failed would.
+    fn supports_transfer_worker_reuse(&self) -> bool {
+        true
+    }
+
     fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
         if self.connection_spec.is_some() {
             ProviderTransferExecutorKind::SftpConnectionPool
@@ -3843,6 +3861,27 @@ mod tests {
         // Every original `'` became the 4-char `'\''` sequence; there is no
         // bare unescaped quote that could terminate the literal early.
         assert_eq!(q, "''\\''; rm -rf / ; echo '\\'''");
+    }
+
+    #[test]
+    fn sftp_workers_opt_into_warm_reuse_like_ftp() {
+        // PD-FTP-2 pool semantics: a worker is recycled only when the provider
+        // opts in. SFTP now does, so a batch pays one SSH handshake per lease,
+        // not one per file. Pinned here so a future "honest default false"
+        // cannot come back without a measured reason.
+        let config = SftpConfig {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        };
+        let provider = SftpProvider::new(config);
+        assert!(provider.supports_transfer_worker_reuse());
     }
 
     #[test]
