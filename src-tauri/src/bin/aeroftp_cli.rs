@@ -319,6 +319,15 @@ struct Cli {
     #[arg(long, global = true)]
     immutable: bool,
 
+    /// Recursive `put`: skip a file or folder whose name contains a character
+    /// the destination backend forbids and upload the rest, reporting each
+    /// skipped path, instead of refusing the whole batch up front (the
+    /// default, which uploads nothing when one name is bad). The run still
+    /// ends "partial" with exit 4 because not everything requested landed,
+    /// the way rclone reports a batch with failed items.
+    #[arg(long, global = true)]
+    skip_restricted: bool,
+
     /// Skip listing destination before transfer (assume dest is empty)
     #[arg(long, global = true)]
     no_check_dest: bool,
@@ -32268,14 +32277,27 @@ async fn cmd_put_recursive(
 
     // Pre-flight: reject the whole batch up front if any target dir or file name
     // contains a character this provider's backend forbids, before creating or
-    // uploading anything (mirrors the single-file `put` guard).
+    // uploading anything (mirrors the single-file `put` guard). With
+    // `--skip-restricted` the offending entries are set aside and reported,
+    // and the rest of the batch proceeds.
     let ptype = provider.provider_type();
-    for target in dirs.iter().chain(files.iter().map(|(_, remote, _)| remote)) {
-        if let Err(e) = ftp_client_gui_lib::restricted_chars::validate_path(ptype, target) {
-            let code = provider_error_to_exit_code(&e);
-            print_error(format, &format!("put failed: {}", e), code);
-            let _ = provider.disconnect().await;
-            return code;
+    let (dirs, files, restricted_skipped) = if cli.skip_restricted {
+        let split = split_restricted_targets(ptype, dirs, files);
+        (split.dirs, split.files, split.notes)
+    } else {
+        for target in dirs.iter().chain(files.iter().map(|(_, remote, _)| remote)) {
+            if let Err(e) = ftp_client_gui_lib::restricted_chars::validate_path(ptype, target) {
+                let code = provider_error_to_exit_code(&e);
+                print_error(format, &format!("put failed: {}", e), code);
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        }
+        (dirs, files, Vec::new())
+    };
+    if !quiet {
+        for note in &restricted_skipped {
+            eprintln!("  Skipped (restricted name): {}", note);
         }
     }
 
@@ -32329,7 +32351,10 @@ async fn cmd_put_recursive(
 
     let mut uploaded: u32 = 0;
     let mut skipped: u32 = 0;
-    let mut errors: Vec<String> = Vec::new();
+    let mut errors: Vec<String> = restricted_skipped
+        .iter()
+        .map(|note| format!("skipped (restricted name): {}", note))
+        .collect();
 
     // DAG-P2-07 (block E): engine-level stats when this folder upload ran on
     // the converged DAG-engine path; stays `None` on legacy/--immutable paths.
@@ -41578,6 +41603,61 @@ async fn benchmark_mkdir_p(
 /// the ordered list of cumulative ancestor paths to create, preserving a
 /// leading slash for absolute paths. `"a/b/c"` yields `[a, a/b, a/b/c]`;
 /// `"/x/y"` yields `[/x, /x/y]`. An empty (or slash-only) path yields `[]`.
+/// `--skip-restricted`: separate the targets a backend would refuse by name.
+///
+/// A folder with a forbidden character takes every file under it along, since
+/// none of them can be created. Returns the kept folders, the kept files and
+/// one human-readable note per skipped target ("<path>: <reason>").
+/// The outcome of [`split_restricted_targets`].
+struct RestrictedSplit {
+    dirs: Vec<String>,
+    files: Vec<(String, String, u64)>,
+    notes: Vec<String>,
+}
+
+fn split_restricted_targets(
+    ptype: ProviderType,
+    dirs: Vec<String>,
+    files: Vec<(String, String, u64)>,
+) -> RestrictedSplit {
+    let mut kept_dirs = Vec::with_capacity(dirs.len());
+    let mut bad_dirs: Vec<String> = Vec::new();
+    let mut notes = Vec::new();
+    for dir in dirs {
+        match ftp_client_gui_lib::restricted_chars::validate_path(ptype, &dir) {
+            Ok(()) => kept_dirs.push(dir),
+            Err(e) => {
+                notes.push(format!("{}: {}", dir, e));
+                bad_dirs.push(dir);
+            }
+        }
+    }
+    let under_bad_dir = |remote: &str| {
+        bad_dirs
+            .iter()
+            .any(|d| remote.starts_with(&format!("{}/", d.trim_end_matches('/'))))
+    };
+    let mut kept_files = Vec::with_capacity(files.len());
+    for (local, remote, size) in files {
+        if under_bad_dir(&remote) {
+            notes.push(format!(
+                "{}: inside a folder with a restricted name",
+                remote
+            ));
+            continue;
+        }
+        match ftp_client_gui_lib::restricted_chars::validate_path(ptype, &remote) {
+            Ok(()) => kept_files.push((local, remote, size)),
+            Err(e) => notes.push(format!("{}: {}", remote, e)),
+        }
+    }
+    RestrictedSplit {
+        dirs: kept_dirs,
+        files: kept_files,
+        notes,
+    }
+}
+
 /// The folder a remote file path lives in, or `None` when that folder is the
 /// root (nothing to create) or the path has no folder component.
 fn remote_parent_dir(remote_path: &str) -> Option<String> {
@@ -69173,6 +69253,7 @@ mod tests {
             files_from: None,
             files_from_raw: None,
             immutable: false,
+            skip_restricted: false,
             no_check_dest: false,
             max_depth: None,
             strict: false,
@@ -69350,6 +69431,36 @@ mod tests {
         cli.trust_host_key = true;
         cli.aimd_disable = true;
         assert_eq!(strict_mode_violations(&cli).len(), 3);
+    }
+
+    #[test]
+    fn split_restricted_targets_keeps_the_clean_rest_and_names_every_skip() {
+        let dirs = vec!["/ok".to_string(), "/bad\tdir".to_string()];
+        let files = vec![
+            ("a".to_string(), "/ok/clean.txt".to_string(), 1),
+            ("b".to_string(), "/ok/tab\there.txt".to_string(), 2),
+            ("c".to_string(), "/bad\tdir/child.txt".to_string(), 3),
+        ];
+        let split = split_restricted_targets(ProviderType::S3, dirs, files);
+        let (kept_dirs, kept_files, notes) = (split.dirs, split.files, split.notes);
+        assert_eq!(kept_dirs, vec!["/ok".to_string()]);
+        assert_eq!(kept_files.len(), 1);
+        assert_eq!(kept_files[0].1, "/ok/clean.txt");
+        assert_eq!(notes.len(), 3, "one note per skipped target: {notes:?}");
+        assert!(notes.iter().any(|n| n.starts_with("/bad\tdir:")));
+        assert!(notes
+            .iter()
+            .any(|n| n.starts_with("/bad\tdir/child.txt: inside a folder")));
+        // Nothing to skip: everything is kept and no note is produced.
+        let clean = split_restricted_targets(
+            ProviderType::S3,
+            vec!["/ok".to_string()],
+            vec![("a".to_string(), "/ok/clean.txt".to_string(), 1)],
+        );
+        assert_eq!(
+            (clean.dirs.len(), clean.files.len(), clean.notes.len()),
+            (1, 1, 0)
+        );
     }
 
     #[test]
