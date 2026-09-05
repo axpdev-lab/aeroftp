@@ -1132,6 +1132,11 @@ impl StorageProvider for AzureProvider {
         let mut bytes_received: u64 = 0;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            crate::transfer_dag::throttle::charge(
+                crate::transfer_dag::governor::TransferDirection::Download,
+                chunk.len() as u64,
+            )
+            .await;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1940,7 +1945,10 @@ impl AzureProvider {
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let stream = tokio_util::io::ReaderStream::new(file);
+        let stream = crate::transfer_dag::throttle::throttle_stream(
+            tokio_util::io::ReaderStream::new(file),
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        );
         let body = reqwest::Body::wrap_stream(stream);
 
         let mut headers = HeaderMap::new();

@@ -1680,7 +1680,7 @@ impl StorageProvider for SftpProvider {
         }
         let start = std::time::Instant::now();
         // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
-        let global_bw = crate::transfer_dag::governor::global().bandwidth();
+        let global_bw = crate::transfer_dag::governor::global();
 
         loop {
             if total_size > 0 && transferred >= total_size {
@@ -1696,7 +1696,12 @@ impl StorageProvider for SftpProvider {
             } else {
                 remaining.min(buffer.len() as u64)
             };
-            global_bw.acquire(allowance).await;
+            global_bw
+                .charge(
+                    crate::transfer_dag::governor::TransferDirection::Download,
+                    allowance,
+                )
+                .await;
             let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
                 classify_russh_err(e, |s| {
                     ProviderError::TransferFailed(format!("Read error: {}", s))
@@ -1873,7 +1878,7 @@ impl StorageProvider for SftpProvider {
         let mut transferred: u64 = 0;
         let start = std::time::Instant::now();
         // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
-        let global_bw = crate::transfer_dag::governor::global().bandwidth();
+        let global_bw = crate::transfer_dag::governor::global();
 
         loop {
             let bytes_read = tokio::io::AsyncReadExt::read(&mut local_file, &mut buffer)
@@ -1886,7 +1891,12 @@ impl StorageProvider for SftpProvider {
 
             // Reserve global tokens before the remote write so concurrent jobs
             // cannot put bytes on the wire before the shared cap admits them.
-            global_bw.acquire(bytes_read as u64).await;
+            global_bw
+                .charge(
+                    crate::transfer_dag::governor::TransferDirection::Upload,
+                    bytes_read as u64,
+                )
+                .await;
             remote_file
                 .write_all(&buffer[..bytes_read])
                 .await
@@ -2091,7 +2101,7 @@ impl StorageProvider for SftpProvider {
                 }
                 let start = std::time::Instant::now();
                 // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
-                let global_bw = crate::transfer_dag::governor::global().bandwidth();
+                let global_bw = crate::transfer_dag::governor::global();
 
                 loop {
                     let bytes_read = AsyncReadExt::read(&mut local_file, &mut buffer)
@@ -2104,7 +2114,12 @@ impl StorageProvider for SftpProvider {
                     }
                     // Reserve global tokens before the remote write so the
                     // resumed path shares the same process-wide cap.
-                    global_bw.acquire(bytes_read as u64).await;
+                    global_bw
+                        .charge(
+                            crate::transfer_dag::governor::TransferDirection::Upload,
+                            bytes_read as u64,
+                        )
+                        .await;
                     remote_file
                         .write_all(&buffer[..bytes_read])
                         .await
@@ -3409,14 +3424,18 @@ async fn sftp_download_one_range(
 
     let full_path = worker.normalize_path(&remote_path);
     let sftp = worker.get_sftp()?;
-    let global_bw = crate::transfer_dag::governor::global().bandwidth();
+    let global_bw = crate::transfer_dag::governor::global();
 
     // READ-AHEAD (our own issue #70 workaround) takes precedence over PD-PIPE-2
     // when provider state requests it: keep `window` `SSH_FXP_READ` in flight on
     // THIS range worker's connection with no per-batch barrier. Composes with
     // PD-SFTP-2's N independent connections (N x this read-ahead). Same guardrail
     // as PD-PIPE-2: no active bandwidth cap (the serial loop owns throttling).
-    if limit_bps == 0 && global_bw.is_unlimited() {
+    if limit_bps == 0
+        && crate::transfer_dag::throttle::is_unlimited(
+            crate::transfer_dag::governor::TransferDirection::Download,
+        )
+    {
         if let Some(window) = requested_readahead_window.and_then(|requested| {
             effective_sftp_readahead_window(requested, buffer_size, expected, parallel_connections)
         }) {
@@ -3453,7 +3472,11 @@ async fn sftp_download_one_range(
     // channel. Default (flag unset) or an active cap falls through to the
     // exact serial loop below = diff-0 (the serial loop owns the precise
     // throttle, as in PD-PIPE-1).
-    if limit_bps == 0 && global_bw.is_unlimited() {
+    if limit_bps == 0
+        && crate::transfer_dag::throttle::is_unlimited(
+            crate::transfer_dag::governor::TransferDirection::Download,
+        )
+    {
         if let Some(window) = sftp_read_pipeline_window() {
             let mut out = tokio::fs::OpenOptions::new()
                 .write(true)
@@ -3513,7 +3536,7 @@ async fn sftp_download_one_range(
                     "Transfer cancelled by user".to_string(),
                 ));
             }
-            _ = global_bw.acquire(allowance) => {}
+            _ = global_bw.charge(crate::transfer_dag::governor::TransferDirection::Download, allowance) => {}
         }
         tokio::select! {
             _ = cancel.cancelled() => {

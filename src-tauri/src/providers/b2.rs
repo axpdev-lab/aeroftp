@@ -1042,7 +1042,10 @@ impl B2Provider {
                 part_number.to_string(),
             )
             .header(HeaderName::from_static("x-bz-content-sha1"), &sha1)
-            .body(bytes)
+            .body(crate::transfer_dag::throttle::owned_body(
+                bytes,
+                crate::transfer_dag::governor::TransferDirection::Upload,
+            ))
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("upload_part: {}", e)))?;
@@ -1348,6 +1351,11 @@ impl B2Provider {
         use futures_util::StreamExt;
         while let Some(chunk) = stream.next().await {
             let bytes = chunk.map_err(|e| ProviderError::Other(format!("read chunk: {}", e)))?;
+            crate::transfer_dag::throttle::charge(
+                crate::transfer_dag::governor::TransferDirection::Download,
+                bytes.len() as u64,
+            )
+            .await;
             file.write_all(&bytes)
                 .await
                 .map_err(|e| ProviderError::Other(format!("write chunk: {}", e)))?;
@@ -1694,6 +1702,11 @@ impl B2Provider {
         use futures_util::StreamExt;
         while let Some(chunk) = stream.next().await {
             let bytes = chunk.map_err(|e| ProviderError::Other(format!("read chunk: {}", e)))?;
+            crate::transfer_dag::throttle::charge(
+                crate::transfer_dag::governor::TransferDirection::Download,
+                bytes.len() as u64,
+            )
+            .await;
             file.write_all(&bytes)
                 .await
                 .map_err(|e| ProviderError::Other(format!("write chunk: {}", e)))?;

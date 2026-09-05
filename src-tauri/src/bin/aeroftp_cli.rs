@@ -380,16 +380,18 @@ struct Cli {
     buffer_size: Option<String>,
 
     /// Number of concurrent Range streams per single-file download
-    /// (rclone `--multi-thread-streams`). Default 1 = disabled. Range 1-16.
-    /// Honored by S3/Azure (native) and, after a live strict 206 probe, by
-    /// WebDAV (Basic/anonymous auth; Digest excluded) and Koofr. Any backend
-    /// or server that does not prove Range honesty falls back to
-    /// single-stream transparently. Reads default from
+    /// (rclone `--multi-thread-streams`). Default 4, applied only to files at
+    /// or above `--multi-thread-cutoff` (250M), the same shape as rclone's
+    /// default (4 streams above 256Mi); `1` disables. Range 1-16.
+    /// Honored by S3/Azure (native), SFTP (N independent connections) and,
+    /// after a live strict 206 probe, by WebDAV (Basic/anonymous auth; Digest
+    /// excluded) and Koofr. Any backend or server that does not prove Range
+    /// honesty falls back to single-stream transparently. Reads default from
     /// `AEROFTP_MULTI_THREAD_STREAMS` if set.
     #[arg(
         long,
         global = true,
-        default_value_t = 1,
+        default_value_t = 4,
         env = "AEROFTP_MULTI_THREAD_STREAMS"
     )]
     multi_thread_streams: usize,
@@ -7324,6 +7326,21 @@ fn format_speed(bps: u64) -> String {
     }
 }
 
+/// The user's speed limit in bytes per second, from `--limit-rate` or, failing
+/// that, the `--bwlimit` schedule resolved at startup. `None` when unset or
+/// unparsable (the parse warning is printed where the provider call is made).
+fn cli_speed_limit_bps(cli: &Cli) -> Option<u64> {
+    if let Some(rate) = cli.limit_rate.as_deref() {
+        if let Ok(bps) = parse_speed_limit(rate) {
+            return (bps > 0).then_some(bps);
+        }
+    }
+    cli.bwlimit
+        .as_deref()
+        .and_then(resolve_bwlimit_schedule)
+        .filter(|bps| *bps > 0)
+}
+
 fn parse_speed_limit(s: &str) -> Result<u64, String> {
     let s = s.trim().to_uppercase();
     if let Some(n) = s.strip_suffix('M') {
@@ -8949,6 +8966,27 @@ fn make_aggregate_progress_cb(
     })
 }
 
+/// What `--partial` should do with `local_bytes` already on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResumePlan {
+    /// The local copy is exactly the remote size: nothing to fetch.
+    Complete,
+    /// The local copy is longer than the remote object: it is not a prefix of
+    /// it, so a range request would be refused (416) or, worse, accepted by a
+    /// server that ignores ranges and then appended to. Start over.
+    Restart,
+    /// A genuine prefix (or an unknown remote size): ask for the tail.
+    Resume,
+}
+
+fn partial_resume_plan(local_bytes: u64, remote_size: Option<u64>) -> ResumePlan {
+    match remote_size {
+        Some(remote) if local_bytes == remote => ResumePlan::Complete,
+        Some(remote) if local_bytes > remote => ResumePlan::Restart,
+        _ => ResumePlan::Resume,
+    }
+}
+
 async fn download_with_resume(
     provider: &mut dyn StorageProvider,
     remote_path: &str,
@@ -8964,19 +9002,49 @@ async fn download_with_resume(
         let offset = std::fs::metadata(&tmp_path)
             .map(|meta| meta.len())
             .unwrap_or(0);
-        if offset > 0 {
-            return provider
-                .resume_download(remote_path, local_path, offset, progress_cb)
-                .await;
-        }
         // Also check the final file itself (FTP resume writes there directly)
         let final_offset = std::fs::metadata(local_path)
             .map(|meta| meta.len())
             .unwrap_or(0);
-        if final_offset > 0 {
-            return provider
-                .resume_download(remote_path, local_path, final_offset, progress_cb)
-                .await;
+        // A byte offset alone cannot tell "interrupted" from "already done":
+        // asking for `Range: bytes=<size>-` on a complete file is answered
+        // with 416 by every HTTP backend, which used to surface as "file may
+        // have changed on server" (exit 4) when re-running `get --partial`
+        // over a finished download. Compare with the remote size first and
+        // decide like rclone does: complete is a no-op, longer-than-remote is
+        // stale and restarts, shorter resumes.
+        let remote_size = if offset > 0 || final_offset > 0 {
+            provider.size(remote_path).await.ok()
+        } else {
+            None
+        };
+        if offset > 0 {
+            match partial_resume_plan(offset, remote_size) {
+                ResumePlan::Complete => {
+                    tokio::fs::rename(&tmp_path, local_path)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    return Ok(());
+                }
+                ResumePlan::Restart => {
+                    let _ = tokio::fs::remove_file(&tmp_path).await;
+                }
+                ResumePlan::Resume => {
+                    return provider
+                        .resume_download(remote_path, local_path, offset, progress_cb)
+                        .await;
+                }
+            }
+        } else if final_offset > 0 {
+            match partial_resume_plan(final_offset, remote_size) {
+                ResumePlan::Complete => return Ok(()),
+                ResumePlan::Restart => {}
+                ResumePlan::Resume => {
+                    return provider
+                        .resume_download(remote_path, local_path, final_offset, progress_cb)
+                        .await;
+                }
+            }
         }
     }
     provider
@@ -62799,9 +62867,17 @@ async fn main() {
     // once, at CLI startup (the CLI has no long-lived AppState). Every transfer
     // path reaches the same singleton via `governor::global()`; env
     // `AEROFTP_GLOBAL_BANDWIDTH_BPS` / `AEROFTP_ENDPOINT_MAX_SLOTS` tune it.
-    let _governor = ftp_client_gui_lib::transfer_dag::governor::init(
+    let governor = ftp_client_gui_lib::transfer_dag::governor::init(
         ftp_client_gui_lib::transfer_dag::governor::GovernorConfig::from_env(),
     );
+    // `--limit-rate` / `--bwlimit` arm the governor's directional caps here,
+    // once, for the whole process. Every provider byte loop charges them, so
+    // the limit holds on S3, WebDAV, FTP and the HTTP clouds too, not only on
+    // the providers that implement `set_speed_limit` themselves (SFTP, MEGA);
+    // those still receive the per-provider call below as before.
+    if let Some(bps) = cli_speed_limit_bps(&cli) {
+        governor.set_transfer_limits(bps, bps);
+    }
 
     // Setup tracing based on verbosity. -vv forces TRACE; -v forces DEBUG.
     // Without the env-filter feature we still honor the common RUST_LOG
@@ -69007,7 +69083,7 @@ mod tests {
             dump: Vec::new(),
             chunk_size: None,
             buffer_size: None,
-            multi_thread_streams: 1,
+            multi_thread_streams: 4,
             multi_thread_cutoff: "250M".to_string(),
             sftp_download_preset: None,
             sftp_readahead: None,
@@ -69223,6 +69299,38 @@ mod tests {
         cli.trust_host_key = true;
         cli.aimd_disable = true;
         assert_eq!(strict_mode_violations(&cli).len(), 3);
+    }
+
+    #[test]
+    fn partial_resume_plan_treats_a_complete_local_copy_as_done() {
+        assert_eq!(partial_resume_plan(100, Some(100)), ResumePlan::Complete);
+        assert_eq!(partial_resume_plan(40, Some(100)), ResumePlan::Resume);
+        assert_eq!(partial_resume_plan(140, Some(100)), ResumePlan::Restart);
+        // Unknown remote size: the only honest move is to ask for the tail.
+        assert_eq!(partial_resume_plan(40, None), ResumePlan::Resume);
+        assert_eq!(partial_resume_plan(0, Some(0)), ResumePlan::Complete);
+    }
+
+    #[test]
+    fn speed_limit_arms_the_governor_from_limit_rate_then_bwlimit() {
+        let mut cli = test_cli();
+        assert_eq!(cli_speed_limit_bps(&cli), None, "unset flags arm no cap");
+        cli.limit_rate = Some("2M".to_string());
+        assert_eq!(cli_speed_limit_bps(&cli), Some(2 * 1024 * 1024));
+        cli.limit_rate = Some("512K".to_string());
+        assert_eq!(cli_speed_limit_bps(&cli), Some(512 * 1024));
+        // A fixed --limit-rate wins over a schedule.
+        cli.bwlimit = Some("1M".to_string());
+        assert_eq!(cli_speed_limit_bps(&cli), Some(512 * 1024));
+        // The schedule alone resolves through the same path as the provider call.
+        cli.limit_rate = None;
+        assert_eq!(cli_speed_limit_bps(&cli), Some(1024 * 1024));
+        // Unparsable or zero never arms a cap (the provider call site warns).
+        cli.bwlimit = None;
+        cli.limit_rate = Some("fast".to_string());
+        assert_eq!(cli_speed_limit_bps(&cli), None);
+        cli.limit_rate = Some("0".to_string());
+        assert_eq!(cli_speed_limit_bps(&cli), None);
     }
 
     #[test]
