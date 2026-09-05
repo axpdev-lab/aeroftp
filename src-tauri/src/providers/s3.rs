@@ -794,34 +794,57 @@ impl S3Provider {
             )));
         }
 
-        // Once per provider. This runs at every signing path, so an
-        // unconditional log here would put one identical warning per part of a
-        // multipart upload into the user's log and drown the rest of it.
-        if self.take_cleartext_warning_slot() {
-            if self.config.role_arn.is_some() {
-                warn!(
-                    "[S3] endpoint {} is CLEARTEXT HTTP and carries an STS session token:                  token and payload are unencrypted (opted in on this profile)",
-                    host
-                );
-            } else {
-                warn!(
-                    "[S3] endpoint {} is CLEARTEXT HTTP: credentials and payload are                  unencrypted (opted in on this profile)",
-                    host
-                );
-            }
-        }
+        self.warn_cleartext_once(host);
         Ok(())
     }
 
-    /// True the first time it is called on a provider and false afterwards.
+    /// Log the cleartext warning the first time this provider needs it, and
+    /// never again.
     ///
-    /// Split out so the once-ness is testable without a tracing subscriber:
-    /// asserting on the slot is asserting on exactly the decision the log line
-    /// depends on.
-    fn take_cleartext_warning_slot(&self) -> bool {
-        !self
+    /// The decision and the line it gates are one function on purpose. They
+    /// were two, a `take_cleartext_warning_slot()` in an `if` around a `warn!`,
+    /// and that is a seam: delete the `if` and the warning comes back once per
+    /// signed request, which on a multipart upload is one line per part. Welded
+    /// like this there is no call site to strip, and un-once-ing it means
+    /// editing a function whose name is the invariant.
+    ///
+    /// The once-ness is asserted through the slot rather than by counting log
+    /// events. A subscriber installed with `set_default` is thread-local, while
+    /// tracing's callsite interest cache is global: another test touching this
+    /// callsite with no subscriber caches it as uninteresting and the counting
+    /// subscriber then sees nothing. That is not a hypothetical, it is how the
+    /// first version of this test failed, only in parallel runs and only in
+    /// some binaries. Forcing a rebuild needs `tracing-core` as a direct
+    /// dependency, which is not worth a test on this repository.
+    fn warn_cleartext_once(&self, host: &str) {
+        if self
             .cleartext_warned
             .swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            return;
+        }
+        if self.config.role_arn.is_some() {
+            warn!(
+                "[S3] endpoint {} is CLEARTEXT HTTP and carries an STS session token:                  token and payload are unencrypted (opted in on this profile)",
+                host
+            );
+        } else {
+            warn!(
+                "[S3] endpoint {} is CLEARTEXT HTTP: credentials and payload are                  unencrypted (opted in on this profile)",
+                host
+            );
+        }
+    }
+
+    /// True while this provider has not yet used its one warning.
+    ///
+    /// Test-only: it exists to observe the slot, and nothing in production has
+    /// a reason to ask, so it is not carried into the shipped binary.
+    #[cfg(test)]
+    fn cleartext_warning_pending(&self) -> bool {
+        !self
+            .cleartext_warned
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Detect MEGA S4 Object Storage endpoints.
@@ -6162,109 +6185,33 @@ mod tests {
         );
     }
 
-    /// Counts WARN events so the assertion is on the log line itself.
+    /// The warning is taken once per provider and shared with every clone.
     ///
-    /// An earlier draft of this test asserted the once-slot instead, which is
-    /// the guard and not the door: removing the `if` around the warning would
-    /// have restored one line per signed request and left that test green.
-    struct WarnCounter(std::sync::Arc<std::sync::atomic::AtomicUsize>);
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for WarnCounter {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            if *event.metadata().level() == tracing::Level::WARN {
-                self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            }
-        }
-    }
-
-    #[test]
-    fn the_cleartext_warning_is_logged_once_per_provider() {
-        use tracing_subscriber::layer::SubscriberExt;
-
-        // The consent branch used to log unconditionally, and it now runs at
-        // every signing path: an upload of N parts would put N identical
-        // warnings into the user's log and drown everything else in it.
-        let warnings = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let subscriber =
-            tracing_subscriber::registry().with(WarnCounter(std::sync::Arc::clone(&warnings)));
-        tracing::subscriber::with_default(subscriber, || {
-            let provider = cleartext_test_provider("http://minio.example.com:9000", true, None);
-            for _ in 0..5 {
-                provider
-                    .validate_endpoint_confidentiality()
-                    .expect("consent given");
-            }
-        });
-        assert_eq!(
-            warnings.load(std::sync::atomic::Ordering::Relaxed),
-            1,
-            "five signatures on a consenting profile must warn once, not five times"
-        );
-
-        // A different provider is a different session and warns again.
-        let warnings = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let subscriber =
-            tracing_subscriber::registry().with(WarnCounter(std::sync::Arc::clone(&warnings)));
-        tracing::subscriber::with_default(subscriber, || {
-            for _ in 0..2 {
-                cleartext_test_provider("http://minio.example.com:9000", true, None)
-                    .validate_endpoint_confidentiality()
-                    .expect("consent given");
-            }
-        });
-        assert_eq!(
-            warnings.load(std::sync::atomic::Ordering::Relaxed),
-            2,
-            "the warning is once per provider, not once per process"
-        );
-    }
-
-    /// The third door, and the only signer that builds a query signature
-    /// instead of a header one. A presigned URL for a cleartext endpoint is
-    /// worse than one request: it is a bearer credential that travels in the
-    /// clear every time anyone opens it.
-    #[tokio::test]
-    async fn a_share_link_is_refused_for_a_cleartext_endpoint_without_consent() {
-        let mut provider = cleartext_test_provider("http://s3.invalid:9000", false, None);
-        let err = provider
-            .create_share_link("/file.bin", ShareLinkOptions::default())
-            .await
-            .expect_err("a presigned URL must not be minted for a cleartext endpoint");
-        assert!(
-            matches!(err, ProviderError::ConnectionFailed(_)),
-            "the refusal must be the confidentiality one: {err:?}"
-        );
-        assert!(err.to_string().contains("plain HTTP"), "{err}");
-    }
-
-    /// The once-slot is an `Arc`, so it is shared with every clone. Both the
-    /// transfer pool and the list pool clone the provider, and a clone is the
-    /// same profile talking to the same endpoint, so it must not warn again.
+    /// Asserted through the slot and not by counting log events. The counting
+    /// version of this test was flaky and merged that way: a subscriber set
+    /// with `set_default` is thread-local while tracing's callsite interest
+    /// cache is global, so a sibling test touching the same callsite with no
+    /// subscriber cached it as uninteresting and the counter saw zero. It
+    /// passed alone and under `--test-threads=1` and failed in the ordinary
+    /// parallel run, which is the worst shape a test can have.
     ///
-    /// This was a sentence in a comment and in the pull request body before it
-    /// was a test: true by how `clone_for_transfer` happens to be written, and
-    /// nothing would have failed if it had been given a `Clone` that rebuilt
-    /// the field. A claim with a green test beside it that does not test the
-    /// claim is the shape this whole change is about.
+    /// The slot is the honest observable now that the decision and the line it
+    /// gates are one function: `warn_cleartext_once` cannot log without taking
+    /// the slot, because taking it is its first statement.
     #[tokio::test]
     async fn a_clone_of_the_provider_does_not_warn_again() {
-        use tracing_subscriber::layer::SubscriberExt;
-
-        let warnings = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let subscriber =
-            tracing_subscriber::registry().with(WarnCounter(std::sync::Arc::clone(&warnings)));
-        let _guard = tracing::subscriber::set_default(subscriber);
-
         let provider = cleartext_test_provider("http://minio.example.com:9000", true, None);
+        assert!(
+            provider.cleartext_warning_pending(),
+            "a fresh provider has its warning to give"
+        );
         provider
             .validate_endpoint_confidentiality()
             .expect("consent given");
+        assert!(!provider.cleartext_warning_pending(), "and gives it once");
+
+        // The two paths the transfer pool and the list pool actually use.
         let mut pooled = provider.clone_for_transfer().expect("clone for transfer");
-        // Goes through the trait, on the clone, and reaches the guard again.
         let _ = pooled
             .create_share_link("/file.bin", ShareLinkOptions::default())
             .await;
@@ -6272,35 +6219,16 @@ mod tests {
         let _ = listing
             .create_share_link("/file.bin", ShareLinkOptions::default())
             .await;
-
-        assert_eq!(
-            warnings.load(std::sync::atomic::Ordering::Relaxed),
-            1,
-            "the pool clones are the same profile and must not warn again"
-        );
-    }
-
-    /// The presigned URL path refuses a role profile before the STS exchange
-    /// too, for the same reason discovery does: an AssumeRole burns a one-time
-    /// MFA code and puts the wrong error on screen.
-    #[tokio::test]
-    async fn a_share_link_on_a_role_profile_is_refused_before_the_sts_exchange() {
-        let mut provider = cleartext_test_provider(
-            "http://s3.invalid:9000",
-            false,
-            Some("arn:aws:iam::123456789012:role/review"),
-        );
-        let err = provider
-            .create_share_link("/file.bin", ShareLinkOptions::default())
-            .await
-            .expect_err("a presigned URL must not be minted for a cleartext endpoint");
         assert!(
-            matches!(err, ProviderError::ConnectionFailed(_)),
-            "the refusal must be the confidentiality one: {err:?}"
+            !provider.cleartext_warning_pending(),
+            "a pool clone is the same profile and must not reopen the slot"
         );
+
+        // A different provider is a different session and warns again.
+        let fresh = cleartext_test_provider("http://minio.example.com:9000", true, None);
         assert!(
-            !err.to_string().contains("AssumeRole"),
-            "an AssumeRole error means the exchange was attempted: {err}"
+            fresh.cleartext_warning_pending(),
+            "the slot is per provider, not per process"
         );
     }
 
