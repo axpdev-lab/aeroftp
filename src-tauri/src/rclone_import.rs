@@ -2389,6 +2389,12 @@ pub fn export_rclone(
                         trailing.push_str(&format!("[{}]\n", alias_name));
                         trailing.push_str("type = alias\n");
                         trailing.push_str(&format!("remote = {}:{}\n", remote_name, alias_path));
+                        // A crypt overlay scoped by path must wrap the alias,
+                        // so `rcloneCryptOverlayScope = /vault` resolves under
+                        // the start folder, not under the account root. An
+                        // explicit imported `rcloneCryptRemote` keeps its own
+                        // base (`crypt_export_remote_target` reads it first).
+                        crypt_base = alias_name;
                     }
                     _ => {
                         trailing.push_str(&format!(
@@ -3264,6 +3270,36 @@ user = t
         let sftp_at = conf.find("[nas]").expect("sftp section");
         let alias_at = conf.find("[nas-path]").expect("alias section");
         assert!(alias_at > sftp_at);
+    }
+
+    #[test]
+    fn test_export_rclone_scoped_crypt_wraps_the_start_folder_alias() {
+        let servers = vec![RcloneExportServer {
+            name: "nas".to_string(),
+            host: "nas.example.test".to_string(),
+            port: 22,
+            username: "u".to_string(),
+            protocol: Some("sftp".to_string()),
+            options: Some(serde_json::json!({
+                "initial_path": "/team",
+                "rcloneCryptEnabled": true,
+                "rcloneCryptOverlayScope": "/vault",
+                "rcloneCryptPassword": "pw"
+            })),
+            provider_id: None,
+        }];
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-crypt-path-alias.conf");
+        export_rclone(&servers, &HashMap::new(), &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+        assert!(
+            conf.contains("remote = nas-path:/vault") || conf.contains("remote = nas-path:vault"),
+            "the crypt remote must wrap the start-folder alias, not the account root:\n{conf}"
+        );
+        assert!(
+            !conf.contains("remote = nas:/vault"),
+            "must not bypass the alias:\n{conf}"
+        );
     }
 
     #[test]

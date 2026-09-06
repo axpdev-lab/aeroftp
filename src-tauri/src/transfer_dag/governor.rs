@@ -294,6 +294,11 @@ impl BandwidthBucket {
     async fn acquire_one(&self, bytes: u64) {
         let need = bytes as f64;
         loop {
+            // Register the waiter before reading the state: a `set_rate_bps`
+            // that fires between the check and the sleep is then seen, not lost
+            // (`notify_waiters` wakes only futures that already exist).
+            let notified = self.notify.notified();
+            tokio::pin!(notified);
             let wait = {
                 let mut s = self.state.lock().expect("bandwidth state poisoned");
                 if s.rate_bps == 0 {
@@ -315,7 +320,7 @@ impl BandwidthBucket {
             };
             tokio::select! {
                 _ = tokio::time::sleep(wait) => {}
-                _ = self.notify.notified() => {}
+                _ = &mut notified => {}
             }
         }
     }
@@ -769,8 +774,11 @@ impl GlobalTransferGovernor {
         if bytes == 0 {
             return;
         }
-        self.bandwidth.acquire(bytes).await;
+        // Directional first: a transfer parked on its own depleted bucket must
+        // not have charged the combined cap already, or the other direction
+        // would wait for bytes that never moved.
         self.directional_bandwidth(direction).acquire(bytes).await;
+        self.bandwidth.acquire(bytes).await;
     }
 
     /// Build a governor from the environment / P0-06 policy.

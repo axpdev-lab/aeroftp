@@ -31930,6 +31930,12 @@ async fn cmd_put(
     ) {
         if let Some(parent) = remote_parent_dir(remote_path) {
             if matches!(provider.exists(&parent).await, Ok(false)) {
+                if !cli.quiet && !matches!(format, OutputFormat::Json) {
+                    eprintln!(
+                        "Creating remote directory {} (missing parent of the target)",
+                        parent
+                    );
+                }
                 for ancestor in benchmark_mkdir_ladder(&parent) {
                     match provider.mkdir(&ancestor).await {
                         Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}

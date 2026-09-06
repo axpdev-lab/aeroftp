@@ -1548,6 +1548,11 @@ impl B2Provider {
             .bytes()
             .await
             .map_err(|e| ProviderError::Other(format!("read body: {}", e)))?;
+        crate::transfer_dag::throttle::charge(
+            crate::transfer_dag::governor::TransferDirection::Download,
+            bytes.len() as u64,
+        )
+        .await;
         Ok(bytes.to_vec())
     }
 
@@ -3334,6 +3339,11 @@ impl StorageProvider for B2Provider {
             .bytes()
             .await
             .map_err(|e| ProviderError::Other(format!("read_range body: {}", e)))?;
+        crate::transfer_dag::throttle::charge(
+            crate::transfer_dag::governor::TransferDirection::Download,
+            bytes.len() as u64,
+        )
+        .await;
         Ok(bytes.to_vec())
     }
 }

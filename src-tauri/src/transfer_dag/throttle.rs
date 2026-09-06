@@ -93,14 +93,9 @@ pub fn owned_body_with(
     governor: Arc<GlobalTransferGovernor>,
     direction: TransferDirection,
 ) -> reqwest::Body {
-    if governor_is_unlimited(&governor, direction) {
-        return reqwest::Body::from(data);
-    }
-    reqwest::Body::wrap_stream(throttle_stream_with(
-        owned_chunks(data),
-        governor,
-        direction,
-    ))
+    // `Bytes::from(Vec)` takes the allocation over; the windows are slices of
+    // it, so a capped body never holds a second copy of the payload.
+    owned_body_bytes_with(bytes::Bytes::from(data), governor, direction)
 }
 
 /// A `reqwest` body for a refcounted payload. Unlimited: `Body::from(bytes)`,
@@ -141,15 +136,6 @@ fn bytes_windows(
             })
             .collect::<Vec<_>>(),
     )
-}
-
-/// The paced slices of an owned buffer, in order, covering it exactly once.
-fn owned_chunks(data: Vec<u8>) -> impl Stream<Item = Result<Vec<u8>, std::io::Error>> + Send {
-    let chunks: Vec<Result<Vec<u8>, std::io::Error>> = data
-        .chunks(OWNED_BODY_CHUNK_BYTES)
-        .map(|c| Ok(c.to_vec()))
-        .collect();
-    futures_util::stream::iter(chunks)
 }
 
 #[cfg(test)]
@@ -286,25 +272,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn owned_chunks_cover_the_buffer_once_and_are_charged_in_full() {
+    async fn owned_body_reuses_the_vec_allocation_when_capped() {
+        // The paced form of an owned Vec must not pre-copy it: the windows are
+        // slices of the same allocation the Vec handed over.
         let g = capped(64 * 1024 * 1024, 0);
-        let data: Vec<u8> = (0..(OWNED_BODY_CHUNK_BYTES * 2 + 17))
+        // A part buffer is `vec![0u8; len]` filled by `read_exact`: length and
+        // capacity are equal, the case `Bytes::from(Vec)` takes over without
+        // copying. The pointer compared is the one of the Vec handed over.
+        let expected: Vec<u8> = (0..(OWNED_BODY_CHUNK_BYTES * 2 + 17))
             .map(|i| (i % 251) as u8)
             .collect();
-        let paced: Vec<Vec<u8>> = throttle_stream_with(
-            owned_chunks(data.clone()),
+        let mut data = expected.clone();
+        data.shrink_to_fit();
+        let base = data.as_ptr();
+        let payload = bytes::Bytes::from(data);
+        assert_eq!(
+            payload.as_ptr(),
+            base,
+            "Bytes::from(Vec) takes the allocation over"
+        );
+        let paced: Vec<bytes::Bytes> = throttle_stream_with(
+            bytes_windows(payload),
             Arc::clone(&g),
             TransferDirection::Upload,
         )
-        .map(|r| r.expect("owned chunks never fail"))
+        .map(|r| r.expect("windows never fail"))
         .collect()
         .await;
         assert_eq!(paced.len(), 3);
-        assert_eq!(paced.concat(), data);
-        assert_eq!(
-            g.directional_bandwidth(TransferDirection::Upload)
-                .granted_bytes(),
-            data.len() as u64
-        );
+        assert_eq!(paced[0].as_ptr(), base);
+        assert_eq!(paced.concat(), expected);
     }
 }

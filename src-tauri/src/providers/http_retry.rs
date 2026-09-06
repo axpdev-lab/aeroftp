@@ -104,9 +104,18 @@ pub async fn send_with_retry(
         .body()
         .and_then(|b| b.as_bytes())
         .map(bytes::Bytes::copy_from_slice);
+    // The first attempt sends the request exactly as built, so a streaming
+    // body (a multipart form over a file, for instance) goes out intact; only
+    // a retry rebuilds from the captured parts, and a body that could not be
+    // captured as bytes is not replayable, exactly as before this helper
+    // learned to rebuild.
+    let mut first = Some(request);
     send_with_retry_replayable(
         client,
-        || {
+        move || {
+            if let Some(request) = first.take() {
+                return reqwest::RequestBuilder::from_parts(client.clone(), request);
+            }
             let mut req = client.request(method.clone(), url.clone());
             for (key, value) in headers.iter() {
                 req = req.header(key, value);
@@ -132,11 +141,11 @@ pub async fn send_with_retry(
 /// records its own honest TTFB sample, exactly as the built-request variant.
 pub async fn send_with_retry_replayable<F>(
     client: &Client,
-    build: F,
+    mut build: F,
     config: &HttpRetryConfig,
 ) -> Result<Response, reqwest::Error>
 where
-    F: Fn() -> reqwest::RequestBuilder,
+    F: FnMut() -> reqwest::RequestBuilder,
 {
     let _ = client;
     // KE-A3: proactive tpslimit gate. No-op when the CLI did not install
