@@ -1737,6 +1737,12 @@ impl StorageProvider for SftpProvider {
             }
         }
 
+        // Close the remote handle and WAIT for the server's reply. Dropping the
+        // handle only queues a close (`close_nowait`); a worker that now lives
+        // across thousands of files (warm reuse) outran the server's per-session
+        // handle limit that way ("Limit exceeded: handle limit reached" on the
+        // 5000-file review cell). Upload already awaits its close.
+        let _ = remote_file.close().await;
         resumable.commit().await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
         })?;
@@ -1835,6 +1841,7 @@ impl StorageProvider for SftpProvider {
             }
             data.extend_from_slice(&buffer[..bytes_read]);
         }
+        let _ = remote_file.close().await;
 
         Ok(data)
     }
@@ -2703,6 +2710,7 @@ impl StorageProvider for SftpProvider {
             total_read += n;
         }
         buf.truncate(total_read);
+        let _ = file.close().await;
         Ok(buf)
     }
 }
