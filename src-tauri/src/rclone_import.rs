@@ -1813,6 +1813,10 @@ pub fn export_rclone(
             }
             "s3" => {
                 body.push_str("type = s3\n");
+                // AeroFTP persists empty directories as `<key>/` objects.
+                // rclone must recognize them, including the purge root's own
+                // marker, instead of constructing a DELETE for `<key>//`.
+                body.push_str("directory_markers = true\n");
                 let provider_id = server.provider_id.as_deref().unwrap_or("custom-s3");
                 // rclone S3 backend providers: see `rclone help backend s3`.
                 // Names are case-sensitive; "Other" forces the generic
@@ -1823,7 +1827,9 @@ pub fn export_rclone(
                     "cloudflare-r2" => "Cloudflare",
                     "digitalocean-spaces" => "DigitalOcean",
                     "wasabi" => "Wasabi",
-                    "backblaze" | "backblaze-b2" => "Backblaze",
+                    // B2's S3 API uses the generic backend. "Backblaze" is
+                    // not a valid rclone S3 provider (native B2 is type=b2).
+                    "backblaze" | "backblaze-b2" => "Other",
                     "linode-object-storage" => "Linode",
                     "scaleway" => "Scaleway",
                     "storj" => "Storj",
@@ -3370,6 +3376,10 @@ user = t
 
         // No inert bucket key in the s3 backend section.
         assert!(
+            conf.contains("type = s3\ndirectory_markers = true\n"),
+            "the S3 backend must recognize AeroFTP empty-directory markers"
+        );
+        assert!(
             !conf.contains("\nbucket = "),
             "must not emit the ignored s3 `bucket =` key:\n{conf}"
         );
@@ -4342,6 +4352,29 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             !conf.contains("/remote.php/"),
             "must not inject a Nextcloud DAV path on generic WebDAV:\n{conf}"
         );
+    }
+
+    #[test]
+    fn test_export_backblaze_s3_uses_supported_rclone_provider() {
+        let dir = tempfile::tempdir().unwrap();
+        for provider_id in ["backblaze", "backblaze-b2"] {
+            let servers = vec![RcloneExportServer {
+                name: "b2-s3".into(),
+                host: "s3.eu-central-003.backblazeb2.com".into(),
+                port: 443,
+                username: "test-key".into(),
+                protocol: Some("s3".into()),
+                options: Some(serde_json::json!({"bucket": "test-bucket"})),
+                provider_id: Some(provider_id.into()),
+            }];
+            let path = dir.path().join("rclone.conf");
+            export_rclone(&servers, &HashMap::new(), &path).unwrap();
+            let config = std::fs::read_to_string(path).unwrap();
+            assert!(config.contains("provider = Other\n"));
+            assert!(!config.contains("provider = Backblaze"));
+            assert!(config.contains("directory_markers = true\n"));
+            assert!(config.contains("s3.eu-central-003.backblazeb2.com"));
+        }
     }
 
     #[test]
