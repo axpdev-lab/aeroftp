@@ -3985,10 +3985,36 @@ impl StorageProvider for S3Provider {
         if !keys.contains(&prefix) {
             keys.push(prefix.clone());
         }
-        // Also try without trailing slash (some providers use both)
+        // A slashless key is a distinct object on S3. Only include it when
+        // HEAD positively identifies a gateway's directory marker; otherwise
+        // deleting `reports/` would also erase the unrelated file `reports`.
         let no_slash = path.trim_matches('/').to_string();
-        if !keys.contains(&no_slash) {
-            keys.push(no_slash);
+        let response = self.s3_request(Method::HEAD, &no_slash, None, None).await?;
+        match response.status() {
+            StatusCode::OK => {
+                let content_type = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+                if is_s3_directory_content_type(content_type)
+                    && response
+                        .headers()
+                        .get(reqwest::header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        == Some("0")
+                    && !keys.contains(&no_slash)
+                {
+                    keys.push(no_slash);
+                }
+            }
+            StatusCode::NOT_FOUND => {}
+            status => {
+                return Err(ProviderError::ServerError(format!(
+                    "Directory marker HEAD failed with status: {}",
+                    status
+                )))
+            }
         }
 
         tracing::info!(
@@ -4000,7 +4026,16 @@ impl StorageProvider for S3Provider {
         // DELETE-01: Use S3 batch delete (POST /?delete) for up to 1000 keys per
         // request. Delete the current version of each key (no version id).
         let objects: Vec<(String, Option<String>)> = keys.into_iter().map(|k| (k, None)).collect();
-        self.batch_delete_objects(&objects).await
+        self.batch_delete_objects(&objects).await?;
+        // A gateway can expose previously hidden children after deletion of
+        // a conflicting object. Never report a complete purge with leftovers.
+        if !self.list_keys_with_prefix(&prefix).await?.is_empty() {
+            return Err(ProviderError::TransferFailed(format!(
+                "Directory '{}' still contains objects after recursive deletion",
+                path
+            )));
+        }
+        Ok(())
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
@@ -5489,11 +5524,18 @@ impl S3Provider {
                 );
                 for (key, version_id) in chunk {
                     let params = version_id.as_ref().map(|v| vec![("versionId", v.as_str())]);
-                    if let Err(e) = self
+                    match self
                         .s3_request(Method::DELETE, key, params.as_deref(), None)
                         .await
                     {
-                        failures.push((key.clone(), e.to_string()));
+                        Ok(response)
+                            if response.status().is_success()
+                                || response.status() == StatusCode::NOT_FOUND => {}
+                        Ok(response) => failures.push((
+                            key.clone(),
+                            format!("DELETE returned {}", response.status()),
+                        )),
+                        Err(e) => failures.push((key.clone(), e.to_string())),
                     }
                 }
             }
@@ -7255,6 +7297,246 @@ mod tests {
         .expect("Failed to create S3Provider")
     }
 
+    #[tokio::test]
+    async fn recursive_delete_preserves_slashless_files_and_checks_gateway_markers() {
+        use std::sync::{Arc, Mutex};
+        // Real files (including zero-byte files) survive; only a confirmed
+        // zero-byte directory marker may be removed outside the prefix.
+        for (status, content_type, length, include_bare, head_ok, leftovers) in [
+            (200, "text/plain", "17", false, true, false),
+            (200, "application/octet-stream", "0", false, true, false),
+            (200, "application/x-directory", "17", false, true, false),
+            (200, "application/x-directory", "0", true, true, false),
+            (200, "httpd/unix-directory", "0", true, true, false),
+            (404, "", "0", false, true, false),
+            (403, "", "0", false, false, false),
+            (404, "", "0", false, true, true),
+        ] {
+            let bodies = Arc::new(Mutex::new(Vec::new()));
+            let captured = Arc::clone(&bodies);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let captured = Arc::clone(&captured);
+                    async move {
+                        match *req.method() {
+                            Method::HEAD => axum::http::Response::builder()
+                                .status(status)
+                                .header("content-type", content_type)
+                                .header("content-length", length)
+                                .body(axum::body::Body::empty()).unwrap(),
+                            Method::GET => {
+                                let xml = if !leftovers && !captured.lock().unwrap().is_empty() {
+                                    "<ListBucketResult/>"
+                                } else {
+                                    "<ListBucketResult><Contents><Key>folder/</Key></Contents><Contents><Key>folder/child</Key></Contents></ListBucketResult>"
+                                };
+                                axum::http::Response::new(axum::body::Body::from(xml))
+                            }
+                            Method::POST => {
+                                let bytes = axum::body::to_bytes(req.into_body(), 8192).await.unwrap();
+                                captured.lock().unwrap().push(String::from_utf8(bytes.to_vec()).unwrap());
+                                axum::http::Response::new(axum::body::Body::from("<DeleteResult/>"))
+                            }
+                            _ => panic!("unexpected request"),
+                        }
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.connected = true;
+            assert_eq!(
+                provider.rmdir_recursive("/folder/").await.is_ok(),
+                head_ok && !leftovers
+            );
+            let bodies = bodies.lock().unwrap();
+            if head_ok {
+                assert_eq!(bodies.len(), 1);
+                assert!(bodies[0].contains("<Key>folder/</Key>"));
+                assert!(bodies[0].contains("<Key>folder/child</Key>"));
+                assert_eq!(bodies[0].contains("<Key>folder</Key>"), include_bare);
+            } else {
+                assert!(bodies.is_empty(), "HEAD failure must prevent deletion");
+            }
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn batch_delete_fallback_reports_http_failures() {
+        use std::sync::{Arc, Mutex};
+        let deleted = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&deleted);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let captured = Arc::clone(&captured);
+                async move {
+                    if req.method() == Method::POST {
+                        return axum::http::StatusCode::METHOD_NOT_ALLOWED;
+                    }
+                    assert_eq!(req.method(), Method::DELETE);
+                    captured.lock().unwrap().push(req.uri().path().to_string());
+                    match req.uri().path() {
+                        "/test-bucket/denied" => axum::http::StatusCode::FORBIDDEN,
+                        "/test-bucket/missing" => axum::http::StatusCode::NOT_FOUND,
+                        _ => axum::http::StatusCode::NO_CONTENT,
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let provider = make_provider(Some(&format!("http://{addr}")));
+        let error = provider
+            .batch_delete_objects(&[
+                ("denied".into(), None),
+                ("missing".into(), None),
+                ("ok".into(), None),
+            ])
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("1 of 3"), "{error}");
+        assert!(error.contains("denied") && error.contains("403"), "{error}");
+        assert_eq!(deleted.lock().unwrap().len(), 3, "continue after a failure");
+        provider
+            .batch_delete_objects(&[("missing".into(), None), ("ok".into(), None)])
+            .await
+            .unwrap();
+        server.abort();
+    }
+
+    /// Opt-in live check. Supply a disposable bucket's saved-profile export
+    /// through AEROFTP_MARKER_LIVE_* environment variables. Only a unique
+    /// scratch prefix is mutated; no bucket creation or bucket-root deletion.
+    #[tokio::test]
+    #[ignore = "requires an explicitly authorized live S3 profile and rclone"]
+    async fn s3_marker_live_export_and_delete_regression() {
+        let env = |name: &str| {
+            std::env::var(format!("AEROFTP_MARKER_LIVE_{name}"))
+                .unwrap_or_else(|_| panic!("missing AEROFTP_MARKER_LIVE_{name}"))
+        };
+        let endpoint = env("ENDPOINT");
+        let bucket = env("BUCKET");
+        let access_key = env("ACCESS_KEY");
+        let secret = env("SECRET_KEY");
+        let region = env("REGION");
+        let mut provider = make_provider(Some(&endpoint));
+        provider.config.bucket = bucket.clone();
+        provider.config.access_key_id = access_key.clone();
+        provider.config.secret_access_key = secrecy::SecretString::from(secret.clone());
+        provider.config.region = region.clone();
+        provider.connected = true;
+        let root = format!("codex-s3-patched-{}", uuid::Uuid::new_v4());
+        assert!(provider
+            .list_keys_with_prefix(&root)
+            .await
+            .unwrap()
+            .is_empty());
+        let result: Result<(), String> = async {
+            provider.mkdir(&root).await.map_err(|e| e.to_string())?;
+            provider
+                .mkdir(&format!("{root}/child"))
+                .await
+                .map_err(|e| e.to_string())?;
+            let keys = provider
+                .list_keys_with_prefix(&format!("{root}/"))
+                .await
+                .map_err(|e| e.to_string())?;
+            assert!(keys.contains(&format!("{root}/")));
+            assert!(keys.contains(&format!("{root}/child/")));
+            let temp = tempfile::tempdir().unwrap();
+            let config_path = temp.path().join("rclone.conf");
+            let servers = vec![crate::rclone_import::RcloneExportServer {
+                name: "marker-live".into(),
+                host: endpoint.clone(),
+                port: 443,
+                username: access_key,
+                protocol: Some("s3".into()),
+                provider_id: Some(env("PROVIDER")),
+                options: Some(
+                    serde_json::json!({"bucket": bucket, "endpoint": endpoint, "region": region}),
+                ),
+            }];
+            crate::rclone_import::export_rclone(
+                &servers,
+                &HashMap::from([("marker-live".into(), secret)]),
+                &config_path,
+            )
+            .map_err(|e| e.to_string())?;
+            // No --s3-directory-markers flag: this verifies the actual export.
+            let output = std::process::Command::new("rclone")
+                .arg("--config")
+                .arg(&config_path)
+                .arg("purge")
+                .arg(format!("marker-live-{bucket}:{root}"))
+                .args(["--retries", "1"])
+                .output()
+                .map_err(|e| e.to_string())?;
+            if !output.status.success() {
+                return Err(format!("rclone purge exited {}", output.status));
+            }
+            assert!(provider
+                .list_keys_with_prefix(&format!("{root}/"))
+                .await
+                .unwrap()
+                .is_empty());
+            // Empty directory + a separate nonempty slashless object.
+            // The latter must survive deletion byte-for-byte.
+            let folder = format!("{root}/same-name");
+            provider.mkdir(&folder).await.map_err(|e| e.to_string())?;
+            let payload = b"keep this distinct object".to_vec();
+            let put = provider
+                .s3_request_ext(
+                    Method::PUT,
+                    &folder,
+                    None,
+                    Some(payload.clone()),
+                    &[("content-type", "text/plain")],
+                )
+                .await
+                .unwrap();
+            assert!(put.status().is_success());
+            provider
+                .rmdir_recursive(&folder)
+                .await
+                .map_err(|e| e.to_string())?;
+            let get = provider
+                .s3_request(Method::GET, &folder, None, None)
+                .await
+                .unwrap();
+            assert!(get.status().is_success());
+            assert_eq!(get.bytes().await.unwrap().as_ref(), payload.as_slice());
+            assert!(provider
+                .list_keys_with_prefix(&format!("{folder}/"))
+                .await
+                .unwrap()
+                .is_empty());
+            provider.delete(&folder).await.map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        .await;
+        // This root is unique to this test. Cleanup also runs on ordinary
+        // operation errors; assertions intentionally preserve failure evidence.
+        provider
+            .rmdir_recursive(&root)
+            .await
+            .expect("scratch cleanup");
+        assert!(provider
+            .list_keys_with_prefix(&format!("{root}/"))
+            .await
+            .unwrap()
+            .is_empty());
+        result.unwrap();
+        println!("PASS: exported-config purge, same-name file preserved, cleaned {root}");
+    }
+
     fn make_provider_with_token(session_token: Option<&str>) -> S3Provider {
         S3Provider::new(S3Config {
             endpoint: None,
@@ -7289,8 +7571,8 @@ mod tests {
     async fn bodyless_put_sends_explicit_content_length_zero() {
         use std::sync::{Arc, Mutex};
 
-        /// (method, Content-Length) of the request the provider actually sent.
-        type SeenRequest = Option<(String, Option<String>)>;
+        /// (method, Content-Length, path, Content-Type) on the wire.
+        type SeenRequest = Option<(String, Option<String>, String, Option<String>)>;
 
         let seen: Arc<Mutex<SeenRequest>> = Arc::new(Mutex::new(None));
         let captured = Arc::clone(&seen);
@@ -7304,7 +7586,13 @@ mod tests {
                         .get(reqwest::header::CONTENT_LENGTH)
                         .and_then(|v| v.to_str().ok())
                         .map(String::from);
-                    *captured.lock().unwrap() = Some((method, value));
+                    let path = req.uri().path().to_string();
+                    let content_type = req
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .map(String::from);
+                    *captured.lock().unwrap() = Some((method, value, path, content_type));
                     axum::http::StatusCode::OK
                 }
             }));
@@ -7321,12 +7609,14 @@ mod tests {
         provider.connected = true;
         provider.mkdir("/some/folder").await.expect("mkdir");
 
-        let (method, value) = seen
+        let (method, value, path, content_type) = seen
             .lock()
             .unwrap()
             .clone()
             .expect("no request reached the server");
         assert_eq!(method, "PUT", "mkdir must write the marker with a PUT");
+        assert_eq!(path, "/test-bucket/some/folder/");
+        assert_eq!(content_type.as_deref(), Some(S3_DIRECTORY_CONTENT_TYPE));
         assert_eq!(
             value.as_deref(),
             Some("0"),
