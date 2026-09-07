@@ -319,6 +319,15 @@ struct Cli {
     #[arg(long, global = true)]
     immutable: bool,
 
+    /// Recursive `put`: skip a file or folder whose name contains a character
+    /// the destination backend forbids and upload the rest, reporting each
+    /// skipped path, instead of refusing the whole batch up front (the
+    /// default, which uploads nothing when one name is bad). The run still
+    /// ends "partial" with exit 4 because not everything requested landed,
+    /// the way rclone reports a batch with failed items.
+    #[arg(long, global = true)]
+    skip_restricted: bool,
+
     /// Skip listing destination before transfer (assume dest is empty)
     #[arg(long, global = true)]
     no_check_dest: bool,
@@ -380,16 +389,18 @@ struct Cli {
     buffer_size: Option<String>,
 
     /// Number of concurrent Range streams per single-file download
-    /// (rclone `--multi-thread-streams`). Default 1 = disabled. Range 1-16.
-    /// Honored by S3/Azure (native) and, after a live strict 206 probe, by
-    /// WebDAV (Basic/anonymous auth; Digest excluded) and Koofr. Any backend
-    /// or server that does not prove Range honesty falls back to
-    /// single-stream transparently. Reads default from
+    /// (rclone `--multi-thread-streams`). Default 4, applied only to files at
+    /// or above `--multi-thread-cutoff` (250M), the same shape as rclone's
+    /// default (4 streams above 256Mi); `1` disables. Range 1-16.
+    /// Honored by S3/Azure (native), SFTP (N independent connections) and,
+    /// after a live strict 206 probe, by WebDAV (Basic/anonymous auth; Digest
+    /// excluded) and Koofr. Any backend or server that does not prove Range
+    /// honesty falls back to single-stream transparently. Reads default from
     /// `AEROFTP_MULTI_THREAD_STREAMS` if set.
     #[arg(
         long,
         global = true,
-        default_value_t = 1,
+        default_value_t = 4,
         env = "AEROFTP_MULTI_THREAD_STREAMS"
     )]
     multi_thread_streams: usize,
@@ -7324,6 +7335,21 @@ fn format_speed(bps: u64) -> String {
     }
 }
 
+/// The user's speed limit in bytes per second, from `--limit-rate` or, failing
+/// that, the `--bwlimit` schedule resolved at startup. `None` when unset or
+/// unparsable (the parse warning is printed where the provider call is made).
+fn cli_speed_limit_bps(cli: &Cli) -> Option<u64> {
+    if let Some(rate) = cli.limit_rate.as_deref() {
+        if let Ok(bps) = parse_speed_limit(rate) {
+            return (bps > 0).then_some(bps);
+        }
+    }
+    cli.bwlimit
+        .as_deref()
+        .and_then(resolve_bwlimit_schedule)
+        .filter(|bps| *bps > 0)
+}
+
 fn parse_speed_limit(s: &str) -> Result<u64, String> {
     let s = s.trim().to_uppercase();
     if let Some(n) = s.strip_suffix('M') {
@@ -8949,6 +8975,27 @@ fn make_aggregate_progress_cb(
     })
 }
 
+/// What `--partial` should do with `local_bytes` already on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResumePlan {
+    /// The local copy is exactly the remote size: nothing to fetch.
+    Complete,
+    /// The local copy is longer than the remote object: it is not a prefix of
+    /// it, so a range request would be refused (416) or, worse, accepted by a
+    /// server that ignores ranges and then appended to. Start over.
+    Restart,
+    /// A genuine prefix (or an unknown remote size): ask for the tail.
+    Resume,
+}
+
+fn partial_resume_plan(local_bytes: u64, remote_size: Option<u64>) -> ResumePlan {
+    match remote_size {
+        Some(remote) if local_bytes == remote => ResumePlan::Complete,
+        Some(remote) if local_bytes > remote => ResumePlan::Restart,
+        _ => ResumePlan::Resume,
+    }
+}
+
 async fn download_with_resume(
     provider: &mut dyn StorageProvider,
     remote_path: &str,
@@ -8964,19 +9011,49 @@ async fn download_with_resume(
         let offset = std::fs::metadata(&tmp_path)
             .map(|meta| meta.len())
             .unwrap_or(0);
-        if offset > 0 {
-            return provider
-                .resume_download(remote_path, local_path, offset, progress_cb)
-                .await;
-        }
         // Also check the final file itself (FTP resume writes there directly)
         let final_offset = std::fs::metadata(local_path)
             .map(|meta| meta.len())
             .unwrap_or(0);
-        if final_offset > 0 {
-            return provider
-                .resume_download(remote_path, local_path, final_offset, progress_cb)
-                .await;
+        // A byte offset alone cannot tell "interrupted" from "already done":
+        // asking for `Range: bytes=<size>-` on a complete file is answered
+        // with 416 by every HTTP backend, which used to surface as "file may
+        // have changed on server" (exit 4) when re-running `get --partial`
+        // over a finished download. Compare with the remote size first and
+        // decide like rclone does: complete is a no-op, longer-than-remote is
+        // stale and restarts, shorter resumes.
+        let remote_size = if offset > 0 || final_offset > 0 {
+            provider.size(remote_path).await.ok()
+        } else {
+            None
+        };
+        if offset > 0 {
+            match partial_resume_plan(offset, remote_size) {
+                ResumePlan::Complete => {
+                    tokio::fs::rename(&tmp_path, local_path)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    return Ok(());
+                }
+                ResumePlan::Restart => {
+                    let _ = tokio::fs::remove_file(&tmp_path).await;
+                }
+                ResumePlan::Resume => {
+                    return provider
+                        .resume_download(remote_path, local_path, offset, progress_cb)
+                        .await;
+                }
+            }
+        } else if final_offset > 0 {
+            match partial_resume_plan(final_offset, remote_size) {
+                ResumePlan::Complete => return Ok(()),
+                ResumePlan::Restart => {}
+                ResumePlan::Resume => {
+                    return provider
+                        .resume_download(remote_path, local_path, final_offset, progress_cb)
+                        .await;
+                }
+            }
         }
     }
     provider
@@ -31841,6 +31918,46 @@ async fn cmd_put(
         return code;
     }
 
+    // A single `put` into a folder that does not exist yet used to fail on the
+    // path-rooted protocols ("Failed to create remote file: No such file" on
+    // SFTP), while `put -r` creates every missing ancestor and rclone's
+    // `copyto` creates parents as a matter of course. Same policy here, paid
+    // only when the parent is really missing (one `exists` round trip) and
+    // only where folders are real: object stores have no parent to create.
+    if matches!(
+        provider.provider_type(),
+        ProviderType::Sftp | ProviderType::Ftp | ProviderType::Ftps | ProviderType::WebDav
+    ) {
+        if let Some(parent) = remote_parent_dir(remote_path) {
+            if matches!(provider.exists(&parent).await, Ok(false)) {
+                if !cli.quiet && !matches!(format, OutputFormat::Json) {
+                    eprintln!(
+                        "Creating remote directory {} (missing parent of the target)",
+                        parent
+                    );
+                }
+                for ancestor in benchmark_mkdir_ladder(&parent) {
+                    match provider.mkdir(&ancestor).await {
+                        Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
+                        Err(mkd_err) => {
+                            let code = provider_error_to_exit_code(&mkd_err);
+                            print_error(
+                                format,
+                                &format!(
+                                    "Cannot create remote directory '{}': {}",
+                                    ancestor, mkd_err
+                                ),
+                                code,
+                            );
+                            let _ = provider.disconnect().await;
+                            return code;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // --immutable / --no-clobber: skip upload if remote file already exists
     if no_clobber || cli.immutable {
         let flag_name = if cli.immutable {
@@ -32166,14 +32283,27 @@ async fn cmd_put_recursive(
 
     // Pre-flight: reject the whole batch up front if any target dir or file name
     // contains a character this provider's backend forbids, before creating or
-    // uploading anything (mirrors the single-file `put` guard).
+    // uploading anything (mirrors the single-file `put` guard). With
+    // `--skip-restricted` the offending entries are set aside and reported,
+    // and the rest of the batch proceeds.
     let ptype = provider.provider_type();
-    for target in dirs.iter().chain(files.iter().map(|(_, remote, _)| remote)) {
-        if let Err(e) = ftp_client_gui_lib::restricted_chars::validate_path(ptype, target) {
-            let code = provider_error_to_exit_code(&e);
-            print_error(format, &format!("put failed: {}", e), code);
-            let _ = provider.disconnect().await;
-            return code;
+    let (dirs, files, restricted_skipped) = if cli.skip_restricted {
+        let split = split_restricted_targets(ptype, dirs, files);
+        (split.dirs, split.files, split.notes)
+    } else {
+        for target in dirs.iter().chain(files.iter().map(|(_, remote, _)| remote)) {
+            if let Err(e) = ftp_client_gui_lib::restricted_chars::validate_path(ptype, target) {
+                let code = provider_error_to_exit_code(&e);
+                print_error(format, &format!("put failed: {}", e), code);
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        }
+        (dirs, files, Vec::new())
+    };
+    if !quiet {
+        for note in &restricted_skipped {
+            eprintln!("  Skipped (restricted name): {}", note);
         }
     }
 
@@ -32227,7 +32357,10 @@ async fn cmd_put_recursive(
 
     let mut uploaded: u32 = 0;
     let mut skipped: u32 = 0;
-    let mut errors: Vec<String> = Vec::new();
+    let mut errors: Vec<String> = restricted_skipped
+        .iter()
+        .map(|note| format!("skipped (restricted name): {}", note))
+        .collect();
 
     // DAG-P2-07 (block E): engine-level stats when this folder upload ran on
     // the converged DAG-engine path; stays `None` on legacy/--immutable paths.
@@ -35370,6 +35503,11 @@ async fn cmd_export_rclone(
             &p.id,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_zoho_export_options(
+            &mut options,
+            &p.protocol,
+            p.initial_path.as_deref(),
+        );
+        ftp_client_gui_lib::bridge_commands::inject_rclone_path_export_options(
             &mut options,
             &p.protocol,
             p.initial_path.as_deref(),
@@ -41471,6 +41609,73 @@ async fn benchmark_mkdir_p(
 /// the ordered list of cumulative ancestor paths to create, preserving a
 /// leading slash for absolute paths. `"a/b/c"` yields `[a, a/b, a/b/c]`;
 /// `"/x/y"` yields `[/x, /x/y]`. An empty (or slash-only) path yields `[]`.
+/// `--skip-restricted`: separate the targets a backend would refuse by name.
+///
+/// A folder with a forbidden character takes every file under it along, since
+/// none of them can be created. Returns the kept folders, the kept files and
+/// one human-readable note per skipped target ("<path>: <reason>").
+/// The outcome of [`split_restricted_targets`].
+struct RestrictedSplit {
+    dirs: Vec<String>,
+    files: Vec<(String, String, u64)>,
+    notes: Vec<String>,
+}
+
+fn split_restricted_targets(
+    ptype: ProviderType,
+    dirs: Vec<String>,
+    files: Vec<(String, String, u64)>,
+) -> RestrictedSplit {
+    let mut kept_dirs = Vec::with_capacity(dirs.len());
+    let mut bad_dirs: Vec<String> = Vec::new();
+    let mut notes = Vec::new();
+    for dir in dirs {
+        match ftp_client_gui_lib::restricted_chars::validate_path(ptype, &dir) {
+            Ok(()) => kept_dirs.push(dir),
+            Err(e) => {
+                notes.push(format!("{}: {}", dir, e));
+                bad_dirs.push(dir);
+            }
+        }
+    }
+    let under_bad_dir = |remote: &str| {
+        bad_dirs
+            .iter()
+            .any(|d| remote.starts_with(&format!("{}/", d.trim_end_matches('/'))))
+    };
+    let mut kept_files = Vec::with_capacity(files.len());
+    for (local, remote, size) in files {
+        if under_bad_dir(&remote) {
+            notes.push(format!(
+                "{}: inside a folder with a restricted name",
+                remote
+            ));
+            continue;
+        }
+        match ftp_client_gui_lib::restricted_chars::validate_path(ptype, &remote) {
+            Ok(()) => kept_files.push((local, remote, size)),
+            Err(e) => notes.push(format!("{}: {}", remote, e)),
+        }
+    }
+    RestrictedSplit {
+        dirs: kept_dirs,
+        files: kept_files,
+        notes,
+    }
+}
+
+/// The folder a remote file path lives in, or `None` when that folder is the
+/// root (nothing to create) or the path has no folder component.
+fn remote_parent_dir(remote_path: &str) -> Option<String> {
+    let trimmed = remote_path.trim_end_matches('/');
+    let (parent, _) = trimmed.rsplit_once('/')?;
+    if parent.trim_start_matches('/').is_empty() {
+        None
+    } else {
+        Some(parent.to_string())
+    }
+}
+
 fn benchmark_mkdir_ladder(path: &str) -> Vec<String> {
     let trimmed = path.trim_end_matches('/');
     if trimmed.trim_start_matches('/').is_empty() {
@@ -44997,6 +45202,30 @@ fn apply_default_time<'a>(mtime: Option<&'a str>, default: Option<&'a str>) -> O
     mtime.or(default)
 }
 
+/// Tolerance for "same instant" decisions between two stores: FAT and FTP
+/// `MDTM` keep 2-second granularity, and clocks on two machines are never
+/// exactly aligned.
+const SYNC_MTIME_TOLERANCE_SECS: i64 = 2;
+
+/// One-way sync, sizes already equal: is the destination copy current?
+///
+/// The destination is current when its mtime is not older than the source's
+/// (within tolerance): a copy written after the source last changed already
+/// holds that content. Backends that do not preserve mtime (S3 reports the
+/// upload time) therefore stop re-uploading every file on every run, and a
+/// source edited after the last sync (newer than the destination) is still
+/// transferred. When either timestamp cannot be parsed the rule falls back to
+/// the exact comparison the planner always used.
+fn destination_is_current(src_mtime: Option<&str>, dst_mtime: Option<&str>) -> bool {
+    match (
+        src_mtime.and_then(parse_mtime_secs),
+        dst_mtime.and_then(parse_mtime_secs),
+    ) {
+        (Some(src), Some(dst)) => dst + SYNC_MTIME_TOLERANCE_SECS >= src,
+        _ => compare_mtime(src_mtime, dst_mtime) == std::cmp::Ordering::Equal,
+    }
+}
+
 fn compare_mtime(a: Option<&str>, b: Option<&str>) -> std::cmp::Ordering {
     match (a, b) {
         (Some(a), Some(b)) => {
@@ -45964,9 +46193,19 @@ async fn cmd_sync(
             if let Some((rsize, rmtime)) = remote_map.get(path) {
                 let lm = apply_default_time(*mtime, default_time_ref);
                 let rm = apply_default_time(*rmtime, default_time_ref);
-                if size == rsize
-                    && (skip_matching || compare_mtime(lm, rm) == std::cmp::Ordering::Equal)
-                {
+                // One-way upload: the remote copy is current when it is at
+                // least as new as the local file (it was written after the
+                // local file last changed). Exact equality is impossible on
+                // backends that do not preserve mtime (S3 reports the upload
+                // time), and demanding it re-uploaded every file on every run.
+                // Bidirectional sync keeps exact equality: a difference there
+                // is a conflict to resolve, not a copy to skip.
+                let current = if direction == "upload" {
+                    skip_matching || destination_is_current(lm, rm)
+                } else {
+                    skip_matching || compare_mtime(lm, rm) == std::cmp::Ordering::Equal
+                };
+                if size == rsize && current {
                     skipped += 1;
                 } else if direction == "both" {
                     // Conflict: file exists on both sides with different content
@@ -46029,9 +46268,14 @@ async fn cmd_sync(
             if let Some((lsize, lmtime)) = local_map.get(path) {
                 let rm = apply_default_time(*mtime, default_time_ref);
                 let lm = apply_default_time(*lmtime, default_time_ref);
-                if size == lsize
-                    && (skip_matching || compare_mtime(rm, lm) == std::cmp::Ordering::Equal)
-                {
+                // Mirror of the upload rule: in one-way download the local copy
+                // is current when it is at least as new as the remote file.
+                let current = if direction == "download" {
+                    skip_matching || destination_is_current(rm, lm)
+                } else {
+                    skip_matching || compare_mtime(rm, lm) == std::cmp::Ordering::Equal
+                };
+                if size == lsize && current {
                     if direction == "download" {
                         skipped += 1;
                     }
@@ -62799,9 +63043,17 @@ async fn main() {
     // once, at CLI startup (the CLI has no long-lived AppState). Every transfer
     // path reaches the same singleton via `governor::global()`; env
     // `AEROFTP_GLOBAL_BANDWIDTH_BPS` / `AEROFTP_ENDPOINT_MAX_SLOTS` tune it.
-    let _governor = ftp_client_gui_lib::transfer_dag::governor::init(
+    let governor = ftp_client_gui_lib::transfer_dag::governor::init(
         ftp_client_gui_lib::transfer_dag::governor::GovernorConfig::from_env(),
     );
+    // `--limit-rate` / `--bwlimit` arm the governor's directional caps here,
+    // once, for the whole process. Every provider byte loop charges them, so
+    // the limit holds on S3, WebDAV, FTP and the HTTP clouds too, not only on
+    // the providers that implement `set_speed_limit` themselves (SFTP, MEGA);
+    // those still receive the per-provider call below as before.
+    if let Some(bps) = cli_speed_limit_bps(&cli) {
+        governor.set_transfer_limits(bps, bps);
+    }
 
     // Setup tracing based on verbosity. -vv forces TRACE; -v forces DEBUG.
     // Without the env-filter feature we still honor the common RUST_LOG
@@ -69007,7 +69259,7 @@ mod tests {
             dump: Vec::new(),
             chunk_size: None,
             buffer_size: None,
-            multi_thread_streams: 1,
+            multi_thread_streams: 4,
             multi_thread_cutoff: "250M".to_string(),
             sftp_download_preset: None,
             sftp_readahead: None,
@@ -69046,6 +69298,7 @@ mod tests {
             files_from: None,
             files_from_raw: None,
             immutable: false,
+            skip_restricted: false,
             no_check_dest: false,
             max_depth: None,
             strict: false,
@@ -69223,6 +69476,111 @@ mod tests {
         cli.trust_host_key = true;
         cli.aimd_disable = true;
         assert_eq!(strict_mode_violations(&cli).len(), 3);
+    }
+
+    #[test]
+    fn destination_is_current_when_not_older_than_the_source() {
+        let src = Some("2026-09-05T04:36:40Z");
+        // Written after the source last changed (S3 upload time): current.
+        assert!(destination_is_current(src, Some("2026-09-05T06:11:32Z")));
+        // Same second: current.
+        assert!(destination_is_current(src, Some("2026-09-05T04:36:40Z")));
+        // Within the 2 s tolerance either way: current.
+        assert!(destination_is_current(src, Some("2026-09-05T04:36:38Z")));
+        // Source edited after the destination was written: not current, transfer.
+        assert!(!destination_is_current(src, Some("2026-09-05T04:36:37Z")));
+        assert!(!destination_is_current(
+            Some("2026-09-05T07:00:00Z"),
+            Some("2026-09-05T06:11:32Z")
+        ));
+        // Unparsable or missing timestamps fall back to exact equality.
+        assert!(!destination_is_current(src, None));
+        assert!(destination_is_current(None, None));
+        assert!(destination_is_current(Some("weird"), Some("weird")));
+        assert!(!destination_is_current(Some("weird"), Some("other")));
+    }
+
+    #[test]
+    fn split_restricted_targets_keeps_the_clean_rest_and_names_every_skip() {
+        let dirs = vec!["/ok".to_string(), "/bad\tdir".to_string()];
+        let files = vec![
+            ("a".to_string(), "/ok/clean.txt".to_string(), 1),
+            ("b".to_string(), "/ok/tab\there.txt".to_string(), 2),
+            ("c".to_string(), "/bad\tdir/child.txt".to_string(), 3),
+        ];
+        let split = split_restricted_targets(ProviderType::S3, dirs, files);
+        let (kept_dirs, kept_files, notes) = (split.dirs, split.files, split.notes);
+        assert_eq!(kept_dirs, vec!["/ok".to_string()]);
+        assert_eq!(kept_files.len(), 1);
+        assert_eq!(kept_files[0].1, "/ok/clean.txt");
+        assert_eq!(notes.len(), 3, "one note per skipped target: {notes:?}");
+        assert!(notes.iter().any(|n| n.starts_with("/bad\tdir:")));
+        assert!(notes
+            .iter()
+            .any(|n| n.starts_with("/bad\tdir/child.txt: inside a folder")));
+        // Nothing to skip: everything is kept and no note is produced.
+        let clean = split_restricted_targets(
+            ProviderType::S3,
+            vec!["/ok".to_string()],
+            vec![("a".to_string(), "/ok/clean.txt".to_string(), 1)],
+        );
+        assert_eq!(
+            (clean.dirs.len(), clean.files.len(), clean.notes.len()),
+            (1, 1, 0)
+        );
+    }
+
+    #[test]
+    fn remote_parent_dir_names_only_a_folder_that_could_be_missing() {
+        assert_eq!(
+            remote_parent_dir("/home/u/fable/2026/a.bin"),
+            Some("/home/u/fable/2026".to_string())
+        );
+        assert_eq!(
+            remote_parent_dir("rel/dir/a.bin"),
+            Some("rel/dir".to_string())
+        );
+        // Root and bare names have no folder to create.
+        assert_eq!(remote_parent_dir("/a.bin"), None);
+        assert_eq!(remote_parent_dir("a.bin"), None);
+        assert_eq!(remote_parent_dir("/"), None);
+        // The ladder then yields every ancestor top-down.
+        assert_eq!(
+            benchmark_mkdir_ladder("/home/u/fable"),
+            vec!["/home", "/home/u", "/home/u/fable"]
+        );
+    }
+
+    #[test]
+    fn partial_resume_plan_treats_a_complete_local_copy_as_done() {
+        assert_eq!(partial_resume_plan(100, Some(100)), ResumePlan::Complete);
+        assert_eq!(partial_resume_plan(40, Some(100)), ResumePlan::Resume);
+        assert_eq!(partial_resume_plan(140, Some(100)), ResumePlan::Restart);
+        // Unknown remote size: the only honest move is to ask for the tail.
+        assert_eq!(partial_resume_plan(40, None), ResumePlan::Resume);
+        assert_eq!(partial_resume_plan(0, Some(0)), ResumePlan::Complete);
+    }
+
+    #[test]
+    fn speed_limit_arms_the_governor_from_limit_rate_then_bwlimit() {
+        let mut cli = test_cli();
+        assert_eq!(cli_speed_limit_bps(&cli), None, "unset flags arm no cap");
+        cli.limit_rate = Some("2M".to_string());
+        assert_eq!(cli_speed_limit_bps(&cli), Some(2 * 1024 * 1024));
+        cli.limit_rate = Some("512K".to_string());
+        assert_eq!(cli_speed_limit_bps(&cli), Some(512 * 1024));
+        // A fixed --limit-rate wins over a schedule.
+        cli.bwlimit = Some("1M".to_string());
+        assert_eq!(cli_speed_limit_bps(&cli), Some(512 * 1024));
+        // The schedule alone resolves through the same path as the provider call.
+        cli.limit_rate = None;
+        assert_eq!(cli_speed_limit_bps(&cli), Some(1024 * 1024));
+        // Unparsable or zero never arms a cap (the provider call site warns).
+        cli.bwlimit = None;
+        cli.limit_rate = Some("fast".to_string());
+        assert_eq!(cli_speed_limit_bps(&cli), None);
+        cli.limit_rate = Some("0".to_string());
+        assert_eq!(cli_speed_limit_bps(&cli), None);
     }
 
     #[test]

@@ -784,6 +784,39 @@ fn zoho_folder_id_from_initial_path(initial_path: Option<&str>) -> Option<String
 /// when it is a Zoho id rather than a slash-path. Team ids are not folder
 /// ids: rclone lists `GET /files/{root}/files`, and a team id reproduces
 /// F6016, so they are never copied here.
+/// Carry a path-rooted profile's starting folder into the rclone export.
+///
+/// rclone's sftp, ftp and webdav backends have no "start here" key: the remote
+/// always opens at the account root, so a profile pinned to a sub-folder
+/// exported to `remote:` and the user landed one or more levels above where
+/// AeroFTP lands them. The exporter turns this option into an `alias` remote
+/// (`<name>-path`, `remote = <name>:<path>`), the same shape it already uses
+/// for a pinned S3 bucket. Only path-rooted protocols qualify; a root of `/`
+/// or an empty value means "the remote itself" and carries nothing.
+pub fn inject_rclone_path_export_options(
+    options: &mut Option<Value>,
+    protocol: &str,
+    initial_path: Option<&str>,
+) {
+    if !matches!(protocol, "sftp" | "ftp" | "ftps" | "webdav") {
+        return;
+    }
+    let Some(path) = initial_path
+        .map(str::trim)
+        .filter(|p| !p.is_empty() && *p != "/")
+    else {
+        return;
+    };
+    if !matches!(options, Some(Value::Object(_))) {
+        *options = Some(Value::Object(serde_json::Map::new()));
+    }
+    let opts = options
+        .as_mut()
+        .and_then(|o| o.as_object_mut())
+        .expect("options object");
+    opts.insert("initial_path".to_string(), Value::String(path.to_string()));
+}
+
 pub fn inject_rclone_zoho_export_options(
     options: &mut Option<Value>,
     protocol: &str,

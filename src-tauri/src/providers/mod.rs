@@ -102,7 +102,7 @@ pub use gitlab::GitLabProvider;
 pub use google_drive::GoogleDriveProvider;
 pub use google_photos::GooglePhotosProvider;
 #[allow(unused_imports)]
-pub use http_retry::{send_with_retry, HttpRetryConfig};
+pub use http_retry::{send_with_retry, send_with_retry_replayable, HttpRetryConfig};
 pub use imagekit::ImageKitProvider;
 pub use immich::ImmichProvider;
 pub use internxt::InternxtProvider;
@@ -1536,6 +1536,11 @@ pub async fn stream_response_to_resumable(
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        crate::transfer_dag::throttle::charge(
+            crate::transfer_dag::governor::TransferDirection::Download,
+            chunk.len() as u64,
+        )
+        .await;
         resumable
             .write_all(&chunk)
             .await
