@@ -1913,6 +1913,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--trust-host-key` | Trust unknown SSH host keys |
 | `--two-factor <code>` | 2FA code for Filen/Internxt (env: `AEROFTP_2FA`) |
 | `--limit-rate <speed>` | Speed limit (e.g., `1M`, `500K`) |
+| `--sftp-readahead <N>` | SFTP read-ahead window (2 to 1024). Default 32 when unset, which keeps up to 32 reads in flight on one connection; `AEROFTP_SFTP_READAHEAD=off` (or `0`) restores one read per round trip; a bandwidth cap always uses the serial loop |
 | `--bwlimit <schedule>` | Bandwidth schedule (e.g., `"08:00,512k 18:00,off"` or `"1M"`) |
 | `--parallel <n>` | Number of parallel transfer workers for recursive/bulk operations |
 | `--partial` | Resume interrupted transfers when the provider supports partial files or remote offsets |
