@@ -516,6 +516,11 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
         ..TransferBudget::from_file_slots(1)
     }));
     let session_pool = Arc::new(list_model.session_pool("provider-list"));
+    // Warm scan workers: a clone that finished a directory cleanly and opted
+    // into reuse is parked here and picked up by the next task, so a
+    // connection-backed worker (SFTP) dials once per lease, not once per
+    // directory. HTTP clones do not opt in and keep their per-directory clone.
+    let warm_workers = WarmScanWorkers::default();
     let want_remote_checksum = {
         let provider_lock = provider.lock().await;
         opts.compute_remote_checksum
@@ -560,6 +565,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                 provider.clone(),
                 resource_manager.clone(),
                 session_pool.clone(),
+                warm_workers.clone(),
                 dir,
                 opts.clone(),
                 want_remote_checksum,
@@ -747,6 +753,7 @@ fn spawn_remote_scan_task(
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     resource_manager: Arc<TransferResourceManager>,
     session_pool: Arc<TransferSessionPoolHandle>,
+    warm_workers: WarmScanWorkers,
     dir: RemoteScanDir,
     opts: ScanOptions,
     want_remote_checksum: bool,
@@ -768,20 +775,55 @@ fn spawn_remote_scan_task(
                 dirs: Vec::new(),
             });
         }
-        let mut worker = {
-            let provider_lock = provider.lock().await;
-            provider_lock
-                .as_ref()
-                .ok_or_else(|| "provider disconnected".to_string())?
-                .clone_for_list()
-                .map_err(|error| error.to_string())?
+        let mut worker = match warm_workers.take().await {
+            Some(worker) => worker,
+            None => {
+                let provider_lock = provider.lock().await;
+                provider_lock
+                    .as_ref()
+                    .ok_or_else(|| "provider disconnected".to_string())?
+                    .clone_for_list()
+                    .map_err(|error| error.to_string())?
+            }
         };
         let result = scan_remote_dir(&mut worker, &dir, &opts, want_remote_checksum, &cancel)
             .await
             .map_err(|error| format!("failed to list {}: {}", dir.abs_dir, error));
+        // Parked before the lease is released, so the waiter that wakes on
+        // the freed permit finds the warm worker ready to pop.
+        warm_workers.park(worker, result.is_ok()).await;
         drop(session_lease);
         result
     });
+}
+
+/// Warm scan workers shared by the tasks of one remote walk (the scan twin of
+/// the transfer executor's warm worker pool). A worker is parked only when it
+/// opted into reuse and its directory listed cleanly; a failed listing may
+/// leave the session in an unknown state, so that worker is dropped instead.
+/// The pool is bounded by the list-session leases: never more than
+/// `max_leases` workers exist at once.
+#[derive(Clone, Default)]
+struct WarmScanWorkers {
+    workers: Arc<Mutex<Vec<Box<dyn StorageProvider>>>>,
+}
+
+impl WarmScanWorkers {
+    async fn take(&self) -> Option<Box<dyn StorageProvider>> {
+        self.workers.lock().await.pop()
+    }
+
+    async fn park(&self, worker: Box<dyn StorageProvider>, listed_ok: bool) {
+        if scan_worker_is_reusable(listed_ok, worker.supports_transfer_worker_reuse()) {
+            self.workers.lock().await.push(worker);
+        }
+    }
+}
+
+/// The reuse gate of [`WarmScanWorkers`]: only a clean listing on a worker
+/// that opted in is recycled.
+fn scan_worker_is_reusable(listed_ok: bool, opted_in: bool) -> bool {
+    listed_ok && opted_in
 }
 
 /// Returns true when an optional cancel flag has been raised by the UI.
@@ -1019,6 +1061,20 @@ mod tests {
             "a walk that never listed anything is not an empty remote"
         );
         assert!(scan.truncated, "the walk abandoned its queue mid-tree");
+    }
+
+    #[test]
+    fn a_scan_worker_is_recycled_only_after_a_clean_listing_and_only_if_it_opted_in() {
+        assert!(scan_worker_is_reusable(true, true));
+        assert!(
+            !scan_worker_is_reusable(false, true),
+            "a failed listing drops the worker"
+        );
+        assert!(
+            !scan_worker_is_reusable(true, false),
+            "HTTP clones keep their per-directory clone"
+        );
+        assert!(!scan_worker_is_reusable(false, false));
     }
 
     #[tokio::test]
