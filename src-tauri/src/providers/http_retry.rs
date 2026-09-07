@@ -93,15 +93,61 @@ pub async fn send_with_retry(
     request: Request,
     config: &HttpRetryConfig,
 ) -> Result<Response, reqwest::Error> {
-    // Store request parts for cloning on retry
+    // Store request parts for rebuilding on retry. The body is copied once
+    // into refcounted `Bytes`, so every retry clones a pointer, not the
+    // payload. Callers that own their payload as `Bytes` already should use
+    // [`send_with_retry_replayable`] and skip this copy altogether.
     let method = request.method().clone();
     let url = request.url().clone();
     let headers = request.headers().clone();
     let body_bytes = request
         .body()
         .and_then(|b| b.as_bytes())
-        .map(|b| b.to_vec());
+        .map(bytes::Bytes::copy_from_slice);
+    // The first attempt sends the request exactly as built, so a streaming
+    // body (a multipart form over a file, for instance) goes out intact; only
+    // a retry rebuilds from the captured parts, and a body that could not be
+    // captured as bytes is not replayable, exactly as before this helper
+    // learned to rebuild.
+    let mut first = Some(request);
+    send_with_retry_replayable(
+        client,
+        move || {
+            if let Some(request) = first.take() {
+                return reqwest::RequestBuilder::from_parts(client.clone(), request);
+            }
+            let mut req = client.request(method.clone(), url.clone());
+            for (key, value) in headers.iter() {
+                req = req.header(key, value);
+            }
+            if let Some(body) = &body_bytes {
+                req = req.body(body.clone());
+            }
+            req
+        },
+        config,
+    )
+    .await
+}
 
+/// [`send_with_retry`] for callers that can rebuild the request on demand.
+///
+/// `build` is called once per attempt and must return an equivalent request
+/// each time (same method, URL, headers and payload). This is the zero-copy
+/// path for large bodies: a caller holding its payload as `bytes::Bytes`
+/// clones a refcount per attempt instead of the bytes, and a paced
+/// (rate-limited) streaming body, which cannot be replayed from a built
+/// `Request`, is simply built again. Every attempt pays the tpslimit toll and
+/// records its own honest TTFB sample, exactly as the built-request variant.
+pub async fn send_with_retry_replayable<F>(
+    client: &Client,
+    mut build: F,
+    config: &HttpRetryConfig,
+) -> Result<Response, reqwest::Error>
+where
+    F: FnMut() -> reqwest::RequestBuilder,
+{
+    let _ = client;
     // KE-A3: proactive tpslimit gate. No-op when the CLI did not install
     // a limiter (GUI path, default). Sits BEFORE the first execute so
     // retries also pay the rate-limit toll: an HTTP 429 followed by an
@@ -111,7 +157,7 @@ pub async fn send_with_retry(
     // The TTFB timer starts at the actual send, after the rate-limit toll:
     // a proactive throttle wait is not part of the server's first-byte time.
     let attempt_start = std::time::Instant::now();
-    let mut last_response = match client.execute(request).await {
+    let mut last_response = match build().send().await {
         Ok(response) => {
             record_headers_received(attempt_start);
             response
@@ -129,9 +175,8 @@ pub async fn send_with_retry(
             parse_retry_after(&last_response).unwrap_or_else(|| calculate_delay(attempt, config));
 
         tracing::debug!(
-            "HTTP {} {} returned {}. Retry {}/{} after {:?}",
-            method,
-            url,
+            "HTTP {} returned {}. Retry {}/{} after {:?}",
+            last_response.url(),
             last_response.status(),
             attempt + 1,
             config.max_retries,
@@ -139,15 +184,6 @@ pub async fn send_with_retry(
         );
 
         tokio::time::sleep(delay).await;
-
-        // Rebuild request for retry
-        let mut retry_req = client.request(method.clone(), url.clone());
-        for (key, value) in headers.iter() {
-            retry_req = retry_req.header(key, value);
-        }
-        if let Some(ref body) = body_bytes {
-            retry_req = retry_req.body(body.clone());
-        }
 
         // KE-A3: each retry pays the same tpslimit toll as the original
         // request. Without this, a 429 would let a retry bypass the
@@ -157,7 +193,7 @@ pub async fn send_with_retry(
         // Each retried attempt that reaches headers is its own honest
         // first-byte sample; retries never double-count a single attempt.
         let attempt_start = std::time::Instant::now();
-        last_response = match retry_req.send().await {
+        last_response = match build().send().await {
             Ok(response) => {
                 record_headers_received(attempt_start);
                 response

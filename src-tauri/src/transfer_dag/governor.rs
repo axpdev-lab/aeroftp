@@ -191,29 +191,35 @@ impl MemoryPool {
 /// acquire (no background task). Deterministic tests drive the accounting with
 /// an injected clock and assert grants stay within `rate * elapsed + burst`.
 pub struct BandwidthBucket {
-    rate_bps: u64,
-    burst: u64,
     state: Mutex<BucketState>,
     notify: tokio::sync::Notify,
 }
 
 struct BucketState {
+    /// Cap in bytes per second; 0 = unlimited.
+    rate_bps: u64,
+    /// Largest single grant; `rate_bps.max(MIN_BANDWIDTH_BURST_BYTES)`, 0 when unlimited.
+    burst: u64,
     tokens: f64,
     last_refill: Instant,
     granted_total: u64,
 }
 
+fn burst_for_rate(rate_bps: u64) -> u64 {
+    if rate_bps == 0 {
+        0
+    } else {
+        rate_bps.max(MIN_BANDWIDTH_BURST_BYTES)
+    }
+}
+
 impl BandwidthBucket {
     fn new(rate_bps: u64) -> Self {
-        let burst = if rate_bps == 0 {
-            0
-        } else {
-            rate_bps.max(MIN_BANDWIDTH_BURST_BYTES)
-        };
+        let burst = burst_for_rate(rate_bps);
         Self {
-            rate_bps,
-            burst,
             state: Mutex::new(BucketState {
+                rate_bps,
+                burst,
                 tokens: burst as f64,
                 last_refill: Instant::now(),
                 granted_total: 0,
@@ -222,17 +228,36 @@ impl BandwidthBucket {
         }
     }
 
-    /// True when no global cap is configured (unlimited).
+    /// True when no cap is configured (unlimited).
     pub fn is_unlimited(&self) -> bool {
-        self.rate_bps == 0
+        self.rate_bps() == 0
     }
 
     pub fn rate_bps(&self) -> u64 {
-        self.rate_bps
+        self.state
+            .lock()
+            .expect("bandwidth state poisoned")
+            .rate_bps
     }
 
     pub fn burst_bytes(&self) -> u64 {
-        self.burst
+        self.state.lock().expect("bandwidth state poisoned").burst
+    }
+
+    /// Re-arm the cap at runtime (a CLI `--limit-rate`, a GUI speed-limit
+    /// change). `0` lifts the cap. The bucket starts the new rate with a full
+    /// burst so a lowered cap does not owe a debt from the old one, and every
+    /// waiter is woken so a sleep computed against the old rate is re-planned
+    /// against the new one instead of running to its old deadline.
+    pub fn set_rate_bps(&self, rate_bps: u64) {
+        {
+            let mut s = self.state.lock().expect("bandwidth state poisoned");
+            s.rate_bps = rate_bps;
+            s.burst = burst_for_rate(rate_bps);
+            s.tokens = s.burst as f64;
+            s.last_refill = Instant::now();
+        }
+        self.notify.notify_waiters();
     }
 
     /// Total bytes granted since construction (test / diagnostics).
@@ -250,25 +275,40 @@ impl BandwidthBucket {
     /// keeping the public API safe for callers that do not already stream in
     /// bounded chunks. Unlimited buckets and zero-byte requests are no-ops.
     pub async fn acquire(&self, bytes: u64) {
-        if self.rate_bps == 0 || bytes == 0 {
+        if bytes == 0 {
             return;
         }
         let mut remaining = bytes;
         while remaining > 0 {
-            let chunk = remaining.min(self.burst);
+            // Re-read the burst on every grant: `set_rate_bps` may have moved it.
+            let burst = self.burst_bytes();
+            if burst == 0 {
+                return;
+            }
+            let chunk = remaining.min(burst);
             self.acquire_one(chunk).await;
             remaining -= chunk;
         }
     }
 
     async fn acquire_one(&self, bytes: u64) {
-        debug_assert!(bytes > 0 && bytes <= self.burst);
         let need = bytes as f64;
         loop {
+            // Register the waiter before reading the state: a `set_rate_bps`
+            // that fires between the check and the sleep is then seen, not lost
+            // (`notify_waiters` wakes only futures that already exist).
+            let notified = self.notify.notified();
+            tokio::pin!(notified);
             let wait = {
                 let mut s = self.state.lock().expect("bandwidth state poisoned");
-                self.refill(&mut s);
-                if s.tokens >= need {
+                if s.rate_bps == 0 {
+                    // The cap was lifted while we waited: nothing to charge.
+                    return;
+                }
+                Self::refill(&mut s);
+                if s.tokens >= need || bytes > s.burst {
+                    // A grant larger than the (lowered) burst can never be
+                    // satisfied by waiting; let it through rather than hang.
                     s.tokens -= need;
                     s.granted_total = s.granted_total.saturating_add(bytes);
                     // Wake one other waiter to re-check in case tokens remain.
@@ -276,21 +316,21 @@ impl BandwidthBucket {
                     return;
                 }
                 let deficit = need - s.tokens;
-                Duration::from_secs_f64(deficit / self.rate_bps as f64)
+                Duration::from_secs_f64(deficit / s.rate_bps as f64)
             };
             tokio::select! {
                 _ = tokio::time::sleep(wait) => {}
-                _ = self.notify.notified() => {}
+                _ = &mut notified => {}
             }
         }
     }
 
-    fn refill(&self, s: &mut BucketState) {
+    fn refill(s: &mut BucketState) {
         let now = Instant::now();
         let dt = now.saturating_duration_since(s.last_refill).as_secs_f64();
         if dt > 0.0 {
-            let added = dt * self.rate_bps as f64;
-            s.tokens = (s.tokens + added).min(self.burst as f64);
+            let added = dt * s.rate_bps as f64;
+            s.tokens = (s.tokens + added).min(s.burst as f64);
             s.last_refill = now;
         }
     }
@@ -311,16 +351,16 @@ impl BandwidthBucket {
     /// the `tokio` test clock.
     #[cfg(test)]
     fn try_consume_at(&self, bytes: u64, now: Instant) -> bool {
-        if self.rate_bps == 0 || bytes == 0 {
+        let mut s = self.state.lock().expect("bandwidth state poisoned");
+        if s.rate_bps == 0 || bytes == 0 {
             return true;
         }
-        let mut s = self.state.lock().expect("bandwidth state poisoned");
         let dt = now.saturating_duration_since(s.last_refill).as_secs_f64();
         if dt > 0.0 {
-            s.tokens = (s.tokens + dt * self.rate_bps as f64).min(self.burst as f64);
+            s.tokens = (s.tokens + dt * s.rate_bps as f64).min(s.burst as f64);
             s.last_refill = now;
         }
-        if bytes > self.burst {
+        if bytes > s.burst {
             return false;
         }
         let need = bytes as f64;
@@ -671,9 +711,21 @@ pub struct GovernorJobLease {
 pub struct GlobalTransferGovernor {
     config: GovernorConfig,
     memory: MemoryPool,
+    /// Combined cap over both directions (`AEROFTP_GLOBAL_BANDWIDTH_BPS`).
     bandwidth: Arc<BandwidthBucket>,
+    /// Directional caps: the user's speed limit (CLI `--limit-rate` /
+    /// `--bwlimit`, GUI Settings). Unlimited until set.
+    upload_bandwidth: Arc<BandwidthBucket>,
+    download_bandwidth: Arc<BandwidthBucket>,
     endpoints: Mutex<HashMap<EndpointIdentity, Arc<EndpointGovernor>>>,
     disks: Mutex<HashMap<DiskDeviceIdentity, Arc<DiskDeviceGovernor>>>,
+}
+
+/// Which way the bytes travel, for the directional caps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferDirection {
+    Upload,
+    Download,
 }
 
 impl GlobalTransferGovernor {
@@ -683,9 +735,50 @@ impl GlobalTransferGovernor {
             config,
             memory: MemoryPool::new(config.buffer_bytes),
             bandwidth: Arc::new(BandwidthBucket::new(config.bandwidth_bps)),
+            upload_bandwidth: Arc::new(BandwidthBucket::new(0)),
+            download_bandwidth: Arc::new(BandwidthBucket::new(0)),
             endpoints: Mutex::new(HashMap::new()),
             disks: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// The directional bucket for `direction`.
+    pub fn directional_bandwidth(&self, direction: TransferDirection) -> Arc<BandwidthBucket> {
+        match direction {
+            TransferDirection::Upload => Arc::clone(&self.upload_bandwidth),
+            TransferDirection::Download => Arc::clone(&self.download_bandwidth),
+        }
+    }
+
+    /// Set the user's speed limits in bytes per second (0 = unlimited). This is
+    /// the one place every surface (CLI flags, GUI settings) lands, so a
+    /// provider that has no byte loop of its own to throttle is still capped:
+    /// the shared HTTP/FTP byte loops charge these buckets.
+    pub fn set_transfer_limits(&self, upload_bps: u64, download_bps: u64) {
+        self.upload_bandwidth.set_rate_bps(upload_bps);
+        self.download_bandwidth.set_rate_bps(download_bps);
+    }
+
+    /// Current user speed limits `(upload_bps, download_bps)`; 0 = unlimited.
+    pub fn transfer_limits(&self) -> (u64, u64) {
+        (
+            self.upload_bandwidth.rate_bps(),
+            self.download_bandwidth.rate_bps(),
+        )
+    }
+
+    /// Wait until `bytes` may travel in `direction` under both the combined
+    /// cap and the directional one, then charge them. No-op when neither cap
+    /// is set, so an unconfigured process keeps today's throughput.
+    pub async fn charge(&self, direction: TransferDirection, bytes: u64) {
+        if bytes == 0 {
+            return;
+        }
+        // Directional first: a transfer parked on its own depleted bucket must
+        // not have charged the combined cap already, or the other direction
+        // would wait for bytes that never moved.
+        self.directional_bandwidth(direction).acquire(bytes).await;
+        self.bandwidth.acquire(bytes).await;
     }
 
     /// Build a governor from the environment / P0-06 policy.

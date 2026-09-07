@@ -432,6 +432,8 @@ aeroftp-cli pget --profile "AWS S3" /backup/big.tar.gz --json
 
 Alias of `get` with a parallel-segments preset. Splits a single file into N byte ranges and downloads them concurrently, then stitches them back together. Useful when latency or per-connection throughput is the bottleneck (large `.tar.gz` archives, S3 buckets from far regions). Falls back to a single sequential stream when the provider does not advertise range-request support.
 
+Plain `get` is multi-threaded by default as well, on the same terms as rclone: files at or above `--multi-thread-cutoff` (default `250M`) are fetched with `--multi-thread-streams` concurrent range streams (default `4`) when the backend proves Range honesty (S3, Azure, SFTP as independent connections, WebDAV and Koofr after a strict 206 probe); smaller files and backends without strict ranges use one stream. `--multi-thread-streams 1` restores the single-stream behaviour, and `AEROFTP_MULTI_THREAD_STREAMS` sets the default for a shell.
+
 ### put - Upload Files
 
 ```bash
@@ -821,7 +823,9 @@ aeroftp-cli sync --profile "Backup" ./photos/ /backup/photos/ --direction upload
 aeroftp-cli sync --profile "Backup" ./photos/ /backup/photos/ --direction upload --ec=quartile
 ```
 
-Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--error-correction[=LEVEL]` / `--ec[=LEVEL]`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`, `--conflict-mode`, `--resync`.
+How an unchanged file is recognised: in one-way sync (`--direction upload` or `download`) a file is skipped when the sizes match and the destination copy is not older than the source (2 s tolerance). This is what lets `sync` converge on backends that report the upload time as the object's mtime (S3 and compatible stores, where exact equality never holds). The trade-off is the same as rclone's `--update`: a destination edited later than the source with content of the same size is treated as current; when that can happen, run `sync --direction both` (exact mtime equality, conflicts surfaced) or `check` afterwards. `--skip-matching` skips on size alone.
+
+Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete` (in a non-interactive shell, a pipeline or an agent run, `--delete` is refused unless `--max-delete N` or `N%` caps it or `--dry-run` previews it: rclone deletes by default, AeroFTP asks for the ceiling first), `--exclude`, `--error-correction[=LEVEL]` / `--ec[=LEVEL]`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`, `--conflict-mode`, `--resync`.
 
 `--error-correction` is opt-in for CLI sync and protects uploaded remote files at rest by writing a sibling `<remote>.aerorec` sidecar after each successful upload. If no level is supplied the CLI uses `medium` (15% target overhead). When enabled, sync automatically excludes `*.aerorec` from comparisons so parity sidecars are not mirrored back as user data or deleted as orphans. Remote deletes best-effort remove the protected file's companion sidecar after the primary delete succeeds; missing sidecars are ignored and sidecar delete failures do not fail the file delete. Phase 1 sidecar generation is capped at 256 MiB per source file; larger files are uploaded normally and counted as `ec_skipped_too_large`. JSON sync reports include `ec_generated`, `ec_skipped_too_large`, `ec_generate_failed`, `ec_sidecar_deleted`, and `ec_sidecar_delete_failed` when EC is enabled. Local-to-local sync ignores this flag.
 
@@ -1927,6 +1931,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--files-from <file>` | Transfer only files listed in file (one per line, `#` comments). Works with get -r, put -r, sync |
 | `--files-from-raw <file>` | Like `--files-from` but preserves whitespace and empty lines |
 | `--immutable` | Skip a destination the pre-write check finds already there (append-only mode, best effort). Honoured by `put`, `cp`, `mv`, `get` and `sync`: an existing target is skipped with exit 9 and left untouched, and a target whose existence cannot be checked (timeout, permission error, unsupported `stat`) is refused with the provider's error code rather than written. The check is a stat before the write, not a server-side precondition, so two writers racing for the same target can still both pass it |
+| `--skip-restricted` | Recursive `put`: skip files or folders whose name the destination forbids, upload the rest, report each skip; the run ends `partial` (exit 4) like rclone does with failed items. Default refuses the whole batch before uploading anything |
 | `--no-check-dest` | Skip remote directory listing during sync (assume destination is empty) |
 | `--max-depth <n>` | Maximum recursion depth for ls -R, find, sync, get -r, put -r |
 | `--default-time <ts>` | Fallback mtime when backend returns None. Accepts ISO 8601, RFC 3339, or `now` |
@@ -2466,6 +2471,8 @@ aeroftp-cli get sftp://user@host /large-file.iso --limit-rate 5M
 # Scheduled bandwidth: slow during business hours, unlimited at night
 aeroftp-cli get sftp://user@host /large-file.iso --bwlimit "08:00,512k 18:00,off"
 ```
+
+The cap is process-wide and protocol-independent: it is enforced by the transfer governor where the bytes move (the HTTP download and upload streams, every multipart part, the FTP data channel, the SFTP loops), so it holds on S3, WebDAV, FTP/FTPS, Azure, Backblaze B2 and the HTTP cloud providers as well as on SFTP and MEGA. Concurrent files and parts share the one budget: `--parallel 8 --limit-rate 5M` moves at most 5 MiB/s in total, not per file. The `--bwlimit` schedule is resolved once at startup. Owned request bodies (S3 signed parts, B2 parts) are paced in 256 KiB slices, so a low cap still produces a smooth rate rather than one burst per part.
 
 ### Encoding Issues
 

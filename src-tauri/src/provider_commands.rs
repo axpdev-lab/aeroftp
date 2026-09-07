@@ -6315,10 +6315,16 @@ pub async fn provider_set_speed_limit(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    provider
-        .set_speed_limit(upload_kb, download_kb)
-        .await
-        .map_err(|e| format!("Failed to set speed limit: {}", e))
+    // The governor's directional caps are what every shared byte loop
+    // charges, so the limit holds on S3, WebDAV, FTP and the HTTP clouds.
+    // Providers with their own pacing (SFTP, MEGA) still get the call; one
+    // that answers NotSupported is now covered by the governor, not an error.
+    crate::transfer_dag::governor::global()
+        .set_transfer_limits(upload_kb * 1024, download_kb * 1024);
+    match provider.set_speed_limit(upload_kb, download_kb).await {
+        Ok(()) | Err(crate::providers::ProviderError::NotSupported(_)) => Ok(()),
+        Err(e) => Err(format!("Failed to set speed limit: {}", e)),
+    }
 }
 
 /// Get current transfer speed limits (upload_kb, download_kb) in KB/s
@@ -6331,10 +6337,14 @@ pub async fn provider_get_speed_limit(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    provider
-        .get_speed_limit()
-        .await
-        .map_err(|e| format!("Failed to get speed limit: {}", e))
+    match provider.get_speed_limit().await {
+        Ok(limits) => Ok(limits),
+        Err(crate::providers::ProviderError::NotSupported(_)) => {
+            let (up, down) = crate::transfer_dag::governor::global().transfer_limits();
+            Ok((up / 1024, down / 1024))
+        }
+        Err(e) => Err(format!("Failed to get speed limit: {}", e)),
+    }
 }
 
 /// Check if the current provider supports resume transfers

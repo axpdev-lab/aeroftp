@@ -945,6 +945,7 @@ where
                 let Some(chunk) = next else { break };
                 let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                 let chunk_len = chunk.len() as u64;
+                crate::transfer_dag::throttle::charge(crate::transfer_dag::governor::TransferDirection::Download, chunk_len.min(expected - written)).await;
                 if written + chunk_len > expected {
                     let allowed = (expected - written) as usize;
                     file.write_all(&chunk[..allowed])

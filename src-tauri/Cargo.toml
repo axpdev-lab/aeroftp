@@ -39,6 +39,7 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 toml = "1.1"
 log = "0.4"
+bytes = "1"
 futures-util = "0.3"
 # DO NOT BUMP. Dependabot raised this to =2.11.1 (PR #201) and broke EVERY
 # Linux build: every custom command started returning "not allowed by ACL"
