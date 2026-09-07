@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Ștergerea permanentă și golirea coșului necesită un cont Dropbox Business/Team.",
             "setAsPrivate": "Setați ca privat",
             "setAsPublic": "Setați ca public",
-            "makeAllPrivate": "Fă totul privat"
+            "makeAllPrivate": "Fă totul privat",
+            "dropboxRestoreLimit": "AeroFTP poate restaura versiunile recuperabile ale fișierelor. Restaurați dosarele din Fișiere șterse pe dropbox.com. Un semn de întrebare înseamnă că Dropbox nu a identificat tipul elementului."
         },
         "transfer": {
             "transferring": "Se transferă...",

@@ -13448,7 +13448,7 @@ async fn export_sync_template_cmd(
     profile_id: String,
     local_path: String,
     remote_path: String,
-    // `None` (or an empty list) means "the preset's own", see
+    // `None` means "the preset's own"; an empty list explicitly clears it. See
     // `sync::resolve_exclude_patterns`.
     exclude_patterns: Option<Vec<String>>,
 ) -> Result<String, String> {
@@ -13473,7 +13473,7 @@ fn export_sync_template_cmd_blocking(
     profile_id: String,
     local_path: String,
     remote_path: String,
-    // `None` (or an empty list) means "the preset's own", see
+    // `None` means "the preset's own"; an empty list explicitly clears it. See
     // `sync::resolve_exclude_patterns`.
     exclude_patterns: Option<Vec<String>>,
 ) -> Result<String, String> {
@@ -13529,7 +13529,7 @@ struct SyncScriptExportArgs {
     template_description: String,
     local_path: String,
     remote_path: String,
-    // `None` (or an empty list) means "the preset's own", see
+    // `None` means "the preset's own"; an empty list explicitly clears it. See
     // `sync::resolve_exclude_patterns`.
     exclude_patterns: Option<Vec<String>>,
     format: String,

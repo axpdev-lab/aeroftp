@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "永久删除和清空回收站需要 Dropbox Business/Team 账户。",
             "setAsPrivate": "设为私有",
             "setAsPublic": "设为公开",
-            "makeAllPrivate": "全部设为私有"
+            "makeAllPrivate": "全部设为私有",
+            "dropboxRestoreLimit": "AeroFTP 可以还原可恢复的文件版本。请在 dropbox.com 的“已删除文件”中还原文件夹。问号表示 Dropbox 未能识别项目类型。"
         },
         "transfer": {
             "transferring": "传输中...",

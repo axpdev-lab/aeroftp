@@ -29,6 +29,7 @@ import {
     settingsFromAerosyncScript,
     settingsFromLegacyScript,
     settingsFromTemplate,
+    readSyncExcludePatterns,
     type ImportedSyncSettings,
     type LivePlanExport,
 } from '../../utils/syncTemplateApply';
@@ -75,6 +76,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const tabState = React.useContext(TabStateStoreContext);
+    const liveExcludes = () => readSyncExcludePatterns(tabState, excludePatterns);
 
     const livePlanFromStore = (): LivePlanExport => {
         const canaryOn = tabState?.get<boolean>('plan.canaryMode', false) === true;
@@ -168,10 +170,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
             profileId: presetId,
             localPath,
             remotePath,
-            // Empty means "the preset's own", the same contract the
-            // `.aeroftp-script` path has always used. Sending `[]` verbatim
-            // exported a Mirror script with no excludes at all.
-            excludePatterns: excludePatterns.length > 0 ? excludePatterns : null,
+            excludePatterns: liveExcludes(),
         });
         // The command serialises the named preset. Stamp the live Plan-tab
         // knobs (compression, verify, canary) so they survive import (#514).
@@ -214,7 +213,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                     remote_path: remotePath,
                     connect_profile: serverProfileName || null,
                     exclude_patterns_override:
-                        excludePatterns.length > 0 ? excludePatterns : null,
+                        liveExcludes(),
                     dry_run: false,
                     conflict_mode: 'newer',
                     track_renames: false,
@@ -256,7 +255,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                 local_path: localPath,
                 remote_path: remotePath,
                 exclude_patterns:
-                    excludePatterns.length > 0 ? excludePatterns : null,
+                    liveExcludes(),
                 format,
             },
         });

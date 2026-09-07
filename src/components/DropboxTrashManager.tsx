@@ -43,6 +43,7 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
   const canPurge = accountType === 'business';
   const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState(false);
   const [pendingEmptyConfirm, setPendingEmptyConfirm] = useState(false);
+  const selectedFolder = items.some(item => selected.has(item.path) && item.is_dir);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +83,7 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
   };
 
   const handleRestore = async () => {
+    if (selectedFolder) return;
     const paths = Array.from(selected);
     if (paths.length === 0) return;
     const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Dropbox', count: paths.length });
@@ -169,7 +171,8 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
       id: getItemId(item),
       name: item.name,
       isDir: item.is_dir,
-      size: item.size,
+      typeUnknown: item.metadata.trash_kind === 'unknown',
+      size: item.metadata.trash_kind === 'file' ? item.size : null,
       deletedAt: item.modified,
     })),
     [items],
@@ -214,7 +217,7 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
               {selected.size === items.length ? t('contextMenu.trashDeselectAll') : t('contextMenu.trashSelectAll')}
             </button>
             <div className="flex-1" />
-            <button onClick={handleRestore} disabled={selected.size === 0 || actionLoading !== null} className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+            <button onClick={handleRestore} disabled={selected.size === 0 || actionLoading !== null || selectedFolder} title={selectedFolder ? t('contextMenu.dropboxRestoreLimit') : undefined} className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
               {actionLoading === 'restore' ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
               {t('contextMenu.restoreFromTrash')} {selected.size > 0 && `(${selected.size})`}
             </button>
@@ -246,6 +249,10 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
             <span>{t('contextMenu.dropboxPurgeBusinessOnly')}</span>
           </div>
         )}
+
+        <div className="px-4 py-2 text-xs text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+          {t('contextMenu.dropboxRestoreLimit')}
+        </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto min-h-0">

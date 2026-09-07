@@ -14,7 +14,7 @@ import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourceDescriptor, BridgeSourceMeta } from './bridge/bridgeSources';
 import { detectBridgeConfigBounded } from '../hooks/useDetectedBridgeConfigs';
-import { commitImportedServers } from './bridge/bridgeImportCommit';
+import { bridgeProfileKey, commitImportedServers } from './bridge/bridgeImportCommit';
 
 interface ImportedServer {
     id: string;
@@ -27,6 +27,9 @@ interface ImportedServer {
     options?: Record<string, unknown>;
     providerId?: string;
     hasStoredCredential?: boolean;
+    aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
+    hasStoredAeroCryptPassword?: boolean;
+    hasStoredAeroCryptSalt?: boolean;
 }
 
 interface BridgeImportResult {
@@ -47,7 +50,7 @@ interface Props {
     direction: 'import' | 'export';
     servers: ServerProfile[];
     existingServerKeys: Set<string>;
-    onImport: (servers: ServerProfile[]) => void;
+    onImport: (servers: ServerProfile[]) => void | Promise<void>;
     onClose: () => void;
     onBack: () => void;
     /** A profile file dragged onto the import dialog and identified as
@@ -104,6 +107,9 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     }, [direction, source.id, detectedPath, presetFilePath]);
 
     const presetHandledRef = useRef<string | null>(null);
+    // `loading` disables the button, but a second click can still fire from the
+    // render that has not seen the state update yet. The ref closes that window.
+    const committingRef = useRef(false);
 
     // Pre-select exportable profiles (protocol supported by the target).
     const supported = meta?.supportedProtocols ?? [];
@@ -201,15 +207,29 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                 options: s.options as ServerProfile['options'],
                 providerId: s.providerId,
                 hasStoredCredential: s.hasStoredCredential || false,
+                aeroCryptOverlay: s.aeroCryptOverlay,
+                hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword,
+                hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt,
             }));
-        if (selected.length === 0) return;
-        const outcome = await commitImportedServers(selected, existingServerKeys, onImport);
-        if (outcome.error) { setError(outcome.error); return; }
-        const parts: string[] = [];
-        if (outcome.added > 0) parts.push(t('settings.importSuccess').replace('{count}', String(outcome.added)));
-        if (outcome.updated > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(outcome.updated)));
-        setSuccess(parts.join(', '));
-        setTimeout(() => onClose(), 2500);
+        if (selected.length === 0 || committingRef.current) return;
+        // The commit is not idempotent: onImport appends to the persisted list
+        // and existingServerKeys still holds the pre-import snapshot, so a
+        // second click while the first is in flight writes the same profiles
+        // twice. Hold the button for the whole round trip.
+        committingRef.current = true;
+        setLoading(true);
+        try {
+            const outcome = await commitImportedServers(selected, existingServerKeys, onImport);
+            if (outcome.error) { setError(outcome.error); return; }
+            const parts: string[] = [];
+            if (outcome.added > 0) parts.push(t('settings.importSuccess').replace('{count}', String(outcome.added)));
+            if (outcome.updated > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(outcome.updated)));
+            setSuccess(parts.join(', '));
+            setTimeout(() => onClose(), 2500);
+        } finally {
+            committingRef.current = false;
+            setLoading(false);
+        }
     };
 
     const toggle = (id: string, set: React.Dispatch<React.SetStateAction<Set<string>>>) =>
@@ -329,7 +349,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                                 </div>
                                 <div className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[200px] overflow-y-auto">
                                     {result.servers.map(s => {
-                                        const dup = existingServerKeys.has(`${s.host}:${s.port}:${s.username}`);
+                                        const dup = existingServerKeys.has(bridgeProfileKey({ ...s, protocol: s.protocol as ServerProfile['protocol'] }));
                                         return (
                                             <div key={s.id}
                                                 className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0 ${dup ? 'opacity-50' : ''}`}
@@ -393,7 +413,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                     {result && result.servers.length > 0 && (
                         <button
                             onClick={confirmImport}
-                            disabled={selectedIds.size === 0}
+                            disabled={loading || selectedIds.size === 0}
                             className="flex-1 px-4 py-2 text-sm bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             <Upload size={16} />

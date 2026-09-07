@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Kalıcı Silme ve Çöp Kutusunu Boşaltma, Dropbox Business/Team hesabı gerektirir.",
             "setAsPrivate": "Gizli Olarak Ayarla",
             "setAsPublic": "Herkese Açık Olarak Ayarla",
-            "makeAllPrivate": "Tümünü özel yap"
+            "makeAllPrivate": "Tümünü özel yap",
+            "dropboxRestoreLimit": "AeroFTP, kurtarılabilir dosya sürümlerini geri yükleyebilir. Klasörleri dropbox.com üzerindeki Silinen dosyalar bölümünden geri yükleyin. Soru işareti, Dropbox'ın öğe türünü belirleyemediği anlamına gelir."
         },
         "transfer": {
             "transferring": "Aktarılıyor...",

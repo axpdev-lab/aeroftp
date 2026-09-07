@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Kufuta Kabisa na Kumwaga Tapisho kunahitaji akaunti ya Dropbox Business/Team.",
             "setAsPrivate": "Weka kama Binafsi",
             "setAsPublic": "Weka kama Umma",
-            "makeAllPrivate": "Fanya zote za faragha"
+            "makeAllPrivate": "Fanya zote za faragha",
+            "dropboxRestoreLimit": "AeroFTP inaweza kurejesha matoleo ya faili yanayoweza kurejeshwa. Rejesha folda kutoka sehemu ya Faili zilizofutwa kwenye dropbox.com. Alama ya kuuliza inamaanisha kuwa Dropbox haikutambua aina ya kipengee."
         },
         "transfer": {
             "transferring": "Inahamisha...",

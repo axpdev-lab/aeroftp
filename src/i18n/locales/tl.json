@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Ang Permanenteng Pagbura at Pag-empty ng Basurahan ay nangangailangan ng Dropbox Business/Team account.",
             "setAsPrivate": "Itakda bilang Pribado",
             "setAsPublic": "Itakda bilang Pampubliko",
-            "makeAllPrivate": "Gawing pribado lahat"
+            "makeAllPrivate": "Gawing pribado lahat",
+            "dropboxRestoreLimit": "Maaaring ibalik ng AeroFTP ang mga bersyon ng file na maaari pang mabawi. Ibalik ang mga folder mula sa Mga na-delete na file sa dropbox.com. Ang tandang pananong ay nangangahulugang hindi natukoy ng Dropbox ang uri ng item."
         },
         "transfer": {
             "transferring": "Naglilipat...",

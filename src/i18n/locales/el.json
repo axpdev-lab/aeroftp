@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Η οριστική διαγραφή και το άδειασμα του κάδου απαιτούν λογαριασμό Dropbox Business/Team.",
             "setAsPrivate": "Ορισμός ως ιδιωτικό",
             "setAsPublic": "Ορισμός ως δημόσιο",
-            "makeAllPrivate": "Να γίνουν όλα ιδιωτικά"
+            "makeAllPrivate": "Να γίνουν όλα ιδιωτικά",
+            "dropboxRestoreLimit": "Το AeroFTP μπορεί να επαναφέρει ανακτήσιμες εκδόσεις αρχείων. Επαναφέρετε φακέλους από τα Διαγραμμένα αρχεία στο dropbox.com. Το ερωτηματικό σημαίνει ότι το Dropbox δεν αναγνώρισε τον τύπο του στοιχείου."
         },
         "transfer": {
             "transferring": "Μεταφορά...",

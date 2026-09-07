@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Trajno brisanje i pražnjenje smeća zahtijevaju Dropbox Business/Team račun.",
             "setAsPrivate": "Postavi kao privatno",
             "setAsPublic": "Postavi kao javno",
-            "makeAllPrivate": "Postavi sve kao privatno"
+            "makeAllPrivate": "Postavi sve kao privatno",
+            "dropboxRestoreLimit": "AeroFTP može vratiti verzije datoteka koje je moguće oporaviti. Mape vratite iz odjeljka Izbrisane datoteke na dropbox.com. Upitnik znači da Dropbox nije prepoznao vrstu stavke."
         },
         "transfer": {
             "transferring": "Prijenos...",

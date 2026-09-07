@@ -94,6 +94,32 @@ export const loadSavedServerProfiles = async (): Promise<ServerProfile[]> => {
 };
 
 /**
+ * `loadSavedServerProfiles` for a caller that is going to WRITE the list back.
+ *
+ * The plain read answers `[]` for two different states: a vault that genuinely
+ * holds no profiles, and an active partition it could not reach
+ * (`STORE_NOT_READY`) whose legacy store happens to be empty. Both are the
+ * right answer for rendering a list, and the second is the wrong answer for a
+ * read-modify-write, where persisting `[]` plus the imported profiles drops
+ * everything the partition still holds. Here that second state throws, so the
+ * caller can refuse instead of writing over what it could not read.
+ */
+export const loadSavedServerProfilesStrict = async (): Promise<ServerProfile[]> => {
+    try {
+        await seedLegacyLocalProfilesForPartitionMigration();
+        return await loadActiveServerProfiles();
+    } catch (error) {
+        if (!canUseLegacyProfileFallback(error)) throw error;
+        // A legacy store with content is a real answer: it is exactly what the
+        // plain read migrates. An empty one, reached only because the active
+        // partition refused, is not an answer at all.
+        const legacy = await loadLegacySavedServerProfiles();
+        if (legacy.length > 0) return legacy;
+        throw error;
+    }
+};
+
+/**
  * Persist saved server profiles to the vault and remove any stale
  * localStorage backup. Writing only to the vault prevents bleed-through
  * between co-installed builds (e.g. a portable folder next to an MSI

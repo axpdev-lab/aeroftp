@@ -16,7 +16,7 @@
 //     losing what is already selected, and a rubber-band drag selects an area.
 
 import * as React from 'react';
-import { CheckSquare, File, Folder, Square, ChevronUp, ChevronDown, Settings2 } from 'lucide-react';
+import { CheckSquare, File, FileQuestion, Folder, Square, ChevronUp, ChevronDown, Settings2 } from 'lucide-react';
 import { formatSize, formatDate } from '../../utils/formatters';
 import { useMarqueeSelection } from '../../hooks/useMarqueeSelection';
 import { useTranslation } from '../../i18n';
@@ -160,6 +160,7 @@ export const TrashTable: React.FC<TrashTableProps> = ({
     const renderCoreCell = (row: TrashRow, key: TrashSortKey) => {
         switch (key) {
             case 'type':
+                if (row.typeUnknown) return <FileQuestion size={13} className="inline-block text-gray-400" />;
                 return row.isDir
                     ? <Folder size={13} className="inline-block text-yellow-500" />
                     : <File size={13} className="inline-block text-gray-500 dark:text-gray-500" />;

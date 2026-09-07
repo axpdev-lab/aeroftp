@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "La suppression définitive et le vidage de la corbeille nécessitent un compte Dropbox Business/Team.",
             "setAsPrivate": "Définir comme privé",
             "setAsPublic": "Définir comme public",
-            "makeAllPrivate": "Tout rendre privé"
+            "makeAllPrivate": "Tout rendre privé",
+            "dropboxRestoreLimit": "AeroFTP peut restaurer les versions récupérables des fichiers. Restaurez les dossiers depuis Fichiers supprimés sur dropbox.com. Un point d’interrogation signifie que Dropbox n’a pas identifié le type d’élément."
         },
         "transfer": {
             "transferring": "Transfert en cours...",

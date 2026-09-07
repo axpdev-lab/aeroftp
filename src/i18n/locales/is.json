@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Varanleg eyðing og tæming ruslsins krefjast Dropbox Business/Team reiknings.",
             "setAsPrivate": "Stilla sem einkamál",
             "setAsPublic": "Stilla sem opinbert",
-            "makeAllPrivate": "Gera allt einkamál"
+            "makeAllPrivate": "Gera allt einkamál",
+            "dropboxRestoreLimit": "AeroFTP getur endurheimt endurheimtanlegar útgáfur skráa. Endurheimtu möppur úr Eyddum skrám á dropbox.com. Spurningarmerki þýðir að Dropbox hefur ekki greint gerð atriðisins."
         },
         "transfer": {
             "transferring": "Flytur...",

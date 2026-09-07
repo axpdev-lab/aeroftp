@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Neatgriezeniska dzēšana un miskastes iztukšošana prasa Dropbox Business/Team kontu.",
             "setAsPrivate": "Iestatīt kā privātu",
             "setAsPublic": "Iestatīt kā publisku",
-            "makeAllPrivate": "Padarīt visus privātus"
+            "makeAllPrivate": "Padarīt visus privātus",
+            "dropboxRestoreLimit": "AeroFTP var atjaunot atjaunojamās failu versijas. Mapes atjaunojiet vietnes dropbox.com sadaļā Dzēstie faili. Jautājuma zīme nozīmē, ka Dropbox nav noteicis vienuma veidu."
         },
         "transfer": {
             "transferring": "Pārsūta...",

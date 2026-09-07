@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Excluir permanentemente e Esvaziar lixeira exigem uma conta Dropbox Business/Team.",
             "setAsPrivate": "Definir como privado",
             "setAsPublic": "Definir como público",
-            "makeAllPrivate": "Tornar tudo privado"
+            "makeAllPrivate": "Tornar tudo privado",
+            "dropboxRestoreLimit": "O AeroFTP pode restaurar versões recuperáveis de arquivos. Restaure pastas em Arquivos excluídos no dropbox.com. Um ponto de interrogação significa que o Dropbox não identificou o tipo de item."
         },
         "transfer": {
             "transferring": "Transferindo...",

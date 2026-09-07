@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Behin betiko ezabatzeak eta zakarrontzia hustzeak Dropbox Business/Team kontua behar dute.",
             "setAsPrivate": "Ezarri pribatu gisa",
             "setAsPublic": "Ezarri publiko gisa",
-            "makeAllPrivate": "Egin denak pribatu"
+            "makeAllPrivate": "Egin denak pribatu",
+            "dropboxRestoreLimit": "AeroFTP-k fitxategien bertsio berreskuragarriak lehenera ditzake. Berreskuratu karpetak dropbox.com-eko Ezabatutako fitxategiak ataletik. Galdera-markak esan nahi du Dropbox-ek ez duela elementu mota identifikatu."
         },
         "transfer": {
             "transferring": "Transferitzen...",

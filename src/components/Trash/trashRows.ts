@@ -16,6 +16,8 @@ export interface TrashRow {
     id: string;
     name: string;
     isDir: boolean;
+    /** Some providers omit the original kind from tombstone metadata. */
+    typeUnknown?: boolean;
     /** Bytes; null or undefined for a folder, or when the provider omits it. */
     size?: number | null;
     /** When it was deleted, as the provider reports it: parsed for sorting and

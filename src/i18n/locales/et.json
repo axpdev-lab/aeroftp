@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Jäädav kustutamine ja prügikasti tühjendamine nõuavad Dropbox Business/Team kontot.",
             "setAsPrivate": "Määra privaatseks",
             "setAsPublic": "Määra avalikuks",
-            "makeAllPrivate": "Muuda kõik privaatseks"
+            "makeAllPrivate": "Muuda kõik privaatseks",
+            "dropboxRestoreLimit": "AeroFTP saab taastada taastatavaid failiversioone. Taasta kaustad lehel dropbox.com jaotises Kustutatud failid. Küsimärk tähendab, et Dropbox ei tuvastanud üksuse tüüpi."
         },
         "transfer": {
             "transferring": "Ülekanne...",

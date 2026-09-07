@@ -1595,6 +1595,7 @@
             "emptyTrashHint": "Permanently deletes ALL items in Trash, not just the selected ones. This cannot be undone.",
             "emptyTrashConfirm": "Are you sure you want to permanently delete all items in the Trash? This cannot be undone.",
             "dropboxPurgeBusinessOnly": "Permanent Delete and Empty Trash require a Dropbox Business/Team account.",
+            "dropboxRestoreLimit": "AeroFTP can restore recoverable file revisions. Restore folders from Deleted files on dropbox.com. A question mark means Dropbox did not identify the item type.",
             "manageShareLinks": "Manage Share Links",
             "noShareLinks": "No share links",
             "noShareLinksDesc": "This file has no active share links.",

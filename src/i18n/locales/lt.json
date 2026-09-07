@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Ištrynimui visam laikui ir šiukšlinės išvalymui reikia Dropbox Business/Team paskyros.",
             "setAsPrivate": "Nustatyti kaip privačią",
             "setAsPublic": "Nustatyti kaip viešą",
-            "makeAllPrivate": "Padaryti visus privačius"
+            "makeAllPrivate": "Padaryti visus privačius",
+            "dropboxRestoreLimit": "AeroFTP gali atkurti atkuriamas failų versijas. Aplankus atkurkite dropbox.com skiltyje „Ištrinti failai“. Klaustukas reiškia, kad Dropbox neatpažino elemento tipo."
         },
         "transfer": {
             "transferring": "Perduodama...",

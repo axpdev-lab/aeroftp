@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "სამუდამო წაშლა და სანაგვის დაცლა საჭიროებს Dropbox Business/Team ანგარიშს.",
             "setAsPrivate": "კერძოდ მონიშვნა",
             "setAsPublic": "საჯაროდ მონიშვნა",
-            "makeAllPrivate": "ყველას პირადად გადაქცევა"
+            "makeAllPrivate": "ყველას პირადად გადაქცევა",
+            "dropboxRestoreLimit": "AeroFTP-ს შეუძლია ფაილების აღდგენადი ვერსიების აღდგენა. საქაღალდეები აღადგინეთ dropbox.com-ის „წაშლილი ფაილების“ განყოფილებიდან. კითხვის ნიშანი ნიშნავს, რომ Dropbox-მა ელემენტის ტიპი ვერ ამოიცნო."
         },
         "transfer": {
             "transferring": "გადაცემა...",

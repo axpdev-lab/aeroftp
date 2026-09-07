@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Մշտական ջնջումը և աղբարկղի դատարկումը պահանջում են Dropbox Business/Team հաշիվ։",
             "setAsPrivate": "Սահմանել որպես անձնական",
             "setAsPublic": "Սահմանել որպես հանրային",
-            "makeAllPrivate": "Դարձնել բոլորը մասնավոր"
+            "makeAllPrivate": "Դարձնել բոլորը մասնավոր",
+            "dropboxRestoreLimit": "AeroFTP-ը կարող է վերականգնել ֆայլերի վերականգնելի տարբերակները։ Պանակները վերականգնեք dropbox.com-ի «Ջնջված ֆայլեր» բաժնից։ Հարցական նշանը նշանակում է, որ Dropbox-ը չի ճանաչել տարրի տեսակը։"
         },
         "transfer": {
             "transferring": "Փոխանցում...",

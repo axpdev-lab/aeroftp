@@ -19,7 +19,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import type { ProviderOptions, ServerProfile } from '../types';
-import { loadSavedServerProfiles, storeSavedServerProfiles } from './serverProfileStore';
+import { loadSavedServerProfilesStrict, storeSavedServerProfiles } from './serverProfileStore';
 import { secureGetWithFallback, secureStoreAndClean } from './secureStorage';
 
 // ---------------------------------------------------------------------------
@@ -504,7 +504,9 @@ export interface FriendBinding {
  * the handshake dialog on a successful receive/share (task 11).
  */
 export const upsertFriendProfile = async (b: FriendBinding): Promise<ServerProfile> => {
-  const profiles = await loadSavedServerProfiles();
+  // Strict: the whole list is written back below, so a partition that could
+  // not be read must not look like one with no profiles in it.
+  const profiles = await loadSavedServerProfilesStrict();
   const id = peerProfileId(b.afid);
   const existing = profiles.find((p) => p.id === id);
 

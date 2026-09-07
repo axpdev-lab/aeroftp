@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "A végleges törléshez és a Kuka ürítéséhez Dropbox Business/Team fiók szükséges.",
             "setAsPrivate": "Beállítás privátra",
             "setAsPublic": "Beállítás nyilvánosra",
-            "makeAllPrivate": "Összes priváttá tétele"
+            "makeAllPrivate": "Összes priváttá tétele",
+            "dropboxRestoreLimit": "Az AeroFTP vissza tudja állítani a helyreállítható fájlverziókat. A mappákat a dropbox.com Törölt fájlok részéből állíthatja vissza. A kérdőjel azt jelenti, hogy a Dropbox nem azonosította az elem típusát."
         },
         "transfer": {
             "transferring": "Átvitel...",

@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "स्थायी रूप से हटाना और ट्रैश खाली करना के लिए Dropbox Business/Team खाता आवश्यक है।",
             "setAsPrivate": "प्राइवेट के रूप में सेट करें",
             "setAsPublic": "पब्लिक के रूप में सेट करें",
-            "makeAllPrivate": "सभी को निजी बनाएँ"
+            "makeAllPrivate": "सभी को निजी बनाएँ",
+            "dropboxRestoreLimit": "AeroFTP फ़ाइलों के पुनर्प्राप्त करने योग्य संस्करणों को बहाल कर सकता है। dropbox.com पर हटाई गई फ़ाइलें अनुभाग से फ़ोल्डर बहाल करें। प्रश्नचिह्न का अर्थ है कि Dropbox आइटम का प्रकार पहचान नहीं पाया।"
         },
         "transfer": {
             "transferring": "स्थानांतरित हो रहा है...",

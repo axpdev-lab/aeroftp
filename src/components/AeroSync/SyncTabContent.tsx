@@ -15,12 +15,14 @@ import { useTranslation } from '../../i18n';
 import { useStickyState, useSkipSeedOnRestore } from './tabStateStore';
 import { TransferProgressBar } from '../TransferProgressBar';
 import type { AeroSyncPairKind } from './types';
+import { parseSyncExcludePatterns } from '../../utils/syncTemplateApply';
 
 interface SyncTabContentProps {
     initialSource?: string;
     initialDestination?: string;
     pairKind?: AeroSyncPairKind | null;
     activeProfileId?: string;
+    initialExcludePatterns?: string[];
     /** Lifts the in-progress state up so the host dialog can guard its close
      *  while a sync is running (issue #332). */
     onRunningChange?: (running: boolean) => void;
@@ -147,12 +149,13 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
     initialDestination = '',
     pairKind = null,
     activeProfileId,
+    initialExcludePatterns = [],
     onRunningChange,
 }) => {
     const t = useTranslation();
     const [source, setSource] = useStickyState('sync.source', initialSource);
     const [destination, setDestination] = useStickyState('sync.destination', initialDestination);
-    const [exclude, setExclude] = useStickyState('sync.exclude', '');
+    const [exclude, setExclude] = useStickyState('sync.exclude', initialExcludePatterns.join(', '));
     // CO-4: profile-keyed override; falls back to the global slot when
     // no profile is in scope (AeroFile / dual-local sessions). The
     // initial read uses the active profile id so dialog re-opens for a
@@ -246,10 +249,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
         setRunning(true);
         setCancelling(false);
         try {
-            const excludeList = exclude
-                .split(/[\n,]/)
-                .map((s) => s.trim())
-                .filter(Boolean);
+            const excludeList = parseSyncExcludePatterns(exclude);
             const result = await invoke<LocalSyncReport>('local_sync_run', {
                 request: {
                     source,

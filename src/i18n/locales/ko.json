@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "영구 삭제 및 휴지통 비우기에는 Dropbox Business/Team 계정이 필요합니다.",
             "setAsPrivate": "비공개로 설정",
             "setAsPublic": "공개로 설정",
-            "makeAllPrivate": "모두 비공개로 설정"
+            "makeAllPrivate": "모두 비공개로 설정",
+            "dropboxRestoreLimit": "AeroFTP는 복구 가능한 파일 버전을 복원할 수 있습니다. 폴더는 dropbox.com의 삭제된 파일에서 복원하세요. 물음표는 Dropbox가 항목 유형을 식별하지 못했음을 의미합니다."
         },
         "transfer": {
             "transferring": "전송 중...",

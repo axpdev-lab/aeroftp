@@ -12,7 +12,8 @@ import { ExportImportDialog } from '../ExportImportDialog';
 import { getTotalServiceCount } from './discoverData';
 import { getProviderById } from '../../providers';
 import { useTranslation } from '../../i18n';
-import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
+import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
+import { appendImportedProfiles } from '../bridge/bridgeImportCommit';
 import type { ProviderType } from '../../types';
 import type { CatalogCategoryId } from '../../types/catalog';
 import type { MtpDeviceInfo } from '../../types/aerofile';
@@ -535,10 +536,7 @@ export function IntroHub(props: IntroHubProps) {
                 <ExportImportDialog
                     servers={paletteServers}
                     onImport={async (newServers) => {
-                        let currentServers = await loadSavedServerProfiles();
-                        if (currentServers.length === 0) currentServers = paletteServers;
-                        const updated = [...currentServers, ...newServers];
-                        await storeSavedServerProfiles(updated).catch(() => {});
+                        const updated = await appendImportedProfiles(newServers);
                         setPaletteServers(updated);
                         setShowExportImport(false);
                         onServersChanged?.();

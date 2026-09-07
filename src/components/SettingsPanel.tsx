@@ -39,6 +39,7 @@ import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
+import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import {
     DEFAULT_APP_FONT_FAMILY,
     DEFAULT_INTRO_HUB_ICON_SIZE,
@@ -3873,12 +3874,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     servers={servers}
                     initialMode={exportImportInitialMode}
                     onImport={async (newServers) => {
-                        // Read ground truth from the partition-aware vault to avoid stale state.
-                        let currentServers = await loadSavedServerProfiles();
-                        if (currentServers.length === 0) currentServers = servers;
-                        const updated = [...currentServers, ...newServers];
+                        const updated = await appendImportedProfiles(newServers);
                         setServers(updated);
-                        await storeSavedServerProfiles(updated).catch(() => {});
                         setShowExportImport(false);
                         setExportImportInitialMode(undefined);
                         onServersChanged?.();

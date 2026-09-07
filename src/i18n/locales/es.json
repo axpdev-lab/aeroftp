@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Eliminar permanentemente y Vaciar papelera requieren una cuenta Dropbox Business/Team.",
             "setAsPrivate": "Establecer como privado",
             "setAsPublic": "Establecer como público",
-            "makeAllPrivate": "Hacer todo privado"
+            "makeAllPrivate": "Hacer todo privado",
+            "dropboxRestoreLimit": "AeroFTP puede restaurar versiones recuperables de archivos. Restaura las carpetas desde Archivos eliminados en dropbox.com. Un signo de interrogación indica que Dropbox no ha identificado el tipo de elemento."
         },
         "transfer": {
             "transferring": "Transfiriendo...",

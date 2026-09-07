@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Hapus Permanen dan Kosongkan Sampah memerlukan akun Dropbox Business/Team.",
             "setAsPrivate": "Jadikan Privat",
             "setAsPublic": "Jadikan Publik",
-            "makeAllPrivate": "Jadikan semua privat"
+            "makeAllPrivate": "Jadikan semua privat",
+            "dropboxRestoreLimit": "AeroFTP dapat memulihkan revisi file yang masih dapat dipulihkan. Pulihkan folder dari File yang dihapus di dropbox.com. Tanda tanya berarti Dropbox tidak mengidentifikasi jenis item."
         },
         "transfer": {
             "transferring": "Mentransfer...",

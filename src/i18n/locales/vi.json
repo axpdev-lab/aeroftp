@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Xóa vĩnh viễn và Dọn sạch thùng rác yêu cầu tài khoản Dropbox Business/Team.",
             "setAsPrivate": "Đặt làm riêng tư",
             "setAsPublic": "Đặt làm công khai",
-            "makeAllPrivate": "Đặt tất cả ở chế độ riêng tư"
+            "makeAllPrivate": "Đặt tất cả ở chế độ riêng tư",
+            "dropboxRestoreLimit": "AeroFTP có thể khôi phục các phiên bản tệp còn khôi phục được. Khôi phục thư mục từ mục Tệp đã xóa trên dropbox.com. Dấu hỏi có nghĩa là Dropbox chưa xác định được loại mục."
         },
         "transfer": {
             "transferring": "Đang truyền...",

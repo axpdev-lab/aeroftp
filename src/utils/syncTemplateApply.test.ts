@@ -7,10 +7,21 @@ import {
     settingsFromAerosyncScript,
     settingsFromLegacyScript,
     settingsFromTemplate,
+    readSyncExcludePatterns,
 } from './syncTemplateApply';
+import { createTabStateStore } from '../components/AeroSync/tabStateStore';
 import type { AerosyncImportScriptResult, SyncScriptMeta, SyncTemplate } from '../types';
 
 describe('AeroSync template import application', () => {
+    it('exports the edited or cleared Sync exclusions, including after a tab switch', () => {
+        const store = createTabStateStore();
+        expect(readSyncExcludePatterns(store, [])).toEqual([]);
+        store.set('sync.exclude', 'cache/**, *.tmp\n  build/  ');
+        expect(readSyncExcludePatterns(store, ['.git'])).toEqual(['cache/**', '*.tmp', 'build/']);
+        store.set('sync.exclude', '');
+        expect(readSyncExcludePatterns(store, ['.git'])).toEqual([]);
+        expect(readSyncExcludePatterns(null, ['*.log'])).toEqual(['*.log']);
+    });
     it('maps a canonical script into Plan and Sync controls', () => {
         const imported = {
             profile: {
