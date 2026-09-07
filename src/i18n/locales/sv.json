@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Permanent radering och tömning av papperskorgen kräver ett Dropbox Business/Team-konto.",
             "setAsPrivate": "Ange som privat",
             "setAsPublic": "Ange som offentlig",
-            "makeAllPrivate": "Gör alla privata"
+            "makeAllPrivate": "Gör alla privata",
+            "dropboxRestoreLimit": "AeroFTP kan återställa återställningsbara filversioner. Återställ mappar från Raderade filer på dropbox.com. Ett frågetecken betyder att Dropbox inte har identifierat objekttypen."
         },
         "transfer": {
             "transferring": "Överför...",

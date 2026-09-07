@@ -14,7 +14,7 @@ import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourceDescriptor, BridgeSourceMeta } from './bridge/bridgeSources';
 import { detectBridgeConfigBounded } from '../hooks/useDetectedBridgeConfigs';
-import { commitImportedServers } from './bridge/bridgeImportCommit';
+import { bridgeProfileKey, commitImportedServers } from './bridge/bridgeImportCommit';
 
 interface ImportedServer {
     id: string;
@@ -27,6 +27,9 @@ interface ImportedServer {
     options?: Record<string, unknown>;
     providerId?: string;
     hasStoredCredential?: boolean;
+    aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
+    hasStoredAeroCryptPassword?: boolean;
+    hasStoredAeroCryptSalt?: boolean;
 }
 
 interface BridgeImportResult {
@@ -47,7 +50,7 @@ interface Props {
     direction: 'import' | 'export';
     servers: ServerProfile[];
     existingServerKeys: Set<string>;
-    onImport: (servers: ServerProfile[]) => void;
+    onImport: (servers: ServerProfile[]) => void | Promise<void>;
     onClose: () => void;
     onBack: () => void;
     /** A profile file dragged onto the import dialog and identified as
@@ -201,6 +204,9 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                 options: s.options as ServerProfile['options'],
                 providerId: s.providerId,
                 hasStoredCredential: s.hasStoredCredential || false,
+                aeroCryptOverlay: s.aeroCryptOverlay,
+                hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword,
+                hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt,
             }));
         if (selected.length === 0) return;
         const outcome = await commitImportedServers(selected, existingServerKeys, onImport);
@@ -329,7 +335,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                                 </div>
                                 <div className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[200px] overflow-y-auto">
                                     {result.servers.map(s => {
-                                        const dup = existingServerKeys.has(`${s.host}:${s.port}:${s.username}`);
+                                        const dup = existingServerKeys.has(bridgeProfileKey({ ...s, protocol: s.protocol as ServerProfile['protocol'] }));
                                         return (
                                             <div key={s.id}
                                                 className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0 ${dup ? 'opacity-50' : ''}`}

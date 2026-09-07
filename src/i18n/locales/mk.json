@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Трајното бришење и празнењето на корпата бараат сметка Dropbox Business/Team.",
             "setAsPrivate": "Постави како приватно",
             "setAsPublic": "Постави како јавно",
-            "makeAllPrivate": "Направи ги сите приватни"
+            "makeAllPrivate": "Направи ги сите приватни",
+            "dropboxRestoreLimit": "AeroFTP може да врати верзии на датотеки што може да се обноват. Вратете папки од Избришани датотеки на dropbox.com. Прашалникот значи дека Dropbox не го препознал типот на ставката."
         },
         "transfer": {
             "transferring": "Се пренесува...",

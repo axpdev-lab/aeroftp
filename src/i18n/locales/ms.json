@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Padam Kekal dan Kosongkan Sampah memerlukan akaun Dropbox Business/Team.",
             "setAsPrivate": "Tetapkan sebagai Peribadi",
             "setAsPublic": "Tetapkan sebagai Awam",
-            "makeAllPrivate": "Jadikan semua peribadi"
+            "makeAllPrivate": "Jadikan semua peribadi",
+            "dropboxRestoreLimit": "AeroFTP boleh memulihkan versi fail yang masih boleh dipulihkan. Pulihkan folder daripada Fail dipadam di dropbox.com. Tanda soal bermaksud Dropbox tidak mengenal pasti jenis item."
         },
         "transfer": {
             "transferring": "Memindahkan...",

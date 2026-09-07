@@ -4354,19 +4354,15 @@ pub struct SyncTemplateProfile {
 /// What an export should exclude: the caller's list when it has one, the
 /// preset's own otherwise.
 ///
-/// An empty list from the UI means "the user added nothing", not "exclude
-/// nothing". Sending it verbatim is how the `.sh` and `.ps1` exports came out
-/// with no excludes at all while the same preset exported as
-/// `.aeroftp-script` carried `node_modules`, `.git` and the rest: that path
-/// already passed `None` and fell back here. A Mirror script that has lost its
-/// excludes does not fail, it uploads `.git`, so the two paths have to agree.
+/// Missing means use the preset. An explicit empty list means exclude nothing,
+/// matching the visible Sync controls and preserving a cleared field (#514).
 pub fn resolve_exclude_patterns(
     caller_patterns: Option<Vec<String>>,
     preset_patterns: &[String],
 ) -> Vec<String> {
     match caller_patterns {
-        Some(patterns) if !patterns.is_empty() => patterns,
-        _ => preset_patterns.to_vec(),
+        Some(patterns) => patterns,
+        None => preset_patterns.to_vec(),
     }
 }
 
@@ -4707,11 +4703,8 @@ mod exclude_pattern_tests {
     }
 
     #[test]
-    fn empty_caller_list_falls_back_to_the_preset() {
-        // The `.sh` and `.ps1` exports send `[]` when the user typed no
-        // extra pattern. Taking that literally is what shipped scripts that
-        // walked straight into `.git`.
-        assert_eq!(resolve_exclude_patterns(Some(vec![]), &preset()), preset());
+    fn explicit_empty_is_preserved_and_missing_uses_the_preset() {
+        assert!(resolve_exclude_patterns(Some(vec![]), &preset()).is_empty());
         assert_eq!(resolve_exclude_patterns(None, &preset()), preset());
     }
 

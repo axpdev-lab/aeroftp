@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "L'eliminació permanent i el buidatge de la paperera requereixen un compte Dropbox Business/Team.",
             "setAsPrivate": "Establir com a privat",
             "setAsPublic": "Establir com a públic",
-            "makeAllPrivate": "Fes-ho tot privat"
+            "makeAllPrivate": "Fes-ho tot privat",
+            "dropboxRestoreLimit": "AeroFTP pot restaurar revisions recuperables de fitxers. Restaureu les carpetes des de Fitxers suprimits a dropbox.com. Un signe d'interrogació indica que Dropbox no ha identificat el tipus d'element."
         },
         "transfer": {
             "transferring": "Transferint...",

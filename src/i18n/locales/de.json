@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Endgültiges Löschen und Papierkorb leeren erfordern ein Dropbox Business/Team-Konto.",
             "setAsPrivate": "Als privat festlegen",
             "setAsPublic": "Als öffentlich festlegen",
-            "makeAllPrivate": "Alle auf privat setzen"
+            "makeAllPrivate": "Alle auf privat setzen",
+            "dropboxRestoreLimit": "AeroFTP kann wiederherstellbare Dateiversionen wiederherstellen. Stellen Sie Ordner unter „Gelöschte Dateien“ auf dropbox.com wieder her. Ein Fragezeichen bedeutet, dass Dropbox den Elementtyp nicht erkannt hat."
         },
         "transfer": {
             "transferring": "Übertragung...",

@@ -5108,10 +5108,8 @@ pub async fn provider_delete_file(
     path: String,
     commit_message: Option<String>,
 ) -> Result<(), String> {
-    // Fail-closed: a plaintext path against an unwrapped crypt store targets the
-    // wrong (or no) object; refuse instead of acting on the raw backend. A target
-    // provably outside the overlay anchor is plain territory and passes (#390).
-    state.guard_no_raw_crypt_write_outside("Delete file", &[&path])?;
+    // The raw view exposes raw paths. Deletion removes the selected object and
+    // cannot inject plaintext, so it remains available with CRYPT off (#390).
 
     let mut provider_lock = state.provider.lock().await;
 
@@ -5149,9 +5147,8 @@ pub async fn provider_delete_dir(
     recursive: bool,
     commit_message: Option<String>,
 ) -> Result<(), String> {
-    // Fail-closed: a plaintext path against an unwrapped crypt store targets the
-    // wrong (or no) object; refuse instead of acting on the raw backend.
-    state.guard_no_raw_crypt_write_outside("Delete directory", &[&path])?;
+    // As for file deletion, use the path selected in the current raw/wrapped
+    // view. The plaintext-injection guard applies to writes, not removals.
 
     let mut provider_lock = state.provider.lock().await;
 
@@ -13524,7 +13521,7 @@ mod tests {
             .guard_no_raw_crypt_write_outside("Rename", &["/Vault/a", "/Plain/b"])
             .is_err());
         assert!(state
-            .guard_no_raw_crypt_write_outside("Delete file", &["/Vault/secret"])
+            .guard_no_raw_crypt_write_outside("Upload", &["/Vault/secret"])
             .is_err());
 
         // The no-path form is unchanged: still fail-closed.

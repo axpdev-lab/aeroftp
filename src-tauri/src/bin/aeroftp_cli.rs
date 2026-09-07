@@ -41743,7 +41743,15 @@ async fn cmd_benchmark(
     // Access-method label for the "Protocol" column (issue #277): computed from
     // the live provider type so it reflects the transport the factory actually
     // built (e.g. a Koofr-over-WebDAV profile reports `WebDAV`, native `REST API`).
-    let access = provider.provider_type().access_label().to_string();
+    let access =
+        if ftp_client_gui_lib::crypt_overlay_provider::concrete_provider_mut(&mut *provider)
+            .as_any_mut()
+            .is::<ftp_client_gui_lib::providers::mega::MegaCmdProvider>()
+        {
+            "CLI".to_string()
+        } else {
+            provider.provider_type().access_label().to_string()
+        };
     // Service identity for the "Server" column (issue #277, Ehud): the preset's
     // company when the profile is preconfigured, the provider for a native API,
     // `Custom` for a plain transport aimed at the user's own host. Resolved
@@ -43002,8 +43010,15 @@ async fn cmd_benchmark_compare(
     };
     let mut skipped_modes: Vec<String> = Vec::new();
 
-    let total_profiles = plan.len();
-    for (pos, entry) in plan.iter().enumerate() {
+    // Resolve each mode once, before numbering the runs. Unsupported modes
+    // remain in the skip report but cannot inflate either progress counter.
+    let resolved: Vec<_> = plan
+        .iter()
+        .map(|entry| synth_profile_for_mode(&profiles[entry.source_idx], entry))
+        .collect();
+    let total_profiles = resolved.iter().filter(|result| result.is_ok()).count();
+    let mut run_number = 0;
+    for (entry, resolved_profile) in plan.iter().zip(resolved) {
         let i = entry.source_idx;
         let name = profiles[i]
             .get("name")
@@ -43019,7 +43034,7 @@ async fn cmd_benchmark_compare(
         };
         // Honest skip: a mode we cannot build a real connection for is reported
         // with its reason and left out of the table, never measured as zero.
-        let synth = match synth_profile_for_mode(&profiles[i], entry) {
+        let synth = match resolved_profile {
             Ok(v) => v,
             Err(reason) => {
                 if !cli.quiet {
@@ -43037,6 +43052,7 @@ async fn cmd_benchmark_compare(
                 continue;
             }
         };
+        run_number += 1;
         if !cli.quiet && matches!(format, OutputFormat::Text) {
             println!();
             // Progress indication (issue #368 #2): show position in the sweep
@@ -43045,7 +43061,7 @@ async fn cmd_benchmark_compare(
             println!(
                 "{}",
                 paint_bold(
-                    &format!("=== [{}/{}] {} ===", pos + 1, total_profiles, label),
+                    &format!("=== [{}/{}] {} ===", run_number, total_profiles, label),
                     use_color()
                 )
             );
@@ -43333,7 +43349,15 @@ fn benchmark_profile_identity(p: &serde_json::Value) -> (String, String) {
     match ProviderType::from_lowercase(&protocol) {
         Some(pt) => (
             benchmark_service_label(pt, provider_id),
-            pt.access_label().to_string(),
+            if pt == ProviderType::Mega
+                && (provider_id == Some("megacmd")
+                    || p.pointer("/options/megaMode").and_then(|v| v.as_str()) == Some("megacmd")
+                    || p.pointer("/options/mega_mode").and_then(|v| v.as_str()) == Some("megacmd"))
+            {
+                "CLI".to_string()
+            } else {
+                pt.access_label().to_string()
+            },
         ),
         None => (protocol.clone(), protocol),
     }
@@ -43377,6 +43401,9 @@ fn catalog_company_for_provider_id(provider_id: &str) -> Option<String> {
 /// aimed at the user's own host reports `Custom`, because the old "WebDAV /
 /// WebDAV" pair told the reader nothing the Protocol column had not said.
 fn benchmark_service_label(provider_type: ProviderType, provider_id: Option<&str>) -> String {
+    if provider_type == ProviderType::PCloud {
+        return "pCloud Drive".to_string();
+    }
     if let Some(company) = provider_id
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -71623,6 +71650,31 @@ mod tests {
         let (base, root) = benchmark_remote_roots("/workdir", "rid");
         assert_eq!(base, "/workdir/aeroftp-bench");
         assert_eq!(root, "/workdir/aeroftp-bench/rid");
+    }
+
+    #[test]
+    fn benchmark_identity_names_pcloud_drive_and_distinguishes_megacmd() {
+        assert_eq!(
+            benchmark_profile_identity(&json!({"protocol":"pcloud"})),
+            ("pCloud Drive".into(), "OAuth 2.0".into())
+        );
+        assert_eq!(
+            benchmark_profile_identity(
+                &json!({"protocol":"mega","options":{"mega_mode":"megacmd"}})
+            ),
+            ("MEGA".into(), "CLI".into())
+        );
+        assert_eq!(
+            benchmark_profile_identity(
+                &json!({"protocol":"mega","options":{"mega_mode":"native"}})
+            ),
+            ("MEGA".into(), "REST API".into())
+        );
+        assert_eq!(
+            benchmark_profile_identity(&json!({"protocol":"webdav","providerId":"megacmd-webdav"}))
+                .1,
+            "WebDAV"
+        );
     }
 
     #[test]

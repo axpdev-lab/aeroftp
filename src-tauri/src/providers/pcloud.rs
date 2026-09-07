@@ -8,6 +8,7 @@
 
 use async_trait::async_trait;
 use chrono;
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::info;
@@ -330,10 +331,14 @@ impl PCloudProvider {
 
     /// Get Authorization header with Bearer token (token never exposed in URL)
     async fn auth_header(&self) -> Result<String, ProviderError> {
+        Ok(format!("Bearer {}", self.access_token().await?))
+    }
+
+    async fn access_token(&self) -> Result<String, ProviderError> {
         use secrecy::ExposeSecret;
         #[cfg(test)]
         if let Some(ref tok) = self.test_access_token {
-            return Ok(format!("Bearer {tok}"));
+            return Ok(tok.clone());
         }
         let config = self.oauth_config();
         let secret = self
@@ -343,7 +348,7 @@ impl PCloudProvider {
             .map_err(|e| {
                 ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
             })?;
-        Ok(format!("Bearer {}", secret.expose_secret()))
+        Ok(secret.expose_secret().to_string())
     }
 
     fn normalize_path(path: &str) -> String {
@@ -956,18 +961,7 @@ impl StorageProvider for PCloudProvider {
         };
 
         // pCloud uploadfile requires access_token as a form field (not Authorization header)
-        let token = {
-            use secrecy::ExposeSecret;
-            let config = self.oauth_config();
-            let secret = self
-                .oauth_manager
-                .get_valid_token(&config)
-                .await
-                .map_err(|e| {
-                    ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
-                })?;
-            secret.expose_secret().to_string()
-        };
+        let token = self.access_token().await?;
 
         // PA-005: Get file size for progress tracking
         let file_metadata = tokio::fs::metadata(local_path)
@@ -979,7 +973,21 @@ impl StorageProvider for PCloudProvider {
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let stream = tokio_util::io::ReaderStream::new(file);
+        // The callback is Send, not Sync. Serialize access between the body
+        // stream and the final API acknowledgement without detaching a task.
+        let progress = std::sync::Arc::new(std::sync::Mutex::new(progress));
+        let stream_progress = progress.clone();
+        let mut sent = 0u64;
+        let stream = tokio_util::io::ReaderStream::new(file).inspect(move |chunk| {
+            if let Ok(bytes) = chunk {
+                sent += bytes.len() as u64;
+                if let Ok(callback) = stream_progress.lock() {
+                    if let Some(cb) = callback.as_ref() {
+                        cb(sent, file_size);
+                    }
+                }
+            }
+        });
         let body = reqwest::Body::wrap_stream(stream);
 
         // stream_with_length sets Content-Length so pCloud doesn't hang on chunked encoding
@@ -1032,8 +1040,10 @@ impl StorageProvider for PCloudProvider {
         }
 
         // PA-005: Report upload completion to progress callback
-        if let Some(ref cb) = progress {
-            cb(file_size, file_size);
+        if let Ok(callback) = progress.lock() {
+            if let Some(cb) = callback.as_ref() {
+                cb(file_size, file_size);
+            }
         }
 
         Ok(())
@@ -2389,6 +2399,52 @@ mod tests {
         let mut p = PCloudProvider::connected_for_test(demo_cfg());
         p.test_access_token = Some("fixture-token".to_string());
         p
+    }
+
+    #[tokio::test]
+    async fn single_upload_reports_incremental_progress_and_checks_api_result() {
+        use axum::{body::Bytes, routing::post, Router};
+        use std::sync::{Arc, Mutex};
+        for result in [0, 2009] {
+            let app = Router::new().route(
+                "/uploadfile",
+                post(move |body: Bytes| async move {
+                    assert!(body.len() > 128 * 1024);
+                    axum::Json(serde_json::json!({"result": result}))
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let file = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(file.path(), vec![7u8; 128 * 1024]).unwrap();
+            let updates = Arc::new(Mutex::new(Vec::new()));
+            let captured = updates.clone();
+            let mut provider = fixture_connected();
+            provider.api_base_override = Some(format!("http://{addr}"));
+            let outcome = provider
+                .upload(
+                    file.path().to_str().unwrap(),
+                    "/bench.bin",
+                    Some(Box::new(move |sent, total| {
+                        captured.lock().unwrap().push((sent, total));
+                    })),
+                )
+                .await;
+            assert_eq!(outcome.is_ok(), result == 0);
+            let updates = updates.lock().unwrap();
+            assert!(updates
+                .iter()
+                .any(|(sent, total)| *sent > 0 && sent < total));
+            assert!(updates.windows(2).all(|pair| pair[0].0 <= pair[1].0));
+            assert!(updates
+                .iter()
+                .all(|(sent, total)| *total == 128 * 1024 && sent <= total));
+            assert_eq!(updates.last(), Some(&(128 * 1024, 128 * 1024)));
+            server.abort();
+        }
     }
 
     #[test]

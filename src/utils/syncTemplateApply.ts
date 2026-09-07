@@ -10,6 +10,14 @@ import type {
 } from '../types';
 import type { AeroSyncPairKind, AeroSyncVerifyPolicy } from '../components/AeroSync/types';
 import type { ConflictPolicy, PresetDirection, SyncPreset } from './syncPresets';
+import type { TabStateStore } from '../components/AeroSync/tabStateStore';
+
+export const parseSyncExcludePatterns = (text: string): string[] =>
+    text.split(/[\n,]/).map(pattern => pattern.trim()).filter(Boolean);
+
+/** Read at export time, including an explicitly cleared field and unmounted tabs. */
+export const readSyncExcludePatterns = (store: TabStateStore | null, fallback: string[]): string[] =>
+    parseSyncExcludePatterns(store?.get('sync.exclude', fallback.join(', ')) ?? fallback.join(', '));
 
 export interface ImportedSyncSettings {
     localPath: string;

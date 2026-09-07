@@ -10,6 +10,12 @@ export interface CommitOutcome {
     error?: string;
 }
 
+/** A plain remote and its Crypt view can share the same account. */
+export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'username' | 'protocol' | 'initialPath' | 'aeroCryptOverlay'>): string =>
+    JSON.stringify([s.protocol || 'ftp', s.host, s.port, s.username, s.initialPath || '',
+        s.aeroCryptOverlay?.enabled ? s.aeroCryptOverlay.kind : '',
+        s.aeroCryptOverlay?.enabled ? (s.aeroCryptOverlay.remoteScope || '') : '']);
+
 /**
  * Merge imported profiles into the active user's vault partition with
  * the same add-vs-update split and rollback semantics used by the
@@ -19,23 +25,20 @@ export interface CommitOutcome {
 export async function commitImportedServers(
     selected: ServerProfile[],
     existingServerKeys: Set<string>,
-    onImport: (servers: ServerProfile[]) => void,
+    onImport: (servers: ServerProfile[]) => void | Promise<void>,
 ): Promise<CommitOutcome> {
-    const key = (s: ServerProfile) => `${s.host}:${s.port}:${s.username}`;
+    const key = bridgeProfileKey;
     const added = selected.filter(s => !existingServerKeys.has(key(s)));
     const updated = selected.filter(s => existingServerKeys.has(key(s)));
 
     const backup = await loadSavedServerProfiles().catch(() => null);
-    if (updated.length > 0 && backup && backup.length > 0) {
-        try {
+    try {
+        if (updated.length > 0 && backup && backup.length > 0) {
             const updatedKeys = new Set(updated.map(key));
             const filtered = backup.filter(s => !updatedKeys.has(key(s)));
-            await storeSavedServerProfiles(filtered).catch(() => {});
-        } catch { /* fall through: onImport rebuilds the list */ }
-    }
-
-    try {
-        onImport([...updated, ...added]);
+            await storeSavedServerProfiles(filtered);
+        }
+        await onImport([...updated, ...added]);
     } catch {
         if (backup !== null) await storeSavedServerProfiles(backup).catch(() => {});
         return { added: 0, updated: 0, error: 'Import failed. No changes were made.' };

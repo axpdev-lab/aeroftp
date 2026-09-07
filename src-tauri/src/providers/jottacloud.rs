@@ -2703,19 +2703,31 @@ impl JottacloudProvider {
         }
     }
 
-    /// Permanently delete one trashed entry. Files go through the Trash view
-    /// with `?rm=true` (measured working, v4.1.9). Folders are not addressable
-    /// in the Trash view, so a folder is purged with the hard-delete form on
-    /// its original path, after that path has been read back and confirmed
-    /// to be a tombstone (#397, tracker #701 item 9 corrected).
+    /// The Trash view can return 404 for files too (#397 follow-up). The
+    /// original-path fallback must never hard-delete a re-created live file.
+    fn trashed_entry_purge_param(xml: &str) -> Result<&'static str, &'static str> {
+        if Self::jfs_root_element(xml).as_deref() == Some("file") {
+            return if Self::jfs_root_file_is_tombstone(xml) {
+                Ok("rm")
+            } else {
+                Err("the original path holds a LIVE file, not a trash tombstone")
+            };
+        }
+        Self::trashed_folder_purge_decision(xml).map(|()| "rmDir")
+    }
+
+    /// Permanently delete one trashed entry. Try the Trash view first; it can
+    /// return 404 for both files and folders (#397 follow-up). Fall back to
+    /// `rm` (file) or `rmDir` (folder) on the original path only after reading
+    /// it back and confirming the root object is a deleted tombstone.
     ///
     /// Declared limit: the tombstone check and the delete are two requests,
     /// and JFS offers no conditional delete (no revision or ETag precondition
-    /// on `rmDir`), so a session that restores or recreates the same name
-    /// between them would see its live folder purged. The window is one
+    /// on `rm`/`rmDir`), so a session that restores or recreates the same name
+    /// between them would see its live object purged. The window is one
     /// round trip, the same window every list-then-purge trash manager has
     /// on this provider, and it cannot be closed from the client side. The
-    /// check exists so that the ordinary case, a live folder that was never
+    /// check exists so that the ordinary case, a live object that was never
     /// the one selected, is refused rather than deleted.
     pub async fn permanent_delete_from_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let clean = path.trim_start_matches('/');
@@ -2734,7 +2746,7 @@ impl JottacloudProvider {
         let file_status = resp.status();
         let file_body = resp.text().await.unwrap_or_default();
 
-        // Folder path: read the ORIGINAL path and require a tombstone.
+        // Read the ORIGINAL path and require a tombstone of the actual type.
         let original = self.jfs_url(clean);
         let get = self.get_with_retry(&original).await?;
         if get.status() == reqwest::StatusCode::NOT_FOUND {
@@ -2756,19 +2768,23 @@ impl JottacloudProvider {
             )));
         }
         let xml = get.text().await.unwrap_or_default();
-        if let Err(reason) = Self::trashed_folder_purge_decision(&xml) {
-            return Err(ProviderError::ServerError(format!(
+        let param = Self::trashed_entry_purge_param(&xml).map_err(|reason| {
+            ProviderError::ServerError(format!(
                 "Permanent delete refused for {}: {}",
                 clean, reason
-            )));
-        }
+            ))
+        })?;
 
-        let dir_url = self.purge_trashed_dir_url(clean);
+        let purge_url = if param == "rmDir" {
+            self.purge_trashed_dir_url(clean)
+        } else {
+            format!("{original}?{param}=true")
+        };
         jotta_log(&format!(
-            "Purging trashed folder via original path: {}",
-            dir_url
+            "Purging trash tombstone via original path: {}",
+            purge_url
         ));
-        let resp = self.post_command_with_retry(&dir_url).await?;
+        let resp = self.post_command_with_retry(&purge_url).await?;
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
@@ -2778,7 +2794,7 @@ impl JottacloudProvider {
                 sanitize_api_error(&body)
             )));
         }
-        jotta_log(&format!("Permanently deleted trashed folder: {}", clean));
+        jotta_log(&format!("Permanently deleted trash tombstone: {}", clean));
         Ok(())
     }
 
@@ -3724,6 +3740,29 @@ mod tests {
         assert!(JottacloudProvider::trashed_folder_purge_decision("garbage").is_err());
     }
 
+    #[test]
+    fn file_purge_fallback_requires_the_root_file_to_be_a_tombstone() {
+        assert_eq!(
+            JottacloudProvider::trashed_entry_purge_param(
+                r#"<file name="x" deleted="2026-09-06-T22:00:00Z"/>"#
+            ),
+            Ok("rm")
+        );
+        assert!(JottacloudProvider::trashed_entry_purge_param(
+            r#"<file name="x"><revision deleted="2026-09-06-T22:00:00Z"/></file>"#
+        )
+        .unwrap_err()
+        .contains("LIVE"));
+        assert_eq!(
+            JottacloudProvider::trashed_entry_purge_param(
+                r#"<folder name="x" deleted="2026-09-06-T22:00:00Z"/>"#
+            ),
+            Ok("rmDir")
+        );
+        assert!(JottacloudProvider::trashed_entry_purge_param(r#"<folder name="x"/>"#).is_err());
+        assert!(JottacloudProvider::trashed_entry_purge_param("garbage").is_err());
+    }
+
     /// `purge_trash` answers `{"files":N,"folders":M}`; anything else is a
     /// parse error and never a confirmed zero.
     #[test]
@@ -3873,7 +3912,15 @@ mod tests {
 
         let profile_query =
             std::env::var("JOTTA_TEST_PROFILE").unwrap_or_else(|_| "Jotta".to_string());
-        crate::credential_store::CredentialStore::init().expect("vault init failed");
+        let status = crate::credential_store::CredentialStore::init().expect("vault init failed");
+        if status == "MASTER_PASSWORD_REQUIRED" {
+            let password = zeroize::Zeroizing::new(
+                std::env::var("AEROFTP_MASTER_PASSWORD")
+                    .expect("set AEROFTP_MASTER_PASSWORD for this master-mode test vault"),
+            );
+            crate::credential_store::CredentialStore::unlock_with_master(&password, None)
+                .expect("test vault unlock failed");
+        }
         let store = crate::credential_store::CredentialStore::from_cache().expect("vault not open");
         let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)
             .expect("profile listing failed");
@@ -4033,6 +4080,35 @@ mod tests {
         );
         assert_eq!(second.dirs_restored, 0, "{second:?}");
         assert!(second.failed.is_empty(), "{second:?}");
+
+        // The follow-up also reports a file purge 404. Exercise both a root
+        // child and a deeply nested child, and confirm file restore bytes
+        // before purging. Never call empty_trash on the owner's account.
+        for (remote, bytes) in &files {
+            p.move_to_trash(remote)
+                .await
+                .expect("trash individual file");
+            let report = p
+                .restore_from_trash(remote)
+                .await
+                .expect("restore individual file");
+            assert_eq!(report.files_restored, 1);
+            assert_eq!(&p.download_to_bytes(remote).await.unwrap(), bytes);
+            p.move_to_trash(remote)
+                .await
+                .expect("re-trash individual file");
+            p.permanent_delete_from_trash(remote)
+                .await
+                .unwrap_or_else(|e| panic!("purge individual fixture {remote}: {e}"));
+            assert!(
+                !p.list_trash()
+                    .await
+                    .unwrap()
+                    .iter()
+                    .any(|entry| { entry.path.trim_start_matches('/') == remote }),
+                "purged file still in trash: {remote}"
+            );
+        }
 
         // Cleanup: trash the tree again, then purge it for real. A trashed
         // FOLDER is purged with `?rmDir=true` on its ORIGINAL path (the Trash

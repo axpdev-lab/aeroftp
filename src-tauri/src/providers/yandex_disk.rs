@@ -86,6 +86,36 @@ fn is_yandex_upload_retryable_error(err: &ProviderError) -> bool {
 
 // ─── API Response Structures ─────────────────────────────────────────
 
+fn yandex_operation_url(href: &str) -> Result<reqwest::Url, ProviderError> {
+    let url = reqwest::Url::parse(href)
+        .map_err(|_| ProviderError::InvalidPath("Invalid Yandex operation URL".into()))?;
+    if url.scheme() != "https"
+        || url.host_str() != Some("cloud-api.yandex.net")
+        || url.port_or_known_default() != Some(443)
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !url.path().starts_with("/v1/disk/operations/")
+    {
+        return Err(ProviderError::InvalidPath(
+            "Refusing a Yandex operation URL outside the authenticated API".into(),
+        ));
+    }
+    Ok(url)
+}
+
+fn yandex_operation_done(status: &str) -> Result<bool, ProviderError> {
+    match status {
+        "success" => Ok(true),
+        "in-progress" => Ok(false),
+        "failed" => Err(ProviderError::ServerError(
+            "Yandex Disk operation failed".into(),
+        )),
+        _ => Err(ProviderError::ParseError(
+            "Unknown Yandex Disk operation status".into(),
+        )),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct YdDiskInfo {
     #[serde(default)]
@@ -453,6 +483,53 @@ impl YandexDiskProvider {
         Self::classify_yandex_error(status, &body)
     }
 
+    /// 202 only acknowledges a queued mutation. Waiting for its operation is
+    /// necessary before refreshing trash or checking the benchmark parent for
+    /// emptiness (#368); otherwise the just-deleted child can still be listed.
+    async fn finish_resource_operation(
+        &mut self,
+        response: reqwest::Response,
+    ) -> Result<(), ProviderError> {
+        if response.status() != reqwest::StatusCode::ACCEPTED {
+            return if response.status().is_success() {
+                Ok(())
+            } else {
+                Err(self.parse_error(response).await)
+            };
+        }
+        tokio::time::timeout(std::time::Duration::from_secs(60), async {
+            let link: YdLink = response
+                .json()
+                .await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            let url = yandex_operation_url(&link.href)?;
+            loop {
+                let response = self
+                    .send_with_reauth(|this| {
+                        this.client
+                            .get(url.clone())
+                            .header(AUTHORIZATION, this.auth_header())
+                    })
+                    .await?;
+                if !response.status().is_success() {
+                    return Err(self.parse_error(response).await);
+                }
+                let result: serde_json::Value = response
+                    .json()
+                    .await
+                    .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                if yandex_operation_done(
+                    result.get("status").and_then(|v| v.as_str()).unwrap_or(""),
+                )? {
+                    return Ok(());
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        })
+        .await
+        .map_err(|_| ProviderError::Timeout)?
+    }
+
     /// Pure status+body -> ProviderError classifier (extracted from `parse_error`
     /// so it can be unit-tested without a live `reqwest::Response`). Yandex Disk
     /// returns a JSON `{ "error", "description" }`; the body-level `error` string is
@@ -631,12 +708,7 @@ impl YandexDiskProvider {
             })
             .await?;
 
-        let status = resp.status();
-        if status.is_success() || status.as_u16() == 201 || status.as_u16() == 202 {
-            Ok(())
-        } else {
-            Err(self.parse_error(resp).await)
-        }
+        self.finish_resource_operation(resp).await
     }
 
     /// Empty the entire trash.
@@ -650,12 +722,7 @@ impl YandexDiskProvider {
             })
             .await?;
 
-        let status = resp.status();
-        if status.is_success() || status.as_u16() == 204 || status.as_u16() == 202 {
-            Ok(())
-        } else {
-            Err(self.parse_error(resp).await)
-        }
+        self.finish_resource_operation(resp).await
     }
 
     /// Permanently delete a specific item from trash.
@@ -673,12 +740,7 @@ impl YandexDiskProvider {
             })
             .await?;
 
-        let status = resp.status();
-        if status.is_success() || status.as_u16() == 204 || status.as_u16() == 202 {
-            Ok(())
-        } else {
-            Err(self.parse_error(resp).await)
-        }
+        self.finish_resource_operation(resp).await
     }
 
     /// Request a fresh upload-target URL from the Yandex Disk API.
@@ -1348,12 +1410,7 @@ impl StorageProvider for YandexDiskProvider {
             })
             .await?;
 
-        let status = resp.status();
-        if status.is_success() || status.as_u16() == 204 || status.as_u16() == 202 {
-            Ok(())
-        } else {
-            Err(self.parse_error(resp).await)
-        }
+        self.finish_resource_operation(resp).await
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1931,6 +1988,26 @@ impl StorageProvider for YandexDiskProvider {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn yandex_async_operation_requires_completion_and_a_trusted_url() {
+        assert!(!super::yandex_operation_done("in-progress").unwrap());
+        assert!(super::yandex_operation_done("success").unwrap());
+        assert!(super::yandex_operation_done("failed").is_err());
+        assert!(super::yandex_operation_done("").is_err());
+        assert!(
+            super::yandex_operation_url("https://cloud-api.yandex.net/v1/disk/operations/123")
+                .is_ok()
+        );
+        for url in [
+            "http://cloud-api.yandex.net/v1/disk/operations/123",
+            "https://evil.test/v1/disk/operations/123",
+            "https://cloud-api.yandex.net/other",
+            "https://user@cloud-api.yandex.net/v1/disk/operations/123",
+        ] {
+            assert!(super::yandex_operation_url(url).is_err());
+        }
+    }
 
     /// A scope problem is terminal, and it is not a dead token.
     ///

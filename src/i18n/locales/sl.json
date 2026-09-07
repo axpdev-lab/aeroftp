@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Trajno brisanje in praznjenje koša zahtevata račun Dropbox Business/Team.",
             "setAsPrivate": "Nastavi kot zasebno",
             "setAsPublic": "Nastavi kot javno",
-            "makeAllPrivate": "Nastavi vse kot zasebno"
+            "makeAllPrivate": "Nastavi vse kot zasebno",
+            "dropboxRestoreLimit": "AeroFTP lahko obnovi obnovljive različice datotek. Mape obnovite v razdelku Izbrisane datoteke na dropbox.com. Vprašaj pomeni, da Dropbox ni prepoznal vrste elementa."
         },
         "transfer": {
             "transferring": "Prenašanje...",
