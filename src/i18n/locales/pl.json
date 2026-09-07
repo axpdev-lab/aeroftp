@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Trwałe usuwanie i opróżnianie kosza wymagają konta Dropbox Business/Team.",
             "setAsPrivate": "Ustaw jako prywatny",
             "setAsPublic": "Ustaw jako publiczny",
-            "makeAllPrivate": "Ustaw wszystkie jako prywatne"
+            "makeAllPrivate": "Ustaw wszystkie jako prywatne",
+            "dropboxRestoreLimit": "AeroFTP może przywracać możliwe do odzyskania wersje plików. Foldery przywróć w sekcji Usunięte pliki na dropbox.com. Znak zapytania oznacza, że Dropbox nie rozpoznał typu elementu."
         },
         "transfer": {
             "transferring": "Przesyłanie...",

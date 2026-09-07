@@ -445,6 +445,7 @@ import {
   clearProfileConnectFailure,
   PROFILES_CHANGED_EVENT,
 } from './utils/serverProfileStore';
+import { appendImportedProfiles } from './components/bridge/bridgeImportCommit';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createLocalEndpoint, createRemoteEndpoint } from './utils/panelEndpoints';
@@ -14088,11 +14089,10 @@ const App: React.FC = () => {
 
   const mergeImportedServerProfiles = useCallback(async (importedServers: ImportedServerProfile[]) => {
     const currentServers = await loadSavedServerProfiles();
-    const existingKeys = new Set(currentServers.map(s => `${s.host}:${s.port}:${s.username}`));
     const existingIds = new Set(currentServers.map(s => s.id));
 
     const newServers: ServerProfile[] = importedServers
-      .filter(s => !existingKeys.has(`${s.host}:${s.port}:${s.username}`) && !existingIds.has(s.id))
+      .filter(s => !existingIds.has(s.id))
       .map(s => ({
         id: s.id,
         name: s.name,
@@ -16156,12 +16156,12 @@ const App: React.FC = () => {
             servers={exportImportServers}
             initialMode={exportImportInitialMode}
             initialBridgeFilePath={exportImportBridgeFile ?? undefined}
-            onImport={(newServers) => {
-              const merged = [...exportImportServers, ...newServers];
+            onImport={async (newServers) => {
+              // Bridge imports may have replaced a profile in the persisted
+              // list; the dialog's opening snapshot is no longer authoritative.
+              const merged = await appendImportedProfiles(newServers);
               setExportImportServers(merged);
-              storeSavedServerProfiles(merged)
-                .then(() => setServersRefreshKey(k => k + 1))
-                .catch(() => {});
+              setServersRefreshKey(k => k + 1);
               setShowExportImport(false);
               setExportImportInitialMode(undefined);
               setExportImportBridgeFile(null);

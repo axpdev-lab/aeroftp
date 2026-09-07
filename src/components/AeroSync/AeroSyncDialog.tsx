@@ -289,6 +289,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             initialDestination={context.initialDestination}
                             pairKind={context.pairKind}
                             activeProfileId={context.activeProfileId}
+                            initialExcludePatterns={excludePatterns}
                             onRunningChange={setSyncRunning}
                         />
                     )}

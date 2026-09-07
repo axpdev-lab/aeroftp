@@ -117,6 +117,18 @@ fn legacy_cli_app_config_dir() -> Option<PathBuf> {
 }
 
 fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
+    // SQLite sidecars belong to one database generation, not to a directory.
+    // In particular, after a keystore restore removed -wal/-shm, copying the
+    // legacy sidecars on the next boot can replay OLD pages over the restored
+    // database (#736). New databases are snapshotted below with their committed
+    // WAL contents; sidecars must never travel independently.
+    let name = src.file_name().and_then(|s| s.to_str()).unwrap_or_default();
+    if [".db-wal", ".db-shm", ".db-journal"]
+        .iter()
+        .any(|suffix| name.ends_with(suffix))
+    {
+        return Ok(());
+    }
     // The tree we import here is a config tree the user consented to copy, but a
     // symlink inside it can point anywhere: outside the consented tree (dragging
     // in foreign secrets like ~/.ssh) or at an ancestor, forming a cycle that
@@ -145,7 +157,32 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
         if let Some(parent) = dst.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let _ = std::fs::copy(src, dst)?;
+        if src.extension().and_then(|s| s.to_str()) == Some("db") {
+            let snapshot = tempfile::Builder::new()
+                .prefix(".aeroftp-migration-")
+                .tempfile_in(dst.parent().unwrap_or_else(|| Path::new(".")))?;
+            let conn = rusqlite::Connection::open_with_flags(
+                src,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )
+            .map_err(|e| std::io::Error::other(format!("Open legacy SQLite snapshot: {e}")))?;
+            conn.busy_timeout(std::time::Duration::from_secs(5))
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            conn.execute(
+                "VACUUM main INTO ?1",
+                rusqlite::params![snapshot.path().to_string_lossy().to_string()],
+            )
+            .map_err(|e| std::io::Error::other(format!("Snapshot legacy SQLite database: {e}")))?;
+            // Do not overwrite a destination another startup created meanwhile.
+            snapshot.as_file().sync_all()?;
+            match snapshot.persist_noclobber(dst) {
+                Ok(_) => {}
+                Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
+                Err(e) => return Err(e.error),
+            }
+        } else {
+            let _ = std::fs::copy(src, dst)?;
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -585,6 +622,52 @@ fn normalize_windows_path(path: &std::path::Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_migration_never_replays_old_wal_over_restored_profiles() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("legacy");
+        let current = root.path().join("current");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::create_dir_all(&current).unwrap();
+        let source = rusqlite::Connection::open(legacy.join("user_partitions.db")).unwrap();
+        source.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE profiles(name TEXT); INSERT INTO profiles VALUES('old profile');").unwrap();
+        let dest = current.join("user_partitions.db");
+        source
+            .execute(
+                "VACUUM main INTO ?1",
+                rusqlite::params![dest.to_string_lossy().to_string()],
+            )
+            .unwrap();
+        {
+            let restored = rusqlite::Connection::open(&dest).unwrap();
+            restored.execute_batch("UPDATE profiles SET name='renamed current profile'; PRAGMA wal_checkpoint(TRUNCATE);").unwrap();
+        }
+        assert!(legacy.join("user_partitions.db-wal").exists());
+        copy_missing_tree(&legacy, &current).unwrap();
+        let restored = rusqlite::Connection::open(&dest).unwrap();
+        let name: String = restored
+            .query_row("SELECT name FROM profiles", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(name, "renamed current profile");
+    }
+
+    #[test]
+    fn legacy_migration_includes_committed_wal_in_a_new_database() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("legacy");
+        let current = root.path().join("current");
+        std::fs::create_dir_all(&legacy).unwrap();
+        let source = rusqlite::Connection::open(legacy.join("user_partitions.db")).unwrap();
+        source.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE profiles(name TEXT); INSERT INTO profiles VALUES('latest committed profile');").unwrap();
+        copy_missing_tree(&legacy, &current).unwrap();
+        assert!(!current.join("user_partitions.db-wal").exists());
+        let copied = rusqlite::Connection::open(current.join("user_partitions.db")).unwrap();
+        let name: String = copied
+            .query_row("SELECT name FROM profiles", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(name, "latest committed profile");
+    }
 
     /// Marker absent ⇒ not portable, all helpers fall through to Tauri/dirs.
     /// We can't easily run `app_config_dir` here without an AppHandle, but we

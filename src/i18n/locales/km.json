@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "ការលុបជាអចិន្ត្រៃយ៍ និងការសម្អាតធុងសំរាមទាមទារគណនី Dropbox Business/Team។",
             "setAsPrivate": "កំណត់ជាឯកជន",
             "setAsPublic": "កំណត់ជាសាធារណៈ",
-            "makeAllPrivate": "ធ្វើឱ្យទាំងអស់ជាឯកជន"
+            "makeAllPrivate": "ធ្វើឱ្យទាំងអស់ជាឯកជន",
+            "dropboxRestoreLimit": "AeroFTP អាចស្ដារកំណែឯកសារដែលនៅអាចស្ដារបាន។ ស្ដារថតពីផ្នែកឯកសារដែលបានលុបនៅលើ dropbox.com។ សញ្ញាសួរមានន័យថា Dropbox មិនបានកំណត់អត្តសញ្ញាណប្រភេទធាតុទេ។"
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",

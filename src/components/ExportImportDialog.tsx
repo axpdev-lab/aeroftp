@@ -15,13 +15,14 @@ import { useTranslation } from '../i18n';
 import { SearchBox } from './SearchBox';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourcePanel } from './BridgeSourcePanel';
+import { bridgeProfileKey } from './bridge/bridgeImportCommit';
 import { BridgeSourceDescriptor, GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useDetectedBridgeConfigs, shortenConfigPath, orderBridgeSourcesByDetection } from '../hooks/useDetectedBridgeConfigs';
 
 interface ExportImportDialogProps {
     servers: ServerProfile[];
-    onImport: (servers: ServerProfile[]) => void;
+    onImport: (servers: ServerProfile[]) => void | Promise<void>;
     onClose: () => void;
     // Optional starting mode so callers (e.g. the Settings Backup table) can
     // open the dialog straight into a specific action. Undefined preserves the
@@ -112,7 +113,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     // from the active user's partition via loadSavedServerProfiles, so a
     // separate localStorage read is no longer needed.
     const existingServerKeys = useMemo(
-        () => new Set(servers.map(s => `${s.host}:${s.port}:${s.username}`)),
+        () => new Set(servers.map(bridgeProfileKey)),
         [servers],
     );
 
@@ -261,7 +262,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             const similar = newServers.filter(
                 s => existingAccounts.has(`${s.host}:${s.port}:${s.username}`)
             ).length;
-            onImport(newServers);
+            await onImport(newServers);
             setSuccess(
                 t('settings.importSuccess').replace('{count}', String(newServers.length)) +
                 (skipped > 0 ? ` (${skipped} ${t('settings.duplicatesSkipped')})` : '') +

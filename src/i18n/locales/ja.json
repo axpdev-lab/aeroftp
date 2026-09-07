@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "完全削除とゴミ箱を空にするには、Dropbox Business/Team アカウントが必要です。",
             "setAsPrivate": "プライベートに設定",
             "setAsPublic": "公開に設定",
-            "makeAllPrivate": "すべて非公開にする"
+            "makeAllPrivate": "すべて非公開にする",
+            "dropboxRestoreLimit": "AeroFTP は復元可能なファイルのバージョンを復元できます。フォルダーは dropbox.com の「削除したファイル」から復元してください。疑問符は、Dropbox が項目の種類を識別できなかったことを示します。"
         },
         "transfer": {
             "transferring": "転送中...",

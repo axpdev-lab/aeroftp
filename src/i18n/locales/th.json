@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "การลบถาวรและการล้างถังขยะต้องใช้บัญชี Dropbox Business/Team",
             "setAsPrivate": "ตั้งเป็นส่วนตัว",
             "setAsPublic": "ตั้งเป็นสาธารณะ",
-            "makeAllPrivate": "ทำให้ทั้งหมดเป็นส่วนตัว"
+            "makeAllPrivate": "ทำให้ทั้งหมดเป็นส่วนตัว",
+            "dropboxRestoreLimit": "AeroFTP สามารถกู้คืนเวอร์ชันไฟล์ที่ยังกู้คืนได้ กู้คืนโฟลเดอร์จากส่วนไฟล์ที่ลบบน dropbox.com เครื่องหมายคำถามหมายความว่า Dropbox ไม่สามารถระบุประเภทของรายการได้"
         },
         "transfer": {
             "transferring": "กำลังถ่ายโอน...",

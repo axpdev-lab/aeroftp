@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Pysyvä poisto ja roskakorin tyhjennys vaativat Dropbox Business/Team -tilin.",
             "setAsPrivate": "Aseta yksityiseksi",
             "setAsPublic": "Aseta julkiseksi",
-            "makeAllPrivate": "Aseta kaikki yksityisiksi"
+            "makeAllPrivate": "Aseta kaikki yksityisiksi",
+            "dropboxRestoreLimit": "AeroFTP voi palauttaa palautettavissa olevia tiedostoversioita. Palauta kansiot dropbox.com-sivuston Poistetut tiedostot -osiosta. Kysymysmerkki tarkoittaa, ettei Dropbox tunnistanut kohteen tyyppiä."
         },
         "transfer": {
             "transferring": "Siirretään...",

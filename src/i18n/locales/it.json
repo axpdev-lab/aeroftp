@@ -918,7 +918,8 @@
             "dropboxPurgeBusinessOnly": "Elimina definitivamente e Svuota cestino richiedono un account Dropbox Business/Team.",
             "setAsPrivate": "Rendi Privato",
             "setAsPublic": "Rendi Pubblico",
-            "makeAllPrivate": "Rendi tutto privato"
+            "makeAllPrivate": "Rendi tutto privato",
+            "dropboxRestoreLimit": "AeroFTP può ripristinare le versioni recuperabili dei file. Ripristina le cartelle da File eliminati su dropbox.com. Un punto interrogativo indica che Dropbox non ha identificato il tipo di elemento."
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",

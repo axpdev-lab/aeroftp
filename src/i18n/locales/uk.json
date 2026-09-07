@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Остаточне видалення та очищення кошика потребують облікового запису Dropbox Business/Team.",
             "setAsPrivate": "Зробити приватним",
             "setAsPublic": "Зробити публічним",
-            "makeAllPrivate": "Зробити всі приватними"
+            "makeAllPrivate": "Зробити всі приватними",
+            "dropboxRestoreLimit": "AeroFTP може відновлювати доступні для відновлення версії файлів. Папки відновлюйте в розділі «Видалені файли» на dropbox.com. Знак питання означає, що Dropbox не визначив тип елемента."
         },
         "transfer": {
             "transferring": "Передача...",

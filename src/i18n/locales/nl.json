@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Permanent verwijderen en Prullenbak legen vereisen een Dropbox Business/Team-account.",
             "setAsPrivate": "Instellen als privé",
             "setAsPublic": "Instellen als openbaar",
-            "makeAllPrivate": "Alles privé maken"
+            "makeAllPrivate": "Alles privé maken",
+            "dropboxRestoreLimit": "AeroFTP kan herstelbare bestandsversies terugzetten. Zet mappen terug via Verwijderde bestanden op dropbox.com. Een vraagteken betekent dat Dropbox het itemtype niet heeft herkend."
         },
         "transfer": {
             "transferring": "Overdragen...",

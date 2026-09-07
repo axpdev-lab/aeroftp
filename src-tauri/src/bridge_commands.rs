@@ -303,6 +303,62 @@ fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
     }
 }
 
+/// Turn the legacy import options into the binding used by Quick Connect and
+/// My Servers. Secrets leave the options before the preview crosses IPC.
+fn materialize_imported_crypt_overlay(
+    server: &mut Value,
+    mut store_secret: impl FnMut(&str, &str) -> Result<(), String>,
+) -> Result<(), String> {
+    if server
+        .pointer("/options/rcloneCryptEnabled")
+        .and_then(Value::as_bool)
+        != Some(true)
+    {
+        return Ok(());
+    }
+    let id = server
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or("Imported Crypt profile has no id")?
+        .to_string();
+    let scope = server
+        .get("initialPath")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let opts = server
+        .get_mut("options")
+        .and_then(Value::as_object_mut)
+        .ok_or("Imported Crypt profile has no options")?;
+    let password = zeroize::Zeroizing::new(
+        opts.remove("rcloneCryptPassword")
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default(),
+    );
+    let salt = zeroize::Zeroizing::new(
+        opts.remove("rcloneCryptPassword2")
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default(),
+    );
+    // No password2 is meaningful: it selects rclone's built-in default salt.
+    if !password.is_empty() {
+        store_secret(&format!("aerocrypt_overlay_pw_{id}"), &password)?;
+    }
+    if !salt.is_empty() {
+        store_secret(&format!("aerocrypt_overlay_salt_{id}"), &salt)?;
+    }
+    let binding = json!({
+        "enabled": true, "kind": "rclone-crypt", "remoteScope": scope,
+        "filenameEncryption": opts.get("rcloneCryptFilenameEncryption").and_then(Value::as_str).unwrap_or("standard"),
+        "directoryNameEncryption": opts.get("rcloneCryptDirectoryNameEncryption").and_then(Value::as_bool).unwrap_or(true),
+        "withHeader": false
+    });
+    server["aeroCryptOverlay"] = binding;
+    server["hasStoredAeroCryptPassword"] = Value::Bool(!password.is_empty());
+    server["hasStoredAeroCryptSalt"] = Value::Bool(!salt.is_empty());
+    Ok(())
+}
+
 /// Import profiles from a third-party config file. Validates the path
 /// (traversal reject + canonicalize + regular-file + 10 MB cap),
 /// upgrades any recovered secret into the AES-256-GCM vault and returns
@@ -338,11 +394,24 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
     } else {
         dispatch_import(&source, &canonical)?
     };
-    let servers = value
+    let mut servers = value
         .get("servers")
         .and_then(|s| s.as_array())
         .cloned()
         .unwrap_or_default();
+
+    if source == "rclone" {
+        let store = CredentialStore::from_cache();
+        for server in &mut servers {
+            materialize_imported_crypt_overlay(server, |key, secret| {
+                let store = store
+                    .as_ref()
+                    .ok_or("Unlock the credential vault before importing Crypt profiles")?;
+                crate::user_partitions::store_active_credential_dual(store, key, secret)
+                    .map_err(|e| e.to_string())
+            })?;
+        }
+    }
 
     // Upgrade recovered secrets into the vault (server_<id> key, same as
     // the connect path and the legacy importers).
@@ -417,6 +486,9 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                 "initialPath": s.get("initialPath").cloned().unwrap_or(Value::Null),
                 "options": s.get("options").cloned().unwrap_or(Value::Null),
                 "providerId": s.get("providerId").cloned().unwrap_or(Value::Null),
+                "aeroCryptOverlay": s.get("aeroCryptOverlay").cloned().unwrap_or(Value::Null),
+                "hasStoredAeroCryptPassword": s.get("hasStoredAeroCryptPassword").cloned().unwrap_or(Value::Bool(false)),
+                "hasStoredAeroCryptSalt": s.get("hasStoredAeroCryptSalt").cloned().unwrap_or(Value::Bool(false)),
                 "hasStoredCredential": has_cred,
             })
         })
@@ -1233,6 +1305,60 @@ pub async fn export_bridge_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imported_koofr_crypt_becomes_a_bound_profile_with_optional_salt() {
+        for salt in ["", "test salt"] {
+            let root = tempfile::tempdir().unwrap();
+            let config = root.path().join("rclone.conf");
+            let password = crate::rclone_import::obscure_password("test password").unwrap();
+            let salt_line = if salt.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "password2 = {}\n",
+                    crate::rclone_import::obscure_password(salt).unwrap()
+                )
+            };
+            std::fs::write(&config, format!("[base]\ntype = koofr\nuser = test@example.com\n[encrypted]\ntype = crypt\nremote = base:encrypted\npassword = {password}\n{salt_line}")).unwrap();
+            let result = crate::rclone_import::import_rclone(&config).unwrap();
+            assert_eq!(result.servers.len(), 2);
+            let profile = result
+                .servers
+                .iter()
+                .find(|s| s.name == "encrypted")
+                .unwrap();
+            let mut value = serde_json::to_value(profile).unwrap();
+            let mut secrets = std::collections::HashMap::new();
+            materialize_imported_crypt_overlay(&mut value, |key, secret| {
+                secrets.insert(key.to_string(), secret.to_string());
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(value["aeroCryptOverlay"]["kind"], "rclone-crypt");
+            assert_eq!(value["aeroCryptOverlay"]["remoteScope"], "/encrypted");
+            assert_eq!(value["hasStoredAeroCryptPassword"], true);
+            assert_eq!(value["hasStoredAeroCryptSalt"], !salt.is_empty());
+            assert!(value.pointer("/options/rcloneCryptPassword").is_none());
+            assert!(value.pointer("/options/rcloneCryptPassword2").is_none());
+            assert_eq!(
+                secrets[&format!("aerocrypt_overlay_pw_{}", profile.id)],
+                "test password"
+            );
+            assert_eq!(secrets.len(), if salt.is_empty() { 1 } else { 2 });
+        }
+    }
+
+    #[test]
+    fn imported_crypt_does_not_claim_a_stored_password_when_the_vault_write_fails() {
+        let mut profile = json!({"id":"test", "options":{"rcloneCryptEnabled":true,"rcloneCryptPassword":"secret"}});
+        assert!(materialize_imported_crypt_overlay(
+            &mut profile,
+            |_, _| Err("vault locked".into())
+        )
+        .is_err());
+        assert!(profile.get("hasStoredAeroCryptPassword").is_none());
+    }
 
     fn write_temp(name: &str, contents: &str) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!(

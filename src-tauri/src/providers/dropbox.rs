@@ -139,6 +139,76 @@ struct ListFolderResult {
     has_more: bool,
 }
 
+/// A revision probe that did not name the entry kind. `throttled` separates
+/// "Dropbox refused to answer right now" from "Dropbox answered, and the answer
+/// does not establish a kind": only the second one may become
+/// `trash_kind: "unknown"`, which reads as a property of the entry and, with the
+/// folder-restore guard, blocks restore.
+#[derive(Debug)]
+struct TrashProbeError {
+    error: ProviderError,
+    throttled: bool,
+}
+
+impl TrashProbeError {
+    fn hard(error: ProviderError) -> Self {
+        Self {
+            error,
+            throttled: false,
+        }
+    }
+}
+
+/// DeletedMetadata deliberately omits the original entry kind. Only a revision
+/// or an explicit `not_file` response can establish it; not_found is NOT a folder.
+#[derive(Debug)]
+enum TrashRevision {
+    Folder,
+    File {
+        rev: String,
+        size: u64,
+        deleted_at: Option<String>,
+    },
+}
+
+fn parse_trash_revision(
+    status: reqwest::StatusCode,
+    body: &str,
+) -> Result<TrashRevision, ProviderError> {
+    let json: serde_json::Value = serde_json::from_str(body)
+        .map_err(|_| ProviderError::Other("Dropbox returned invalid revision metadata".into()))?;
+    if status == reqwest::StatusCode::CONFLICT
+        && json.pointer("/error/.tag").and_then(|v| v.as_str()) == Some("path")
+        && json.pointer("/error/path/.tag").and_then(|v| v.as_str()) == Some("not_file")
+    {
+        return Ok(TrashRevision::Folder);
+    }
+    if !status.is_success() {
+        return Err(ProviderError::Other(format!(
+            "Dropbox revision lookup failed ({}): {}",
+            status,
+            sanitize_api_error(body)
+        )));
+    }
+    if json.get("is_deleted").and_then(|v| v.as_bool()) != Some(true) {
+        return Err(ProviderError::Other(
+            "The Dropbox path is no longer deleted. Refresh the trash before restoring.".into(),
+        ));
+    }
+    let revision = json.get("entries").and_then(|v| v.as_array())
+        .and_then(|entries| entries.iter().find(|v| v.get("is_restorable").and_then(|v| v.as_bool()) != Some(false)
+            && v.get("rev").and_then(|v| v.as_str()).is_some_and(|rev| !rev.is_empty())))
+        .ok_or_else(|| ProviderError::NotFound("No recoverable file revision was returned by Dropbox. Check Deleted files on dropbox.com for recovery options.".into()))?;
+    Ok(TrashRevision::File {
+        rev: revision["rev"].as_str().unwrap().to_string(),
+        size: revision.get("size").and_then(|v| v.as_u64()).unwrap_or(0),
+        deleted_at: json
+            .get("server_deleted")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+    })
+}
+
 /// Dropbox provider configuration
 #[derive(Debug, Clone)]
 pub struct DropboxConfig {
@@ -369,7 +439,7 @@ impl DropboxProvider {
         endpoint: &str,
         body: &serde_json::Value,
     ) -> Result<T, ProviderError> {
-        let url = format!("{}/{}", API_BASE, endpoint);
+        let url = format!("{}/{}", self.rpc_api_base(), endpoint);
 
         let response = self
             .client
@@ -410,6 +480,59 @@ impl DropboxProvider {
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
     }
 
+    fn rpc_api_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(ref base) = self.content_base_override {
+            return base;
+        }
+        API_BASE
+    }
+
+    async fn trash_revision(&self, path: &str) -> Result<TrashRevision, TrashProbeError> {
+        let auth = self.auth_header().await.map_err(TrashProbeError::hard)?;
+        let response = self
+            .client
+            .post(format!("{}/files/list_revisions", self.rpc_api_base()))
+            .header(AUTHORIZATION, auth)
+            .json(&serde_json::json!({
+                "path": self.normalize_path(path), "mode": "path", "limit": 100,
+                "include_restorable_info": true
+            }))
+            .send()
+            .await
+            .map_err(|e| TrashProbeError::hard(ProviderError::ConnectionFailed(e.to_string())))?;
+        let status = response.status();
+        let retry_header = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
+        let body = response
+            .text()
+            .await
+            .map_err(|e| TrashProbeError::hard(ProviderError::Other(e.to_string())))?;
+        // The throttle test is `dropbox_is_rate_limited`, not the presence of a
+        // retry marker: Dropbox can answer 429 with no `retry_after` anywhere,
+        // and that is still a throttle.
+        if dropbox_is_rate_limited(status.as_u16(), &body) {
+            let mut msg = format!(
+                "Dropbox throttled the revision lookup ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            );
+            if let Some(tail) =
+                dropbox_retry_marker_tail(status.as_u16(), &body, retry_header.as_deref())
+            {
+                msg.push_str(&tail);
+            }
+            return Err(TrashProbeError {
+                error: ProviderError::Other(msg),
+                throttled: true,
+            });
+        }
+        parse_trash_revision(status, &body).map_err(TrashProbeError::hard)
+    }
+
     /// List deleted files in a folder (includes deleted entries)
     #[allow(dead_code)]
     pub async fn list_deleted(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
@@ -443,40 +566,65 @@ impl DropboxProvider {
             .map(|e| self.to_remote_entry(e))
             .collect();
 
+        // Enrich tombstones without turning a failed probe into a guessed file
+        // or hiding the entry. Bounded concurrency avoids one serial RTT per row.
+        // A throttled probe fails the whole listing. Four concurrent probes make
+        // 429 reachable on a large trash, and swallowing it would hand the UI a
+        // successful list in which throttled rows are indistinguishable from
+        // genuinely unidentifiable ones.
+        use futures_util::{stream, StreamExt, TryStreamExt};
+        let this = &*self;
+        let deleted: Vec<RemoteEntry> =
+            stream::iter(deleted.into_iter().map(|mut entry| async move {
+                match this.trash_revision(&entry.path).await {
+                    Ok(TrashRevision::Folder) => {
+                        entry.is_dir = true;
+                        entry.metadata.insert("trash_kind".into(), "folder".into());
+                    }
+                    Ok(TrashRevision::File {
+                        rev,
+                        size,
+                        deleted_at,
+                    }) => {
+                        entry.size = size;
+                        entry.modified = deleted_at;
+                        entry.metadata.insert("rev".into(), rev);
+                        entry.metadata.insert("trash_kind".into(), "file".into());
+                    }
+                    Err(probe) if probe.throttled => return Err(probe.error),
+                    Err(_) => {
+                        entry.metadata.insert("trash_kind".into(), "unknown".into());
+                    }
+                }
+                Ok(entry)
+            }))
+            .buffered(4)
+            .try_collect()
+            .await?;
+
         info!("Listed {} deleted entries in {}", deleted.len(), path);
         Ok(deleted)
     }
 
-    /// Restore a deleted file. If `rev` is empty, automatically fetches
-    /// the latest revision via `files/list_revisions` before restoring.
-    pub async fn restore_file(&mut self, path: &str, rev: &str) -> Result<(), ProviderError> {
+    /// Revalidate the tombstone before restoring. A stale listing must not roll
+    /// back a live file, and an expired latest revision must not mask a usable one.
+    pub async fn restore_file(&mut self, path: &str, _rev: &str) -> Result<(), ProviderError> {
         let full_path = if path.starts_with('/') {
             self.normalize_path(path)
         } else {
             self.normalize_path(&format!("{}/{}", self.current_path, path))
         };
 
-        let effective_rev = if rev.is_empty() {
-            // Fetch latest revision for deleted file
-            let rev_body = serde_json::json!({
-                "path": full_path,
-                "mode": "path",
-                "limit": 1
-            });
-            let rev_result: serde_json::Value =
-                self.rpc_call("files/list_revisions", &rev_body).await?;
-            rev_result
-                .get("entries")
-                .and_then(|e| e.as_array())
-                .and_then(|a| a.first())
-                .and_then(|e| e.get("rev"))
-                .and_then(|r| r.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| {
-                    ProviderError::NotFound("No revision found for deleted file".into())
-                })?
+        // trash_revision normalizes paths itself: pass the decoded absolute path
+        // rather than encoding restricted characters twice.
+        let lookup_path = if path.starts_with('/') {
+            path.to_string()
         } else {
-            rev.to_string()
+            format!("{}/{}", self.current_path, path)
+        };
+        let effective_rev = match self.trash_revision(&lookup_path).await.map_err(|e| e.error)? {
+            TrashRevision::File { rev, .. } => rev,
+            TrashRevision::Folder => return Err(ProviderError::Other("Dropbox's restore API restores file revisions, not folders. Restore this folder from Deleted files on dropbox.com.".into())),
         };
 
         let body = serde_json::json!({
@@ -2496,6 +2644,47 @@ impl StorageProvider for DropboxProvider {
 mod tests {
     use super::*;
 
+    #[test]
+    fn trash_revision_selects_recoverable_revision_and_deletion_date() {
+        let body = r#"{"is_deleted":true,"server_deleted":"2026-09-06T00:00:00Z","entries":[{"rev":"expired","is_restorable":false},{"rev":"recoverable","size":42,"is_restorable":true}]}"#;
+        let TrashRevision::File {
+            rev,
+            size,
+            deleted_at,
+        } = parse_trash_revision(reqwest::StatusCode::OK, body).unwrap()
+        else {
+            panic!("expected file")
+        };
+        assert_eq!(rev, "recoverable");
+        assert_eq!(size, 42);
+        assert_eq!(deleted_at.as_deref(), Some("2026-09-06T00:00:00Z"));
+    }
+
+    #[test]
+    fn trash_revision_does_not_guess_folders_from_missing_or_expired_files() {
+        for body in [
+            r#"{"error":{".tag":"path","path":{".tag":"not_found"}}}"#,
+            r#"{"error":{".tag":"path","path":{".tag":"restricted_content"}}}"#,
+        ] {
+            assert!(parse_trash_revision(reqwest::StatusCode::CONFLICT, body).is_err());
+        }
+        assert!(matches!(
+            parse_trash_revision(
+                reqwest::StatusCode::CONFLICT,
+                r#"{"error":{".tag":"path","path":{".tag":"not_file"}}}"#
+            )
+            .unwrap(),
+            TrashRevision::Folder
+        ));
+        for body in [
+            r#"{"is_deleted":false,"entries":[{"rev":"live"}]}"#,
+            r#"{"is_deleted":true,"entries":[{"rev":"expired","is_restorable":false}]}"#,
+            r#"{"is_deleted":true,"entries":[]}"#,
+        ] {
+            assert!(parse_trash_revision(reqwest::StatusCode::OK, body).is_err());
+        }
+    }
+
     fn test_provider() -> DropboxProvider {
         DropboxProvider::new(DropboxConfig::new("app-key", "app-secret"))
     }
@@ -2695,6 +2884,118 @@ mod tests {
         let mut p = DropboxProvider::connected_for_test(demo_cfg());
         p.test_access_token = Some("fixture-token".to_string());
         p
+    }
+
+    #[tokio::test]
+    async fn trash_revision_http_flow_keeps_unknowns_and_restores_a_recoverable_file() {
+        use axum::{http::StatusCode, routing::post, Json, Router};
+        use serde_json::{json, Value};
+        let app = Router::new()
+            .route("/files/list_folder", post(|| async {
+                Json(json!({"entries":[
+                    {".tag":"deleted","name":"file.txt","path_display":"/file.txt"},
+                    {".tag":"deleted","name":"folder","path_display":"/folder"},
+                    {".tag":"deleted","name":"unknown","path_display":"/unknown"}
+                ],"cursor":"done","has_more":false}))
+            }))
+            .route("/files/list_revisions", post(|Json(request): Json<Value>| async move {
+                assert_eq!(request["include_restorable_info"], true);
+                match request["path"].as_str().unwrap() {
+                    "/folder" => (StatusCode::CONFLICT, Json(json!({"error":{".tag":"path","path":{".tag":"not_file"}}}))),
+                    "/unknown" => (StatusCode::CONFLICT, Json(json!({"error":{".tag":"path","path":{".tag":"not_found"}}}))),
+                    "/file.txt" => (StatusCode::OK, Json(json!({"is_deleted":true,"entries":[{"rev":"expired","is_restorable":false},{"rev":"good","size":7,"is_restorable":true}]}))),
+                    _ => panic!("unexpected path"),
+                }
+            }))
+            .route("/files/restore", post(|Json(request): Json<Value>| async move {
+                assert_eq!(request["path"], "/file.txt");
+                assert_eq!(request["rev"], "good");
+                Json(json!({"rev":"good"}))
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let entries = provider.list_deleted("/").await.unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].metadata["rev"], "good");
+        assert!(entries[1].is_dir);
+        assert_eq!(entries[2].metadata["trash_kind"], "unknown");
+        provider
+            .restore_file("/file.txt", "stale-rev")
+            .await
+            .unwrap();
+        assert!(provider
+            .restore_file("/folder", "")
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("dropbox.com"));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn a_throttled_revision_probe_fails_the_listing_instead_of_labelling_unknown() {
+        // Before the fix every probe error became `trash_kind: "unknown"`, so a
+        // 429 arrived at the UI as a successful list with a permanent-looking
+        // label on a row that Dropbox had simply refused to describe.
+        use axum::{
+            http::{header::RETRY_AFTER, StatusCode},
+            routing::post,
+            Json, Router,
+        };
+        use serde_json::{json, Value};
+        let app = Router::new()
+            .route(
+                "/files/list_folder",
+                post(|| async {
+                    Json(json!({"entries":[
+                    {".tag":"deleted","name":"file.txt","path_display":"/file.txt"},
+                    {".tag":"deleted","name":"busy","path_display":"/busy"}
+                ],"cursor":"done","has_more":false}))
+                }),
+            )
+            .route(
+                "/files/list_revisions",
+                post(|Json(request): Json<Value>| async move {
+                    match request["path"].as_str().unwrap() {
+                        "/busy" => (
+                            StatusCode::TOO_MANY_REQUESTS,
+                            [(RETRY_AFTER, "7")],
+                            Json(json!({"error":{".tag":"too_many_requests"},"retry_after":7})),
+                        ),
+                        _ => (
+                            StatusCode::OK,
+                            [(RETRY_AFTER, "0")],
+                            Json(json!({"is_deleted":true,"entries":[
+                                {"rev":"good","size":7,"is_restorable":true}
+                            ]})),
+                        ),
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let err = provider
+            .list_deleted("/")
+            .await
+            .expect_err("a throttled probe must not be reported as a complete listing");
+        let text = err.to_string();
+        assert!(text.contains("throttled"), "{text}");
+        // The retry hint rides along so the adaptive layer can pace the retry.
+        assert!(
+            text.contains(&crate::transfer_dag::adaptive::embed_retry_after_marker(7)),
+            "{text}"
+        );
+        server.abort();
     }
 
     #[test]

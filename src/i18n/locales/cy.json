@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Mae Dileu'n Barhaol a Gwagio'r Bin yn gofyn am gyfrif Dropbox Business/Team.",
             "setAsPrivate": "Gosod fel Preifat",
             "setAsPublic": "Gosod fel Cyhoeddus",
-            "makeAllPrivate": "Gwneud pob un yn breifat"
+            "makeAllPrivate": "Gwneud pob un yn breifat",
+            "dropboxRestoreLimit": "Gall AeroFTP adfer fersiynau o ffeiliau y gellir eu hadfer. Adferwch ffolderi o Ffeiliau wedi'u dileu ar dropbox.com. Mae marc cwestiwn yn golygu nad yw Dropbox wedi adnabod math yr eitem."
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",

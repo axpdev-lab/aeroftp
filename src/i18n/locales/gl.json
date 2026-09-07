@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "A eliminación permanente e o baleirado do lixo requiren unha conta Dropbox Business/Team.",
             "setAsPrivate": "Establecer como privado",
             "setAsPublic": "Establecer como público",
-            "makeAllPrivate": "Facer todo privado"
+            "makeAllPrivate": "Facer todo privado",
+            "dropboxRestoreLimit": "AeroFTP pode restaurar versións recuperables de ficheiros. Restaura os cartafoles desde Ficheiros eliminados en dropbox.com. Un signo de interrogación indica que Dropbox non identificou o tipo de elemento."
         },
         "transfer": {
             "transferring": "Transferindo...",

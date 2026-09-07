@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Trvalé odstranění a vyprázdnění koše vyžadují účet Dropbox Business/Team.",
             "setAsPrivate": "Nastavit jako soukromý",
             "setAsPublic": "Nastavit jako veřejný",
-            "makeAllPrivate": "Nastavit vše jako soukromé"
+            "makeAllPrivate": "Nastavit vše jako soukromé",
+            "dropboxRestoreLimit": "AeroFTP může obnovit obnovitelné verze souborů. Složky obnovte v části Smazané soubory na dropbox.com. Otazník znamená, že Dropbox nerozpoznal typ položky."
         },
         "transfer": {
             "transferring": "Přenášení...",

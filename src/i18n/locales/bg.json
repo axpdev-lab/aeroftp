@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Окончателното изтриване и изпразването на кошчето изискват акаунт Dropbox Business/Team.",
             "setAsPrivate": "Задаване като частен",
             "setAsPublic": "Задаване като публичен",
-            "makeAllPrivate": "Направи всички частни"
+            "makeAllPrivate": "Направи всички частни",
+            "dropboxRestoreLimit": "AeroFTP може да възстановява възстановими версии на файлове. Възстановявайте папки от „Изтрити файлове“ на dropbox.com. Въпросителният знак означава, че Dropbox не е определил типа на елемента."
         },
         "transfer": {
             "transferring": "Прехвърляне...",

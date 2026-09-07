@@ -509,7 +509,8 @@
             "dropboxPurgeBusinessOnly": "Permanent sletning og tømning af papirkurven kræver en Dropbox Business/Team-konto.",
             "setAsPrivate": "Angiv som privat",
             "setAsPublic": "Angiv som offentlig",
-            "makeAllPrivate": "Gør alle private"
+            "makeAllPrivate": "Gør alle private",
+            "dropboxRestoreLimit": "AeroFTP kan gendanne filversioner, der kan gendannes. Gendan mapper fra Slettede filer på dropbox.com. Et spørgsmålstegn betyder, at Dropbox ikke har identificeret elementtypen."
         },
         "transfer": {
             "transferring": "Overfører...",
