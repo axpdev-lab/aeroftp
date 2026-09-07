@@ -139,6 +139,26 @@ struct ListFolderResult {
     has_more: bool,
 }
 
+/// A revision probe that did not name the entry kind. `throttled` separates
+/// "Dropbox refused to answer right now" from "Dropbox answered, and the answer
+/// does not establish a kind": only the second one may become
+/// `trash_kind: "unknown"`, which reads as a property of the entry and, with the
+/// folder-restore guard, blocks restore.
+#[derive(Debug)]
+struct TrashProbeError {
+    error: ProviderError,
+    throttled: bool,
+}
+
+impl TrashProbeError {
+    fn hard(error: ProviderError) -> Self {
+        Self {
+            error,
+            throttled: false,
+        }
+    }
+}
+
 /// DeletedMetadata deliberately omits the original entry kind. Only a revision
 /// or an explicit `not_file` response can establish it; not_found is NOT a folder.
 #[derive(Debug)]
@@ -468,24 +488,49 @@ impl DropboxProvider {
         API_BASE
     }
 
-    async fn trash_revision(&self, path: &str) -> Result<TrashRevision, ProviderError> {
+    async fn trash_revision(&self, path: &str) -> Result<TrashRevision, TrashProbeError> {
+        let auth = self.auth_header().await.map_err(TrashProbeError::hard)?;
         let response = self
             .client
             .post(format!("{}/files/list_revisions", self.rpc_api_base()))
-            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(AUTHORIZATION, auth)
             .json(&serde_json::json!({
                 "path": self.normalize_path(path), "mode": "path", "limit": 100,
                 "include_restorable_info": true
             }))
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_err(|e| TrashProbeError::hard(ProviderError::ConnectionFailed(e.to_string())))?;
         let status = response.status();
+        let retry_header = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
         let body = response
             .text()
             .await
-            .map_err(|e| ProviderError::Other(e.to_string()))?;
-        parse_trash_revision(status, &body)
+            .map_err(|e| TrashProbeError::hard(ProviderError::Other(e.to_string())))?;
+        // The throttle test is `dropbox_is_rate_limited`, not the presence of a
+        // retry marker: Dropbox can answer 429 with no `retry_after` anywhere,
+        // and that is still a throttle.
+        if dropbox_is_rate_limited(status.as_u16(), &body) {
+            let mut msg = format!(
+                "Dropbox throttled the revision lookup ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            );
+            if let Some(tail) =
+                dropbox_retry_marker_tail(status.as_u16(), &body, retry_header.as_deref())
+            {
+                msg.push_str(&tail);
+            }
+            return Err(TrashProbeError {
+                error: ProviderError::Other(msg),
+                throttled: true,
+            });
+        }
+        parse_trash_revision(status, &body).map_err(TrashProbeError::hard)
     }
 
     /// List deleted files in a folder (includes deleted entries)
@@ -523,7 +568,11 @@ impl DropboxProvider {
 
         // Enrich tombstones without turning a failed probe into a guessed file
         // or hiding the entry. Bounded concurrency avoids one serial RTT per row.
-        use futures_util::{stream, StreamExt};
+        // A throttled probe fails the whole listing. Four concurrent probes make
+        // 429 reachable on a large trash, and swallowing it would hand the UI a
+        // successful list in which throttled rows are indistinguishable from
+        // genuinely unidentifiable ones.
+        use futures_util::{stream, StreamExt, TryStreamExt};
         let this = &*self;
         let deleted: Vec<RemoteEntry> =
             stream::iter(deleted.into_iter().map(|mut entry| async move {
@@ -542,15 +591,16 @@ impl DropboxProvider {
                         entry.metadata.insert("rev".into(), rev);
                         entry.metadata.insert("trash_kind".into(), "file".into());
                     }
+                    Err(probe) if probe.throttled => return Err(probe.error),
                     Err(_) => {
                         entry.metadata.insert("trash_kind".into(), "unknown".into());
                     }
                 }
-                entry
+                Ok(entry)
             }))
             .buffered(4)
-            .collect()
-            .await;
+            .try_collect()
+            .await?;
 
         info!("Listed {} deleted entries in {}", deleted.len(), path);
         Ok(deleted)
@@ -572,7 +622,7 @@ impl DropboxProvider {
         } else {
             format!("{}/{}", self.current_path, path)
         };
-        let effective_rev = match self.trash_revision(&lookup_path).await? {
+        let effective_rev = match self.trash_revision(&lookup_path).await.map_err(|e| e.error)? {
             TrashRevision::File { rev, .. } => rev,
             TrashRevision::Folder => return Err(ProviderError::Other("Dropbox's restore API restores file revisions, not folders. Restore this folder from Deleted files on dropbox.com.".into())),
         };
@@ -2884,6 +2934,67 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("dropbox.com"));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn a_throttled_revision_probe_fails_the_listing_instead_of_labelling_unknown() {
+        // Before the fix every probe error became `trash_kind: "unknown"`, so a
+        // 429 arrived at the UI as a successful list with a permanent-looking
+        // label on a row that Dropbox had simply refused to describe.
+        use axum::{
+            http::{header::RETRY_AFTER, StatusCode},
+            routing::post,
+            Json, Router,
+        };
+        use serde_json::{json, Value};
+        let app = Router::new()
+            .route(
+                "/files/list_folder",
+                post(|| async {
+                    Json(json!({"entries":[
+                    {".tag":"deleted","name":"file.txt","path_display":"/file.txt"},
+                    {".tag":"deleted","name":"busy","path_display":"/busy"}
+                ],"cursor":"done","has_more":false}))
+                }),
+            )
+            .route(
+                "/files/list_revisions",
+                post(|Json(request): Json<Value>| async move {
+                    match request["path"].as_str().unwrap() {
+                        "/busy" => (
+                            StatusCode::TOO_MANY_REQUESTS,
+                            [(RETRY_AFTER, "7")],
+                            Json(json!({"error":{".tag":"too_many_requests"},"retry_after":7})),
+                        ),
+                        _ => (
+                            StatusCode::OK,
+                            [(RETRY_AFTER, "0")],
+                            Json(json!({"is_deleted":true,"entries":[
+                                {"rev":"good","size":7,"is_restorable":true}
+                            ]})),
+                        ),
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let err = provider
+            .list_deleted("/")
+            .await
+            .expect_err("a throttled probe must not be reported as a complete listing");
+        let text = err.to_string();
+        assert!(text.contains("throttled"), "{text}");
+        // The retry hint rides along so the adaptive layer can pace the retry.
+        assert!(
+            text.contains(&crate::transfer_dag::adaptive::embed_retry_after_marker(7)),
+            "{text}"
+        );
         server.abort();
     }
 

@@ -29,6 +29,15 @@ use super::{
 
 const API_BASE: &str = "https://cloud-api.yandex.net/v1/disk";
 
+/// Budget for polling a queued `/resources` operation (move, copy, delete,
+/// trash). These finish server-side in seconds; a longer wait means the
+/// operation is stuck, not slow.
+const YANDEX_OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Budget for upload-by-url, where the queued operation is Yandex fetching a
+/// third-party URL. Sized for a real download, not for an API round trip.
+const YANDEX_REMOTE_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(900);
+
 /// Maximum number of attempts (initial + retries) for an upload PUT against
 /// a Yandex upload-target URL. Each attempt re-acquires the upload-target
 /// because the URL has a short TTL and may already be 410 Gone if reused.
@@ -486,9 +495,23 @@ impl YandexDiskProvider {
     /// 202 only acknowledges a queued mutation. Waiting for its operation is
     /// necessary before refreshing trash or checking the benchmark parent for
     /// emptiness (#368); otherwise the just-deleted child can still be listed.
+    /// Every `/resources` mutation that can answer 202 goes through here:
+    /// delete, trash restore/purge/empty, move, copy and upload-by-url.
     async fn finish_resource_operation(
         &mut self,
         response: reqwest::Response,
+    ) -> Result<(), ProviderError> {
+        self.finish_resource_operation_within(response, YANDEX_OPERATION_TIMEOUT)
+            .await
+    }
+
+    /// Same, with an explicit budget. Upload-by-url queues a server-side fetch
+    /// of an arbitrary remote URL, which routinely outlives the budget that is
+    /// generous for a move or a delete.
+    async fn finish_resource_operation_within(
+        &mut self,
+        response: reqwest::Response,
+        budget: std::time::Duration,
     ) -> Result<(), ProviderError> {
         if response.status() != reqwest::StatusCode::ACCEPTED {
             return if response.status().is_success() {
@@ -497,7 +520,7 @@ impl YandexDiskProvider {
                 Err(self.parse_error(response).await)
             };
         }
-        tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        tokio::time::timeout(budget, async {
             let link: YdLink = response
                 .json()
                 .await
@@ -1450,12 +1473,7 @@ impl StorageProvider for YandexDiskProvider {
             })
             .await?;
 
-        let status = resp.status();
-        if status.is_success() || status.as_u16() == 201 || status.as_u16() == 202 {
-            Ok(())
-        } else {
-            Err(self.parse_error(resp).await)
-        }
+        self.finish_resource_operation(resp).await
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -1751,12 +1769,7 @@ impl StorageProvider for YandexDiskProvider {
             })
             .await?;
 
-        let status = resp.status();
-        if status.is_success() || status.as_u16() == 201 || status.as_u16() == 202 {
-            Ok(())
-        } else {
-            Err(self.parse_error(resp).await)
-        }
+        self.finish_resource_operation(resp).await
     }
 
     fn supports_remote_upload(&self) -> bool {
@@ -1784,12 +1797,8 @@ impl StorageProvider for YandexDiskProvider {
             })
             .await?;
 
-        let status = resp.status();
-        if status.is_success() || status.as_u16() == 202 {
-            Ok(())
-        } else {
-            Err(self.parse_error(resp).await)
-        }
+        self.finish_resource_operation_within(resp, YANDEX_REMOTE_FETCH_TIMEOUT)
+            .await
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
