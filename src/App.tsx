@@ -445,6 +445,7 @@ import {
   clearProfileConnectFailure,
   PROFILES_CHANGED_EVENT,
 } from './utils/serverProfileStore';
+import { appendImportedProfiles } from './components/bridge/bridgeImportCommit';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createLocalEndpoint, createRemoteEndpoint } from './utils/panelEndpoints';
@@ -16158,9 +16159,7 @@ const App: React.FC = () => {
             onImport={async (newServers) => {
               // Bridge imports may have replaced a profile in the persisted
               // list; the dialog's opening snapshot is no longer authoritative.
-              const current = await loadSavedServerProfiles();
-              const merged = [...current, ...newServers];
-              await storeSavedServerProfiles(merged);
+              const merged = await appendImportedProfiles(newServers);
               setExportImportServers(merged);
               setServersRefreshKey(k => k + 1);
               setShowExportImport(false);

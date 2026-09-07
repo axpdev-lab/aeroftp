@@ -17,6 +17,27 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
         s.aeroCryptOverlay?.enabled ? (s.aeroCryptOverlay.remoteScope || '') : '']);
 
 /**
+ * Persist imported profiles onto the vault's current contents and hand the
+ * merged list back for the caller's local state.
+ *
+ * Two properties every import callback needs, and three of the four call sites
+ * had both wrong. The vault is the only ground truth: `loadSavedServerProfiles`
+ * throws when the read fails, so an empty result is an empty vault, and it can
+ * be empty precisely because `commitImportedServers` has just removed the
+ * profiles it is replacing. Falling back to the component's own snapshot in
+ * that case puts the replaced profile back next to its replacement. And a
+ * failed write has to propagate, so `commitImportedServers` can restore the
+ * backup it took: swallowing it reports a successful import over a vault that
+ * has already lost them.
+ */
+export async function appendImportedProfiles(newServers: ServerProfile[]): Promise<ServerProfile[]> {
+    const current = await loadSavedServerProfiles();
+    const merged = [...current, ...newServers];
+    await storeSavedServerProfiles(merged);
+    return merged;
+}
+
+/**
  * Merge imported profiles into the active user's vault partition with
  * the same add-vs-update split and rollback semantics used by the
  * legacy rclone/WinSCP/FileZilla confirm handlers. Single source of

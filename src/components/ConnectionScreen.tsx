@@ -48,6 +48,7 @@ import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
+import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import { carryFavoriteServer } from '../utils/favoriteServers';
 import { carryServerGroups } from '../utils/serverGroups';
 import { getStorageDedupKey } from '../utils/storageDedup';
@@ -6834,12 +6835,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 <ExportImportDialog
                     servers={servers}
                     onImport={async (newServers) => {
-                        // Read ground truth from the partition-aware vault to avoid stale state
-                        let currentServers = await loadSavedServerProfiles();
-                        if (currentServers.length === 0) currentServers = servers;
-                        const updated = [...currentServers, ...newServers];
+                        const updated = await appendImportedProfiles(newServers);
                         setServers(updated);
-                        await storeSavedServerProfiles(updated).catch(() => { });
                         setShowExportImport(false);
                         setSavedServersUpdate(Date.now());
                     }}
