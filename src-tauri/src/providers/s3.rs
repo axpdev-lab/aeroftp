@@ -1748,6 +1748,76 @@ impl S3Provider {
     /// Append S3 enterprise headers (ACL, storage class, SSE) to a headers
     /// map. Skipped entirely for MEGA S4 which does not support storage
     /// classes, ACLs or SSE.
+    /// The object metadata key rclone uses for the source modification time
+    /// (`X-Amz-Meta-Mtime`), so an object written by either tool reads back
+    /// the same mtime from the other. The value is unix seconds with an
+    /// optional fractional part ("1725600000.123456789").
+    const MTIME_METADATA_HEADER: &str = "x-amz-meta-mtime";
+
+    /// The `x-amz-meta-mtime` value for a local source file, or `None` when the
+    /// file has no readable modification time. S3 has no mtime of its own: the
+    /// `Last-Modified` it reports is the upload time, which is why a sync that
+    /// compares timestamps can never find equality unless the source mtime
+    /// travels with the object.
+    fn source_mtime_metadata(local_path: &str) -> Option<String> {
+        let modified = std::fs::metadata(local_path).ok()?.modified().ok()?;
+        Some(Self::format_mtime_metadata(modified))
+    }
+
+    /// Encode a system time as `x-amz-meta-mtime`: a signed decimal number of
+    /// seconds, the plain form rclone writes and reads (`-1.5 s` is
+    /// `-1.500000000`). The sign applies to the whole number; the parser
+    /// normalises it for `DateTime::from_timestamp`.
+    fn format_mtime_metadata(modified: std::time::SystemTime) -> String {
+        match modified.duration_since(std::time::UNIX_EPOCH) {
+            Ok(after) => format!("{}.{:09}", after.as_secs(), after.subsec_nanos()),
+            Err(before) => {
+                let d = before.duration();
+                format!("-{}.{:09}", d.as_secs(), d.subsec_nanos())
+            }
+        }
+    }
+
+    /// Parse an `x-amz-meta-mtime` value (integer or fractional unix seconds,
+    /// the forms rclone writes) into an RFC 3339 timestamp, or `None` when it
+    /// is not a timestamp.
+    fn parse_mtime_metadata(value: &str) -> Option<String> {
+        let value = value.trim();
+        let (negative, magnitude) = match value.strip_prefix('-') {
+            Some(rest) => (true, rest),
+            None => (false, value),
+        };
+        let (secs, frac) = match magnitude.split_once('.') {
+            Some((s, f)) => (s, f),
+            None => (magnitude, ""),
+        };
+        if secs.is_empty() || secs.chars().any(|c| !c.is_ascii_digit()) {
+            return None;
+        }
+        let secs: i128 = secs.parse().ok()?;
+        let nanos: i128 = if frac.is_empty() {
+            0
+        } else {
+            let digits: String = frac.chars().take(9).collect();
+            if digits.chars().any(|c| !c.is_ascii_digit()) {
+                return None;
+            }
+            format!("{:0<9}", digits).parse().ok()?
+        };
+        // A negative value applies to the whole number (`-1.5` is one and a
+        // half seconds before the epoch), so normalise after applying the sign.
+        let total_nanos = if negative {
+            -(secs * 1_000_000_000 + nanos)
+        } else {
+            secs * 1_000_000_000 + nanos
+        };
+        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(
+            i64::try_from(total_nanos.div_euclid(1_000_000_000)).ok()?,
+            u32::try_from(total_nanos.rem_euclid(1_000_000_000)).ok()?,
+        )?;
+        Some(dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+    }
+
     fn append_upload_headers(&self, headers: &mut HashMap<String, String>) {
         if self.is_mega_s4_endpoint() {
             return;
@@ -1832,6 +1902,7 @@ impl S3Provider {
         &self,
         key: &str,
         content_type: Option<&str>,
+        source_mtime: Option<String>,
     ) -> Result<String, ProviderError> {
         self.ensure_fresh_credentials().await?;
         // For multipart, Content-Type must be set on initiation, not on individual parts.
@@ -1854,6 +1925,10 @@ impl S3Provider {
         }
         // B2: Add storage class + SSE headers on multipart initiation
         self.append_upload_headers(&mut headers);
+        // Object metadata is fixed at initiation for a multipart object.
+        if let Some(mtime) = source_mtime {
+            headers.insert(Self::MTIME_METADATA_HEADER.to_string(), mtime);
+        }
         let authorization = self.sign_request("POST", &url, &mut headers, &payload_hash)?;
 
         let mut request = self.client.post(&url);
@@ -2089,7 +2164,11 @@ impl S3Provider {
             .first_or_octet_stream()
             .to_string();
         let upload_id = self
-            .create_multipart_upload(key, Some(&content_type))
+            .create_multipart_upload(
+                key,
+                Some(&content_type),
+                Self::source_mtime_metadata(local_path),
+            )
             .await?;
         let mut parts: Vec<(u32, String)> = Vec::new();
         let mut file = tokio::fs::File::open(local_path)
@@ -2315,6 +2394,7 @@ impl S3Provider {
         to_key: &str,
         source_size: u64,
         content_type: Option<&str>,
+        source_mtime: Option<String>,
     ) -> Result<(), ProviderError> {
         let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
 
@@ -2335,7 +2415,11 @@ impl S3Provider {
             )));
         }
 
-        let upload_id = self.create_multipart_upload(to_key, content_type).await?;
+        // UploadPartCopy carries no metadata directive: whatever the source
+        // object holds must be re-emitted here or the copy loses it.
+        let upload_id = self
+            .create_multipart_upload(to_key, content_type, source_mtime)
+            .await?;
 
         // KE-B1.1: same parallelism cap as multipart upload. UploadPartCopy
         // is server-to-server so the parallelism bottleneck is the source
@@ -3476,6 +3560,9 @@ impl StorageProvider for S3Provider {
         let mut headers = HashMap::new();
         // B2: Add storage class + SSE headers before signing
         self.append_upload_headers(&mut headers);
+        if let Some(mtime) = Self::source_mtime_metadata(local_path) {
+            headers.insert(Self::MTIME_METADATA_HEADER.to_string(), mtime);
+        }
         let authorization = self.sign_request("PUT", &url, &mut headers, payload_hash)?;
 
         // UPLOAD-01: Detect MIME type from filename extension
@@ -3754,11 +3841,21 @@ impl StorageProvider for S3Provider {
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);
 
+                // The source mtime travels as `x-amz-meta-mtime` (written by
+                // AeroFTP and by rclone); `Last-Modified` is only the upload
+                // time and is the fallback for objects written by neither.
                 let modified = response
                     .headers()
-                    .get("last-modified")
+                    .get(Self::MTIME_METADATA_HEADER)
                     .and_then(|v| v.to_str().ok())
-                    .map(|s| s.to_string());
+                    .and_then(Self::parse_mtime_metadata)
+                    .or_else(|| {
+                        response
+                            .headers()
+                            .get("last-modified")
+                            .and_then(|v| v.to_str().ok())
+                            .map(|s| s.to_string())
+                    });
 
                 let content_type = response
                     .headers()
@@ -3781,6 +3878,16 @@ impl StorageProvider for S3Provider {
                         metadata.insert("md5".to_string(), md5);
                     }
                     metadata.insert("etag".to_string(), etag);
+                }
+                // The raw value, for a multipart server-side copy that must
+                // re-emit it verbatim at initiation (`modified` above is the
+                // parsed, millisecond form).
+                if let Some(raw) = response
+                    .headers()
+                    .get(Self::MTIME_METADATA_HEADER)
+                    .and_then(|v| v.to_str().ok())
+                {
+                    metadata.insert(Self::MTIME_METADATA_HEADER.to_string(), raw.to_string());
                 }
 
                 Ok(RemoteEntry {
@@ -4287,8 +4394,18 @@ impl StorageProvider for S3Provider {
         // the source metadata is not (S3 multipart copy lacks the
         // single-PUT `metadata-directive: COPY` slot).
         let content_type = source_meta.mime_type;
-        self.server_side_copy_multipart(from_key, to_key, source_size, content_type.as_deref())
-            .await
+        let source_mtime = source_meta
+            .metadata
+            .get(Self::MTIME_METADATA_HEADER)
+            .cloned();
+        self.server_side_copy_multipart(
+            from_key,
+            to_key,
+            source_size,
+            content_type.as_deref(),
+            source_mtime,
+        )
+        .await
     }
 
     // Shaped-graph multipart trait wiring.
@@ -4304,7 +4421,7 @@ impl StorageProvider for S3Provider {
         remote_path: &str,
         _total_size: u64,
         content_type: Option<&str>,
-        _local_source_path: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -4319,7 +4436,13 @@ impl StorageProvider for S3Provider {
             ));
         }
         let key = remote_path.trim_start_matches('/');
-        let upload_id = self.create_multipart_upload(key, content_type).await?;
+        let upload_id = self
+            .create_multipart_upload(
+                key,
+                content_type,
+                local_source_path.and_then(Self::source_mtime_metadata),
+            )
+            .await?;
         Ok(MultipartHandle {
             upload_id,
             remote_path: key.to_string(),
@@ -7393,6 +7516,240 @@ mod tests {
     // ---------------------------------------------------------------------
     // KE-E1: S3 Retry-After detection (Sprint K1)
     // ---------------------------------------------------------------------
+
+    #[test]
+    fn mtime_metadata_parses_rclone_forms_and_rejects_garbage() {
+        // rclone writes unix seconds with a fractional part; older writers
+        // wrote the integer alone. Both must read back to the same instant.
+        assert_eq!(
+            S3Provider::parse_mtime_metadata("1725600000.123456789").as_deref(),
+            Some("2024-09-06T05:20:00.123Z")
+        );
+        assert_eq!(
+            S3Provider::parse_mtime_metadata("1725600000").as_deref(),
+            Some("2024-09-06T05:20:00.000Z")
+        );
+        assert_eq!(
+            S3Provider::parse_mtime_metadata(" 1725600000.5 ").as_deref(),
+            Some("2024-09-06T05:20:00.500Z")
+        );
+        // Before the epoch: the sign applies to the whole number.
+        assert_eq!(
+            S3Provider::parse_mtime_metadata("-0.5").as_deref(),
+            Some("1969-12-31T23:59:59.500Z")
+        );
+        assert_eq!(
+            S3Provider::parse_mtime_metadata("-1.5").as_deref(),
+            Some("1969-12-31T23:59:58.500Z")
+        );
+        // Full-precision negative form, as this crate writes it.
+        assert_eq!(
+            S3Provider::parse_mtime_metadata("-2.500000000").as_deref(),
+            Some("1969-12-31T23:59:57.500Z")
+        );
+        for bad in ["", "yesterday", "1725600000.12x", "1e9", "-", "--1", "-x.5"] {
+            assert!(
+                S3Provider::parse_mtime_metadata(bad).is_none(),
+                "{bad:?} is not a timestamp"
+            );
+        }
+    }
+
+    #[test]
+    fn source_mtime_metadata_round_trips_through_parse() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("src.bin");
+        std::fs::write(&path, b"payload").expect("write");
+        let stamp = filetime::FileTime::from_unix_time(1_725_600_000, 123_000_000);
+        filetime::set_file_mtime(&path, stamp).expect("set mtime");
+        let value = S3Provider::source_mtime_metadata(path.to_str().unwrap()).expect("value");
+        assert_eq!(value, "1725600000.123000000");
+        assert_eq!(
+            S3Provider::parse_mtime_metadata(&value).as_deref(),
+            Some("2024-09-06T05:20:00.123Z")
+        );
+        assert!(S3Provider::source_mtime_metadata("/definitely/not/here").is_none());
+        // A pre-epoch mtime is written as a signed decimal and round-trips.
+        let old = std::time::UNIX_EPOCH - std::time::Duration::from_millis(1500);
+        assert_eq!(S3Provider::format_mtime_metadata(old), "-1.500000000");
+        assert_eq!(
+            S3Provider::parse_mtime_metadata(&S3Provider::format_mtime_metadata(old)).as_deref(),
+            Some("1969-12-31T23:59:58.500Z")
+        );
+    }
+
+    #[tokio::test]
+    async fn multipart_server_side_copy_re_emits_the_source_mtime_at_initiation() {
+        // Above COPY_OBJECT_MAX the copy goes through UploadPartCopy, which
+        // carries no metadata directive; the source's raw x-amz-meta-mtime must
+        // be sent on the initiation request or the copy loses it.
+        use std::sync::{Arc, Mutex};
+        let init_header: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let seen = Arc::clone(&init_header);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().clone();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let headers = req.headers().clone();
+                    if method == axum::http::Method::HEAD {
+                        return axum::response::Response::builder()
+                            .header("content-length", "6442450944")
+                            .header("last-modified", "Sun, 06 Sep 2026 20:11:32 GMT")
+                            .header("x-amz-meta-mtime", "1725600000.123456789")
+                            .header("etag", "\"src\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    if method == axum::http::Method::POST && query.starts_with("uploads") {
+                        *seen.lock().unwrap() = headers
+                            .get("x-amz-meta-mtime")
+                            .and_then(|v| v.to_str().ok())
+                            .map(String::from);
+                        return axum::response::Response::new(axum::body::Body::from(
+                            "<InitiateMultipartUploadResult><UploadId>u1</UploadId></InitiateMultipartUploadResult>",
+                        ));
+                    }
+                    if method == axum::http::Method::PUT && headers.contains_key("x-amz-copy-source") {
+                        return axum::response::Response::new(axum::body::Body::from(
+                            "<CopyPartResult><ETag>\"part\"</ETag></CopyPartResult>",
+                        ));
+                    }
+                    axum::response::Response::new(axum::body::Body::from(
+                        "<CompleteMultipartUploadResult/>",
+                    ))
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider
+            .server_side_copy("/big.bin", "/big-copy.bin")
+            .await
+            .expect("multipart server-side copy");
+        assert_eq!(
+            init_header.lock().unwrap().as_deref(),
+            Some("1725600000.123456789"),
+            "initiation must carry the source's raw x-amz-meta-mtime"
+        );
+    }
+
+    #[tokio::test]
+    async fn stat_prefers_the_mtime_metadata_over_last_modified() {
+        // An object written by AeroFTP or rclone carries the source mtime as
+        // metadata; `Last-Modified` is only the upload time and stays the
+        // fallback for objects written by neither.
+        let app = axum::Router::new().route(
+            "/test-bucket/{*key}",
+            axum::routing::head(|| async {
+                (
+                    [
+                        ("content-length", "7"),
+                        ("last-modified", "Sun, 06 Sep 2026 20:11:32 GMT"),
+                        ("x-amz-meta-mtime", "1725600000.123456789"),
+                        ("etag", "\"abc\""),
+                    ],
+                    "",
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let entry = provider.stat("/with-meta.bin").await.expect("stat");
+        assert_eq!(entry.modified.as_deref(), Some("2024-09-06T05:20:00.123Z"));
+        assert_eq!(entry.size, 7);
+    }
+
+    #[tokio::test]
+    async fn stat_falls_back_to_last_modified_without_metadata() {
+        let app = axum::Router::new().route(
+            "/test-bucket/{*key}",
+            axum::routing::head(|| async {
+                (
+                    [
+                        ("content-length", "7"),
+                        ("last-modified", "Sun, 06 Sep 2026 20:11:32 GMT"),
+                    ],
+                    "",
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let entry = provider.stat("/plain.bin").await.expect("stat");
+        assert_eq!(
+            entry.modified.as_deref(),
+            Some("Sun, 06 Sep 2026 20:11:32 GMT")
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_sends_the_source_mtime_as_object_metadata() {
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let seen_put = Arc::clone(&seen);
+        let app = axum::Router::new().route(
+            "/test-bucket/{*key}",
+            axum::routing::put(move |headers: axum::http::HeaderMap| {
+                let seen = Arc::clone(&seen_put);
+                async move {
+                    *seen.lock().unwrap() = headers
+                        .get("x-amz-meta-mtime")
+                        .and_then(|v| v.to_str().ok())
+                        .map(String::from);
+                    ([("etag", "\"abc\"")], "")
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("src.bin");
+        std::fs::write(&path, b"payload").expect("write");
+        filetime::set_file_mtime(
+            &path,
+            filetime::FileTime::from_unix_time(1_725_600_000, 123_000_000),
+        )
+        .expect("set mtime");
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider
+            .upload(path.to_str().unwrap(), "/dst.bin", None)
+            .await
+            .expect("upload");
+        assert_eq!(
+            seen.lock().unwrap().as_deref(),
+            Some("1725600000.123000000"),
+            "the PUT must carry the source mtime as x-amz-meta-mtime"
+        );
+    }
 
     #[test]
     fn s3_is_rate_limited_recognises_429() {
