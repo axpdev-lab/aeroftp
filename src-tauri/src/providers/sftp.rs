@@ -61,7 +61,12 @@ const SFTP_MULTI_THREAD_MAX_STREAMS: usize = 16;
 /// permit a very large numeric window.
 const SFTP_READAHEAD_JOB_BUFFER_BUDGET: u64 = 128 * 1024 * 1024;
 const SFTP_READAHEAD_JOB_MAX_HANDLES: usize = 256;
-const SFTP_READAHEAD_DEFAULT_WINDOW: usize = 16;
+/// Read-ahead window used when nothing else asks for one. Measured on the
+/// Hetzner lab SFTP over a 53 ms link with a 300 MiB file (2026-09-07):
+/// serial reads 118 to 129 s, window 16: 38.8 s, window 32: 34.5 s, window
+/// 64: 35.6 s, rclone 30 s. 32 is where the curve flattens; a bandwidth cap
+/// still takes the serial loop, which owns the precise throttle.
+const SFTP_READAHEAD_DEFAULT_WINDOW: usize = 32;
 const SFTP_READAHEAD_MAX_WINDOW: usize = 1024;
 
 /// Default intra-file cutoff: below this a single SFTP stream is faster
@@ -345,7 +350,14 @@ impl SftpReadaheadSetting {
 
     fn requested_window_from(self, legacy_raw: Option<&str>) -> Option<usize> {
         match self {
-            Self::LegacyEnvironment => parse_sftp_readahead_window(legacy_raw),
+            // Nothing asked: read ahead by default. An explicit value in the
+            // environment still wins, including an explicit "off"; the
+            // single-stream SFTP download was one 256 KiB read per round trip
+            // without it (see `SFTP_READAHEAD_DEFAULT_WINDOW`).
+            Self::LegacyEnvironment => match legacy_raw {
+                None => Some(SFTP_READAHEAD_DEFAULT_WINDOW),
+                Some(raw) => parse_sftp_readahead_window(Some(raw)),
+            },
             Self::Disabled => None,
             Self::Window(window) => Some(window),
         }
@@ -3727,9 +3739,16 @@ mod tests {
     #[test]
     fn readahead_provider_state_distinguishes_legacy_disabled_and_window() {
         let legacy = SftpReadaheadSetting::LegacyEnvironment;
-        assert_eq!(legacy.requested_window_from(Some("on")), Some(16));
+        // Unset: the measured default window, not a serial read per round trip.
+        assert_eq!(
+            legacy.requested_window_from(None),
+            Some(SFTP_READAHEAD_DEFAULT_WINDOW)
+        );
+        assert_eq!(legacy.requested_window_from(Some("on")), Some(32));
         assert_eq!(legacy.requested_window_from(Some("64")), Some(64));
+        // An explicit "off" or "0" in the environment still disables it.
         assert_eq!(legacy.requested_window_from(Some("off")), None);
+        assert_eq!(legacy.requested_window_from(Some("0")), None);
 
         let disabled = SftpReadaheadSetting::from_explicit(None);
         assert_eq!(disabled, SftpReadaheadSetting::Disabled);
