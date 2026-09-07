@@ -155,6 +155,44 @@ open still fails, re-toggle File Transfer on the phone and retry.
 **Azure rename = copy+delete
 ***kDrive rename = move to same parent with new name
 
+### S3 empty folders and rclone interoperability
+
+AeroFTP preserves empty folders with a zero-byte object whose key ends in `/`,
+tagged `application/x-directory`. This follows the
+[AWS folder convention](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-folders.html).
+Markers remain when a folder gains children, preserving the explicitly created
+folder if its children are later removed.
+
+S3 profiles exported to rclone enable `directory_markers = true`. For older
+exports or independently configured remotes, enable that setting in the S3
+backend section or pass `--s3-directory-markers`:
+
+```sh
+rclone purge "remote:bucket/scratch-folder" --s3-directory-markers
+```
+
+This command deletes the specified folder and its contents. With rclone 1.74.0
+and the option disabled, purging a folder with its own marker constructs a key
+ending in `//`: MinIO returns an error, while Cloudflare R2 returns success for
+that absent key and leaves the actual marker behind. Both were verified live;
+the option removes the marker correctly on both. A successful exit without the
+option does not establish that the folder was removed. See
+[rclone's S3 directory marker setting](https://rclone.org/s3/#s3-directory-markers).
+
+AeroFTP recursive deletion removes the folder's marker and children. An object
+with the same name **without** the trailing slash is a distinct file and is
+preserved unless HEAD identifies it as a zero-byte directory marker used by a
+gateway. Errors from individual DELETE requests are reported even when the
+server does not support batch deletion.
+A fresh listing after recursive deletion also reports an error if objects
+remain, including children a gateway only exposes after a conflicting object
+has been deleted.
+
+Backblaze S3 exports use rclone's `provider = Other` with the B2 S3 endpoint;
+`Backblaze` is not a supported S3 provider name in rclone 1.74.0. Native B2 is
+a separate backend. For existing buckets with credentials that cannot create
+buckets, rclone uploads or mkdir may also need `--s3-no-check-bucket`.
+
 ### Advanced Operations (v1.4.0)
 
 | Operation | FTP | FTPS | SFTP | WebDAV | S3 | GDrive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen | Zoho WD | Internxt | kDrive | FileLu | Yandex | OpenDrive |
