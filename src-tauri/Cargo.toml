@@ -136,7 +136,7 @@ md-5 = "0.10"
 md4 = "0.10"
 zip = { version = "8", default-features = false, features = ["deflate", "deflate64", "bzip2", "lzma", "zstd", "xz", "aes-crypto"] }
 walkdir = "2"
-quick-xml = "0.41"
+quick-xml = "0.42"
 
 # OAuth2 Cloud Providers (Sprint 2)
 oauth2 = { version = "5", default-features = false }
