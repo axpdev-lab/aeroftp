@@ -1761,8 +1761,21 @@ impl S3Provider {
     /// travels with the object.
     fn source_mtime_metadata(local_path: &str) -> Option<String> {
         let modified = std::fs::metadata(local_path).ok()?.modified().ok()?;
-        let since = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
-        Some(format!("{}.{:09}", since.as_secs(), since.subsec_nanos()))
+        Some(Self::format_mtime_metadata(modified))
+    }
+
+    /// Encode a system time as `x-amz-meta-mtime`: a signed decimal number of
+    /// seconds, the plain form rclone writes and reads (`-1.5 s` is
+    /// `-1.500000000`). The sign applies to the whole number; the parser
+    /// normalises it for `DateTime::from_timestamp`.
+    fn format_mtime_metadata(modified: std::time::SystemTime) -> String {
+        match modified.duration_since(std::time::UNIX_EPOCH) {
+            Ok(after) => format!("{}.{:09}", after.as_secs(), after.subsec_nanos()),
+            Err(before) => {
+                let d = before.duration();
+                format!("-{}.{:09}", d.as_secs(), d.subsec_nanos())
+            }
+        }
     }
 
     /// Parse an `x-amz-meta-mtime` value (integer or fractional unix seconds,
@@ -1770,12 +1783,19 @@ impl S3Provider {
     /// is not a timestamp.
     fn parse_mtime_metadata(value: &str) -> Option<String> {
         let value = value.trim();
-        let (secs, frac) = match value.split_once('.') {
-            Some((s, f)) => (s, f),
-            None => (value, ""),
+        let (negative, magnitude) = match value.strip_prefix('-') {
+            Some(rest) => (true, rest),
+            None => (false, value),
         };
-        let secs: i64 = secs.parse().ok()?;
-        let nanos: u32 = if frac.is_empty() {
+        let (secs, frac) = match magnitude.split_once('.') {
+            Some((s, f)) => (s, f),
+            None => (magnitude, ""),
+        };
+        if secs.is_empty() || secs.chars().any(|c| !c.is_ascii_digit()) {
+            return None;
+        }
+        let secs: i128 = secs.parse().ok()?;
+        let nanos: i128 = if frac.is_empty() {
             0
         } else {
             let digits: String = frac.chars().take(9).collect();
@@ -1784,7 +1804,17 @@ impl S3Provider {
             }
             format!("{:0<9}", digits).parse().ok()?
         };
-        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nanos)?;
+        // A negative value applies to the whole number (`-1.5` is one and a
+        // half seconds before the epoch), so normalise after applying the sign.
+        let total_nanos = if negative {
+            -(secs * 1_000_000_000 + nanos)
+        } else {
+            secs * 1_000_000_000 + nanos
+        };
+        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(
+            i64::try_from(total_nanos.div_euclid(1_000_000_000)).ok()?,
+            u32::try_from(total_nanos.rem_euclid(1_000_000_000)).ok()?,
+        )?;
         Some(dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
     }
 
@@ -2364,6 +2394,7 @@ impl S3Provider {
         to_key: &str,
         source_size: u64,
         content_type: Option<&str>,
+        source_mtime: Option<String>,
     ) -> Result<(), ProviderError> {
         let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
 
@@ -2384,8 +2415,10 @@ impl S3Provider {
             )));
         }
 
+        // UploadPartCopy carries no metadata directive: whatever the source
+        // object holds must be re-emitted here or the copy loses it.
         let upload_id = self
-            .create_multipart_upload(to_key, content_type, None)
+            .create_multipart_upload(to_key, content_type, source_mtime)
             .await?;
 
         // KE-B1.1: same parallelism cap as multipart upload. UploadPartCopy
@@ -3846,6 +3879,16 @@ impl StorageProvider for S3Provider {
                     }
                     metadata.insert("etag".to_string(), etag);
                 }
+                // The raw value, for a multipart server-side copy that must
+                // re-emit it verbatim at initiation (`modified` above is the
+                // parsed, millisecond form).
+                if let Some(raw) = response
+                    .headers()
+                    .get(Self::MTIME_METADATA_HEADER)
+                    .and_then(|v| v.to_str().ok())
+                {
+                    metadata.insert(Self::MTIME_METADATA_HEADER.to_string(), raw.to_string());
+                }
 
                 Ok(RemoteEntry {
                     name,
@@ -4351,8 +4394,18 @@ impl StorageProvider for S3Provider {
         // the source metadata is not (S3 multipart copy lacks the
         // single-PUT `metadata-directive: COPY` slot).
         let content_type = source_meta.mime_type;
-        self.server_side_copy_multipart(from_key, to_key, source_size, content_type.as_deref())
-            .await
+        let source_mtime = source_meta
+            .metadata
+            .get(Self::MTIME_METADATA_HEADER)
+            .cloned();
+        self.server_side_copy_multipart(
+            from_key,
+            to_key,
+            source_size,
+            content_type.as_deref(),
+            source_mtime,
+        )
+        .await
     }
 
     // Shaped-graph multipart trait wiring.
@@ -7480,7 +7533,21 @@ mod tests {
             S3Provider::parse_mtime_metadata(" 1725600000.5 ").as_deref(),
             Some("2024-09-06T05:20:00.500Z")
         );
-        for bad in ["", "yesterday", "1725600000.12x", "1e9", "-"] {
+        // Before the epoch: the sign applies to the whole number.
+        assert_eq!(
+            S3Provider::parse_mtime_metadata("-0.5").as_deref(),
+            Some("1969-12-31T23:59:59.500Z")
+        );
+        assert_eq!(
+            S3Provider::parse_mtime_metadata("-1.5").as_deref(),
+            Some("1969-12-31T23:59:58.500Z")
+        );
+        // Full-precision negative form, as this crate writes it.
+        assert_eq!(
+            S3Provider::parse_mtime_metadata("-2.500000000").as_deref(),
+            Some("1969-12-31T23:59:57.500Z")
+        );
+        for bad in ["", "yesterday", "1725600000.12x", "1e9", "-", "--1", "-x.5"] {
             assert!(
                 S3Provider::parse_mtime_metadata(bad).is_none(),
                 "{bad:?} is not a timestamp"
@@ -7502,6 +7569,77 @@ mod tests {
             Some("2024-09-06T05:20:00.123Z")
         );
         assert!(S3Provider::source_mtime_metadata("/definitely/not/here").is_none());
+        // A pre-epoch mtime is written as a signed decimal and round-trips.
+        let old = std::time::UNIX_EPOCH - std::time::Duration::from_millis(1500);
+        assert_eq!(S3Provider::format_mtime_metadata(old), "-1.500000000");
+        assert_eq!(
+            S3Provider::parse_mtime_metadata(&S3Provider::format_mtime_metadata(old)).as_deref(),
+            Some("1969-12-31T23:59:58.500Z")
+        );
+    }
+
+    #[tokio::test]
+    async fn multipart_server_side_copy_re_emits_the_source_mtime_at_initiation() {
+        // Above COPY_OBJECT_MAX the copy goes through UploadPartCopy, which
+        // carries no metadata directive; the source's raw x-amz-meta-mtime must
+        // be sent on the initiation request or the copy loses it.
+        use std::sync::{Arc, Mutex};
+        let init_header: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let seen = Arc::clone(&init_header);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().clone();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let headers = req.headers().clone();
+                    if method == axum::http::Method::HEAD {
+                        return axum::response::Response::builder()
+                            .header("content-length", "6442450944")
+                            .header("last-modified", "Sun, 06 Sep 2026 20:11:32 GMT")
+                            .header("x-amz-meta-mtime", "1725600000.123456789")
+                            .header("etag", "\"src\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    if method == axum::http::Method::POST && query.starts_with("uploads") {
+                        *seen.lock().unwrap() = headers
+                            .get("x-amz-meta-mtime")
+                            .and_then(|v| v.to_str().ok())
+                            .map(String::from);
+                        return axum::response::Response::new(axum::body::Body::from(
+                            "<InitiateMultipartUploadResult><UploadId>u1</UploadId></InitiateMultipartUploadResult>",
+                        ));
+                    }
+                    if method == axum::http::Method::PUT && headers.contains_key("x-amz-copy-source") {
+                        return axum::response::Response::new(axum::body::Body::from(
+                            "<CopyPartResult><ETag>\"part\"</ETag></CopyPartResult>",
+                        ));
+                    }
+                    axum::response::Response::new(axum::body::Body::from(
+                        "<CompleteMultipartUploadResult/>",
+                    ))
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider
+            .server_side_copy("/big.bin", "/big-copy.bin")
+            .await
+            .expect("multipart server-side copy");
+        assert_eq!(
+            init_header.lock().unwrap().as_deref(),
+            Some("1725600000.123456789"),
+            "initiation must carry the source's raw x-amz-meta-mtime"
+        );
     }
 
     #[tokio::test]
