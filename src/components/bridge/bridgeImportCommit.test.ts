@@ -94,4 +94,18 @@ describe('the import callback and the commit helper together', () => {
         expect(vault.profiles).toEqual([]);
         expect(outcome.error).toContain('could not be restored');
     });
+
+    it('refuses the import when the saved profiles cannot be read, without writing or calling back', async () => {
+        const vault = fakeVault([base]);
+        vi.mocked(loadSavedServerProfiles).mockRejectedValueOnce(new Error('vault read failed'));
+        const onImport = vi.fn();
+        const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };
+        const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]), onImport);
+        expect(outcome).toEqual({ added: 0, updated: 0, error: expect.stringContaining('could not be read') });
+        // Nothing ran on the vault: no removal, no callback, so no second read
+        // could disagree with the first and leave the old profile next to the new one.
+        expect(onImport).not.toHaveBeenCalled();
+        expect(vault.writes).toBe(0);
+        expect(vault.profiles.map(s => s.id)).toEqual(['base']);
+    });
 });

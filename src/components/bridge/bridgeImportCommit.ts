@@ -52,9 +52,26 @@ export async function commitImportedServers(
     const added = selected.filter(s => !existingServerKeys.has(key(s)));
     const updated = selected.filter(s => existingServerKeys.has(key(s)));
 
-    const backup = await loadSavedServerProfiles().catch(() => null);
+    // The whole replace path hangs off this read: it decides which profiles are
+    // removed, and it is the only copy that can be put back if the import then
+    // fails. Swallowing a failed read and carrying on imports against an unknown
+    // vault, skips the removal, and lands the replacement next to the profile it
+    // was meant to replace while reporting it as an update. A vault with no
+    // profiles yet reads as an empty list, not as a failure, so refusing here
+    // costs a first import nothing.
+    let backup: ServerProfile[];
     try {
-        if (updated.length > 0 && backup && backup.length > 0) {
+        backup = await loadSavedServerProfiles();
+    } catch {
+        return {
+            added: 0,
+            updated: 0,
+            error: 'Import failed. The saved profiles could not be read, so nothing was changed.',
+        };
+    }
+
+    try {
+        if (updated.length > 0 && backup.length > 0) {
             const updatedKeys = new Set(updated.map(key));
             const filtered = backup.filter(s => !updatedKeys.has(key(s)));
             await storeSavedServerProfiles(filtered);
@@ -65,8 +82,7 @@ export async function commitImportedServers(
         // made when the rollback actually succeeded. A failed restore leaves the
         // profiles this call removed gone, and saying nothing happened would
         // send the user away from the one screen they need to look at.
-        const restored = backup === null
-            || (await storeSavedServerProfiles(backup).then(() => true, () => false));
+        const restored = await storeSavedServerProfiles(backup).then(() => true, () => false);
         return {
             added: 0,
             updated: 0,
