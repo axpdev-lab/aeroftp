@@ -272,7 +272,10 @@ pub async fn download_release_asset(
         .await
         .map_err(ProviderError::IoError)?;
 
-    let mut stream = resp.bytes_stream();
+    let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
+        resp.bytes_stream(),
+        crate::transfer_dag::governor::TransferDirection::Download,
+    ));
     while let Some(chunk) = stream.next().await {
         let bytes = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         atomic

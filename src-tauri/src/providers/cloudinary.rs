@@ -763,7 +763,10 @@ impl StorageProvider for CloudinaryProvider {
             .await
             .map_err(ProviderError::IoError)?;
         let mut downloaded = 0u64;
-        let mut stream = resp.bytes_stream();
+        let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
+            resp.bytes_stream(),
+            crate::transfer_dag::governor::TransferDirection::Download,
+        ));
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
@@ -900,7 +903,11 @@ impl StorageProvider for CloudinaryProvider {
 
         let mut uploaded = 0u64;
         let progress_cb = on_progress;
-        let stream = ReaderStream::with_capacity(file, 64 * 1024).map(move |chunk| {
+        let stream = crate::transfer_dag::throttle::throttle_stream(
+            ReaderStream::with_capacity(file, 64 * 1024),
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        )
+        .map(move |chunk| {
             if let Ok(bytes) = &chunk {
                 uploaded += bytes.len() as u64;
                 if let Some(ref cb) = progress_cb {

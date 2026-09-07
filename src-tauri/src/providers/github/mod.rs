@@ -1211,7 +1211,10 @@ impl StorageProvider for GitHubProvider {
             .map_err(ProviderError::from)?;
 
         let content_len = resp.content_length().unwrap_or(total_size);
-        let mut stream = resp.bytes_stream();
+        let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
+            resp.bytes_stream(),
+            crate::transfer_dag::governor::TransferDirection::Download,
+        ));
         let mut atomic = crate::providers::atomic_write::AtomicFile::new(local_path)
             .await
             .map_err(ProviderError::IoError)?;

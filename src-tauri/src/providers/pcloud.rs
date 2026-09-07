@@ -996,7 +996,10 @@ impl StorageProvider for PCloudProvider {
                 }
             }
         });
-        let body = reqwest::Body::wrap_stream(stream);
+        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
+            stream,
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        ));
 
         // stream_with_length sets Content-Length so pCloud doesn't hang on chunked encoding
         let form = reqwest::multipart::Form::new()

@@ -1329,7 +1329,10 @@ impl StorageProvider for OneDriveProvider {
             .await
             .map_err(|e| ProviderError::Other(format!("Open error: {}", e)))?;
         let stream = tokio_util::io::ReaderStream::new(file);
-        let body = reqwest::Body::wrap_stream(stream);
+        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
+            stream,
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        ));
 
         let path = if remote_path.starts_with('/') {
             remote_path.to_string()
