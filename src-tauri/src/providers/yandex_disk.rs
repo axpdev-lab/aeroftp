@@ -879,7 +879,13 @@ impl YandexDiskProvider {
                         .put(&link.href)
                         .header("Content-Type", "application/octet-stream")
                         .header("Content-Range", &content_range)
-                        .body(buf.clone());
+                        // Fixed-length contract kept explicit: a paced body is a
+                        // stream, and the length header keeps it unchunked.
+                        .header("Content-Length", buf.len().to_string())
+                        .body(crate::transfer_dag::throttle::owned_body(
+                            buf.clone(),
+                            crate::transfer_dag::governor::TransferDirection::Upload,
+                        ));
 
                     match req.send().await {
                         Ok(resp) => {
@@ -1325,7 +1331,11 @@ impl StorageProvider for YandexDiskProvider {
 
             let progress_for_attempt = progress_tx.clone();
             let mut uploaded: u64 = 0;
-            let stream = ReaderStream::with_capacity(file, 65536).map(move |chunk| {
+            let stream = crate::transfer_dag::throttle::throttle_stream(
+                ReaderStream::with_capacity(file, 65536),
+                crate::transfer_dag::governor::TransferDirection::Upload,
+            )
+            .map(move |chunk| {
                 if let Ok(bytes) = &chunk {
                     uploaded += bytes.len() as u64;
                     if let Some(ref tx) = progress_for_attempt {
@@ -1335,10 +1345,7 @@ impl StorageProvider for YandexDiskProvider {
                 chunk
             });
 
-            let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
-                stream,
-                crate::transfer_dag::governor::TransferDirection::Upload,
-            ));
+            let body = reqwest::Body::wrap_stream(stream);
             let put_result = self
                 .client
                 .put(&link.href)

@@ -563,7 +563,11 @@ impl StorageProvider for UploadcareProvider {
             .map_err(ProviderError::IoError)?;
         let mut uploaded = 0u64;
         let progress_cb = on_progress;
-        let stream = ReaderStream::with_capacity(file, 64 * 1024).map(move |chunk| {
+        let stream = crate::transfer_dag::throttle::throttle_stream(
+            ReaderStream::with_capacity(file, 64 * 1024),
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        )
+        .map(move |chunk| {
             if let Ok(bytes) = &chunk {
                 uploaded += bytes.len() as u64;
                 if let Some(ref cb) = progress_cb {
@@ -574,10 +578,7 @@ impl StorageProvider for UploadcareProvider {
         });
 
         let mime = mime_guess::from_path(&file_name).first_or_octet_stream();
-        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
-            stream,
-            crate::transfer_dag::governor::TransferDirection::Upload,
-        ));
+        let body = reqwest::Body::wrap_stream(stream);
         let file_part = multipart::Part::stream_with_length(body, total)
             .file_name(file_name.clone())
             .mime_str(mime.as_ref())
