@@ -781,21 +781,49 @@ pub async fn resolve_provider_list_session_model(
 /// exact per-file re-dial behaviour and the pool stays empty for them.
 #[derive(Clone, Default)]
 struct WarmWorkerPool {
-    workers: Arc<Mutex<Vec<Box<dyn StorageProvider>>>>,
+    workers: Arc<Mutex<Vec<WarmWorker>>>,
+}
+
+/// How many files one warm connection serves before it is retired and the
+/// next file dials afresh. A session that lives across thousands of files
+/// accumulates state no single transfer would ever see (the review battery of
+/// 2026-09-06 hit the SFTP client's open-handle counter on 4 of 5000 files
+/// with unbounded reuse); rclone's pools retire connections the same way.
+/// 128 files amortise the handshake to well under 1% per file on a WAN link.
+const WARM_WORKER_MAX_FILES: u32 = 128;
+
+/// A clone worker together with the number of files it has already served.
+struct WarmWorker {
+    provider: Box<dyn StorageProvider>,
+    files_served: u32,
+}
+
+impl WarmWorker {
+    fn fresh(provider: Box<dyn StorageProvider>) -> Self {
+        Self {
+            provider,
+            files_served: 0,
+        }
+    }
 }
 
 impl WarmWorkerPool {
     /// Pop a parked warm worker, if any is available for reuse.
-    async fn take(&self) -> Option<Box<dyn StorageProvider>> {
+    async fn take(&self) -> Option<WarmWorker> {
         self.workers.lock().await.pop()
     }
 
     /// Park a worker for the next file to reuse, but only when it opted into
     /// reuse AND its last transfer succeeded: a failed or skipped transfer may
     /// leave the control/data stream desynced, so that connection is dropped
-    /// (closed on `Box` drop) rather than recycled.
-    async fn park(&self, worker: Box<dyn StorageProvider>, outcome: &TransferOutcome) {
-        if matches!(outcome, TransferOutcome::Success) && worker.supports_transfer_worker_reuse() {
+    /// (closed on `Box` drop) rather than recycled. A worker that has served
+    /// [`WARM_WORKER_MAX_FILES`] files is retired the same way.
+    async fn park(&self, mut worker: WarmWorker, outcome: &TransferOutcome) {
+        worker.files_served = worker.files_served.saturating_add(1);
+        if matches!(outcome, TransferOutcome::Success)
+            && worker.provider.supports_transfer_worker_reuse()
+            && worker.files_served < WARM_WORKER_MAX_FILES
+        {
             self.workers.lock().await.push(worker);
         }
     }
@@ -842,7 +870,7 @@ impl ProviderDownloadExecutor {
         }
     }
 
-    async fn clone_worker(&self) -> Result<Box<dyn StorageProvider>, String> {
+    async fn clone_worker(&self) -> Result<WarmWorker, String> {
         if let Some(worker) = self.warm_workers.take().await {
             return Ok(worker);
         }
@@ -851,6 +879,7 @@ impl ProviderDownloadExecutor {
             .as_ref()
             .ok_or_else(|| "Provider disconnected".to_string())
             .and_then(|provider| provider.clone_for_transfer().map_err(|e| e.to_string()))
+            .map(WarmWorker::fresh)
     }
 
     async fn execute_locked(&self, entry: TransferEntry) -> TransferOutcome {
@@ -1274,7 +1303,7 @@ impl ProviderUploadExecutor {
         }
     }
 
-    async fn clone_worker(&self) -> Result<Box<dyn StorageProvider>, String> {
+    async fn clone_worker(&self) -> Result<WarmWorker, String> {
         if let Some(worker) = self.warm_workers.take().await {
             return Ok(worker);
         }
@@ -1283,6 +1312,7 @@ impl ProviderUploadExecutor {
             .as_ref()
             .ok_or_else(|| "Provider disconnected".to_string())
             .and_then(|provider| provider.clone_for_transfer().map_err(|e| e.to_string()))
+            .map(WarmWorker::fresh)
     }
 
     async fn execute_locked(&self, entry: TransferEntry) -> TransferOutcome {
@@ -1595,13 +1625,15 @@ impl TransferExecutor for ProviderDownloadExecutor {
         }
 
         let outcome = match self.clone_worker().await {
-            Ok(mut provider) => {
-                let outcome = self.execute_with_provider(entry, provider.as_mut()).await;
+            Ok(mut worker) => {
+                let outcome = self
+                    .execute_with_provider(entry, worker.provider.as_mut())
+                    .await;
                 // PD-FTP-2: return the still-warm worker to the pool (gated on
                 // opt-in + success) so the next file reuses its connection.
                 // Parked before releasing the lease, so the waiter that wakes
                 // on the freed permit finds it ready to pop.
-                self.warm_workers.park(provider, &outcome).await;
+                self.warm_workers.park(worker, &outcome).await;
                 outcome
             }
             Err(error) => self.failed_download(entry, error),
@@ -1661,11 +1693,13 @@ impl TransferExecutor for ProviderUploadExecutor {
         }
 
         let outcome = match self.clone_worker().await {
-            Ok(mut provider) => {
-                let outcome = self.execute_with_provider(entry, provider.as_mut()).await;
+            Ok(mut worker) => {
+                let outcome = self
+                    .execute_with_provider(entry, worker.provider.as_mut())
+                    .await;
                 // PD-FTP-2: park the warm worker for the next file (opt-in +
                 // success gated), the upload twin of the download path.
-                self.warm_workers.park(provider, &outcome).await;
+                self.warm_workers.park(worker, &outcome).await;
                 outcome
             }
             Err(error) => self.failed_upload(entry, error),
@@ -2713,6 +2747,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn warm_worker_pool_retires_a_worker_after_its_file_quota() {
+        // A reusable worker comes back from the pool until it has served
+        // WARM_WORKER_MAX_FILES files, then it is dropped and the next file
+        // dials afresh: no session lives long enough to accumulate the state a
+        // single transfer never sees.
+        let pool = WarmWorkerPool::default();
+        let worker: Box<dyn StorageProvider> =
+            Box::new(FlakyDownloadProvider::fail_first(0).reusable());
+        pool.park(WarmWorker::fresh(worker), &TransferOutcome::Success)
+            .await;
+        for served in 1..WARM_WORKER_MAX_FILES {
+            let worker = pool
+                .take()
+                .await
+                .unwrap_or_else(|| panic!("worker must still be parked after {served} files"));
+            assert_eq!(worker.files_served, served);
+            pool.park(worker, &TransferOutcome::Success).await;
+        }
+        assert!(
+            pool.take().await.is_none(),
+            "a worker that served its quota is retired, not parked"
+        );
+    }
+
+    #[tokio::test]
     async fn warm_worker_pool_recycles_only_opted_in_successful_workers() {
         // PD-FTP-2: the reuse pool must recycle a warm worker ONLY when the
         // provider opted in AND the transfer succeeded. Every other case drops
@@ -2724,7 +2783,8 @@ mod tests {
         // Opted-in worker after a success: recycled.
         let worker: Box<dyn StorageProvider> =
             Box::new(FlakyDownloadProvider::fail_first(0).reusable());
-        pool.park(worker, &TransferOutcome::Success).await;
+        pool.park(WarmWorker::fresh(worker), &TransferOutcome::Success)
+            .await;
         assert!(
             pool.take().await.is_some(),
             "opted-in worker after success is recycled"
@@ -2739,7 +2799,7 @@ mod tests {
             "boom",
             false,
         ));
-        pool.park(worker, &failure).await;
+        pool.park(WarmWorker::fresh(worker), &failure).await;
         assert!(
             pool.take().await.is_none(),
             "a failed transfer never recycles its connection"
@@ -2747,7 +2807,8 @@ mod tests {
 
         // Non-opted-in worker after a success: dropped (SFTP/HTTP unchanged).
         let worker: Box<dyn StorageProvider> = Box::new(FlakyDownloadProvider::fail_first(0));
-        pool.park(worker, &TransferOutcome::Success).await;
+        pool.park(WarmWorker::fresh(worker), &TransferOutcome::Success)
+            .await;
         assert!(
             pool.take().await.is_none(),
             "a provider that did not opt in is never recycled"

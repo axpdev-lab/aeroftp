@@ -26,7 +26,7 @@ use tracing::{debug, info, warn};
 
 use super::types::AzureConfig;
 use super::{
-    sanitize_api_error, send_with_retry, HttpRetryConfig, MultipartHandle, ProviderError,
+    sanitize_api_error, HttpRetryConfig, MultipartHandle, ProviderError,
     ProviderTransferExecutorKind, ProviderType, RemoteEntry, ShareLinkCapabilities,
     ShareLinkOptions, ShareLinkResult, StorageProvider, UploadedPart,
 };
@@ -435,17 +435,35 @@ impl AzureProvider {
             );
         }
         builder = builder.headers(final_headers);
-        if let Some(ref body_bytes) = body {
-            builder = builder.body(body_bytes.clone());
-        }
-
+        // Refcounted payload: every attempt clones a pointer, and under a speed
+        // limit the body is paced (Put Block, Put Blob and every other raw
+        // body land here), so the upload cap holds on Azure too.
+        let body: Option<bytes::Bytes> = body.map(bytes::Bytes::from);
         let request = builder
             .build()
             .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
-
-        send_with_retry(&self.client, request, &azure_retry_config())
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+        let client = self.client.clone();
+        super::send_with_retry_replayable(
+            &self.client,
+            move || {
+                let mut req = reqwest::RequestBuilder::from_parts(
+                    client.clone(),
+                    request
+                        .try_clone()
+                        .expect("azure request has no stream body"),
+                );
+                if let Some(payload) = &body {
+                    req = req.body(crate::transfer_dag::throttle::owned_body_bytes(
+                        payload.clone(),
+                        crate::transfer_dag::governor::TransferDirection::Upload,
+                    ));
+                }
+                req
+            },
+            &azure_retry_config(),
+        )
+        .await
+        .map_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
     /// Parse XML blob list response using quick-xml event-based parser.
@@ -1132,6 +1150,11 @@ impl StorageProvider for AzureProvider {
         let mut bytes_received: u64 = 0;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            crate::transfer_dag::throttle::charge(
+                crate::transfer_dag::governor::TransferDirection::Download,
+                chunk.len() as u64,
+            )
+            .await;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1940,7 +1963,10 @@ impl AzureProvider {
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let stream = tokio_util::io::ReaderStream::new(file);
+        let stream = crate::transfer_dag::throttle::throttle_stream(
+            tokio_util::io::ReaderStream::new(file),
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        );
         let body = reqwest::Body::wrap_stream(stream);
 
         let mut headers = HeaderMap::new();

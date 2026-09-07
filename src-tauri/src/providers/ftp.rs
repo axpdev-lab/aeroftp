@@ -1755,6 +1755,11 @@ impl StorageProvider for FtpProvider {
             if n == 0 {
                 break;
             }
+            crate::transfer_dag::throttle::charge(
+                crate::transfer_dag::governor::TransferDirection::Download,
+                n as u64,
+            )
+            .await;
             file.write_all(&buf[..n])
                 .await
                 .map_err(ProviderError::IoError)?;
@@ -2885,6 +2890,11 @@ impl FtpProvider {
             if n == 0 {
                 break;
             }
+            crate::transfer_dag::throttle::charge(
+                crate::transfer_dag::governor::TransferDirection::Download,
+                n as u64,
+            )
+            .await;
             atomic
                 .write_all(&chunk[..n])
                 .await
@@ -2965,6 +2975,11 @@ impl FtpProvider {
             if n == 0 {
                 break;
             }
+            crate::transfer_dag::throttle::charge(
+                crate::transfer_dag::governor::TransferDirection::Upload,
+                n as u64,
+            )
+            .await;
             data_stream
                 .write_all(&chunk[..n])
                 .await
@@ -3183,6 +3198,7 @@ async fn ftp_download_one_range(
                     )));
                 }
                 let take = std::cmp::min(n as u64, expected - written) as usize;
+                crate::transfer_dag::throttle::charge(crate::transfer_dag::governor::TransferDirection::Download, take as u64).await;
                 out.write_all(&buf[..take])
                     .await
                     .map_err(ProviderError::IoError)?;

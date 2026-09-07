@@ -1183,6 +1183,13 @@ impl S3Provider {
     ) -> Result<reqwest::Response, ProviderError> {
         use sha2::{Digest, Sha256};
 
+        // The payload lives once, as refcounted `Bytes`: the signature hashes
+        // it, every send attempt clones a pointer to it, and a paced body
+        // slices it. A multipart part is therefore resident exactly once
+        // while it is on the wire (it used to be copied again by the retry
+        // helper, doubling the memory of every in-flight part).
+        let body: Option<bytes::Bytes> = body.map(bytes::Bytes::from);
+
         // Refresh STS credentials before they expire (issue #301, Fase 3).
         // Covers list / delete / stat / mkdir and every multipart part upload,
         // which funnel through here; no-op when no role is configured.
@@ -1230,14 +1237,39 @@ impl S3Provider {
         let authorization =
             self.sign_request(method.as_str(), &url, &mut headers, &payload_hash)?;
 
-        let mut request = self.client.request(method.clone(), &url);
+        let build_request = || {
+            let mut request = self.client.request(method.clone(), &url);
+            for (key, value) in headers.iter() {
+                request = request.header(key, value);
+            }
+            request = request.header("Authorization", &authorization);
+            if let Some(payload) = &body {
+                // Explicitly set Content-Length for empty bodies (required by some
+                // S3-compatible services like Backblaze B2). The signature above
+                // already covers the payload hash; pacing the send under the
+                // user's speed limit keeps the header-declared length.
+                request = request.header("Content-Length", payload.len().to_string());
+                request = request.body(crate::transfer_dag::throttle::owned_body_bytes(
+                    payload.clone(),
+                    crate::transfer_dag::governor::TransferDirection::Upload,
+                ));
+            } else if matches!(method, Method::PUT | Method::POST) {
+                // A PUT with NO body still needs an explicit `Content-Length: 0`:
+                // reqwest omits the header entirely when no body is set, and AWS S3
+                // and Backblaze answer `411 Length Required`. Both bodyless PUTs in
+                // this file are real operations, `mkdir` (the zero-byte directory
+                // marker) and `UploadPartCopy` (server-side copy of objects past the
+                // 5 GiB single-PUT limit), so on those two providers creating a
+                // folder failed outright and a large server-side copy could not
+                // complete. It went unnoticed because MinIO tolerates the omission,
+                // which is what the lab profile runs. `server_side_copy_single`
+                // already sets this header by hand; the shared helper did not, so
+                // every caller that goes through it missed out.
+                request = request.header("Content-Length", "0");
+            }
+            request
+        };
 
-        for (key, value) in headers.iter() {
-            request = request.header(key, value);
-        }
-        request = request.header("Authorization", &authorization);
-
-        // SEC-06: Redact sensitive headers before logging
         {
             let redacted: HashMap<&String, String> = headers
                 .iter()
@@ -1253,32 +1285,12 @@ impl S3Provider {
             debug!("S3 Headers: {:?}", redacted);
         }
 
-        if let Some(body_data) = body {
-            // Explicitly set Content-Length for empty bodies (required by some S3-compatible services like Backblaze B2)
-            request = request.header("Content-Length", body_data.len().to_string());
-            request = request.body(body_data);
-        } else if matches!(method, Method::PUT | Method::POST) {
-            // A PUT with NO body still needs an explicit `Content-Length: 0`:
-            // reqwest omits the header entirely when no body is set, and AWS S3
-            // and Backblaze answer `411 Length Required`. Both bodyless PUTs in
-            // this file are real operations, `mkdir` (the zero-byte directory
-            // marker) and `UploadPartCopy` (server-side copy of objects past the
-            // 5 GiB single-PUT limit), so on those two providers creating a
-            // folder failed outright and a large server-side copy could not
-            // complete. It went unnoticed because MinIO tolerates the omission,
-            // which is what the lab profile runs. `server_side_copy_single`
-            // already sets this header by hand; the shared helper did not, so
-            // every caller that goes through it missed out.
-            request = request.header("Content-Length", "0");
-        }
-
-        // ERR-03: Use retry wrapper for transient errors (429, 500, 502, 503, 504)
-        let built_request = request
-            .build()
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {e}")))?;
-        let response = super::send_with_retry(
+        // ERR-03: Use retry wrapper for transient errors (429, 500, 502, 503, 504).
+        // The request is rebuilt per attempt from the same `Bytes`, so a retry
+        // never copies the payload and a paced body is simply built again.
+        let response = super::send_with_retry_replayable(
             &self.client,
-            built_request,
+            build_request,
             &super::HttpRetryConfig::default(),
         )
         .await
@@ -3298,6 +3310,11 @@ impl StorageProvider for S3Provider {
 
                 while let Some(chunk) = stream.next().await {
                     let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    crate::transfer_dag::throttle::charge(
+                        crate::transfer_dag::governor::TransferDirection::Download,
+                        chunk.len() as u64,
+                    )
+                    .await;
                     atomic
                         .write_all(&chunk)
                         .await
@@ -3446,7 +3463,10 @@ impl StorageProvider for S3Provider {
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let stream = ReaderStream::new(file);
+        let stream = crate::transfer_dag::throttle::throttle_stream(
+            ReaderStream::new(file),
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        );
         let body = reqwest::Body::wrap_stream(stream);
 
         // Build the request manually with streaming body (cannot use s3_request helper for streaming)
@@ -4740,6 +4760,11 @@ impl StorageProvider for S3Provider {
 
                 while let Some(chunk) = stream.next().await {
                     let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    crate::transfer_dag::throttle::charge(
+                        crate::transfer_dag::governor::TransferDirection::Download,
+                        chunk.len() as u64,
+                    )
+                    .await;
                     atomic
                         .write_all(&chunk)
                         .await
@@ -5571,6 +5596,11 @@ async fn download_range_to_offset(
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         let chunk_len = chunk.len() as u64;
+        crate::transfer_dag::throttle::charge(
+            crate::transfer_dag::governor::TransferDirection::Download,
+            chunk_len.min(expected - written),
+        )
+        .await;
         if written + chunk_len > expected {
             // Server returned more than requested: truncate to the planned
             // window so we don't trample a neighboring range.

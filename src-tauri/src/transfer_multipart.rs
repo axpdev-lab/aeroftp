@@ -619,11 +619,18 @@ impl PartBody {
     /// `Content-Length` from [`len`](Self::len); the streamed body carries no
     /// implicit length.
     pub fn into_reqwest_body(self) -> reqwest::Body {
+        use crate::transfer_dag::throttle;
         match self {
-            PartBody::Owned(data) => reqwest::Body::from(data),
+            PartBody::Owned(data) => throttle::owned_body(
+                data,
+                crate::transfer_dag::governor::TransferDirection::Upload,
+            ),
             PartBody::DiskSlice(slice) => {
                 let scratch = part_buffer_pool().acquire();
-                reqwest::Body::wrap_stream(disk_slice_window_stream(slice, scratch))
+                reqwest::Body::wrap_stream(throttle::throttle_stream(
+                    disk_slice_window_stream(slice, scratch),
+                    crate::transfer_dag::governor::TransferDirection::Upload,
+                ))
             }
         }
     }

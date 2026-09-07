@@ -3237,6 +3237,11 @@ impl StorageProvider for WebDavProvider {
                 loop {
                     match stream.next().await {
                         Some(Ok(chunk)) => {
+                            crate::transfer_dag::throttle::charge(
+                                crate::transfer_dag::governor::TransferDirection::Download,
+                                chunk.len() as u64,
+                            )
+                            .await;
                             atomic
                                 .write_all(&chunk)
                                 .await
@@ -3385,7 +3390,10 @@ impl StorageProvider for WebDavProvider {
             let file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(ProviderError::IoError)?;
-            let stream = tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024);
+            let stream = crate::transfer_dag::throttle::throttle_stream(
+                tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024),
+                crate::transfer_dag::governor::TransferDirection::Upload,
+            );
             Ok::<reqwest::Body, ProviderError>(reqwest::Body::wrap_stream(stream))
         };
 

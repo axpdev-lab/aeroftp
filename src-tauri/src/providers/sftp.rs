@@ -1680,7 +1680,7 @@ impl StorageProvider for SftpProvider {
         }
         let start = std::time::Instant::now();
         // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
-        let global_bw = crate::transfer_dag::governor::global().bandwidth();
+        let global_bw = crate::transfer_dag::governor::global();
 
         loop {
             if total_size > 0 && transferred >= total_size {
@@ -1696,7 +1696,12 @@ impl StorageProvider for SftpProvider {
             } else {
                 remaining.min(buffer.len() as u64)
             };
-            global_bw.acquire(allowance).await;
+            global_bw
+                .charge(
+                    crate::transfer_dag::governor::TransferDirection::Download,
+                    allowance,
+                )
+                .await;
             let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
                 classify_russh_err(e, |s| {
                     ProviderError::TransferFailed(format!("Read error: {}", s))
@@ -1732,6 +1737,12 @@ impl StorageProvider for SftpProvider {
             }
         }
 
+        // Close the remote handle and WAIT for the server's reply. Dropping the
+        // handle only queues a close (`close_nowait`); a worker that now lives
+        // across thousands of files (warm reuse) outran the server's per-session
+        // handle limit that way ("Limit exceeded: handle limit reached" on the
+        // 5000-file review cell). Upload already awaits its close.
+        let _ = remote_file.close().await;
         resumable.commit().await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
         })?;
@@ -1830,6 +1841,7 @@ impl StorageProvider for SftpProvider {
             }
             data.extend_from_slice(&buffer[..bytes_read]);
         }
+        let _ = remote_file.close().await;
 
         Ok(data)
     }
@@ -1873,7 +1885,7 @@ impl StorageProvider for SftpProvider {
         let mut transferred: u64 = 0;
         let start = std::time::Instant::now();
         // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
-        let global_bw = crate::transfer_dag::governor::global().bandwidth();
+        let global_bw = crate::transfer_dag::governor::global();
 
         loop {
             let bytes_read = tokio::io::AsyncReadExt::read(&mut local_file, &mut buffer)
@@ -1886,7 +1898,12 @@ impl StorageProvider for SftpProvider {
 
             // Reserve global tokens before the remote write so concurrent jobs
             // cannot put bytes on the wire before the shared cap admits them.
-            global_bw.acquire(bytes_read as u64).await;
+            global_bw
+                .charge(
+                    crate::transfer_dag::governor::TransferDirection::Upload,
+                    bytes_read as u64,
+                )
+                .await;
             remote_file
                 .write_all(&buffer[..bytes_read])
                 .await
@@ -2091,7 +2108,7 @@ impl StorageProvider for SftpProvider {
                 }
                 let start = std::time::Instant::now();
                 // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
-                let global_bw = crate::transfer_dag::governor::global().bandwidth();
+                let global_bw = crate::transfer_dag::governor::global();
 
                 loop {
                     let bytes_read = AsyncReadExt::read(&mut local_file, &mut buffer)
@@ -2104,7 +2121,12 @@ impl StorageProvider for SftpProvider {
                     }
                     // Reserve global tokens before the remote write so the
                     // resumed path shares the same process-wide cap.
-                    global_bw.acquire(bytes_read as u64).await;
+                    global_bw
+                        .charge(
+                            crate::transfer_dag::governor::TransferDirection::Upload,
+                            bytes_read as u64,
+                        )
+                        .await;
                     remote_file
                         .write_all(&buffer[..bytes_read])
                         .await
@@ -2540,6 +2562,24 @@ impl StorageProvider for SftpProvider {
     /// connection spec exists to re-dial independent SSH connections from.
     /// Without it (never connected, or credentials unavailable) SFTP stays
     /// a single locked lease: honest non-regression, no overclaim.
+    /// Opt into warm-connection reuse across the files of one batch, like FTP.
+    ///
+    /// The batch executor mints a clone worker per file and, unless the
+    /// provider opts in, drops it afterwards: on SFTP that was a full SSH
+    /// handshake (key exchange plus authentication, several round trips) for
+    /// every file. The review battery of 2026-09-05 measured it on 5000 small
+    /// files over a 53 ms link: about 3 files per second with four leases.
+    /// Reuse is safe here for the same reasons it is on FTP: `upload` and
+    /// `download` short-circuit `ensure_connected` while the channel is open
+    /// and address every path through `normalize_path`, so a recycled worker
+    /// carries no per-file state; the executor parks a worker only after a
+    /// SUCCESSFUL transfer, and a parked worker whose channel has since died
+    /// fails its next file loudly rather than silently, exactly as a fresh
+    /// dial that failed would.
+    fn supports_transfer_worker_reuse(&self) -> bool {
+        true
+    }
+
     fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
         if self.connection_spec.is_some() {
             ProviderTransferExecutorKind::SftpConnectionPool
@@ -2670,6 +2710,7 @@ impl StorageProvider for SftpProvider {
             total_read += n;
         }
         buf.truncate(total_read);
+        let _ = file.close().await;
         Ok(buf)
     }
 }
@@ -3409,14 +3450,18 @@ async fn sftp_download_one_range(
 
     let full_path = worker.normalize_path(&remote_path);
     let sftp = worker.get_sftp()?;
-    let global_bw = crate::transfer_dag::governor::global().bandwidth();
+    let global_bw = crate::transfer_dag::governor::global();
 
     // READ-AHEAD (our own issue #70 workaround) takes precedence over PD-PIPE-2
     // when provider state requests it: keep `window` `SSH_FXP_READ` in flight on
     // THIS range worker's connection with no per-batch barrier. Composes with
     // PD-SFTP-2's N independent connections (N x this read-ahead). Same guardrail
     // as PD-PIPE-2: no active bandwidth cap (the serial loop owns throttling).
-    if limit_bps == 0 && global_bw.is_unlimited() {
+    if limit_bps == 0
+        && crate::transfer_dag::throttle::is_unlimited(
+            crate::transfer_dag::governor::TransferDirection::Download,
+        )
+    {
         if let Some(window) = requested_readahead_window.and_then(|requested| {
             effective_sftp_readahead_window(requested, buffer_size, expected, parallel_connections)
         }) {
@@ -3453,7 +3498,11 @@ async fn sftp_download_one_range(
     // channel. Default (flag unset) or an active cap falls through to the
     // exact serial loop below = diff-0 (the serial loop owns the precise
     // throttle, as in PD-PIPE-1).
-    if limit_bps == 0 && global_bw.is_unlimited() {
+    if limit_bps == 0
+        && crate::transfer_dag::throttle::is_unlimited(
+            crate::transfer_dag::governor::TransferDirection::Download,
+        )
+    {
         if let Some(window) = sftp_read_pipeline_window() {
             let mut out = tokio::fs::OpenOptions::new()
                 .write(true)
@@ -3513,7 +3562,7 @@ async fn sftp_download_one_range(
                     "Transfer cancelled by user".to_string(),
                 ));
             }
-            _ = global_bw.acquire(allowance) => {}
+            _ = global_bw.charge(crate::transfer_dag::governor::TransferDirection::Download, allowance) => {}
         }
         tokio::select! {
             _ = cancel.cancelled() => {
@@ -3820,6 +3869,27 @@ mod tests {
         // Every original `'` became the 4-char `'\''` sequence; there is no
         // bare unescaped quote that could terminate the literal early.
         assert_eq!(q, "''\\''; rm -rf / ; echo '\\'''");
+    }
+
+    #[test]
+    fn sftp_workers_opt_into_warm_reuse_like_ftp() {
+        // PD-FTP-2 pool semantics: a worker is recycled only when the provider
+        // opts in. SFTP now does, so a batch pays one SSH handshake per lease,
+        // not one per file. Pinned here so a future "honest default false"
+        // cannot come back without a measured reason.
+        let config = SftpConfig {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        };
+        let provider = SftpProvider::new(config);
+        assert!(provider.supports_transfer_worker_reuse());
     }
 
     #[test]
