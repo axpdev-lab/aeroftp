@@ -805,7 +805,10 @@ impl StorageProvider for ImmichProvider {
             return Err(Self::map_api_error(status, &text, "Download asset"));
         }
 
-        let mut stream = response.bytes_stream();
+        let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
+            response.bytes_stream(),
+            crate::transfer_dag::governor::TransferDirection::Download,
+        ));
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;

@@ -1335,7 +1335,10 @@ impl StorageProvider for YandexDiskProvider {
                 chunk
             });
 
-            let body = reqwest::Body::wrap_stream(stream);
+            let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
+                stream,
+                crate::transfer_dag::governor::TransferDirection::Upload,
+            ));
             let put_result = self
                 .client
                 .put(&link.href)

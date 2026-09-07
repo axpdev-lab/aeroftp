@@ -2564,7 +2564,10 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .await
             .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
         let stream = tokio_util::io::ReaderStream::new(file);
-        let body = reqwest::Body::wrap_stream(stream);
+        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
+            stream,
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        ));
 
         // Zoho WorkDrive upload uses multipart/form-data
         // parent_id and override-name-exist go in the form body (per Zoho docs)

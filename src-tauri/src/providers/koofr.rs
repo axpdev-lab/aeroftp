@@ -876,7 +876,10 @@ impl StorageProvider for KoofrProvider {
         use futures_util::StreamExt;
 
         let total_size = resp.content_length().unwrap_or(0);
-        let mut stream = resp.bytes_stream();
+        let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
+            resp.bytes_stream(),
+            crate::transfer_dag::governor::TransferDirection::Download,
+        ));
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Create file failed: {}", e)))?;
@@ -971,7 +974,10 @@ impl StorageProvider for KoofrProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Open file failed: {}", e)))?;
         let stream = tokio_util::io::ReaderStream::new(file);
-        let body = reqwest::Body::wrap_stream(stream);
+        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
+            stream,
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        ));
 
         let resp = self
             .client
@@ -1499,7 +1505,10 @@ impl StorageProvider for KoofrProvider {
         use tokio::io::AsyncWriteExt;
 
         let total_size = resp.content_length().unwrap_or(0) + offset;
-        let mut stream = resp.bytes_stream();
+        let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
+            resp.bytes_stream(),
+            crate::transfer_dag::governor::TransferDirection::Download,
+        ));
 
         let mut file = tokio::fs::OpenOptions::new()
             .create(true)
@@ -1618,7 +1627,10 @@ impl StorageProvider for KoofrProvider {
 
         use futures_util::StreamExt;
 
-        let mut stream = resp.bytes_stream();
+        let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
+            resp.bytes_stream(),
+            crate::transfer_dag::governor::TransferDirection::Download,
+        ));
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Create file failed: {}", e)))?;

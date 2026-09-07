@@ -1570,7 +1570,10 @@ impl StorageProvider for FileLuProvider {
             .await
             .map_err(ProviderError::IoError)?;
         let stream = tokio_util::io::ReaderStream::new(file);
-        let body = reqwest::Body::wrap_stream(stream);
+        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
+            stream,
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        ));
 
         // Step 3: Upload via multipart with streaming body
         let part = multipart::Part::stream_with_length(body, total_size)

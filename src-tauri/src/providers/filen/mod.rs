@@ -3376,7 +3376,10 @@ async fn download_filen_chunk(
         }
 
         let mut encrypted = Vec::new();
-        let mut stream = resp.bytes_stream();
+        let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
+            resp.bytes_stream(),
+            crate::transfer_dag::governor::TransferDirection::Download,
+        ));
         let mut body_failed = false;
         while let Some(part) = stream.next().await {
             match part {

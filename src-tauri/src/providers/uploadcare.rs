@@ -425,7 +425,10 @@ impl StorageProvider for UploadcareProvider {
             .await
             .map_err(ProviderError::IoError)?;
         let mut downloaded = 0u64;
-        let mut stream = resp.bytes_stream();
+        let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
+            resp.bytes_stream(),
+            crate::transfer_dag::governor::TransferDirection::Download,
+        ));
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
@@ -571,7 +574,10 @@ impl StorageProvider for UploadcareProvider {
         });
 
         let mime = mime_guess::from_path(&file_name).first_or_octet_stream();
-        let body = reqwest::Body::wrap_stream(stream);
+        let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
+            stream,
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        ));
         let file_part = multipart::Part::stream_with_length(body, total)
             .file_name(file_name.clone())
             .mime_str(mime.as_ref())

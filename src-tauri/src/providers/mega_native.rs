@@ -1223,7 +1223,10 @@ impl MegaNativeProvider {
         }
 
         let chunks = compute_chunk_boundaries(total_size);
-        let mut stream = response.bytes_stream();
+        let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
+            response.bytes_stream(),
+            crate::transfer_dag::governor::TransferDirection::Download,
+        ));
         use futures_util::StreamExt;
 
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
@@ -2415,7 +2418,10 @@ impl MegaNativeProvider {
         }
 
         let mut encrypted = Vec::with_capacity(total_size as usize);
-        let mut stream = response.bytes_stream();
+        let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
+            response.bytes_stream(),
+            crate::transfer_dag::governor::TransferDirection::Download,
+        ));
         use futures_util::StreamExt;
 
         while let Some(chunk_result) = stream.next().await {
