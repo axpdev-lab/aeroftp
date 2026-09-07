@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
 import { appendImportedProfiles, bridgeProfileKey, commitImportedServers } from './bridgeImportCommit';
-import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
+import { loadSavedServerProfilesStrict, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 vi.mock('../../utils/serverProfileStore', () => ({
-    loadSavedServerProfiles: vi.fn(), storeSavedServerProfiles: vi.fn().mockResolvedValue(undefined),
+    loadSavedServerProfilesStrict: vi.fn(), storeSavedServerProfiles: vi.fn().mockResolvedValue(undefined),
 }));
 
 const base: ServerProfile = { id: 'base', name: 'Koofr', host: 'app.koofr.net', port: 443, username: 'test', protocol: 'koofr' };
@@ -14,7 +14,7 @@ const crypt: ServerProfile = { ...base, id: 'crypt', name: 'Encrypted', initialP
 
 describe('Crypt bridge import', () => {
     it('keeps the plain account when adding its Crypt view', async () => {
-        vi.mocked(loadSavedServerProfiles).mockResolvedValue([base]);
+        vi.mocked(loadSavedServerProfilesStrict).mockResolvedValue([base]);
         const onImport = vi.fn();
         expect(bridgeProfileKey(base)).not.toBe(bridgeProfileKey(crypt));
         const outcome = await commitImportedServers([crypt], new Set([bridgeProfileKey(base)]), onImport);
@@ -23,7 +23,7 @@ describe('Crypt bridge import', () => {
     });
 
     it('waits for a failed async import before restoring the profile list', async () => {
-        vi.mocked(loadSavedServerProfiles).mockResolvedValue([base, crypt]);
+        vi.mocked(loadSavedServerProfilesStrict).mockResolvedValue([base, crypt]);
         const outcome = await commitImportedServers([{ ...crypt, id: 'replacement' }], new Set([bridgeProfileKey(crypt)]),
             async () => { throw new Error('vault write failed'); });
         expect(outcome.error).toBeDefined();
@@ -36,7 +36,7 @@ describe('the import callback and the commit helper together', () => {
     // against each other's mocks: the callback reads back what the commit wrote.
     const fakeVault = (initial: ServerProfile[]) => {
         const state = { profiles: [...initial], writes: 0 };
-        vi.mocked(loadSavedServerProfiles).mockImplementation(async () => [...state.profiles]);
+        vi.mocked(loadSavedServerProfilesStrict).mockImplementation(async () => [...state.profiles]);
         vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
             state.writes += 1;
             state.profiles = [...profiles];
@@ -97,7 +97,7 @@ describe('the import callback and the commit helper together', () => {
 
     it('refuses the import when the saved profiles cannot be read, without writing or calling back', async () => {
         const vault = fakeVault([base]);
-        vi.mocked(loadSavedServerProfiles).mockRejectedValueOnce(new Error('vault read failed'));
+        vi.mocked(loadSavedServerProfilesStrict).mockRejectedValueOnce(new Error('vault read failed'));
         const onImport = vi.fn();
         const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };
         const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]), onImport);

@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { ServerProfile } from '../../types';
-import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
+import { loadSavedServerProfilesStrict, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 export interface CommitOutcome {
     added: number;
@@ -21,17 +21,18 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
  * merged list back for the caller's local state.
  *
  * Two properties every import callback needs, and three of the four call sites
- * had both wrong. The vault is the only ground truth: `loadSavedServerProfiles`
- * throws when the read fails, so an empty result is an empty vault, and it can
- * be empty precisely because `commitImportedServers` has just removed the
- * profiles it is replacing. Falling back to the component's own snapshot in
- * that case puts the replaced profile back next to its replacement. And a
- * failed write has to propagate, so `commitImportedServers` can restore the
- * backup it took: swallowing it reports a successful import over a vault that
- * has already lost them.
+ * had both wrong. The vault is the only ground truth, read through
+ * `loadSavedServerProfilesStrict` so that an empty result means an empty vault
+ * and never a vault that could not be reached; it can be empty precisely
+ * because `commitImportedServers` has just removed the profiles it is
+ * replacing, and falling back to the component's own snapshot in that case puts
+ * the replaced profile back next to its replacement. And a failed write has to
+ * propagate, so `commitImportedServers` can restore the backup it took:
+ * swallowing it reports a successful import over a vault that has already lost
+ * them.
  */
 export async function appendImportedProfiles(newServers: ServerProfile[]): Promise<ServerProfile[]> {
-    const current = await loadSavedServerProfiles();
+    const current = await loadSavedServerProfilesStrict();
     const merged = [...current, ...newServers];
     await storeSavedServerProfiles(merged);
     return merged;
@@ -61,7 +62,7 @@ export async function commitImportedServers(
     // costs a first import nothing.
     let backup: ServerProfile[];
     try {
-        backup = await loadSavedServerProfiles();
+        backup = await loadSavedServerProfilesStrict();
     } catch {
         return {
             added: 0,

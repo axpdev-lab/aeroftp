@@ -18,6 +18,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 import {
     PROFILES_CHANGED_EVENT,
     loadSavedServerProfiles,
+    loadSavedServerProfilesStrict,
     storeSavedServerProfiles,
 } from './serverProfileStore';
 import type { ServerProfile } from '../types';
@@ -219,5 +220,48 @@ describe('loadSavedServerProfiles', () => {
         expect(mockInvoke.mock.calls[1][1]).toMatchObject({
             account: 'config_server_profiles',
         });
+    });
+});
+
+describe('loadSavedServerProfilesStrict', () => {
+    // The plain read answers [] for two different states, and a caller that
+    // writes the list back cannot tell them apart: persisting [] plus an import
+    // over a partition that still holds profiles drops all of them.
+
+    it('returns an empty partition as an empty list, which is a real answer', async () => {
+        mockInvoke.mockResolvedValueOnce([]); // partition load, genuinely empty
+
+        await expect(loadSavedServerProfilesStrict()).resolves.toEqual([]);
+    });
+
+    it('refuses when the partition is unreachable and the legacy store is empty', async () => {
+        mockInvoke
+            .mockRejectedValueOnce(new Error('STORE_NOT_READY')) // partition load
+            .mockRejectedValueOnce(new Error('not found'));      // legacy get_credential
+
+        await expect(loadSavedServerProfilesStrict()).rejects.toThrow('STORE_NOT_READY');
+        // The plain read answers [] to the very same sequence, which is correct
+        // for rendering a list and is what made this hole.
+        mockInvoke.mockReset();
+        mockInvoke
+            .mockRejectedValueOnce(new Error('STORE_NOT_READY'))
+            .mockRejectedValueOnce(new Error('not found'));
+        await expect(loadSavedServerProfiles()).resolves.toEqual([]);
+    });
+
+    it('accepts a legacy store that has content, because that is a real answer', async () => {
+        const legacy = [sampleProfile({ id: 'srv_legacy', name: 'legacy-row' })];
+        mockInvoke
+            .mockRejectedValueOnce(new Error('STORE_NOT_READY')) // partition load
+            .mockResolvedValueOnce(JSON.stringify(legacy));      // legacy get_credential
+
+        await expect(loadSavedServerProfilesStrict()).resolves.toEqual(legacy);
+    });
+
+    it('does not swallow a non-fallback error from the partition read', async () => {
+        const boom = new Error('disk full');
+        mockInvoke.mockRejectedValueOnce(boom);
+
+        await expect(loadSavedServerProfilesStrict()).rejects.toBe(boom);
     });
 });

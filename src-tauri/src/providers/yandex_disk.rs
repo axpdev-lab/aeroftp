@@ -1409,11 +1409,13 @@ impl StorageProvider for YandexDiskProvider {
             })
             .await?;
 
-        if resp.status().is_success() || resp.status().as_u16() == 201 {
-            Ok(())
-        } else {
-            Err(self.parse_error(resp).await)
-        }
+        // The API documents 201 for a created folder, so this is the same
+        // helper doing nothing extra on the answer that actually arrives. It is
+        // here so that every `/resources` mutation reaches the poller through
+        // one door: `is_success()` swallows a 202 without naming it, which is
+        // exactly how this one stayed outside the class while its siblings
+        // were fixed.
+        self.finish_resource_operation(resp).await
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {

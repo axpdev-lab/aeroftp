@@ -981,9 +981,17 @@ impl StorageProvider for PCloudProvider {
         let stream = tokio_util::io::ReaderStream::new(file).inspect(move |chunk| {
             if let Ok(bytes) = chunk {
                 sent += bytes.len() as u64;
-                if let Ok(callback) = stream_progress.lock() {
-                    if let Some(cb) = callback.as_ref() {
-                        cb(sent, file_size);
+                // The body being on the wire is not the upload being accepted:
+                // pCloud reports failure in a JSON `result` inside an HTTP 200,
+                // which is read after the last chunk has gone out. Reporting
+                // `file_size / file_size` here would show a completed transfer
+                // and then fail it. The terminal update belongs to the success
+                // path below, where the acknowledgement has been read.
+                if sent < file_size {
+                    if let Ok(callback) = stream_progress.lock() {
+                        if let Some(cb) = callback.as_ref() {
+                            cb(sent, file_size);
+                        }
                     }
                 }
             }
@@ -2442,7 +2450,13 @@ mod tests {
             assert!(updates
                 .iter()
                 .all(|(sent, total)| *total == 128 * 1024 && sent <= total));
-            assert_eq!(updates.last(), Some(&(128 * 1024, 128 * 1024)));
+            // 100 percent is the acknowledgement, not the last chunk: a failed
+            // upload must never have reported a completed one.
+            if result == 0 {
+                assert_eq!(updates.last(), Some(&(128 * 1024, 128 * 1024)));
+            } else {
+                assert!(updates.iter().all(|(sent, total)| sent < total));
+            }
             server.abort();
         }
     }

@@ -446,6 +446,7 @@ import {
   PROFILES_CHANGED_EVENT,
 } from './utils/serverProfileStore';
 import { appendImportedProfiles } from './components/bridge/bridgeImportCommit';
+import { loadSavedServerProfilesStrict } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createLocalEndpoint, createRemoteEndpoint } from './utils/panelEndpoints';
@@ -14088,7 +14089,9 @@ const App: React.FC = () => {
   };
 
   const mergeImportedServerProfiles = useCallback(async (importedServers: ImportedServerProfile[]) => {
-    const currentServers = await loadSavedServerProfiles();
+    // Strict: this merge writes the whole list back, so a partition it could
+    // not read must not arrive here as an empty one.
+    const currentServers = await loadSavedServerProfilesStrict();
     const existingIds = new Set(currentServers.map(s => s.id));
 
     const newServers: ServerProfile[] = importedServers
