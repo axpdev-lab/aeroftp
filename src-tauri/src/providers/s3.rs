@@ -2022,10 +2022,20 @@ impl S3Provider {
     /// (same encoding rule as `server_side_copy`'s `x-amz-copy-source`).
     /// `range_start..=range_end_inclusive` is sent verbatim in the
     /// `x-amz-copy-source-range` header (S3 spec: inclusive on both ends).
+    /// `if_match`, when present, is the baseline object's ETag, quoted or
+    /// bare (a HEAD carries the quotes, `stat` strips them; both are sent
+    /// quoted), as `x-amz-copy-source-if-match`. The copy source is
+    /// resolved at each UploadPartCopy call, so a concurrent overwrite of
+    /// the source between two parts would silently assemble an object from
+    /// two versions. The guard turns that race into a
+    /// `412 Precondition Failed`. It is a correctness requirement on the
+    /// delta path (appendix S3-DELTA-UPLOAD, 06 R1); the plain server-side
+    /// copy passes `None` and keeps its historical behaviour.
     ///
     /// Unlike UploadPart, the response ETag arrives inside the XML body
     /// (`<CopyPartResult><ETag>...</ETag></CopyPartResult>`), not in the
     /// `ETag` response header, which is why we parse the body explicitly.
+    #[allow(clippy::too_many_arguments)]
     async fn upload_part_copy_internal(
         &self,
         dest_key: &str,
@@ -2034,16 +2044,28 @@ impl S3Provider {
         copy_source: &str,
         range_start: u64,
         range_end_inclusive: u64,
+        if_match: Option<&str>,
     ) -> Result<String, ProviderError> {
         let part_num_str = part_number.to_string();
         let range_value = format!("bytes={}-{}", range_start, range_end_inclusive);
         let params: &[(&str, &str)] = &[("partNumber", &part_num_str), ("uploadId", upload_id)];
-        let extra: &[(&str, &str)] = &[
+        let mut extra: Vec<(&str, &str)> = vec![
             ("x-amz-copy-source", copy_source),
             ("x-amz-copy-source-range", &range_value),
         ];
+        // The header needs the ETag in its quoted wire form. A HEAD response
+        // carries the quotes, `stat` strips them; accept both and send one.
+        let if_match_owned;
+        if let Some(etag) = if_match {
+            if_match_owned = if etag.starts_with('"') || etag.starts_with("W/\"") {
+                etag.to_string()
+            } else {
+                format!("\"{etag}\"")
+            };
+            extra.push(("x-amz-copy-source-if-match", &if_match_owned));
+        }
         let response = self
-            .s3_request_ext(Method::PUT, dest_key, Some(params), None, extra)
+            .s3_request_ext(Method::PUT, dest_key, Some(params), None, &extra)
             .await?;
         let status = response.status();
         let retry_header = response
@@ -2447,6 +2469,10 @@ impl S3Provider {
                             &copy_source_owned,
                             range_start,
                             range_end_inclusive,
+                            // The plain server-side copy keeps its historical
+                            // behaviour: no x-amz-copy-source-if-match guard.
+                            // The delta executor passes the baseline ETag.
+                            None,
                         )
                         .await?;
                     Ok::<(u32, String), ProviderError>((part_number, etag))
@@ -2502,6 +2528,217 @@ impl S3Provider {
             parts.len()
         );
         Ok(())
+    }
+
+    /// Delta multipart upload: assemble the new version of `key` as a
+    /// multipart upload in which the unchanged parts are copied server-side
+    /// out of the object already in the bucket (the SAME key: the copy source
+    /// is resolved per UploadPartCopy call and the destination only
+    /// materializes at CompleteMultipartUpload), and only the changed parts
+    /// travel on the wire. Tier 1 of `APPENDIX-S3-DELTA-UPLOAD`.
+    ///
+    /// `matches` certifies byte-identical stretches between the local file
+    /// and the baseline object, in the `(local_off, src_off, len)` form
+    /// `plan_delta_parts` consumes, and `grid` is the delta grid those
+    /// matches were computed on. The plan is computed here, at the door,
+    /// rather than received: a caller that holds a refused plan must not be
+    /// able to spend a single request on it, so a refusal returns before
+    /// even `CreateMultipartUpload` is sent.
+    ///
+    /// Every copy part is pinned to `baseline_etag` with
+    /// `x-amz-copy-source-if-match`, quoted or bare as the caller obtained
+    /// it (a HEAD carries quotes, `stat` strips them; the wire form is
+    /// restored at the send site). Without it a concurrent overwrite of
+    /// the object between two parts would assemble a mixed-version object
+    /// with no error anywhere (06 R1); with it the race surfaces as a
+    /// `412 Precondition Failed` on the first part after the overwrite.
+    ///
+    /// Return contract:
+    /// - `Ok(Some(wire_bytes))` on success, where `wire_bytes` is what
+    ///   actually travelled (the PUT parts), for the caller's wire ratio.
+    /// - `Ok(None)` when the planner refuses the shape: the caller falls
+    ///   back to the ordinary upload, and no request has been sent at all.
+    /// - `Err(_)` after the upload was initiated: the multipart is aborted
+    ///   best-effort first. A `412` from the guard arrives on this path;
+    ///   mapping it to a fallback rather than a hard failure is the
+    ///   caller's contract (06 R7), not this function's.
+    ///
+    /// Structure mirrors `server_side_copy_multipart`: JoinSet fan-out at
+    /// `effective_upload_concurrency()`, ETag collection, sort by part
+    /// number, abort on every error path. PUT parts are read from
+    /// `local_path` at their planned offsets and, like the ordinary
+    /// multipart path, each part is resident in RAM while on the wire; the
+    /// planner owns part sizing, this function never re-cuts a part.
+    ///
+    /// Caller must have validated `self.connected`. `key` is the trimmed
+    /// destination key and is also the copy source.
+    // dead_code: T3 has no production caller yet; the sync adapter arm (T4)
+    // is the consumer. Until then the mock and live lanes exercise it.
+    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
+    async fn upload_delta_multipart(
+        &self,
+        key: &str,
+        local_path: &str,
+        total_size: u64,
+        matches: &[(u64, u64, u64)],
+        grid: u64,
+        baseline_etag: &str,
+        content_type: Option<&str>,
+        source_mtime: Option<String>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<Option<u64>, ProviderError> {
+        use tokio::io::AsyncReadExt;
+
+        // The door: plan BEFORE any request. A refused shape costs nothing
+        // and sends nothing; discovering an illegal plan at
+        // CompleteMultipartUpload would cost the whole transfer.
+        let Some(plan) = crate::providers::s3_delta_plan::plan_delta_parts(
+            total_size,
+            matches,
+            grid,
+            crate::providers::s3_delta_plan::S3_MAX_PARTS,
+        ) else {
+            return Ok(None);
+        };
+
+        // Wire bytes are the PUT parts; COPY parts are requests, not bytes.
+        // The denominator is the plan's, so progress reaches exactly 100%.
+        let total_wire: u64 = plan
+            .iter()
+            .filter(|p| !p.is_copy())
+            .map(crate::providers::s3_delta_plan::DeltaPart::byte_len)
+            .sum();
+
+        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(key));
+
+        // This create is the first request after the baseline traffic that
+        // produced the match list, and a pooled keep-alive connection the
+        // server has since closed makes the send fail with hyper
+        // IncompleteMessage (measured on the live MinIO lane, 2026-09-07).
+        // One retry on a fresh connection is enough, and replaying a create
+        // is safe: the failed attempt never reached the server.
+        let mut initiated = self
+            .create_multipart_upload(key, content_type, source_mtime.clone())
+            .await;
+        if matches!(initiated, Err(ProviderError::NetworkError(_))) {
+            initiated = self
+                .create_multipart_upload(key, content_type, source_mtime)
+                .await;
+        }
+        let upload_id = initiated?;
+
+        let max_parallel = self.effective_upload_concurrency();
+        let mut parts: Vec<(u32, String)> = Vec::with_capacity(plan.len());
+        let mut cursor = plan.into_iter();
+        let mut uploaded_wire: u64 = 0;
+
+        loop {
+            let mut joinset = tokio::task::JoinSet::new();
+            for _ in 0..max_parallel {
+                let Some(part) = cursor.next() else {
+                    break;
+                };
+                let provider = self.clone();
+                let dest_key = key.to_string();
+                let upload_id_owned = upload_id.clone();
+                let copy_source_owned = copy_source.clone();
+                let etag_owned = baseline_etag.to_string();
+                let local_path_owned = local_path.to_string();
+                joinset.spawn(async move {
+                    match part {
+                        crate::providers::s3_delta_plan::DeltaPart::Copy {
+                            part_number,
+                            src_start,
+                            src_end_inclusive,
+                        } => {
+                            let etag = provider
+                                .upload_part_copy_internal(
+                                    &dest_key,
+                                    &upload_id_owned,
+                                    part_number,
+                                    &copy_source_owned,
+                                    src_start,
+                                    src_end_inclusive,
+                                    Some(&etag_owned),
+                                )
+                                .await?;
+                            Ok::<(u32, String, u64), ProviderError>((part_number, etag, 0))
+                        }
+                        crate::providers::s3_delta_plan::DeltaPart::Put {
+                            part_number,
+                            local_start,
+                            len,
+                        } => {
+                            let mut file = tokio::fs::File::open(&local_path_owned)
+                                .await
+                                .map_err(ProviderError::IoError)?;
+                            file.seek(std::io::SeekFrom::Start(local_start))
+                                .await
+                                .map_err(ProviderError::IoError)?;
+                            let mut buf = vec![0u8; len as usize];
+                            file.read_exact(&mut buf).await.map_err(|e| {
+                                ProviderError::TransferFailed(format!(
+                                    "Delta read of part {part_number} at {local_start}+{len}: {e}"
+                                ))
+                            })?;
+                            let etag = provider
+                                .upload_part_internal(&dest_key, &upload_id_owned, part_number, buf)
+                                .await?;
+                            Ok::<(u32, String, u64), ProviderError>((part_number, etag, len))
+                        }
+                    }
+                });
+            }
+
+            if joinset.is_empty() {
+                break;
+            }
+
+            while let Some(joined) = joinset.join_next().await {
+                match joined {
+                    Ok(Ok((pn, etag, wire))) => {
+                        parts.push((pn, etag));
+                        uploaded_wire += wire;
+                        if let Some(ref progress) = on_progress {
+                            progress(uploaded_wire, total_wire);
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        joinset.abort_all();
+                        while joinset.join_next().await.is_some() {}
+                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                        return Err(e);
+                    }
+                    Err(e) => {
+                        joinset.abort_all();
+                        while joinset.join_next().await.is_some() {}
+                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                        return Err(ProviderError::TransferFailed(format!(
+                            "Delta upload task panicked: {e}"
+                        )));
+                    }
+                }
+            }
+        }
+
+        parts.sort_by_key(|(pn, _)| *pn);
+
+        if let Err(e) = self
+            .complete_multipart_upload_internal(key, &upload_id, &parts)
+            .await
+        {
+            let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+            return Err(e);
+        }
+
+        info!(
+            "Delta multipart uploaded {} ({} bytes over the wire, {} parts)",
+            key,
+            uploaded_wire,
+            parts.len()
+        );
+        Ok(Some(uploaded_wire))
     }
 
     /// Multi-thread chunk-parallel download for a single S3 object.
@@ -7639,6 +7876,634 @@ mod tests {
             init_header.lock().unwrap().as_deref(),
             Some("1725600000.123456789"),
             "initiation must carry the source's raw x-amz-meta-mtime"
+        );
+    }
+
+    // ---- delta multipart executor (T3 of APPENDIX-S3-DELTA-UPLOAD) --------
+    //
+    // These tests talk to a mock S3 backend and assert what the executor
+    // DID, never only what the planner decided: a property that cannot be
+    // observed on the wire is a convention, not a gate. In particular the
+    // refused-plan test counts every request class, because "no
+    // UploadPartCopy is issued" is only half the door: a refused plan must
+    // not even pay for a CreateMultipartUpload.
+
+    /// What the mock backend saw, by request class.
+    #[derive(Default)]
+    struct DeltaMockState {
+        creates: usize,
+        /// (part_number, x-amz-copy-source-range, x-amz-copy-source-if-match)
+        copies: Vec<(u32, String, Option<String>)>,
+        /// (part_number, body)
+        puts: Vec<(u32, Vec<u8>)>,
+        aborts: usize,
+        /// Part numbers in the order the CompleteMultipartUpload body lists
+        /// them. The executor sorts before completing, and the mock can hold
+        /// the copy response until a put has arrived, so an unsorted body is
+        /// observable on every run, not a timing coin toss.
+        completed: Vec<u32>,
+    }
+
+    /// Spin up a mock S3 backend speaking just enough multipart for the
+    /// delta executor, plus a provider pointed at it. When
+    /// `reject_copy_with_412` is set, every UploadPartCopy answers
+    /// `412 Precondition Failed`, the shape the if-match guard produces on
+    /// a concurrent overwrite. When `copy_waits_for_put` is set, the copy
+    /// part's response is held until a PUT part has arrived, so the
+    /// completion order is deterministic rather than a timing coin toss:
+    /// an unsorted CompleteMultipartUpload body is then observable on
+    /// every run, not only on a fast machine.
+    async fn delta_mock_server(
+        reject_copy_with_412: bool,
+        copy_waits_for_put: bool,
+    ) -> (
+        S3Provider,
+        std::sync::Arc<std::sync::Mutex<DeltaMockState>>,
+        tempfile::TempDir,
+    ) {
+        use std::sync::{Arc, Mutex};
+
+        let state = Arc::new(Mutex::new(DeltaMockState::default()));
+        let seen = Arc::clone(&state);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().clone();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let headers = req.headers().clone();
+                    let part_number = query
+                        .split('&')
+                        .find_map(|kv| kv.strip_prefix("partNumber="))
+                        .and_then(|v| v.parse::<u32>().ok())
+                        .unwrap_or(0);
+                    let is_upload_id_query = query.contains("uploadId=");
+
+                    if method == axum::http::Method::POST && query.starts_with("uploads") {
+                        seen.lock().unwrap().creates += 1;
+                        return axum::response::Response::new(axum::body::Body::from(
+                            "<InitiateMultipartUploadResult><UploadId>u1</UploadId></InitiateMultipartUploadResult>",
+                        ));
+                    }
+                    if method == axum::http::Method::PUT
+                        && headers.contains_key("x-amz-copy-source")
+                    {
+                        let range = headers
+                            .get("x-amz-copy-source-range")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("")
+                            .to_string();
+                        let if_match = headers
+                            .get("x-amz-copy-source-if-match")
+                            .and_then(|v| v.to_str().ok())
+                            .map(String::from);
+                        seen.lock()
+                            .unwrap()
+                            .copies
+                            .push((part_number, range, if_match));
+                        if reject_copy_with_412 {
+                            return axum::response::Response::builder()
+                                .status(axum::http::StatusCode::PRECONDITION_FAILED)
+                                .body(axum::body::Body::from(
+                                    "<Error><Code>PreconditionFailed</Code>\
+                                     <Message>At least one of the preconditions you specified did not hold.</Message></Error>",
+                                ))
+                                .unwrap();
+                        }
+                        // Answer only after the PUT part has arrived, so
+                        // the put lands first on every run and the
+                        // completion order below would expose a missing
+                        // sort. Bounded, so a plan with no put part does
+                        // not hang the test.
+                        if copy_waits_for_put {
+                            for _ in 0..500 {
+                                if !seen.lock().unwrap().puts.is_empty() {
+                                    break;
+                                }
+                                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                            }
+                        }
+                        return axum::response::Response::new(axum::body::Body::from(
+                            "<CopyPartResult><ETag>\"copy-part\"</ETag></CopyPartResult>",
+                        ));
+                    }
+                    if method == axum::http::Method::PUT && is_upload_id_query {
+                        let body = axum::body::to_bytes(req.into_body(), usize::MAX)
+                            .await
+                            .unwrap_or_default()
+                            .to_vec();
+                        seen.lock().unwrap().puts.push((part_number, body));
+                        return axum::response::Response::builder()
+                            .header("etag", "\"put-part\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    if method == axum::http::Method::DELETE && is_upload_id_query {
+                        seen.lock().unwrap().aborts += 1;
+                        return axum::response::Response::new(axum::body::Body::empty());
+                    }
+                    if method == axum::http::Method::POST && is_upload_id_query {
+                        let body = axum::body::to_bytes(req.into_body(), usize::MAX)
+                            .await
+                            .unwrap_or_default();
+                        let body = String::from_utf8_lossy(&body).to_string();
+                        let mut order = Vec::new();
+                        let mut rest = body.as_str();
+                        while let Some(start) = rest.find("<PartNumber>") {
+                            rest = &rest[start + "<PartNumber>".len()..];
+                            if let Some(end) = rest.find("</PartNumber>") {
+                                order.push(rest[..end].parse::<u32>().unwrap_or(0));
+                                rest = &rest[end..];
+                            } else {
+                                break;
+                            }
+                        }
+                        seen.lock().unwrap().completed = order;
+                        return axum::response::Response::new(axum::body::Body::from(
+                            "<CompleteMultipartUploadResult/>",
+                        ));
+                    }
+                    axum::response::Response::builder()
+                        .status(axum::http::StatusCode::BAD_REQUEST)
+                        .body(axum::body::Body::from(format!(
+                            "mock: unexpected {method} query={query}"
+                        )))
+                        .unwrap()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let dir = tempfile::tempdir().expect("tempdir");
+        (provider, state, dir)
+    }
+
+    /// Deterministic 20 MiB payload: half of it matches the baseline, the
+    /// second half is the edit that has to travel.
+    fn delta_fixture_file(dir: &std::path::Path) -> (String, Vec<u8>) {
+        const MIB: usize = 1024 * 1024;
+        let bytes: Vec<u8> = (0..20 * MIB).map(|i| (i % 251) as u8).collect();
+        let path = dir.join("big.bin");
+        std::fs::write(&path, &bytes).expect("write fixture");
+        (path.to_string_lossy().into_owned(), bytes)
+    }
+
+    #[tokio::test]
+    async fn delta_refused_plan_sends_no_requests_at_all() {
+        // The door, not the guard: `plan_delta_parts` returning None must
+        // mean the network was never touched. An empty match list and a
+        // malformed (overlapping) one are both refusal shapes; each must
+        // cost zero requests, CreateMultipartUpload included.
+        for matches in [
+            Vec::new(),
+            vec![
+                (0, 0, 10 * 1024 * 1024),
+                (5 * 1024 * 1024, 5 * 1024 * 1024, 10 * 1024 * 1024),
+            ],
+        ] {
+            let (provider, state, dir) = delta_mock_server(false, false).await;
+            let (path, _) = delta_fixture_file(dir.path());
+            let outcome = provider
+                .upload_delta_multipart(
+                    "big.bin",
+                    &path,
+                    20 * 1024 * 1024,
+                    &matches,
+                    crate::providers::s3_delta_plan::S3_PART_MIN,
+                    "baseline-v1",
+                    Some("application/octet-stream"),
+                    None,
+                    None,
+                )
+                .await
+                .expect("a refused plan is Ok(None), not an error");
+            assert_eq!(outcome, None, "the planner refuses, the caller falls back");
+            let seen = state.lock().unwrap();
+            assert_eq!(
+                (
+                    seen.creates,
+                    seen.copies.len(),
+                    seen.puts.len(),
+                    seen.aborts,
+                    seen.completed.len()
+                ),
+                (0, 0, 0, 0, 0),
+                "a refused plan must not spend a single request"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn delta_copy_parts_carry_if_match_and_only_changed_bytes_travel() {
+        let (provider, state, dir) = delta_mock_server(false, true).await;
+        let (path, bytes) = delta_fixture_file(dir.path());
+        const MIB: u64 = 1024 * 1024;
+        let matches = [(0, 0, 10 * MIB)];
+
+        let progress_log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let progress_seen = std::sync::Arc::clone(&progress_log);
+        let outcome = provider
+            .upload_delta_multipart(
+                "big.bin",
+                &path,
+                20 * MIB,
+                &matches,
+                crate::providers::s3_delta_plan::S3_PART_MIN,
+                "baseline-v1",
+                Some("application/octet-stream"),
+                None,
+                Some(Box::new(move |done, total| {
+                    progress_seen.lock().unwrap().push((done, total));
+                })),
+            )
+            .await
+            .expect("delta upload");
+
+        assert_eq!(
+            outcome,
+            Some(10 * MIB),
+            "wire bytes are the PUT parts, not the object size"
+        );
+
+        let seen = state.lock().unwrap();
+        assert_eq!(seen.creates, 1);
+        assert_eq!(seen.aborts, 0);
+        // One copy part over the matched half, pinned to the baseline ETag:
+        // the R1 correctness guard, asserted on the wire and not on the plan.
+        assert_eq!(
+            seen.copies,
+            vec![(
+                1,
+                format!("bytes=0-{}", 10 * MIB - 1),
+                Some("\"baseline-v1\"".to_string())
+            )],
+            "every copy part must carry x-amz-copy-source-if-match with the baseline ETag"
+        );
+        // One put part carrying exactly the edited second half of the file.
+        assert_eq!(seen.puts.len(), 1);
+        assert_eq!(seen.puts[0].0, 2);
+        assert_eq!(
+            seen.puts[0].1,
+            bytes[10 * MIB as usize..],
+            "the put part must carry the local bytes, at the planned offset"
+        );
+        // The mock answers the copy part late, so the put lands first: an
+        // unsorted CompleteMultipartUpload body would list [2, 1].
+        assert_eq!(
+            seen.completed,
+            vec![1, 2],
+            "parts must reach CompleteMultipartUpload sorted by part number"
+        );
+        let log = progress_log.lock().unwrap();
+        assert_eq!(
+            log.last(),
+            Some(&(10 * MIB, 10 * MIB)),
+            "progress counts wire bytes and reaches exactly the wire total"
+        );
+    }
+
+    #[tokio::test]
+    async fn delta_412_from_the_guard_aborts_and_never_completes() {
+        // A concurrent overwrite of the baseline turns the if-match guard
+        // into a 412. The executor aborts best-effort and surfaces the
+        // error; mapping it to a fallback is the caller's contract (06 R7).
+        let (provider, state, dir) = delta_mock_server(true, false).await;
+        let (path, _) = delta_fixture_file(dir.path());
+        const MIB: u64 = 1024 * 1024;
+        let matches = [(0, 0, 10 * MIB)];
+
+        let err = provider
+            .upload_delta_multipart(
+                "big.bin",
+                &path,
+                20 * MIB,
+                &matches,
+                crate::providers::s3_delta_plan::S3_PART_MIN,
+                "baseline-v1",
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect_err("a 412 from the guard must surface, not be swallowed");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("412"),
+            "the error must name the precondition failure, got: {msg}"
+        );
+
+        let seen = state.lock().unwrap();
+        assert_eq!(seen.creates, 1);
+        assert_eq!(seen.aborts, 1, "the failed upload must be aborted");
+        assert!(
+            seen.completed.is_empty(),
+            "CompleteMultipartUpload must never run after a failed part"
+        );
+    }
+
+    #[tokio::test]
+    async fn delta_short_local_file_aborts_instead_of_completing() {
+        // The plan is computed from the caller's total_size; a local file
+        // shorter than that fails the put read. The executor aborts rather
+        // than completing a shorter object over the old key.
+        let (provider, state, dir) = delta_mock_server(false, false).await;
+        let (path, bytes) = delta_fixture_file(dir.path());
+        const MIB: u64 = 1024 * 1024;
+        std::fs::write(&path, &bytes[..15 * MIB as usize]).expect("truncate fixture");
+        let matches = [(0, 0, 10 * MIB)];
+
+        let err = provider
+            .upload_delta_multipart(
+                "big.bin",
+                &path,
+                20 * MIB,
+                &matches,
+                crate::providers::s3_delta_plan::S3_PART_MIN,
+                "baseline-v1",
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect_err("a truncated local file must fail the put part");
+
+        let seen = state.lock().unwrap();
+        assert!(
+            matches!(err, ProviderError::TransferFailed(_)),
+            "a read failure is a transfer failure, got: {err}"
+        );
+        assert_eq!(seen.aborts, 1, "the failed upload must be aborted");
+        assert!(
+            seen.completed.is_empty(),
+            "CompleteMultipartUpload must never run after a failed part"
+        );
+    }
+
+    // ---- live MinIO lane (T3), ignored and env-gated --------------------
+    //
+    // The only place a green means something: the delta executor exercised
+    // against a real backend. Run with MinIO in Docker:
+    //
+    //   docker run -d -p 127.0.0.1:19900:9000 \
+    //     -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+    //     minio/minio server /data
+    //   AEROFTP_S3_DELTA_LIVE_ENDPOINT=http://127.0.0.1:19900 \
+    //   AEROFTP_S3_DELTA_LIVE_ACCESS_KEY=minioadmin \
+    //   AEROFTP_S3_DELTA_LIVE_SECRET_KEY=minioadmin \
+    //   AEROFTP_S3_DELTA_LIVE_REQUIRED=1 \
+    //   cargo test --lib delta_live -- --ignored
+    //
+    // Modelled on `aerorsync/live_tests.rs`: every test opens with an early
+    // return when the lane is not configured, and
+    // `AEROFTP_S3_DELTA_LIVE_REQUIRED=1` turns the skip into a panic, because
+    // libtest has no "skipped" state and a job that means to exercise the
+    // lane must not pass by skipping it.
+
+    struct LiveS3Lane {
+        endpoint: String,
+        bucket: String,
+        access_key: String,
+        secret_key: String,
+        region: String,
+    }
+
+    fn live_lane_config() -> Option<LiveS3Lane> {
+        if let Ok(endpoint) = std::env::var("AEROFTP_S3_DELTA_LIVE_ENDPOINT") {
+            return Some(LiveS3Lane {
+                endpoint,
+                bucket: std::env::var("AEROFTP_S3_DELTA_LIVE_BUCKET")
+                    .unwrap_or_else(|_| "aeroftp-delta-live".to_string()),
+                access_key: std::env::var("AEROFTP_S3_DELTA_LIVE_ACCESS_KEY")
+                    .expect("AEROFTP_S3_DELTA_LIVE_ACCESS_KEY"),
+                secret_key: std::env::var("AEROFTP_S3_DELTA_LIVE_SECRET_KEY")
+                    .expect("AEROFTP_S3_DELTA_LIVE_SECRET_KEY"),
+                region: std::env::var("AEROFTP_S3_DELTA_LIVE_REGION")
+                    .unwrap_or_else(|_| "us-east-1".to_string()),
+            });
+        }
+        let required = std::env::var("AEROFTP_S3_DELTA_LIVE_REQUIRED")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        assert!(
+            !required,
+            "AEROFTP_S3_DELTA_LIVE_REQUIRED is set but AEROFTP_S3_DELTA_LIVE_ENDPOINT is not: \
+             the live lane was declared mandatory and is not configured. \
+             Refusing to report a skipped test as a pass."
+        );
+        eprintln!("skipping: AEROFTP_S3_DELTA_LIVE_ENDPOINT not set (live lane inactive)");
+        None
+    }
+
+    async fn live_lane_provider(cfg: &LiveS3Lane) -> S3Provider {
+        let mut provider = S3Provider::new(S3Config {
+            endpoint: Some(cfg.endpoint.clone()),
+            region: cfg.region.clone(),
+            access_key_id: cfg.access_key.clone(),
+            secret_access_key: secrecy::SecretString::from(cfg.secret_key.clone()),
+            session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
+            bucket: cfg.bucket.clone(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+            // A lab MinIO is plain HTTP on a private address; the gate stays
+            // on for everything else.
+            allow_cleartext_endpoint: true,
+        })
+        .expect("live provider");
+        provider.connected = true;
+        // Create the bucket; BucketAlreadyOwnedByYou is the expected answer on
+        // a re-run and is ignored.
+        let _ = provider.s3_request(Method::PUT, "", None, None).await;
+        provider
+    }
+
+    fn sha256_hex(bytes: &[u8]) -> String {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        hex::encode(hasher.finalize())
+    }
+
+    /// The Tier 1 matcher, re-stated in the test: aligned grid cells,
+    /// compared by digest, emitting `(local_off, src_off, len)` with
+    /// `local_off == src_off`. The last cell is compared at its real length
+    /// in BOTH files; a grown or shrunk tail simply does not match.
+    fn live_aligned_matches(old: &[u8], new: &[u8], grid: u64) -> Vec<(u64, u64, u64)> {
+        let mut matches = Vec::new();
+        let mut off = 0u64;
+        while off < new.len() as u64 {
+            let new_end = (off + grid).min(new.len() as u64);
+            let old_end = (off + grid).min(old.len() as u64);
+            if old_end == new_end
+                && old_end > off
+                && sha256_hex(&old[off as usize..old_end as usize])
+                    == sha256_hex(&new[off as usize..new_end as usize])
+            {
+                matches.push((off, off, new_end - off));
+            }
+            off = new_end;
+        }
+        matches
+    }
+
+    fn delta_live_deterministic_bytes(len: usize, seed: u64) -> Vec<u8> {
+        // Cheap deterministic content: distinct per offset, so a shifted
+        // window never hashes like an aligned one by accident.
+        let mut state = seed;
+        (0..len)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                (state >> 33) as u8
+            })
+            .collect()
+    }
+
+    async fn delta_live_roundtrip(
+        cfg: &LiveS3Lane,
+        key: &str,
+        baseline: &[u8],
+        edited: &[u8],
+    ) -> Option<u64> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base_path = dir.path().join("base.bin");
+        let new_path = dir.path().join("new.bin");
+        std::fs::write(&base_path, baseline).expect("write baseline");
+        std::fs::write(&new_path, edited).expect("write edited");
+
+        let mut provider = live_lane_provider(cfg).await;
+        // The baseline travels the ordinary way: v1 only deltas objects we
+        // uploaded ourselves.
+        provider
+            .upload(base_path.to_str().unwrap(), key, None)
+            .await
+            .expect("baseline upload");
+        let entry = provider.stat(key).await.expect("stat baseline");
+        let baseline_etag = entry
+            .metadata
+            .get("etag")
+            .cloned()
+            .expect("stat must expose the etag");
+        assert!(
+            !baseline_etag.starts_with('"'),
+            "stat strips the quotes; the executor must restore them"
+        );
+
+        let grid = crate::providers::s3_delta_plan::delta_grid_size(edited.len() as u64)
+            .expect("grid for the live file size");
+        let matches = live_aligned_matches(baseline, edited, grid);
+
+        let outcome = provider
+            .upload_delta_multipart(
+                key,
+                new_path.to_str().unwrap(),
+                edited.len() as u64,
+                &matches,
+                grid,
+                &baseline_etag,
+                Some("application/octet-stream"),
+                None,
+                None,
+            )
+            .await
+            .expect("delta executor");
+        if outcome.is_none() {
+            // Refusal: the ordinary upload is the fallback, and it is the
+            // caller that runs it.
+            provider
+                .upload(new_path.to_str().unwrap(), key, None)
+                .await
+                .expect("fallback upload");
+        }
+
+        let down_path = dir.path().join("down.bin");
+        provider
+            .download(key, down_path.to_str().unwrap(), None)
+            .await
+            .expect("download result");
+        let downloaded = std::fs::read(&down_path).expect("read download");
+        assert_eq!(
+            sha256_hex(&downloaded),
+            sha256_hex(edited),
+            "the resulting object must be byte-identical to the local file"
+        );
+        outcome
+    }
+
+    #[tokio::test]
+    #[ignore = "live lane: needs AEROFTP_S3_DELTA_LIVE_* env vars"]
+    async fn delta_live_middle_edit_uploads_only_changed_bytes() {
+        let Some(cfg) = live_lane_config() else {
+            return;
+        };
+        const MIB: usize = 1024 * 1024;
+        let mut edited = delta_live_deterministic_bytes(1024 * MIB, 0xde1a);
+        let baseline = edited.clone();
+        // 10 MiB edit in the middle of a 1 GiB object.
+        for b in &mut edited[512 * MIB..522 * MIB] {
+            *b = b.wrapping_add(1);
+        }
+        let outcome = delta_live_roundtrip(&cfg, "middle-edit.bin", &baseline, &edited).await;
+        let wire = outcome.expect("a middle edit must plan, not refuse");
+        assert!(
+            wire < 30 * MIB as u64,
+            "a 10 MiB edit must travel as tens of MiB at most, got {wire} bytes on the wire"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "live lane: needs AEROFTP_S3_DELTA_LIVE_* env vars"]
+    async fn delta_live_append_uploads_only_the_tail() {
+        let Some(cfg) = live_lane_config() else {
+            return;
+        };
+        const MIB: usize = 1024 * 1024;
+        let baseline = delta_live_deterministic_bytes(300 * MIB, 0xadd0);
+        let mut edited = baseline.clone();
+        edited.extend_from_slice(&delta_live_deterministic_bytes(50 * MIB, 0x7a11));
+        let outcome = delta_live_roundtrip(&cfg, "append.bin", &baseline, &edited).await;
+        let wire = outcome.expect("an append must plan, not refuse");
+        assert!(
+            wire < 64 * MIB as u64,
+            "a 50 MiB append must travel as the tail plus repair slack, got {wire} bytes"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "live lane: needs AEROFTP_S3_DELTA_LIVE_* env vars"]
+    async fn delta_live_insertion_at_offset_zero_refuses_and_falls_back() {
+        // The Tier 1 blind spot, pinned as a known outcome: an insertion at
+        // offset 0 shifts every cell, the aligned matcher finds nothing, and
+        // the answer is a clean refusal plus an ordinary upload, never a
+        // broken object.
+        let Some(cfg) = live_lane_config() else {
+            return;
+        };
+        const MIB: usize = 1024 * 1024;
+        let baseline = delta_live_deterministic_bytes(256 * MIB, 0x1b1d);
+        let mut edited = delta_live_deterministic_bytes(8 * MIB, 0xe57);
+        edited.extend_from_slice(&baseline);
+        let outcome = delta_live_roundtrip(&cfg, "insertion.bin", &baseline, &edited).await;
+        assert_eq!(
+            outcome, None,
+            "an insertion at offset 0 is the aligned grid's blind spot: refuse, then fall back"
         );
     }
 
