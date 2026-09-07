@@ -486,7 +486,14 @@ impl SftpProvider {
         self.config = spec.to_config();
         // Fresh per-connection slot so the comparison reflects this dial.
         self.host_key_sha256_hex = Arc::new(std::sync::OnceLock::new());
+        // A clone worker carries the primary's working directory so a relative
+        // path resolves where the primary would resolve it; `connect` resets it
+        // to the initial path or the home. Keep what the clone was given across
+        // this first, lazy dial (scan and transfer workers never `cd` on their
+        // own).
+        let carried_current_dir = self.current_dir.clone();
         self.connect().await?;
+        self.current_dir = carried_current_dir;
         if let Some(pinned) = spec.pinned_host_key_sha256.as_deref() {
             match self.accepted_host_key_sha256_hex().as_deref() {
                 Some(seen) if seen == pinned => {}
