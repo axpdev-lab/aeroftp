@@ -75,4 +75,23 @@ describe('the import callback and the commit helper together', () => {
         expect(outcome.updated).toBe(0);
         expect(vault.profiles.map(s => s.id)).toEqual(['base']);
     });
+
+    it('does not claim that nothing changed when the rollback itself failed', async () => {
+        const vault = fakeVault([base]);
+        const write = vi.mocked(storeSavedServerProfiles).getMockImplementation()!;
+        // Write 1 removes the replaced profile, write 2 is the callback, write 3
+        // is the rollback. Everything after the first one fails, which is the
+        // case where the vault is left without the profile it started with.
+        let calls = 0;
+        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
+            calls += 1;
+            if (calls >= 2) throw new Error('vault write failed');
+            await write(profiles);
+        });
+        const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };
+        const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
+            async servers => { await appendImportedProfiles(servers); });
+        expect(vault.profiles).toEqual([]);
+        expect(outcome.error).toContain('could not be restored');
+    });
 });

@@ -61,8 +61,19 @@ export async function commitImportedServers(
         }
         await onImport([...updated, ...added]);
     } catch {
-        if (backup !== null) await storeSavedServerProfiles(backup).catch(() => {});
-        return { added: 0, updated: 0, error: 'Import failed. No changes were made.' };
+        // "No changes were made" is a claim about the vault, so it may only be
+        // made when the rollback actually succeeded. A failed restore leaves the
+        // profiles this call removed gone, and saying nothing happened would
+        // send the user away from the one screen they need to look at.
+        const restored = backup === null
+            || (await storeSavedServerProfiles(backup).then(() => true, () => false));
+        return {
+            added: 0,
+            updated: 0,
+            error: restored
+                ? 'Import failed. No changes were made.'
+                : 'Import failed, and the previous profiles could not be restored. Check My Servers before importing again.',
+        };
     }
 
     return { added: added.length, updated: updated.length };
