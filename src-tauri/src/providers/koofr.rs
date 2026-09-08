@@ -822,6 +822,17 @@ impl StorageProvider for KoofrProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_with_size_hint(remote_path, local_path, None, on_progress)
+            .await
+    }
+
+    async fn download_with_size_hint(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        size_hint: Option<u64>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -839,7 +850,9 @@ impl StorageProvider for KoofrProvider {
         // PD-HTTP-2: concurrent-Range download behind a real strict 206 probe.
         // Koofr content auth is a static Basic header (no per-request nonce),
         // so it is safe to replay concurrently through the live client.
-        if self.multi_thread_streams >= 2 {
+        if self.multi_thread_streams >= 2
+            && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
+        {
             let req = super::multi_thread::HttpRangeRequest {
                 client: self.client.clone(),
                 url: url.clone(),
@@ -849,6 +862,7 @@ impl StorageProvider for KoofrProvider {
                 streams: self.multi_thread_streams,
                 max_streams: KOOFR_MULTI_THREAD_MAX_STREAMS,
                 cutoff: self.multi_thread_cutoff,
+                known_size: size_hint,
             };
             match super::multi_thread::try_http_concurrent_range_download(req, on_progress).await {
                 super::multi_thread::HttpRangeAttempt::Completed => return Ok(()),

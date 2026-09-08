@@ -2298,6 +2298,17 @@ impl StorageProvider for B2Provider {
         local_path: &str,
         progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_with_size_hint(remote_path, local_path, None, progress)
+            .await
+    }
+
+    async fn download_with_size_hint(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        size_hint: Option<u64>,
+        progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -2313,7 +2324,9 @@ impl StorageProvider for B2Provider {
         // one-off mismatch never fails an otherwise downloadable transfer.
         // Once committed we return the result (any hard error surfaces to the
         // caller's retry envelope); we do not silently re-stream here.
-        let progress = if self.multi_thread_streams >= 2 {
+        let progress = if self.multi_thread_streams >= 2
+            && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
+        {
             match self.size(remote_path).await {
                 Ok(size) if size >= self.multi_thread_cutoff => {
                     return self

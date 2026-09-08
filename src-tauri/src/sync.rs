@@ -2653,7 +2653,12 @@ async fn sync_download_transfer(
     }
 
     provider
-        .download(remote_path, local_path, None)
+        .download_with_size_hint(
+            remote_path,
+            local_path,
+            (file_size > 0).then_some(file_size),
+            None,
+        )
         .await
         .map_err(|e| e.to_string())
 }
