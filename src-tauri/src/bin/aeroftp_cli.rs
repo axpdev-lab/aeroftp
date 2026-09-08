@@ -508,7 +508,7 @@ struct Cli {
 
     /// KE-A2: Concurrency cap for metadata-only operations during sync
     /// (rclone `--checkers`). Default `8`, range 1-64. Bounds the remote
-    /// directory walk of `sync`, `check` and `cryptcheck`: a provider that
+    /// directory walk of `sync`, `reconcile`, `check` and `cryptcheck`: a provider that
     /// lists on independent clones (SFTP, S3, WebDAV, B2, the HTTP clouds)
     /// lists up to this many directories at once, capped by the provider's
     /// own list pool; single-session providers walk one directory at a
@@ -8340,6 +8340,7 @@ async fn scan_remote_tree_with_progress(
     opts: &ftp_client_gui_lib::sync_core::ScanOptions,
     spinner: &Option<ProgressBar>,
     checkers: usize,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> (
     Vec<ftp_client_gui_lib::sync_core::scan::RemoteEntry>,
     RemoteScanHealth,
@@ -8386,7 +8387,7 @@ async fn scan_remote_tree_with_progress(
         remote_root,
         opts,
         &list_model,
-        None,
+        cancel,
         Some(&observer),
     )
     .await;
@@ -46021,61 +46022,42 @@ async fn cmd_sync(
             }
 
             if !used_fast_list {
+                // The remote walk runs on the provider's list pool, like
+                // `check`, `reconcile` and the GUI scan: up to --checkers
+                // directories at once on a clone-backed provider, one at a
+                // time on a single-session one. Same filters as the walk this
+                // replaces: depth, entry cap, excludes, the bisync snapshot
+                // file, symlinked directories listed but never walked.
                 let remote_scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
-                let mut queue: Vec<(String, String, usize)> =
-                    vec![(remote.to_string(), String::new(), 0)];
-                while let Some((abs_dir, rel_prefix, depth)) = queue.pop() {
-                    if cancelled.load(Ordering::Relaxed) {
-                        break;
-                    }
-                    if depth >= remote_scan_depth {
-                        if !quiet {
-                            eprintln!("Warning: max scan depth reached at {}", abs_dir);
-                        }
-                        remote_scan_truncated = true;
-                        continue;
-                    }
-                    if remote_entries.len() >= MAX_SCAN_ENTRIES {
-                        if !quiet {
-                            eprintln!("Warning: max entries reached during remote scan");
-                        }
-                        remote_scan_truncated = true;
-                        break;
-                    }
-                    match provider.list(&abs_dir).await {
-                        Ok(entries) => {
-                            for e in entries {
-                                let entry_rel = if rel_prefix.is_empty() {
-                                    e.name.clone()
-                                } else {
-                                    format!("{}/{}", rel_prefix, e.name)
-                                };
-                                if e.is_dir {
-                                    if e.is_walkable_dir() {
-                                        queue.push((e.path.clone(), entry_rel, depth + 1));
-                                    }
-                                } else {
-                                    let relative = entry_rel;
-                                    if !relative.is_empty() && relative != BISYNC_SNAPSHOT_FILE {
-                                        if exclude_matchers
-                                            .iter()
-                                            .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                                        {
-                                            continue;
-                                        }
-                                        remote_entries.push((relative, e.size, e.modified));
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            if !quiet {
-                                eprintln!("Warning: cannot scan {}: {}", abs_dir, e);
-                            }
-                            remote_scan_errors += 1;
-                        }
-                    }
+                let pooled_opts = ftp_client_gui_lib::sync_core::ScanOptions {
+                    exclude_patterns: effective_exclude.clone(),
+                    max_depth: Some(remote_scan_depth),
+                    skip_filenames: vec![BISYNC_SNAPSHOT_FILE.to_string()],
+                    checkers: Some(effective_checkers(cli)),
+                    disable_recursive_fastpath: true,
+                    ..Default::default()
+                };
+                let (remotes, health, returned) = scan_remote_tree_with_progress(
+                    provider,
+                    remote,
+                    &pooled_opts,
+                    &None,
+                    effective_checkers(cli),
+                    Some(Arc::clone(&cancelled)),
+                )
+                .await;
+                provider = returned;
+                if health.truncated && !quiet {
+                    eprintln!("Warning: remote scan truncated (depth or entry cap reached)");
                 }
+                remote_scan_errors += health.errors;
+                remote_scan_truncated |= health.truncated;
+                remote_entries.extend(
+                    remotes
+                        .into_iter()
+                        .filter(|r| !r.rel_path.is_empty())
+                        .map(|r| (r.rel_path, r.size, r.mtime)),
+                );
             }
         }
 
@@ -55871,6 +55853,7 @@ async fn cmd_check(
         &scan_opts,
         &None,
         effective_checkers(cli),
+        None,
     )
     .await;
     let mut remotes = remotes;
@@ -56096,6 +56079,7 @@ async fn cmd_cryptcheck(
         &scan_opts,
         &None,
         effective_checkers(cli),
+        None,
     )
     .await;
     provider = returned;
@@ -56480,6 +56464,7 @@ async fn cmd_reconcile(
         &scan_opts,
         &remote_spinner,
         effective_checkers(cli),
+        None,
     )
     .await;
     provider = returned;
@@ -73446,7 +73431,7 @@ mod tests {
         };
         let outcome = tokio::time::timeout(
             std::time::Duration::from_secs(20),
-            scan_remote_tree_with_progress(provider, "/root", &opts, &None, 8),
+            scan_remote_tree_with_progress(provider, "/root", &opts, &None, 8, None),
         )
         .await;
         let delivered = peak.load(std::sync::atomic::Ordering::SeqCst);

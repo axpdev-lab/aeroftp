@@ -74,6 +74,10 @@ pub struct ScanOptions {
     /// Paths that should always be skipped regardless of excludes.
     /// Used to skip the bisync snapshot file when syncing a tree.
     pub skip_filenames: Vec<String>,
+    /// Directories listed at once on a provider whose list pool allows it
+    /// (`--checkers`); `None` means [`DEFAULT_SCAN_CHECKERS`]. A single-session
+    /// provider walks one directory at a time whatever the value.
+    pub checkers: Option<usize>,
     /// Force the portable BFS scanner even when a provider advertises a flat
     /// recursive list. AeroSync Compare uses this under an active crypt
     /// overlay so encrypted path segments are gathered in the same shape as
@@ -326,138 +330,51 @@ pub async fn scan_remote_tree(
         .0
 }
 
+/// Directories listed at once when [`ScanOptions::checkers`] is `None`.
+pub const DEFAULT_SCAN_CHECKERS: usize = 8;
+
 /// Like [`scan_remote_tree`] but also reports [`ScanCompleteness`]. A failed
 /// directory listing is COUNTED (not swallowed into a silently-empty tree) and
 /// cap truncation is flagged, so an orphan-delete caller can refuse to mirror a
 /// "missing" file that is really just un-listed. CLAUDE-AV-B3-01.
+///
+/// This is the walker of the sync core, the DAG sync, the MCP tools and the
+/// CLI. It runs on the provider's list pool: a provider that lists on
+/// independent clones lists up to `checkers` directories at once on warm
+/// workers, a single-session provider walks one directory at a time. It used
+/// to be a second, serial walker next to the pooled one the GUI scan used,
+/// which is why a `sync` over 5000 files on SFTP spent three times longer than
+/// rclone in the scan alone. The caller's provider is parked behind a
+/// fail-closed placeholder while the pool owns it and handed back before this
+/// returns.
 pub async fn scan_remote_tree_checked(
     provider: &mut Box<dyn StorageProvider>,
     remote_root: &str,
     opts: &ScanOptions,
 ) -> (Vec<RemoteEntry>, ScanCompleteness) {
-    let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
-    // GAP-9f: provider-native single-shot recursive listing fast-path. S3
-    // collapses the per-directory BFS round-trips into one flat listing.
-    // Skipped when checksums are requested (the flat listing carries no
-    // per-file hash, so the BFS per-file `checksum()` is still required). A
-    // successful fast-path fetched the WHOLE subtree in one call, so it is
-    // complete unless it hit the entry cap.
-    if !opts.compute_remote_checksum && !opts.disable_recursive_fastpath {
-        if let Some(results) = try_recursive_fastpath(provider, remote_root, opts).await {
-            let truncated = results.len() >= cap;
-            return (
-                results,
-                ScanCompleteness {
-                    list_errors: 0,
-                    truncated,
-                },
-            );
-        }
-    }
-
-    let matchers = compile_matchers(&opts.exclude_patterns);
-    let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
-    // Server-side checksum is only worth requesting when both the caller
-    // asked for it AND the provider advertises the capability. This lets
-    // agents pass `compute_remote_checksum=true` unconditionally without
-    // paying a per-file `NotSupported` round trip on protocols like FTP.
-    let want_remote_checksum = opts.compute_remote_checksum && provider.supports_checksum();
-
-    let mut results = Vec::new();
-    let mut completeness = ScanCompleteness::default();
-    let mut queue: Vec<(String, String, usize)> = vec![(remote_root.to_string(), String::new(), 0)];
-    while let Some((abs_dir, rel_prefix, current_depth)) = queue.pop() {
-        if current_depth >= depth {
-            continue;
-        }
-        if results.len() >= cap {
-            completeness.truncated = true;
-            break;
-        }
-        match list_with_transport_retry(provider, &abs_dir).await {
-            Ok(entries) => {
-                // Collect files for this directory first so the per-file
-                // checksum loop below can yield without re-entering `list`
-                // on the same provider (some backends reuse a single
-                // connection for list + stat + checksum and do not tolerate
-                // interleaved calls).
-                let mut pending_files: Vec<(String, String, crate::providers::RemoteEntry)> =
-                    Vec::new();
-                for entry in entries {
-                    let entry_rel = if rel_prefix.is_empty() {
-                        entry.name.clone()
-                    } else {
-                        format!("{}/{}", rel_prefix, entry.name)
-                    };
-                    // SEC: the entry name is provider-controlled. A malicious or
-                    // MITM'd listing entry named `..` (or `../../etc/...`) would
-                    // otherwise let a Download/Both sync write outside the local
-                    // target root. Reject any traversing name before it becomes a
-                    // rel_path (skipping a bad dir also prevents it poisoning the
-                    // rel_prefix of its children). Mirrors the legacy comparison
-                    // engine's validate_relative_path guard.
-                    if let Err(reason) = crate::sync::validate_relative_path(&entry_rel) {
-                        tracing::warn!(
-                            "[scan_remote_tree] skipping remote entry {:?} under {}: {}",
-                            entry.name,
-                            abs_dir,
-                            reason
-                        );
-                        continue;
-                    }
-                    if entry.is_dir {
-                        // GAP-A02: a symlink to a directory is never walked
-                        // (same rule as `scan_remote_dir` below).
-                        if entry.is_walkable_dir() {
-                            queue.push((entry.path.clone(), entry_rel, current_depth + 1));
-                        }
-                        continue;
-                    }
-                    if opts.skip_filenames.iter().any(|n| n == &entry.name) {
-                        continue;
-                    }
-                    if !matchers.is_empty() && matches_any(&matchers, &entry_rel, &entry.name) {
-                        continue;
-                    }
-                    if let Some(ref set) = opts.files_from {
-                        if !set.contains(entry_rel.as_str()) {
-                            continue;
-                        }
-                    }
-                    pending_files.push((entry_rel, entry.path.clone(), entry));
-                }
-                for (entry_rel, abs_path, provider_entry) in pending_files {
-                    if results.len() >= cap {
-                        completeness.truncated = true;
-                        break;
-                    }
-                    let (checksum_alg, checksum_hex) = if want_remote_checksum {
-                        match provider.checksum(&abs_path).await {
-                            Ok(map) => pick_preferred_checksum(&map),
-                            Err(_) => (None, None),
-                        }
-                    } else {
-                        (None, None)
-                    };
-                    results.push(RemoteEntry {
-                        rel_path: entry_rel,
-                        size: provider_entry.size,
-                        mtime: provider_entry.modified,
-                        checksum_alg,
-                        checksum_hex,
-                    });
-                }
-            }
-            Err(e) => {
-                eprintln!(
-                    "[scan_remote_tree] warning: failed to list {}: {}",
-                    abs_dir, e
-                );
-                completeness.list_errors += 1;
-            }
-        }
-    }
-    (results, completeness)
+    let parked: Box<dyn StorageProvider> =
+        Box::new(crate::crypt_overlay_provider::DetachedProvider);
+    let real = std::mem::replace(provider, parked);
+    let holder: Arc<Mutex<Option<Box<dyn StorageProvider>>>> = Arc::new(Mutex::new(Some(real)));
+    let checkers = opts.checkers.unwrap_or(DEFAULT_SCAN_CHECKERS).max(1);
+    let list_model =
+        crate::provider_transfer_executor::resolve_provider_list_session_model(&holder, checkers)
+            .await;
+    let out = scan_remote_tree_with_provider_lock_checked(
+        Arc::clone(&holder),
+        remote_root,
+        opts,
+        &list_model,
+        None,
+        None,
+    )
+    .await;
+    *provider = holder
+        .lock()
+        .await
+        .take()
+        .expect("the pool scanner hands the provider back");
+    out
 }
 
 /// Scan a remote tree through the GUI provider holder, consuming explicit
@@ -1035,7 +952,7 @@ fn compute_sha256(path: &Path) -> std::io::Result<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
@@ -1456,5 +1373,199 @@ mod tests {
         paths.sort();
         assert_eq!(paths, vec!["a.txt", "sub/b.txt"]);
         assert!(completeness.is_complete());
+    }
+
+    /// An in-memory tree that lists on independent clones and counts how many
+    /// directory listings are in flight at once. Each sub-directory listing
+    /// waits at a rendezvous until `parties` are open together, so a walk
+    /// finishes only if the walker really lists that many directories at once.
+    pub(crate) struct PoolTreeProvider {
+        pub(crate) dirs: std::collections::HashMap<String, Vec<crate::providers::RemoteEntry>>,
+        pub(crate) ceiling: u16,
+        pub(crate) in_flight: Arc<std::sync::atomic::AtomicUsize>,
+        pub(crate) peak: Arc<std::sync::atomic::AtomicUsize>,
+        pub(crate) rendezvous: Arc<tokio::sync::Barrier>,
+    }
+
+    impl PoolTreeProvider {
+        /// A root with `width` sub-directories of one file each; the rendezvous
+        /// opens when `width` sub-directory listings are in flight together.
+        pub(crate) fn fan(width: usize, ceiling: u16) -> Self {
+            use crate::providers::RemoteEntry;
+            let mut dirs = std::collections::HashMap::new();
+            dirs.insert(
+                "/root".to_string(),
+                (0..width)
+                    .map(|i| RemoteEntry::directory(format!("d{i}"), format!("/root/d{i}")))
+                    .collect(),
+            );
+            for i in 0..width {
+                dirs.insert(
+                    format!("/root/d{i}"),
+                    vec![RemoteEntry::file(
+                        "f.txt".to_string(),
+                        format!("/root/d{i}/f.txt"),
+                        1,
+                    )],
+                );
+            }
+            Self {
+                dirs,
+                ceiling,
+                in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                peak: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                rendezvous: Arc::new(tokio::sync::Barrier::new(width)),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for PoolTreeProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> crate::providers::ProviderType {
+            crate::providers::ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "pool-tree".to_string()
+        }
+        fn list_executor_kind(&self) -> crate::providers::ProviderListExecutorKind {
+            crate::providers::ProviderListExecutorKind::HttpClonePool
+        }
+        fn list_executor_max_sessions(&self) -> u16 {
+            self.ceiling
+        }
+        fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            Ok(Box::new(Self {
+                dirs: self.dirs.clone(),
+                ceiling: self.ceiling,
+                in_flight: Arc::clone(&self.in_flight),
+                peak: Arc::clone(&self.peak),
+                rendezvous: Arc::clone(&self.rendezvous),
+            }))
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(
+            &mut self,
+            path: &str,
+        ) -> Result<Vec<crate::providers::RemoteEntry>, ProviderError> {
+            use std::sync::atomic::Ordering;
+            let entries = self
+                .dirs
+                .get(path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            if path != "/root" {
+                let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                self.peak.fetch_max(now, Ordering::SeqCst);
+                self.rendezvous.wait().await;
+                self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            }
+            Ok(entries)
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(
+            &mut self,
+            path: &str,
+        ) -> Result<crate::providers::RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(1)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(self.dirs.contains_key(path))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("pool-tree".to_string())
+        }
+    }
+
+    /// The walker every sync path calls lists `checkers` directories at once
+    /// on a pool-backed provider, and hands the caller's provider back.
+    #[tokio::test]
+    async fn the_shared_walker_lists_checkers_directories_at_once_and_returns_the_provider() {
+        let counting = PoolTreeProvider::fan(8, 8);
+        let peak = Arc::clone(&counting.peak);
+        let mut provider: Box<dyn StorageProvider> = Box::new(counting);
+        let opts = ScanOptions {
+            disable_recursive_fastpath: true,
+            checkers: Some(8),
+            ..ScanOptions::default()
+        };
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            scan_remote_tree_checked(&mut provider, "/root", &opts),
+        )
+        .await;
+        let delivered = peak.load(std::sync::atomic::Ordering::SeqCst);
+        let (rows, completeness) = outcome.unwrap_or_else(|_| {
+            panic!("the walk listed at most {delivered} directories at once, 8 requested")
+        });
+        assert_eq!(rows.len(), 8);
+        assert!(completeness.is_complete());
+        assert_eq!(delivered, 8);
+        assert_eq!(
+            provider.display_name(),
+            "pool-tree",
+            "the caller gets its own provider back, not the placeholder"
+        );
     }
 }

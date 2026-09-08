@@ -2475,4 +2475,38 @@ mod tests {
         assert_eq!(cfg.backlog_cap, 50_000);
         assert_eq!(cfg.active_file_cap, 3);
     }
+
+    /// The door of the `sync` command: `sync_tree_core` (what the CLI and the
+    /// MCP tools call) lists `checkers` remote directories at once on a
+    /// pool-backed provider. A dry run, so nothing but the scan happens.
+    #[tokio::test]
+    async fn sync_tree_core_scans_the_remote_tree_on_the_list_pool() {
+        use crate::sync_core::scan::tests::PoolTreeProvider;
+        let counting = PoolTreeProvider::fan(8, 8);
+        let peak = Arc::clone(&counting.peak);
+        let mut provider: Box<dyn StorageProvider> = Box::new(counting);
+        let local = tempfile::tempdir().expect("tempdir");
+        let mut options = opts(SyncDirection::Download);
+        options.dry_run = true;
+        options.scan.disable_recursive_fastpath = true;
+        options.scan.checkers = Some(8);
+        let mut sink = TestSyncSink::default();
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            crate::sync::sync_tree_core(
+                &mut provider,
+                local.path().to_str().unwrap(),
+                "/root",
+                &options,
+                &mut sink,
+            ),
+        )
+        .await;
+        let delivered = peak.load(Ordering::SeqCst);
+        assert!(
+            outcome.is_ok(),
+            "sync listed at most {delivered} directories at once, 8 requested"
+        );
+        assert_eq!(delivered, 8, "--checkers 8 must list 8 directories at once");
+    }
 }
