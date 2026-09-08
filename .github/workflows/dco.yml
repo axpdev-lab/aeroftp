@@ -33,11 +33,30 @@ jobs:
           for sha in $(git rev-list --no-merges "$BASE".."$HEAD"); do
             author_name=$(git show -s --format='%an' "$sha")
             author_mail=$(git show -s --format='%ae' "$sha")
-            expected="Signed-off-by: ${author_name} <${author_mail}>"
+            case "$author_mail" in
+              *'[bot]@users.noreply.github.com')
+                # A GitHub App picks neither of its two addresses. It authors
+                # with the NNN+name[bot]@users.noreply.github.com that GitHub
+                # issues for the app, and signs off with the app's own contact
+                # address: Dependabot authors as
+                # 49699333+dependabot[bot]@users.noreply.github.com and writes
+                # Signed-off-by: dependabot[bot] <support@github.com>. Requiring
+                # the two to match leaves every bot pull request permanently red
+                # over a difference nobody can amend. Match the app by name and
+                # take the address it signs with; the sign-off is still
+                # required, only its address is not compared.
+                expected="Signed-off-by: ${author_name} <"
+                shown="Signed-off-by: ${author_name} <the address the app signs with>"
+                ;;
+              *)
+                expected="Signed-off-by: ${author_name} <${author_mail}>"
+                shown="$expected"
+                ;;
+            esac
             if git show -s --format='%B' "$sha" | grep -qiF "$expected"; then
               continue
             fi
-            echo "::error::commit $sha is missing '$expected'"
+            echo "::error::commit $sha is missing '$shown'"
             git show -s --format='  %h %s' "$sha"
             missing=1
           done
@@ -47,7 +66,8 @@ jobs:
             echo "  git commit --amend -s --no-edit"
             echo "  git rebase --signoff $BASE"
             echo ""
-            echo "The sign-off must match the commit author exactly. It certifies"
+            echo "The sign-off must match the commit author; a GitHub App is matched"
+            echo "by name, since it cannot pick either of its two addresses. It certifies"
             echo "the Developer Certificate of Origin, see the DCO file in the repo root."
             exit 1
           fi
