@@ -486,7 +486,14 @@ impl SftpProvider {
         self.config = spec.to_config();
         // Fresh per-connection slot so the comparison reflects this dial.
         self.host_key_sha256_hex = Arc::new(std::sync::OnceLock::new());
+        // A clone worker carries the primary's working directory so a relative
+        // path resolves where the primary would resolve it; `connect` resets it
+        // to the initial path or the home. Keep what the clone was given across
+        // this first, lazy dial (scan and transfer workers never `cd` on their
+        // own).
+        let carried_current_dir = self.current_dir.clone();
         self.connect().await?;
+        self.current_dir = carried_current_dir;
         if let Some(pinned) = spec.pinned_host_key_sha256.as_deref() {
             match self.accepted_host_key_sha256_hex().as_deref() {
                 Some(seen) if seen == pinned => {}
@@ -2592,6 +2599,32 @@ impl StorageProvider for SftpProvider {
         true
     }
 
+    /// Parallel directory scans on N independent SSH connections. The kind's
+    /// name says HTTP because that is where the clone-pool scanner was born;
+    /// the contract it encodes ("`clone_for_list` mints an independent
+    /// worker") holds for a re-dialled SSH connection just the same. Without a
+    /// connection spec there is nothing to re-dial from, so the scan stays on
+    /// the single locked session.
+    fn list_executor_kind(&self) -> super::ProviderListExecutorKind {
+        if self.connection_spec.is_some() {
+            super::ProviderListExecutorKind::HttpClonePool
+        } else {
+            super::ProviderListExecutorKind::LockedSingle
+        }
+    }
+
+    /// Same ceiling as the transfer pool: each lease is a full SSH connection.
+    fn list_executor_max_sessions(&self) -> u16 {
+        self.transfer_executor_max_sessions()
+    }
+
+    /// A scan worker is a transfer worker: an unconnected clone that dials its
+    /// own connection on first use and, being reusable, is kept warm by the
+    /// scanner across directories instead of re-dialled per directory.
+    fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        self.clone_for_transfer()
+    }
+
     fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
         if self.connection_spec.is_some() {
             ProviderTransferExecutorKind::SftpConnectionPool
@@ -3888,6 +3921,53 @@ mod tests {
         // Every original `'` became the 4-char `'\''` sequence; there is no
         // bare unescaped quote that could terminate the literal early.
         assert_eq!(q, "''\\''; rm -rf / ; echo '\\'''");
+    }
+
+    #[test]
+    fn sftp_scans_in_parallel_only_once_a_connection_spec_exists() {
+        let config = SftpConfig {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        };
+        let mut provider = SftpProvider::new(config);
+        // Never connected: nothing to re-dial from, the scan stays locked.
+        assert_eq!(
+            provider.list_executor_kind(),
+            crate::providers::ProviderListExecutorKind::LockedSingle
+        );
+        assert!(provider.clone_for_list().is_err());
+        // With the spec a connect captures, the scanner may fan out on N
+        // independent connections, each an unconnected clone that dials
+        // lazily and opts into warm reuse across directories.
+        provider.connection_spec = Some(SftpConnectionSpec {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            pinned_host_key_sha256: None,
+        });
+        assert_eq!(
+            provider.list_executor_kind(),
+            crate::providers::ProviderListExecutorKind::HttpClonePool
+        );
+        assert_eq!(
+            provider.list_executor_max_sessions(),
+            provider.transfer_executor_max_sessions()
+        );
+        let worker = provider.clone_for_list().expect("clone from spec");
+        assert!(!worker.is_connected(), "a scan worker dials on first use");
+        assert!(worker.supports_transfer_worker_reuse());
     }
 
     #[test]
