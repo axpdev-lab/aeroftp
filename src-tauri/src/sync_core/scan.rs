@@ -406,7 +406,11 @@ pub async fn scan_remote_tree_checked(
                         continue;
                     }
                     if entry.is_dir {
-                        queue.push((entry.path.clone(), entry_rel, current_depth + 1));
+                        // GAP-A02: a symlink to a directory is never walked
+                        // (same rule as `scan_remote_dir` below).
+                        if entry.is_walkable_dir() {
+                            queue.push((entry.path.clone(), entry_rel, current_depth + 1));
+                        }
                         continue;
                     }
                     if opts.skip_filenames.iter().any(|n| n == &entry.name) {
@@ -856,11 +860,17 @@ async fn scan_remote_dir(
             format!("{}/{}", dir.rel_prefix, entry.name)
         };
         if entry.is_dir {
-            dirs.push(RemoteScanDir {
-                abs_dir: entry.path.clone(),
-                rel_prefix: entry_rel,
-                depth: dir.depth + 1,
-            });
+            // A symlink to a directory is never walked (GAP-A02): syncing
+            // through one would duplicate the target's tree, and a link to
+            // `..` never terminates. The CLI walker already refused it; the
+            // shared walker, which the GUI and now the CLI use, did not.
+            if entry.is_walkable_dir() {
+                dirs.push(RemoteScanDir {
+                    abs_dir: entry.path.clone(),
+                    rel_prefix: entry_rel,
+                    depth: dir.depth + 1,
+                });
+            }
             continue;
         }
         if opts.skip_filenames.iter().any(|name| name == &entry.name) {
@@ -1303,5 +1313,148 @@ mod tests {
         .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].rel_path, "real.txt");
+    }
+
+    /// An in-memory tree for walking tests: `list` answers from a map, every
+    /// other operation is unsupported.
+    struct TreeProvider {
+        dirs: std::collections::HashMap<String, Vec<crate::providers::RemoteEntry>>,
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for TreeProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> crate::providers::ProviderType {
+            crate::providers::ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "tree".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(
+            &mut self,
+            path: &str,
+        ) -> Result<Vec<crate::providers::RemoteEntry>, ProviderError> {
+            self.dirs
+                .get(path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("delete".to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir".to_string()))
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(
+            &mut self,
+            path: &str,
+        ) -> Result<crate::providers::RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(self.dirs.contains_key(path))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("tree".to_string())
+        }
+    }
+
+    /// GAP-A02 on the shared walker: a symlink that points at a directory is
+    /// listed as an entry of its parent but its target is never walked. A
+    /// tree that links to its own root would otherwise never finish.
+    #[tokio::test]
+    async fn a_symlinked_directory_is_listed_but_never_walked() {
+        use crate::providers::RemoteEntry;
+        let mut loop_link = RemoteEntry::directory("loop".to_string(), "/root".to_string());
+        loop_link.is_symlink = true;
+        let mut dirs = std::collections::HashMap::new();
+        dirs.insert(
+            "/root".to_string(),
+            vec![
+                RemoteEntry::file("a.txt".to_string(), "/root/a.txt".to_string(), 1),
+                RemoteEntry::directory("sub".to_string(), "/root/sub".to_string()),
+                loop_link,
+            ],
+        );
+        dirs.insert(
+            "/root/sub".to_string(),
+            vec![RemoteEntry::file(
+                "b.txt".to_string(),
+                "/root/sub/b.txt".to_string(),
+                2,
+            )],
+        );
+        let mut provider: Box<dyn StorageProvider> = Box::new(TreeProvider { dirs });
+        let opts = ScanOptions {
+            disable_recursive_fastpath: true,
+            ..ScanOptions::default()
+        };
+        let (rows, completeness) = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            scan_remote_tree_checked(&mut provider, "/root", &opts),
+        )
+        .await
+        .expect("a walk that follows the loop never finishes");
+        let mut paths: Vec<_> = rows.iter().map(|r| r.rel_path.clone()).collect();
+        paths.sort();
+        assert_eq!(paths, vec!["a.txt", "sub/b.txt"]);
+        assert!(completeness.is_complete());
     }
 }

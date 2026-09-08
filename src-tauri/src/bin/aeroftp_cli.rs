@@ -507,14 +507,15 @@ struct Cli {
     tpslimit_burst: f64,
 
     /// KE-A2: Concurrency cap for metadata-only operations during sync
-    /// (rclone `--checkers`). Default `8`, range 1-64. NOTE: today this
-    /// only bounds and labels the `--no-traverse` stat sweep, which still
-    /// runs sequentially: `StorageProvider::stat` takes `&mut self`, so a
-    /// single provider handle serialises the probes. The value is honoured
-    /// semantically (reported in the sweep's summary note) but does not yet
-    /// parallelise anything; it becomes a real concurrency gate with the
-    /// provider pool refactor (Sprint K2). Distinct from `--transfers`,
-    /// which caps the actual data-transfer pool.
+    /// (rclone `--checkers`). Default `8`, range 1-64. Bounds the remote
+    /// directory walk of `sync`, `check` and `cryptcheck`: a provider that
+    /// lists on independent clones (SFTP, S3, WebDAV, B2, the HTTP clouds)
+    /// lists up to this many directories at once, capped by the provider's
+    /// own list pool; single-session providers walk one directory at a
+    /// time whatever the value. The `--no-traverse` stat sweep is still
+    /// sequential (`StorageProvider::stat` takes `&mut self`) and only
+    /// reports the value. Distinct from `--transfers`, which caps the
+    /// data-transfer pool.
     #[arg(long, global = true, default_value_t = 8)]
     checkers: usize,
 
@@ -8302,122 +8303,91 @@ impl RemoteScanHealth {
     }
 }
 
+/// Walk the remote tree on the provider's list pool. A clone-backed provider
+/// (SFTP, S3, WebDAV, B2 and the HTTP clouds that clone for listing) lists up
+/// to `--checkers` independent directories at once on warm workers; a locked
+/// provider keeps the one-directory-at-a-time walk. Same filters, same
+/// symlink rule and same completeness accounting as the GUI sync scan: this
+/// used to be a second, serial walker of its own, which is why a 5000-file
+/// `sync` on SFTP spent three to four times longer than rclone in the scan
+/// alone before a single byte moved.
+///
+/// Takes the provider by value and hands it back: the pool scanner owns it
+/// behind a lock while the clones list.
 async fn scan_remote_tree_with_progress(
-    provider: &mut Box<dyn StorageProvider>,
+    provider: Box<dyn StorageProvider>,
     remote_root: &str,
     opts: &ftp_client_gui_lib::sync_core::ScanOptions,
     spinner: &Option<ProgressBar>,
+    checkers: usize,
 ) -> (
     Vec<ftp_client_gui_lib::sync_core::scan::RemoteEntry>,
     RemoteScanHealth,
+    Box<dyn StorageProvider>,
 ) {
-    let matchers: Vec<globset::GlobMatcher> = opts
-        .exclude_patterns
-        .iter()
-        .filter_map(|pat| {
-            globset::Glob::new(pat)
-                .ok()
-                .map(|glob| glob.compile_matcher())
-        })
-        .collect();
-    let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
-    let depth = opts.max_depth.unwrap_or(MAX_SCAN_DEPTH);
-    let want_remote_checksum = opts.compute_remote_checksum && provider.supports_checksum();
-    let mut last_update = Instant::now()
-        .checked_sub(std::time::Duration::from_millis(500))
-        .unwrap_or_else(Instant::now);
-    let mut results = Vec::new();
-    let mut health = RemoteScanHealth::default();
-    let mut queue: Vec<(String, String, usize)> = vec![(remote_root.to_string(), String::new(), 0)];
+    use ftp_client_gui_lib::provider_transfer_executor::resolve_provider_list_session_model;
+    use ftp_client_gui_lib::sync_core::scan::scan_remote_tree_with_provider_lock_checked;
 
-    while let Some((abs_dir, rel_prefix, current_depth)) = queue.pop() {
-        if current_depth >= depth || results.len() >= cap {
-            // A subtree we declined to descend into (depth or entry cap): the
-            // listing is no longer authoritative.
-            health.truncated = true;
-            continue;
-        }
-        match provider.list(&abs_dir).await {
-            Ok(entries) => {
-                for entry in entries {
-                    let entry_rel = if rel_prefix.is_empty() {
-                        entry.name.clone()
-                    } else {
-                        format!("{}/{}", rel_prefix, entry.name)
-                    };
-                    if entry.is_dir {
-                        // A symlink-to-directory is listed but never walked
-                        // (GAP-A02): syncing through one would duplicate the
-                        // target's tree, and a link to `..` never terminates.
-                        if entry.is_walkable_dir() {
-                            queue.push((entry.path.clone(), entry_rel, current_depth + 1));
-                        }
-                        continue;
-                    }
-                    if opts.skip_filenames.iter().any(|name| name == &entry.name) {
-                        continue;
-                    }
-                    if matchers.iter().any(|matcher| {
-                        matcher.is_match(&entry_rel) || matcher.is_match(&entry.name)
-                    }) {
-                        continue;
-                    }
-                    if let Some(ref set) = opts.files_from {
-                        if !set.contains(entry_rel.as_str()) {
-                            continue;
-                        }
-                    }
+    /// Feeds the scanner's progress into the spinner, at most twice a second.
+    struct SpinnerScanObserver {
+        spinner: Option<ProgressBar>,
+        last_update: std::sync::Mutex<Instant>,
+    }
 
-                    let (checksum_alg, checksum_hex) = if want_remote_checksum {
-                        match provider.checksum(&entry.path).await {
-                            Ok(map) => {
-                                if let Some(value) =
-                                    map.get("sha256").or_else(|| map.get("SHA-256"))
-                                {
-                                    (Some("sha256".to_string()), Some(value.clone()))
-                                } else {
-                                    (None, None)
-                                }
-                            }
-                            Err(_) => (None, None),
-                        }
-                    } else {
-                        (None, None)
-                    };
-
-                    results.push(ftp_client_gui_lib::sync_core::scan::RemoteEntry {
-                        rel_path: entry_rel,
-                        size: entry.size,
-                        mtime: entry.modified,
-                        checksum_alg,
-                        checksum_hex,
-                    });
-                    maybe_update_scan_spinner(
-                        spinner,
-                        &mut last_update,
-                        format!("Scanning remote... {} files so far", results.len()),
-                    );
-                    if results.len() >= cap {
-                        health.truncated = true;
-                        break;
-                    }
-                }
-            }
-            Err(err) => {
-                eprintln!(
-                    "[scan_remote_tree] warning: failed to list {}: {}",
-                    abs_dir, err
-                );
-                health.errors += 1;
+    impl ftp_client_gui_lib::transfer_dag::DagObserver for SpinnerScanObserver {
+        fn on_scan_progress(&self, scanned: usize, _in_flight: usize) {
+            let Some(pb) = &self.spinner else {
+                return;
+            };
+            let mut last_update = self
+                .last_update
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if last_update.elapsed() >= std::time::Duration::from_millis(500) {
+                pb.set_message(format!("Scanning remote... {} files so far", scanned));
+                *last_update = Instant::now();
             }
         }
     }
+
+    let observer = SpinnerScanObserver {
+        spinner: spinner.clone(),
+        last_update: std::sync::Mutex::new(
+            Instant::now()
+                .checked_sub(std::time::Duration::from_millis(500))
+                .unwrap_or_else(Instant::now),
+        ),
+    };
+    let holder: Arc<AsyncMutex<Option<Box<dyn StorageProvider>>>> =
+        Arc::new(AsyncMutex::new(Some(provider)));
+    let list_model = resolve_provider_list_session_model(&holder, checkers.max(1)).await;
+    let (results, completeness) = scan_remote_tree_with_provider_lock_checked(
+        Arc::clone(&holder),
+        remote_root,
+        opts,
+        &list_model,
+        None,
+        Some(&observer),
+    )
+    .await;
+    let provider = holder
+        .lock()
+        .await
+        .take()
+        .expect("the pool scanner hands the provider back");
 
     if let Some(pb) = spinner {
         pb.set_message(format!("Scanning remote... {} files", results.len()));
     }
 
-    (results, health)
+    (
+        results,
+        RemoteScanHealth {
+            errors: completeness.list_errors,
+            truncated: completeness.truncated,
+        },
+        provider,
+    )
 }
 
 fn load_sync_plan_from_reconcile(
@@ -55823,9 +55793,7 @@ async fn cmd_check(
 
     // Delegate scan + comparison to sync_core. Both CLI and MCP now share
     // the same implementation, so a fix in one propagates to the other.
-    use ftp_client_gui_lib::sync_core::{
-        compare_trees, scan_local_tree, scan_remote_tree, ScanOptions,
-    };
+    use ftp_client_gui_lib::sync_core::{compare_trees, scan_local_tree, ScanOptions};
     // When the profile carries a crypt overlay, unlock the compare keys before
     // the scan so the remote tree is decrypted (names + rclone sizes) to match
     // the plaintext local tree. Fail closed if the overlay cannot be unlocked.
@@ -55850,7 +55818,16 @@ async fn cmd_check(
         ..Default::default()
     };
     let locals = scan_local_tree(local_path, &scan_opts);
-    let mut remotes = scan_remote_tree(&mut provider, remote_path, &scan_opts).await;
+    let (remotes, _remote_health, returned) = scan_remote_tree_with_progress(
+        provider,
+        remote_path,
+        &scan_opts,
+        &None,
+        effective_checkers(cli),
+    )
+    .await;
+    let mut remotes = remotes;
+    provider = returned;
     if let Some(keys) = &crypt_keys {
         let raw_len = remotes.len();
         remotes = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(remotes, keys);
@@ -56058,7 +56035,7 @@ async fn cmd_cryptcheck(
         return 5;
     }
 
-    use ftp_client_gui_lib::sync_core::{scan_local_tree, scan_remote_tree, ScanOptions};
+    use ftp_client_gui_lib::sync_core::{scan_local_tree, ScanOptions};
     let scan_opts = ScanOptions {
         compute_checksum: false,
         max_depth: Some(MAX_SCAN_DEPTH),
@@ -56066,7 +56043,15 @@ async fn cmd_cryptcheck(
     };
 
     let locals = scan_local_tree(local_path, &scan_opts);
-    let remotes = scan_remote_tree(&mut provider, &remote_path_resolved, &scan_opts).await;
+    let (remotes, _remote_health, returned) = scan_remote_tree_with_progress(
+        provider,
+        &remote_path_resolved,
+        &scan_opts,
+        &None,
+        effective_checkers(cli),
+    )
+    .await;
+    provider = returned;
 
     let mut decrypted_remotes = std::collections::HashMap::new();
     for r in &remotes {
@@ -56442,9 +56427,15 @@ async fn cmd_reconcile(
     }
 
     let remote_spinner = maybe_create_scan_spinner(format, cli, "Scanning remote...");
-    let (mut remotes, remote_health) =
-        scan_remote_tree_with_progress(&mut provider, remote_path, &scan_opts, &remote_spinner)
-            .await;
+    let (mut remotes, remote_health, returned) = scan_remote_tree_with_progress(
+        provider,
+        remote_path,
+        &scan_opts,
+        &remote_spinner,
+        effective_checkers(cli),
+    )
+    .await;
+    provider = returned;
     if let Some(pb) = remote_spinner {
         pb.finish_and_clear();
     }
@@ -73250,6 +73241,178 @@ mod tests {
             mime_type: None,
             metadata: HashMap::new(),
         }
+    }
+
+    /// A provider that lists on independent clones and counts how many
+    /// directory listings are in flight at once. The root holds `width`
+    /// sub-directories; each of them holds one file and waits at a rendezvous
+    /// until `width` listings are open together, so the walk only finishes
+    /// if the scanner really lists that many directories in parallel.
+    struct ListCountingProvider {
+        width: usize,
+        in_flight: Arc<std::sync::atomic::AtomicUsize>,
+        peak: Arc<std::sync::atomic::AtomicUsize>,
+        rendezvous: Arc<tokio::sync::Barrier>,
+    }
+
+    impl ListCountingProvider {
+        fn new(width: usize) -> Self {
+            Self {
+                width,
+                in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                peak: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                rendezvous: Arc::new(tokio::sync::Barrier::new(width)),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for ListCountingProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "list-counting".to_string()
+        }
+        fn list_executor_kind(&self) -> ftp_client_gui_lib::providers::ProviderListExecutorKind {
+            ftp_client_gui_lib::providers::ProviderListExecutorKind::HttpClonePool
+        }
+        fn list_executor_max_sessions(&self) -> u16 {
+            self.width as u16
+        }
+        fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            Ok(Box::new(Self {
+                width: self.width,
+                in_flight: Arc::clone(&self.in_flight),
+                peak: Arc::clone(&self.peak),
+                rendezvous: Arc::clone(&self.rendezvous),
+            }))
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            if path == "/root" {
+                return Ok((0..self.width)
+                    .map(|i| RemoteEntry::directory(format!("d{i}"), format!("/root/d{i}")))
+                    .collect());
+            }
+            let now = self
+                .in_flight
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                + 1;
+            self.peak
+                .fetch_max(now, std::sync::atomic::Ordering::SeqCst);
+            self.rendezvous.wait().await;
+            self.in_flight
+                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(vec![RemoteEntry::file(
+                "f.txt".to_string(),
+                format!("{path}/f.txt"),
+                1,
+            )])
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(1)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("list-counting".to_string())
+        }
+    }
+
+    /// The door of `--checkers`: the CLI remote walk lists as many directories
+    /// at once as the flag asks for, on a provider whose list pool allows it.
+    /// The rendezvous only opens when 8 listings are in flight together; a
+    /// serial walk never gets there and the timeout reports what it delivered.
+    #[tokio::test]
+    async fn cli_remote_scan_lists_checkers_directories_at_once() {
+        let counting = ListCountingProvider::new(8);
+        let peak = Arc::clone(&counting.peak);
+        let provider: Box<dyn StorageProvider> = Box::new(counting);
+        let opts = ftp_client_gui_lib::sync_core::ScanOptions {
+            disable_recursive_fastpath: true,
+            ..Default::default()
+        };
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            scan_remote_tree_with_progress(provider, "/root", &opts, &None, 8),
+        )
+        .await;
+        let delivered = peak.load(std::sync::atomic::Ordering::SeqCst);
+        match outcome {
+            Ok((rows, health, _provider)) => {
+                assert_eq!(rows.len(), 8, "one file per directory");
+                assert!(!health.is_incomplete());
+            }
+            Err(_) => {
+                panic!("the walk listed at most {delivered} directories at once, 8 requested")
+            }
+        }
+        assert_eq!(delivered, 8, "--checkers 8 must list 8 directories at once");
     }
 
     struct CliEditFakeProvider {
