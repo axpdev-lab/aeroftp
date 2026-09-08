@@ -2503,10 +2503,18 @@ mod tests {
         )
         .await;
         let delivered = peak.load(Ordering::SeqCst);
+        let report = outcome.unwrap_or_else(|_| {
+            panic!("sync listed at most {delivered} directories at once, 8 requested")
+        });
         assert!(
-            outcome.is_ok(),
-            "sync listed at most {delivered} directories at once, 8 requested"
+            report.errors.is_empty(),
+            "the dry run must finish clean: {:?}",
+            report.errors
         );
+        // A dry run reports every planned transfer as skipped with the
+        // "dry-run" reason, one per directory here, and the sink saw them all.
+        assert_eq!(report.skipped, 8, "one planned download per directory");
+        assert_eq!(sink.done.len(), 8, "every planned file reached the sink");
         assert_eq!(delivered, 8, "--checkers 8 must list 8 directories at once");
     }
 }
