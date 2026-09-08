@@ -182,7 +182,8 @@ option does not establish that the folder was removed. See
 AeroFTP recursive deletion removes the folder's marker and children. An object
 with the same name **without** the trailing slash is a distinct file and is
 preserved unless HEAD identifies it as a zero-byte directory marker used by a
-gateway. Errors from individual DELETE requests are reported even when the
+gateway. A denied or unsupported HEAD preserves that separate key and does
+not block deletion inside the folder's prefix. Errors from individual DELETE requests are reported even when the
 server does not support batch deletion.
 A fresh listing after recursive deletion also reports an error if objects
 remain, including children a gateway only exposes after a conflicting object

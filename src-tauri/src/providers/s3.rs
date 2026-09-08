@@ -4010,10 +4010,14 @@ impl StorageProvider for S3Provider {
             }
             StatusCode::NOT_FOUND => {}
             status => {
-                return Err(ProviderError::ServerError(format!(
-                    "Directory marker HEAD failed with status: {}",
-                    status
-                )))
+                // GetObject/HEAD permission is independent of DeleteObject.
+                // An inconclusive probe cannot authorize deletion of the
+                // slashless key, but must not block deletion inside the prefix.
+                tracing::warn!(
+                    "Directory marker HEAD returned {} for '{}'; preserving the slashless key",
+                    status,
+                    no_slash
+                );
             }
         }
 
@@ -7302,15 +7306,20 @@ mod tests {
         use std::sync::{Arc, Mutex};
         // Real files (including zero-byte files) survive; only a confirmed
         // zero-byte directory marker may be removed outside the prefix.
-        for (status, content_type, length, include_bare, head_ok, leftovers) in [
-            (200, "text/plain", "17", false, true, false),
-            (200, "application/octet-stream", "0", false, true, false),
-            (200, "application/x-directory", "17", false, true, false),
-            (200, "application/x-directory", "0", true, true, false),
-            (200, "httpd/unix-directory", "0", true, true, false),
-            (404, "", "0", false, true, false),
-            (403, "", "0", false, false, false),
-            (404, "", "0", false, true, true),
+        for (status, content_type, length, include_bare, leftovers) in [
+            (200, "text/plain", "17", false, false),
+            (200, "application/octet-stream", "0", false, false),
+            (200, "application/x-directory", "17", false, false),
+            (200, "application/x-directory", "0", true, false),
+            (200, "httpd/unix-directory", "0", true, false),
+            (404, "", "0", false, false),
+            // Denied/unsupported HEAD must not require read permission for
+            // prefix deletion, even if error headers resemble a marker.
+            (403, "application/x-directory", "0", false, false),
+            (401, "", "0", false, false),
+            (405, "", "0", false, false),
+            (404, "", "0", false, true),
+            (403, "", "0", false, true),
         ] {
             let bodies = Arc::new(Mutex::new(Vec::new()));
             let captured = Arc::clone(&bodies);
@@ -7351,17 +7360,13 @@ mod tests {
             provider.connected = true;
             assert_eq!(
                 provider.rmdir_recursive("/folder/").await.is_ok(),
-                head_ok && !leftovers
+                !leftovers
             );
             let bodies = bodies.lock().unwrap();
-            if head_ok {
-                assert_eq!(bodies.len(), 1);
-                assert!(bodies[0].contains("<Key>folder/</Key>"));
-                assert!(bodies[0].contains("<Key>folder/child</Key>"));
-                assert_eq!(bodies[0].contains("<Key>folder</Key>"), include_bare);
-            } else {
-                assert!(bodies.is_empty(), "HEAD failure must prevent deletion");
-            }
+            assert_eq!(bodies.len(), 1);
+            assert!(bodies[0].contains("<Key>folder/</Key>"));
+            assert!(bodies[0].contains("<Key>folder/child</Key>"));
+            assert_eq!(bodies[0].contains("<Key>folder</Key>"), include_bare);
             server.abort();
         }
     }
