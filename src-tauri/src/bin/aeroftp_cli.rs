@@ -7993,6 +7993,26 @@ fn create_spinner(msg: &str) -> ProgressBar {
     pb
 }
 
+/// A flag that accepts 32 and delivers 4 without a word is worse than a lower
+/// documented limit: when the provider's session ceiling binds the requested
+/// `--parallel`, say so once on stderr (text mode only; quiet and JSON stay
+/// silent). The DAG engine review battery found SFTP pinned at 4 for every
+/// `--parallel` value while rclone scaled 3.6x from 4 to 16 on the same tree.
+fn note_parallel_ceiling(
+    cli: &Cli,
+    settings: &ftp_client_gui_lib::transfer_settings::ResolvedTransferSettings,
+) {
+    if cli.quiet || cli.json || cli.machine {
+        return;
+    }
+    if settings.max_concurrent < settings.requested_max_concurrent {
+        eprintln!(
+            "Note: this provider caps parallel workers at {} (requested --parallel {})",
+            settings.max_concurrent, settings.requested_max_concurrent
+        );
+    }
+}
+
 fn effective_parallel_workers(cli: &Cli) -> usize {
     cli.parallel.clamp(1, 32)
 }
@@ -9424,6 +9444,7 @@ async fn run_shared_provider_download_batch(
             | ProviderExecutorSessionModel::SftpConnectionPool { .. }
             | ProviderExecutorSessionModel::FtpConnectionPool { .. }
     );
+    note_parallel_ceiling(cli, &runtime_settings);
     if !is_pool_backed {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.
@@ -9646,6 +9667,7 @@ async fn run_shared_provider_upload_batch(
             | ProviderExecutorSessionModel::SftpConnectionPool { .. }
             | ProviderExecutorSessionModel::FtpConnectionPool { .. }
     );
+    note_parallel_ceiling(cli, &runtime_settings);
     if !is_pool_backed {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.

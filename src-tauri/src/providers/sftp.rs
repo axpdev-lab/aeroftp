@@ -54,6 +54,9 @@ fn configure_aerorsync_metadata(
 /// connection from the pool, so the cap stays conservative; the live
 /// benchmark in master 9.6.2 says where it pays.
 const SFTP_MULTI_THREAD_MAX_STREAMS: usize = 16;
+/// Independent SSH connections a multi-file job may hold (see
+/// `transfer_executor_max_sessions`).
+const SFTP_POOL_MAX_SESSIONS: u16 = 16;
 
 /// Job-wide guardrails for read-ahead. The byte budget includes one chunk per
 /// reader, one channel window, and the writer's current chunk. The handle cap
@@ -2633,11 +2636,17 @@ impl StorageProvider for SftpProvider {
         }
     }
 
-    /// Conservative initial cap, mirroring the FTP pool clamp (1..8).
-    /// Each lease is a full independent SSH connection; raise only after a
-    /// live benchmark on the target server says it pays.
+    /// Ceiling of independent SSH connections one job may hold. Each lease is
+    /// a full connection. The former cap of 4 asked for "a live benchmark on
+    /// the target server" before being raised; the DAG engine review battery
+    /// on the Hetzner lab (wired gigabit, 5000 x 4 KiB files, 2026-09-08) is
+    /// that benchmark: at --parallel 16 rclone gained 1.9x on upload and 3.6x
+    /// on download over 4, while AeroFTP moved 1% because the cap silently
+    /// bound the flag. 16 matches rclone's range and the clamp already used by
+    /// --sftp-concurrency; the effective count stays min(ceiling, --parallel),
+    /// so the default of 4 connections is unchanged.
     fn transfer_executor_max_sessions(&self) -> u16 {
-        4
+        SFTP_POOL_MAX_SESSIONS
     }
 
     /// Produce an independent transfer worker. It is **not connected**:
@@ -3968,6 +3977,30 @@ mod tests {
         let worker = provider.clone_for_list().expect("clone from spec");
         assert!(!worker.is_connected(), "a scan worker dials on first use");
         assert!(worker.supports_transfer_worker_reuse());
+    }
+
+    #[test]
+    fn sftp_pool_ceiling_matches_the_intra_file_stream_range() {
+        // --parallel is documented up to 32 and clamped per provider; the SFTP
+        // ceiling follows the same 16 as --sftp-concurrency, so a request of
+        // 16 is honoured and a request of 4 still yields 4 connections.
+        let config = SftpConfig {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        };
+        let provider = SftpProvider::new(config);
+        assert_eq!(provider.transfer_executor_max_sessions(), 16);
+        assert_eq!(
+            provider.transfer_executor_max_sessions() as usize,
+            SFTP_MULTI_THREAD_MAX_STREAMS
+        );
     }
 
     #[test]
