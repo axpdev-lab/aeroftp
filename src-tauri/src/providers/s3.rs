@@ -2585,9 +2585,43 @@ impl S3Provider {
         grid: u64,
         baseline_etag: &str,
         content_type: Option<&str>,
-        source_mtime: Option<String>,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<Option<u64>, ProviderError> {
+        // Derived here and not taken as a parameter, the way
+        // `upload_multipart_streaming` does it. The function already has
+        // `local_path`, so a parameter only creates a way for a caller to pass
+        // `None` and silently drop the mtime the original object carried, and
+        // an object rebuilt by the delta that lost its mtime is one that every
+        // later sync compares by timestamp and never finds equal. The caller
+        // that would have had to remember does not exist yet: the adapter arm
+        // is the next tranche, which is exactly when this would have been
+        // discovered the expensive way.
+        // Two limits from the appendix's constraint sheet are deliberately not
+        // checked here, and both are written down rather than left to be
+        // rediscovered as defects.
+        //
+        // A ranged copy is only allowed when the SOURCE object is larger than
+        // 5 MB. Nothing enforces it because nothing can reach it: a baseline
+        // under 5 MB cannot produce a match as wide as the grid, which is at
+        // least 8 MiB, so the planner demotes every copy run and refuses the
+        // plan before a single UploadPartCopy is built. The argument is the
+        // reason there is no check, not an excuse for its absence.
+        //
+        // The appendix also asks for the result to be verified, by creating the
+        // multipart with a checksum algorithm and comparing a full-object
+        // digest against the local file. That is not done, and it is not a
+        // small omission to bolt on: for a multipart the object-level checksum
+        // is COMPOSITE, a hash of the part hashes with an `-N` suffix, which is
+        // the same shape the appendix already documents for the multipart ETag
+        // and is not comparable to a digest computed over the local file. A
+        // whole-object digest needs the full-object checksum type, which S3
+        // offers for the CRC families and not for SHA256, with uneven support
+        // across S3-compatible backends. Measured alongside this: on MinIO and
+        // R2 a multipart object is not hash-verifiable by a third-party client
+        // today at all. So the guardrail needs restating on what is actually
+        // obtainable before it can be implemented, and it is tracked in the
+        // appendix rather than silently dropped here.
+        let source_mtime = Self::source_mtime_metadata(local_path);
         use tokio::io::AsyncReadExt;
 
         // The door: plan BEFORE any request. A refused shape costs nothing
@@ -7892,6 +7926,10 @@ mod tests {
     #[derive(Default)]
     struct DeltaMockState {
         creates: usize,
+        /// `x-amz-meta-mtime` as it arrived on each CreateMultipartUpload.
+        /// `None` means the header was absent, which is how the rebuilt object
+        /// would silently lose the mtime the original carried.
+        create_mtimes: Vec<Option<String>>,
         /// (part_number, x-amz-copy-source-range, x-amz-copy-source-if-match)
         copies: Vec<(u32, String, Option<String>)>,
         /// (part_number, body)
@@ -7940,7 +7978,15 @@ mod tests {
                     let is_upload_id_query = query.contains("uploadId=");
 
                     if method == axum::http::Method::POST && query.starts_with("uploads") {
-                        seen.lock().unwrap().creates += 1;
+                        let mut guard = seen.lock().unwrap();
+                        guard.creates += 1;
+                        guard.create_mtimes.push(
+                            headers
+                                .get("x-amz-meta-mtime")
+                                .and_then(|v| v.to_str().ok())
+                                .map(str::to_string),
+                        );
+                        drop(guard);
                         return axum::response::Response::new(axum::body::Body::from(
                             "<InitiateMultipartUploadResult><UploadId>u1</UploadId></InitiateMultipartUploadResult>",
                         ));
@@ -8080,7 +8126,6 @@ mod tests {
                     "baseline-v1",
                     Some("application/octet-stream"),
                     None,
-                    None,
                 )
                 .await
                 .expect("a refused plan is Ok(None), not an error");
@@ -8118,7 +8163,6 @@ mod tests {
                 crate::providers::s3_delta_plan::S3_PART_MIN,
                 "baseline-v1",
                 Some("application/octet-stream"),
-                None,
                 Some(Box::new(move |done, total| {
                     progress_seen.lock().unwrap().push((done, total));
                 })),
@@ -8169,6 +8213,45 @@ mod tests {
         );
     }
 
+    /// The object a delta rebuilds must carry the same `x-amz-meta-mtime` an
+    /// ordinary upload writes. Every later sync compares by timestamp, so an
+    /// object that lost it is one that never compares equal again and is
+    /// re-uploaded whole, which is the opposite of what this feature is for.
+    ///
+    /// This is on the door and not on the guard: it asserts the header arrived
+    /// on the wire, not that a helper can compute one. The executor used to
+    /// take the value as a parameter, so it was the caller's job to remember,
+    /// and the caller that would have had to remember is the adapter arm of
+    /// the next tranche, which is when the loss would have been found.
+    #[tokio::test]
+    async fn a_delta_upload_carries_the_source_mtime_like_an_ordinary_one() {
+        let (provider, state, dir) = delta_mock_server(false, false).await;
+        let (path, bytes) = delta_fixture_file(dir.path());
+        let grid = crate::providers::s3_delta_plan::S3_PART_MIN;
+        let matches = vec![(0, 0, grid)];
+        provider
+            .upload_delta_multipart(
+                "big.bin",
+                &path,
+                bytes.len() as u64,
+                &matches,
+                grid,
+                "baseline-v1",
+                Some("application/octet-stream"),
+                None,
+            )
+            .await
+            .expect("the delta runs");
+
+        let seen = state.lock().unwrap();
+        assert_eq!(seen.creates, 1, "one CreateMultipartUpload");
+        let sent = seen.create_mtimes[0]
+            .as_deref()
+            .expect("the create must carry x-amz-meta-mtime");
+        let expected = S3Provider::source_mtime_metadata(&path).expect("the fixture has an mtime");
+        assert_eq!(sent, expected, "and it must be the source file's own");
+    }
+
     #[tokio::test]
     async fn delta_412_from_the_guard_aborts_and_never_completes() {
         // A concurrent overwrite of the baseline turns the if-match guard
@@ -8187,7 +8270,6 @@ mod tests {
                 &matches,
                 crate::providers::s3_delta_plan::S3_PART_MIN,
                 "baseline-v1",
-                None,
                 None,
                 None,
             )
@@ -8227,7 +8309,6 @@ mod tests {
                 &matches,
                 crate::providers::s3_delta_plan::S3_PART_MIN,
                 "baseline-v1",
-                None,
                 None,
                 None,
             )
@@ -8419,7 +8500,6 @@ mod tests {
                 grid,
                 &baseline_etag,
                 Some("application/octet-stream"),
-                None,
                 None,
             )
             .await
