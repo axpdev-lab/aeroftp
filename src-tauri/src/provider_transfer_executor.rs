@@ -1071,7 +1071,12 @@ impl ProviderDownloadExecutor {
             );
             provider.resume_download(&remote_path, &local_path, partial_offset, progress_cb)
         } else {
-            provider.download(&remote_path, &local_path, progress_cb)
+            provider.download_with_size_hint(
+                &remote_path,
+                &local_path,
+                (file_size > 0).then_some(file_size),
+                progress_cb,
+            )
         };
 
         // FINDING-4 Part B: race the in-flight download against the session

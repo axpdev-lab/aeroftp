@@ -530,6 +530,23 @@ pub trait StorageProvider: Send + Sync {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError>;
 
+    /// [`Self::download`] for a caller that already knows the file size (a
+    /// listing entry, its own stat). A provider that would otherwise ask the
+    /// server for the size before deciding on a multi-stream download uses
+    /// the hint instead, and skips that round trip when the hint is below the
+    /// multi-thread cutoff; an unknown size (`None`) keeps the probe. The
+    /// default is plain `download`.
+    async fn download_with_size_hint(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        size_hint: Option<u64>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let _ = size_hint;
+        self.download(remote_path, local_path, on_progress).await
+    }
+
     /// Download a file to memory (returns bytes)
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError>;
 

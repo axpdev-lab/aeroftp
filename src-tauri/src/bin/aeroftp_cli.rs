@@ -9000,6 +9000,7 @@ async fn download_with_resume(
     provider: &mut dyn StorageProvider,
     remote_path: &str,
     local_path: &str,
+    size_hint: Option<u64>,
     cli: &Cli,
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<(), ProviderError> {
@@ -9057,7 +9058,7 @@ async fn download_with_resume(
         }
     }
     provider
-        .download(remote_path, local_path, progress_cb)
+        .download_with_size_hint(remote_path, local_path, size_hint, progress_cb)
         .await
 }
 
@@ -9242,9 +9243,16 @@ async fn download_transfer_task(
         .map_err(|code| format!("connection failed with exit code {}", code))?;
 
     let progress_cb = aggregate.map(|aggregate| make_aggregate_progress_cb(aggregate, overall_pb));
-    let result = download_with_resume(&mut *provider, &remote_path, &local_path, cli, progress_cb)
-        .await
-        .map_err(|e| e.to_string());
+    let result = download_with_resume(
+        &mut *provider,
+        &remote_path,
+        &local_path,
+        None,
+        cli,
+        progress_cb,
+    )
+    .await
+    .map_err(|e| e.to_string());
 
     // In --inplace mode the download writes directly to the final path, so a failed
     // transfer can leave a truncated file behind. When --partial is disabled, match
@@ -30847,7 +30855,15 @@ async fn cmd_get(
         provider = returned;
         res
     } else {
-        download_with_resume(&mut *provider, remote, local_path, cli, progress_cb).await
+        download_with_resume(
+            &mut *provider,
+            remote,
+            local_path,
+            (total_size > 0).then_some(total_size),
+            cli,
+            progress_cb,
+        )
+        .await
     };
 
     match dl_result {
@@ -31284,7 +31300,16 @@ async fn pget_fallback_single(
         }) as Box<dyn Fn(u64, u64) + Send>
     });
 
-    match download_with_resume(&mut *provider, remote_path, local_path, cli, progress_cb).await {
+    match download_with_resume(
+        &mut *provider,
+        remote_path,
+        local_path,
+        (total_size > 0).then_some(total_size),
+        cli,
+        progress_cb,
+    )
+    .await
+    {
         Ok(()) => {
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);

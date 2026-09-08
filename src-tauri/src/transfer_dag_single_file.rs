@@ -910,7 +910,15 @@ pub async fn execute_single_file_dag(
                                 FailureScope::File,
                             );
                         };
-                        let dl = async { p.download(&remote, &local, cb).await };
+                        let dl = async {
+                            p.download_with_size_hint(
+                                &remote,
+                                &local,
+                                (file_size > 0).then_some(file_size),
+                                cb,
+                            )
+                            .await
+                        };
                         let res = match &cancel_token {
                             Some(tok) => tokio::select! {
                                 biased;

@@ -3591,6 +3591,17 @@ impl StorageProvider for S3Provider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_with_size_hint(remote_path, local_path, None, on_progress)
+            .await
+    }
+
+    async fn download_with_size_hint(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        size_hint: Option<u64>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -3606,7 +3617,9 @@ impl StorageProvider for S3Provider {
         //      ranges by default: only an explicit "none" disables it).
         // On any HEAD-side problem we fall through to the single-stream path so
         // a one-off mismatch never fails an otherwise downloadable transfer.
-        let on_progress = if self.multi_thread_streams >= 2 {
+        let on_progress = if self.multi_thread_streams >= 2
+            && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
+        {
             match self.s3_request(Method::HEAD, key, None, None).await {
                 Ok(head) if head.status() == StatusCode::OK => {
                     let size = head.content_length().unwrap_or(0);
@@ -9233,5 +9246,75 @@ mod tests {
                 "body was incorrectly accepted: {body:?}"
             );
         }
+    }
+
+    /// One counting fixture for the multi-stream probe: a HEAD costs one
+    /// round trip per file, and the caller of a batch already knows every size
+    /// from the listing. With the size known and below the cutoff the probe
+    /// must not run; with the size unknown it still runs.
+    async fn spawn_head_counting_fixture(
+    ) -> (std::net::SocketAddr, Arc<std::sync::atomic::AtomicUsize>) {
+        use std::sync::atomic::AtomicUsize;
+        let heads = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&heads);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        counter.fetch_add(1, Ordering::SeqCst);
+                        return axum::response::Response::builder()
+                            .header("content-length", "4096")
+                            .header("accept-ranges", "bytes")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    axum::response::Response::builder()
+                        .header("content-length", "4096")
+                        .body(axum::body::Body::from(vec![7u8; 4096]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        (addr, heads)
+    }
+
+    #[tokio::test]
+    async fn a_known_size_below_the_cutoff_skips_the_multi_stream_head_probe() {
+        let (addr, heads) = spawn_head_counting_fixture().await;
+        let dir = std::env::temp_dir().join(format!("aeroftp-s3-hint-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let local = dir.join("small.bin");
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 250 * 1024 * 1024);
+
+        provider
+            .download_with_size_hint("/small.bin", local.to_str().unwrap(), Some(4096), None)
+            .await
+            .expect("download with a known small size");
+        assert_eq!(
+            heads.load(Ordering::SeqCst),
+            0,
+            "a known size below the cutoff must not cost a HEAD"
+        );
+        assert_eq!(std::fs::metadata(&local).unwrap().len(), 4096);
+
+        provider
+            .download("/small.bin", local.to_str().unwrap(), None)
+            .await
+            .expect("download with an unknown size");
+        assert_eq!(
+            heads.load(Ordering::SeqCst),
+            1,
+            "an unknown size keeps the probe"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

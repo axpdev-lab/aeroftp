@@ -993,6 +993,16 @@ pub(crate) struct HttpRangeRequest {
     pub streams: usize,
     pub max_streams: usize,
     pub cutoff: u64,
+    /// Size the caller already knows, if any. Below `cutoff` the probe is
+    /// skipped entirely: no round trip is spent on a decision already made.
+    pub known_size: Option<u64>,
+}
+
+/// True when a size the caller already knows rules out a multi-stream
+/// download, so no server round trip (HEAD, stat, Range probe) is worth
+/// spending on the decision. An unknown size never rules it out.
+pub(crate) fn size_hint_rules_out_ranges(size_hint: Option<u64>, cutoff: u64) -> bool {
+    matches!(size_hint, Some(size) if size < cutoff)
 }
 
 /// Result of [`try_http_concurrent_range_download`].
@@ -1025,6 +1035,9 @@ pub(crate) async fn try_http_concurrent_range_download(
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> HttpRangeAttempt {
     if req.streams < 2 || req.max_streams == 0 {
+        return HttpRangeAttempt::Fallback(on_progress);
+    }
+    if size_hint_rules_out_ranges(req.known_size, req.cutoff) {
         return HttpRangeAttempt::Fallback(on_progress);
     }
 
@@ -2220,5 +2233,74 @@ mod tests {
     async fn joinset_and_graph_enforce_identical_max_parallel_cap() {
         assert_max_parallel_cap(false, "cap-joinset").await;
         assert_max_parallel_cap(true, "cap-graph").await;
+    }
+
+    #[test]
+    fn a_size_hint_rules_out_ranges_only_when_known_and_below_the_cutoff() {
+        let cutoff = 250 * 1024 * 1024;
+        assert!(size_hint_rules_out_ranges(Some(4096), cutoff));
+        assert!(size_hint_rules_out_ranges(Some(cutoff - 1), cutoff));
+        assert!(!size_hint_rules_out_ranges(Some(cutoff), cutoff));
+        assert!(!size_hint_rules_out_ranges(Some(cutoff * 4), cutoff));
+        assert!(!size_hint_rules_out_ranges(None, cutoff));
+    }
+
+    /// The Range probe is one round trip per file. A caller that already
+    /// knows the size is below the cutoff must get the single-stream fallback
+    /// without the helper touching the server; an unknown size still probes.
+    #[tokio::test]
+    async fn a_known_small_size_returns_fallback_without_a_probe_request() {
+        use std::sync::atomic::AtomicUsize;
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&hits);
+        let app = axum::Router::new().fallback(axum::routing::any(move || {
+            let counter = Arc::clone(&counter);
+            async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                axum::response::Response::new(axum::body::Body::from("x"))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let request = |known_size: Option<u64>| HttpRangeRequest {
+            client: reqwest::Client::new(),
+            url: format!("http://{addr}/file.bin"),
+            headers: Vec::new(),
+            local_path: std::env::temp_dir()
+                .join(format!("aeroftp-mt-hint-{}", std::process::id()))
+                .to_string_lossy()
+                .into_owned(),
+            provider_type: super::super::ProviderType::WebDav,
+            streams: 4,
+            max_streams: 4,
+            cutoff: 250 * 1024 * 1024,
+            known_size,
+        };
+
+        let attempt =
+            try_http_concurrent_range_download(request(Some(4096)), Some(Box::new(|_, _| {})))
+                .await;
+        assert!(
+            matches!(attempt, HttpRangeAttempt::Fallback(Some(_))),
+            "a known small size falls back with the progress callback returned"
+        );
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            0,
+            "no probe for a known small size"
+        );
+
+        let attempt = try_http_concurrent_range_download(request(None), None).await;
+        assert!(matches!(attempt, HttpRangeAttempt::Fallback(_)));
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "an unknown size still probes once"
+        );
     }
 }
