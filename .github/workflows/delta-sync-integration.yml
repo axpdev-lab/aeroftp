@@ -150,7 +150,7 @@ jobs:
             mkdir -p "$HOME/apt-archives/partial"
             # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
             # enough to redden a run, and nothing here installs from them.
-            sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
+            sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
             sudo apt-get update
             # rsync + ssh client for the host side of the integration test.
             # Webkit/GTK stack is needed because compiling the aeroftp
@@ -351,7 +351,7 @@ jobs:
             mkdir -p "$HOME/apt-archives/partial"
             # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
             # enough to redden a run, and nothing here installs from them.
-            sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli*
+            sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends \
               -o Dir::Cache::archives="$HOME/apt-archives/" \
