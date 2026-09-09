@@ -9293,7 +9293,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delta_short_local_file_aborts_instead_of_completing() {
+    /// A source shorter than the size the caller declared is refused before a
+    /// single request goes out: the executor compares the file's length against
+    /// `total_size` at entry, so no multipart exists to abort and nothing needs
+    /// cleaning up. This used to cost a CreateMultipartUpload and then an abort,
+    /// which is why the assertion is now "no request at all" rather than "one
+    /// abort". The abort path stays covered by the PartError case of
+    /// `s3_baseline_failed_aborted_and_missing_etag_uploads_leave_no_row`.
+    async fn delta_short_local_file_is_refused_before_any_request() {
         // The plan is computed from the caller's total_size; a local file
         // shorter than that fails the put read. The executor aborts rather
         // than completing a shorter object over the old key.
@@ -9315,17 +9322,28 @@ mod tests {
                 None,
             )
             .await
-            .expect_err("a truncated local file must fail the put part");
+            .expect_err("a truncated local file must be refused");
 
         let seen = state.lock().unwrap();
         assert!(
             matches!(err, ProviderError::TransferFailed(_)),
             "a read failure is a transfer failure, got: {err}"
         );
-        assert_eq!(seen.aborts, 1, "the failed upload must be aborted");
+        assert!(
+            seen.create_mtimes.is_empty(),
+            "a source that cannot fill the plan must not create a multipart upload"
+        );
+        assert!(
+            seen.puts.is_empty() && seen.copies.is_empty(),
+            "no part may be sent for a source shorter than the declared size"
+        );
+        assert_eq!(
+            seen.aborts, 0,
+            "nothing was created, so there is nothing to abort"
+        );
         assert!(
             seen.completed.is_empty(),
-            "CompleteMultipartUpload must never run after a failed part"
+            "CompleteMultipartUpload must never run"
         );
     }
 
