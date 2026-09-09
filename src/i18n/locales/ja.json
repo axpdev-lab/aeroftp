@@ -2186,7 +2186,9 @@
             "aerosyncScriptAppliedToast": "インポートした preset を保存しました。AeroSync を開いて使用してください。",
             "compressionHint": "転送を高速化するため通信中にデータを圧縮します。圧縮ファイルが転送先に保存されることはありません。Auto はすでに圧縮された形式（zip、jpg、mp4 など）をスキップします。",
             "canaryDryRun": "何も転送されません。これはサンプルから計算した、完全同期で行われる内容のプレビューです。CLI コマンド aeroftp-cli sync --dry-run（および rclone の --dry-run）の GUI 版です。",
-            "templateImportPathPairs": "このテンプレートには使用可能なパスペアが {count} 件定義されています。AeroFTP が適用するのはちょうど 1 件だけなので、何もインポートされませんでした。テンプレートを編集してパスペアを 1 件だけにしてから、もう一度インポートしてください。"
+            "templateImportPathPairs": "このテンプレートには使用可能なパスペアが {count} 件定義されています。AeroFTP が適用するのはちょうど 1 件だけなので、何もインポートされませんでした。テンプレートを編集してパスペアを 1 件だけにしてから、もう一度インポートしてください。",
+            "templateNamePlaceholder": "例: S3 への夜間バックアップ",
+            "templateDescPlaceholder": "このテンプレートの用途 (任意)"
         },
         "ui": {
             "syncing": "同期中...",
@@ -5376,7 +5378,6 @@
             "hintNative": "ネイティブ AeroCrypt 形式: このパスワードで AeroFTP からのみ読み取れます。",
             "hintRclone": "標準 rclone crypt 形式: このパスワードで rclone でも読み取れます。",
             "passwordLabel": "パスワード",
-            "saltLabel": "Salt (任意)",
             "keyfileLabel": "キーファイル (任意)",
             "keyfilePlaceholder": "キーファイルなし: パスワードのみ",
             "keyfileHint": "暗号鍵に混合される任意の第2要素: ボールトはパスワードとこのファイルの両方でのみ開きます。バックアップを取ってください: 紛失するとボールトは開けなくなります。",

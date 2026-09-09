@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Preset importé enregistré. Ouvre AeroSync pour l'utiliser.",
             "compressionHint": "Compresse les données pendant le transfert pour l'accélérer; elle ne stocke pas de fichiers compressés à destination. Auto ignore les formats déjà compressés (zip, jpg, mp4 et similaires).",
             "canaryDryRun": "Rien n'est transféré : ceci prévisualise ce que ferait une synchronisation complète, calculée à partir de l'échantillon. C'est l'équivalent graphique de la commande aeroftp-cli sync --dry-run (et de --dry-run de rclone).",
-            "templateImportPathPairs": "Nombre de paires de chemins utilisables dans ce modèle : {count}. AeroFTP en applique exactement une, rien n'a donc été importé. Modifiez le modèle pour n'en garder qu'une seule, puis importez-le de nouveau."
+            "templateImportPathPairs": "Nombre de paires de chemins utilisables dans ce modèle : {count}. AeroFTP en applique exactement une, rien n'a donc été importé. Modifiez le modèle pour n'en garder qu'une seule, puis importez-le de nouveau.",
+            "templateNamePlaceholder": "par ex. Sauvegarde nocturne vers S3",
+            "templateDescPlaceholder": "À quoi sert ce modèle (facultatif)"
         },
         "ui": {
             "syncing": "Synchronisation...",
@@ -5376,7 +5378,6 @@
             "hintNative": "Format AeroCrypt natif : lisible uniquement depuis AeroFTP avec ce mot de passe.",
             "hintRclone": "Format rclone crypt standard : également lisible par rclone avec ce mot de passe.",
             "passwordLabel": "Mot de passe",
-            "saltLabel": "Salt (facultatif)",
             "keyfileLabel": "Fichier de clé (facultatif)",
             "keyfilePlaceholder": "Aucun fichier de clé : mot de passe seul",
             "keyfileHint": "Second facteur facultatif mélangé à la clé de chiffrement : le coffre ne s'ouvre qu'avec le mot de passe ET ce fichier. Sauvegardez-le : sa perte rend le coffre inouvrable.",

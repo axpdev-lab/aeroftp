@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Uvozeni preset shranjen. Odpri AeroSync za uporabo.",
             "compressionHint": "Stiska podatke med prenosom, da ga pospeši; na cilju ne shranjuje stisnjenih datotek. Auto preskoči formate, ki so že stisnjeni (zip, jpg, mp4 in podobni).",
             "canaryDryRun": "Nič se ne prenese: to prikaže predogled tega, kar bi naredila polna sinhronizacija, izračunan iz vzorca. To je grafični ustreznik ukaza aeroftp-cli sync --dry-run (in --dry-run orodja rclone).",
-            "templateImportPathPairs": "Število uporabnih parov poti v tej predlogi: {count}. AeroFTP uporabi natanko enega, zato ni bilo uvoženo nič. Uredite predlogo tako, da ostane en sam par, in jo znova uvozite."
+            "templateImportPathPairs": "Število uporabnih parov poti v tej predlogi: {count}. AeroFTP uporabi natanko enega, zato ni bilo uvoženo nič. Uredite predlogo tako, da ostane en sam par, in jo znova uvozite.",
+            "templateNamePlaceholder": "npr. Nočna varnostna kopija v S3",
+            "templateDescPlaceholder": "Čemu je namenjena ta predloga (izbirno)"
         },
         "ui": {
             "syncing": "Sinhronizacija...",
@@ -5376,7 +5378,6 @@
             "hintNative": "Izvorni format AeroCrypt: berljiv samo iz AeroFTP s tem geslom.",
             "hintRclone": "Standardni format rclone crypt: berljiv tudi z rclone s tem geslom.",
             "passwordLabel": "Geslo",
-            "saltLabel": "Salt (neobvezno)",
             "keyfileLabel": "Datoteka ključa (izbirno)",
             "keyfilePlaceholder": "Brez datoteke ključa: samo geslo",
             "keyfileHint": "Izbirni drugi faktor, primešan v šifrirni ključ: trezor se odpre samo z geslom IN to datoteko. Naredite kopijo: njena izguba naredi trezor neodprljiv.",

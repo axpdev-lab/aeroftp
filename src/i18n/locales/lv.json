@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Importētais preset saglabāts. Atveriet AeroSync, lai to izmantotu.",
             "compressionHint": "Saspiež datus pārsūtīšanas laikā, lai paātrinātu pārsūtīšanu; tā nesaglabā saspiestus failus galamērķī. Auto izlaiž formātus, kas jau ir saspiesti (zip, jpg, mp4 un līdzīgus).",
             "canaryDryRun": "Nekas netiek pārsūtīts: tas parāda priekšskatījumu tam, ko darītu pilna sinhronizācija, aprēķinātu no izlases. Tas ir komandas aeroftp-cli sync --dry-run (un rclone --dry-run) grafiskais ekvivalents.",
-            "templateImportPathPairs": "Izmantojamo ceļu pāru skaits šajā veidnē: {count}. AeroFTP izmanto tieši vienu, tāpēc nekas netika importēts. Rediģējiet veidni tā, lai paliktu viens pāris, un importējiet to vēlreiz."
+            "templateImportPathPairs": "Izmantojamo ceļu pāru skaits šajā veidnē: {count}. AeroFTP izmanto tieši vienu, tāpēc nekas netika importēts. Rediģējiet veidni tā, lai paliktu viens pāris, un importējiet to vēlreiz.",
+            "templateNamePlaceholder": "piem. Nakts dublējums uz S3",
+            "templateDescPlaceholder": "Kam paredzēta šī veidne (neobligāti)"
         },
         "ui": {
             "syncing": "Sinhronizē...",
@@ -5376,7 +5378,6 @@
             "hintNative": "Vietējais AeroCrypt formāts: lasāms tikai no AeroFTP ar šo paroli.",
             "hintRclone": "Standarta rclone crypt formāts: lasāms arī ar rclone, izmantojot šo paroli.",
             "passwordLabel": "Parole",
-            "saltLabel": "Salt (neobligāts)",
             "keyfileLabel": "Atslēgas fails (neobligāts)",
             "keyfilePlaceholder": "Nav atslēgas faila: tikai parole",
             "keyfileHint": "Neobligāts otrs faktors, ko iejauc šifrēšanas atslēgā: seifs atveras tikai ar paroli UN šo failu. Izveidojiet kopiju: tā zaudēšana padara seifu neatveramu.",

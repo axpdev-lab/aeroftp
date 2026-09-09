@@ -1140,6 +1140,11 @@ const App: React.FC = () => {
     result: CanaryResult;
     onApprove: () => void;
   } | null>(null);
+  // Ehud #347 (18352684): the canary now leaves AeroSync open behind it, so
+  // Execute stays clickable during the trial run. Without this the second click
+  // fires a second `sync_canary_run` whose result races the first into the same
+  // dialog. Mirrors `remoteSyncRunningRef`, which guards the real run.
+  const canaryRunningRef = useRef(false);
   // GAP-5: monotonic token guarding the async recursive compare. Each
   // openAeroSync() bumps it; a stale scan (dialog closed or reopened
   // meanwhile) sees a mismatched token and discards its result.
@@ -7804,8 +7809,23 @@ const App: React.FC = () => {
   // down rather than leave it half-open.
   const connectToFtp = asConnectPhase(connectToFtpImpl);
 
+  // Ehud #347 (18352684) follow-up, raised in review: the AeroSync dialog owns a
+  // Compare scan of one specific remote session, and no teardown path closed it.
+  // Both callers below are the points where that session stops being the one the
+  // scan describes: the disconnect, and the switch to another tab. Closing a
+  // BACKGROUND tab deliberately does not call this, because the dialog belongs to
+  // the active session; closeSession routes the active-tab case through
+  // switchSession or disconnectFromFtp, so both are covered from here.
+  const closeAeroSyncForTornDownSession = () => setAeroSync(null);
+
   const disconnectFromFtp = async (reason?: 'button' | 'tab-close' | 'close-all') => {
     const logId = humanLog.logStart('DISCONNECT', { server: connectionParams.server });
+    // The AeroSync dialog holds a Compare scan of THIS remote, so it stops
+    // meaning anything the moment the session goes away: its entries point at
+    // paths on a connection that no longer exists, and Execute would run them
+    // against whatever connects next. Nothing used to close it here, so opening
+    // Compare and disconnecting left it up over a dead session.
+    closeAeroSyncForTornDownSession();
     try {
       const overlaySessionId = aeroVaultOverlaySession?.sessionId;
       if (overlaySessionId) {
@@ -7953,6 +7973,10 @@ const App: React.FC = () => {
       if (!showRemotePanel) setShowRemotePanel(true);
       return;
     }
+
+    // Same reason as the disconnect path: the scan belongs to the session being
+    // left behind, not to the one being switched to.
+    closeAeroSyncForTornDownSession();
 
     // Capture current state values before any async operations
     const capturedRemoteFiles = [...remoteFiles];
@@ -11334,8 +11358,19 @@ const App: React.FC = () => {
    */
   const executeSyncPresetPlan = useCallback((plan: PresetPlan, runtime: AeroSyncRuntime) => {
     const context = aeroSync?.context;
-    setAeroSync(null);
-    if (!context) return;
+    // Ehud #347 (18352684): closing AeroSync here tore down `context`, and with
+    // it the Compare scan, BEFORE we knew whether this Execute was a real run or
+    // a canary dry run. A canary mutates nothing, so paying for a full re-scan
+    // afterwards was pure loss. The teardown now happens per branch: every path
+    // that actually transfers closes the dialog first (the panels move under it,
+    // so an open Compare would be stale), and the canary path leaves it open so
+    // the projection lands on top of the scan that produced it. Approving from
+    // the canary dialog is a real run, so `runFull` closes it there.
+    const closeAeroSync = () => setAeroSync(null);
+    if (!context) {
+      closeAeroSync();
+      return;
+    }
 
     if (debugMode) {
       // eslint-disable-next-line no-console
@@ -11357,6 +11392,7 @@ const App: React.FC = () => {
     // through the local-local engine. Deletes and keep-both renames now
     // execute instead of being skipped with a toast. ─────────────────────
     if (context.pairKind === 'local-local') {
+      closeAeroSync();
       const { files: runFiles, dirs: runDirs } = buildRemoteSyncInput(plan, true);
       const direction: SyncDirection = plan.preset === 'bisync'
         ? 'bidirectional'
@@ -11391,6 +11427,7 @@ const App: React.FC = () => {
       }
 
       const runFull = (): void => {
+        closeAeroSync();
         runConnectedRemoteSync(runFiles, runDirs, {
           direction,
           deltaSyncEnabled: runtime.speedMode !== 'normal',
@@ -11410,6 +11447,8 @@ const App: React.FC = () => {
       // GAP-7: Canary trial. Run a sample-based dry-run and surface the
       // projection; the dialog's Approve button kicks off the full preset.
       if (runtime.canary) {
+        if (canaryRunningRef.current) return;
+        canaryRunningRef.current = true;
         const { percent, selection } = runtime.canary;
         void (async () => {
           try {
@@ -11422,6 +11461,8 @@ const App: React.FC = () => {
             setCanaryResult({ result, onApprove: runFull });
           } catch (err) {
             notify.error(t('aerosync.title') || 'AeroSync', String(err));
+          } finally {
+            canaryRunningRef.current = false;
           }
         })();
         return;
@@ -11431,6 +11472,7 @@ const App: React.FC = () => {
       return;
     }
 
+    closeAeroSync();
     notify.info(
       t('syncPresets.title') || 'Sync presets',
       'Execution for this pair kind is not supported.',

@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Preset yang diimpor telah disimpan. Buka AeroSync untuk menggunakannya.",
             "compressionHint": "Mengompresi data saat transit untuk mempercepat transfer; tidak menyimpan berkas terkompresi di tujuan. Auto melewati format yang sudah terkompresi (zip, jpg, mp4, dan sejenisnya).",
             "canaryDryRun": "Tidak ada yang ditransfer: ini menampilkan pratinjau dari apa yang akan dilakukan sinkronisasi penuh, dihitung dari sampel. Ini adalah padanan GUI dari perintah aeroftp-cli sync --dry-run (dan --dry-run milik rclone).",
-            "templateImportPathPairs": "Templat ini mendefinisikan {count} pasangan path yang dapat digunakan. AeroFTP menerapkan tepat satu, jadi tidak ada yang diimpor. Edit templat agar tersisa satu pasangan saja, lalu impor lagi."
+            "templateImportPathPairs": "Templat ini mendefinisikan {count} pasangan path yang dapat digunakan. AeroFTP menerapkan tepat satu, jadi tidak ada yang diimpor. Edit templat agar tersisa satu pasangan saja, lalu impor lagi.",
+            "templateNamePlaceholder": "mis. Cadangan malam ke S3",
+            "templateDescPlaceholder": "Untuk apa templat ini (opsional)"
         },
         "ui": {
             "syncing": "Menyinkronkan...",
@@ -5376,7 +5378,6 @@
             "hintNative": "Format AeroCrypt asli: hanya dapat dibaca dari AeroFTP dengan kata sandi ini.",
             "hintRclone": "Format rclone crypt standar: juga dapat dibaca oleh rclone dengan kata sandi ini.",
             "passwordLabel": "Kata sandi",
-            "saltLabel": "Salt (opsional)",
             "keyfileLabel": "Berkas kunci (opsional)",
             "keyfilePlaceholder": "Tanpa berkas kunci: hanya kata sandi",
             "keyfileHint": "Faktor kedua opsional yang dicampur ke kunci enkripsi: brankas hanya terbuka dengan kata sandi DAN berkas ini. Cadangkan: kehilangannya membuat brankas tak bisa dibuka.",

@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Preset yang diimport telah disimpan. Buka AeroSync untuk menggunakannya.",
             "compressionHint": "Memampatkan data semasa penghantaran untuk mempercepatkan pemindahan; ia tidak menyimpan fail termampat di destinasi. Auto melangkau format yang sudah dimampatkan (zip, jpg, mp4 dan yang seumpamanya).",
             "canaryDryRun": "Tiada apa-apa dipindahkan: ini memaparkan pratonton perkara yang akan dilakukan oleh penyegerakan penuh, dikira daripada sampel. Ia adalah padanan GUI bagi perintah aeroftp-cli sync --dry-run (dan --dry-run rclone).",
-            "templateImportPathPairs": "Templat ini mentakrifkan {count} pasangan laluan yang boleh digunakan. AeroFTP menggunakan tepat satu sahaja, jadi tiada apa-apa yang diimport. Sunting templat supaya tinggal satu pasangan, kemudian import semula."
+            "templateImportPathPairs": "Templat ini mentakrifkan {count} pasangan laluan yang boleh digunakan. AeroFTP menggunakan tepat satu sahaja, jadi tiada apa-apa yang diimport. Sunting templat supaya tinggal satu pasangan, kemudian import semula.",
+            "templateNamePlaceholder": "cth. Sandaran malam ke S3",
+            "templateDescPlaceholder": "Untuk apa templat ini (pilihan)"
         },
         "ui": {
             "syncing": "Menyegerak...",
@@ -5376,7 +5378,6 @@
             "hintNative": "Format AeroCrypt asli: hanya boleh dibaca daripada AeroFTP dengan kata laluan ini.",
             "hintRclone": "Format rclone crypt standard: juga boleh dibaca oleh rclone dengan kata laluan ini.",
             "passwordLabel": "Kata laluan",
-            "saltLabel": "Salt (pilihan)",
             "keyfileLabel": "Fail kunci (pilihan)",
             "keyfilePlaceholder": "Tiada fail kunci: kata laluan sahaja",
             "keyfileHint": "Faktor kedua pilihan yang dicampur ke dalam kunci penyulitan: bilik kebal hanya dibuka dengan kata laluan DAN fail ini. Sandarkan: kehilangannya menjadikan bilik kebal tidak boleh dibuka.",

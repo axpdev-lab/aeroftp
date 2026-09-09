@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Inportatutako preset-a gordeta. Ireki AeroSync erabiltzeko.",
             "compressionHint": "Datuak transferentzian zehar konprimitzen ditu, transferentzia bizkortzeko; ez ditu fitxategi konprimituak helmugan gordetzen. Auto aukerak dagoeneko konprimituta dauden formatuak saltatzen ditu (zip, jpg, mp4 eta antzekoak).",
             "canaryDryRun": "Ez da ezer transferitzen: sinkronizazio osoak zer egingo lukeen aurreikusten du, laginetik kalkulatuta. aeroftp-cli sync --dry-run komandoaren (eta rclone-ren --dry-run) interfaze grafikoaren baliokidea da.",
-            "templateImportPathPairs": "Txantiloi honek {count} bide-bikote erabilgarri definitzen ditu. AeroFTPk bat bakarra aplikatzen du, beraz ez da ezer inportatu. Editatu txantiloia bikote bakarra uzteko, eta inportatu berriro."
+            "templateImportPathPairs": "Txantiloi honek {count} bide-bikote erabilgarri definitzen ditu. AeroFTPk bat bakarra aplikatzen du, beraz ez da ezer inportatu. Editatu txantiloia bikote bakarra uzteko, eta inportatu berriro.",
+            "templateNamePlaceholder": "adib. Gaueko babeskopia S3-ra",
+            "templateDescPlaceholder": "Zertarako den txantiloi hau (aukerakoa)"
         },
         "ui": {
             "syncing": "Sinkronizatzen...",
@@ -5395,7 +5397,6 @@
             "hintNative": "AeroCrypt formatu natiboa: AeroFTP-tik soilik irakur daiteke pasahitz honekin.",
             "hintRclone": "rclone crypt formatu estandarra: rclone-k ere irakur dezake pasahitz honekin.",
             "passwordLabel": "Pasahitza",
-            "saltLabel": "Salt (aukerakoa)",
             "keyfileLabel": "Gako-fitxategia (aukerakoa)",
             "keyfilePlaceholder": "Gako-fitxategirik ez: pasahitza soilik",
             "keyfileHint": "Zifratze-gakoan nahasten den bigarren faktore aukerakoa: kutxa gotorra pasahitzarekin ETA fitxategi honekin soilik irekitzen da. Egin babeskopia: galtzen bada, kutxa ezin da ireki.",

@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Importovaný preset uložený. Otvor AeroSync na jeho použitie.",
             "compressionHint": "Komprimuje dáta počas prenosu, aby ho zrýchlil; v cieli neukladá komprimované súbory. Auto preskakuje formáty, ktoré sú už komprimované (zip, jpg, mp4 a podobné).",
             "canaryDryRun": "Nič sa neprenáša: zobrazí náhľad toho, čo by urobila úplná synchronizácia, vypočítaný zo vzorky. Je to grafický náprotivok príkazu aeroftp-cli sync --dry-run (a --dry-run nástroja rclone).",
-            "templateImportPathPairs": "Počet použiteľných párov ciest v tejto šablóne: {count}. AeroFTP použije práve jeden, takže sa nič neimportovalo. Ponechajte v šablóne jediný pár a importujte ju znova."
+            "templateImportPathPairs": "Počet použiteľných párov ciest v tejto šablóne: {count}. AeroFTP použije práve jeden, takže sa nič neimportovalo. Ponechajte v šablóne jediný pár a importujte ju znova.",
+            "templateNamePlaceholder": "napr. Nočná záloha do S3",
+            "templateDescPlaceholder": "Na čo slúži táto šablóna (voliteľné)"
         },
         "ui": {
             "syncing": "Synchronizácia...",
@@ -5376,7 +5378,6 @@
             "hintNative": "Natívny formát AeroCrypt: čitateľný iba z AeroFTP s týmto heslom.",
             "hintRclone": "Štandardný formát rclone crypt: čitateľný aj cez rclone s týmto heslom.",
             "passwordLabel": "Heslo",
-            "saltLabel": "Salt (voliteľné)",
             "keyfileLabel": "Súbor kľúča (voliteľné)",
             "keyfilePlaceholder": "Bez súboru kľúča: iba heslo",
             "keyfileHint": "Voliteľný druhý faktor primiešaný do šifrovacieho kľúča: trezor sa otvorí iba s heslom A týmto súborom. Zálohujte ho: jeho strata trezor natrvalo uzamkne.",

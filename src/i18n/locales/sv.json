@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Importerad preset sparad. Öppna AeroSync för att använda den.",
             "compressionHint": "Komprimerar data under överföringen för att snabba upp den; den lagrar inga komprimerade filer på destinationen. Auto hoppar över format som redan är komprimerade (zip, jpg, mp4 och liknande).",
             "canaryDryRun": "Inget överförs: detta förhandsvisar vad en fullständig synkronisering skulle göra, beräknat från urvalet. Det är den grafiska motsvarigheten till CLI-kommandot aeroftp-cli sync --dry-run (och rclones --dry-run).",
-            "templateImportPathPairs": "Antal användbara sökvägspar i den här mallen: {count}. AeroFTP tillämpar exakt ett, så ingenting importerades. Redigera mallen så att ett sökvägspar återstår och importera den igen."
+            "templateImportPathPairs": "Antal användbara sökvägspar i den här mallen: {count}. AeroFTP tillämpar exakt ett, så ingenting importerades. Redigera mallen så att ett sökvägspar återstår och importera den igen.",
+            "templateNamePlaceholder": "t.ex. Nattlig säkerhetskopia till S3",
+            "templateDescPlaceholder": "Vad den här mallen används till (valfritt)"
         },
         "ui": {
             "syncing": "Synkroniserar...",
@@ -5376,7 +5378,6 @@
             "hintNative": "Inbyggt AeroCrypt-format: läsbart endast från AeroFTP med detta lösenord.",
             "hintRclone": "Standardformatet rclone crypt: läsbart även av rclone med detta lösenord.",
             "passwordLabel": "Lösenord",
-            "saltLabel": "Salt (valfritt)",
             "keyfileLabel": "Nyckelfil (valfri)",
             "keyfilePlaceholder": "Ingen nyckelfil: endast lösenord",
             "keyfileHint": "Valfri andra faktor som blandas in i krypteringsnyckeln: valvet öppnas bara med lösenordet OCH denna fil. Säkerhetskopiera den: förlust gör valvet oöppningsbart.",

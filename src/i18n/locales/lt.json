@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Importuotas preset išsaugotas. Atidarykite AeroSync, kad jį naudotumėte.",
             "compressionHint": "Suspaudžia duomenis perdavimo metu, kad transferis būtų greitesnis; suspaustų failų paskirties vietoje nesaugo. Auto praleidžia jau suspaustus formatus (zip, jpg, mp4 ir panašius).",
             "canaryDryRun": "Niekas neperkeliama: tai parodo, ką darytų visas sinchronizavimas, apskaičiuota iš imties. Tai komandos aeroftp-cli sync --dry-run (ir rclone --dry-run) grafinis atitikmuo.",
-            "templateImportPathPairs": "Naudotinų kelių porų šiame šablone: {count}. AeroFTP taiko lygiai vieną, todėl nieko neimportuota. Pataisykite šabloną taip, kad liktų viena pora, ir importuokite jį dar kartą."
+            "templateImportPathPairs": "Naudotinų kelių porų šiame šablone: {count}. AeroFTP taiko lygiai vieną, todėl nieko neimportuota. Pataisykite šabloną taip, kad liktų viena pora, ir importuokite jį dar kartą.",
+            "templateNamePlaceholder": "pvz. Naktinė atsarginė kopija į S3",
+            "templateDescPlaceholder": "Kam skirtas šis šablonas (nebūtina)"
         },
         "ui": {
             "syncing": "Sinchronizuojama...",
@@ -5376,7 +5378,6 @@
             "hintNative": "Savasis AeroCrypt formatas: skaitomas tik iš AeroFTP su šiuo slaptažodžiu.",
             "hintRclone": "Standartinis rclone crypt formatas: taip pat skaitomas rclone su šiuo slaptažodžiu.",
             "passwordLabel": "Slaptažodis",
-            "saltLabel": "Salt (nebūtina)",
             "keyfileLabel": "Rakto failas (nebūtina)",
             "keyfilePlaceholder": "Be rakto failo: tik slaptažodis",
             "keyfileHint": "Neprivalomas antras veiksnys, įmaišomas į šifravimo raktą: saugykla atsidaro tik su slaptažodžiu IR šiuo failu. Pasidarykite kopiją: jį praradus saugyklos atidaryti nebepavyks.",

@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Importiertes preset gespeichert. Öffne AeroSync, um es zu verwenden.",
             "compressionHint": "Komprimiert die Daten während der Übertragung, um diese zu beschleunigen; am Zielort werden keine komprimierten Dateien gespeichert. Auto überspringt bereits komprimierte Formate (zip, jpg, mp4 und ähnliche).",
             "canaryDryRun": "Es wird nichts übertragen: Dies zeigt eine Vorschau, was eine vollständige Synchronisierung tun würde, berechnet aus der Stichprobe. Es ist das GUI-Gegenstück zum CLI-Befehl aeroftp-cli sync --dry-run (und zu --dry-run von rclone).",
-            "templateImportPathPairs": "Diese Vorlage definiert {count} verwendbare Pfadpaare. AeroFTP wendet genau eines an, daher wurde nichts importiert. Bearbeiten Sie die Vorlage so, dass nur ein Pfadpaar übrig bleibt, und importieren Sie sie erneut."
+            "templateImportPathPairs": "Diese Vorlage definiert {count} verwendbare Pfadpaare. AeroFTP wendet genau eines an, daher wurde nichts importiert. Bearbeiten Sie die Vorlage so, dass nur ein Pfadpaar übrig bleibt, und importieren Sie sie erneut.",
+            "templateNamePlaceholder": "z. B. Nächtliches Backup nach S3",
+            "templateDescPlaceholder": "Wofür diese Vorlage gedacht ist (optional)"
         },
         "ui": {
             "syncing": "Synchronisiere...",
@@ -5376,7 +5378,6 @@
             "hintNative": "Natives AeroCrypt-Format: nur aus AeroFTP mit diesem Passwort lesbar.",
             "hintRclone": "Standard-rclone-crypt-Format: auch von rclone mit diesem Passwort lesbar.",
             "passwordLabel": "Passwort",
-            "saltLabel": "Salt (optional)",
             "keyfileLabel": "Schlüsseldatei (optional)",
             "keyfilePlaceholder": "Keine Schlüsseldatei: nur Passwort",
             "keyfileHint": "Optionaler zweiter Faktor, der in den Verschlüsselungsschlüssel einfließt: der Tresor öffnet sich nur mit dem Passwort UND dieser Datei. Sichern Sie sie: ihr Verlust macht den Tresor unöffenbar.",

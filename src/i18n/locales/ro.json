@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Preset importat salvat. Deschide AeroSync pentru a-l folosi.",
             "compressionHint": "Comprimă datele în timpul transferului pentru a-l accelera; nu stochează fișiere comprimate la destinație. Auto omite formatele deja comprimate (zip, jpg, mp4 și altele similare).",
             "canaryDryRun": "Nu se transferă nimic: aceasta previzualizează ce ar face o sincronizare completă, calculată din eșantion. Este echivalentul grafic al comenzii aeroftp-cli sync --dry-run (și al --dry-run din rclone).",
-            "templateImportPathPairs": "Numărul de perechi de căi utilizabile din acest șablon: {count}. AeroFTP aplică exact una, așa că nu s-a importat nimic. Editează șablonul astfel încât să rămână o singură pereche, apoi importă-l din nou."
+            "templateImportPathPairs": "Numărul de perechi de căi utilizabile din acest șablon: {count}. AeroFTP aplică exact una, așa că nu s-a importat nimic. Editează șablonul astfel încât să rămână o singură pereche, apoi importă-l din nou.",
+            "templateNamePlaceholder": "de ex. Copie de rezervă nocturnă în S3",
+            "templateDescPlaceholder": "La ce folosește acest șablon (opțional)"
         },
         "ui": {
             "syncing": "Se sincronizează...",
@@ -5376,7 +5378,6 @@
             "hintNative": "Format AeroCrypt nativ: lizibil doar din AeroFTP cu această parolă.",
             "hintRclone": "Format rclone crypt standard: lizibil și de rclone cu această parolă.",
             "passwordLabel": "Parolă",
-            "saltLabel": "Salt (opțional)",
             "keyfileLabel": "Fișier de cheie (opțional)",
             "keyfilePlaceholder": "Fără fișier de cheie: doar parolă",
             "keyfileHint": "Al doilea factor opțional amestecat în cheia de criptare: seiful se deschide doar cu parola ȘI acest fișier. Faceți o copie: pierderea lui face seiful de nedeschis.",

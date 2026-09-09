@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Innfluttur preset vistaður. Opnaðu AeroSync til að nota hann.",
             "compressionHint": "Þjappar gögnum við flutning til að flýta fyrir flutningnum; geymir ekki þjappaðar skrár á áfangastað. Auto sleppir sniðum sem eru þegar þjöppuð (zip, jpg, mp4 og álíka).",
             "canaryDryRun": "Ekkert er flutt: þetta sýnir forskoðun á því sem full samstilling myndi gera, reiknað út frá úrtakinu. Það er myndræna hliðstæðan við skipunina aeroftp-cli sync --dry-run (og --dry-run hjá rclone).",
-            "templateImportPathPairs": "Fjöldi nothæfra slóðapara í þessu sniðmáti: {count}. AeroFTP notar nákvæmlega eitt, svo ekkert var flutt inn. Breyttu sniðmátinu þannig að eitt slóðapar standi eftir og flyttu það svo inn aftur."
+            "templateImportPathPairs": "Fjöldi nothæfra slóðapara í þessu sniðmáti: {count}. AeroFTP notar nákvæmlega eitt, svo ekkert var flutt inn. Breyttu sniðmátinu þannig að eitt slóðapar standi eftir og flyttu það svo inn aftur.",
+            "templateNamePlaceholder": "t.d. Næturafritun í S3",
+            "templateDescPlaceholder": "Til hvers þetta sniðmát er (valfrjálst)"
         },
         "ui": {
             "syncing": "Samstillir...",
@@ -5395,7 +5397,6 @@
             "hintNative": "Innbyggt AeroCrypt-snið: aðeins læsilegt úr AeroFTP með þessu lykilorði.",
             "hintRclone": "Staðlað rclone crypt-snið: einnig læsilegt af rclone með þessu lykilorði.",
             "passwordLabel": "Lykilorð",
-            "saltLabel": "Salt (valfrjálst)",
             "keyfileLabel": "Lykilskrá (valfrjálst)",
             "keyfilePlaceholder": "Engin lykilskrá: aðeins lykilorð",
             "keyfileHint": "Valfrjáls annar þáttur sem blandast í dulritunarlykilinn: hirslan opnast aðeins með lykilorðinu OG þessari skrá. Taktu afrit: glatist hún verður hirslan óopnanleg.",

@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "已保存导入的 preset。打开 AeroSync 即可使用。",
             "compressionHint": "在传输过程中压缩数据以加快传输速度；不会在目标位置存储压缩文件。Auto 会跳过已压缩的格式（zip、jpg、mp4 等）。",
             "canaryDryRun": "不会传输任何内容：这会根据样本预览完整同步将执行的操作。它是 CLI 命令 aeroftp-cli sync --dry-run（以及 rclone 的 --dry-run）的图形界面对应功能。",
-            "templateImportPathPairs": "此模板定义了 {count} 个可用的路径对。AeroFTP 只应用其中一个，因此未导入任何内容。请编辑模板，只保留一个路径对，然后重新导入。"
+            "templateImportPathPairs": "此模板定义了 {count} 个可用的路径对。AeroFTP 只应用其中一个，因此未导入任何内容。请编辑模板，只保留一个路径对，然后重新导入。",
+            "templateNamePlaceholder": "例如：夜间备份到 S3",
+            "templateDescPlaceholder": "此模板的用途（可选）"
         },
         "ui": {
             "syncing": "正在同步...",
@@ -5376,7 +5378,6 @@
             "hintNative": "原生 AeroCrypt 格式：使用此密码仅可从 AeroFTP 读取。",
             "hintRclone": "标准 rclone crypt 格式：使用此密码也可由 rclone 读取。",
             "passwordLabel": "密码",
-            "saltLabel": "Salt (可选)",
             "keyfileLabel": "密钥文件 (可选)",
             "keyfilePlaceholder": "无密钥文件: 仅密码",
             "keyfileHint": "混入加密密钥的可选第二因子: 保险库只有同时提供密码和此文件才能打开。请备份: 丢失它将导致保险库无法打开。",
