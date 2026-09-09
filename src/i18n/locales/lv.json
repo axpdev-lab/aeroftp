@@ -5376,7 +5376,6 @@
             "hintNative": "Vietējais AeroCrypt formāts: lasāms tikai no AeroFTP ar šo paroli.",
             "hintRclone": "Standarta rclone crypt formāts: lasāms arī ar rclone, izmantojot šo paroli.",
             "passwordLabel": "Parole",
-            "saltLabel": "Salt (neobligāts)",
             "keyfileLabel": "Atslēgas fails (neobligāts)",
             "keyfilePlaceholder": "Nav atslēgas faila: tikai parole",
             "keyfileHint": "Neobligāts otrs faktors, ko iejauc šifrēšanas atslēgā: seifs atveras tikai ar paroli UN šo failu. Izveidojiet kopiju: tā zaudēšana padara seifu neatveramu.",

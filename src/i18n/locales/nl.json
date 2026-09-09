@@ -5376,7 +5376,6 @@
             "hintNative": "Native AeroCrypt-formaat: alleen leesbaar vanuit AeroFTP met dit wachtwoord.",
             "hintRclone": "Standaard rclone crypt-formaat: ook leesbaar door rclone met dit wachtwoord.",
             "passwordLabel": "Wachtwoord",
-            "saltLabel": "Salt (optioneel)",
             "keyfileLabel": "Sleutelbestand (optioneel)",
             "keyfilePlaceholder": "Geen sleutelbestand: alleen wachtwoord",
             "keyfileHint": "Optionele tweede factor die in de encryptiesleutel wordt gemengd: de kluis opent alleen met het wachtwoord EN dit bestand. Maak een back-up: verlies maakt de kluis onopenbaar.",

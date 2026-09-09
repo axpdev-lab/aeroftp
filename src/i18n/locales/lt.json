@@ -5376,7 +5376,6 @@
             "hintNative": "Savasis AeroCrypt formatas: skaitomas tik iš AeroFTP su šiuo slaptažodžiu.",
             "hintRclone": "Standartinis rclone crypt formatas: taip pat skaitomas rclone su šiuo slaptažodžiu.",
             "passwordLabel": "Slaptažodis",
-            "saltLabel": "Salt (nebūtina)",
             "keyfileLabel": "Rakto failas (nebūtina)",
             "keyfilePlaceholder": "Be rakto failo: tik slaptažodis",
             "keyfileHint": "Neprivalomas antras veiksnys, įmaišomas į šifravimo raktą: saugykla atsidaro tik su slaptažodžiu IR šiuo failu. Pasidarykite kopiją: jį praradus saugyklos atidaryti nebepavyks.",

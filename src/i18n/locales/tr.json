@@ -5376,7 +5376,6 @@
             "hintNative": "Yerel AeroCrypt biçimi: bu parolayla yalnızca AeroFTP'den okunabilir.",
             "hintRclone": "Standart rclone crypt biçimi: bu parolayla rclone tarafından da okunabilir.",
             "passwordLabel": "Parola",
-            "saltLabel": "Salt (isteğe bağlı)",
             "keyfileLabel": "Anahtar dosyası (isteğe bağlı)",
             "keyfilePlaceholder": "Anahtar dosyası yok: yalnızca parola",
             "keyfileHint": "Şifreleme anahtarına karıştırılan isteğe bağlı ikinci faktör: kasa yalnızca parola VE bu dosya ile açılır. Yedekleyin: kaybı kasayı açılamaz hale getirir.",

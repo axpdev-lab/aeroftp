@@ -5376,7 +5376,6 @@
             "hintNative": "Nativní formát AeroCrypt: čitelný pouze z AeroFTP s tímto heslem.",
             "hintRclone": "Standardní formát rclone crypt: čitelný i pomocí rclone s tímto heslem.",
             "passwordLabel": "Heslo",
-            "saltLabel": "Salt (volitelné)",
             "keyfileLabel": "Soubor klíče (volitelné)",
             "keyfilePlaceholder": "Bez souboru klíče: pouze heslo",
             "keyfileHint": "Volitelný druhý faktor přimíchaný do šifrovacího klíče: trezor se otevře pouze s heslem A tímto souborem. Zálohujte jej: jeho ztráta trezor trvale uzamkne.",

@@ -5376,7 +5376,6 @@
             "hintNative": "ネイティブ AeroCrypt 形式: このパスワードで AeroFTP からのみ読み取れます。",
             "hintRclone": "標準 rclone crypt 形式: このパスワードで rclone でも読み取れます。",
             "passwordLabel": "パスワード",
-            "saltLabel": "Salt (任意)",
             "keyfileLabel": "キーファイル (任意)",
             "keyfilePlaceholder": "キーファイルなし: パスワードのみ",
             "keyfileHint": "暗号鍵に混合される任意の第2要素: ボールトはパスワードとこのファイルの両方でのみ開きます。バックアップを取ってください: 紛失するとボールトは開けなくなります。",

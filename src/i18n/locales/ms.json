@@ -5376,7 +5376,6 @@
             "hintNative": "Format AeroCrypt asli: hanya boleh dibaca daripada AeroFTP dengan kata laluan ini.",
             "hintRclone": "Format rclone crypt standard: juga boleh dibaca oleh rclone dengan kata laluan ini.",
             "passwordLabel": "Kata laluan",
-            "saltLabel": "Salt (pilihan)",
             "keyfileLabel": "Fail kunci (pilihan)",
             "keyfilePlaceholder": "Tiada fail kunci: kata laluan sahaja",
             "keyfileHint": "Faktor kedua pilihan yang dicampur ke dalam kunci penyulitan: bilik kebal hanya dibuka dengan kata laluan DAN fail ini. Sandarkan: kehilangannya menjadikan bilik kebal tidak boleh dibuka.",

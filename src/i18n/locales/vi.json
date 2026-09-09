@@ -5376,7 +5376,6 @@
             "hintNative": "Định dạng AeroCrypt gốc: chỉ đọc được từ AeroFTP với mật khẩu này.",
             "hintRclone": "Định dạng rclone crypt tiêu chuẩn: cũng đọc được bằng rclone với mật khẩu này.",
             "passwordLabel": "Mật khẩu",
-            "saltLabel": "Salt (tùy chọn)",
             "keyfileLabel": "Tệp khóa (tùy chọn)",
             "keyfilePlaceholder": "Không có tệp khóa: chỉ mật khẩu",
             "keyfileHint": "Yếu tố thứ hai tùy chọn được trộn vào khóa mã hóa: két chỉ mở với mật khẩu VÀ tệp này. Hãy sao lưu: mất nó khiến két không thể mở.",

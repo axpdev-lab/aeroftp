@@ -5395,7 +5395,6 @@
             "hintNative": "Native na format ng AeroCrypt: mababasa lamang mula sa AeroFTP gamit ang password na ito.",
             "hintRclone": "Standard na format ng rclone crypt: mababasa rin ng rclone gamit ang password na ito.",
             "passwordLabel": "Password",
-            "saltLabel": "Salt (opsyonal)",
             "keyfileLabel": "Keyfile (opsyonal)",
             "keyfilePlaceholder": "Walang keyfile: password lamang",
             "keyfileHint": "Opsyonal na pangalawang factor na hinahalo sa encryption key: bubukas lang ang vault gamit ang password AT ang file na ito. Mag-backup: kapag nawala ito, hindi na mabubuksan ang vault.",

@@ -5395,7 +5395,6 @@
             "hintNative": "Format AeroCrypt natiu: només llegible des d'AeroFTP amb aquesta contrasenya.",
             "hintRclone": "Format rclone crypt estàndard: també llegible per rclone amb aquesta contrasenya.",
             "passwordLabel": "Contrasenya",
-            "saltLabel": "Salt (opcional)",
             "keyfileLabel": "Fitxer de clau (opcional)",
             "keyfilePlaceholder": "Sense fitxer de clau: només contrasenya",
             "keyfileHint": "Segon factor opcional barrejat a la clau de xifratge: la caixa forta només s'obre amb la contrasenya I aquest fitxer. Feu-ne una còpia: perdre'l fa la caixa forta inaccessible.",

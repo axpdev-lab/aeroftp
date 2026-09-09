@@ -5376,7 +5376,6 @@
             "hintNative": "Natives AeroCrypt-Format: nur aus AeroFTP mit diesem Passwort lesbar.",
             "hintRclone": "Standard-rclone-crypt-Format: auch von rclone mit diesem Passwort lesbar.",
             "passwordLabel": "Passwort",
-            "saltLabel": "Salt (optional)",
             "keyfileLabel": "Schlüsseldatei (optional)",
             "keyfilePlaceholder": "Keine Schlüsseldatei: nur Passwort",
             "keyfileHint": "Optionaler zweiter Faktor, der in den Verschlüsselungsschlüssel einfließt: der Tresor öffnet sich nur mit dem Passwort UND dieser Datei. Sichern Sie sie: ihr Verlust macht den Tresor unöffenbar.",

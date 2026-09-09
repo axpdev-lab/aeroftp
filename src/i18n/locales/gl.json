@@ -5395,7 +5395,6 @@
             "hintNative": "Formato AeroCrypt nativo: lexible só desde AeroFTP con este contrasinal.",
             "hintRclone": "Formato rclone crypt estándar: tamén lexible por rclone con este contrasinal.",
             "passwordLabel": "Contrasinal",
-            "saltLabel": "Salt (opcional)",
             "keyfileLabel": "Ficheiro de clave (opcional)",
             "keyfilePlaceholder": "Sen ficheiro de clave: só contrasinal",
             "keyfileHint": "Segundo factor opcional mesturado na clave de cifrado: a caixa forte só se abre co contrasinal E este ficheiro. Faga unha copia: perdelo deixa a caixa forte inaccesible.",

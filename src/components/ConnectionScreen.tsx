@@ -3424,7 +3424,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 {aeroCryptKind === 'rclone-crypt' && (
                                     <>
                                         <div>
-                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('aerocryptProfile.saltLabel')}</label>
+                                            {/* Ehud #347 (18352443): rclone calls this field
+                                                password2, and someone pasting it out of
+                                                rclone.conf needs that name to find it. The
+                                                unlock dialog already said so; this label was a
+                                                second copy of the same string that never got
+                                                the rename. One key now, so it cannot drift
+                                                again, and it is the one the placeholder below
+                                                already reads from. */}
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('aerocrypt.salt')}</label>
                                             <div className="relative">
                                                 <input
                                                     type={showAeroCryptSalt ? 'text' : 'password'}

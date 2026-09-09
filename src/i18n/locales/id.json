@@ -5376,7 +5376,6 @@
             "hintNative": "Format AeroCrypt asli: hanya dapat dibaca dari AeroFTP dengan kata sandi ini.",
             "hintRclone": "Format rclone crypt standar: juga dapat dibaca oleh rclone dengan kata sandi ini.",
             "passwordLabel": "Kata sandi",
-            "saltLabel": "Salt (opsional)",
             "keyfileLabel": "Berkas kunci (opsional)",
             "keyfilePlaceholder": "Tanpa berkas kunci: hanya kata sandi",
             "keyfileHint": "Faktor kedua opsional yang dicampur ke kunci enkripsi: brankas hanya terbuka dengan kata sandi DAN berkas ini. Cadangkan: kehilangannya membuat brankas tak bisa dibuka.",

@@ -5395,7 +5395,6 @@
             "hintNative": "Innbyggt AeroCrypt-snið: aðeins læsilegt úr AeroFTP með þessu lykilorði.",
             "hintRclone": "Staðlað rclone crypt-snið: einnig læsilegt af rclone með þessu lykilorði.",
             "passwordLabel": "Lykilorð",
-            "saltLabel": "Salt (valfrjálst)",
             "keyfileLabel": "Lykilskrá (valfrjálst)",
             "keyfilePlaceholder": "Engin lykilskrá: aðeins lykilorð",
             "keyfileHint": "Valfrjáls annar þáttur sem blandast í dulritunarlykilinn: hirslan opnast aðeins með lykilorðinu OG þessari skrá. Taktu afrit: glatist hún verður hirslan óopnanleg.",

@@ -5395,7 +5395,6 @@
             "hintNative": "Fformat AeroCrypt brodorol: darllenadwy o AeroFTP yn unig gyda'r cyfrinair hwn.",
             "hintRclone": "Fformat rclone crypt safonol: darllenadwy gan rclone hefyd gyda'r cyfrinair hwn.",
             "passwordLabel": "Cyfrinair",
-            "saltLabel": "Salt (dewisol)",
             "keyfileLabel": "Ffeil allwedd (dewisol)",
             "keyfilePlaceholder": "Dim ffeil allwedd: cyfrinair yn unig",
             "keyfileHint": "Ail ffactor dewisol wedi'i gymysgu i'r allwedd amgryptio: dim ond gyda'r cyfrinair A'r ffeil hon y bydd y gladdgell yn agor. Cadwch gopi wrth gefn: mae ei cholli yn gwneud y gladdgell yn amhosibl ei hagor.",

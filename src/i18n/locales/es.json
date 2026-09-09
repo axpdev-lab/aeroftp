@@ -5376,7 +5376,6 @@
             "hintNative": "Formato AeroCrypt nativo: legible solo desde AeroFTP con esta contraseña.",
             "hintRclone": "Formato rclone crypt estándar: también legible por rclone con esta contraseña.",
             "passwordLabel": "Contraseña",
-            "saltLabel": "Salt (opcional)",
             "keyfileLabel": "Archivo de clave (opcional)",
             "keyfilePlaceholder": "Sin archivo de clave: solo contraseña",
             "keyfileHint": "Segundo factor opcional mezclado en la clave de cifrado: la bóveda solo se abre con la contraseña Y este archivo. Haga una copia: perderlo deja la bóveda inaccesible.",

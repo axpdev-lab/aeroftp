@@ -5376,7 +5376,6 @@
             "hintNative": "Inbyggt AeroCrypt-format: läsbart endast från AeroFTP med detta lösenord.",
             "hintRclone": "Standardformatet rclone crypt: läsbart även av rclone med detta lösenord.",
             "passwordLabel": "Lösenord",
-            "saltLabel": "Salt (valfritt)",
             "keyfileLabel": "Nyckelfil (valfri)",
             "keyfilePlaceholder": "Ingen nyckelfil: endast lösenord",
             "keyfileHint": "Valfri andra faktor som blandas in i krypteringsnyckeln: valvet öppnas bara med lösenordet OCH denna fil. Säkerhetskopiera den: förlust gör valvet oöppningsbart.",

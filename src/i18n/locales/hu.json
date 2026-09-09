@@ -5376,7 +5376,6 @@
             "hintNative": "Natív AeroCrypt formátum: csak az AeroFTP-ből olvasható ezzel a jelszóval.",
             "hintRclone": "Szabványos rclone crypt formátum: az rclone is olvassa ezzel a jelszóval.",
             "passwordLabel": "Jelszó",
-            "saltLabel": "Salt (opcionális)",
             "keyfileLabel": "Kulcsfájl (opcionális)",
             "keyfilePlaceholder": "Nincs kulcsfájl: csak jelszó",
             "keyfileHint": "A titkosítási kulcsba kevert opcionális második faktor: a széf csak a jelszóval ÉS ezzel a fájllal nyílik. Készítsen másolatot: elvesztése a széfet megnyithatatlanná teszi.",

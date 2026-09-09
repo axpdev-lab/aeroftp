@@ -5376,7 +5376,6 @@
             "hintNative": "Izvorni AeroCrypt format: čitljiv samo iz AeroFTP-a s ovom lozinkom.",
             "hintRclone": "Standardni rclone crypt format: čitljiv i pomoću rclone s ovom lozinkom.",
             "passwordLabel": "Lozinka",
-            "saltLabel": "Salt (neobavezno)",
             "keyfileLabel": "Datoteka ključa (neobavezno)",
             "keyfilePlaceholder": "Bez datoteke ključa: samo lozinka",
             "keyfileHint": "Neobavezan drugi faktor umiješan u ključ šifriranja: trezor se otvara samo s lozinkom I ovom datotekom. Napravite kopiju: njezin gubitak čini trezor neotvorivim.",

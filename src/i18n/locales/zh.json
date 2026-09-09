@@ -5376,7 +5376,6 @@
             "hintNative": "原生 AeroCrypt 格式：使用此密码仅可从 AeroFTP 读取。",
             "hintRclone": "标准 rclone crypt 格式：使用此密码也可由 rclone 读取。",
             "passwordLabel": "密码",
-            "saltLabel": "Salt (可选)",
             "keyfileLabel": "密钥文件 (可选)",
             "keyfilePlaceholder": "无密钥文件: 仅密码",
             "keyfileHint": "混入加密密钥的可选第二因子: 保险库只有同时提供密码和此文件才能打开。请备份: 丢失它将导致保险库无法打开。",

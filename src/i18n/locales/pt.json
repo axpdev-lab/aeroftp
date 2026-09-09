@@ -5376,7 +5376,6 @@
             "hintNative": "Formato AeroCrypt nativo: legível apenas a partir do AeroFTP com esta palavra-passe.",
             "hintRclone": "Formato rclone crypt padrão: também legível pelo rclone com esta palavra-passe.",
             "passwordLabel": "Palavra-passe",
-            "saltLabel": "Salt (opcional)",
             "keyfileLabel": "Ficheiro de chave (opcional)",
             "keyfilePlaceholder": "Sem ficheiro de chave: apenas palavra-passe",
             "keyfileHint": "Segundo fator opcional misturado na chave de cifragem: o cofre só abre com a palavra-passe E este ficheiro. Faça uma cópia: perdê-lo torna o cofre inabrível.",

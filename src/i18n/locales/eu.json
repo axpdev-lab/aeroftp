@@ -5395,7 +5395,6 @@
             "hintNative": "AeroCrypt formatu natiboa: AeroFTP-tik soilik irakur daiteke pasahitz honekin.",
             "hintRclone": "rclone crypt formatu estandarra: rclone-k ere irakur dezake pasahitz honekin.",
             "passwordLabel": "Pasahitza",
-            "saltLabel": "Salt (aukerakoa)",
             "keyfileLabel": "Gako-fitxategia (aukerakoa)",
             "keyfilePlaceholder": "Gako-fitxategirik ez: pasahitza soilik",
             "keyfileHint": "Zifratze-gakoan nahasten den bigarren faktore aukerakoa: kutxa gotorra pasahitzarekin ETA fitxategi honekin soilik irekitzen da. Egin babeskopia: galtzen bada, kutxa ezin da ireki.",

@@ -5395,7 +5395,6 @@
             "hintNative": "Native AeroCrypt-format: kan bare leses fra AeroFTP med dette passordet.",
             "hintRclone": "Standard rclone crypt-format: kan også leses av rclone med dette passordet.",
             "passwordLabel": "Passord",
-            "saltLabel": "Salt (valgfritt)",
             "keyfileLabel": "Nøkkelfil (valgfri)",
             "keyfilePlaceholder": "Ingen nøkkelfil: kun passord",
             "keyfileHint": "Valgfri andre faktor blandet inn i krypteringsnøkkelen: hvelvet åpner kun med passordet OG denne filen. Ta sikkerhetskopi: mistes den, kan hvelvet ikke åpnes.",

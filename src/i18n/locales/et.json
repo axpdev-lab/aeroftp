@@ -5376,7 +5376,6 @@
             "hintNative": "Natiivne AeroCrypt-vorming: loetav ainult AeroFTP-st selle parooliga.",
             "hintRclone": "Standardne rclone crypt -vorming: loetav ka rclone'iga selle parooliga.",
             "passwordLabel": "Parool",
-            "saltLabel": "Salt (valikuline)",
             "keyfileLabel": "Võtmefail (valikuline)",
             "keyfilePlaceholder": "Võtmefaili pole: ainult parool",
             "keyfileHint": "Valikuline teine tegur, mis segatakse krüpteerimisvõtmesse: hoidla avaneb ainult parooli JA selle failiga. Tehke varukoopia: selle kaotamine muudab hoidla avamatuks.",

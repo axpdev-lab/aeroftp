@@ -5376,7 +5376,6 @@
             "hintNative": "Natywny format AeroCrypt: czytelny tylko z AeroFTP przy tym haśle.",
             "hintRclone": "Standardowy format rclone crypt: czytelny także przez rclone przy tym haśle.",
             "passwordLabel": "Hasło",
-            "saltLabel": "Salt (opcjonalnie)",
             "keyfileLabel": "Plik klucza (opcjonalnie)",
             "keyfilePlaceholder": "Brak pliku klucza: tylko hasło",
             "keyfileHint": "Opcjonalny drugi składnik domieszany do klucza szyfrowania: sejf otwiera się tylko z hasłem I tym plikiem. Zrób kopię: jego utrata czyni sejf nieotwieralnym.",

@@ -5376,7 +5376,6 @@
             "hintNative": "Format AeroCrypt natif : lisible uniquement depuis AeroFTP avec ce mot de passe.",
             "hintRclone": "Format rclone crypt standard : également lisible par rclone avec ce mot de passe.",
             "passwordLabel": "Mot de passe",
-            "saltLabel": "Salt (facultatif)",
             "keyfileLabel": "Fichier de clé (facultatif)",
             "keyfilePlaceholder": "Aucun fichier de clé : mot de passe seul",
             "keyfileHint": "Second facteur facultatif mélangé à la clé de chiffrement : le coffre ne s'ouvre qu'avec le mot de passe ET ce fichier. Sauvegardez-le : sa perte rend le coffre inouvrable.",

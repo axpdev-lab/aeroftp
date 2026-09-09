@@ -5376,7 +5376,6 @@
             "hintNative": "Muundo asili wa AeroCrypt: husomeka tu kutoka AeroFTP kwa nenosiri hili.",
             "hintRclone": "Muundo wa kawaida wa rclone crypt: husomeka pia na rclone kwa nenosiri hili.",
             "passwordLabel": "Nenosiri",
-            "saltLabel": "Salt (hiari)",
             "keyfileLabel": "Faili ya ufunguo (hiari)",
             "keyfilePlaceholder": "Hakuna faili ya ufunguo: nenosiri pekee",
             "keyfileHint": "Kipengele cha pili cha hiari kinachochanganywa katika ufunguo wa usimbaji: kasha hufunguka tu kwa nenosiri NA faili hii. Hifadhi nakala: kuipoteza hufanya kasha lisifunguke.",

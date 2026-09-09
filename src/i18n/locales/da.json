@@ -5376,7 +5376,6 @@
             "hintNative": "Native AeroCrypt-format: kan kun læses fra AeroFTP med denne adgangskode.",
             "hintRclone": "Standard rclone crypt-format: kan også læses af rclone med denne adgangskode.",
             "passwordLabel": "Adgangskode",
-            "saltLabel": "Salt (valgfrit)",
             "keyfileLabel": "Nøglefil (valgfri)",
             "keyfilePlaceholder": "Ingen nøglefil: kun adgangskode",
             "keyfileHint": "Valgfri anden faktor blandet ind i krypteringsnøglen: boksen åbner kun med adgangskoden OG denne fil. Tag backup: mistes den, kan boksen ikke åbnes.",
