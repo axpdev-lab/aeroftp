@@ -30,7 +30,10 @@ use crate::transfer_dag::{DagObserver, TransferDagBuilder};
 use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
 use crate::transfer_event_sink::{AppHandleSink, GuiDagObserver, TransferEventSink};
 use crate::transfer_orchestrator::{execute_batch, ProgressObserver, TransferBatch};
-use crate::transfer_settings::TransferSettingsInput;
+use crate::transfer_settings::{
+    default_download_segments_for, TransferSettingsInput, DEFAULT_MULTI_THREAD_CUTOFF_BYTES,
+    MAX_DOWNLOAD_SEGMENTS, MIN_DOWNLOAD_SEGMENTS,
+};
 use crate::util::AbortOnDrop;
 
 /// Global flag: when true, filesystem watcher should suppress sync triggers.
@@ -3031,6 +3034,36 @@ async fn detect_7z_meta_remote(
     })
 }
 
+/// Arm the provider's own multi-stream download for one GUI transfer, on
+/// every provider: the SFTP preset (connections and read-ahead) when one is
+/// set, otherwise the requested stream count, or the provider's measured
+/// default when the setting is Auto, with the shared 250 MiB cutoff. The
+/// single-file and the folder download call this, so no GUI path leaves a
+/// provider on one stream because the toolbar button did not reach it: until
+/// now S3, WebDAV, B2 and Koofr implemented `set_multi_thread_download` and
+/// the GUI never called it for them. Returns the stream count armed.
+pub(crate) fn arm_download_streams(
+    provider: &mut dyn StorageProvider,
+    download_segments: Option<u32>,
+    sftp_download_preset: Option<SftpDownloadPreset>,
+) -> u32 {
+    if provider.provider_type() == ProviderType::Sftp {
+        if let Some(preset) = sftp_download_preset {
+            let tuning = preset.resolve();
+            provider.set_multi_thread_download(tuning.connections, tuning.multi_connection_cutoff);
+            provider.set_sftp_readahead(tuning.readahead_window);
+            return tuning.connections as u32;
+        }
+    }
+    let segments = download_segments
+        .unwrap_or_else(|| default_download_segments_for(provider.provider_type()))
+        .clamp(MIN_DOWNLOAD_SEGMENTS, MAX_DOWNLOAD_SEGMENTS);
+    if segments >= 2 {
+        provider.set_multi_thread_download(segments as usize, DEFAULT_MULTI_THREAD_CUTOFF_BYTES);
+    }
+    segments
+}
+
 /// Download a file from the remote server
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
@@ -3084,13 +3117,7 @@ pub async fn provider_download_file(
     }
 
     let file_size = provider.size(&remote_path).await.unwrap_or(0);
-    if provider.provider_type() == ProviderType::Sftp {
-        if let Some(preset) = sftp_download_preset {
-            let tuning = preset.resolve();
-            provider.set_multi_thread_download(tuning.connections, tuning.multi_connection_cutoff);
-            provider.set_sftp_readahead(tuning.readahead_window);
-        }
-    }
+    arm_download_streams(provider.as_mut(), download_segments, sftp_download_preset);
     let app_progress = app.clone();
     let tid_progress = transfer_id.clone();
     let fname_progress = filename.clone();
@@ -3751,14 +3778,11 @@ async fn provider_download_folder_inner(
         let provider = provider_lock
             .as_mut()
             .ok_or("Not connected to any provider")?;
-        if provider.provider_type() == ProviderType::Sftp {
-            if let Some(preset) = transfer_settings.sftp_download_preset {
-                let tuning = preset.resolve();
-                provider
-                    .set_multi_thread_download(tuning.connections, tuning.multi_connection_cutoff);
-                provider.set_sftp_readahead(tuning.readahead_window);
-            }
-        }
+        arm_download_streams(
+            provider.as_mut(),
+            transfer_settings.download_segments,
+            transfer_settings.sftp_download_preset,
+        );
     }
     let (runtime_settings, session_model, capabilities) =
         resolve_provider_transfer_runtime(&state.provider, transfer_settings).await;
@@ -12843,6 +12867,54 @@ pub async fn b2_permanent_delete(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// The GUI download paths arm every provider's multi-stream download:
+    /// Auto becomes the measured default of the provider's type, an explicit
+    /// value is kept, an SFTP preset wins on SFTP, and one stream arms nothing.
+    #[test]
+    fn arm_download_streams_reaches_every_provider_with_the_measured_default() {
+        use crate::providers::ProviderType;
+        use crate::sync_core::scan::tests::PoolTreeProvider;
+        use std::sync::atomic::Ordering;
+
+        let mut s3 = PoolTreeProvider::fan(1, 1);
+        s3.provider_type = ProviderType::S3;
+        let armed = std::sync::Arc::clone(&s3.armed_streams);
+        assert_eq!(arm_download_streams(&mut s3, None, None), 4);
+        assert_eq!(armed.load(Ordering::SeqCst), 4, "Auto on S3 arms 4 streams");
+        assert_eq!(arm_download_streams(&mut s3, Some(3), None), 3);
+        assert_eq!(armed.load(Ordering::SeqCst), 3, "an explicit value is kept");
+
+        let mut webdav = PoolTreeProvider::fan(1, 1);
+        webdav.provider_type = ProviderType::WebDav;
+        let armed = std::sync::Arc::clone(&webdav.armed_streams);
+        assert_eq!(arm_download_streams(&mut webdav, None, None), 8);
+        assert_eq!(
+            armed.load(Ordering::SeqCst),
+            8,
+            "Auto on WebDAV arms 8 streams"
+        );
+
+        let mut unmeasured = PoolTreeProvider::fan(1, 1);
+        unmeasured.provider_type = ProviderType::Backblaze;
+        let armed = std::sync::Arc::clone(&unmeasured.armed_streams);
+        assert_eq!(arm_download_streams(&mut unmeasured, None, None), 1);
+        assert_eq!(armed.load(Ordering::SeqCst), 0, "one stream arms nothing");
+
+        let mut sftp = PoolTreeProvider::fan(1, 1);
+        let armed = std::sync::Arc::clone(&sftp.armed_streams);
+        assert_eq!(
+            arm_download_streams(&mut sftp, Some(2), Some(SftpDownloadPreset::Fast)),
+            8
+        );
+        assert_eq!(
+            armed.load(Ordering::SeqCst),
+            8,
+            "the SFTP preset wins on SFTP"
+        );
+    }
+
     use super::{
         decrypt_rel_aerocrypt, decrypt_rel_rclone, discovery_bucket_placeholder,
         drain_in_flight_transfers, normalize_aerocrypt_remote_files_for_compare,

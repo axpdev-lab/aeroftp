@@ -12,9 +12,11 @@ pub const SFTP_PRESET_MULTI_CONNECTION_CUTOFF: u64 = 250 * 1024 * 1024;
 #[serde(rename_all = "kebab-case")]
 pub enum SftpDownloadPreset {
     Compatibility,
-    #[default]
     Efficient,
     Balanced,
+    /// The product default since the DAG engine review: eight connections
+    /// took a 300 MiB download from 144.75 s to 25.46 s on the lab.
+    #[default]
     Fast,
     MaximumTested,
 }
@@ -86,13 +88,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn efficient_is_the_single_connection_product_default() {
-        assert_eq!(SftpDownloadPreset::default(), SftpDownloadPreset::Efficient);
+    fn fast_is_the_eight_connection_product_default() {
+        assert_eq!(SftpDownloadPreset::default(), SftpDownloadPreset::Fast);
         assert_eq!(
             SftpDownloadPreset::default().resolve(),
             ResolvedSftpDownloadTuning {
-                preset: SftpDownloadPreset::Efficient,
-                connections: 1,
+                preset: SftpDownloadPreset::Fast,
+                connections: 8,
                 readahead_window: Some(16),
                 multi_connection_cutoff: SFTP_PRESET_MULTI_CONNECTION_CUTOFF,
             }

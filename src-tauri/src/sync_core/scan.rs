@@ -1396,6 +1396,10 @@ pub(crate) mod tests {
     /// finishes only if the walker really lists that many directories at once.
     pub(crate) struct PoolTreeProvider {
         pub(crate) dirs: std::collections::HashMap<String, Vec<crate::providers::RemoteEntry>>,
+        /// What the mock claims to be; the default is SFTP.
+        pub(crate) provider_type: crate::providers::ProviderType,
+        /// Streams the last `set_multi_thread_download` armed (0 = never called).
+        pub(crate) armed_streams: Arc<std::sync::atomic::AtomicUsize>,
         pub(crate) ceiling: u16,
         pub(crate) in_flight: Arc<std::sync::atomic::AtomicUsize>,
         pub(crate) peak: Arc<std::sync::atomic::AtomicUsize>,
@@ -1426,6 +1430,8 @@ pub(crate) mod tests {
             }
             Self {
                 dirs,
+                provider_type: crate::providers::ProviderType::Sftp,
+                armed_streams: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                 ceiling,
                 in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                 peak: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
@@ -1440,10 +1446,14 @@ pub(crate) mod tests {
             self
         }
         fn provider_type(&self) -> crate::providers::ProviderType {
-            crate::providers::ProviderType::Sftp
+            self.provider_type
         }
         fn display_name(&self) -> String {
             "pool-tree".to_string()
+        }
+        fn set_multi_thread_download(&mut self, streams: usize, _cutoff_bytes: u64) {
+            self.armed_streams
+                .store(streams, std::sync::atomic::Ordering::SeqCst);
         }
         fn list_executor_kind(&self) -> crate::providers::ProviderListExecutorKind {
             crate::providers::ProviderListExecutorKind::HttpClonePool
@@ -1454,6 +1464,8 @@ pub(crate) mod tests {
         fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
             Ok(Box::new(Self {
                 dirs: self.dirs.clone(),
+                provider_type: self.provider_type,
+                armed_streams: Arc::clone(&self.armed_streams),
                 ceiling: self.ceiling,
                 in_flight: Arc::clone(&self.in_flight),
                 peak: Arc::clone(&self.peak),
