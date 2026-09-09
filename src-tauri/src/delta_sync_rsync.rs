@@ -558,9 +558,33 @@ pub async fn try_delta_transfer_with_progress(
     remote_path: &str,
     progress: Option<crate::delta_transport::DeltaProgressSink>,
 ) -> Option<DeltaSyncResult> {
-    // Only SFTP is delta-eligible in Fase 1. Downcasting via `as_any_mut()` keeps
-    // the generic trait intact: we don't need a new `delta_transport_context()`
-    // contract on every provider implementation.
+    // An encrypted overlay cannot compare plaintext grid digests to its
+    // ciphertext object. Do not unwrap it to reach an inner S3 provider.
+    if provider
+        .as_any_mut()
+        .is::<crate::crypt_overlay_provider::CryptOverlayProvider>()
+    {
+        return Some(DeltaSyncResult::fallback("encrypted_overlay"));
+    }
+    if let Some(s3) = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::s3::S3Provider>()
+    {
+        if direction != SyncDirection::Upload {
+            return None;
+        }
+        let on_progress = progress.map(|sink| {
+            let sink = std::sync::Mutex::new(sink);
+            Box::new(move |sent, total| {
+                (sink.lock().unwrap_or_else(|e| e.into_inner()))(sent, total);
+            }) as Box<dyn Fn(u64, u64) + Send>
+        });
+        let outcome = s3
+            .try_delta_upload(local_path, remote_path, on_progress)
+            .await;
+        return Some(s3_delta_result(outcome));
+    }
+    // The SFTP transport/probe lifecycle remains independent of S3.
     let sftp = provider
         .as_any_mut()
         .downcast_mut::<crate::providers::sftp::SftpProvider>()?;
@@ -586,6 +610,46 @@ pub async fn try_delta_transfer_with_progress(
         progress,
     )
     .await
+}
+
+/// Preserve the existing result surface without reusing the native envelope
+/// classifier. A failed delta can retry as a plain upload except for explicit
+/// credential/permission refusals.
+fn s3_delta_result(
+    outcome: Result<
+        crate::providers::s3_delta::S3DeltaOutcome,
+        crate::providers::s3_delta::S3DeltaError,
+    >,
+) -> DeltaSyncResult {
+    use crate::providers::s3_delta::{
+        classify_delta_failure, DeltaFailureDecision, S3DeltaOutcome,
+    };
+    match outcome {
+        Ok(S3DeltaOutcome::Refused(reason)) => DeltaSyncResult::fallback(reason),
+        Ok(S3DeltaOutcome::Uploaded {
+            wire_bytes,
+            total_size,
+            copy_parts,
+            duration_ms,
+        }) => DeltaSyncResult::used(RsyncStats {
+            bytes_sent: wire_bytes,
+            bytes_received: 0,
+            total_size,
+            // All-copy is a real delta with zero payload. Saturate the ratio
+            // at a one-byte denominator so JSON/UI never receive infinity.
+            speedup: total_size as f64 / wire_bytes.max(1) as f64,
+            // Executor plan + wire time; excludes HEAD and matcher read.
+            duration_ms,
+            copy_blocks: copy_parts,
+            warnings: vec![],
+        }),
+        Err(error) => match classify_delta_failure(&error) {
+            DeltaFailureDecision::Hard => DeltaSyncResult::hard_error(sanitize_rsync_message(
+                &error.into_provider_error().to_string(),
+            )),
+            DeltaFailureDecision::Fallback(reason) => DeltaSyncResult::fallback(reason),
+        },
+    }
 }
 
 /// Probe the current provider session and report whether delta sync is
