@@ -714,11 +714,13 @@ impl CryptOverlayProvider {
 }
 
 /// Inert placeholder swapped into a [`CryptOverlayProvider`] husk by
-/// [`CryptOverlayProvider::take_inner`]. It is NEVER used for I/O: the husk is
-/// dropped the instant after its real inner is detached. Every method fails
-/// closed so that, even in the impossible event the husk outlives the swap, it
+/// [`CryptOverlayProvider::take_inner`], and parked into a caller's `Box` by
+/// the shared remote walker while the list pool owns the real provider. It is
+/// NEVER used for I/O: the husk is dropped the instant after its real inner is
+/// detached, and the walker restores the real provider before returning. Every
+/// method fails closed so that, even if a placeholder outlives its swap, it
 /// can never touch a backend.
-struct DetachedProvider;
+pub(crate) struct DetachedProvider;
 
 #[async_trait]
 impl StorageProvider for DetachedProvider {
