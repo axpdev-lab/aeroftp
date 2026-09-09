@@ -77,9 +77,9 @@ jobs:
 
       - name: Install Linux dependencies
         run: |
-          # Runner-image extras: the preinstalled Microsoft and Google apt repos fail
-          # often enough to redden a run (403 on InRelease, Hash Sum mismatch on
-          # Packages.gz), and nothing here installs from any of them.
+          # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
+          # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
+          # mismatch on Packages.gz), and nothing here installs from any of them.
           sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           # `dbus` is here for `cargo test` / portal_chooser (#510), not for
@@ -252,9 +252,9 @@ jobs:
       - name: Install Linux dependencies
         if: matrix.target == 'linux'
         run: |
-          # Runner-image extras: the preinstalled Microsoft and Google apt repos fail
-          # often enough to redden a run (403 on InRelease, Hash Sum mismatch on
-          # Packages.gz), and nothing here installs from any of them.
+          # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
+          # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
+          # mismatch on Packages.gz), and nothing here installs from any of them.
           sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           # `dbus` lives on `linux-validate` with `cargo test` / portal_chooser
@@ -847,9 +847,9 @@ jobs:
         env:
           SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
         run: |
-          # Runner-image extras: the preinstalled Microsoft and Google apt repos fail
-          # often enough to redden a run (403 on InRelease, Hash Sum mismatch on
-          # Packages.gz), and nothing here installs from any of them.
+          # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
+          # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
+          # mismatch on Packages.gz), and nothing here installs from any of them.
           sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools binutils file
@@ -909,9 +909,9 @@ jobs:
           SNAP_GUI_SCREENSHOT: ${{ runner.temp }}/snap-gui-screenshot.png
         run: |
           set -euo pipefail
-          # Runner-image extras: the preinstalled Microsoft and Google apt repos fail
-          # often enough to redden a run (403 on InRelease, Hash Sum mismatch on
-          # Packages.gz), and nothing here installs from any of them.
+          # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
+          # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
+          # mismatch on Packages.gz), and nothing here installs from any of them.
           sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xvfb x11-apps imagemagick
