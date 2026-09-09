@@ -540,20 +540,43 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                                     ? t('syncPanel.templateExportDesc')
                                     : `aeroftp-cli sync wrapper (${exportFormat === 'pwsh' ? 'PowerShell' : 'bash'})`}
                             </p>
-                            <input
-                                type="text"
-                                className="w-full text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 placeholder-gray-400"
-                                placeholder={t('syncPanel.templateName')}
-                                value={templateName}
-                                onChange={e => setTemplateName(e.target.value)}
-                            />
-                            <input
-                                type="text"
-                                className="w-full text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 placeholder-gray-400"
-                                placeholder={t('syncPanel.templateDesc') || 'Description'}
-                                value={templateDesc}
-                                onChange={e => setTemplateDesc(e.target.value)}
-                            />
+                            {/* Ehud #347 (18352619): both fields carried their name in the
+                                placeholder alone, so typing into one erased the only thing
+                                that said what it was. Persistent headings, same style as the
+                                preset and Format blocks below; the placeholder now carries an
+                                example instead of repeating the heading. */}
+                            <div className="space-y-1">
+                                <label
+                                    htmlFor="sync-template-name"
+                                    className="block text-[11px] uppercase tracking-wide text-gray-500"
+                                >
+                                    {t('syncPanel.templateName')}
+                                </label>
+                                <input
+                                    id="sync-template-name"
+                                    type="text"
+                                    className="w-full text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 placeholder-gray-400"
+                                    placeholder={t('syncPanel.templateNamePlaceholder')}
+                                    value={templateName}
+                                    onChange={e => setTemplateName(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label
+                                    htmlFor="sync-template-description"
+                                    className="block text-[11px] uppercase tracking-wide text-gray-500"
+                                >
+                                    {t('syncPanel.templateDesc')}
+                                </label>
+                                <input
+                                    id="sync-template-description"
+                                    type="text"
+                                    className="w-full text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 placeholder-gray-400"
+                                    placeholder={t('syncPanel.templateDescPlaceholder')}
+                                    value={templateDesc}
+                                    onChange={e => setTemplateDesc(e.target.value)}
+                                />
+                            </div>
                             <div className="space-y-1">
                                 <label
                                     htmlFor="sync-template-preset"

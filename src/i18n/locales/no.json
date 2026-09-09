@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Importert preset lagret. Åpne AeroSync for å bruke det.",
             "compressionHint": "Komprimerer data under overføringen for å gjøre den raskere; den lagrer ikke komprimerte filer på destinasjonen. Auto hopper over formater som allerede er komprimert (zip, jpg, mp4 og lignende).",
             "canaryDryRun": "Ingenting overføres: dette viser hva en full synkronisering ville gjort, beregnet fra utvalget. Det er den grafiske motparten til CLI-kommandoen aeroftp-cli sync --dry-run (og rclones --dry-run).",
-            "templateImportPathPairs": "Antall brukbare sti-par i denne malen: {count}. AeroFTP bruker nøyaktig ett, så ingenting ble importert. Rediger malen slik at det står igjen ett sti-par, og importer den på nytt."
+            "templateImportPathPairs": "Antall brukbare sti-par i denne malen: {count}. AeroFTP bruker nøyaktig ett, så ingenting ble importert. Rediger malen slik at det står igjen ett sti-par, og importer den på nytt.",
+            "templateNamePlaceholder": "f.eks. Nattlig sikkerhetskopi til S3",
+            "templateDescPlaceholder": "Hva denne malen brukes til (valgfritt)"
         },
         "ui": {
             "syncing": "Synkroniserer...",

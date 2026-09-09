@@ -2221,7 +2221,9 @@
             "aerosyncScriptAppliedToast": "Preset importat desat. Obre AeroSync per utilitzar-lo.",
             "compressionHint": "Comprimeix les dades durant el trànsit per accelerar la transferència; no desa fitxers comprimits a la destinació. Auto omet els formats que ja estan comprimits (zip, jpg, mp4 i similars).",
             "canaryDryRun": "No es transfereix res: mostra una vista prèvia del que faria una sincronització completa, calculada a partir de la mostra. És l'equivalent gràfic de l'ordre aeroftp-cli sync --dry-run (i de --dry-run de rclone).",
-            "templateImportPathPairs": "Aquesta plantilla defineix {count} parelles de rutes utilitzables. AeroFTP n'aplica exactament una, així que no s'ha importat res. Edita la plantilla perquè hi quedi una sola parella i torna a importar-la."
+            "templateImportPathPairs": "Aquesta plantilla defineix {count} parelles de rutes utilitzables. AeroFTP n'aplica exactament una, així que no s'ha importat res. Edita la plantilla perquè hi quedi una sola parella i torna a importar-la.",
+            "templateNamePlaceholder": "p. ex. Còpia de seguretat nocturna a S3",
+            "templateDescPlaceholder": "Per a què serveix aquesta plantilla (opcional)"
         },
         "ui": {
             "syncing": "Sincronitzant...",
