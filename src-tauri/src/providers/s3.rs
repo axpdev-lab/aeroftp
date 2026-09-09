@@ -135,6 +135,83 @@ fn is_s3_directory_content_type(content_type: &str) -> bool {
     ct == "application/x-directory" || ct == "httpd/unix-directory"
 }
 
+/// Owns the abort of a multipart upload the server has already opened.
+///
+/// Every early exit used to carry its own `abort_multipart_upload_internal`
+/// call. That covered the error branches and nothing else: dropping the future,
+/// which is exactly what GUI cancellation does, runs no branch at all, so the
+/// parts already uploaded stayed under the upload id until the bucket lifecycle
+/// rule removed them, if the bucket had one. Owning the upload id means an
+/// abort happens on every exit that is not a proven completion.
+///
+/// `Drop` is sync and cannot await, so it schedules the abort on the current
+/// runtime, the shape `crate::util::provider_guard::ProviderGuard` already uses
+/// for disconnect, and warns rather than panicking when no runtime is left.
+/// Known error paths call `abort_now` and await it instead, so their behaviour
+/// and the tests that count aborts stay deterministic; `Drop` is the net for
+/// cancellation and panics, which no explicit branch can reach.
+struct MultipartAbortGuard {
+    provider: S3Provider,
+    key: String,
+    upload_id: String,
+    armed: bool,
+}
+
+impl MultipartAbortGuard {
+    fn new(provider: &S3Provider, key: &str, upload_id: &str) -> Self {
+        Self {
+            provider: provider.clone(),
+            key: key.to_string(),
+            upload_id: upload_id.to_string(),
+            armed: true,
+        }
+    }
+
+    /// The upload completed. Nothing to clean up.
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+
+    /// A known failure. Abort now and observe it, so the caller returns only
+    /// after the server has been told, and a test can assert the count.
+    async fn abort_now(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.armed = false;
+        let _ = self
+            .provider
+            .abort_multipart_upload_internal(&self.key, &self.upload_id)
+            .await;
+    }
+}
+
+impl Drop for MultipartAbortGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let provider = self.provider.clone();
+        let key = std::mem::take(&mut self.key);
+        let upload_id = std::mem::take(&mut self.upload_id);
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn(async move {
+                    let _ = provider
+                        .abort_multipart_upload_internal(&key, &upload_id)
+                        .await;
+                });
+            }
+            Err(_) => tracing::warn!(
+                "multipart upload {} for {} was dropped without a Tokio runtime; \
+                 its parts stay until the bucket lifecycle rule removes them",
+                upload_id,
+                key
+            ),
+        }
+    }
+}
+
 fn etag_to_md5(raw: &str) -> Option<String> {
     let v = raw.trim().trim_matches('"').to_ascii_lowercase();
     if v.len() == 32 && v.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -2505,6 +2582,7 @@ impl S3Provider {
                 Self::source_mtime_metadata(local_path),
             )
             .await?;
+        let mut abort_guard = MultipartAbortGuard::new(self, key, &upload_id);
         let mut parts: Vec<(u32, String)> = Vec::new();
         let mut part_number = 1u32;
         let mut uploaded: u64 = 0;
@@ -2526,7 +2604,7 @@ impl S3Provider {
                     let n = match file.read(&mut buf[filled..]).await {
                         Ok(n) => n,
                         Err(e) => {
-                            let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                            abort_guard.abort_now().await;
                             return Err(ProviderError::TransferFailed(format!("Read error: {e}")));
                         }
                     };
@@ -2582,13 +2660,13 @@ impl S3Provider {
                         // Drain aborted futures so JoinSet drops cleanly before
                         // we fire the S3 AbortMultipartUpload.
                         while joinset.join_next().await.is_some() {}
-                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                        abort_guard.abort_now().await;
                         return Err(e);
                     }
                     Err(e) => {
                         joinset.abort_all();
                         while joinset.join_next().await.is_some() {}
-                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                        abort_guard.abort_now().await;
                         return Err(ProviderError::TransferFailed(format!(
                             "Upload task panicked: {e}"
                         )));
@@ -2606,10 +2684,11 @@ impl S3Provider {
         {
             Ok(etag) => etag,
             Err(e) => {
-                let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                abort_guard.abort_now().await;
                 return Err(e);
             }
         };
+        abort_guard.disarm();
         self.save_baseline(key, baseline, etag).await;
         Ok(())
     }
@@ -3024,6 +3103,7 @@ impl S3Provider {
                 .await;
         }
         let upload_id = initiated?;
+        let mut abort_guard = MultipartAbortGuard::new(self, key, &upload_id);
 
         let max_parallel = self.effective_upload_concurrency();
         let mut parts: Vec<(u32, String)> = Vec::with_capacity(plan.len());
@@ -3116,13 +3196,13 @@ impl S3Provider {
                     Ok(Err(e)) => {
                         joinset.abort_all();
                         while joinset.join_next().await.is_some() {}
-                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                        abort_guard.abort_now().await;
                         return Err(e);
                     }
                     Err(e) => {
                         joinset.abort_all();
                         while joinset.join_next().await.is_some() {}
-                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                        abort_guard.abort_now().await;
                         return Err(ProviderError::TransferFailed(format!(
                             "Delta upload task panicked: {e}"
                         ))
@@ -3139,7 +3219,7 @@ impl S3Provider {
             .map(|after| Self::same_delta_source(&source_before, &after))
             .unwrap_or(false);
         if !unchanged {
-            let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+            abort_guard.abort_now().await;
             return Err(S3DeltaError::SourceChanged);
         }
         let etag = match self
@@ -3148,10 +3228,11 @@ impl S3Provider {
         {
             Ok(etag) => etag,
             Err(e) => {
-                let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                abort_guard.abort_now().await;
                 return Err(e);
             }
         };
+        abort_guard.disarm();
 
         info!(
             "Delta multipart uploaded {} ({} bytes over the wire, {} parts)",

@@ -1007,14 +1007,20 @@ mod tests {
             "part numbers must be consecutive from 1"
         );
 
-        // The ETag the server completed with is not the one we sent.
+        // An accounting invariant rather than a door. The completion list is
+        // built from the very ETags `record` stored, so in production the two
+        // cannot disagree, and this case feeds an input the caller cannot
+        // produce. What certifies the row is the object ETag the completion
+        // returns, which `save_baseline` requires before writing. Should that
+        // list ever come from the server's response instead, this check
+        // becomes a real door and earns its place.
         assert!(
             !finish_case(
                 size,
                 aligned,
                 &[(1, "\"other\""), (2, "\"p2\""), (3, "\"p3\"")]
             ),
-            "a part completed under a different ETag is not the part we hashed"
+            "a completion list that disagrees with the recorded parts is not certifiable"
         );
 
         // An empty part certifies nothing.

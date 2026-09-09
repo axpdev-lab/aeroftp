@@ -18,6 +18,9 @@ struct Fault {
     /// the source changes after the plan was built and after the buffer the
     /// client is sending was read.
     mutate_local_on_first_put: bool,
+    /// Park the first plain PUT and announce it, so a test can drop the whole
+    /// transfer future while a part is genuinely in flight.
+    hold_first_put: bool,
 }
 #[derive(Default)]
 struct Seen {
@@ -30,6 +33,8 @@ struct Seen {
     copy_headers: std::sync::Mutex<Vec<String>>,
     mtimes: std::sync::Mutex<Vec<String>>,
     fault: std::sync::Mutex<Fault>,
+    /// Signalled once the first parked PUT has reached the server.
+    put_started: tokio::sync::Notify,
 }
 struct Mock {
     provider: S3Provider,
@@ -106,6 +111,13 @@ async fn mock() -> Mock {
                 while let Some(chunk) = stream.next().await {
                     let chunk = chunk.unwrap(); out.write_all(&chunk).await.unwrap();
                     state.wire.fetch_add(chunk.len() as u64,Ordering::SeqCst);
+                }
+                let hold = { let mut f = state.fault.lock().unwrap(); let h = f.hold_first_put; f.hold_first_put = false; h };
+                if hold {
+                    // notify_one leaves a permit if nobody is waiting yet, so the
+                    // test cannot lose the race between registering and the PUT.
+                    state.put_started.notify_one();
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
                 }
                 let mutate = { let mut f = state.fault.lock().unwrap(); let m = f.mutate_local_on_first_put; f.mutate_local_on_first_put = false; m };
                 if mutate {
@@ -627,5 +639,92 @@ async fn s3_adapter_refuses_to_complete_when_the_source_changes_mid_upload() {
     assert!(
         after.is_empty() || after == baseline_before,
         "the row may be dropped, never rewritten: before {baseline_before:?}, after {after:?}"
+    );
+}
+
+/// The cancellation door. Cancelling from the GUI drops the transfer future
+/// (`provider_commands.rs` races it against the cancel token), and dropping a
+/// future runs no error branch at all, so every explicit abort in the executor
+/// was unreachable from the one path users actually take. The parts already
+/// uploaded then sat under the upload id until the bucket lifecycle rule
+/// removed them, if the bucket had one. This drops the future while a part is
+/// genuinely in flight and pins what must follow: the multipart is aborted, no
+/// completion happens, the object is untouched, and no baseline row appears.
+///
+/// The abort is scheduled by the guard's `Drop`, which is sync and cannot
+/// await, so it is polled for rather than read once.
+#[tokio::test]
+async fn s3_adapter_dropping_a_delta_upload_aborts_the_multipart() {
+    let mut mock = mock().await;
+    let local = seed(&mut mock).await;
+    // A middle edit, so the plan carries a plain PUT the mock can park on.
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(&local)
+        .await
+        .unwrap();
+    file.seek(std::io::SeekFrom::Start(10 * GRID + 123))
+        .await
+        .unwrap();
+    file.write_all(b"edit").await.unwrap();
+    file.flush().await.unwrap();
+    drop(file);
+
+    let seen = Arc::clone(&mock.seen);
+    let completes = seen.completes.load(Ordering::SeqCst);
+    let aborts = seen.aborts.load(Ordering::SeqCst);
+    let creates_before = seen.creates.load(Ordering::SeqCst);
+    let remote_before = file_digest(&mock.dir.path().join("remote.bin")).await;
+    let baseline_before = baseline_rows(&mock);
+    seen.fault.lock().unwrap().hold_first_put = true;
+
+    {
+        let transfer =
+            try_delta_transfer(&mut mock.provider, SyncDirection::Upload, &local, "object");
+        tokio::pin!(transfer);
+        tokio::select! {
+            biased;
+            _ = seen.put_started.notified() => {}
+            _ = &mut transfer => panic!("the upload must still be in flight when it is dropped"),
+        }
+        // Leaving this scope drops `transfer`, which is exactly what the GUI
+        // cancel arm does. No error branch of the executor runs.
+    }
+
+    let mut aborted = false;
+    for _ in 0..200 {
+        if seen.aborts.load(Ordering::SeqCst) == aborts + 1 {
+            aborted = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert!(
+        aborted,
+        "no AbortMultipartUpload arrived within 5 s (200 polls of 25 ms) after the \
+         transfer future was dropped: the parts stay until the bucket lifecycle rule"
+    );
+    assert!(
+        seen.creates.load(Ordering::SeqCst) > creates_before,
+        "the fixture must have opened a multipart upload, or this proves nothing"
+    );
+    assert_eq!(
+        seen.completes.load(Ordering::SeqCst),
+        completes,
+        "a cancelled upload must never complete"
+    );
+    assert_eq!(
+        file_digest(&mock.dir.path().join("remote.bin")).await,
+        remote_before,
+        "the object must be left exactly as it was"
+    );
+    // The row is invalidated before the executor runs, so a cancelled attempt
+    // legitimately leaves none and the next upload reseeds it. What must never
+    // appear is a row rewritten to certify a completion that never happened.
+    let after = baseline_rows(&mock);
+    assert!(
+        after.is_empty() || after == baseline_before,
+        "a cancelled upload may leave the row invalidated, never rewritten: \
+         before {baseline_before:?}, after {after:?}"
     );
 }
