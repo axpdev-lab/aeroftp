@@ -3296,12 +3296,79 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <PasswordMatchHint password={aeroCryptPassword} confirm={aeroCryptConfirm} />
                                     </div>
                                 )}
-                                {/* AeroCrypt Tier 1 keyfile (optional second factor). The PATH
-                                    stays editable even when the binding is locked: set-once
-                                    applies to the FACTOR, not to where the file lives (re-point
-                                    after import needs this). A mismatch fails closed at unlock. */}
                                 {aeroCryptKind === 'aerocrypt' && (
                                     <>
+                                        {/* Ehud #347 (18352480): default salt leads, the header
+                                            toggle follows it, and the keyfile moves into a
+                                            disclosure below. The two portability toggles are one
+                                            decision and now sit together instead of straddling
+                                            the keyfile, which is a different axis (second
+                                            factor).
+
+                                            What this deliberately does NOT do is hide the header
+                                            toggle and the keyfile once default salt is on. The
+                                            wish assumed a default-salt vault needs nothing else
+                                            to be reopened, but no unlock path reconstructs a
+                                            config from the public salt: apply_overlay in
+                                            crypt_overlay_provider.rs opens a vault from the
+                                            remote marker or from the local keystore, and the
+                                            only third branch is bootstrap-a-new-vault. Hiding
+                                            the header would steer default-salt users away from
+                                            the one copy of their config that travels with the
+                                            data. A keyfile is likewise legal alongside default
+                                            salt, and is in fact the answer to the linkability
+                                            the toggle's own hint warns about.
+
+                                            D1-D3: opt-in default-salt (public constant) for
+                                            headerless password-only portability. Gated by
+                                            password entropy alone: the attestation checkbox and
+                                            the 128/256 tier radios were removed (#369), because
+                                            neither reached the backend. */}
+                                        <div className="flex flex-col gap-1.5 mt-2 mb-4">
+                                            <label className="flex items-start gap-3 cursor-pointer group">
+                                                <div className="relative flex items-center h-5 mt-0.5">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={aeroCryptDefaultSalt}
+                                                        onChange={(e) => setAeroCryptDefaultSalt(e.target.checked)}
+                                                        disabled={overlayFieldsLocked || !canToggleDefaultSalt}
+                                                        className="peer sr-only"
+                                                    />
+                                                    <div className="w-9 h-5 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-500/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 disabled:opacity-50 transition-colors"></div>
+                                                </div>
+                                                <div className="flex flex-col text-sm">
+                                                    <span className={`font-medium transition-colors ${overlayFieldsLocked || !canToggleDefaultSalt ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100'}`}>
+                                                        {t('aerocryptProfile.defaultSaltToggle')}
+                                                    </span>
+                                                    <span className={`text-xs mt-0.5 leading-relaxed ${overlayFieldsLocked || !canToggleDefaultSalt ? 'text-gray-400/80 dark:text-gray-500/80' : 'text-gray-500 dark:text-gray-400'}`}>
+                                                        {t('aerocryptProfile.defaultSaltToggleHint')}
+                                                    </span>
+                                                </div>
+                                            </label>
+
+                                            {/* #9 (Ehud): the toggle is entropy-gated (strengthLevel 4 + length),
+                                                so without feedback it reads as "broken". Say why, with a live
+                                                counter, when it is disabled by the password (not by a locked binding). */}
+                                            {!overlayFieldsLocked && !canToggleDefaultSalt && (
+                                                <span className="ml-12 text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+                                                    {t('aerocryptProfile.defaultSaltNeedsStronger')} ({pwLen}/{requiredLen})
+                                                </span>
+                                            )}
+
+                                            {/* Ehud #369: print the one public salt so it can be read,
+                                                copied and backed up. */}
+                                            <DefaultSaltDisclosure className="ml-12 mt-1.5 text-xs" />
+
+                                            {/* The toggle stays on while the password no longer clears the
+                                                floor: say so and block the save, rather than saving a
+                                                per-vault salt behind an on-looking toggle (#276). */}
+                                            {defaultSaltEntropyMismatch && (
+                                                <span className="ml-12 text-xs text-red-600 dark:text-red-400 leading-relaxed">
+                                                    {t('aerocryptProfile.defaultSaltNeedsStronger')} ({pwLen}/{requiredLen})
+                                                </span>
+                                            )}
+                                        </div>
+
                                         <div className="flex flex-col gap-1.5 mt-2 mb-4">
                                             <label className="flex items-start gap-3 cursor-pointer group">
                                                 <div className="relative flex items-center h-5 mt-0.5">
@@ -3325,97 +3392,61 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </label>
                                         </div>
 
-                                        {/* D1-D3: opt-in default-salt (public constant) for headerless password-only portability.
-                                            Sibling to header toggle. Gated by password entropy alone: the
-                                            attestation checkbox and the 128/256 tier radios were removed (#369),
-                                            because neither reached the backend. */}
-                                        {aeroCryptKind === 'aerocrypt' && (
-                                            <div className="flex flex-col gap-1.5 mt-2 mb-4">
-                                                <label className="flex items-start gap-3 cursor-pointer group">
-                                                    <div className="relative flex items-center h-5 mt-0.5">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={aeroCryptDefaultSalt}
-                                                            onChange={(e) => setAeroCryptDefaultSalt(e.target.checked)}
-                                                            disabled={overlayFieldsLocked || !canToggleDefaultSalt}
-                                                            className="peer sr-only"
-                                                        />
-                                                        <div className="w-9 h-5 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-500/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 disabled:opacity-50 transition-colors"></div>
-                                                    </div>
-                                                    <div className="flex flex-col text-sm">
-                                                        <span className={`font-medium transition-colors ${overlayFieldsLocked || !canToggleDefaultSalt ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100'}`}>
-                                                            {t('aerocryptProfile.defaultSaltToggle') || 'Default salt (password only, no kit/keystore needed)'}
-                                                        </span>
-                                                        <span className={`text-xs mt-0.5 leading-relaxed ${overlayFieldsLocked || !canToggleDefaultSalt ? 'text-gray-400/80 dark:text-gray-500/80' : 'text-gray-500 dark:text-gray-400'}`}>
-                                                            {t('aerocryptProfile.defaultSaltToggleHint') || 'Uses a public constant salt. Requires high-entropy generated password. Same password across vaults makes names linkable.'}
-                                                        </span>
-                                                    </div>
-                                                </label>
+                                        {/* AeroCrypt Tier 1 keyfile (optional second factor). The PATH
+                                            stays editable even when the binding is locked: set-once
+                                            applies to the FACTOR, not to where the file lives (re-point
+                                            after import needs this). A mismatch fails closed at unlock.
 
-                                                {/* #9 (Ehud): the toggle is entropy-gated (strengthLevel 4 + length),
-                                                    so without feedback it reads as "broken". Say why, with a live
-                                                    counter, when it is disabled by the password (not by a locked binding). */}
-                                                {aeroCryptKind === 'aerocrypt' && !overlayFieldsLocked && !canToggleDefaultSalt && (
-                                                    <span className="ml-12 text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
-                                                        {t('aerocryptProfile.defaultSaltNeedsStronger') || 'Enter a Strong generated password to turn on default salt.'} ({pwLen}/{requiredLen})
-                                                    </span>
-                                                )}
-
-                                                {/* Ehud #369: print the one public salt so it can be read,
-                                                    copied and backed up. */}
-                                                {aeroCryptKind === 'aerocrypt' && (
-                                                    <DefaultSaltDisclosure className="ml-12 mt-1.5 text-xs" />
-                                                )}
-
-                                                {/* The toggle stays on while the password no longer clears the
-                                                    floor: say so and block the save, rather than saving a
-                                                    per-vault salt behind an on-looking toggle (#276). */}
-                                                {defaultSaltEntropyMismatch && (
-                                                    <span className="ml-12 text-xs text-red-600 dark:text-red-400 leading-relaxed">
-                                                        {t('aerocryptProfile.defaultSaltNeedsStronger')} ({pwLen}/{requiredLen})
-                                                    </span>
-                                                )}
+                                            Ehud #347 (18352480): collapsed by default so the common
+                                            password-only setup is three controls instead of six, but
+                                            the summary always states which of the two it is, and it
+                                            starts open whenever a keyfile is actually set. Nothing that
+                                            is configured is ever behind a closed disclosure. */}
+                                        <details open={!!aeroCryptKeyfilePath} className="mb-1">
+                                            <summary className="cursor-pointer select-none text-xs font-medium text-gray-600 dark:text-gray-400">
+                                                {t('aerocryptProfile.keyfileLabel')}
+                                                <span className="ml-1 font-normal text-gray-500 dark:text-gray-500">
+                                                    ({aeroCryptKeyfilePath ? aeroCryptKeyfilePath.split(/[\\/]/).pop() : t('aerocryptProfile.keyfilePlaceholder')})
+                                                </span>
+                                            </summary>
+                                            <div className="mt-1.5">
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={aeroCryptKeyfilePath}
+                                                    readOnly
+                                                    placeholder={t('aerocryptProfile.keyfilePlaceholder')}
+                                                    className="flex-1 min-w-0 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm truncate"
+                                                    title={aeroCryptKeyfilePath || undefined}
+                                                    aria-label={t('aerocryptProfile.keyfileLabel')}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleChooseKeyfile}
+                                                    className="shrink-0 whitespace-nowrap px-3 py-2 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                                >
+                                                    {t('aerocryptProfile.keyfileChoose')}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleGenerateKeyfile}
+                                                    title={t('aerocryptProfile.keyfileStorageHint')}
+                                                    className="shrink-0 whitespace-nowrap px-3 py-2 rounded-lg text-xs font-medium border border-emerald-400/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
+                                                >
+                                                    {t('aerocryptProfile.keyfileGenerate')}
+                                                </button>
                                             </div>
-                                        )}
-
-                                        <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('aerocryptProfile.keyfileLabel')}</label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={aeroCryptKeyfilePath}
-                                                readOnly
-                                                placeholder={t('aerocryptProfile.keyfilePlaceholder')}
-                                                className="flex-1 min-w-0 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm truncate"
-                                                title={aeroCryptKeyfilePath || undefined}
-                                                aria-label={t('aerocryptProfile.keyfileLabel')}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={handleChooseKeyfile}
-                                                className="shrink-0 whitespace-nowrap px-3 py-2 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                            >
-                                                {t('aerocryptProfile.keyfileChoose')}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={handleGenerateKeyfile}
-                                                title={t('aerocryptProfile.keyfileStorageHint')}
-                                                className="shrink-0 whitespace-nowrap px-3 py-2 rounded-lg text-xs font-medium border border-emerald-400/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
-                                            >
-                                                {t('aerocryptProfile.keyfileGenerate')}
-                                            </button>
-                                        </div>
-                                        {keyfileError && (
-                                            <p className="mt-1 text-xs text-red-600 dark:text-red-400 break-words">{keyfileError}</p>
-                                        )}
-                                        {keyfileJustGenerated && (
-                                            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{t('aerocryptProfile.keyfileGeneratedBackup')}</p>
-                                        )}
-                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                            {overlayFieldsLocked ? t('aerocryptProfile.keyfileRepointHint') : t('aerocryptProfile.keyfileHint')}
-                                        </p>
-                                        </div>
+                                            {keyfileError && (
+                                                <p className="mt-1 text-xs text-red-600 dark:text-red-400 break-words">{keyfileError}</p>
+                                            )}
+                                            {keyfileJustGenerated && (
+                                                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{t('aerocryptProfile.keyfileGeneratedBackup')}</p>
+                                            )}
+                                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                                {overlayFieldsLocked ? t('aerocryptProfile.keyfileRepointHint') : t('aerocryptProfile.keyfileHint')}
+                                            </p>
+                                            </div>
+                                        </details>
                                     </>
                                 )}
                                 {/* rclone-crypt interop (P3.3b): salt + filename/dir-name
