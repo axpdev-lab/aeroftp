@@ -107,9 +107,35 @@ pub const WRAPPED_KEY_SIZE: usize = 40;
 
 /// The audited AeroVault Argon2id profile: 128 MiB / t=4 / p=4
 /// (RFC 9106, exceeds OWASP 2024). Tuned once, shared by every consumer.
-const ARGON2_MEM_KIB: u32 = 128 * 1024;
-const ARGON2_TIME: u32 = 4;
+const AUDITED_ARGON2_MEM_KIB: u32 = 128 * 1024;
+const AUDITED_ARGON2_TIME: u32 = 4;
 const ARGON2_LANES: u32 = 4;
+
+/// The profile every derivation in this crate uses. In a production build it
+/// is the audited one above. In this crate's own unit tests it is the
+/// cheapest profile the formats accept (the `MIN_ARGON2_*` clamps of the v4
+/// keyslots): the crate's tests derive keys thousands of times per run, and
+/// at 128 MiB / t=4 those derivations were 92% of the suite's execution time
+/// (about 27 of 41 minutes in CI). What the tests exercise is the wrapping,
+/// the MACs, the slots and the formats, none of which depends on the cost;
+/// the audited numbers themselves are pinned by `audited_profile_*` below,
+/// which derives once at full cost against a known answer. The CLI's own
+/// tests and every binary link the non-test build and keep the audited
+/// profile.
+#[cfg(not(test))]
+const ARGON2_MEM_KIB: u32 = AUDITED_ARGON2_MEM_KIB;
+#[cfg(not(test))]
+const ARGON2_TIME: u32 = AUDITED_ARGON2_TIME;
+#[cfg(test)]
+const ARGON2_MEM_KIB: u32 = keyslots::MIN_ARGON2_MEM_KIB;
+#[cfg(test)]
+const ARGON2_TIME: u32 = keyslots::MIN_ARGON2_TIME;
+
+/// The audited profile as numbers, whatever build this is: the emergency kit
+/// and the tests that describe the real vault refer to it by name.
+pub fn audited_argon2_profile() -> (u32, u32, u32) {
+    (AUDITED_ARGON2_MEM_KIB, AUDITED_ARGON2_TIME, ARGON2_LANES)
+}
 
 /// Argon2id memory cost (KiB) of the shared profile. Exposed so consumers can
 /// bind the KDF parameters into authenticated metadata (e.g. the overlay config
@@ -643,5 +669,26 @@ mod tests {
         assert_eq!(std::fs::read(&victim).unwrap(), victim_content);
         let _ = std::fs::remove_file(&link);
         let _ = std::fs::remove_file(&victim);
+    }
+
+    /// The audited profile is pinned here, at full cost, once: a known answer
+    /// for a fixed password and salt. The test build derives everything else
+    /// with the cheap profile, so this is the one place a silent change to the
+    /// production numbers would show.
+    #[test]
+    fn audited_profile_is_128mib_t4_p4_and_derives_the_known_answer() {
+        assert_eq!(audited_argon2_profile(), (128 * 1024, 4, 4));
+        let (m, t, p) = audited_argon2_profile();
+        let params = argon2::Params::new(m, t, p, Some(KEY_SIZE)).unwrap();
+        let argon2 =
+            argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+        let mut key = [0u8; KEY_SIZE];
+        argon2
+            .hash_password_into(b"correct horse battery staple", &[7u8; SALT_SIZE], &mut key)
+            .unwrap();
+        assert_eq!(
+            hex::encode(key),
+            "0433d3946337be2e86013d5c68a6ba514acc74bdc08aad2f6fc6ad827d52357f"
+        );
     }
 }

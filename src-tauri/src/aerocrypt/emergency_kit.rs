@@ -671,9 +671,9 @@ mod tests {
             "filename_cipher": "AES-256-SIV",
             "key_wrap": "AES-256-KW",
             "kdf": "Argon2id",
-            "kdf_mem_kib": 131072u32,
-            "kdf_time": 4u32,
-            "kdf_lanes": 4u32,
+            "kdf_mem_kib": argon2_mem_kib(),
+            "kdf_time": argon2_time(),
+            "kdf_lanes": argon2_lanes(),
             "salt": base64::engine::general_purpose::STANDARD.encode(salt),
             "vault_id": base64::engine::general_purpose::STANDARD.encode(vid),
             "block_size": 65536u32,
@@ -704,9 +704,9 @@ mod tests {
             base64::engine::general_purpose::STANDARD.encode(salt)
         );
         assert_eq!(kit.kdf_algorithm, "Argon2id");
-        assert_eq!(kit.kdf_mem_kib, 131072);
-        assert_eq!(kit.kdf_time, 4);
-        assert_eq!(kit.kdf_lanes, 4);
+        assert_eq!(kit.kdf_mem_kib, argon2_mem_kib());
+        assert_eq!(kit.kdf_time, argon2_time());
+        assert_eq!(kit.kdf_lanes, argon2_lanes());
 
         // vault_id() accessor round-trips
         assert_eq!(parsed.vault_id(), Some(vid));
@@ -716,7 +716,7 @@ mod tests {
         assert!(kit.text.contains(&kit.vault_id));
         assert!(kit.text.contains(&kit.salt));
         assert!(kit.text.contains("Argon2id"));
-        assert!(kit.text.contains("mem=131072 KiB"));
+        assert!(kit.text.contains(&format!("mem={} KiB", argon2_mem_kib())));
         // The kit text legitimately mentions the word "password" in instructions ("with your password");
         // the important guarantee is that it never contains secret material (tested via field extraction and controlled render).
     }
@@ -855,7 +855,12 @@ mod tests {
         let kit = build_from_config_json(&active).unwrap();
         // Tamper only the KDF line while keeping vault_id/salt intact.
         let tampered = kit.text.replace(
-            "KDF: Argon2id (mem=131072 KiB, t=4, p=4)",
+            &format!(
+                "KDF: Argon2id (mem={} KiB, t={}, p={})",
+                argon2_mem_kib(),
+                argon2_time(),
+                argon2_lanes()
+            ),
             "KDF: Argon2id (mem=65536 KiB, t=3, p=2)",
         );
         assert_ne!(tampered, kit.text);

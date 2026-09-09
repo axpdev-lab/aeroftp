@@ -66,14 +66,25 @@ pub fn derive_from_passphrase(passphrase: &[u8]) -> [u8; 32] {
     key
 }
 
+#[cfg(not(test))]
+const STRONG_KDF_MEM_KIB: u32 = 131072; // 128 MiB
+#[cfg(not(test))]
+const STRONG_KDF_TIME: u32 = 4;
+#[cfg(test)]
+const STRONG_KDF_MEM_KIB: u32 = 8 * 1024;
+#[cfg(test)]
+const STRONG_KDF_TIME: u32 = 1;
+
 /// Derive master key from user password using Argon2id with strong parameters (128 MiB)
 /// Used for master password mode where human password has low entropy
 /// A2-02: Returns Zeroizing wrapper for automatic key zeroization on drop
 pub fn derive_key_strong(password: &str, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, String> {
+    // Same audited profile as `aerocrypt` (128 MiB / t=4 / p=4), and the same
+    // test-build reduction for the same reason: see `aerocrypt::ARGON2_MEM_KIB`.
     let params = argon2::Params::new(
-        131072, // 128 MiB
-        4,      // t=4
-        4,      // p=4
+        STRONG_KDF_MEM_KIB,
+        STRONG_KDF_TIME,
+        4, // p=4
         Some(32),
     )
     .map_err(|e| format!("Argon2 params: {}", e))?;
