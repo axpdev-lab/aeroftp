@@ -173,9 +173,9 @@ rclone purge "remote:bucket/scratch-folder" --s3-directory-markers
 
 This command deletes the specified folder and its contents. With rclone 1.74.0
 and the option disabled, purging a folder with its own marker constructs a key
-ending in `//`: MinIO returns an error, while Cloudflare R2 returns success for
-that absent key and leaves the actual marker behind. Both were verified live;
-the option removes the marker correctly on both. A successful exit without the
+ending in `//`: MinIO returns an error, while AWS S3 and Cloudflare R2 return
+success for that absent key and leave the actual marker behind. All three were
+verified live; the option removes the marker correctly on each. A successful exit without the
 option does not establish that the folder was removed. See
 [rclone's S3 directory marker setting](https://rclone.org/s3/#s3-directory-markers).
 
