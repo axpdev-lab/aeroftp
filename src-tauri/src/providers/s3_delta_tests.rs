@@ -14,6 +14,10 @@ struct Fault {
     complete_code: Option<&'static str>,
     stale: bool,
     archived: bool,
+    /// Append to the local file while the first plain PUT is in flight, so
+    /// the source changes after the plan was built and after the buffer the
+    /// client is sending was read.
+    mutate_local_on_first_put: bool,
 }
 #[derive(Default)]
 struct Seen {
@@ -102,6 +106,12 @@ async fn mock() -> Mock {
                 while let Some(chunk) = stream.next().await {
                     let chunk = chunk.unwrap(); out.write_all(&chunk).await.unwrap();
                     state.wire.fetch_add(chunk.len() as u64,Ordering::SeqCst);
+                }
+                let mutate = { let mut f = state.fault.lock().unwrap(); let m = f.mutate_local_on_first_put; f.mutate_local_on_first_put = false; m };
+                if mutate {
+                    let mut local = tokio::fs::OpenOptions::new().append(true).open(root.join("local.bin")).await.unwrap();
+                    local.write_all(&vec![9u8;1024*1024]).await.unwrap();
+                    local.flush().await.unwrap();
                 }
                 return axum::response::Response::builder().header("etag","\"put\"").body(axum::body::Body::empty()).unwrap();
             }
@@ -212,6 +222,12 @@ async fn s3_adapter_middle_append_and_successive_delta_have_independent_wire_rat
             for _ in 0..9 {
                 file.write_all(&vec![7u8; 1024 * 1024]).await.unwrap();
             }
+            // Land the append before the transfer plans over it. Without this
+            // the buffered handle stays open and the file is still growing,
+            // which the source guard correctly reports as source_changed: the
+            // middle edit above already drops its handle for the same reason.
+            file.flush().await.unwrap();
+            drop(file);
         }
         mock.seen.wire.store(0, Ordering::SeqCst);
         mock.seen.copy_headers.lock().unwrap().clear();
@@ -513,5 +529,103 @@ async fn s3_adapter_batch_dag_seeds_completion_etag_through_clone_pool_hooks() {
     assert_eq!(
         file_digest(&local).await,
         file_digest(&mock.dir.path().join("remote.bin")).await
+    );
+}
+
+/// The stored baseline, as the columns that must not move when an upload is
+/// abandoned. `seed` already planted a row, so the assertion is "unchanged",
+/// not "absent": a test asserting zero rows here would be measuring the wrong
+/// thing and would fail for a reason that has nothing to do with the guard.
+fn baseline_rows(mock: &Mock) -> Vec<(String, i64, i64, i64)> {
+    let conn =
+        rusqlite::Connection::open(mock.provider.baseline_test_path.as_ref().unwrap()).unwrap();
+    let mut stmt = conn
+        .prepare("SELECT etag, size, grid, length(digests) FROM baselines ORDER BY object_key")
+        .unwrap();
+    let rows = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+        .unwrap();
+    rows.map(|r| r.unwrap()).collect()
+}
+
+/// F3's door. Every layer that certifies "only bytes that travelled" is
+/// present in the source, but nothing exercised it: no test changed the file
+/// between the plan and the completion, so a mutation that removed the
+/// pre-Complete guard, or made `verify_put` always return true, stayed green
+/// by construction. This changes the source while the first plain PUT is in
+/// flight and pins what must happen: no completion, an abort, the object left
+/// byte for byte as it was, and a soft fallback rather than a hard error,
+/// because a plain upload is still the right next move.
+#[tokio::test]
+async fn s3_adapter_refuses_to_complete_when_the_source_changes_mid_upload() {
+    let mut mock = mock().await;
+    let local = seed(&mut mock).await;
+    // A middle edit, so the plan contains at least one plain PUT part.
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(&local)
+        .await
+        .unwrap();
+    file.seek(std::io::SeekFrom::Start(10 * GRID + 123))
+        .await
+        .unwrap();
+    file.write_all(b"edit").await.unwrap();
+    drop(file);
+
+    let completes = mock.seen.completes.load(Ordering::SeqCst);
+    let aborts = mock.seen.aborts.load(Ordering::SeqCst);
+    let remote_before = file_digest(&mock.dir.path().join("remote.bin")).await;
+    let baseline_before = baseline_rows(&mock);
+    assert!(
+        !baseline_before.is_empty(),
+        "seed must have planted a baseline, or this test proves nothing"
+    );
+    mock.seen.fault.lock().unwrap().mutate_local_on_first_put = true;
+
+    let result = try_delta_transfer(&mut mock.provider, SyncDirection::Upload, &local, "object")
+        .await
+        .unwrap();
+
+    assert!(!result.used_delta, "{result:?}");
+    assert_eq!(
+        result.fallback_reason.as_deref(),
+        Some("source_changed"),
+        "{result:?}"
+    );
+    assert!(
+        result.hard_error.is_none(),
+        "a changed source must not suppress the plain upload path: {result:?}"
+    );
+    assert_eq!(
+        mock.seen.completes.load(Ordering::SeqCst),
+        completes,
+        "a delta built from bytes that no longer exist must never complete"
+    );
+    assert_eq!(
+        mock.seen.aborts.load(Ordering::SeqCst),
+        aborts + 1,
+        "the abandoned multipart upload must be aborted"
+    );
+    assert_eq!(
+        file_digest(&mock.dir.path().join("remote.bin")).await,
+        remote_before,
+        "the object must be left byte for byte as it was"
+    );
+    // The row is invalidated before the executor runs, so it is legitimately
+    // gone here and a fallback upload reseeds it. What must never happen is a
+    // row certifying the changed bytes, which completed nowhere.
+    let after = baseline_rows(&mock);
+    let mutated = std::fs::metadata(&local).unwrap().len() as i64;
+    assert!(
+        mutated > SIZE as i64,
+        "the injected fault must have grown the source, or this test proves nothing"
+    );
+    assert!(
+        !after.iter().any(|(_, size, _, _)| *size == mutated),
+        "no baseline may certify bytes that never completed: {after:?}"
+    );
+    assert!(
+        after.is_empty() || after == baseline_before,
+        "the row may be dropped, never rewritten: before {baseline_before:?}, after {after:?}"
     );
 }

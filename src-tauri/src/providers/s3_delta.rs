@@ -262,4 +262,63 @@ mod tests {
         );
         assert!(!range_copy_rejected(&identity));
     }
+
+    /// The converse nobody wrote. Every existing case proves that a ranged
+    /// copy refusal IS remembered; none proves that anything else is not. So
+    /// moving `operation: Copy` to another operation in both arms of
+    /// `remember_range_rejection` leaves the whole battery green, and the
+    /// cache would start refusing delta on endpoints whose HEAD or UploadPart
+    /// answered 501, which says nothing about ranged copy.
+    #[test]
+    fn s3_adapter_negative_memory_only_remembers_a_copy_refusal() {
+        for operation in [
+            DeltaOperation::Head,
+            DeltaOperation::Create,
+            DeltaOperation::Put,
+            DeltaOperation::Complete,
+        ] {
+            for (status, code) in [
+                (501, "NotImplemented"),
+                (400, "NotImplemented"),
+                (200, "XNotImplemented"),
+                (405, "NotSupported"),
+            ] {
+                let identity = crate::transfer_dag::EndpointIdentity::new(
+                    "s3",
+                    format!("converse-{}-{status}-{code}", operation.name()),
+                    "test",
+                );
+                remember_range_rejection(
+                    identity.clone(),
+                    &S3DeltaError::Response {
+                        status,
+                        code: Some(code.into()),
+                        operation,
+                        message: String::new(),
+                    },
+                );
+                assert!(
+                    !range_copy_rejected(&identity),
+                    "{} {status} {code} must not teach us anything about ranged copy",
+                    operation.name()
+                );
+            }
+        }
+        // The door: the same statuses and codes on a Copy are remembered, so
+        // the rejections above turn on the operation and on nothing else.
+        for (status, code) in [
+            (501, "NotImplemented"),
+            (400, "NotImplemented"),
+            (200, "XNotImplemented"),
+            (405, "NotSupported"),
+        ] {
+            let identity = crate::transfer_dag::EndpointIdentity::new(
+                "s3",
+                format!("converse-copy-door-{status}-{code}"),
+                "test",
+            );
+            remember_range_rejection(identity.clone(), &failure(status, code));
+            assert!(range_copy_rejected(&identity), "{status} {code}");
+        }
+    }
 }

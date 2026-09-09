@@ -579,7 +579,7 @@ impl S3Provider {
                     duration_ms: done.duration_ms,
                 })
             }
-            Ok(None) => Ok(S3DeltaOutcome::Refused("no_match_found")),
+            Ok(None) => Ok(S3DeltaOutcome::Refused("plan_refused")),
             Err(error) => {
                 remember_range_rejection(identity, &error);
                 Err(error)

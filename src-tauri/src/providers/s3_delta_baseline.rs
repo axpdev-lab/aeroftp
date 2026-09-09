@@ -424,6 +424,124 @@ fn evict(conn: &Connection, cap: usize) -> Result<(), String> {
     Ok(())
 }
 
+/// Per-part signatures for the clone-pool DAG hook. No payload bytes are kept.
+/// Multipart completion establishes part order; only aligned boundaries can
+/// safely concatenate independently computed cell hashes.
+pub(crate) struct MultipartPartDigests {
+    len: u64,
+    digests: Vec<[u8; 32]>,
+}
+
+pub(crate) fn hash_multipart_part(total_size: u64, bytes: &[u8]) -> Option<MultipartPartDigests> {
+    let grid = delta_grid_size(total_size)?;
+    if bytes.len() as u64 > total_size {
+        return None;
+    }
+    let digests = bytes
+        .chunks(grid as usize)
+        .map(|cell| Sha256::digest(cell).into())
+        .collect();
+    Some(MultipartPartDigests {
+        len: bytes.len() as u64,
+        digests,
+    })
+}
+
+pub(crate) struct MultipartBaseline {
+    pub size: u64,
+    pub store: BaselineStore,
+    pub touched: std::time::Instant,
+    pub parts: std::collections::BTreeMap<u32, (String, MultipartPartDigests)>,
+}
+
+impl MultipartBaseline {
+    pub fn record(&mut self, number: u32, etag: String, part: MultipartPartDigests) -> bool {
+        let existing: usize = self
+            .parts
+            .iter()
+            .filter(|(n, _)| **n != number)
+            .map(|(_, (_, p))| p.digests.len())
+            .sum();
+        if number == 0
+            || number > S3_MAX_PARTS
+            || existing.saturating_add(part.digests.len()) > DIGEST_LIMIT
+        {
+            return false;
+        }
+        self.parts.insert(number, (etag, part));
+        self.touched = std::time::Instant::now();
+        true
+    }
+
+    pub fn finish(
+        mut self,
+        completed: &[(u32, String)],
+    ) -> Option<(BaselineStore, BaselineHasher)> {
+        let grid = delta_grid_size(self.size)?;
+        if completed.len() > DIGEST_LIMIT || completed.len() != self.parts.len() {
+            return None;
+        }
+        let mut seen = 0u64;
+        let mut digests = Vec::new();
+        for (index, (number, etag)) in completed.iter().enumerate() {
+            if *number != index as u32 + 1 || seen % grid != 0 {
+                return None;
+            }
+            let (sent_etag, part) = self.parts.remove(number)?;
+            if sent_etag != *etag || part.len == 0 {
+                return None;
+            }
+            seen = seen.checked_add(part.len)?;
+            digests.extend(part.digests);
+            if digests.len() > DIGEST_LIMIT {
+                return None;
+            }
+        }
+        if seen != self.size {
+            return None;
+        }
+        Some((
+            self.store,
+            BaselineHasher {
+                size: self.size,
+                grid,
+                seen,
+                cell_len: 0,
+                hash: Sha256::new(),
+                digests,
+            },
+        ))
+    }
+}
+
+pub(crate) struct PreparedDigests {
+    size: u64,
+    grid: u64,
+    digests: Vec<[u8; 32]>,
+}
+
+impl PreparedDigests {
+    /// Confirm complete cells from the very PUT buffer handed to the request.
+    /// Cells split by repaired part boundaries retain the metadata guard.
+    pub fn verify_put(&self, offset: u64, bytes: &[u8]) -> bool {
+        let end = offset.saturating_add(bytes.len() as u64);
+        for index in offset.div_ceil(self.grid)..end.div_ceil(self.grid) {
+            let start = index * self.grid;
+            let cell_end = (start + self.grid).min(self.size);
+            if cell_end > end || cell_end <= start {
+                continue;
+            }
+            let digest: [u8; 32] =
+                Sha256::digest(&bytes[(start - offset) as usize..(cell_end - offset) as usize])
+                    .into();
+            if self.digests.get(index as usize) != Some(&digest) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::s3_delta_plan::{plan_delta_parts, DeltaPart, DELTA_PART_SIZE};
@@ -754,122 +872,165 @@ mod tests {
         }
         assert_eq!(count(&store), 1);
     }
-}
 
-/// Per-part signatures for the clone-pool DAG hook. No payload bytes are kept.
-/// Multipart completion establishes part order; only aligned boundaries can
-/// safely concatenate independently computed cell hashes.
-pub(crate) struct MultipartPartDigests {
-    len: u64,
-    digests: Vec<[u8; 32]>,
-}
-
-pub(crate) fn hash_multipart_part(total_size: u64, bytes: &[u8]) -> Option<MultipartPartDigests> {
-    let grid = delta_grid_size(total_size)?;
-    if bytes.len() as u64 > total_size {
-        return None;
+    fn multipart_part(len: u64, cells: usize) -> MultipartPartDigests {
+        MultipartPartDigests {
+            len,
+            digests: vec![[0u8; 32]; cells],
+        }
     }
-    let digests = bytes
-        .chunks(grid as usize)
-        .map(|cell| Sha256::digest(cell).into())
-        .collect();
-    Some(MultipartPartDigests {
-        len: bytes.len() as u64,
-        digests,
-    })
-}
 
-pub(crate) struct MultipartBaseline {
-    pub size: u64,
-    pub store: BaselineStore,
-    pub touched: std::time::Instant,
-    pub parts: std::collections::BTreeMap<u32, (String, MultipartPartDigests)>,
-}
+    fn multipart(size: u64, store: BaselineStore) -> MultipartBaseline {
+        MultipartBaseline {
+            size,
+            store,
+            touched: std::time::Instant::now(),
+            parts: std::collections::BTreeMap::new(),
+        }
+    }
 
-impl MultipartBaseline {
-    pub fn record(&mut self, number: u32, etag: String, part: MultipartPartDigests) -> bool {
-        let existing: usize = self
-            .parts
+    fn finish_case(
+        size: u64,
+        recorded: &[(u32, &str, u64, usize)],
+        completed: &[(u32, &str)],
+    ) -> bool {
+        let (_dir, store) = store();
+        let mut baseline = multipart(size, store);
+        for (number, etag, len, cells) in recorded {
+            assert!(
+                baseline.record(*number, (*etag).to_string(), multipart_part(*len, *cells)),
+                "record refused part {number}, which this case needs accepted"
+            );
+        }
+        let completed: Vec<(u32, String)> = completed
             .iter()
-            .filter(|(n, _)| **n != number)
-            .map(|(_, (_, p))| p.digests.len())
-            .sum();
-        if number == 0
-            || number > S3_MAX_PARTS
-            || existing.saturating_add(part.digests.len()) > DIGEST_LIMIT
-        {
-            return false;
-        }
-        self.parts.insert(number, (etag, part));
-        self.touched = std::time::Instant::now();
-        true
+            .map(|(number, etag)| (*number, (*etag).to_string()))
+            .collect();
+        baseline.finish(&completed).is_some()
     }
 
-    pub fn finish(
-        mut self,
-        completed: &[(u32, String)],
-    ) -> Option<(BaselineStore, BaselineHasher)> {
-        let grid = delta_grid_size(self.size)?;
-        if completed.len() > DIGEST_LIMIT || completed.len() != self.parts.len() {
-            return None;
-        }
-        let mut seen = 0u64;
-        let mut digests = Vec::new();
-        for (index, (number, etag)) in completed.iter().enumerate() {
-            if *number != index as u32 + 1 || seen % grid != 0 {
-                return None;
-            }
-            let (sent_etag, part) = self.parts.remove(number)?;
-            if sent_etag != *etag || part.len == 0 {
-                return None;
-            }
-            seen = seen.checked_add(part.len)?;
-            digests.extend(part.digests);
-            if digests.len() > DIGEST_LIMIT {
-                return None;
-            }
-        }
-        if seen != self.size {
-            return None;
-        }
-        Some((
-            self.store,
-            BaselineHasher {
-                size: self.size,
-                grid,
-                seen,
-                cell_len: 0,
-                hash: Sha256::new(),
-                digests,
-            },
-        ))
+    #[test]
+    fn s3_baseline_multipart_record_rejects_part_numbers_outside_the_s3_domain() {
+        const MIB: u64 = 1024 * 1024;
+        let (_dir, store) = store();
+        let mut baseline = multipart(208 * MIB, store);
+        assert!(
+            !baseline.record(0, "\"p\"".into(), multipart_part(96 * MIB, 12)),
+            "S3 numbers parts from 1; part 0 does not exist"
+        );
+        assert!(
+            !baseline.record(
+                S3_MAX_PARTS + 1,
+                "\"p\"".into(),
+                multipart_part(96 * MIB, 12)
+            ),
+            "past the last legal part number"
+        );
+        assert!(
+            !baseline.record(
+                1,
+                "\"p\"".into(),
+                multipart_part(96 * MIB, DIGEST_LIMIT + 1)
+            ),
+            "more cells than one baseline row may hold"
+        );
+        assert!(
+            baseline.parts.is_empty(),
+            "a refused record must leave no state behind"
+        );
+        // The door. Without it, a `record` that refused everything would
+        // satisfy all three rejections above.
+        assert!(baseline.record(1, "\"p\"".into(), multipart_part(96 * MIB, 12)));
+        assert_eq!(baseline.parts.len(), 1);
     }
-}
 
-pub(crate) struct PreparedDigests {
-    size: u64,
-    grid: u64,
-    digests: Vec<[u8; 32]>,
-}
+    #[test]
+    fn s3_baseline_multipart_finish_rejects_every_completion_it_cannot_certify() {
+        const MIB: u64 = 1024 * 1024;
+        // Strictly above DELTA_MIN_FILE_SIZE, which is 200 MiB exactly and is
+        // excluded, and a whole number of grid cells so the aligned control is
+        // genuinely aligned. Compared as an Option: an ineligible size must
+        // say so here rather than surface as an unwrap panic on a later line.
+        let size = 208 * MIB;
+        assert_eq!(
+            delta_grid_size(size),
+            Some(8 * MIB),
+            "the aligned parts below are written for this size and grid"
+        );
+        let aligned: &[(u32, &str, u64, usize)] = &[
+            (1, "\"p1\"", 96 * MIB, 12),
+            (2, "\"p2\"", 96 * MIB, 12),
+            (3, "\"p3\"", 16 * MIB, 2),
+        ];
+        let all: &[(u32, &str)] = &[(1, "\"p1\""), (2, "\"p2\""), (3, "\"p3\"")];
 
-impl PreparedDigests {
-    /// Confirm complete cells from the very PUT buffer handed to the request.
-    /// Cells split by repaired part boundaries retain the metadata guard.
-    pub fn verify_put(&self, offset: u64, bytes: &[u8]) -> bool {
-        let end = offset.saturating_add(bytes.len() as u64);
-        for index in offset.div_ceil(self.grid)..end.div_ceil(self.grid) {
-            let start = index * self.grid;
-            let cell_end = (start + self.grid).min(self.size);
-            if cell_end > end || cell_end <= start {
-                continue;
-            }
-            let digest: [u8; 32] =
-                Sha256::digest(&bytes[(start - offset) as usize..(cell_end - offset) as usize])
-                    .into();
-            if self.digests.get(index as usize) != Some(&digest) {
-                return false;
-            }
-        }
-        true
+        // The door first: an aligned, consecutive, fully covering completion
+        // must produce a baseline. Every rejection below is measured against
+        // it, so a `finish` that always returned None cannot pass this test.
+        assert!(
+            finish_case(size, aligned, all),
+            "the aligned control must succeed"
+        );
+
+        // A part that does not begin on a grid boundary. Independently
+        // computed cell hashes cannot be concatenated across it, so no row is
+        // written. This is reachable in shipped configurations (an upload
+        // chunk override, or a file large enough that the DAG builder grows
+        // the chunk past a grid multiple), and it fails silently, which is
+        // why it is pinned here rather than left to the default-sized paths.
+        assert!(
+            !finish_case(
+                size,
+                &[(1, "\"p1\"", 100 * MIB, 13), (2, "\"p2\"", 108 * MIB, 14)],
+                &[(1, "\"p1\""), (2, "\"p2\"")]
+            ),
+            "a part starting off the grid cannot concatenate"
+        );
+
+        // Parts that do not cover the object.
+        assert!(
+            !finish_case(
+                size,
+                &[(1, "\"p1\"", 96 * MIB, 12), (2, "\"p2\"", 96 * MIB, 12)],
+                &[(1, "\"p1\""), (2, "\"p2\"")]
+            ),
+            "192 MiB of parts cannot certify a 200 MiB object"
+        );
+
+        // A gap in the part numbers.
+        assert!(
+            !finish_case(
+                size,
+                &[(1, "\"p1\"", 96 * MIB, 12), (3, "\"p3\"", 112 * MIB, 14)],
+                &[(1, "\"p1\""), (3, "\"p3\"")]
+            ),
+            "part numbers must be consecutive from 1"
+        );
+
+        // The ETag the server completed with is not the one we sent.
+        assert!(
+            !finish_case(
+                size,
+                aligned,
+                &[(1, "\"other\""), (2, "\"p2\""), (3, "\"p3\"")]
+            ),
+            "a part completed under a different ETag is not the part we hashed"
+        );
+
+        // An empty part certifies nothing.
+        assert!(
+            !finish_case(
+                size,
+                &[(1, "\"p1\"", 0, 0), (2, "\"p2\"", 208 * MIB, 26)],
+                &[(1, "\"p1\""), (2, "\"p2\"")]
+            ),
+            "a zero length part cannot be part of a baseline"
+        );
+
+        // A completion listing more parts than were recorded.
+        assert!(
+            !finish_case(size, aligned, &[(1, "\"p1\""), (2, "\"p2\"")]),
+            "the completion must account for every recorded part"
+        );
     }
 }

@@ -215,6 +215,10 @@ pub struct RsyncStats {
     pub bytes_sent: u64,
     pub bytes_received: u64,
     pub total_size: u64,
+    /// `total_size` over `bytes_sent`, with a one byte floor on the
+    /// denominator. An all-copy delta sends no payload, so the floor keeps
+    /// the ratio finite instead of handing infinity to JSON and the UI.
+    /// This is a wire ratio, not a wall-clock speedup.
     pub speedup: f64,
     pub duration_ms: u64,
     /// Baseline blocks directly reused by the native delta stream.
