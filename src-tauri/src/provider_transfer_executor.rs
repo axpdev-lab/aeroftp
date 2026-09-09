@@ -79,8 +79,9 @@ fn take_transfer_attempts(counts: &AttemptCounts, entry_id: &str) -> Option<u32>
         .remove(entry_id)
 }
 use crate::transfer_settings::{
-    resolve_transfer_settings_for_capabilities, ResolvedTransferSettings, TransferSettingsInput,
-    DEFAULT_MAX_CONCURRENT, MAX_MAX_CONCURRENT, MIN_MAX_CONCURRENT,
+    default_download_segments_for, resolve_transfer_settings_for_capabilities,
+    ResolvedTransferSettings, TransferSettingsInput, DEFAULT_MAX_CONCURRENT, MAX_MAX_CONCURRENT,
+    MIN_MAX_CONCURRENT,
 };
 
 /// Minimum file size before intra-file range parallelism kicks in
@@ -711,6 +712,7 @@ pub async fn resolve_provider_transfer_runtime(
     ProviderExecutorSessionModel,
     TransferCapabilities,
 ) {
+    let input = fill_download_segments_default(provider, input).await;
     let requested_max_concurrent = input
         .max_concurrent
         .unwrap_or(DEFAULT_MAX_CONCURRENT)
@@ -726,6 +728,23 @@ pub async fn resolve_provider_transfer_runtime(
     );
 
     (runtime_settings, session_model, capabilities)
+}
+
+/// "Auto" download streams (`None`) become the provider's measured default
+/// (`default_download_segments_for`); an explicit value is kept as is. Read
+/// from the live provider so the GUI, which sends `undefined` for Auto, gets
+/// the same table the CLI documents.
+async fn fill_download_segments_default(
+    provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    mut input: TransferSettingsInput,
+) -> TransferSettingsInput {
+    if input.download_segments.is_none() {
+        let provider_type = provider.lock().await.as_ref().map(|p| p.provider_type());
+        if let Some(provider_type) = provider_type {
+            input.download_segments = Some(default_download_segments_for(provider_type));
+        }
+    }
+    input
 }
 
 /// Thin async wrapper over [`resolve_session_model`]: locks the provider,
@@ -2458,6 +2477,57 @@ mod tests {
         );
         assert!(model.is_clone_pool());
         assert_eq!(model.max_leases(), 4);
+    }
+
+    /// The GUI sends `undefined` for "Auto" streams: the runtime resolver fills
+    /// the provider's measured default from the live provider (S3: 4), and an
+    /// explicit value is kept as is.
+    #[tokio::test]
+    async fn runtime_resolver_fills_the_measured_stream_default_for_auto() {
+        use crate::providers::s3::S3Provider;
+        use crate::providers::S3Config;
+        let make = || {
+            Box::new(
+                S3Provider::new(S3Config {
+                    endpoint: Some("http://localhost:9000".to_string()),
+                    region: "us-east-1".to_string(),
+                    access_key_id: "key".to_string(),
+                    secret_access_key: secrecy::SecretString::from("secret".to_string()),
+                    session_token: None,
+                    role_arn: None,
+                    role_external_id: None,
+                    role_session_name: None,
+                    role_duration_seconds: None,
+                    role_mfa_serial: None,
+                    role_mfa_token_code: None,
+                    bucket: "bucket".to_string(),
+                    prefix: None,
+                    path_style: true,
+                    storage_class: None,
+                    sse_mode: None,
+                    sse_kms_key_id: None,
+                    verify_cert: true,
+                    allow_cleartext_endpoint: false,
+                })
+                .expect("s3 provider"),
+            ) as Box<dyn StorageProvider>
+        };
+        let holder = Arc::new(Mutex::new(Some(make())));
+        let (auto, _, _) =
+            resolve_provider_transfer_runtime(&holder, TransferSettingsInput::default()).await;
+        assert_eq!(
+            auto.download_segments, 4,
+            "Auto on S3 is the measured 4 streams"
+        );
+        let (explicit, _, _) = resolve_provider_transfer_runtime(
+            &holder,
+            TransferSettingsInput {
+                download_segments: Some(2),
+                ..TransferSettingsInput::default()
+            },
+        )
+        .await;
+        assert_eq!(explicit.download_segments, 2, "an explicit value is kept");
     }
 
     #[test]

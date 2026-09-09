@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::providers::ProviderType;
 use crate::sftp_download_tuning::SftpDownloadPreset;
 use crate::sync::RetryPolicy;
 use crate::transfer_dag::{TransferBudget, TransferCapabilities};
@@ -27,6 +28,25 @@ pub const MAX_TIMEOUT_SECONDS: u64 = 300;
 pub const DEFAULT_DOWNLOAD_SEGMENTS: u32 = 1;
 pub const MIN_DOWNLOAD_SEGMENTS: u32 = 1;
 pub const MAX_DOWNLOAD_SEGMENTS: u32 = 16;
+
+/// Size above which a single download is split into streams on the GUI
+/// paths: the same 250 MiB the CLI's `--multi-thread-cutoff` defaults to.
+pub const DEFAULT_MULTI_THREAD_CUTOFF_BYTES: u64 = 250 * 1024 * 1024;
+
+/// Intra-file download streams a provider gets when the user left the
+/// setting on Auto. Measured on the lab (wired gigabit, 300 MiB, 2026-09-08,
+/// two repetitions per point): SFTP 144.75 s at 1 to 25.46 s at 8; WebDAV
+/// 37.60 s to 13.45 s at 8, ahead of rclone; FTP 52.95 s to 13.50 s at 8;
+/// S3 36.83 s to 31.50 s at 4, a modest 14% with the noisiest single-stream
+/// point. Providers without a measurement keep one stream: a default is a
+/// claim about a measurement, not about a capability.
+pub fn default_download_segments_for(provider_type: ProviderType) -> u32 {
+    match provider_type {
+        ProviderType::Sftp | ProviderType::WebDav | ProviderType::Ftp | ProviderType::Ftps => 8,
+        ProviderType::S3 => 4,
+        _ => DEFAULT_DOWNLOAD_SEGMENTS,
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct TransferSettingsInput {
@@ -266,10 +286,24 @@ mod tests {
     }
 
     #[test]
-    fn download_segments_default_is_single_stream() {
+    fn download_segments_default_is_single_stream_without_a_provider() {
+        // The plain resolver has no provider to look at; the per-protocol
+        // default is filled by the runtime resolver from the live provider.
         let resolved = resolve_provider_transfer_settings(TransferSettingsInput::default());
         assert_eq!(resolved.download_segments, DEFAULT_DOWNLOAD_SEGMENTS);
         assert_eq!(resolved.download_segments, 1);
+    }
+
+    #[test]
+    fn default_download_segments_follow_the_measured_table() {
+        assert_eq!(default_download_segments_for(ProviderType::Sftp), 8);
+        assert_eq!(default_download_segments_for(ProviderType::WebDav), 8);
+        assert_eq!(default_download_segments_for(ProviderType::Ftp), 8);
+        assert_eq!(default_download_segments_for(ProviderType::Ftps), 8);
+        assert_eq!(default_download_segments_for(ProviderType::S3), 4);
+        // Not measured: one stream, not a guess.
+        assert_eq!(default_download_segments_for(ProviderType::Backblaze), 1);
+        assert_eq!(default_download_segments_for(ProviderType::Koofr), 1);
     }
 
     #[test]

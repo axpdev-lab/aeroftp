@@ -18,10 +18,10 @@ import {
 } from './ftpTransferSpeedPresets';
 
 describe('SFTP download presets', () => {
-  it('defaults invalid and missing persisted values to Efficient', () => {
-    expect(DEFAULT_SFTP_DOWNLOAD_PRESET).toBe('efficient');
-    expect(normalizeSftpDownloadPreset(undefined)).toBe('efficient');
-    expect(normalizeSftpDownloadPreset('turbo')).toBe('efficient');
+  it('defaults invalid and missing persisted values to Fast', () => {
+    expect(DEFAULT_SFTP_DOWNLOAD_PRESET).toBe('fast');
+    expect(normalizeSftpDownloadPreset(undefined)).toBe('fast');
+    expect(normalizeSftpDownloadPreset('turbo')).toBe('fast');
   });
 
   it('preserves every valid backend preset ID', () => {

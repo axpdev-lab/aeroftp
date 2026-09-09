@@ -10,7 +10,9 @@ export type SftpDownloadPreset =
   | 'fast'
   | 'maximum-tested';
 
-export const DEFAULT_SFTP_DOWNLOAD_PRESET: SftpDownloadPreset = 'efficient';
+// Product default since the DAG engine review (2026-09): eight connections
+// took a 300 MiB download from 144.75 s to 25.46 s on the lab.
+export const DEFAULT_SFTP_DOWNLOAD_PRESET: SftpDownloadPreset = 'fast';
 
 export const SFTP_DOWNLOAD_PRESETS: ReadonlyArray<{
   id: SftpDownloadPreset;
