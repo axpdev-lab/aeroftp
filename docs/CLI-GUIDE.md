@@ -1915,7 +1915,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--limit-rate <speed>` | Speed limit (e.g., `1M`, `500K`) |
 | `--sftp-readahead <N>` | SFTP read-ahead window (2 to 1024). Default 32 when unset, which keeps up to 32 reads in flight on one connection; `AEROFTP_SFTP_READAHEAD=off` (or `0`) restores one read per round trip; a bandwidth cap always uses the serial loop |
 | `--bwlimit <schedule>` | Bandwidth schedule (e.g., `"08:00,512k 18:00,off"` or `"1M"`) |
-| `--parallel <n>` | Number of parallel transfer workers for recursive/bulk operations |
+| `--parallel <n>` | Number of parallel transfer workers for recursive/bulk operations (default 4, up to 32). Each provider has its own ceiling (SFTP 16 connections, FTP 5, S3 and B2 their clone pools, single-session providers 1); when the ceiling is lower than the request the CLI prints a note in text mode |
 | `--checkers <n>` | Directories listed at once by the remote scan of `sync`, `check` and `cryptcheck` (default 8, range 1-64), capped by the provider's list pool; single-session providers walk one directory at a time |
 | `--partial` | Resume interrupted transfers when the provider supports partial files or remote offsets |
 | `--include <pattern>` | Include only files matching glob pattern (repeatable) |

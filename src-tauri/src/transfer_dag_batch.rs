@@ -3131,4 +3131,246 @@ mod tests {
         );
         assert!(summary.metrics.slot_peak >= 1);
     }
+
+    // ---- The provider ceiling is delivered, not only declared ---------------
+
+    /// A pool-backed provider that counts the sessions actually in flight.
+    /// Every `clone_for_transfer` is a session; `download` holds its session
+    /// at a rendezvous until `parties` of them are open at once, so a batch
+    /// finishes only if the executor really runs that many in parallel.
+    struct SessionCountingProvider {
+        ceiling: u16,
+        in_flight: Arc<AtomicUsize>,
+        peak: Arc<AtomicUsize>,
+        rendezvous: Arc<Barrier>,
+    }
+
+    impl SessionCountingProvider {
+        fn new(ceiling: u16, parties: usize) -> Self {
+            Self {
+                ceiling,
+                in_flight: Arc::new(AtomicUsize::new(0)),
+                peak: Arc::new(AtomicUsize::new(0)),
+                rendezvous: Arc::new(Barrier::new(parties)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl crate::providers::StorageProvider for SessionCountingProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> crate::providers::ProviderType {
+            crate::providers::ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "session-counting".to_string()
+        }
+        fn transfer_executor_kind(&self) -> crate::providers::ProviderTransferExecutorKind {
+            crate::providers::ProviderTransferExecutorKind::SftpConnectionPool
+        }
+        fn transfer_executor_max_sessions(&self) -> u16 {
+            self.ceiling
+        }
+        fn clone_for_transfer(
+            &self,
+        ) -> Result<Box<dyn crate::providers::StorageProvider>, crate::providers::ProviderError>
+        {
+            Ok(Box::new(Self {
+                ceiling: self.ceiling,
+                in_flight: Arc::clone(&self.in_flight),
+                peak: Arc::clone(&self.peak),
+                rendezvous: Arc::clone(&self.rendezvous),
+            }))
+        }
+        async fn connect(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(
+            &mut self,
+            _path: &str,
+        ) -> Result<Vec<crate::providers::RemoteEntry>, crate::providers::ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, crate::providers::ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), crate::providers::ProviderError> {
+            let now = self.in_flight.fetch_add(1, AtomicOrdering::SeqCst) + 1;
+            self.peak.fetch_max(now, AtomicOrdering::SeqCst);
+            self.rendezvous.wait().await;
+            self.in_flight.fetch_sub(1, AtomicOrdering::SeqCst);
+            std::fs::write(local_path, b"ok").map_err(crate::providers::ProviderError::IoError)
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, crate::providers::ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(
+            &mut self,
+            _path: &str,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rename(
+            &mut self,
+            _from: &str,
+            _to: &str,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn stat(
+            &mut self,
+            _path: &str,
+        ) -> Result<crate::providers::RemoteEntry, crate::providers::ProviderError> {
+            Err(crate::providers::ProviderError::NotFound(_path.to_string()))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, crate::providers::ProviderError> {
+            Ok(2)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, crate::providers::ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, crate::providers::ProviderError> {
+            Ok("mock".to_string())
+        }
+    }
+
+    /// Run a download batch of `files` entries at `requested` parallelism
+    /// through the real provider executor, resolved the way the CLI and the
+    /// GUI resolve it (capabilities from the provider, session model from the
+    /// capabilities), and return the peak number of sessions open at once.
+    async fn peak_sessions_delivered(ceiling: u16, requested: u32, files: usize) -> usize {
+        use crate::provider_transfer_executor::{
+            resolve_provider_executor_runtime, ProviderDownloadExecutor,
+        };
+        use crate::transfer_settings::{
+            resolve_transfer_settings_for_capabilities, TransferSettingsInput,
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let counting = SessionCountingProvider::new(ceiling, files);
+        let peak = Arc::clone(&counting.peak);
+        let provider: Arc<Mutex<Option<Box<dyn crate::providers::StorageProvider>>>> =
+            Arc::new(Mutex::new(Some(Box::new(counting))));
+        let (model, caps) = resolve_provider_executor_runtime(&provider, requested as usize).await;
+        let settings = resolve_transfer_settings_for_capabilities(
+            TransferSettingsInput {
+                max_concurrent: Some(requested),
+                ..TransferSettingsInput::default()
+            },
+            &caps,
+        );
+        let executor = Arc::new(ProviderDownloadExecutor::new(
+            Arc::new(CountingSink::default()),
+            provider,
+            settings,
+            tokio_util::sync::CancellationToken::new(),
+            model,
+            caps,
+        ));
+        let entries = (0..files)
+            .map(|i| {
+                entry_with_local(
+                    &format!("f{i}"),
+                    2,
+                    dir.path().join(format!("f{i}")).to_str().unwrap(),
+                )
+            })
+            .collect();
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(20),
+            execute_batch_dag_with_aimd(
+                Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+                batch(entries, requested),
+                executor,
+                Arc::new(AtomicBool::new(false)),
+                None,
+                concurrency_proof_aimd(requested as usize),
+            ),
+        )
+        .await;
+        match outcome {
+            Ok(result) => {
+                assert_eq!(result.completed, files as u32, "every file must land");
+                peak.load(AtomicOrdering::SeqCst)
+            }
+            // The rendezvous never filled: fewer sessions than `files` were
+            // ever open at once. Report what was delivered instead of hanging.
+            Err(_) => peak.load(AtomicOrdering::SeqCst),
+        }
+    }
+
+    /// The defect was not a ceiling that could not be raised: it was
+    /// `--parallel 8` reaching the pool as 4 with nothing said. This watches
+    /// the door: with the SFTP ceiling the provider advertises, 8 requested
+    /// files are open on 8 sessions at once, and a request above the ceiling
+    /// is delivered at the ceiling.
+    #[tokio::test]
+    async fn sftp_pool_delivers_the_requested_parallelism_up_to_the_provider_ceiling() {
+        use crate::providers::sftp::SftpProvider;
+        use crate::providers::{SftpConfig, StorageProvider};
+        let sftp = SftpProvider::new(SftpConfig {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "user".to_string(),
+            password: Some(secrecy::SecretString::from("pass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        });
+        let ceiling = sftp.transfer_executor_max_sessions();
+
+        assert_eq!(
+            peak_sessions_delivered(ceiling, 8, 8).await,
+            8,
+            "--parallel 8 must open 8 sessions under the SFTP ceiling"
+        );
+        assert_eq!(
+            peak_sessions_delivered(ceiling, 32, ceiling as usize).await,
+            ceiling as usize,
+            "a request above the ceiling is delivered at the ceiling"
+        );
+    }
 }
