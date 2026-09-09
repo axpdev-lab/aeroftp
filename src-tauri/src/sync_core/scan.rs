@@ -776,6 +776,21 @@ async fn scan_remote_dir(
         } else {
             format!("{}/{}", dir.rel_prefix, entry.name)
         };
+        // SEC: the entry name is provider-controlled. A malicious or MITM'd
+        // listing entry named `..` (or `../../etc/...`) would otherwise let a
+        // Download/Both sync write outside the local target root. Reject any
+        // traversing name before it becomes a rel_path (skipping a bad dir also
+        // keeps it out of the rel_prefix of its children). This is the one
+        // walker every scan path uses, so the guard lives here once.
+        if let Err(reason) = crate::sync::validate_relative_path(&entry_rel) {
+            tracing::warn!(
+                "[scan_remote_tree] skipping remote entry {:?} under {}: {}",
+                entry.name,
+                dir.abs_dir,
+                reason
+            );
+            continue;
+        }
         if entry.is_dir {
             // A symlink to a directory is never walked (GAP-A02): syncing
             // through one would duplicate the target's tree, and a link to
@@ -1536,6 +1551,44 @@ pub(crate) mod tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("pool-tree".to_string())
         }
+    }
+
+    /// A listing entry named `..` (provider-controlled) must never become a
+    /// row: with the serial walker gone, the guard has to live in the shared
+    /// per-directory walk that both the locked and the pooled branch use.
+    #[tokio::test]
+    async fn a_traversing_remote_name_never_becomes_a_row() {
+        use crate::providers::RemoteEntry;
+        let mut dirs = std::collections::HashMap::new();
+        dirs.insert(
+            "/root".to_string(),
+            vec![
+                RemoteEntry::file("ok.txt".to_string(), "/root/ok.txt".to_string(), 1),
+                RemoteEntry::file(
+                    "../evil.txt".to_string(),
+                    "/root/../evil.txt".to_string(),
+                    1,
+                ),
+                RemoteEntry::directory("..".to_string(), "/".to_string()),
+            ],
+        );
+        let mut provider: Box<dyn StorageProvider> = Box::new(TreeProvider { dirs });
+        let opts = ScanOptions {
+            disable_recursive_fastpath: true,
+            ..ScanOptions::default()
+        };
+        let (rows, completeness) = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            scan_remote_tree_checked(&mut provider, "/root", &opts),
+        )
+        .await
+        .expect("a walk that follows `..` never finishes");
+        let paths: Vec<_> = rows.iter().map(|r| r.rel_path.as_str()).collect();
+        assert_eq!(paths, vec!["ok.txt"], "the traversing entries are dropped");
+        assert!(
+            completeness.is_complete(),
+            "a dropped hostile name is not a listing failure, as on main before"
+        );
     }
 
     /// The walker every sync path calls lists `checkers` directories at once
