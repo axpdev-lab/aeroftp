@@ -2142,6 +2142,52 @@ const LIST_BUDGET: std::time::Duration = std::time::Duration::from_secs(300);
 
 const DATA_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1800);
 
+/// How long an upload waits for the server to close the data connection after
+/// our FIN before reading the 226 anyway. A compliant server closes as soon as
+/// it has read to EOF, so this only bounds a server that never does.
+const DATA_DRAIN_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Read a data stream until the peer's EOF, discarding the bytes: the only
+/// thing a STOR data connection can carry back is the close itself.
+async fn drain_to_eof<S: tokio::io::AsyncRead + Unpin>(stream: &mut S) {
+    use tokio::io::AsyncReadExt;
+    let mut sink = [0u8; 1024];
+    while let Ok(n) = stream.read(&mut sink).await {
+        if n == 0 {
+            break;
+        }
+    }
+}
+
+/// A data stream that has already been shut down and drained: suppaftp's
+/// `finalize_put_stream` calls `shutdown()` on what it is given, and a second
+/// shutdown on a socket the peer has already closed can fail with "not
+/// connected" after a transfer that succeeded. Writes still go through, so a
+/// misuse is loud rather than silent.
+struct AlreadyShutDown<S>(S);
+
+impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for AlreadyShutDown<S> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.0).poll_write(cx, buf)
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.0).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+}
+
 /// How long the data may stay silent AFTER the server has spoken on control.
 ///
 /// Reading the first byte of a reply only works in the clear. Under FTPS the
@@ -2937,7 +2983,6 @@ impl FtpProvider {
 
         // Capture before the &mut self borrow below; needed later to decide
         // whether to insert the TLS-drain sleep.
-        let tls_active = !matches!(self.config.tls_mode, FtpTlsMode::None);
 
         let stream = self.stream_mut()?;
 
@@ -2996,23 +3041,26 @@ impl FtpProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
 
-        // TLS shutdown races with TCP send buffer when a close_notify is
-        // sent before the kernel has drained the last TLS records. On
-        // **TLS-protected** FTP connections we therefore wait for the
-        // socket to drain in proportion to the upload size before letting
-        // suppaftp issue close_notify and read the 226 reply. Plain FTP
-        // has no close_notify and the underlying TCP FIN ordering is fine
-        //: the sleep there is pure dead time and was the dominant cost
-        // on small/medium uploads (50-100ms per file × 500 files = 25-50s
-        // wasted on the bulk-of-small-files benchmark).
-        if tls_active {
-            let drain_ms = (total_written / 4096).clamp(100, 2000);
-            tokio::time::sleep(std::time::Duration::from_millis(drain_ms)).await;
-        }
+        // End of data, with a signal instead of a guess. This used to sleep
+        // `min(2 s, size / 4096 ms)` on TLS connections so the kernel could
+        // drain the last records before close_notify: a fixed two seconds on
+        // every upload of 8 MiB or more, which the DAG engine review measured
+        // as a constant 3 s overshoot on a 10 s rate-capped upload (rclone:
+        // 0.8 s). The real signal is the server closing the data connection
+        // once it has read to EOF, so we send our close_notify and FIN, read
+        // until the server's EOF (bounded, so a server that never closes
+        // cannot hang the upload), and only then let suppaftp read the 226.
+        // The wrapper keeps suppaftp's own `shutdown()` from touching a socket
+        // that is already fully closed on both sides.
+        data_stream
+            .shutdown()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Data close error: {}", e)))?;
+        let _ = tokio::time::timeout(DATA_DRAIN_BUDGET, drain_to_eof(&mut data_stream)).await;
 
-        // Finalize: sends TLS close_notify (when TLS), reads 226 from control channel
+        // Finalize: reads 226 from the control channel (the stream is closed).
         stream
-            .finalize_put_stream(data_stream)
+            .finalize_put_stream(AlreadyShutDown(data_stream))
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
@@ -4578,5 +4626,47 @@ mod live_listing_timeout {
                  instead of its own, which is the defect this guards."
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod data_drain_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// The drain returns when the peer closes, and consumes nothing else the
+    /// caller cares about (a STOR data connection carries nothing back).
+    #[tokio::test]
+    async fn drain_to_eof_returns_at_the_peers_close() {
+        let (mut ours, mut theirs) = tokio::io::duplex(64);
+        let server = tokio::spawn(async move {
+            theirs.write_all(b"late bytes").await.unwrap();
+            drop(theirs);
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(2), drain_to_eof(&mut ours))
+            .await
+            .expect("the drain must end when the peer closes");
+        server.await.unwrap();
+        let mut rest = Vec::new();
+        assert_eq!(ours.read_to_end(&mut rest).await.unwrap(), 0);
+    }
+
+    /// The wrapper lets writes and flushes through and swallows only the
+    /// shutdown, which the caller has already done on the real stream.
+    #[tokio::test]
+    async fn already_shut_down_forwards_writes_and_neutralises_shutdown() {
+        let (ours, mut theirs) = tokio::io::duplex(64);
+        let mut wrapped = AlreadyShutDown(ours);
+        wrapped.write_all(b"data").await.unwrap();
+        wrapped.flush().await.unwrap();
+        wrapped
+            .shutdown()
+            .await
+            .expect("a second shutdown is a no-op");
+        let mut buf = [0u8; 4];
+        theirs.read_exact(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"data");
+        // The inner stream is still writable: the wrapper did not close it.
+        wrapped.write_all(b"more").await.unwrap();
     }
 }
