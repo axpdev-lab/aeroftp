@@ -2228,6 +2228,32 @@ impl S3Provider {
             .max(Self::MULTIPART_PART_MIN)
     }
 
+    /// The part size handed to the DAG, snapped up to a whole number of delta
+    /// grid cells.
+    ///
+    /// The DAG uploads parts on independent clones and hashes each one on its
+    /// own, so `MultipartBaseline::finish` can only concatenate those digests
+    /// when every part begins on a grid boundary. The default part size is a
+    /// multiple of the grid, but the CLI's upload buffer override accepts any
+    /// byte count, and an unaligned one made every DAG upload seed nothing at
+    /// all: no row, and the next delta answering `no_baseline` with nothing to
+    /// say why. Snapping the hint costs at most one cell of part size and
+    /// restores the seeding.
+    ///
+    /// Only the hint is snapped. The streaming path needs none of this, since
+    /// its hasher carries a partial cell across reads and is indifferent to
+    /// part boundaries (`s3_baseline_hasher_ignores_upload_chunk_boundaries`),
+    /// so the override is still honoured verbatim where it already worked.
+    ///
+    /// Above roughly 80 GB the grid grows past `DELTA_PART_SIZE` and the DAG
+    /// builder grows the chunk on its own to keep the part count legal, so
+    /// alignment there is not this function's to promise. That case is a
+    /// declared limit, not an oversight.
+    fn dag_aligned_part_size(&self) -> usize {
+        let grid = super::s3_delta_plan::DELTA_PART_SIZE as usize;
+        self.effective_part_size().div_ceil(grid) * grid
+    }
+
     /// Initiate a multipart upload, returns the UploadId.
     /// Optionally sets Content-Type for the resulting object (UPLOAD-01).
     async fn create_multipart_upload(
@@ -5416,7 +5442,7 @@ impl StorageProvider for S3Provider {
             } else {
                 u64::MAX
             },
-            multipart_part_size: self.effective_part_size() as u64,
+            multipart_part_size: self.dag_aligned_part_size() as u64,
             multipart_max_parallel: 4,
             supports_range_download: true,
             supports_resume_download: true,
@@ -10404,6 +10430,37 @@ mod tests {
             "an unknown size keeps the probe"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The hint the DAG chunks by must always be a whole number of grid cells,
+    /// or its per-part digests cannot be concatenated and the upload seeds no
+    /// baseline at all. The default is already aligned; the override is the
+    /// case that was not, and it is reachable from the CLI's upload buffer flag.
+    #[test]
+    fn dag_part_size_hint_is_always_a_whole_number_of_grid_cells() {
+        const MIB: u64 = 1024 * 1024;
+        let grid = super::super::s3_delta_plan::DELTA_PART_SIZE as usize;
+        let mut provider = make_provider(None);
+
+        // The default must be left exactly where it is.
+        assert_eq!(provider.effective_part_size() % grid, 0);
+        assert_eq!(
+            provider.dag_aligned_part_size(),
+            provider.effective_part_size(),
+            "an already aligned default must not be moved"
+        );
+
+        for mib in [1u64, 5, 10, 12, 17, 100] {
+            provider.set_chunk_sizes(Some(mib * MIB), None);
+            let raw = provider.effective_part_size();
+            let hint = provider.dag_aligned_part_size();
+            assert_eq!(hint % grid, 0, "{mib} MiB override left an unaligned hint");
+            assert!(hint >= raw, "the hint may only round up: {mib} MiB");
+            assert!(
+                hint - raw < grid,
+                "and by less than one cell: {mib} MiB gave {raw} -> {hint}"
+            );
+        }
     }
 }
 
