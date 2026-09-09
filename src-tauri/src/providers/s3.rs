@@ -178,11 +178,18 @@ impl MultipartAbortGuard {
         if !self.armed {
             return;
         }
-        self.armed = false;
+        // Disarm AFTER the await, never before. Marking first looks tidier and
+        // opens the hole this guard exists to close: a future dropped while
+        // this DELETE is in flight, which is precisely what GUI cancellation
+        // does, would find the guard already disarmed, and the request would
+        // die with the future without anyone resending it. Left armed, `Drop`
+        // spawns it. The worst case is one duplicate DELETE answered 404
+        // NoSuchUpload; the case avoided is an abort that never happens.
         let _ = self
             .provider
             .abort_multipart_upload_internal(&self.key, &self.upload_id)
             .await;
+        self.armed = false;
     }
 }
 
