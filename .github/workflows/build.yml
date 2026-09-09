@@ -5,8 +5,23 @@ on:
     branches: [main]
     tags:
       - 'v*'
+    # A change that touches only documentation cannot change the bundles:
+    # skip the four-platform build (about 80 minutes) for it. The filter
+    # applies only when EVERY changed file matches, so a PR that edits code
+    # and docs together still builds. The main ruleset declares no required
+    # status contexts, so a skipped workflow blocks nothing.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE*'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE*'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
 
 permissions:
