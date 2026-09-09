@@ -20,6 +20,12 @@ on:
 permissions:
   contents: read
 
+# A new SHA on a PR supersedes the previous one: cancel the smoke matrix that
+# was still building for it, like checks.yml and build.yml already do.
+concurrency:
+  group: cli-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
 jobs:
   smoke:
     runs-on: ${{ matrix.os }}
@@ -252,6 +258,12 @@ jobs:
   # path is what differs; the cross-OS smoke job above already covers the
   # multi-platform behavior of the binary itself.
   cargo-install-smoke:
+    # Proves that `cargo install` works from the crate as published, which is
+    # packaging, not the code of a pull request: it costs a third release
+    # build of the CLI per PR (about 25 minutes) and cannot change with the
+    # PR's diff in a way the smoke matrix above does not already exercise.
+    # Runs on main and on demand.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
@@ -302,8 +314,14 @@ jobs:
           fi
 
   coverage:
+    # The same ~5000 tests already run uninstrumented in build.yml on every
+    # pull request; under llvm-cov instrumentation they took 41 minutes and,
+    # queued behind the smoke matrix, made this workflow the longest lane of
+    # every PR. Coverage is a report, not a gate (the floor below is far under
+    # the baseline), so it runs on main and on demand, and no longer waits
+    # for the smoke binaries it never used.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    needs: smoke
 
     steps:
       - name: Checkout
