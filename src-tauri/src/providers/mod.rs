@@ -60,6 +60,8 @@ pub mod pcloud;
 pub mod peer;
 pub mod retry_after;
 pub mod s3;
+pub(crate) mod s3_delta;
+pub mod s3_delta_baseline;
 pub mod s3_delta_plan;
 pub mod sftp;
 pub mod sts;

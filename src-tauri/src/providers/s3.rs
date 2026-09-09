@@ -23,6 +23,8 @@ use std::sync::Arc;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tracing::{debug, info, warn};
 
+use super::s3_delta::{DeltaOperation, S3DeltaCompleted, S3DeltaError, S3DeltaOutcome};
+use super::s3_delta_baseline::{BaselineHasher, BaselineKey, BaselineStore};
 use super::sts;
 use super::{
     sanitize_api_error, FileVersion, MultipartHandle, ProviderError, ProviderTransferExecutorKind,
@@ -131,6 +133,90 @@ fn is_s3_directory_content_type(content_type: &str) -> bool {
         .trim()
         .to_ascii_lowercase();
     ct == "application/x-directory" || ct == "httpd/unix-directory"
+}
+
+/// Owns the abort of a multipart upload the server has already opened.
+///
+/// Every early exit used to carry its own `abort_multipart_upload_internal`
+/// call. That covered the error branches and nothing else: dropping the future,
+/// which is exactly what GUI cancellation does, runs no branch at all, so the
+/// parts already uploaded stayed under the upload id until the bucket lifecycle
+/// rule removed them, if the bucket had one. Owning the upload id means an
+/// abort happens on every exit that is not a proven completion.
+///
+/// `Drop` is sync and cannot await, so it schedules the abort on the current
+/// runtime, the shape `crate::util::provider_guard::ProviderGuard` already uses
+/// for disconnect, and warns rather than panicking when no runtime is left.
+/// Known error paths call `abort_now` and await it instead, so their behaviour
+/// and the tests that count aborts stay deterministic; `Drop` is the net for
+/// cancellation and panics, which no explicit branch can reach.
+struct MultipartAbortGuard {
+    provider: S3Provider,
+    key: String,
+    upload_id: String,
+    armed: bool,
+}
+
+impl MultipartAbortGuard {
+    fn new(provider: &S3Provider, key: &str, upload_id: &str) -> Self {
+        Self {
+            provider: provider.clone(),
+            key: key.to_string(),
+            upload_id: upload_id.to_string(),
+            armed: true,
+        }
+    }
+
+    /// The upload completed. Nothing to clean up.
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+
+    /// A known failure. Abort now and observe it, so the caller returns only
+    /// after the server has been told, and a test can assert the count.
+    async fn abort_now(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // Disarm AFTER the await, never before. Marking first looks tidier and
+        // opens the hole this guard exists to close: a future dropped while
+        // this DELETE is in flight, which is precisely what GUI cancellation
+        // does, would find the guard already disarmed, and the request would
+        // die with the future without anyone resending it. Left armed, `Drop`
+        // spawns it. The worst case is one duplicate DELETE answered 404
+        // NoSuchUpload; the case avoided is an abort that never happens.
+        let _ = self
+            .provider
+            .abort_multipart_upload_internal(&self.key, &self.upload_id)
+            .await;
+        self.armed = false;
+    }
+}
+
+impl Drop for MultipartAbortGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let provider = self.provider.clone();
+        let key = std::mem::take(&mut self.key);
+        let upload_id = std::mem::take(&mut self.upload_id);
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn(async move {
+                    let _ = provider
+                        .abort_multipart_upload_internal(&key, &upload_id)
+                        .await;
+                });
+            }
+            Err(_) => tracing::warn!(
+                "multipart upload {} for {} was dropped without a Tokio runtime; \
+                 its parts stay until the bucket lifecycle rule removes them",
+                upload_id,
+                key
+            ),
+        }
+    }
 }
 
 fn etag_to_md5(raw: &str) -> Option<String> {
@@ -267,6 +353,12 @@ fn format_s3_error(
 /// S3 Storage Provider
 #[derive(Clone)]
 pub struct S3Provider {
+    /// Shared by the DAG's independent provider clones. Bounded signature-only
+    /// sessions, retired at completion/abort; no upload payload is retained.
+    multipart_baselines:
+        Arc<std::sync::Mutex<HashMap<String, super::s3_delta_baseline::MultipartBaseline>>>,
+    #[cfg(test)]
+    baseline_test_path: Option<PathBuf>,
     config: S3Config,
     client: Client,
     current_prefix: String,
@@ -398,6 +490,9 @@ impl S3Provider {
             client,
             current_prefix: String::new(),
             connected: false,
+            multipart_baselines: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            #[cfg(test)]
+            baseline_test_path: None,
             clock_offset_secs: 0,
             upload_chunk_override: None,
             multi_thread_streams: 1,
@@ -411,6 +506,250 @@ impl S3Provider {
             sts_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             cleartext_warned: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
+    }
+
+    /// The S3 adapter door. All remote observations are HEAD metadata; the
+    /// baseline payload is never read over the network.
+    pub(crate) async fn try_delta_upload(
+        &mut self,
+        local_path: &std::path::Path,
+        remote_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<S3DeltaOutcome, S3DeltaError> {
+        use super::s3_delta::{range_copy_rejected, remember_range_rejection};
+        use super::s3_delta_baseline::{MatchOutcome, MatchRefusal};
+        use super::s3_delta_plan::{delta_grid_size, DELTA_MIN_FILE_SIZE};
+
+        if !self.connected {
+            return Err(ProviderError::NotConnected.into());
+        }
+        let before = tokio::fs::metadata(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        if !before.is_file() {
+            return Ok(S3DeltaOutcome::Refused("not_regular_file"));
+        }
+        let total_size = before.len();
+        if delta_grid_size(total_size).is_none() {
+            return Ok(S3DeltaOutcome::Refused(
+                if total_size <= DELTA_MIN_FILE_SIZE {
+                    "file_too_small"
+                } else {
+                    "file_too_large"
+                },
+            ));
+        }
+        if self.is_filen_s3_endpoint() {
+            return Ok(S3DeltaOutcome::Refused("multipart_unsupported"));
+        }
+        let identity = self.endpoint_identity();
+        if range_copy_rejected(&identity) {
+            return Ok(S3DeltaOutcome::Refused("backend_rejected_range_copy"));
+        }
+        let Some(store) = self.baseline_store() else {
+            return Ok(S3DeltaOutcome::Refused("baseline_cache_unavailable"));
+        };
+        let key = remote_path.trim_start_matches('/');
+        let cache_key = self.delta_baseline_key(key);
+        let response = self.s3_request(Method::HEAD, key, None, None).await?;
+        let status = response.status();
+        if status == StatusCode::NOT_FOUND {
+            let _ = store.invalidate(cache_key).await;
+            return Ok(S3DeltaOutcome::Refused("no_baseline"));
+        }
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(self.delta_response_error(DeltaOperation::Head, status, &body, None));
+        }
+        let archive = response
+            .headers()
+            .get("x-amz-storage-class")
+            .and_then(|v| v.to_str().ok());
+        if matches!(archive, Some("GLACIER" | "DEEP_ARCHIVE"))
+            || response.headers().contains_key("x-amz-archive-status")
+        {
+            return Ok(S3DeltaOutcome::Refused("baseline_archived"));
+        }
+        let Some(baseline_size) = response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok())
+        else {
+            return Ok(S3DeltaOutcome::Refused("baseline_metadata_invalid"));
+        };
+        let Some(etag) = response
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .filter(|v| !v.trim_matches('"').is_empty())
+            .map(str::to_owned)
+        else {
+            let _ = store.invalidate(cache_key).await;
+            return Ok(S3DeltaOutcome::Refused("no_baseline_etag"));
+        };
+        if baseline_size <= super::s3_delta_plan::S3_PART_MIN {
+            let _ = store.invalidate(cache_key).await;
+            return Ok(S3DeltaOutcome::Refused("baseline_too_small"));
+        }
+        let (outcome, fresh) = match store
+            .prepare_file(cache_key.clone(), etag.clone(), baseline_size, local_path)
+            .await
+        {
+            Ok(result) => result,
+            Err(_) => return Ok(S3DeltaOutcome::Refused("baseline_unavailable")),
+        };
+        let (grid, matches) = match outcome {
+            MatchOutcome::Refused(reason) => {
+                return Ok(S3DeltaOutcome::Refused(match reason {
+                    MatchRefusal::NoBaseline => "no_baseline",
+                    MatchRefusal::EtagMismatch => "etag_mismatch",
+                    MatchRefusal::SizeMismatch => "baseline_size_mismatch",
+                    MatchRefusal::GridMismatch => "baseline_grid_mismatch",
+                    MatchRefusal::InvalidRow => "baseline_invalid",
+                }))
+            }
+            MatchOutcome::Matches { grid, matches } => (grid, matches),
+        };
+        if matches.is_empty() {
+            return Ok(S3DeltaOutcome::Refused("no_match_found"));
+        }
+        let after_match = tokio::fs::metadata(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        if !Self::same_delta_source(&before, &after_match) {
+            return Ok(S3DeltaOutcome::Refused("source_changed"));
+        }
+        let Some(local_str) = local_path.to_str() else {
+            return Ok(S3DeltaOutcome::Refused("local_path_invalid"));
+        };
+        if store.invalidate(cache_key).await.is_err() {
+            return Ok(S3DeltaOutcome::Refused("baseline_cache_unavailable"));
+        }
+        let content_type = mime_guess::from_path(local_path)
+            .first_or_octet_stream()
+            .to_string();
+        let verification = fresh
+            .as_ref()
+            .and_then(BaselineHasher::verification)
+            .map(Arc::new);
+        let result = self
+            .execute_delta_multipart(
+                key,
+                local_str,
+                total_size,
+                &matches,
+                grid,
+                &etag,
+                Some(&content_type),
+                on_progress,
+                verification,
+            )
+            .await;
+        match result {
+            Ok(Some(done)) => {
+                let after = tokio::fs::metadata(local_path).await.ok();
+                if after
+                    .as_ref()
+                    .is_some_and(|after| Self::same_delta_source(&before, after))
+                {
+                    self.save_baseline(key, fresh.map(|hasher| (store, hasher)), done.etag)
+                        .await;
+                }
+                Ok(S3DeltaOutcome::Uploaded {
+                    wire_bytes: done.wire_bytes,
+                    total_size,
+                    copy_parts: done.copy_parts,
+                    duration_ms: done.duration_ms,
+                })
+            }
+            Ok(None) => Ok(S3DeltaOutcome::Refused("plan_refused")),
+            Err(error) => {
+                remember_range_rejection(identity, &error);
+                Err(error)
+            }
+        }
+    }
+
+    fn same_delta_source(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
+        let unchanged =
+            before.len() == after.len() && before.modified().ok() == after.modified().ok();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            unchanged
+                && before.dev() == after.dev()
+                && before.ino() == after.ino()
+                && before.ctime() == after.ctime()
+                && before.ctime_nsec() == after.ctime_nsec()
+        }
+        #[cfg(not(unix))]
+        {
+            unchanged
+        }
+    }
+
+    fn delta_response_error(
+        &self,
+        operation: DeltaOperation,
+        status: StatusCode,
+        body: &str,
+        retry_after: Option<&str>,
+    ) -> S3DeltaError {
+        S3DeltaError::Response {
+            status: status.as_u16(),
+            code: self.extract_xml_tag(body, "Code"),
+            operation,
+            message: format_s3_error(operation.name(), status, body, retry_after),
+        }
+    }
+
+    /// T5 uses this same key when looking up the current baseline.
+    pub fn delta_baseline_key(&self, key: &str) -> BaselineKey {
+        BaselineKey::new(
+            self.endpoint_identity(),
+            &self.config.bucket,
+            key.trim_start_matches('/'),
+        )
+    }
+
+    fn baseline_store(&self) -> Option<BaselineStore> {
+        #[cfg(test)]
+        let path = self.baseline_test_path.clone();
+        #[cfg(not(test))]
+        let path = BaselineStore::default_path();
+        path.map(BaselineStore::new)
+    }
+
+    async fn begin_baseline(
+        &self,
+        key: &str,
+        size: u64,
+    ) -> Option<(BaselineStore, BaselineHasher)> {
+        let store = self.baseline_store()?;
+        // Also invalidate when an eligible object is replaced with a small one.
+        if let Err(error) = store.invalidate(self.delta_baseline_key(key)).await {
+            warn!("S3 baseline cache unavailable: {error}");
+            return None;
+        }
+        Some((store, BaselineHasher::new(size)?))
+    }
+
+    async fn save_baseline(
+        &self,
+        key: &str,
+        pending: Option<(BaselineStore, BaselineHasher)>,
+        etag: Option<String>,
+    ) {
+        if let (Some((store, hasher)), Some(etag)) = (pending, etag) {
+            if let Err(error) = store
+                .record_completed(self.delta_baseline_key(key), hasher, etag)
+                .await
+            {
+                // Cache failure never turns a successful upload into a retry.
+                warn!("S3 baseline cache write failed: {error}");
+            }
+        }
     }
 
     /// Default parallelism for multipart upload parts.
@@ -1896,6 +2235,32 @@ impl S3Provider {
             .max(Self::MULTIPART_PART_MIN)
     }
 
+    /// The part size handed to the DAG, snapped up to a whole number of delta
+    /// grid cells.
+    ///
+    /// The DAG uploads parts on independent clones and hashes each one on its
+    /// own, so `MultipartBaseline::finish` can only concatenate those digests
+    /// when every part begins on a grid boundary. The default part size is a
+    /// multiple of the grid, but the CLI's upload buffer override accepts any
+    /// byte count, and an unaligned one made every DAG upload seed nothing at
+    /// all: no row, and the next delta answering `no_baseline` with nothing to
+    /// say why. Snapping the hint costs at most one cell of part size and
+    /// restores the seeding.
+    ///
+    /// Only the hint is snapped. The streaming path needs none of this, since
+    /// its hasher carries a partial cell across reads and is indifferent to
+    /// part boundaries (`s3_baseline_hasher_ignores_upload_chunk_boundaries`),
+    /// so the override is still honoured verbatim where it already worked.
+    ///
+    /// Above roughly 80 GB the grid grows past `DELTA_PART_SIZE` and the DAG
+    /// builder grows the chunk on its own to keep the part count legal, so
+    /// alignment there is not this function's to promise. That case is a
+    /// declared limit, not an oversight.
+    fn dag_aligned_part_size(&self) -> usize {
+        let grid = super::s3_delta_plan::DELTA_PART_SIZE as usize;
+        self.effective_part_size().div_ceil(grid) * grid
+    }
+
     /// Initiate a multipart upload, returns the UploadId.
     /// Optionally sets Content-Type for the resulting object (UPLOAD-01).
     async fn create_multipart_upload(
@@ -1904,6 +2269,17 @@ impl S3Provider {
         content_type: Option<&str>,
         source_mtime: Option<String>,
     ) -> Result<String, ProviderError> {
+        self.create_multipart_upload_typed(key, content_type, source_mtime)
+            .await
+            .map_err(S3DeltaError::into_provider_error)
+    }
+
+    async fn create_multipart_upload_typed(
+        &self,
+        key: &str,
+        content_type: Option<&str>,
+        source_mtime: Option<String>,
+    ) -> Result<String, S3DeltaError> {
         self.ensure_fresh_credentials().await?;
         // For multipart, Content-Type must be set on initiation, not on individual parts.
         // We build a custom request to include the header.
@@ -1951,17 +2327,18 @@ impl S3Provider {
             .map(String::from);
         let body = response.text().await.unwrap_or_default();
 
-        if !status.is_success() {
-            return Err(ProviderError::TransferFailed(format_s3_error(
-                "CreateMultipartUpload failed",
+        if !status.is_success() || body.to_ascii_lowercase().contains("<error>") {
+            return Err(self.delta_response_error(
+                DeltaOperation::Create,
                 status,
                 &body,
                 retry_header.as_deref(),
-            )));
+            ));
         }
 
-        self.extract_xml_tag(&body, "UploadId")
-            .ok_or_else(|| ProviderError::ParseError("Missing UploadId in response".to_string()))
+        self.extract_xml_tag(&body, "UploadId").ok_or_else(|| {
+            ProviderError::ParseError("Missing UploadId in response".to_string()).into()
+        })
     }
 
     /// Upload a single part, returns the ETag.
@@ -1977,6 +2354,18 @@ impl S3Provider {
         part_number: u32,
         data: Vec<u8>,
     ) -> Result<String, ProviderError> {
+        self.upload_part_internal_typed(key, upload_id, part_number, data)
+            .await
+            .map_err(S3DeltaError::into_provider_error)
+    }
+
+    async fn upload_part_internal_typed(
+        &self,
+        key: &str,
+        upload_id: &str,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<String, S3DeltaError> {
         let part_num_str = part_number.to_string();
         let params: &[(&str, &str)] = &[("partNumber", &part_num_str), ("uploadId", upload_id)];
 
@@ -1992,12 +2381,12 @@ impl S3Provider {
                 .and_then(|v| v.to_str().ok())
                 .map(String::from);
             let body = response.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format_s3_error(
-                &format!("UploadPart {} failed", part_number),
+            return Err(self.delta_response_error(
+                DeltaOperation::Put,
                 status,
                 &body,
                 retry_header.as_deref(),
-            )));
+            ));
         }
 
         // ETag is in the response headers
@@ -2046,6 +2435,30 @@ impl S3Provider {
         range_end_inclusive: u64,
         if_match: Option<&str>,
     ) -> Result<String, ProviderError> {
+        self.upload_part_copy_internal_typed(
+            dest_key,
+            upload_id,
+            part_number,
+            copy_source,
+            range_start,
+            range_end_inclusive,
+            if_match,
+        )
+        .await
+        .map_err(S3DeltaError::into_provider_error)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn upload_part_copy_internal_typed(
+        &self,
+        dest_key: &str,
+        upload_id: &str,
+        part_number: u32,
+        copy_source: &str,
+        range_start: u64,
+        range_end_inclusive: u64,
+        if_match: Option<&str>,
+    ) -> Result<String, S3DeltaError> {
         let part_num_str = part_number.to_string();
         let range_value = format!("bytes={}-{}", range_start, range_end_inclusive);
         let params: &[(&str, &str)] = &[("partNumber", &part_num_str), ("uploadId", upload_id)];
@@ -2075,36 +2488,32 @@ impl S3Provider {
             .map(String::from);
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(ProviderError::TransferFailed(format_s3_error(
-                &format!("UploadPartCopy {} failed", part_number),
+            return Err(self.delta_response_error(
+                DeltaOperation::Copy,
                 status,
                 &body,
                 retry_header.as_deref(),
-            )));
+            ));
         }
         // S3-compatible servers (AWS + MinIO + Filen bridge) can return HTTP
         // 200 with an `<Error>` XML body when validation fails late on the
         // server side. Mirror the single-PUT copy path's 200-with-error
         // handling so the caller doesn't silently complete a broken upload.
         if body.to_ascii_lowercase().contains("<error>") {
-            let err_code = self
-                .extract_xml_tag(&body, "Code")
-                .unwrap_or_else(|| "CopyPartError".to_string());
-            let err_msg = self
-                .extract_xml_tag(&body, "Message")
-                .unwrap_or_else(|| "Server reported error during UploadPartCopy".to_string());
-            return Err(ProviderError::TransferFailed(format!(
-                "UploadPartCopy {} 200-with-error ({}): {}",
-                part_number,
-                sanitize_api_error(&err_code),
-                sanitize_api_error(&err_msg)
-            )));
+            return Err(self.delta_response_error(
+                DeltaOperation::Copy,
+                status,
+                &body,
+                retry_header.as_deref(),
+            ));
         }
+
         self.extract_xml_tag(&body, "ETag").ok_or_else(|| {
             ProviderError::ParseError(format!(
                 "Missing ETag in UploadPartCopy {} response",
                 part_number
             ))
+            .into()
         })
     }
 
@@ -2118,7 +2527,18 @@ impl S3Provider {
         key: &str,
         upload_id: &str,
         parts: &[(u32, String)],
-    ) -> Result<(), ProviderError> {
+    ) -> Result<Option<String>, ProviderError> {
+        self.complete_multipart_upload_internal_typed(key, upload_id, parts)
+            .await
+            .map_err(S3DeltaError::into_provider_error)
+    }
+
+    async fn complete_multipart_upload_internal_typed(
+        &self,
+        key: &str,
+        upload_id: &str,
+        parts: &[(u32, String)],
+    ) -> Result<Option<String>, S3DeltaError> {
         // Build XML body
         let mut xml = String::from("<CompleteMultipartUpload>");
         for (part_number, etag) in parts {
@@ -2147,27 +2567,25 @@ impl S3Provider {
         let body = response.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(ProviderError::TransferFailed(format_s3_error(
-                "CompleteMultipartUpload failed",
+            return Err(self.delta_response_error(
+                DeltaOperation::Complete,
                 status,
                 &body,
                 retry_header.as_deref(),
-            )));
+            ));
         }
 
         // UPLOAD-07: AWS S3 can return HTTP 200 but include an <Error> in the XML body
-        if body.contains("<Error>") {
-            let error_msg = self
-                .extract_xml_tag(&body, "Message")
-                .or_else(|| self.extract_xml_tag(&body, "Code"))
-                .unwrap_or_else(|| "Unknown error in CompleteMultipartUpload response".to_string());
-            return Err(ProviderError::TransferFailed(format!(
-                "CompleteMultipartUpload 200-with-error: {}",
-                sanitize_api_error(&error_msg)
-            )));
+        if body.to_ascii_lowercase().contains("<error>") {
+            return Err(self.delta_response_error(
+                DeltaOperation::Complete,
+                status,
+                &body,
+                retry_header.as_deref(),
+            ));
         }
 
-        Ok(())
+        Ok(self.extract_xml_tag(&body, "ETag"))
     }
 
     /// Upload a file using S3 multipart upload with streaming (no full-file buffering).
@@ -2181,10 +2599,15 @@ impl S3Provider {
     ) -> Result<(), ProviderError> {
         use tokio::io::AsyncReadExt;
 
+        let mut baseline = self.begin_baseline(key, total_size).await;
+
         // UPLOAD-01: Detect MIME type from filename for multipart uploads
         let content_type = mime_guess::from_path(local_path)
             .first_or_octet_stream()
             .to_string();
+        let mut file = tokio::fs::File::open(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
         let upload_id = self
             .create_multipart_upload(
                 key,
@@ -2192,10 +2615,8 @@ impl S3Provider {
                 Self::source_mtime_metadata(local_path),
             )
             .await?;
+        let mut abort_guard = MultipartAbortGuard::new(self, key, &upload_id);
         let mut parts: Vec<(u32, String)> = Vec::new();
-        let mut file = tokio::fs::File::open(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
         let mut part_number = 1u32;
         let mut uploaded: u64 = 0;
 
@@ -2213,10 +2634,13 @@ impl S3Provider {
                 let mut buf = vec![0u8; part_size];
                 let mut filled = 0;
                 while filled < part_size {
-                    let n = file
-                        .read(&mut buf[filled..])
-                        .await
-                        .map_err(|e| ProviderError::TransferFailed(format!("Read error: {e}")))?;
+                    let n = match file.read(&mut buf[filled..]).await {
+                        Ok(n) => n,
+                        Err(e) => {
+                            abort_guard.abort_now().await;
+                            return Err(ProviderError::TransferFailed(format!("Read error: {e}")));
+                        }
+                    };
                     if n == 0 {
                         break;
                     }
@@ -2226,6 +2650,9 @@ impl S3Provider {
                     break;
                 }
                 buf.truncate(filled);
+                if let Some((_, hasher)) = &mut baseline {
+                    hasher.update(&buf);
+                }
                 batch.push((part_number, buf));
                 part_number += 1;
             }
@@ -2266,13 +2693,13 @@ impl S3Provider {
                         // Drain aborted futures so JoinSet drops cleanly before
                         // we fire the S3 AbortMultipartUpload.
                         while joinset.join_next().await.is_some() {}
-                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                        abort_guard.abort_now().await;
                         return Err(e);
                     }
                     Err(e) => {
                         joinset.abort_all();
                         while joinset.join_next().await.is_some() {}
-                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                        abort_guard.abort_now().await;
                         return Err(ProviderError::TransferFailed(format!(
                             "Upload task panicked: {e}"
                         )));
@@ -2284,8 +2711,19 @@ impl S3Provider {
             parts.sort_by_key(|(pn, _)| *pn);
         }
 
-        self.complete_multipart_upload_internal(key, &upload_id, &parts)
+        let etag = match self
+            .complete_multipart_upload_internal(key, &upload_id, &parts)
             .await
+        {
+            Ok(etag) => etag,
+            Err(e) => {
+                abort_guard.abort_now().await;
+                return Err(e);
+            }
+        };
+        abort_guard.disarm();
+        self.save_baseline(key, baseline, etag).await;
+        Ok(())
     }
 
     /// Abort a multipart upload (internal inherent path).
@@ -2572,10 +3010,8 @@ impl S3Provider {
     ///
     /// Caller must have validated `self.connected`. `key` is the trimmed
     /// destination key and is also the copy source.
-    // dead_code: T3 has no production caller yet; the sync adapter arm (T4)
-    // is the consumer. Until then the mock and live lanes exercise it.
-    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
+    #[cfg(test)]
     async fn upload_delta_multipart(
         &self,
         key: &str,
@@ -2587,15 +3023,43 @@ impl S3Provider {
         content_type: Option<&str>,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<Option<u64>, ProviderError> {
+        self.execute_delta_multipart(
+            key,
+            local_path,
+            total_size,
+            matches,
+            grid,
+            baseline_etag,
+            content_type,
+            on_progress,
+            None,
+        )
+        .await
+        .map(|result| result.map(|done| done.wire_bytes))
+        .map_err(S3DeltaError::into_provider_error)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn execute_delta_multipart(
+        &self,
+        key: &str,
+        local_path: &str,
+        total_size: u64,
+        matches: &[(u64, u64, u64)],
+        grid: u64,
+        baseline_etag: &str,
+        content_type: Option<&str>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        verification: Option<Arc<super::s3_delta_baseline::PreparedDigests>>,
+    ) -> Result<Option<S3DeltaCompleted>, S3DeltaError> {
+        let started = std::time::Instant::now();
         // Derived here and not taken as a parameter, the way
         // `upload_multipart_streaming` does it. The function already has
         // `local_path`, so a parameter only creates a way for a caller to pass
         // `None` and silently drop the mtime the original object carried, and
         // an object rebuilt by the delta that lost its mtime is one that every
         // later sync compares by timestamp and never finds equal. The caller
-        // that would have had to remember does not exist yet: the adapter arm
-        // is the next tranche, which is exactly when this would have been
-        // discovered the expensive way.
+        // must never supply an optional timestamp that can be forgotten.
         // Two limits from the appendix's constraint sheet are deliberately not
         // checked here, and both are written down rather than left to be
         // rediscovered as defects.
@@ -2636,6 +3100,14 @@ impl S3Provider {
             return Ok(None);
         };
 
+        let source_before = tokio::fs::metadata(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        if source_before.len() != total_size {
+            return Err(S3DeltaError::SourceChanged);
+        }
+
+        let copy_parts = plan.iter().filter(|part| part.is_copy()).count() as u64;
         // Wire bytes are the PUT parts; COPY parts are requests, not bytes.
         // The denominator is the plan's, so progress reaches exactly 100%.
         let total_wire: u64 = plan
@@ -2653,14 +3125,18 @@ impl S3Provider {
         // One retry on a fresh connection is enough, and replaying a create
         // is safe: the failed attempt never reached the server.
         let mut initiated = self
-            .create_multipart_upload(key, content_type, source_mtime.clone())
+            .create_multipart_upload_typed(key, content_type, source_mtime.clone())
             .await;
-        if matches!(initiated, Err(ProviderError::NetworkError(_))) {
+        if matches!(
+            initiated,
+            Err(S3DeltaError::Provider(ProviderError::NetworkError(_)))
+        ) {
             initiated = self
-                .create_multipart_upload(key, content_type, source_mtime)
+                .create_multipart_upload_typed(key, content_type, source_mtime)
                 .await;
         }
         let upload_id = initiated?;
+        let mut abort_guard = MultipartAbortGuard::new(self, key, &upload_id);
 
         let max_parallel = self.effective_upload_concurrency();
         let mut parts: Vec<(u32, String)> = Vec::with_capacity(plan.len());
@@ -2679,6 +3155,7 @@ impl S3Provider {
                 let copy_source_owned = copy_source.clone();
                 let etag_owned = baseline_etag.to_string();
                 let local_path_owned = local_path.to_string();
+                let verification = verification.clone();
                 joinset.spawn(async move {
                     match part {
                         crate::providers::s3_delta_plan::DeltaPart::Copy {
@@ -2687,7 +3164,7 @@ impl S3Provider {
                             src_end_inclusive,
                         } => {
                             let etag = provider
-                                .upload_part_copy_internal(
+                                .upload_part_copy_internal_typed(
                                     &dest_key,
                                     &upload_id_owned,
                                     part_number,
@@ -2697,7 +3174,7 @@ impl S3Provider {
                                     Some(&etag_owned),
                                 )
                                 .await?;
-                            Ok::<(u32, String, u64), ProviderError>((part_number, etag, 0))
+                            Ok::<(u32, String, u64), S3DeltaError>((part_number, etag, 0))
                         }
                         crate::providers::s3_delta_plan::DeltaPart::Put {
                             part_number,
@@ -2716,10 +3193,21 @@ impl S3Provider {
                                     "Delta read of part {part_number} at {local_start}+{len}: {e}"
                                 ))
                             })?;
+                            if verification
+                                .as_ref()
+                                .is_some_and(|expected| !expected.verify_put(local_start, &buf))
+                            {
+                                return Err(S3DeltaError::SourceChanged);
+                            }
                             let etag = provider
-                                .upload_part_internal(&dest_key, &upload_id_owned, part_number, buf)
+                                .upload_part_internal_typed(
+                                    &dest_key,
+                                    &upload_id_owned,
+                                    part_number,
+                                    buf,
+                                )
                                 .await?;
-                            Ok::<(u32, String, u64), ProviderError>((part_number, etag, len))
+                            Ok::<(u32, String, u64), S3DeltaError>((part_number, etag, len))
                         }
                     }
                 });
@@ -2741,16 +3229,17 @@ impl S3Provider {
                     Ok(Err(e)) => {
                         joinset.abort_all();
                         while joinset.join_next().await.is_some() {}
-                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                        abort_guard.abort_now().await;
                         return Err(e);
                     }
                     Err(e) => {
                         joinset.abort_all();
                         while joinset.join_next().await.is_some() {}
-                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
+                        abort_guard.abort_now().await;
                         return Err(ProviderError::TransferFailed(format!(
                             "Delta upload task panicked: {e}"
-                        )));
+                        ))
+                        .into());
                     }
                 }
             }
@@ -2758,13 +3247,25 @@ impl S3Provider {
 
         parts.sort_by_key(|(pn, _)| *pn);
 
-        if let Err(e) = self
-            .complete_multipart_upload_internal(key, &upload_id, &parts)
+        let unchanged = tokio::fs::metadata(local_path)
+            .await
+            .map(|after| Self::same_delta_source(&source_before, &after))
+            .unwrap_or(false);
+        if !unchanged {
+            abort_guard.abort_now().await;
+            return Err(S3DeltaError::SourceChanged);
+        }
+        let etag = match self
+            .complete_multipart_upload_internal_typed(key, &upload_id, &parts)
             .await
         {
-            let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
-            return Err(e);
-        }
+            Ok(etag) => etag,
+            Err(e) => {
+                abort_guard.abort_now().await;
+                return Err(e);
+            }
+        };
+        abort_guard.disarm();
 
         info!(
             "Delta multipart uploaded {} ({} bytes over the wire, {} parts)",
@@ -2772,7 +3273,12 @@ impl S3Provider {
             uploaded_wire,
             parts.len()
         );
-        Ok(Some(uploaded_wire))
+        Ok(Some(S3DeltaCompleted {
+            wire_bytes: uploaded_wire,
+            etag,
+            copy_parts,
+            duration_ms: started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+        }))
     }
 
     /// Multi-thread chunk-parallel download for a single S3 object.
@@ -3130,6 +3636,21 @@ impl StorageProvider for S3Provider {
         } else {
             format!("s3://{} ({})", self.config.bucket, self.config.region)
         }
+    }
+
+    fn endpoint_identity(&self) -> crate::transfer_dag::EndpointIdentity {
+        use sha2::{Digest, Sha256};
+        // The trait default is only a display label for S3: different custom
+        // hosts and accounts can have that same label. Hash exact authority
+        // components so EndpointIdentity's case folding cannot merge them.
+        // Use stable configured credentials, not rotating STS session keys.
+        let account =
+            serde_json::json!([self.config.access_key_id, self.config.role_arn]).to_string();
+        crate::transfer_dag::EndpointIdentity::new(
+            "s3",
+            hex::encode(Sha256::digest(self.endpoint().as_bytes())),
+            hex::encode(Sha256::digest(account.as_bytes())),
+        )
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
@@ -3831,8 +4352,27 @@ impl StorageProvider for S3Provider {
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
+        let pending = self.begin_baseline(key, total_size).await;
+        let (baseline_store, hasher) = match pending {
+            Some((store, hasher)) => (Some(store), Some(hasher)),
+            None => (None, None),
+        };
+        let hasher = Arc::new(std::sync::Mutex::new(hasher));
+        let stream_hasher = Arc::clone(&hasher);
+        let source = ReaderStream::new(file).map(move |chunk| {
+            if let Ok(bytes) = &chunk {
+                if let Some(hasher) = stream_hasher
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .as_mut()
+                {
+                    hasher.update(bytes);
+                }
+            }
+            chunk
+        });
         let stream = crate::transfer_dag::throttle::throttle_stream(
-            ReaderStream::new(file),
+            source,
             crate::transfer_dag::governor::TransferDirection::Upload,
         );
         let body = reqwest::Body::wrap_stream(stream);
@@ -3870,6 +4410,14 @@ impl StorageProvider for S3Provider {
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
+                let etag = response
+                    .headers()
+                    .get(reqwest::header::ETAG)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_owned);
+                let finished = hasher.lock().unwrap_or_else(|e| e.into_inner()).take();
+                self.save_baseline(key, baseline_store.zip(finished), etag)
+                    .await;
                 if let Some(progress) = on_progress {
                     progress(total_size, total_size);
                 }
@@ -4742,7 +5290,7 @@ impl StorageProvider for S3Provider {
     async fn begin_multipart_upload(
         &mut self,
         remote_path: &str,
-        _total_size: u64,
+        total_size: u64,
         content_type: Option<&str>,
         local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
@@ -4759,6 +5307,7 @@ impl StorageProvider for S3Provider {
             ));
         }
         let key = remote_path.trim_start_matches('/');
+        let baseline = self.begin_baseline(key, total_size).await;
         let upload_id = self
             .create_multipart_upload(
                 key,
@@ -4766,6 +5315,33 @@ impl StorageProvider for S3Provider {
                 local_source_path.and_then(Self::source_mtime_metadata),
             )
             .await?;
+        if let Some((store, _)) = baseline {
+            let mut sessions = self
+                .multipart_baselines
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            sessions.retain(|_, session| {
+                session.touched.elapsed() < std::time::Duration::from_secs(3600)
+            });
+            if sessions.len() >= 128 {
+                if let Some(oldest) = sessions
+                    .iter()
+                    .min_by_key(|(_, session)| session.touched)
+                    .map(|(key, _)| key.clone())
+                {
+                    sessions.remove(&oldest);
+                }
+            }
+            sessions.insert(
+                upload_id.clone(),
+                super::s3_delta_baseline::MultipartBaseline {
+                    size: total_size,
+                    store,
+                    touched: std::time::Instant::now(),
+                    parts: std::collections::BTreeMap::new(),
+                },
+            );
+        }
         Ok(MultipartHandle {
             upload_id,
             remote_path: key.to_string(),
@@ -4781,10 +5357,39 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        let etag = self
+        let size = self
+            .multipart_baselines
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&handle.upload_id)
+            .map(|s| s.size);
+        let digests =
+            size.and_then(|size| super::s3_delta_baseline::hash_multipart_part(size, &data));
+        let result = self
             .upload_part_internal(&handle.remote_path, &handle.upload_id, part_number, data)
-            .await?;
-        Ok(UploadedPart { part_number, etag })
+            .await;
+        let mut sessions = self
+            .multipart_baselines
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        match result {
+            Ok(etag) => {
+                if let (Some(session), Some(digests)) =
+                    (sessions.get_mut(&handle.upload_id), digests)
+                {
+                    if !session.record(part_number, etag.clone(), digests) {
+                        sessions.remove(&handle.upload_id);
+                    }
+                } else {
+                    sessions.remove(&handle.upload_id);
+                }
+                Ok(UploadedPart { part_number, etag })
+            }
+            Err(error) => {
+                sessions.remove(&handle.upload_id);
+                Err(error)
+            }
+        }
     }
 
     async fn complete_multipart_upload(
@@ -4798,8 +5403,17 @@ impl StorageProvider for S3Provider {
         let mut numbered: Vec<(u32, String)> =
             parts.into_iter().map(|p| (p.part_number, p.etag)).collect();
         numbered.sort_by_key(|(pn, _)| *pn);
-        self.complete_multipart_upload_internal(&handle.remote_path, &handle.upload_id, &numbered)
-            .await
+        let session = self
+            .multipart_baselines
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&handle.upload_id);
+        let pending = session.and_then(|session| session.finish(&numbered));
+        let etag = self
+            .complete_multipart_upload_internal(&handle.remote_path, &handle.upload_id, &numbered)
+            .await?;
+        self.save_baseline(&handle.remote_path, pending, etag).await;
+        Ok(())
     }
 
     async fn abort_multipart_upload(
@@ -4809,6 +5423,10 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.multipart_baselines
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&handle.upload_id);
         self.abort_multipart_upload_internal(&handle.remote_path, &handle.upload_id)
             .await
     }
@@ -4831,7 +5449,7 @@ impl StorageProvider for S3Provider {
             } else {
                 u64::MAX
             },
-            multipart_part_size: self.effective_part_size() as u64,
+            multipart_part_size: self.dag_aligned_part_size() as u64,
             multipart_max_parallel: 4,
             supports_range_download: true,
             supports_resume_download: true,
@@ -6452,6 +7070,196 @@ mod tests {
     use super::*;
 
     #[test]
+    fn s3_baseline_endpoint_identity_separates_authorities_and_accounts() {
+        let provider = make_provider(Some("https://one.example/Case"));
+        let original = provider.endpoint_identity();
+        for endpoint in ["https://two.example/Case", "https://one.example/case"] {
+            assert_ne!(original, make_provider(Some(endpoint)).endpoint_identity());
+        }
+        let mut other = provider.clone();
+        other.config.access_key_id = "KEY".into();
+        assert_ne!(original, other.endpoint_identity());
+        other = provider.clone();
+        other.config.role_arn = Some("arn:aws:iam::123456789012:role/other".into());
+        assert_ne!(original, other.endpoint_identity());
+        other = provider.clone();
+        other.config.secret_access_key = secrecy::SecretString::from("rotated".to_owned());
+        assert_eq!(original, other.endpoint_identity());
+    }
+
+    #[derive(Clone, Copy)]
+    enum BaselineReply {
+        Success,
+        MissingEtag,
+        PartError,
+        CompleteError,
+        PutError,
+    }
+
+    struct BaselineMock {
+        provider: S3Provider,
+        dir: tempfile::TempDir,
+        wire: Arc<AtomicU64>,
+        aborts: Arc<AtomicU64>,
+        server: tokio::task::JoinHandle<()>,
+    }
+
+    // Drain request bodies in bounded chunks. No request counter from AeroFTP
+    // is used as the wire-byte oracle and no 200 MiB payload is kept in memory.
+    async fn baseline_mock(reply: BaselineReply, single: bool) -> BaselineMock {
+        let bytes = Arc::new(AtomicU64::new(0));
+        let aborts = Arc::new(AtomicU64::new(0));
+        let wire = Arc::clone(&bytes);
+        let aborted = Arc::clone(&aborts);
+        let app = axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+            let wire = Arc::clone(&wire);
+            let aborted = Arc::clone(&aborted);
+            async move {
+                let method = req.method().clone();
+                let query = req.uri().query().unwrap_or_default().to_string();
+                let mut stream = req.into_body().into_data_stream();
+                while let Some(chunk) = stream.next().await {
+                    let chunk = chunk.unwrap();
+                    if method == axum::http::Method::PUT {
+                        wire.fetch_add(chunk.len() as u64, Ordering::SeqCst);
+                    }
+                }
+                let mut response = axum::response::Response::builder();
+                let body = if method == axum::http::Method::POST && query.starts_with("uploads") {
+                    "<InitiateMultipartUploadResult><UploadId>u1</UploadId></InitiateMultipartUploadResult>"
+                } else if method == axum::http::Method::DELETE {
+                    aborted.fetch_add(1, Ordering::SeqCst);
+                    ""
+                } else if method == axum::http::Method::PUT {
+                    if matches!(reply, BaselineReply::PartError | BaselineReply::PutError) {
+                        response = response.status(400);
+                        "<Error><Code>InvalidRequest</Code></Error>"
+                    } else {
+                        if !matches!(reply, BaselineReply::MissingEtag) || !single {
+                            response = response.header("etag", if single { "\"our-completion\"" } else { "\"part-etag\"" });
+                        }
+                        ""
+                    }
+                } else if method == axum::http::Method::POST {
+                    match reply {
+                        BaselineReply::CompleteError => "<Error><Code>InvalidPart</Code></Error>",
+                        BaselineReply::MissingEtag => "<CompleteMultipartUploadResult/>",
+                        _ => "<CompleteMultipartUploadResult><ETag>\"our-completion\"</ETag></CompleteMultipartUploadResult>",
+                    }
+                } else {
+                    // A later stat must never supply the certification ETag.
+                    response = response.status(400);
+                    "unexpected request"
+                };
+                response.body(axum::body::Body::from(body)).unwrap()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut provider =
+            make_provider(Some(&format!("http://{}", listener.local_addr().unwrap())));
+        provider.connected = true;
+        if single {
+            provider.config.region = "filen".into();
+        }
+        let dir = tempfile::tempdir().unwrap();
+        provider.baseline_test_path = Some(dir.path().join("baseline.db"));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        BaselineMock {
+            provider,
+            dir,
+            wire: bytes,
+            aborts,
+            server,
+        }
+    }
+
+    #[tokio::test]
+    async fn s3_baseline_upload_doors_certify_only_successful_response_etags() {
+        use super::super::s3_delta_baseline::MatchOutcome;
+        use super::super::s3_delta_plan::DELTA_PART_SIZE;
+        // Eligible but non-grid-aligned; the upload grid remains 16 MiB.
+        let size = 201 * 1024 * 1024;
+        for single in [false, true] {
+            let BaselineMock {
+                mut provider,
+                dir,
+                wire,
+                aborts,
+                server,
+            } = baseline_mock(BaselineReply::Success, single).await;
+            // Prove digests survive unsigned request bodies as well as signing.
+            provider.disable_checksum = true;
+            let path = dir.path().join("source.bin");
+            std::fs::File::create(&path).unwrap().set_len(size).unwrap();
+            provider
+                .upload(path.to_str().unwrap(), "object", None)
+                .await
+                .unwrap();
+            assert_eq!(wire.load(Ordering::SeqCst), size);
+            assert_eq!(aborts.load(Ordering::SeqCst), 0);
+            let store = provider.baseline_store().unwrap();
+            assert_eq!(
+                store
+                    .match_file(
+                        provider.delta_baseline_key("object"),
+                        "our-completion".into(),
+                        size,
+                        &path
+                    )
+                    .await
+                    .unwrap(),
+                MatchOutcome::Matches {
+                    grid: DELTA_PART_SIZE,
+                    matches: vec![(0, 0, size)]
+                }
+            );
+            let conn =
+                rusqlite::Connection::open(provider.baseline_test_path.as_ref().unwrap()).unwrap();
+            let etag: String = conn
+                .query_row("SELECT etag FROM baselines", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(etag, "\"our-completion\"");
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn s3_baseline_failed_aborted_and_missing_etag_uploads_leave_no_row() {
+        let size = 201 * 1024 * 1024;
+        for (reply, single, failed, aborted) in [
+            (BaselineReply::PartError, false, true, true),
+            (BaselineReply::CompleteError, false, true, true),
+            (BaselineReply::MissingEtag, false, false, false),
+            (BaselineReply::PutError, true, true, false),
+            (BaselineReply::MissingEtag, true, false, false),
+        ] {
+            let BaselineMock {
+                mut provider,
+                dir,
+                aborts,
+                server,
+                ..
+            } = baseline_mock(reply, single).await;
+            let path = dir.path().join("source.bin");
+            std::fs::File::create(&path).unwrap().set_len(size).unwrap();
+            let result = provider
+                .upload(path.to_str().unwrap(), "object", None)
+                .await;
+            assert_eq!(result.is_err(), failed);
+            assert_eq!(aborts.load(Ordering::SeqCst) > 0, aborted);
+            let conn =
+                rusqlite::Connection::open(provider.baseline_test_path.as_ref().unwrap()).unwrap();
+            let rows: usize = conn
+                .query_row("SELECT COUNT(*) FROM baselines", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(rows, 0, "upload outcome must leave no optimistic row");
+            server.abort();
+        }
+    }
+
+    #[test]
     fn clock_skew_classifier_rejects_an_ordinary_timeout() {
         assert!(is_s3_clock_skew_error(
             "The difference between the request time and the server time is too large",
@@ -7276,7 +8084,7 @@ mod tests {
         assert_eq!(provider.multi_thread_cutoff, 250 * 1024 * 1024);
     }
 
-    fn make_provider(endpoint: Option<&str>) -> S3Provider {
+    pub(super) fn make_provider(endpoint: Option<&str>) -> S3Provider {
         S3Provider::new(S3Config {
             endpoint: endpoint.map(String::from),
             region: "us-east-1".to_string(),
@@ -8599,7 +9407,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delta_short_local_file_aborts_instead_of_completing() {
+    /// A source shorter than the size the caller declared is refused before a
+    /// single request goes out: the executor compares the file's length against
+    /// `total_size` at entry, so no multipart exists to abort and nothing needs
+    /// cleaning up. This used to cost a CreateMultipartUpload and then an abort,
+    /// which is why the assertion is now "no request at all" rather than "one
+    /// abort". The abort path stays covered by the PartError case of
+    /// `s3_baseline_failed_aborted_and_missing_etag_uploads_leave_no_row`.
+    async fn delta_short_local_file_is_refused_before_any_request() {
         // The plan is computed from the caller's total_size; a local file
         // shorter than that fails the put read. The executor aborts rather
         // than completing a shorter object over the old key.
@@ -8621,17 +9436,28 @@ mod tests {
                 None,
             )
             .await
-            .expect_err("a truncated local file must fail the put part");
+            .expect_err("a truncated local file must be refused");
 
         let seen = state.lock().unwrap();
         assert!(
             matches!(err, ProviderError::TransferFailed(_)),
             "a read failure is a transfer failure, got: {err}"
         );
-        assert_eq!(seen.aborts, 1, "the failed upload must be aborted");
+        assert!(
+            seen.create_mtimes.is_empty(),
+            "a source that cannot fill the plan must not create a multipart upload"
+        );
+        assert!(
+            seen.puts.is_empty() && seen.copies.is_empty(),
+            "no part may be sent for a source shorter than the declared size"
+        );
+        assert_eq!(
+            seen.aborts, 0,
+            "nothing was created, so there is nothing to abort"
+        );
         assert!(
             seen.completed.is_empty(),
-            "CompleteMultipartUpload must never run after a failed part"
+            "CompleteMultipartUpload must never run"
         );
     }
 
@@ -9612,4 +10438,39 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// The hint the DAG chunks by must always be a whole number of grid cells,
+    /// or its per-part digests cannot be concatenated and the upload seeds no
+    /// baseline at all. The default is already aligned; the override is the
+    /// case that was not, and it is reachable from the CLI's upload buffer flag.
+    #[test]
+    fn dag_part_size_hint_is_always_a_whole_number_of_grid_cells() {
+        const MIB: u64 = 1024 * 1024;
+        let grid = super::super::s3_delta_plan::DELTA_PART_SIZE as usize;
+        let mut provider = make_provider(None);
+
+        // The default must be left exactly where it is.
+        assert_eq!(provider.effective_part_size() % grid, 0);
+        assert_eq!(
+            provider.dag_aligned_part_size(),
+            provider.effective_part_size(),
+            "an already aligned default must not be moved"
+        );
+
+        for mib in [1u64, 5, 10, 12, 17, 100] {
+            provider.set_chunk_sizes(Some(mib * MIB), None);
+            let raw = provider.effective_part_size();
+            let hint = provider.dag_aligned_part_size();
+            assert_eq!(hint % grid, 0, "{mib} MiB override left an unaligned hint");
+            assert!(hint >= raw, "the hint may only round up: {mib} MiB");
+            assert!(
+                hint - raw < grid,
+                "and by less than one cell: {mib} MiB gave {raw} -> {hint}"
+            );
+        }
+    }
 }
+
+#[cfg(test)]
+#[path = "s3_delta_tests.rs"]
+mod delta_adapter_tests;
