@@ -7809,8 +7809,23 @@ const App: React.FC = () => {
   // down rather than leave it half-open.
   const connectToFtp = asConnectPhase(connectToFtpImpl);
 
+  // Ehud #347 (18352684) follow-up, raised in review: the AeroSync dialog owns a
+  // Compare scan of one specific remote session, and no teardown path closed it.
+  // Both callers below are the points where that session stops being the one the
+  // scan describes: the disconnect, and the switch to another tab. Closing a
+  // BACKGROUND tab deliberately does not call this, because the dialog belongs to
+  // the active session; closeSession routes the active-tab case through
+  // switchSession or disconnectFromFtp, so both are covered from here.
+  const closeAeroSyncForTornDownSession = () => setAeroSync(null);
+
   const disconnectFromFtp = async (reason?: 'button' | 'tab-close' | 'close-all') => {
     const logId = humanLog.logStart('DISCONNECT', { server: connectionParams.server });
+    // The AeroSync dialog holds a Compare scan of THIS remote, so it stops
+    // meaning anything the moment the session goes away: its entries point at
+    // paths on a connection that no longer exists, and Execute would run them
+    // against whatever connects next. Nothing used to close it here, so opening
+    // Compare and disconnecting left it up over a dead session.
+    closeAeroSyncForTornDownSession();
     try {
       const overlaySessionId = aeroVaultOverlaySession?.sessionId;
       if (overlaySessionId) {
@@ -7958,6 +7973,10 @@ const App: React.FC = () => {
       if (!showRemotePanel) setShowRemotePanel(true);
       return;
     }
+
+    // Same reason as the disconnect path: the scan belongs to the session being
+    // left behind, not to the one being switched to.
+    closeAeroSyncForTornDownSession();
 
     // Capture current state values before any async operations
     const capturedRemoteFiles = [...remoteFiles];
