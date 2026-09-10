@@ -4,7 +4,7 @@ runtime-version: '49'
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
-  - org.freedesktop.Sdk.Extension.node24
+  - org.freedesktop.Sdk.Extension.node20
 command: aeroftp
 
 finish-args:
@@ -36,7 +36,7 @@ finish-args:
   - --talk-name=org.ayatana.indicator.application
 
 build-options:
-  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
 
 modules:
   # Shared module for libappindicator (system tray support)
