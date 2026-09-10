@@ -10,10 +10,15 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 /// Shared HTTP client with connection pooling and timeouts for AI provider requests.
+///
+/// Both AI clients carry API keys in `x-api-key` and `x-goog-api-key`, which
+/// reqwest does not strip on a cross-origin redirect, so they only follow
+/// redirects that stay on the origin addressed (a custom base URL included).
 pub static AI_HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(120))
+        .redirect(crate::providers::redirect_policy::same_origin_redirect_policy())
         .build()
         .expect("Failed to create AI HTTP client")
 });
@@ -24,6 +29,7 @@ pub static AI_STREAM_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .pool_idle_timeout(Duration::from_secs(300))
+        .redirect(crate::providers::redirect_policy::same_origin_redirect_policy())
         .build()
         .unwrap_or_default()
 });

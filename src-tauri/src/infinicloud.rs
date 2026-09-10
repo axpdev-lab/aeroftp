@@ -87,6 +87,17 @@ pub struct QuotaInfo {
 
 // ── Core API functions ───────────────────────────────────────────────
 
+/// The client for both REST calls. The API key travels in
+/// `X-TeraCLOUD-API-KEY` / `X-InfiniCLOUD-API-KEY`, which reqwest does not strip
+/// on a cross-origin redirect, so redirects stay on the server addressed.
+fn api_client() -> Result<Client, String> {
+    Client::builder()
+        .user_agent(crate::providers::AEROFTP_USER_AGENT)
+        .redirect(crate::providers::redirect_policy::same_origin_redirect_policy())
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))
+}
+
 fn build_basic_header(username: &str, password: &SecretString) -> String {
     let credentials = format!("{}:{}", username, password.expose_secret());
     let encoded = base64::engine::general_purpose::STANDARD.encode(credentials.as_bytes());
@@ -103,10 +114,7 @@ async fn discover(
     password: &SecretString,
     api_key: &str,
 ) -> Result<UserInfo, String> {
-    let client = Client::builder()
-        .user_agent(crate::providers::AEROFTP_USER_AGENT)
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    let client = api_client()?;
     let auth = build_basic_header(username, password);
 
     let resp = client
@@ -166,10 +174,7 @@ async fn get_quota(
     password: &SecretString,
     api_key: &str,
 ) -> Result<QuotaInfo, String> {
-    let client = Client::builder()
-        .user_agent(crate::providers::AEROFTP_USER_AGENT)
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    let client = api_client()?;
     let auth = build_basic_header(username, password);
 
     let url = format!("https://{}/v2/api/ba/dataset/(capacity)", node);
@@ -240,4 +245,27 @@ pub async fn infinicloud_quota(
 ) -> Result<QuotaInfo, String> {
     let secret = SecretString::from(password);
     get_quota(&node, &username, &secret, &api_key).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn the_api_key_never_follows_a_redirect_to_another_origin() {
+        let fx = crate::providers::redirect_policy::fixture::spawn("x-infinicloud-api-key").await;
+        let response = api_client()
+            .unwrap()
+            .get(&fx.cross)
+            .header("X-InfiniCLOUD-API-KEY", "INFINICLOUD-KEY")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::FOUND);
+        assert!(
+            !fx.secret_leaked(),
+            "the API key was replayed to another origin"
+        );
+        assert!(!fx.other_origin_reached());
+    }
 }
