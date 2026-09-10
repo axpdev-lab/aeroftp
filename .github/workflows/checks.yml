@@ -31,7 +31,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install Rust (with rustfmt)
@@ -94,8 +94,56 @@ jobs:
       - name: Provider inventory is not stale
         run: npm run check:provider-inventory
 
+      # `cargo install cargo-audit --locked` compiled the tool from source on
+      # every run: measured at 2m58s, for an audit that then takes about five
+      # seconds, on the workflow that runs more often than any other here (42
+      # times on main in the last seven days).
+      #
+      # The Rust cache above does cache `~/.cargo/bin`, so the intuitive reading
+      # is that it should already have covered this. It does not, because of how
+      # that action saves: on an exact key hit it reports the cache up to date
+      # and skips the save entirely, so a binary installed later in the same job
+      # is never persisted. cargo-audit could only ever enter that cache on the
+      # rarer runs where the dependency key had already changed, which is why it
+      # was rebuilt again and again.
+      #
+      # Give the tool its own cache, keyed by month, so its update cycle is
+      # separate from the app's dependency cycle and neither can skip the other.
+      # Monthly rather than pinned so the tool still moves forward without being
+      # rebuilt forty times to get there, and it does not go stale in the
+      # meantime: `cargo audit` fetches the advisory database at run time rather
+      # than baking it into the binary. Uses the official cache action already
+      # pinned by SHA elsewhere in this repo rather than a binary-installer
+      # action, to add no supply-chain surface to a security step.
+      - name: Month stamp for the cargo-audit cache key
+        id: audit-key
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      # Restore and save are split deliberately. The combined `actions/cache`
+      # saves from a post-job step declared `post-if: success()`, so a job that
+      # ends red never saves. On main the audit below is authoritative, so a
+      # real advisory would fail the job and throw away the binary that had just
+      # been built: every rerun while the advisory is being fixed would pay the
+      # install again, precisely when runs are most frequent. Saving here, right
+      # after a successful install and before anything that can fail, makes the
+      # binary outlive a failing audit.
+      - name: Restore the cargo-audit binary
+        id: cargo-audit-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-${{ runner.os }}-${{ steps.audit-key.outputs.month }}
+
       - name: Install cargo-audit
+        if: steps.cargo-audit-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --locked
+
+      - name: Save the cargo-audit binary
+        if: steps.cargo-audit-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: ${{ steps.cargo-audit-cache.outputs.cache-primary-key }}
 
       - name: Rust dependency audit (cargo audit)
         working-directory: ./src-tauri

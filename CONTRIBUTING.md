@@ -76,7 +76,7 @@ report the blocker.
 
 Core toolchain (all platforms):
 
-- **Node.js 20+** and npm (CI builds on Node 20).
+- **Node.js 24+** and npm (CI builds on Node 24 LTS).
 - **Rust** stable toolchain via [rustup](https://rustup.rs/) (minimum 1.85.0).
 - A **C/C++ compiler toolchain** and **Perl**: two native dependencies build
   from source. `ssh2` vendors OpenSSL (needs `perl` on `PATH`) and

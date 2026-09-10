@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { X, Mail, Copy, Check, ExternalLink, Heart, RefreshCw, CheckCircle, ArrowUpCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { X, Mail, Copy, Check, ExternalLink, Heart, RefreshCw, CheckCircle, ArrowUpCircle, AlertTriangle, Loader2, Lock } from 'lucide-react';
 
 const Github = ({ size = 24 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
@@ -61,16 +61,16 @@ const KEY_DEPENDENCY_LABELS: { name: string; description: string }[] = [
     { name: 'oauth2', description: 'OAuth2' },
 ];
 
-type LibStatus = 'idle' | 'checking' | 'up_to_date' | 'update_available' | 'major_update' | 'error';
+// Classified by the backend (check_dependency_updates), which applies Cargo's semver rules.
+type UpdateStatus = 'up_to_date' | 'compatible_update' | 'incompatible_update' | 'pinned' | 'error';
+type LibStatus = 'idle' | 'checking' | UpdateStatus;
 
-const compareSemver = (current: string, latest: string): 'up_to_date' | 'update_available' | 'major_update' => {
-    const parse = (v: string) => v.split('-')[0].split('.').map(Number);
-    const c = parse(current);
-    const l = parse(latest);
-    if (c[0] < l[0]) return 'major_update';
-    if (c[0] === l[0] && (c[1] < l[1] || (c[1] === l[1] && (c[2] || 0) < (l[2] || 0)))) return 'update_available';
-    return 'up_to_date';
-};
+interface DependencyUpdate {
+    name: string;
+    latest: string | null;
+    latest_compatible: string | null;
+    status: UpdateStatus;
+}
 
 const StatusIcon: React.FC<{ status: LibStatus }> = ({ status }) => {
     switch (status) {
@@ -78,10 +78,12 @@ const StatusIcon: React.FC<{ status: LibStatus }> = ({ status }) => {
             return <Loader2 size={11} className="animate-spin text-gray-400" />;
         case 'up_to_date':
             return <CheckCircle size={11} className="text-green-500" />;
-        case 'update_available':
+        case 'compatible_update':
             return <ArrowUpCircle size={11} className="text-yellow-500" />;
-        case 'major_update':
+        case 'incompatible_update':
             return <AlertTriangle size={11} className="text-red-500" />;
+        case 'pinned':
+            return <Lock size={11} className="text-blue-500" />;
         case 'error':
             return <X size={11} className="text-gray-400" />;
         default:
@@ -128,20 +130,19 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
         setLibStatus(initial);
 
         try {
-            const crateNames = KEY_DEPENDENCY_LABELS.map(d => d.name);
-            const results: { name: string; latest_version: string | null; error: string | null }[] =
-                await invoke('check_crate_versions', { crateNames });
+            const results: DependencyUpdate[] = await invoke('check_dependency_updates');
 
             const latest: Record<string, string> = {};
             const status: Record<string, LibStatus> = {};
-            results.forEach(r => {
-                const current = systemInfo.dep_versions?.[r.name];
-                if (r.latest_version && current && current !== 'unknown') {
-                    latest[r.name] = r.latest_version;
-                    status[r.name] = compareSemver(current, r.latest_version);
-                } else {
-                    status[r.name] = 'error';
+            KEY_DEPENDENCY_LABELS.forEach(({ name }) => {
+                const result = results.find(r => r.name === name);
+                if (!result) {
+                    status[name] = 'error';
+                    return;
                 }
+                status[name] = result.status;
+                const offered = result.status === 'compatible_update' ? result.latest_compatible : result.latest;
+                if (offered) latest[name] = offered;
             });
             setLatestVersions(latest);
             setLibStatus(status);
@@ -380,13 +381,13 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                         const current = systemInfo?.dep_versions?.[dep.name];
                                         const latest = latestVersions[dep.name];
                                         const status = libStatus[dep.name] ?? 'idle';
-                                        const showUpgrade = latest && (status === 'update_available' || status === 'major_update');
+                                        const showUpgrade = latest && (status === 'compatible_update' || status === 'incompatible_update');
                                         return (
                                             <InfoRow key={dep.name} label={dep.name} value={
                                                 <span className="inline-flex items-center gap-1.5">
                                                     <span>{current ?? '...'}</span>
                                                     {showUpgrade && (
-                                                        <span className={`font-mono ${status === 'major_update' ? 'text-red-500 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
+                                                        <span className={`font-mono ${status === 'incompatible_update' ? 'text-red-500 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
                                                             → {latest}
                                                         </span>
                                                     )}

@@ -64,10 +64,13 @@ impl GitLabHttpClient {
         api_base: String,
         accept_invalid_certs: bool,
     ) -> Result<Self, ProviderError> {
+        // `PRIVATE-TOKEN` is not a header reqwest strips on a cross-origin
+        // redirect: keep redirects on the configured instance.
         let client = Client::builder()
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(1800))
             .user_agent(USER_AGENT)
+            .redirect(crate::providers::redirect_policy::same_origin_redirect_policy())
             .danger_accept_invalid_certs(accept_invalid_certs)
             .build()
             .map_err(|e| {
@@ -308,6 +311,29 @@ fn is_server_error(err: &ProviderError) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn the_private_token_never_follows_a_redirect_to_another_origin() {
+        let fx = crate::providers::redirect_policy::fixture::spawn("private-token").await;
+        let client = GitLabHttpClient::new(
+            SecretString::from("GITLAB-TOKEN".to_string()),
+            "http://127.0.0.1/api/v4".to_string(),
+            false,
+        )
+        .unwrap();
+
+        let response = client.request(Method::GET, &fx.cross).send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::FOUND);
+        assert!(
+            !fx.secret_leaked(),
+            "PRIVATE-TOKEN was replayed to another origin"
+        );
+        assert!(!fx.other_origin_reached());
+
+        let response = client.request(Method::GET, &fx.same).send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(fx.same_origin_got_secret());
+    }
 
     // Row 4 (#347): the GitLab `execute` status match, now a pure classifier.
     #[test]

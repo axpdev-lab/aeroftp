@@ -36646,7 +36646,10 @@ async fn cmd_keystore_import(
         // is making progress through Argon2id and zstd.
         let progress_cb = |phase: &str, current: u32, total: u32| {
             // Throttle: only emit at start of each phase + every 10%.
-            if current == 0 || (total > 0 && current % total.max(10) == 0) || current == total {
+            if current == 0
+                || (total > 0 && current.is_multiple_of(total.max(10)))
+                || current == total
+            {
                 eprintln!("[keystore import] {phase}: {current}/{total}");
             }
         };
@@ -47816,7 +47819,7 @@ async fn ncdu_scan(
             break;
         }
         if let Some(sp) = spinner {
-            if *entry_count % 50 == 0 {
+            if (*entry_count).is_multiple_of(50) {
                 sp.set_message(format!("Scanned {} entries...", entry_count));
             }
         }

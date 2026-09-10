@@ -6,7 +6,12 @@ authors = ["axpdev"]
 license = "GPL-3.0-or-later"
 repository = "https://github.com/axpdev-lab/aeroftp"
 edition = "2021"
-rust-version = "1.85.0"
+# The floor the resolved graph actually needs, not a wish: measured with
+# `cargo metadata` as the highest `rust-version` any locked crate declares
+# (sevenz-rust2 0.21.6 asks for 1.93; the iroh stack for 1.91). The previous
+# 1.85.0 had been false for a while, with 74 locked crates above it. The
+# toolchain that builds and lints is pinned separately in rust-toolchain.toml.
+rust-version = "1.93"
 default-run = "aeroftp"
 
 [lib]
@@ -27,6 +32,11 @@ path = "src/bin/seed_test_profiles.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# build.rs derives the Dependencies panel from the manifests and Cargo.lock:
+# toml reads the manifests, semver picks the locked version a requirement
+# selects. Both are already in the graph as normal dependencies.
+toml = "1.1"
+semver = "1.0.28"
 
 [dependencies]
 # WI-3d: promoted from [dev-dependencies] to a NORMAL dependency so the iroh P2P
@@ -148,12 +158,12 @@ rand = "0.8"
 # stays on rand 0.8 to avoid an ecosystem-wide bump.
 rand_010 = { package = "rand", version = "0.10" }
 tauri-plugin-shell = "2"
-tauri-plugin-notification = "2.3.3"
+tauri-plugin-notification = "2.4.0"
 semver = "1.0.28"
 sigstore = { version = "0.14", default-features = false, features = ["verify", "sigstore-trust-root", "native-tls"] }
 
 # Secure Credential Storage (v1.3.2 hotfix)
-argon2 = "0.5"
+argon2 = "0.6"
 # Step 0 RustCrypto 0.11 audit, 2026-07-13:
 # Keep AES-GCM on 0.10.3 until noq-proto moves off aes-gcm 0.10.3. Bumping only
 # AeroFTP's direct dependency leaves both aes-gcm 0.10 and 0.11 in Cargo.lock.
@@ -184,7 +194,7 @@ russh-sftp = "2.1"
 ssh2 = { version = "0.9.5", features = ["vendored-openssl"] }
 
 # Archive Support with Encryption (v1.3.0+)
-sevenz-rust2 = { version = "0.21", features = ["aes256", "compress", "util"] }  # 7z with AES-256 + encrypted header (-mhe)
+sevenz-rust2 = { version = "0.22", features = ["aes256", "compress", "util"] }  # 7z with AES-256 + encrypted header (-mhe)
 unrar = "0.5"                                                          # RAR extraction
 trash = "5"                                                            # Cross-platform trash/recycle bin
 tar = "0.4.46"                                                        # TAR archives (CVE symlink chmod + PAX size fix)
@@ -249,7 +259,7 @@ crossterm = "0.29"                                                     # Cross-p
 #      envelope field never has to fall back at decode time).
 #   2. aerorsync `real_wire.rs` -- decompresses DEFLATED_DATA literals
 #      emitted by rsync's sender when CPRES_ZSTD is negotiated.
-zstd = "0.13"
+zstd = "0.14"
 
 # P2-01: Reed-Solomon erasure coding for AeroVault v4 ECC layer (T-AEROVAULT-ECC).
 # Crate: reed-solomon-erasure (pure-Rust GF(2^8) implementation).

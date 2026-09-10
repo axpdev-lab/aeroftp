@@ -58,6 +58,7 @@ pub mod onedrive;
 pub mod opendrive;
 pub mod pcloud;
 pub mod peer;
+pub mod redirect_policy;
 pub mod retry_after;
 pub mod s3;
 pub(crate) mod s3_delta;
