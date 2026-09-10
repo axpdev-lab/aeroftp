@@ -133,7 +133,7 @@ pub fn aes_ecb_decrypt_block(data: &[u8; 16], key: &[u8; 16]) -> MegaCryptoResul
 
 /// AES-128-ECB decrypt multiple 16-byte blocks (e.g. RSA private key, node keys).
 pub fn aes_ecb_decrypt_multi(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>> {
-    if data.len() % 16 != 0 {
+    if !data.len().is_multiple_of(16) {
         return Err(ProviderError::ParseError(format!(
             "AES-ECB multi-block: data length {} is not a multiple of 16",
             data.len()
@@ -151,7 +151,7 @@ pub fn aes_ecb_decrypt_multi(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Ve
 
 /// AES-128-ECB encrypt multiple 16-byte blocks.
 pub fn aes_ecb_encrypt_multi(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>> {
-    if data.len() % 16 != 0 {
+    if !data.len().is_multiple_of(16) {
         return Err(ProviderError::ParseError(format!(
             "AES-ECB multi-block: data length {} is not a multiple of 16",
             data.len()
@@ -174,7 +174,7 @@ type Aes128CbcEnc = cbc::Encryptor<Aes128>;
 
 /// AES-128-CBC decrypt (zero IV, no padding: MEGA node attributes).
 pub fn aes_cbc_decrypt(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>> {
-    if data.len() % 16 != 0 {
+    if !data.len().is_multiple_of(16) {
         return Err(ProviderError::ParseError(format!(
             "AES-CBC: data length {} is not a multiple of 16",
             data.len()
@@ -190,7 +190,7 @@ pub fn aes_cbc_decrypt(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>>
 
 /// AES-128-CBC encrypt (zero IV, no padding: MEGA node attributes).
 pub fn aes_cbc_encrypt(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>> {
-    if data.len() % 16 != 0 {
+    if !data.len().is_multiple_of(16) {
         return Err(ProviderError::ParseError(format!(
             "AES-CBC: data length {} is not a multiple of 16",
             data.len()
