@@ -1585,7 +1585,7 @@
       "import_keystore",
       "read_keystore_metadata",
       "get_dependencies",
-      "check_crate_versions",
+      "check_dependency_updates",
       "get_system_info",
       "read_ui_tokens_file",
       "ensure_ui_tokens_file",
