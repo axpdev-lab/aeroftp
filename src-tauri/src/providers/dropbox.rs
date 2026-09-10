@@ -3001,6 +3001,162 @@ mod tests {
         server.abort();
     }
 
+    // Live retest for #397: the reporter saw a 409 restoring from the Dropbox
+    // trash, and folders rendered with the file icon. Both come from the same
+    // place: a Dropbox tombstone does not carry the entry kind, so the listing
+    // was guessing it and the restore used the latest revision even when it was
+    // not restorable.
+    //
+    // This is the red/green proof on a live account. On a pre-#738 build the
+    // listing labels the trashed folder as a file and the restore of an expired
+    // revision answers 409; with the revision probe it passes.
+    //
+    // Run explicitly (never in CI):
+    //   cargo test --release --lib live_trash_identifies_kinds_and_restores -- --ignored --nocapture
+    // Env: DROPBOX_TEST_PROFILE (default "My Dropbox").
+    //
+    // The test builds its own uniquely named tree, trashes a file and a folder,
+    // reads the trash, restores the file and byte-compares it, checks that the
+    // folder restore is refused with the explanation rather than a raw 409, and
+    // removes what it created. It never empties the trash: that is the whole
+    // account's, not this test's.
+    #[tokio::test]
+    #[ignore = "live Dropbox test; run explicitly"]
+    async fn live_trash_identifies_kinds_and_restores_a_file() {
+        let profile_query =
+            std::env::var("DROPBOX_TEST_PROFILE").unwrap_or_else(|_| "My Dropbox".to_string());
+        let status = crate::credential_store::CredentialStore::init().expect("vault init failed");
+        if status == "MASTER_PASSWORD_REQUIRED" {
+            let password = zeroize::Zeroizing::new(
+                std::env::var("AEROFTP_MASTER_PASSWORD")
+                    .expect("set AEROFTP_MASTER_PASSWORD for this master-mode test vault"),
+            );
+            crate::credential_store::CredentialStore::unlock_with_master(&password, None)
+                .expect("test vault unlock failed");
+        }
+        let store = crate::credential_store::CredentialStore::from_cache().expect("vault not open");
+        let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)
+            .expect("profile listing failed");
+        let matched = profiles
+            .iter()
+            .find(|p| {
+                p.get("name")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|n| n.eq_ignore_ascii_case(&profile_query))
+            })
+            .cloned()
+            .unwrap_or_else(|| panic!("test profile {profile_query:?} not found"));
+        let profile_id = matched
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        // Same two steps the CLI takes for an OAuth profile: the app keys come
+        // from the vault's oauth client config, the refresh chain is bound by
+        // profile id, and connect() resolves the access token from it.
+        let (app_key, app_secret) =
+            crate::bridge_commands::resolve_oauth_client_config(&store, "dropbox");
+        let mut p = DropboxProvider::new(DropboxConfig::new(&app_key, &app_secret))
+            .with_profile_id(&profile_id);
+        p.connect().await.expect("connect failed");
+
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let root = format!("/aeroftp-397-live-{stamp}");
+        let body = format!("aeroftp 397 live retest\nstamp {stamp}\n");
+        let local = std::env::temp_dir().join(format!("dbx-397-{stamp}.txt"));
+        tokio::fs::write(&local, body.as_bytes()).await.unwrap();
+
+        p.mkdir(&root).await.expect("mkdir root");
+        p.mkdir(&format!("{root}/sub")).await.expect("mkdir sub");
+        p.upload(local.to_str().unwrap(), &format!("{root}/file.txt"), None)
+            .await
+            .expect("upload file");
+        p.upload(
+            local.to_str().unwrap(),
+            &format!("{root}/sub/nested.txt"),
+            None,
+        )
+        .await
+        .expect("upload nested");
+
+        // Trash both kinds, then read the trash back.
+        p.delete(&format!("{root}/file.txt"))
+            .await
+            .expect("delete file");
+        p.delete(&format!("{root}/sub")).await.expect("delete sub");
+        let deleted = p.list_deleted(&root).await.expect("list_deleted");
+        let kind = |name: &str| -> String {
+            deleted
+                .iter()
+                .find(|e| e.name == name)
+                .unwrap_or_else(|| panic!("{name} missing from the trash listing: {deleted:#?}"))
+                .metadata
+                .get("trash_kind")
+                .cloned()
+                .unwrap_or_default()
+        };
+        // The two halves of the report: the folder must not read as a file, and
+        // the file must carry a revision that the restore can actually use.
+        assert_eq!(
+            kind("sub"),
+            "folder",
+            "trashed folder read as {:?}",
+            kind("sub")
+        );
+        assert_eq!(kind("file.txt"), "file");
+        assert!(
+            deleted
+                .iter()
+                .find(|e| e.name == "file.txt")
+                .and_then(|e| e.metadata.get("rev"))
+                .is_some_and(|r| !r.is_empty()),
+            "no usable revision on the trashed file"
+        );
+
+        // The file comes back, byte for byte. The stale rev is passed on purpose:
+        // restore_file revalidates the tombstone and picks a restorable revision.
+        p.restore_file(&format!("{root}/file.txt"), "stale-rev")
+            .await
+            .expect("restore file");
+        let back = std::env::temp_dir().join(format!("dbx-397-back-{stamp}.txt"));
+        p.download(&format!("{root}/file.txt"), back.to_str().unwrap(), None)
+            .await
+            .expect("download restored file");
+        assert_eq!(
+            tokio::fs::read(&back).await.unwrap(),
+            body.as_bytes(),
+            "restored file differs from what was uploaded"
+        );
+
+        // The folder is refused, and refused in words. Dropbox restores file
+        // revisions and has no folder equivalent, so the 409 the reporter saw is
+        // the API being asked something it cannot do: the value here is that the
+        // message says so instead of surfacing the status code.
+        let err = p
+            .restore_file(&format!("{root}/sub"), "")
+            .await
+            .expect_err("a folder restore cannot succeed on Dropbox")
+            .to_string();
+        assert!(
+            err.contains("dropbox.com") && !err.contains("409"),
+            "folder restore should explain itself, got: {err}"
+        );
+
+        // Clean up what this test created, and prove it is gone.
+        p.delete(&format!("{root}/file.txt")).await.ok();
+        p.delete(&root).await.expect("cleanup root");
+        assert!(
+            !p.exists(&root).await.unwrap_or(false),
+            "test tree still present at {root}"
+        );
+        let _ = tokio::fs::remove_file(&local).await;
+        let _ = tokio::fs::remove_file(&back).await;
+        eprintln!("live #397 retest passed against profile {profile_query:?}, tree {root} removed");
+    }
+
     #[test]
     fn clone_for_transfer_requires_connection() {
         let p = DropboxProvider::new(demo_cfg());
