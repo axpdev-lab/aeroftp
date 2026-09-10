@@ -50,7 +50,9 @@ fn keeps_origin(original: &Url, next: &Url) -> bool {
 /// than `Authorization`.
 pub fn same_origin_redirect_policy() -> Policy {
     Policy::custom(|attempt| {
-        if attempt.previous().len() >= MAX_REDIRECTS {
+        // `previous()` starts with the URL of the original request, which is
+        // not a redirect: reqwest's own limit is `len() > max` for that reason.
+        if attempt.previous().len() > MAX_REDIRECTS {
             return attempt.error("too many redirects");
         }
         let keeps = match attempt.previous().first() {
@@ -154,15 +156,17 @@ pub(crate) mod fixture {
                 )
                 .route(
                     "/hops/{n}",
-                    get(|axum::extract::Path(n): axum::extract::Path<u32>| async move {
-                        use axum::response::IntoResponse;
-                        if n == 0 {
-                            "landed".into_response()
-                        } else {
-                            (StatusCode::FOUND, [(LOCATION, format!("/hops/{}", n - 1))])
-                                .into_response()
-                        }
-                    }),
+                    get(
+                        |axum::extract::Path(n): axum::extract::Path<u32>| async move {
+                            use axum::response::IntoResponse;
+                            if n == 0 {
+                                "landed".into_response()
+                            } else {
+                                (StatusCode::FOUND, [(LOCATION, format!("/hops/{}", n - 1))])
+                                    .into_response()
+                            }
+                        },
+                    ),
                 )
                 .route(
                     "/landed",
@@ -323,7 +327,10 @@ mod tests {
             .send()
             .await
             .unwrap_err();
-        assert!(error.is_redirect(), "expected a redirect error, got {error:?}");
+        assert!(
+            error.is_redirect(),
+            "expected a redirect error, got {error:?}"
+        );
     }
 
     /// The two shared AI clients carry `x-api-key` (Anthropic) and
