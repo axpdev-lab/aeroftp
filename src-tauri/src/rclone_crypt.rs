@@ -448,7 +448,7 @@ fn eme_transform(
     encrypt: bool,
 ) -> Result<Vec<u8>, String> {
     let m = data.len() / AES_BLOCK;
-    if m == 0 || data.len() % AES_BLOCK != 0 {
+    if m == 0 || !data.len().is_multiple_of(AES_BLOCK) {
         return Err("EME: data must be a non-empty multiple of 16 bytes".into());
     }
 
