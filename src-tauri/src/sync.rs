@@ -4523,7 +4523,7 @@ fn retry_overrides(policy: &RetryPolicy) -> (Option<u32>, Option<String>) {
     // CLI default for --retries-sleep is "1s"; emit override only when meaningfully different.
     let sleep = if policy.base_delay_ms == 1000 {
         None
-    } else if policy.base_delay_ms % 1000 == 0 {
+    } else if policy.base_delay_ms.is_multiple_of(1000) {
         Some(format!("{}s", policy.base_delay_ms / 1000))
     } else {
         Some(format!("{}ms", policy.base_delay_ms))

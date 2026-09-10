@@ -484,7 +484,7 @@ impl MultipartBaseline {
         let mut seen = 0u64;
         let mut digests = Vec::new();
         for (index, (number, etag)) in completed.iter().enumerate() {
-            if *number != index as u32 + 1 || seen % grid != 0 {
+            if *number != index as u32 + 1 || !seen.is_multiple_of(grid) {
                 return None;
             }
             let (sent_etag, part) = self.parts.remove(number)?;

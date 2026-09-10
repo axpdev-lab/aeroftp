@@ -6,7 +6,12 @@ authors = ["axpdev"]
 license = "GPL-3.0-or-later"
 repository = "https://github.com/axpdev-lab/aeroftp"
 edition = "2021"
-rust-version = "1.85.0"
+# The floor the resolved graph actually needs, not a wish: measured with
+# `cargo metadata` as the highest `rust-version` any locked crate declares
+# (sevenz-rust2 0.21.6 asks for 1.93; the iroh stack for 1.91). The previous
+# 1.85.0 had been false for a while, with 74 locked crates above it. The
+# toolchain that builds and lints is pinned separately in rust-toolchain.toml.
+rust-version = "1.93"
 default-run = "aeroftp"
 
 [lib]
@@ -148,7 +153,7 @@ rand = "0.8"
 # stays on rand 0.8 to avoid an ecosystem-wide bump.
 rand_010 = { package = "rand", version = "0.10" }
 tauri-plugin-shell = "2"
-tauri-plugin-notification = "2.3.3"
+tauri-plugin-notification = "2.4.0"
 semver = "1.0.28"
 sigstore = { version = "0.14", default-features = false, features = ["verify", "sigstore-trust-root", "native-tls"] }
 

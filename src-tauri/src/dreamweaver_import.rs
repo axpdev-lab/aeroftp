@@ -79,7 +79,7 @@ pub fn reveal_dreamweaver(enc: &str) -> String {
         return String::new();
     }
     let bytes = enc.as_bytes();
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         return String::new();
     }
     let mut out = Vec::with_capacity(bytes.len() / 2);

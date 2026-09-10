@@ -2,7 +2,7 @@
 name = "aeroftp-peer-l0"
 version = "0.0.1-spike"
 edition = "2021"
-rust-version = "1.85.0"
+rust-version = "1.91"  # iroh 1.x declares 1.91; see the app manifest for how this is measured
 publish = false
 description = "AeroFTP Peer L0 spike — isolated iroh transport experiment (T-PEER)"
 license = "GPL-3.0-or-later"

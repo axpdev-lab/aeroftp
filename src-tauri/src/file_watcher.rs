@@ -28,7 +28,7 @@ const WATCHER_DROP_LOG_INTERVAL: u64 = 100;
 
 fn record_watcher_drop(source: &'static str, err: impl std::fmt::Display) {
     let n = WATCHER_DROP_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
-    if n == 1 || n % WATCHER_DROP_LOG_INTERVAL == 0 {
+    if n == 1 || n.is_multiple_of(WATCHER_DROP_LOG_INTERVAL) {
         warn!(
             "Watcher channel saturated at {} (total drops={}, last error={})",
             source, n, err
