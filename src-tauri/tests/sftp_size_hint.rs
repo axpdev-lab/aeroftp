@@ -394,6 +394,14 @@ async fn connect(port: u16) -> SftpProvider {
 
 /// One test, sequential phases: HOME is process-wide and the detector flag
 /// is reset between phases, so nothing can race itself.
+// Unix only, and the reason is the line below rather than portability taste:
+// the guard against writing into a real `known_hosts` is a redirected `HOME`,
+// and on Windows `russh` resolves that file through the user profile API, which
+// no environment variable redirects. Left running there, this test would learn
+// the ephemeral 127.0.0.1 key into the developer's own `.ssh\known_hosts`.
+// Setting the Windows profile variables would not help for the same reason, so
+// the honest fix is to not run rather than to pretend the guard holds.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn hinted_download_overlaps_stat_and_open() {
     let home = std::env::temp_dir().join(format!("kimi-sftp-hint-{}", std::process::id()));

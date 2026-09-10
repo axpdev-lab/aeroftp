@@ -1579,12 +1579,25 @@ impl StorageProvider for SftpProvider {
             }
         };
         let total_size = metadata.size.unwrap_or(0);
+        // The OPEN above is speculation, fired next to the STAT to overlap the
+        // two round trips. Its failure is not the download's failure: the fresh
+        // STAT can still select the pooled, read-ahead or pipelined path, and
+        // each of those opens handles of its own. Aborting here would turn a
+        // transient refusal, a warm worker hitting the server's handle limit
+        // being the realistic one, into a failed download that used to work.
+        //
+        // Degrading to "no speculative handle" hides nothing: the serial path
+        // opens again below and classifies the same error the same way, so a
+        // genuine permission or missing-file failure still surfaces, once.
         let mut preopened = match preopened {
             Some(Ok(file)) => Some(file),
             Some(Err(e)) => {
-                return Err(classify_russh_err(e, |s| {
-                    ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
-                }))
+                tracing::debug!(
+                    "SFTP: speculative OPEN of {} failed ({}); continuing without it",
+                    full_path,
+                    e
+                );
+                None
             }
             None => None,
         };
