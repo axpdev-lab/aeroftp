@@ -79,6 +79,8 @@ pub(crate) mod fixture {
         pub same: String,
         /// On the origin, answers 302 to itself, forever.
         pub looping: String,
+        /// On the origin, `{hops}/{n}` redirects `n` times before answering.
+        pub hops: String,
         pub other_origin_hits: Arc<AtomicUsize>,
         pub other_origin_saw_secret: Arc<AtomicBool>,
         pub same_origin_saw_secret: Arc<AtomicBool>,
@@ -151,6 +153,18 @@ pub(crate) mod fixture {
                     get(|| async { (StatusCode::FOUND, [(LOCATION, "/loop")]) }),
                 )
                 .route(
+                    "/hops/{n}",
+                    get(|axum::extract::Path(n): axum::extract::Path<u32>| async move {
+                        use axum::response::IntoResponse;
+                        if n == 0 {
+                            "landed".into_response()
+                        } else {
+                            (StatusCode::FOUND, [(LOCATION, format!("/hops/{}", n - 1))])
+                                .into_response()
+                        }
+                    }),
+                )
+                .route(
                     "/landed",
                     get(move |headers: HeaderMap| {
                         let saw = Arc::clone(&saw);
@@ -175,6 +189,7 @@ pub(crate) mod fixture {
             cross: format!("http://{origin_addr}/cross"),
             same: format!("http://{origin_addr}/same"),
             looping: format!("http://{origin_addr}/loop"),
+            hops: format!("http://{origin_addr}/hops"),
             other_origin_hits,
             other_origin_saw_secret,
             same_origin_saw_secret,
@@ -283,6 +298,32 @@ mod tests {
             error.is_redirect(),
             "expected a redirect error, got {error:?}"
         );
+    }
+
+    /// The ceiling is pinned against reqwest's default policy itself, not
+    /// against a reading of its source: whatever number of redirects the
+    /// default client follows, this policy follows the same, one more fails.
+    #[tokio::test]
+    async fn the_redirect_ceiling_is_the_same_as_reqwests_default() {
+        let fx = fixture::spawn("x-api-key").await;
+        let reference = reqwest::Client::new();
+        for hops in [10u32, 11] {
+            let url = format!("{}/{hops}", fx.hops);
+            let ours = client().get(&url).send().await;
+            let default = reference.get(&url).send().await;
+            assert_eq!(
+                ours.is_ok(),
+                default.is_ok(),
+                "{hops} redirects: this policy {ours:?}, reqwest default {default:?}"
+            );
+        }
+        assert!(client().get(format!("{}/10", fx.hops)).send().await.is_ok());
+        let error = client()
+            .get(format!("{}/11", fx.hops))
+            .send()
+            .await
+            .unwrap_err();
+        assert!(error.is_redirect(), "expected a redirect error, got {error:?}");
     }
 
     /// The two shared AI clients carry `x-api-key` (Anthropic) and
