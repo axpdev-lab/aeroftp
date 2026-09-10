@@ -3066,34 +3066,88 @@ mod tests {
             .as_secs();
         let root = format!("/aeroftp-397-live-{stamp}");
         let body = format!("aeroftp 397 live retest\nstamp {stamp}\n");
-        let local = std::env::temp_dir().join(format!("dbx-397-{stamp}.txt"));
-        tokio::fs::write(&local, body.as_bytes()).await.unwrap();
-
-        p.mkdir(&root).await.expect("mkdir root");
-        p.mkdir(&format!("{root}/sub")).await.expect("mkdir sub");
-        p.upload(local.to_str().unwrap(), &format!("{root}/file.txt"), None)
+        // The local fixture lives in a directory the OS creates for this run,
+        // not under a predictable name in the shared temp dir: a path another
+        // local user could create first, as a symlink for instance, would turn
+        // this write into an overwrite of whatever the link points at.
+        let scratch = tempfile::tempdir().expect("private scratch dir");
+        let local = scratch.path().join("upload.txt");
+        let back = scratch.path().join("restored.txt");
+        tokio::fs::write(&local, body.as_bytes())
             .await
-            .expect("upload file");
-        p.upload(
-            local.to_str().unwrap(),
-            &format!("{root}/sub/nested.txt"),
-            None,
-        )
-        .await
-        .expect("upload nested");
+            .expect("write local fixture");
 
-        // Trash both kinds, then read the trash back.
-        p.delete(&format!("{root}/file.txt"))
+        // Every remote step runs inside this block and reports instead of
+        // panicking. Once the first mkdir succeeds, a panic anywhere skips the
+        // cleanup below and leaves the tree on a real account, and the setup
+        // steps fail as easily as the listing does: they were the exits the
+        // previous version still left open. What the checks need is captured
+        // here and asserted only after the cleanup has run.
+        let observed: Result<(_, _, _, _), String> = async {
+            p.mkdir(&root)
+                .await
+                .map_err(|e| format!("mkdir root: {e}"))?;
+            p.mkdir(&format!("{root}/sub"))
+                .await
+                .map_err(|e| format!("mkdir sub: {e}"))?;
+            p.upload(local.to_str().unwrap(), &format!("{root}/file.txt"), None)
+                .await
+                .map_err(|e| format!("upload file: {e}"))?;
+            p.upload(
+                local.to_str().unwrap(),
+                &format!("{root}/sub/nested.txt"),
+                None,
+            )
             .await
-            .expect("delete file");
-        p.delete(&format!("{root}/sub")).await.expect("delete sub");
-        let deleted = p.list_deleted(&root).await.expect("list_deleted");
+            .map_err(|e| format!("upload nested: {e}"))?;
+
+            // Trash both kinds, then read the trash back.
+            p.delete(&format!("{root}/file.txt"))
+                .await
+                .map_err(|e| format!("delete file: {e}"))?;
+            p.delete(&format!("{root}/sub"))
+                .await
+                .map_err(|e| format!("delete sub: {e}"))?;
+            let deleted = p
+                .list_deleted(&root)
+                .await
+                .map_err(|e| format!("list_deleted: {e}"))?;
+
+            // The file must come back byte for byte. The stale rev is passed on
+            // purpose: passing means the tombstone was revalidated rather than
+            // trusted.
+            let restore_outcome = p
+                .restore_file(&format!("{root}/file.txt"), "stale-rev")
+                .await;
+            let restored_bytes = if restore_outcome.is_ok() {
+                p.download(&format!("{root}/file.txt"), back.to_str().unwrap(), None)
+                    .await
+                    .ok();
+                tokio::fs::read(&back).await.ok()
+            } else {
+                None
+            };
+            let folder_restore = p.restore_file(&format!("{root}/sub"), "").await;
+            Ok((deleted, restore_outcome, restored_bytes, folder_restore))
+        }
+        .await;
+
+        // Clean up first, whatever happened above, so a failure cannot litter
+        // the account. The local fixture goes with `scratch` when it drops.
+        p.delete(&format!("{root}/file.txt")).await.ok();
+        let cleanup = p.delete(&root).await;
+        let still_there = p.exists(&root).await.unwrap_or(false);
+
+        let (deleted, restore_outcome, restored_bytes, folder_restore) =
+            observed.unwrap_or_else(|e| {
+                panic!("live #397 retest failed before its checks (cleanup already ran): {e}")
+            });
+
         // A row that is not in the listing at all and a row whose kind was not
-        // established both have to survive until after the cleanup, and they
-        // have to stay distinguishable: Dropbox's trash listing is eventually
-        // consistent, so a missing row means "ask again", while an empty kind
-        // means the probe answered and could not name it. Collapsing them into
-        // one empty string would report the first as the second.
+        // established have to stay distinguishable: Dropbox's trash listing is
+        // eventually consistent, so a missing row means "ask again", while an
+        // empty kind means the probe answered and could not name it. Collapsing
+        // them into one empty string would report the first as the second.
         let row = |name: &str| deleted.iter().find(|e| e.name == name);
         let kind = |name: &str| -> String {
             row(name)
@@ -3102,42 +3156,12 @@ mod tests {
         };
         let folder_listed = row("sub").is_some();
         let file_listed = row("file.txt").is_some();
-        // Observations are collected now and asserted after the cleanup below.
-        // A live test that fails before it cleans up leaves debris on somebody's
-        // real account and the next run starts from a dirty state, which is not
-        // hypothetical: it is what the red run of this very test did.
         let folder_kind = kind("sub");
         let file_kind = kind("file.txt");
-        let file_rev = deleted
-            .iter()
-            .find(|e| e.name == "file.txt")
+        let file_rev = row("file.txt")
             .and_then(|e| e.metadata.get("rev"))
             .cloned()
             .unwrap_or_default();
-
-        // The file must come back byte for byte. The stale rev is passed on
-        // purpose: passing means the tombstone was revalidated rather than
-        // trusted. Outcomes are captured, not asserted, until after cleanup.
-        let restore_outcome = p
-            .restore_file(&format!("{root}/file.txt"), "stale-rev")
-            .await;
-        let back = std::env::temp_dir().join(format!("dbx-397-back-{stamp}.txt"));
-        let restored_bytes = if restore_outcome.is_ok() {
-            p.download(&format!("{root}/file.txt"), back.to_str().unwrap(), None)
-                .await
-                .ok();
-            tokio::fs::read(&back).await.ok()
-        } else {
-            None
-        };
-        let folder_restore = p.restore_file(&format!("{root}/sub"), "").await;
-
-        // Clean up first, so a failed assertion cannot litter the account.
-        p.delete(&format!("{root}/file.txt")).await.ok();
-        let cleanup = p.delete(&root).await;
-        let still_there = p.exists(&root).await.unwrap_or(false);
-        let _ = tokio::fs::remove_file(&local).await;
-        let _ = tokio::fs::remove_file(&back).await;
 
         // The two halves of the report: the folder must not read as a file, and
         // the file must carry a revision the restore can actually use.
