@@ -119,9 +119,17 @@ jobs:
         id: audit-key
         run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache the cargo-audit binary
+      # Restore and save are split deliberately. The combined `actions/cache`
+      # saves from a post-job step declared `post-if: success()`, so a job that
+      # ends red never saves. On main the audit below is authoritative, so a
+      # real advisory would fail the job and throw away the binary that had just
+      # been built: every rerun while the advisory is being fixed would pay the
+      # install again, precisely when runs are most frequent. Saving here, right
+      # after a successful install and before anything that can fail, makes the
+      # binary outlive a failing audit.
+      - name: Restore the cargo-audit binary
         id: cargo-audit-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cargo/bin/cargo-audit
           key: cargo-audit-${{ runner.os }}-${{ steps.audit-key.outputs.month }}
@@ -129,6 +137,13 @@ jobs:
       - name: Install cargo-audit
         if: steps.cargo-audit-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --locked
+
+      - name: Save the cargo-audit binary
+        if: steps.cargo-audit-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: ${{ steps.cargo-audit-cache.outputs.cache-primary-key }}
 
       - name: Rust dependency audit (cargo audit)
         working-directory: ./src-tauri
