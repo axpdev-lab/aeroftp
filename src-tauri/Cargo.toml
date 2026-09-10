@@ -254,7 +254,7 @@ crossterm = "0.29"                                                     # Cross-p
 #      envelope field never has to fall back at decode time).
 #   2. aerorsync `real_wire.rs` -- decompresses DEFLATED_DATA literals
 #      emitted by rsync's sender when CPRES_ZSTD is negotiated.
-zstd = "0.13"
+zstd = "0.14"
 
 # P2-01: Reed-Solomon erasure coding for AeroVault v4 ECC layer (T-AEROVAULT-ECC).
 # Crate: reed-solomon-erasure (pure-Rust GF(2^8) implementation).
