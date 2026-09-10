@@ -1,146 +1,194 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
+use std::path::{Path, PathBuf};
 
-/// Dependencies to expose as compile-time env vars for the About dialog
-const TRACKED_DEPS: &[&str] = &[
-    // Core
-    "tauri",
-    "tokio",
-    "serde",
-    "serde_json",
-    "anyhow",
-    "thiserror",
-    "chrono",
-    "log",
-    "tracing",
-    "portable-pty",
-    "notify",
-    "image",
-    "tokio-util",
-    "futures-util",
-    "async-trait",
-    "tracing-subscriber",
-    "toml",
-    "semver",
-    "uuid",
-    "regex",
-    "notify-debouncer-full",
-    // Protocols
-    "suppaftp",
-    "russh",
-    "russh-sftp",
-    "reqwest",
-    "quick-xml",
-    "oauth2",
-    "rustls",
-    "ssh2",
-    "tokio-rustls",
-    "rustls-native-certs",
-    "webpki-roots",
-    "axum",
-    "http",
-    "url",
-    "urlencoding",
-    "percent-encoding",
-    // Security
-    "argon2",
-    "aes-gcm",
-    "aes-gcm-siv",
-    "chacha20poly1305",
-    "hkdf",
-    "aes-kw",
-    "aes-siv",
-    "scrypt",
-    "ring",
-    "secrecy",
-    "sha2",
-    "hmac",
-    "blake3",
-    "jsonwebtoken",
-    "aerovault",
-    "keyring",
-    "aes",
-    "cbc",
-    "ctr",
-    "crypto_secretbox",
-    "pbkdf2",
-    "sha1",
-    "ripemd",
-    "md-5",
-    "zeroize",
-    "subtle",
-    "data-encoding",
-    "base64",
-    "hex",
-    "num-bigint-dig",
-    "totp-rs",
-    "sigstore",
-    // Archives
-    "sevenz-rust2",
-    "zip",
-    "tar",
-    "flate2",
-    "xz2",
-    "bzip2",
-    "unrar",
-    "zstd",
-    "reed-solomon-erasure",
-    "xxhash-rust",
-    // CLI & Tools
-    "clap",
-    "clap_complete",
-    "indicatif",
-    "rpassword",
-    "ctrlc",
-    "globset",
-    "ratatui",
-    "crossterm",
-    "libunftp",
-    "unftp-core",
-    "rusqlite",
-    "dirs",
-    "filetime",
-    "tempfile",
-    "walkdir",
-    "mime_guess",
-    "open",
-    "similar",
-    "trash",
-    "arboard",
-    // System
-    "libc",
-    "windows",
-    "winreg",
-    "fuser",
-    "gtk",
-    "hound",
-    "whisper-rs",
-    // Plugins
-    "tauri-plugin-fs",
-    "tauri-plugin-dialog",
-    "tauri-plugin-shell",
-    "tauri-plugin-notification",
-    "tauri-plugin-log",
-    "tauri-plugin-single-instance",
-    "tauri-plugin-localhost",
-    "tauri-plugin-autostart",
-    "tauri-plugin-window-state",
+/// Panel category of every crate a manifest lists as a direct dependency, in
+/// the order the Dependencies panel shows the categories.
+///
+/// This table is the only hand-written part of the panel. The rows, their
+/// versions and their requirements come from the manifests and `Cargo.lock`
+/// (see `generate_dependency_index`), and the build fails in both directions:
+/// when a manifest names a crate this table does not classify, and when the
+/// table classifies a crate no manifest names any more.
+const DEPENDENCY_CATEGORIES: &[(&str, &[&str])] = &[
+    (
+        "Core",
+        &[
+            "anyhow",
+            "async-trait",
+            "bytes",
+            "chrono",
+            "futures-lite",
+            "futures-util",
+            "image",
+            "image_hasher",
+            "log",
+            "notify",
+            "notify-debouncer-full",
+            "portable-pty",
+            "regex",
+            "semver",
+            "serde",
+            "serde_json",
+            "tauri",
+            "thiserror",
+            "tlsh2",
+            "tokio",
+            "tokio-util",
+            "toml",
+            "tracing",
+            "tracing-subscriber",
+            "uuid",
+        ],
+    ),
+    (
+        "Protocols",
+        &[
+            "axum",
+            "http",
+            "oauth2",
+            "percent-encoding",
+            "quick-xml",
+            "reqwest",
+            "russh",
+            "russh-sftp",
+            "rustls",
+            "rustls-native-certs",
+            "rustls-pki-types",
+            "ssh2",
+            "suppaftp",
+            "tokio-rustls",
+            "url",
+            "urlencoding",
+            "webpki-roots",
+        ],
+    ),
+    (
+        "Security",
+        &[
+            "aerovault",
+            "aes",
+            "aes-gcm",
+            "aes-gcm-siv",
+            "aes-kw",
+            "aes-siv",
+            "argon2",
+            "base64",
+            "blake3",
+            "cbc",
+            "chacha20poly1305",
+            "crypto_secretbox",
+            "ctr",
+            "data-encoding",
+            "ed25519-dalek",
+            "hex",
+            "hkdf",
+            "hmac",
+            "jsonwebtoken",
+            "keyring",
+            "md-5",
+            "md4",
+            "num-bigint-dig",
+            "pbkdf2",
+            "rand",
+            "ring",
+            "ripemd",
+            "scrypt",
+            "secrecy",
+            "sha1",
+            "sha2",
+            "sigstore",
+            "subtle",
+            "totp-rs",
+            "x25519-dalek",
+            "zeroize",
+        ],
+    ),
+    (
+        "Archives",
+        &[
+            "bzip2",
+            "flate2",
+            "reed-solomon-erasure",
+            "sevenz-rust2",
+            "tar",
+            "unrar",
+            "xxhash-rust",
+            "xz2",
+            "zip",
+            "zstd",
+        ],
+    ),
+    (
+        "CLI & Tools",
+        &[
+            "arboard",
+            "clap",
+            "clap_complete",
+            "crossterm",
+            "ctrlc",
+            "dirs",
+            "filetime",
+            "globset",
+            "indicatif",
+            "libunftp",
+            "mime_guess",
+            "open",
+            "ratatui",
+            "rpassword",
+            "rusqlite",
+            "similar",
+            "tempfile",
+            "trash",
+            "unftp-core",
+            "walkdir",
+        ],
+    ),
+    (
+        "P2P",
+        &[
+            "iroh",
+            "iroh-blobs",
+            "iroh-docs",
+            "iroh-gossip",
+            "iroh-mainline-address-lookup",
+            "iroh-mdns-address-lookup",
+        ],
+    ),
+    (
+        "System",
+        &[
+            "acl-sys",
+            "fuser",
+            "gtk",
+            "hound",
+            "libc",
+            "posix-acl",
+            "whisper-rs",
+            "windows",
+            "winreg",
+        ],
+    ),
+    (
+        "Plugins",
+        &[
+            "tauri-plugin-autostart",
+            "tauri-plugin-dialog",
+            "tauri-plugin-fs",
+            "tauri-plugin-localhost",
+            "tauri-plugin-log",
+            "tauri-plugin-notification",
+            "tauri-plugin-shell",
+            "tauri-plugin-single-instance",
+            "tauri-plugin-window-state",
+        ],
+    ),
 ];
 
 fn main() {
-    // Parse Cargo.lock to extract resolved dependency versions
-    let lock_contents = fs::read_to_string("Cargo.lock").expect("Failed to read Cargo.lock");
-
-    let versions = parse_cargo_lock(&lock_contents);
-
-    for dep_name in TRACKED_DEPS {
-        let env_key = format!("DEP_VERSION_{}", dep_name.to_uppercase().replace('-', "_"));
-        let version = versions
-            .get(*dep_name)
-            .map(|v| v.as_str())
-            .unwrap_or("unknown");
-        println!("cargo:rustc-env={env_key}={version}");
-    }
+    // The Dependencies panel list and the DEP_VERSION_* env vars, both derived
+    // from the manifests and Cargo.lock.
+    generate_dependency_index();
 
     println!("cargo:rerun-if-changed=Cargo.lock");
 
@@ -420,46 +468,171 @@ fn detect_and_link_libmtp() {
     }
 }
 
-/// Parse Cargo.lock and return highest version for each package name.
-/// When a crate appears multiple times (e.g. reqwest 0.11 as transitive + 0.13 as direct),
-/// we keep the highest semver version which corresponds to our direct dependency.
-fn parse_cargo_lock(contents: &str) -> HashMap<String, String> {
-    let mut versions: HashMap<String, String> = HashMap::new();
-    let mut current_name: Option<String> = None;
+/// A direct dependency as a manifest declares it.
+struct ManifestDependency {
+    /// The key in the manifest table: the name the code imports, which differs
+    /// from `package` for a renamed dependency such as `rand_010`.
+    key: String,
+    package: String,
+    requirement: String,
+}
 
-    for line in contents.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("name = ") {
-            current_name = trimmed
-                .strip_prefix("name = \"")
-                .and_then(|s| s.strip_suffix('"'))
-                .map(|s| s.to_string());
-        } else if trimmed.starts_with("version = ") {
-            if let Some(ref name) = current_name {
-                if let Some(ver) = trimmed
-                    .strip_prefix("version = \"")
-                    .and_then(|s| s.strip_suffix('"'))
-                {
-                    let should_replace = match versions.get(name) {
-                        None => true,
-                        Some(existing) => {
-                            compare_semver(ver, existing) == std::cmp::Ordering::Greater
-                        }
-                    };
-                    if should_replace {
-                        versions.insert(name.clone(), ver.to_string());
-                    }
-                }
+/// Direct dependencies of `manifest`, all targets included, followed by those
+/// of every path crate it pulls in: a path crate ships in the same binary, so
+/// its dependencies are ours too. The path crates are walked after the
+/// manifest's own table, because `toml::Table` iterates keys in sorted order
+/// and `aeroftp-peer-l0` would otherwise claim the shared crates first.
+fn manifest_dependencies(manifest: &Path, out: &mut Vec<ManifestDependency>) {
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    let text = fs::read_to_string(manifest)
+        .unwrap_or_else(|e| panic!("build.rs: cannot read {}: {e}", manifest.display()));
+    let doc: toml::Table = text
+        .parse()
+        .unwrap_or_else(|e| panic!("build.rs: cannot parse {}: {e}", manifest.display()));
+
+    let mut tables: Vec<&toml::Table> = Vec::new();
+    if let Some(table) = doc.get("dependencies").and_then(toml::Value::as_table) {
+        tables.push(table);
+    }
+    if let Some(targets) = doc.get("target").and_then(toml::Value::as_table) {
+        for target in targets.values() {
+            if let Some(table) = target.get("dependencies").and_then(toml::Value::as_table) {
+                tables.push(table);
             }
-            current_name = None;
         }
     }
 
+    let mut path_crates = Vec::new();
+    for table in tables {
+        for (key, value) in table {
+            if let Some(path) = value.get("path").and_then(toml::Value::as_str) {
+                let parent = manifest.parent().unwrap_or_else(|| Path::new("."));
+                path_crates.push(parent.join(path).join("Cargo.toml"));
+                continue;
+            }
+            let package = value
+                .get("package")
+                .and_then(toml::Value::as_str)
+                .unwrap_or(key)
+                .to_string();
+            let requirement = value
+                .as_str()
+                .or_else(|| value.get("version").and_then(toml::Value::as_str))
+                .unwrap_or("*")
+                .to_string();
+            out.push(ManifestDependency {
+                key: key.clone(),
+                package,
+                requirement,
+            });
+        }
+    }
+    for child in path_crates {
+        manifest_dependencies(&child, out);
+    }
+}
+
+/// Every version `Cargo.lock` holds for each package name.
+fn locked_versions(lock: &str) -> BTreeMap<String, Vec<semver::Version>> {
+    let doc: toml::Table = lock.parse().expect("build.rs: cannot parse Cargo.lock");
+    let mut versions: BTreeMap<String, Vec<semver::Version>> = BTreeMap::new();
+    let packages = doc.get("package").and_then(toml::Value::as_array);
+    for package in packages.into_iter().flatten() {
+        let name = package.get("name").and_then(toml::Value::as_str);
+        let version = package.get("version").and_then(toml::Value::as_str);
+        if let (Some(name), Some(Ok(version))) = (name, version.map(semver::Version::parse)) {
+            versions.entry(name.to_string()).or_default().push(version);
+        }
+    }
     versions
 }
 
-/// Simple semver comparison: split on '.' and compare numerically
-fn compare_semver(a: &str, b: &str) -> std::cmp::Ordering {
-    let parse = |s: &str| -> Vec<u64> { s.split('.').filter_map(|p| p.parse().ok()).collect() };
-    parse(a).cmp(&parse(b))
+/// Write `dependencies.rs` for `src/dependency_index.rs`, and emit
+/// `DEP_VERSION_<KEY>` for `get_system_info` and the sigstore verifier.
+///
+/// The version of a row is the newest locked version the manifest requirement
+/// admits, not the newest version of that name in the lock: 13 crates are
+/// locked more than once (`aes-gcm` 0.10.3 is ours, 0.11.0 arrives through
+/// another crate), and the hand-kept list this replaces showed the wrong one
+/// for every one of them.
+fn generate_dependency_index() {
+    let mut declared = Vec::new();
+    manifest_dependencies(Path::new("Cargo.toml"), &mut declared);
+    let lock = fs::read_to_string("Cargo.lock").expect("Failed to read Cargo.lock");
+    let locked = locked_versions(&lock);
+
+    let mut category_of: BTreeMap<&str, (usize, &str)> = BTreeMap::new();
+    for (rank, (category, crates)) in DEPENDENCY_CATEGORIES.iter().enumerate() {
+        for name in *crates {
+            assert!(
+                category_of.insert(name, (rank, category)).is_none(),
+                "build.rs: {name} is listed twice in DEPENDENCY_CATEGORIES"
+            );
+        }
+    }
+    let declared_names: HashSet<&str> = declared.iter().map(|d| d.package.as_str()).collect();
+    let mut unclassified: Vec<&str> = declared_names
+        .iter()
+        .copied()
+        .filter(|name| !category_of.contains_key(name))
+        .collect();
+    unclassified.sort_unstable();
+    let stale: Vec<&str> = category_of
+        .keys()
+        .copied()
+        .filter(|name| !declared_names.contains(name))
+        .collect();
+    assert!(
+        unclassified.is_empty() && stale.is_empty(),
+        "build.rs: DEPENDENCY_CATEGORIES is out of sync with the manifests.\n  \
+         give a category to: {unclassified:?}\n  \
+         remove, no manifest declares them: {stale:?}"
+    );
+
+    let mut rows: Vec<(usize, String, String, String, &str)> = Vec::new();
+    let mut listed: HashSet<(String, String)> = HashSet::new();
+    let mut env_keys: HashSet<String> = HashSet::new();
+    for dep in &declared {
+        let version = semver::VersionReq::parse(&dep.requirement)
+            .ok()
+            .and_then(|req| {
+                locked
+                    .get(&dep.package)?
+                    .iter()
+                    .filter(|v| req.matches(v))
+                    .max_by(|a, b| a.cmp_precedence(b))
+                    .map(ToString::to_string)
+            })
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let env_key = format!("DEP_VERSION_{}", dep.key.to_uppercase().replace('-', "_"));
+        if env_keys.insert(env_key.clone()) {
+            println!("cargo:rustc-env={env_key}={version}");
+        }
+        if listed.insert((dep.package.clone(), version.clone())) {
+            let (rank, category) = category_of[dep.package.as_str()];
+            rows.push((
+                rank,
+                dep.package.clone(),
+                version,
+                dep.requirement.clone(),
+                category,
+            ));
+        }
+    }
+    rows.sort_by(|a, b| (a.0, &a.1, &a.2).cmp(&(b.0, &b.1, &b.2)));
+
+    let mut code = String::from(
+        "// Generated by build.rs from the manifests and Cargo.lock. Do not edit.\n\
+         pub(crate) const DEPENDENCIES: &[DependencyEntry] = &[\n",
+    );
+    for (_, name, version, requirement, category) in &rows {
+        code.push_str(&format!(
+            "    DependencyEntry {{ name: {name:?}, version: {version:?}, requirement: {requirement:?}, category: {category:?} }},\n"
+        ));
+    }
+    code.push_str("];\n");
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR is set by cargo"));
+    fs::write(out_dir.join("dependencies.rs"), code)
+        .expect("build.rs: cannot write dependencies.rs");
 }
