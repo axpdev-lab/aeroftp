@@ -12,8 +12,8 @@
 //! Charging happens *before* a chunk is written to the wire or to disk, on the
 //! directional bucket plus the combined cap, so concurrent transfers share one
 //! budget instead of each honouring its own. When no cap is configured every
-//! helper is a pass-through: same body types, same chunk sizes, no extra
-//! allocation on the hot path.
+//! helper is a pass-through: streams are returned untouched (one box per
+//! stream, none per chunk) and owned bodies go out exactly as before.
 
 use super::governor::{self, GlobalTransferGovernor, TransferDirection};
 use futures_util::{Stream, StreamExt};
@@ -42,30 +42,47 @@ fn governor_is_unlimited(g: &GlobalTransferGovernor, direction: TransferDirectio
 /// chunk is charged for its length before it is yielded. Errors pass through
 /// untouched. The item type is preserved, so this wraps a `reqwest` response
 /// stream, a `tokio_util::io::ReaderStream`, or a part-body window stream alike.
+/// When no cap is configured the stream is returned untouched: see
+/// [`throttle_stream_with`] for why the governor is not even retained then.
 pub fn throttle_stream<S, T, E>(
     stream: S,
     direction: TransferDirection,
-) -> impl Stream<Item = Result<T, E>> + Send
+) -> std::pin::Pin<Box<dyn Stream<Item = Result<T, E>> + Send>>
 where
-    S: Stream<Item = Result<T, E>> + Send,
-    T: AsRef<[u8]> + Send,
-    E: Send,
+    S: Stream<Item = Result<T, E>> + Send + 'static,
+    T: AsRef<[u8]> + Send + 'static,
+    E: Send + 'static,
 {
     throttle_stream_with(stream, governor::global(), direction)
 }
 
 /// [`throttle_stream`] against an explicit governor (tests own a private one).
+///
+/// Uncapped, this returns the stream itself: the governor is not even
+/// retained, so an uncapped chunk cannot pay the two shared-bucket mutex
+/// locks and Arc refcounts a `charge` costs. That tax is per 4 KiB
+/// `ReaderStream` chunk; the DAG engine review measured it as +17% on a
+/// 175 MB mixed-size S3 upload cell (~45k charges) while a 20 MB cell of
+/// tiny files stayed flat. The module doc has always promised "no cap, no
+/// pacing"; before this gate the promise held for owned bodies only.
+///
+/// Consequence, accepted and shared with the owned-body helpers: a cap armed
+/// AFTER the stream is built does not apply to it. Re-arms still reach every
+/// stream built after them.
 pub fn throttle_stream_with<S, T, E>(
     stream: S,
     governor: Arc<GlobalTransferGovernor>,
     direction: TransferDirection,
-) -> impl Stream<Item = Result<T, E>> + Send
+) -> std::pin::Pin<Box<dyn Stream<Item = Result<T, E>> + Send>>
 where
-    S: Stream<Item = Result<T, E>> + Send,
-    T: AsRef<[u8]> + Send,
-    E: Send,
+    S: Stream<Item = Result<T, E>> + Send + 'static,
+    T: AsRef<[u8]> + Send + 'static,
+    E: Send + 'static,
 {
-    stream.then(move |item| {
+    if governor_is_unlimited(&governor, direction) {
+        return Box::pin(stream);
+    }
+    Box::pin(stream.then(move |item| {
         let governor = Arc::clone(&governor);
         async move {
             if let Ok(chunk) = &item {
@@ -75,7 +92,7 @@ where
             }
             item
         }
-    })
+    }))
 }
 
 /// A `reqwest` body for an owned buffer. Unlimited: the buffer itself, exactly
@@ -241,6 +258,53 @@ mod tests {
             g.directional_bandwidth(TransferDirection::Download)
                 .granted_bytes(),
             0
+        );
+    }
+
+    /// The pass-through must be structural, not just invisible to the byte
+    /// counter: an uncapped stream holds NO reference to the governor at all,
+    /// so the charge chain (two shared mutex locks per chunk) cannot run.
+    /// Proven by Arc refcount, not by timing. The capped arm pins the opposite,
+    /// so the cap path cannot silently lose its wiring either.
+    #[tokio::test]
+    async fn unlimited_stream_does_not_retain_the_governor() {
+        let g = capped(0, 0);
+        let base = Arc::strong_count(&g);
+        let items: Vec<Result<Vec<u8>, std::io::Error>> = vec![Ok(vec![1u8; 4096])];
+        let stream = throttle_stream_with(
+            futures_util::stream::iter(items),
+            Arc::clone(&g),
+            TransferDirection::Upload,
+        );
+        assert_eq!(
+            Arc::strong_count(&g),
+            base,
+            "an uncapped stream must not retain the governor"
+        );
+        drop(stream);
+    }
+
+    #[tokio::test]
+    async fn capped_stream_retains_and_charges_the_governor() {
+        let g = capped(64 * 1024 * 1024, 0);
+        let base = Arc::strong_count(&g);
+        let items: Vec<Result<Vec<u8>, std::io::Error>> = vec![Ok(vec![1u8; 4096])];
+        let stream = throttle_stream_with(
+            futures_util::stream::iter(items),
+            Arc::clone(&g),
+            TransferDirection::Upload,
+        );
+        assert_eq!(
+            Arc::strong_count(&g),
+            base + 1,
+            "a capped stream must hold the governor it charges"
+        );
+        let out: Vec<_> = stream.collect().await;
+        assert_eq!(out.len(), 1);
+        assert_eq!(
+            g.directional_bandwidth(TransferDirection::Upload)
+                .granted_bytes(),
+            4096
         );
     }
 
