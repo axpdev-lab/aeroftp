@@ -125,11 +125,15 @@ fn newest<'a>(releases: impl Iterator<Item = &'a Version>) -> Option<Version> {
 /// minor bump under `0.x` is incompatible.
 fn assess(locked: &str, requirement: &str, releases: &[Version]) -> Assessment {
     let latest = newest(releases.iter());
-    let latest_compatible = VersionReq::parse(requirement)
+    let parsed_requirement = VersionReq::parse(requirement);
+    let latest_compatible = parsed_requirement
+        .as_ref()
         .ok()
         .and_then(|req| newest(releases.iter().filter(|v| req.matches(v))));
-    let status = match (Version::parse(locked), &latest) {
-        (Ok(locked), Some(latest)) => {
+    // A requirement semver cannot read is an error, like an unanswered index:
+    // without it a compatible update cannot be told from an incompatible one.
+    let status = match (Version::parse(locked), &latest, &parsed_requirement) {
+        (Ok(locked), Some(latest), Ok(_)) => {
             if locked.cmp_precedence(latest) != Ordering::Less {
                 UpdateStatus::UpToDate
             } else if requirement.trim_start().starts_with('=') {
@@ -380,6 +384,12 @@ mod tests {
             assess("unknown", "1", &releases(&["1.0.0"])).status,
             UpdateStatus::Error
         );
+    }
+
+    #[test]
+    fn an_unreadable_requirement_is_an_error_not_an_incompatible_update() {
+        let a = assess("1.0.0", "not a requirement", &releases(&["1.0.0", "2.0.0"]));
+        assert_eq!(a.status, UpdateStatus::Error);
     }
 
     #[test]

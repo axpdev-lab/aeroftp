@@ -16,6 +16,10 @@ Status values:
                 a 0.x minor counts as major)
   pinned        exact `=` requirement and a newer version exists
   registry-err  the registry did not answer: NOT the same as ok
+  requirement-err  this script could not read the manifest requirement: a
+                defect here, reported apart so it is not blamed on a registry
+
+Usage (grammar checks, no network): deps-index.py --self-test
 
 Usage: deps-index.py <repo-root> <out-dir>
 Stdlib only. Network: index.crates.io and registry.npmjs.org (static/CDN, no
@@ -90,11 +94,47 @@ def req_matcher(req):
     return lambda t: all(p(t) for p in preds)
 
 
+_NPM_TOKEN = re.compile(
+    r"^(\^|~>|~|>=|<=|>|<|=)?v?([0-9]+(?:\.(?:[0-9]+|[xX*])){0,2}|[xX*])(?:[-+][0-9A-Za-z.\-+]*)?$")
+
+
+def _npm_token(token):
+    """One npm comparator. Unlike Cargo, a bare version is exact in npm, and
+    `1.x` / `1.2.x` are ranges over the fixed prefix."""
+    m = _NPM_TOKEN.match(token)
+    if not m:
+        raise ValueError(f"unparsed npm range token {token!r}")
+    op = {"~>": "~", None: "="}.get(m.group(1), m.group(1))
+    parts = m.group(2).split(".")
+    wild = [i for i, p in enumerate(parts) if p in ("x", "X", "*")]
+    if wild:
+        if wild[0] == 0:
+            return lambda t: True
+        parts = parts[:wild[0]]
+    return _one_req(op, ".".join(parts))
+
+
 def npm_matcher(req):
+    """npm range grammar: `||` alternatives, whitespace-separated comparators,
+    `a - b` hyphen ranges, x-wildcards, `^` and `~` (same meaning as Cargo)."""
     req = req.strip()
-    if req.startswith("$") or req in ("*", "latest", ""):
+    if req.startswith("$") or req in ("", "latest"):
         return lambda t: True
-    return req_matcher(req)  # ^ ~ = ranges used by this repo share Cargo's meaning
+    alternatives = []
+    for alt in req.split("||"):
+        alt = re.sub(r"(\^|~>|~|>=|<=|>|<|=)\s+", r"\1", alt.strip())
+        hyphen = re.match(r"^(\S+)\s+-\s+(\S+)$", alt)
+        if hyphen:
+            lo, hi = _npm_token(">=" + hyphen.group(1)), _npm_token("<=" + hyphen.group(2))
+            alternatives.append(lambda t, lo=lo, hi=hi: lo(t) and hi(t))
+            continue
+        preds = [_npm_token(tok) for tok in (alt.split() or ["*"])]
+        alternatives.append(lambda t, preds=preds: all(p(t) for p in preds))
+    return lambda t: any(a(t) for a in alternatives)
+
+
+def npm_is_exact(req):
+    return bool(re.fullmatch(r"=?\s*v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.\-+]*)?", req.strip()))
 
 
 # -------------------------------------------------------------- registries --
@@ -141,13 +181,13 @@ def pick(versions, match=None):
     return max(c, key=lambda x: x["t"]) if c else None
 
 
-def classify(req, locked, latest_ok, latest):
+def classify(exact, locked, latest_ok, latest):
     if latest is None:
         return "registry-err"
     lt, _ = parse_ver(locked)
     if lt >= latest["t"]:
         return "ok"
-    if req.strip().startswith("="):
+    if exact:
         return "pinned"
     if latest_ok and latest_ok["t"] > lt:
         return "compatible"
@@ -251,23 +291,27 @@ def main():
     panel, panel_src = panel_names(repo)
 
     def enrich(row):
+        cargo = row["eco"] == "cargo"
+        row.update(latest=None, latest_compatible=None, latest_msrv=None)
         try:
-            if row["eco"] == "cargo":
-                vers = crates_versions(row["name"])
-                match = req_matcher(row["req"])
+            match = req_matcher(row["req"]) if cargo else npm_matcher(row["req"])
+        except ValueError as e:  # our parser failed, not the registry: say which
+            match = None
+            row.update(status="requirement-err", error=str(e))
+        if match is not None:
+            try:
+                vers = crates_versions(row["name"]) if cargo else npm_versions(row["name"])[0]
+            except (OSError, ValueError, KeyError) as e:  # an unanswered registry is a result, not an ok
+                row.update(status="registry-err", error=str(e))
             else:
-                vers, _ = npm_versions(row["name"])
-                match = npm_matcher(row["req"])
-            latest, ok = pick(vers), pick(vers, match)
-            row["latest"] = latest["v"] if latest else None
-            row["latest_msrv"] = latest["msrv"] if latest else None
-            row["latest_compatible"] = ok["v"] if ok else None
-            row["status"] = classify(row["req"], row["locked"] or "0.0.0", ok, latest)
-        except Exception as e:  # an unanswered registry is a result, not an ok
-            row.update(latest=None, latest_compatible=None, latest_msrv=None, status="registry-err", error=str(e))
-        eco = "cargo" if row["eco"] == "cargo" else "npm"
-        row["dependabot_hold"] = holds.get(eco, {}).get(row["name"])
-        row["in_panel"] = None if row["eco"] == "npm" or panel is None else row["name"] in panel
+                latest, ok = pick(vers), pick(vers, match)
+                row["latest"] = latest["v"] if latest else None
+                row["latest_msrv"] = latest["msrv"] if latest else None
+                row["latest_compatible"] = ok["v"] if ok else None
+                exact = row["req"].strip().startswith("=") if cargo else npm_is_exact(row["req"])
+                row["status"] = classify(exact, row["locked"] or "0.0.0", ok, latest)
+        row["dependabot_hold"] = holds.get("cargo" if cargo else "npm", {}).get(row["name"])
+        row["in_panel"] = None if not cargo or panel is None else row["name"] in panel
         return row
 
     with ThreadPoolExecutor(8) as ex:
@@ -294,7 +338,7 @@ def main():
                f"- Panel entries that are not direct deps ({len(extra)}): {', '.join(extra) or 'none'}", ""]
     md += ["| eco | root | crate | rename | kind/target | req | locked | latest compatible | latest | latest MSRV | status | dependabot hold | panel |",
            "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
-    order = {"pinned": 0, "incompatible": 1, "compatible": 2, "registry-err": 3, "ok": 4}
+    order = {"requirement-err": 0, "registry-err": 1, "pinned": 2, "incompatible": 3, "compatible": 4, "ok": 5}
     for r in sorted(rows, key=lambda r: (r["eco"], order.get(r["status"], 9), r["name"])):
         kt = r["kind"] + (f" `{r['target']}`" if r["target"] else "") + (" opt" if r["optional"] else "")
         hold = "; ".join(r["dependabot_hold"]) if r["dependabot_hold"] else ""
@@ -304,10 +348,42 @@ def main():
     md += ["", "## Highest rust-version declared by a locked crate", ""]
     md += [f"- {x['crate']} {x['version']}: rust {x['rust_version']}" for x in cstats["graph_msrv_floor"]]
     open(os.path.join(out, "deps-index.md"), "w").write("\n".join(md) + "\n")
-    errs = [r["name"] for r in rows if r["status"] == "registry-err"]
-    print(f"head={head} rows={len(rows)} counts={json.dumps(counts)} registry_errors={errs}")
-    sys.exit(1 if errs else 0)
+    registry_errs = [r["name"] for r in rows if r["status"] == "registry-err"]
+    requirement_errs = [f"{r['name']} {r['req']!r}" for r in rows if r["status"] == "requirement-err"]
+    print(f"head={head} rows={len(rows)} counts={json.dumps(counts)} "
+          f"registry_errors={registry_errs} requirement_errors={requirement_errs}")
+    sys.exit(1 if registry_errs or requirement_errs else 0)
+
+
+def _self_test():
+    """Requirement grammar checks that need no network: `deps-index.py --self-test`."""
+    cases = [
+        (npm_matcher, "^5 || ^6", "6.1.0", True), (npm_matcher, "^5 || ^6", "7.0.0", False),
+        (npm_matcher, ">=16.8 <19", "18.3.1", True), (npm_matcher, ">=16.8 <19", "19.0.0", False),
+        (npm_matcher, ">= 16.8 < 19", "16.8.0", True),
+        (npm_matcher, "1.x", "1.9.0", True), (npm_matcher, "1.x", "2.0.0", False),
+        (npm_matcher, "1.2.x", "1.2.9", True), (npm_matcher, "1.2.x", "1.3.0", False),
+        (npm_matcher, "1.2.3", "1.2.3", True), (npm_matcher, "1.2.3", "1.9.0", False),
+        (npm_matcher, "~1.2.3", "1.2.9", True), (npm_matcher, "~1.2.3", "1.3.0", False),
+        (npm_matcher, "1.2.3 - 2.3.4", "2.3.4", True), (npm_matcher, "1.2.3 - 2.3.4", "2.3.5", False),
+        (npm_matcher, "*", "9.9.9", True), (npm_matcher, "^2", "2.11.4", True),
+        (req_matcher, "0.8", "0.8.8", True), (req_matcher, "0.8", "0.10.2", False),
+        (req_matcher, "=2.11.0", "2.11.5", False), (req_matcher, "1.2.3", "1.9.0", True),
+    ]
+    failed = [(f.__name__, r, v, want) for f, r, v, want in cases if f(r)(parse_ver(v)[0]) != want]
+    for bad in ("nonsense", ">=abc"):
+        try:
+            npm_matcher(bad)
+            failed.append(("npm_matcher accepted", bad))
+        except ValueError:
+            pass
+    if not npm_is_exact("1.2.3") or npm_is_exact("^1.2.3"):
+        failed.append(("npm_is_exact",))
+    print(f"self-test: {len(cases) + 3} checks, " + ("ok" if not failed else f"FAILED {failed}"))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--self-test"]:
+        sys.exit(_self_test())
     main()
