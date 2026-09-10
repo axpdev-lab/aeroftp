@@ -352,7 +352,7 @@ fn decode_text_input(text: &str, encoding: &str) -> Result<Vec<u8>, String> {
             if !bits.chars().all(|c| c == '0' || c == '1') {
                 return Err("Invalid Binary input: only 0 and 1 (and whitespace) allowed".into());
             }
-            if bits.len() % 8 != 0 {
+            if !bits.len().is_multiple_of(8) {
                 return Err("Invalid Binary input: bit length must be a multiple of 8".into());
             }
             let mut bytes = Vec::with_capacity(bits.len() / 8);

@@ -4916,7 +4916,7 @@ async fn prepare_ftp_upload_entries(
             }
 
             scan_counter += 1;
-            if last_scan_emit.elapsed().as_millis() > 500 || scan_counter % 100 == 0 {
+            if last_scan_emit.elapsed().as_millis() > 500 || scan_counter.is_multiple_of(100) {
                 crate::transfer_event_sink::emit_gui_transfer_event(
                     app,
                     TransferEvent {
@@ -6144,7 +6144,7 @@ async fn delete_remote_file(
             dirs_to_delete.push(current_dir);
 
             // Emit scan progress every 500ms or every 100 entries
-            if last_scan_emit.elapsed().as_millis() > 500 || scan_counter % 100 == 0 {
+            if last_scan_emit.elapsed().as_millis() > 500 || scan_counter.is_multiple_of(100) {
                 crate::transfer_event_sink::emit_gui_transfer_event(
                     &app,
                     TransferEvent {
@@ -6522,7 +6522,7 @@ async fn delete_local_file(
 
                     // Emit progress every 100ms or every 50 files to avoid flooding
                     if last_emit.elapsed().as_millis() > 100
-                        || deleted_files % 50 == 0
+                        || deleted_files.is_multiple_of(50)
                         || deleted_files == total_files as u64
                     {
                         crate::transfer_event_sink::emit_gui_transfer_event(

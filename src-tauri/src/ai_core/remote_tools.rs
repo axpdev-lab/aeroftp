@@ -2300,7 +2300,7 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
             {
                 Ok(true) => {
                     skipped_files += 1;
-                    if (idx as u64) % progress_step == 0 {
+                    if (idx as u64).is_multiple_of(progress_step) {
                         ctx.event_sink()
                             .emit_tool_progress(&crate::ai_core::ToolProgress {
                                 tool: "aeroftp_transfer_tree".to_string(),
@@ -2340,7 +2340,7 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
             }
         }
 
-        if (idx as u64) % progress_step == 0 || (idx as u64) + 1 == total_planned {
+        if (idx as u64).is_multiple_of(progress_step) || (idx as u64) + 1 == total_planned {
             ctx.event_sink()
                 .emit_tool_progress(&crate::ai_core::ToolProgress {
                     tool: "aeroftp_transfer_tree".to_string(),
