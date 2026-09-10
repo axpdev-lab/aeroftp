@@ -205,9 +205,12 @@ impl ImmichProvider {
             headers.insert("x-api-key", val);
         }
 
+        // `x-api-key` is not a header reqwest strips on a cross-origin
+        // redirect: keep redirects on the configured server.
         let client = reqwest::Client::builder()
             .user_agent(AEROFTP_USER_AGENT)
             .default_headers(headers)
+            .redirect(super::redirect_policy::same_origin_redirect_policy())
             .connect_timeout(std::time::Duration::from_secs(15))
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(1800))
@@ -1449,6 +1452,24 @@ impl StorageProvider for ImmichProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn the_api_key_never_follows_a_redirect_to_another_origin() {
+        let fx = crate::providers::redirect_policy::fixture::spawn("x-api-key").await;
+        let provider = ImmichProvider::new(ImmichConfig::new("http://127.0.0.1", "IMMICH-KEY"));
+
+        let response = provider.client.get(&fx.cross).send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::FOUND);
+        assert!(
+            !fx.secret_leaked(),
+            "x-api-key was replayed to another origin"
+        );
+        assert!(!fx.other_origin_reached());
+
+        let response = provider.client.get(&fx.same).send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        assert!(fx.same_origin_got_secret());
+    }
 
     #[test]
     fn immich_config_new_strips_trailing_slash_from_base_url() {
