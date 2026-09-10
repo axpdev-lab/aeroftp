@@ -68,6 +68,12 @@ struct WireCounts {
     open_during_stat_window: AtomicBool,
     /// Number of STAT replies currently delayed in flight.
     stat_pending: AtomicU32,
+    /// Milliseconds a CLOSE reply is held back, with the handle still counted
+    /// until it leaves. Zero replies at once. Non-zero is what separates a
+    /// client that awaits its close from one that only queues it: the first
+    /// returns with the count at zero, the second returns before the server
+    /// has let go of the handle.
+    close_delay_ms: AtomicU32,
 }
 
 fn w32(out: &mut Vec<u8>, v: u32) {
@@ -248,8 +254,25 @@ impl TestSftpHandler {
                     self.handles.remove(&handle).is_some(),
                     "close a live handle"
                 );
-                self.counts.handles.fetch_sub(1, Ordering::SeqCst);
-                self.send(channel, status(id, SSH_FX_OK, ""), session);
+                let delay = self.counts.close_delay_ms.load(Ordering::SeqCst);
+                if delay == 0 {
+                    self.counts.handles.fetch_sub(1, Ordering::SeqCst);
+                    self.send(channel, status(id, SSH_FX_OK, ""), session);
+                } else {
+                    // Deferred close: the handle stays counted until the reply leaves.
+                    let session_handle = session.handle();
+                    let counts = self.counts.clone();
+                    let reply = status(id, SSH_FX_OK, "");
+                    tokio::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(u64::from(delay)))
+                            .await;
+                        counts.handles.fetch_sub(1, Ordering::SeqCst);
+                        let mut framed = Vec::with_capacity(4 + reply.len());
+                        w32(&mut framed, reply.len() as u32);
+                        framed.extend_from_slice(&reply);
+                        let _ = session_handle.data(channel, framed).await;
+                    });
+                }
             }
             _ => {
                 let id = if data.len() >= 5 {
@@ -588,6 +611,43 @@ async fn hinted_download_overlaps_stat_and_open() {
     assert_eq!(std::fs::read(&local).unwrap(), payload);
     assert_eq!(counts.handles.load(Ordering::SeqCst), 0);
     assert!(counts.reads.load(Ordering::SeqCst) > 0);
+
+    // 10. An exit after the open must close the handle and wait for the
+    // reply, not leave it to Drop. The server now holds every CLOSE reply
+    // back, so a client that only queues its close returns while the handle
+    // is still counted. The other phases cannot see this: with an immediate
+    // reply a queued close usually lands before the assertion does.
+    counts.close_delay_ms.store(300, Ordering::SeqCst);
+
+    // 10a. A partial that already holds the whole file returns before any read.
+    let local = home.join("out-complete.bin");
+    std::fs::write(home.join("out-complete.bin.aerotmp"), &payload).unwrap();
+    provider
+        .download_with_size_hint("/file.bin", local.to_str().unwrap(), Some(4096), None)
+        .await
+        .expect("partial already complete");
+    assert_eq!(std::fs::read(&local).unwrap(), payload);
+    assert_eq!(
+        counts.handles.load(Ordering::SeqCst),
+        0,
+        "the early return for a complete partial left its handle to Drop"
+    );
+
+    // 10b. A local file that cannot be created fails after the open.
+    let blocker = home.join("not-a-directory");
+    std::fs::write(&blocker, b"x").unwrap();
+    let local = blocker.join("out.bin");
+    let err = provider
+        .download_with_size_hint("/file.bin", local.to_str().unwrap(), Some(4096), None)
+        .await
+        .expect_err("a path under a regular file cannot be created");
+    assert!(err.to_string().contains("local file"), "{err}");
+    assert_eq!(
+        counts.handles.load(Ordering::SeqCst),
+        0,
+        "a failed local create left the handle to Drop"
+    );
+    counts.close_delay_ms.store(0, Ordering::SeqCst);
 
     provider.disconnect().await.ok();
     std::fs::remove_dir_all(&home).ok();
