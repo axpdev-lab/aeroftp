@@ -2586,7 +2586,20 @@ mod tests {
 
         let pc_id = find(&std::env::var("PCLOUD_TEST_PROFILE").unwrap_or("pCloud".into()));
         let (k, s) = crate::bridge_commands::resolve_oauth_client_config(&store, "pcloud");
-        let mut pc = PCloudProvider::new(PCloudConfig::new(&k, &s, "eu")).with_profile_id(&pc_id);
+        // pCloud is region-split and a token only validates against the host it
+        // was minted for. The region is not on the profile: AeroFTP keeps it as
+        // the vault singleton `oauth_pcloud_region`, and an absent value means
+        // US. Read it the way the app does, so the test connects to the same
+        // host the app would rather than to whichever one happens to be written
+        // here.
+        let region = store
+            .get("oauth_pcloud_region")
+            .ok()
+            .map(|r| r.trim().to_string())
+            .filter(|r| !r.is_empty())
+            .unwrap_or_else(|| "us".to_string());
+        let mut pc =
+            PCloudProvider::new(PCloudConfig::new(&k, &s, &region)).with_profile_id(&pc_id);
         match pc.connect().await {
             Ok(()) => {
                 let listed = pc.list("/").await.map(|v| v.len());

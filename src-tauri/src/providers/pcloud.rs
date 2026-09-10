@@ -97,7 +97,7 @@ fn classify_pcloud_result(result: u32, error: Option<&str>) -> Option<ProviderEr
 /// what a genuinely bad token returns.
 fn trash_refused_to_oauth() -> ProviderError {
     ProviderError::NotSupported(
-        "pCloud does not allow its trash to be listed, restored or emptied through an OAuth login, so AeroFTP cannot show it here. Use the Trash on pcloud.com instead."
+        "pCloud does not allow its trash to be listed, restored, emptied or purged through an OAuth login, so AeroFTP cannot manage it here. Use the Trash on pcloud.com instead."
             .to_string(),
     )
 }
