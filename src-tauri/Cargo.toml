@@ -163,7 +163,7 @@ semver = "1.0.28"
 sigstore = { version = "0.14", default-features = false, features = ["verify", "sigstore-trust-root", "native-tls"] }
 
 # Secure Credential Storage (v1.3.2 hotfix)
-argon2 = "0.5"
+argon2 = "0.6"
 # Step 0 RustCrypto 0.11 audit, 2026-07-13:
 # Keep AES-GCM on 0.10.3 until noq-proto moves off aes-gcm 0.10.3. Bumping only
 # AeroFTP's direct dependency leaves both aes-gcm 0.10 and 0.11 in Cargo.lock.
@@ -194,7 +194,7 @@ russh-sftp = "2.1"
 ssh2 = { version = "0.9.5", features = ["vendored-openssl"] }
 
 # Archive Support with Encryption (v1.3.0+)
-sevenz-rust2 = { version = "0.21", features = ["aes256", "compress", "util"] }  # 7z with AES-256 + encrypted header (-mhe)
+sevenz-rust2 = { version = "0.22", features = ["aes256", "compress", "util"] }  # 7z with AES-256 + encrypted header (-mhe)
 unrar = "0.5"                                                          # RAR extraction
 trash = "5"                                                            # Cross-platform trash/recycle bin
 tar = "0.4.46"                                                        # TAR archives (CVE symlink chmod + PAX size fix)
@@ -259,7 +259,7 @@ crossterm = "0.29"                                                     # Cross-p
 #      envelope field never has to fall back at decode time).
 #   2. aerorsync `real_wire.rs` -- decompresses DEFLATED_DATA literals
 #      emitted by rsync's sender when CPRES_ZSTD is negotiated.
-zstd = "0.13"
+zstd = "0.14"
 
 # P2-01: Reed-Solomon erasure coding for AeroVault v4 ECC layer (T-AEROVAULT-ECC).
 # Crate: reed-solomon-erasure (pure-Rust GF(2^8) implementation).
