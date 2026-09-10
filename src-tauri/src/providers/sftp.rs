@@ -1534,19 +1534,72 @@ impl StorageProvider for SftpProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_with_size_hint(remote_path, local_path, None, on_progress)
+            .await
+    }
+
+    async fn download_with_size_hint(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        size_hint: Option<u64>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
         self.ensure_connected().await?;
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
 
         tracing::info!("SFTP: Downloading {} to {}", full_path, local_path);
 
-        // Get file size
-        let metadata = sftp.metadata(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::NotFound(format!("File not found: {}", s))
-            })
-        })?;
+        // Speculate on the serial path for a hint of at most one buffer:
+        // STAT and OPEN can share a round trip on the multiplexed session.
+        // The hint selects only this optimization; the fresh STAT still drives
+        // path selection, termination, throttling, resume and progress.
+        // A stale hint or an explicit fast-path setting can select a different
+        // downloader below, which closes the speculative handle first.
+        let small_enough_for_serial =
+            matches!(size_hint, Some(hint) if hint <= self.buffer_size as u64);
+        let (metadata, preopened) = if small_enough_for_serial {
+            let (metadata, opened) = tokio::join!(sftp.metadata(&full_path), sftp.open(&full_path));
+            (metadata, Some(opened))
+        } else {
+            (sftp.metadata(&full_path).await, None)
+        };
+        let metadata = match metadata {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                // OPEN may have succeeded independently of STAT. Finish its
+                // CLOSE before returning, including on servers that deny STAT.
+                if let Some(Ok(file)) = preopened {
+                    let _ = file.close().await;
+                }
+                return Err(classify_russh_err(error, |s| {
+                    ProviderError::NotFound(format!("File not found: {}", s))
+                }));
+            }
+        };
         let total_size = metadata.size.unwrap_or(0);
+        let mut preopened = match preopened {
+            Some(Ok(file)) => Some(file),
+            Some(Err(e)) => {
+                return Err(classify_russh_err(e, |s| {
+                    ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
+                }))
+            }
+            None => None,
+        };
+
+        // A fast path engaging despite the hint (a stale one or an
+        // explicit fast-path setting) cannot use the pre-opened handle: it runs its
+        // own reads. Close it awaited, not dropped: a queued close_nowait is
+        // the handle-leak shape the awaited close was added for.
+        macro_rules! close_preopened {
+            () => {
+                if let Some(file) = preopened.take() {
+                    let _ = file.close().await;
+                }
+            };
+        }
 
         // PD-SFTP-2: intra-file parallelism. Engaged only when the user opted
         // in (`set_multi_thread_download(streams >= 2, ...)`), the file is
@@ -1558,6 +1611,7 @@ impl StorageProvider for SftpProvider {
             && total_size >= self.multi_thread_cutoff
             && self.connection_spec.is_some()
         {
+            close_preopened!();
             return self
                 .download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
                 .await;
@@ -1581,6 +1635,7 @@ impl StorageProvider for SftpProvider {
                     total_size,
                     1,
                 ) {
+                    close_preopened!();
                     let sftp = self.get_sftp()?;
                     sftp_readahead_download(
                         sftp,
@@ -1610,6 +1665,7 @@ impl StorageProvider for SftpProvider {
                     .bandwidth()
                     .is_unlimited()
             {
+                close_preopened!();
                 let sftp = self.get_sftp()?;
                 let mut atomic = super::atomic_write::AtomicFile::new(local_path)
                     .await
@@ -1639,11 +1695,15 @@ impl StorageProvider for SftpProvider {
         }
 
         // Open remote file
-        let mut remote_file = sftp.open(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
-            })
-        })?;
+        // The handle may already be open from the STAT/OPEN overlap above.
+        let mut remote_file = match preopened.take() {
+            Some(file) => file,
+            None => sftp.open(&full_path).await.map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
+                })
+            })?,
+        };
 
         // Resumable local file: writes to `.aerotmp`, KEEPS the partial on
         // cancel/error (drop) so a later re-download resumes, renames on commit.
