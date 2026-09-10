@@ -32268,9 +32268,17 @@ async fn cmd_put(
                 }
             }
 
-            // Allow SSH transport to flush in-flight write data before closing.
-            // russh 0.57 buffers SFTP writes; disconnect before flush produces 0-byte files.
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            // Allow the SSH transport to flush in-flight write data before
+            // closing: russh buffers SFTP writes, and disconnecting before the
+            // flush produced 0-byte files. The settle is SFTP-only: an FTP
+            // upload already blocks on the server's 226 and the HTTP providers
+            // on the final response, so for them this was half a second of
+            // dead time on every `put`, measured in the DAG engine review as a
+            // fixed ~0.5 s floor on a 1 MiB FTPS upload where the transfer
+            // itself is 12 ms.
+            if provider.provider_type() == ProviderType::Sftp {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
             let _ = provider.disconnect().await;
             0
         }

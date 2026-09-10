@@ -1,12 +1,17 @@
-//! The dead `TYPE I` every FTP transfer used to pay, tested on the wire.
+//! The fixed floor every FTP transfer used to pay, tested where it was paid.
 //!
-//! Seven per-transfer sites re-issued `TYPE I` on sessions that `connect()`
-//! had already put in binary mode: one dead control round trip per file,
-//! upload AND download (on a folder of N files, N round trips; on the lab
-//! link 47 ms each). The transfer of 1 MiB is 0.012 s on that link, so the
-//! round trip dwarfs the payload it precedes.
+//! Two defects, both fixed costs on a path where the transfer of 1 MiB is
+//! measured in milliseconds (the DAG engine review put the transfer at
+//! 0.012 s/MiB on the lab link and the floor at 2.35 s):
 //!
-//! No Docker fixture needed: the server below is a scripted fake on
+//! 1. `cmd_put` slept 500 ms after EVERY successful upload, for every
+//!    provider, because russh buffers SFTP writes. FTP uploads already block
+//!    on the server's 226, so for FTP the sleep was dead time.
+//! 2. Seven per-transfer sites re-issued `TYPE I` on sessions that
+//!    `connect()` had already put in binary mode: one dead control round trip
+//!    per file, upload AND download (on a folder of N files, N round trips).
+//!
+//! Neither needs the Docker fixture: the server below is a scripted fake on
 //! loopback, enough FTP for connect + PASV + STOR + RETR + MFMT + QUIT, and
 //! it records every command so the wire itself is asserted on, not a
 //! constant.
@@ -14,7 +19,7 @@
 use std::collections::HashMap;
 use std::io::Write as _;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ftp_client_gui_lib::providers::types::{FtpConfig, FtpTlsMode};
 use ftp_client_gui_lib::providers::{FtpProvider, StorageProvider};
@@ -57,7 +62,11 @@ async fn session(stream: tokio::net::TcpStream, wire: Wire) {
     while let Ok(Some(line)) = lines.next_line().await {
         wire.commands.lock().unwrap().push(line.clone());
         let verb = line.split_whitespace().next().unwrap_or("").to_uppercase();
-        let arg = line.split_once(' ').map(|(_, a)| a).unwrap_or("").to_string();
+        let arg = line
+            .split_once(' ')
+            .map(|(_, a)| a)
+            .unwrap_or("")
+            .to_string();
         match verb.as_str() {
             "USER" => reply(&mut write, b"331 Password required\r\n").await,
             "PASS" => reply(&mut write, b"230 Logged in\r\n").await,
@@ -239,4 +248,61 @@ async fn transfer_session_sends_type_exactly_once() {
     assert_eq!(types[0].to_uppercase(), "TYPE I");
     std::fs::remove_file(&up_local).ok();
     std::fs::remove_file(&down_local).ok();
+}
+
+/// The 500 ms post-upload settle exists for russh's buffered SFTP writes; it
+/// used to run for every provider. This drives the COMMAND itself
+/// (`aeroftp-cli put` against a URL, no profile, no vault) and times it
+/// end to end against a loopback server, where the whole exchange is a few
+/// milliseconds: before the fix the process cannot come back in under half a
+/// second, after it the floor is process startup. 400 ms leaves >100 ms of
+/// margin on both sides of the old and new behaviour.
+///
+/// It has to be the process wall clock, not the CLI's own number: `cmd_put`
+/// closes its `elapsed_secs` BEFORE the settle sleep, so a test asserting on
+/// the JSON's `elapsed_secs` would be green both before and after the fix
+/// and would prove nothing. The bench times the process for the same reason.
+#[tokio::test]
+async fn cli_put_to_ftp_has_no_half_second_settle() {
+    let server = start_fake_ftp().await;
+    let payload: Vec<u8> = (0..64_000u32).map(|i| (i % 251) as u8).collect();
+    let local = std::env::temp_dir().join(format!("kimi-put-floor-{}.bin", std::process::id()));
+    std::fs::File::create(&local)
+        .unwrap()
+        .write_all(&payload)
+        .unwrap();
+
+    let url = format!("ftp://testuser:testpass@127.0.0.1:{}/", server.port);
+    let start = Instant::now();
+    // tokio::process, not std: the fake server lives on this same runtime, so
+    // a blocking wait would starve the very tasks the child is talking to.
+    let child = tokio::process::Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
+        .args([
+            "--quiet",
+            "put",
+            &url,
+            local.to_str().unwrap(),
+            "/floor.bin",
+        ])
+        .output();
+    let output = match tokio::time::timeout(Duration::from_secs(30), child).await {
+        Ok(o) => o.expect("spawn aeroftp-cli put"),
+        Err(_) => panic!("aeroftp-cli put to a loopback server did not finish in 30 s"),
+    };
+    let elapsed = start.elapsed();
+
+    assert!(
+        output.status.success(),
+        "put failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // Give the server task a moment to record the tail of the session.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(server.wire.stored.lock().unwrap().as_slice(), payload);
+    assert!(
+        elapsed < Duration::from_millis(400),
+        "a localhost put took {:?}; the SFTP-only settle sleep is back on the FTP path",
+        elapsed
+    );
+    std::fs::remove_file(&local).ok();
 }
