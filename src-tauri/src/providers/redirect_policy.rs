@@ -27,14 +27,21 @@ const MAX_REDIRECTS: usize = 10;
 
 /// True when a redirect to `next` keeps the secret on the origin the request
 /// was sent to: same scheme, host and port, or an upgrade from `http` to
-/// `https` on the same host. A downgrade, another host or another port is a
-/// different origin.
+/// `https` on the same host and port. A downgrade, another host or another
+/// port is a different origin, an upgrade included.
 fn keeps_origin(original: &Url, next: &Url) -> bool {
     let same_host = original.host_str() == next.host_str();
     let same_origin = same_host
         && original.scheme() == next.scheme()
         && original.port_or_known_default() == next.port_or_known_default();
-    let upgrade = same_host && original.scheme() == "http" && next.scheme() == "https";
+    // `Url::port()` is `None` for the scheme's default port, so the canonical
+    // `http://host` to `https://host` (80 to 443) qualifies, while an explicit
+    // port has to stay the same: `http://host:8080` to `https://host:8443` is
+    // another service on the same machine.
+    let upgrade = same_host
+        && original.scheme() == "http"
+        && next.scheme() == "https"
+        && original.port() == next.port();
     same_origin || upgrade
 }
 
@@ -209,6 +216,29 @@ mod tests {
         ));
         assert!(!keeps_origin(&base, &url("https://cdn.example.net/blob")));
         assert!(!keeps_origin(&base, &url("https://example.com/api/assets")));
+    }
+
+    #[test]
+    fn an_https_upgrade_must_keep_the_port() {
+        // Canonical upgrade: the default port on both sides.
+        assert!(keeps_origin(
+            &url("http://photos.example.com/api"),
+            &url("https://photos.example.com/api")
+        ));
+        // The same explicit port.
+        assert!(keeps_origin(
+            &url("http://photos.example.com:8080/api"),
+            &url("https://photos.example.com:8080/api")
+        ));
+        // Another service on the same machine, whatever the scheme does.
+        assert!(!keeps_origin(
+            &url("http://photos.example.com:8080/api"),
+            &url("https://photos.example.com:8443/api")
+        ));
+        assert!(!keeps_origin(
+            &url("http://photos.example.com/api"),
+            &url("https://photos.example.com:8443/api")
+        ));
     }
 
     fn client() -> reqwest::Client {
