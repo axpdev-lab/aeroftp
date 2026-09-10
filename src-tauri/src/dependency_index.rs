@@ -14,7 +14,7 @@
 //! `=0.10.3`.
 
 use futures_util::stream::{self, StreamExt};
-use semver::{Version, VersionReq};
+use semver::{Op, Version, VersionReq};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -62,7 +62,8 @@ pub enum UpdateStatus {
     CompatibleUpdate,
     /// The newest release needs the manifest requirement changed.
     IncompatibleUpdate,
-    /// An exact `=` requirement holds the crate back on purpose.
+    /// A fully specified `=MAJOR.MINOR.PATCH` requirement holds the crate back on
+    /// purpose (`=1.2` does not: it still takes patch releases).
     Pinned,
     /// The index did not answer or the version could not be read. Deliberately
     /// not folded into `UpToDate`: an unanswered check is not a green one.
@@ -119,6 +120,12 @@ fn newest<'a>(releases: impl Iterator<Item = &'a Version>) -> Option<Version> {
     releases.max_by(|a, b| a.cmp_precedence(b)).cloned()
 }
 
+/// Only a single fully specified `=MAJOR.MINOR.PATCH` holds a crate back:
+/// `=1.2` is `>=1.2.0, <1.3.0` in Cargo and still takes patch releases.
+fn is_exact_pin(req: &VersionReq) -> bool {
+    matches!(req.comparators.as_slice(), [c] if c.op == Op::Exact && c.minor.is_some() && c.patch.is_some())
+}
+
 /// Compare a locked version against the published releases. Precedence
 /// ignores build metadata, so `1.1.4+spec-1.1.0` is older than
 /// `1.1.5+spec-1.1.0`, and `VersionReq` applies Cargo's caret rule, so a
@@ -133,10 +140,10 @@ fn assess(locked: &str, requirement: &str, releases: &[Version]) -> Assessment {
     // A requirement semver cannot read is an error, like an unanswered index:
     // without it a compatible update cannot be told from an incompatible one.
     let status = match (Version::parse(locked), &latest, &parsed_requirement) {
-        (Ok(locked), Some(latest), Ok(_)) => {
+        (Ok(locked), Some(latest), Ok(req)) => {
             if locked.cmp_precedence(latest) != Ordering::Less {
                 UpdateStatus::UpToDate
-            } else if requirement.trim_start().starts_with('=') {
+            } else if is_exact_pin(req) {
                 UpdateStatus::Pinned
             } else if latest_compatible
                 .as_ref()
@@ -384,6 +391,17 @@ mod tests {
             assess("unknown", "1", &releases(&["1.0.0"])).status,
             UpdateStatus::Error
         );
+    }
+
+    /// `=1.2` is `>=1.2.0, <1.3.0` in Cargo: it still takes patch releases, so
+    /// only a fully specified `=MAJOR.MINOR.PATCH` holds a crate back.
+    #[test]
+    fn a_partial_exact_requirement_is_not_a_pin() {
+        let partial = assess("1.2.3", "=1.2", &releases(&["1.2.3", "1.2.9", "1.3.0"]));
+        assert_eq!(partial.status, UpdateStatus::CompatibleUpdate);
+        assert_eq!(partial.latest_compatible.unwrap().to_string(), "1.2.9");
+        let full = assess("1.2.3", "=1.2.3", &releases(&["1.2.3", "1.2.9", "1.3.0"]));
+        assert_eq!(full.status, UpdateStatus::Pinned);
     }
 
     #[test]
