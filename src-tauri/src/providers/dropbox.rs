@@ -3088,16 +3088,20 @@ mod tests {
             .expect("delete file");
         p.delete(&format!("{root}/sub")).await.expect("delete sub");
         let deleted = p.list_deleted(&root).await.expect("list_deleted");
+        // A row that is not in the listing at all and a row whose kind was not
+        // established both have to survive until after the cleanup, and they
+        // have to stay distinguishable: Dropbox's trash listing is eventually
+        // consistent, so a missing row means "ask again", while an empty kind
+        // means the probe answered and could not name it. Collapsing them into
+        // one empty string would report the first as the second.
+        let row = |name: &str| deleted.iter().find(|e| e.name == name);
         let kind = |name: &str| -> String {
-            deleted
-                .iter()
-                .find(|e| e.name == name)
-                .unwrap_or_else(|| panic!("{name} missing from the trash listing: {deleted:#?}"))
-                .metadata
-                .get("trash_kind")
-                .cloned()
+            row(name)
+                .and_then(|e| e.metadata.get("trash_kind").cloned())
                 .unwrap_or_default()
         };
+        let folder_listed = row("sub").is_some();
+        let file_listed = row("file.txt").is_some();
         // Observations are collected now and asserted after the cleanup below.
         // A live test that fails before it cleans up leaves debris on somebody's
         // real account and the next run starts from a dirty state, which is not
@@ -3137,6 +3141,10 @@ mod tests {
 
         // The two halves of the report: the folder must not read as a file, and
         // the file must carry a revision the restore can actually use.
+        assert!(
+            folder_listed && file_listed,
+            "the trash listing did not carry both rows back: {deleted:#?}"
+        );
         assert_eq!(
             folder_kind, "folder",
             "trashed folder read as {folder_kind:?}"
