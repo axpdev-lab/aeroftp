@@ -158,7 +158,7 @@ semver = "1.0.28"
 sigstore = { version = "0.14", default-features = false, features = ["verify", "sigstore-trust-root", "native-tls"] }
 
 # Secure Credential Storage (v1.3.2 hotfix)
-argon2 = "0.5"
+argon2 = "0.6"
 # Step 0 RustCrypto 0.11 audit, 2026-07-13:
 # Keep AES-GCM on 0.10.3 until noq-proto moves off aes-gcm 0.10.3. Bumping only
 # AeroFTP's direct dependency leaves both aes-gcm 0.10 and 0.11 in Cargo.lock.
