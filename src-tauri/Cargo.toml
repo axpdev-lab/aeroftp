@@ -32,6 +32,11 @@ path = "src/bin/seed_test_profiles.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# build.rs derives the Dependencies panel from the manifests and Cargo.lock:
+# toml reads the manifests, semver picks the locked version a requirement
+# selects. Both are already in the graph as normal dependencies.
+toml = "1.1"
+semver = "1.0.28"
 
 [dependencies]
 # WI-3d: promoted from [dev-dependencies] to a NORMAL dependency so the iroh P2P

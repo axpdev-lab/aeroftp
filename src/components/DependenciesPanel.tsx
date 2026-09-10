@@ -1,21 +1,36 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { X, RefreshCw, Package, CheckCircle, AlertTriangle, ArrowUpCircle, Loader2, Copy } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { X, RefreshCw, Package, CheckCircle, AlertTriangle, ArrowUpCircle, Loader2, Copy, Lock } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 
+/** One direct dependency, as build.rs derived it from the manifests and Cargo.lock. */
 interface DependencyInfo {
     name: string;
     version: string;
+    requirement: string;
     category: string;
 }
 
-interface DependencyWithLatest extends DependencyInfo {
-    latestVersion?: string;
-    status: 'checking' | 'up_to_date' | 'update_available' | 'major_update' | 'error';
+/** Classification done by the backend (dependency_index.rs), which applies Cargo's semver rules. */
+type UpdateStatus = 'up_to_date' | 'compatible_update' | 'incompatible_update' | 'pinned' | 'error';
+
+interface DependencyUpdate {
+    name: string;
+    version: string;
+    latest: string | null;
+    latest_compatible: string | null;
+    status: UpdateStatus;
+    error: string | null;
+}
+
+interface DependencyRow extends DependencyInfo {
+    latest?: string;
+    latestCompatible?: string;
+    status: UpdateStatus | 'checking';
 }
 
 interface DependenciesPanelProps {
@@ -23,58 +38,70 @@ interface DependenciesPanelProps {
     onClose: () => void;
 }
 
-const CATEGORIES_ORDER = ['Core', 'Protocols', 'Security', 'Archives', 'CLI & Tools', 'System', 'Plugins'];
+// A crate can be listed twice at two versions (rand 0.8 and 0.10), so the name alone is not a key.
+const rowKey = (d: { name: string; version: string }) => `${d.name}@${d.version}`;
 
-const compareSemver = (current: string, latest: string): 'up_to_date' | 'update_available' | 'major_update' => {
-    // Strip pre-release suffixes (e.g. "4.0.0-beta.3" -> "4.0.0")
-    const parse = (v: string) => v.split('-')[0].split('.').map(Number);
-    const c = parse(current);
-    const l = parse(latest);
-    if (c[0] < l[0]) return 'major_update';
-    if (c[0] === l[0] && (c[1] < l[1] || (c[1] === l[1] && (c[2] || 0) < (l[2] || 0)))) return 'update_available';
-    return 'up_to_date';
+const STATUS_LABEL: Record<DependencyRow['status'], string> = {
+    checking: '...',
+    up_to_date: 'OK',
+    compatible_update: 'UPDATE',
+    incompatible_update: 'MAJOR',
+    pinned: 'PINNED',
+    error: 'ERR',
 };
 
-const StatusBadge: React.FC<{ status: DependencyWithLatest['status'] }> = ({ status }) => {
+const StatusBadge: React.FC<{ status: DependencyRow['status'] }> = ({ status }) => {
     switch (status) {
         case 'checking':
             return <Loader2 size={14} className="animate-spin text-gray-400" />;
         case 'up_to_date':
             return <CheckCircle size={14} className="text-green-500" />;
-        case 'update_available':
+        case 'compatible_update':
             return <ArrowUpCircle size={14} className="text-yellow-500" />;
-        case 'major_update':
+        case 'incompatible_update':
             return <AlertTriangle size={14} className="text-red-500" />;
+        case 'pinned':
+            return <Lock size={14} className="text-blue-500" />;
         case 'error':
             return <X size={14} className="text-gray-400" />;
     }
 };
 
+/** The version a row offers: what `cargo update` reaches when that is possible, the newest release otherwise. */
+const offeredVersion = (d: DependencyRow) =>
+    d.status === 'compatible_update' ? d.latestCompatible : d.latest;
+
 const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClose }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
-    const [deps, setDeps] = useState<DependencyWithLatest[]>([]);
+    const [deps, setDeps] = useState<DependencyRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [checking, setChecking] = useState(false);
-    const [stats, setStats] = useState({ total: 0, upToDate: 0, updates: 0, major: 0 });
     const [copied, setCopied] = useState(false);
 
+    // The backend already sorts rows by category, so the first appearance order is the display order.
+    const categories = useMemo(() => [...new Set(deps.map(d => d.category))], [deps]);
+
+    const stats = useMemo(() => ({
+        total: deps.length,
+        upToDate: deps.filter(d => d.status === 'up_to_date').length,
+        updates: deps.filter(d => d.status === 'compatible_update').length,
+        major: deps.filter(d => d.status === 'incompatible_update').length,
+        pinned: deps.filter(d => d.status === 'pinned').length,
+    }), [deps]);
+
     const copyResults = useCallback(() => {
-        const statusLabel = (s: DependencyWithLatest['status']) =>
-            s === 'up_to_date' ? 'OK' : s === 'update_available' ? 'UPDATE' : s === 'major_update' ? 'MAJOR' : s === 'checking' ? '...' : 'ERR';
-        const lines = CATEGORIES_ORDER.flatMap(cat => {
-            const catDeps = deps.filter(d => d.category === cat);
-            if (catDeps.length === 0) return [];
-            return [
-                `\n## ${cat}`,
-                ...catDeps.map(d => `${d.name.padEnd(30)} ${d.version.padEnd(10)} ${(d.latestVersion || '-').padEnd(10)} ${statusLabel(d.status)}`)
-            ];
-        });
-        const text = `${t('dependencies.copyTitle')}\n${'='.repeat(65)}` + lines.join('\n');
+        const lines = categories.flatMap(cat => [
+            `\n## ${cat}`,
+            ...deps
+                .filter(d => d.category === cat)
+                .map(d => `${d.name.padEnd(30)} ${d.version.padEnd(18)} ${(offeredVersion(d) || '-').padEnd(18)} ${STATUS_LABEL[d.status]}`),
+        ]);
+        const text = `${t('dependencies.copyTitle')}\n${'='.repeat(75)}` + lines.join('\n');
         navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
-    }, [deps]);
+    }, [deps, categories, t]);
 
     // Load dependencies from backend
     useEffect(() => {
@@ -91,32 +118,27 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
         })();
     }, [isVisible]);
 
-    // Check latest versions via Rust backend (avoids CORS issues)
+    // Check the crates.io index via the Rust backend (avoids CORS issues)
     const checkVersions = useCallback(async () => {
         if (deps.length === 0) return;
         setChecking(true);
-
-        // Reset all to checking
-        setDeps(prev => prev.map(d => ({ ...d, status: 'checking' as const, latestVersion: undefined })));
+        setDeps(prev => prev.map(d => ({ ...d, status: 'checking' as const, latest: undefined, latestCompatible: undefined })));
 
         try {
-            const crateNames = deps.map(d => d.name);
-            const results: { name: string; latest_version: string | null; error: string | null }[] =
-                await invoke('check_crate_versions', { crateNames });
-
+            const results: DependencyUpdate[] = await invoke('check_dependency_updates');
+            const byKey = new Map(results.map(r => [rowKey(r), r]));
             setDeps(prev => prev.map(dep => {
-                const result = results.find(r => r.name === dep.name);
-                if (result?.latest_version) {
-                    return {
-                        ...dep,
-                        latestVersion: result.latest_version,
-                        status: compareSemver(dep.version, result.latest_version),
-                    };
-                }
-                return { ...dep, status: 'error' as const };
+                const result = byKey.get(rowKey(dep));
+                if (!result) return { ...dep, status: 'error' as const };
+                return {
+                    ...dep,
+                    latest: result.latest ?? undefined,
+                    latestCompatible: result.latest_compatible ?? undefined,
+                    status: result.status,
+                };
             }));
         } catch (e) {
-            console.error('Failed to check crate versions:', e);
+            console.error('Failed to check dependency updates:', e);
             setDeps(prev => prev.map(d => ({ ...d, status: 'error' as const })));
         }
 
@@ -129,16 +151,6 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
             checkVersions();
         }
     }, [loading, deps.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Update stats
-    useEffect(() => {
-        setStats({
-            total: deps.length,
-            upToDate: deps.filter(d => d.status === 'up_to_date').length,
-            updates: deps.filter(d => d.status === 'update_available').length,
-            major: deps.filter(d => d.status === 'major_update').length,
-        });
-    }, [deps]);
 
     if (!isVisible) return null;
 
@@ -175,6 +187,11 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
                                 <AlertTriangle size={11} /> {stats.major}
                             </span>
                         )}
+                        {stats.pinned > 0 && (
+                            <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                                <Lock size={11} /> {stats.pinned}
+                            </span>
+                        )}
                         <button
                             onClick={copyResults}
                             className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
@@ -204,9 +221,8 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
                             <Loader2 size={24} className="animate-spin text-gray-400" />
                         </div>
                     ) : (
-                        CATEGORIES_ORDER.map(category => {
+                        categories.map(category => {
                             const categoryDeps = deps.filter(d => d.category === category);
-                            if (categoryDeps.length === 0) return null;
                             return (
                                 <div key={category} className="mb-4">
                                     <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
@@ -223,26 +239,32 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {categoryDeps.map(dep => (
-                                                    <tr key={dep.name} className="border-b border-gray-100 dark:border-gray-700/50 last:border-0">
-                                                        <td className="py-1.5 px-3 font-mono text-xs font-medium text-gray-800 dark:text-gray-200">
-                                                            {dep.name}
-                                                        </td>
-                                                        <td className="py-1.5 px-3 font-mono text-xs text-gray-600 dark:text-gray-400">
-                                                            {dep.version}
-                                                        </td>
-                                                        <td className={`py-1.5 px-3 font-mono text-xs ${
-                                                            dep.status === 'update_available' ? 'text-yellow-600 dark:text-yellow-400 font-semibold' :
-                                                            dep.status === 'major_update' ? 'text-red-600 dark:text-red-400 font-semibold' :
-                                                            'text-gray-500'
-                                                        }`}>
-                                                            {dep.latestVersion || '-'}
-                                                        </td>
-                                                        <td className="py-1.5 px-3 text-center">
-                                                            <StatusBadge status={dep.status} />
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                {categoryDeps.map(dep => {
+                                                    const offered = offeredVersion(dep);
+                                                    return (
+                                                        <tr key={rowKey(dep)} className="border-b border-gray-100 dark:border-gray-700/50 last:border-0">
+                                                            <td className="py-1.5 px-3 font-mono text-xs font-medium text-gray-800 dark:text-gray-200">
+                                                                {dep.name}
+                                                            </td>
+                                                            <td className="py-1.5 px-3 font-mono text-xs text-gray-600 dark:text-gray-400" title={dep.requirement}>
+                                                                {dep.version}
+                                                            </td>
+                                                            <td className={`py-1.5 px-3 font-mono text-xs ${
+                                                                dep.status === 'compatible_update' ? 'text-yellow-600 dark:text-yellow-400 font-semibold' :
+                                                                dep.status === 'incompatible_update' ? 'text-red-600 dark:text-red-400 font-semibold' :
+                                                                'text-gray-500'
+                                                            }`}>
+                                                                {offered || '-'}
+                                                                {dep.latest && offered && dep.latest !== offered && (
+                                                                    <span className="font-normal text-gray-400"> ({dep.latest})</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-1.5 px-3 text-center">
+                                                                <StatusBadge status={dep.status} />
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>
