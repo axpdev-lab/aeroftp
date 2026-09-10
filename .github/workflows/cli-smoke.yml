@@ -109,8 +109,9 @@ jobs:
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
-          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
-          # enough to redden a run, and nothing here installs from them.
+          # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
+          # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
+          # mismatch on Packages.gz), and nothing here installs from any of them.
           sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -286,8 +287,9 @@ jobs:
 
       - name: Install Linux dependencies
         run: |
-          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
-          # enough to redden a run, and nothing here installs from them.
+          # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
+          # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
+          # mismatch on Packages.gz), and nothing here installs from any of them.
           sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -358,8 +360,9 @@ jobs:
 
       - name: Install Linux dependencies
         run: |
-          # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
-          # enough to redden a run, and nothing here installs from them.
+          # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
+          # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
+          # mismatch on Packages.gz), and nothing here installs from any of them.
           sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \

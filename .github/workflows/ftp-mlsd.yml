@@ -93,8 +93,9 @@ jobs:
             # next apt-get would refuse to run until it is told to finish.
             sudo dpkg --configure -a || true
             mkdir -p "$HOME/apt-archives/partial"
-            # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
-            # enough to redden a run, and nothing here installs from them.
+            # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
+            # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
+            # mismatch on Packages.gz), and nothing here installs from any of them.
             sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends \
@@ -239,8 +240,9 @@ jobs:
             set -euo pipefail
             sudo dpkg --configure -a || true
             mkdir -p "$HOME/apt-archives/partial"
-            # Runner-image extras: Microsoft's apt repos 403 on their InRelease often
-            # enough to redden a run, and nothing here installs from them.
+            # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
+            # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
+            # mismatch on Packages.gz), and nothing here installs from any of them.
             sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends \
