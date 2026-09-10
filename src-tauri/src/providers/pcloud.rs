@@ -40,6 +40,31 @@ const PCLOUD_MULTIPART_PART_SIZE: u64 = 4 * 1024 * 1024;
 /// pCloud JSON result code for throttle (often inside HTTP 200).
 const PCLOUD_RESULT_THROTTLE: u32 = 4006;
 
+/// pCloud answers `1000 "Log in required."` on its trash endpoints to any OAuth
+/// access token, while `listfolder` answers `0` for the same token in the same
+/// session. Measured live twice, on 2026-08-27 and again on 2026-09-10, each
+/// time with a control call between two refusals to prove the token was valid at
+/// that instant, and `userinfo?getauth=1` mints no session token for an OAuth
+/// caller, so there is no fallback and no permission to request.
+const PCLOUD_RESULT_LOGIN_REQUIRED: u32 = 1000;
+
+/// The refusal above, said as what it is.
+///
+/// `check_response` maps 1000 to `AuthenticationFailed`, which is right
+/// everywhere else and reads as a broken login here: that is exactly what the
+/// reporter saw on #397. The GUI stopped offering the trash button for pCloud,
+/// and that is a guard on one door while `pcloud_list_trash`,
+/// `pcloud_restore_from_trash` and `pcloud_empty_trash` stay registered and
+/// callable, so the truth belongs on the error itself. Only 1000 is
+/// reinterpreted: 2000 and 2094 stay authentication failures, because those are
+/// what a genuinely bad token returns.
+fn trash_refused_to_oauth() -> ProviderError {
+    ProviderError::NotSupported(
+        "pCloud does not allow its trash to be listed, restored or emptied through an OAuth login, so AeroFTP cannot show it here. Use the Trash on pcloud.com instead."
+            .to_string(),
+    )
+}
+
 /// Live DAG-P1-05C blocker: concurrent `upload_write` on one `uploadid`
 /// returns result `2068` ("Error writing to upload"). Serial multipart still
 /// works (with occasional retry). Promotion to `HttpClonePool` is therefore
@@ -2126,6 +2151,9 @@ impl PCloudProvider {
             .await
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
+        if resp.result == PCLOUD_RESULT_LOGIN_REQUIRED {
+            return Err(trash_refused_to_oauth());
+        }
         Self::check_response(&resp)?;
 
         let metadata = resp.metadata.ok_or_else(|| {
@@ -2180,6 +2208,9 @@ impl PCloudProvider {
             .await
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
+        if resp.result == PCLOUD_RESULT_LOGIN_REQUIRED {
+            return Err(trash_refused_to_oauth());
+        }
         if resp.result != 0 {
             return Err(ProviderError::Other(sanitize_api_error(
                 &resp
@@ -2201,6 +2232,9 @@ impl PCloudProvider {
             .await
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
+        if resp.result == PCLOUD_RESULT_LOGIN_REQUIRED {
+            return Err(trash_refused_to_oauth());
+        }
         if resp.result != 0 {
             return Err(ProviderError::Other(sanitize_api_error(
                 &resp
@@ -2228,6 +2262,9 @@ impl PCloudProvider {
             .await
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
+        if resp.result == PCLOUD_RESULT_LOGIN_REQUIRED {
+            return Err(trash_refused_to_oauth());
+        }
         if resp.result != 0 {
             return Err(ProviderError::Other(sanitize_api_error(
                 &resp
@@ -2410,6 +2447,42 @@ mod tests {
         let mut p = PCloudProvider::connected_for_test(demo_cfg());
         p.test_access_token = Some("fixture-token".to_string());
         p
+    }
+
+    #[tokio::test]
+    async fn a_trash_refusal_is_an_api_limit_and_a_bad_token_is_still_a_bad_token() {
+        // 1000 on a trash endpoint is pCloud saying OAuth cannot use the trash
+        // at all, not that the login is broken: the reporter on #397 read the
+        // latter, because that is what the message said. 2094 must keep saying
+        // what it means, which is why only 1000 is reinterpreted and only here.
+        use axum::{routing::get, Json, Router};
+        for (result, expect_not_supported) in [(1000u32, true), (2094u32, false)] {
+            let app = Router::new().route(
+                "/trash_list",
+                get(move || async move {
+                    Json(serde_json::json!({"result": result, "error": "Log in required."}))
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut provider = fixture_connected();
+            provider.api_base_override = Some(format!("http://{addr}"));
+            let err = provider
+                .list_trash()
+                .await
+                .expect_err("the fixture never returns a listing");
+            match (&err, expect_not_supported) {
+                (ProviderError::NotSupported(m), true) => {
+                    assert!(m.contains("pcloud.com"), "{m}");
+                }
+                (ProviderError::AuthenticationFailed(_), false) => {}
+                _ => panic!("result {result} produced {err:?}"),
+            }
+            server.abort();
+        }
     }
 
     #[tokio::test]
