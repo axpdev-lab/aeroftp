@@ -3098,62 +3098,72 @@ mod tests {
                 .cloned()
                 .unwrap_or_default()
         };
+        // Observations are collected now and asserted after the cleanup below.
+        // A live test that fails before it cleans up leaves debris on somebody's
+        // real account and the next run starts from a dirty state, which is not
+        // hypothetical: it is what the red run of this very test did.
+        let folder_kind = kind("sub");
+        let file_kind = kind("file.txt");
+        let file_rev = deleted
+            .iter()
+            .find(|e| e.name == "file.txt")
+            .and_then(|e| e.metadata.get("rev"))
+            .cloned()
+            .unwrap_or_default();
+
+        // The file must come back byte for byte. The stale rev is passed on
+        // purpose: passing means the tombstone was revalidated rather than
+        // trusted. Outcomes are captured, not asserted, until after cleanup.
+        let restore_outcome = p
+            .restore_file(&format!("{root}/file.txt"), "stale-rev")
+            .await;
+        let back = std::env::temp_dir().join(format!("dbx-397-back-{stamp}.txt"));
+        let restored_bytes = if restore_outcome.is_ok() {
+            p.download(&format!("{root}/file.txt"), back.to_str().unwrap(), None)
+                .await
+                .ok();
+            tokio::fs::read(&back).await.ok()
+        } else {
+            None
+        };
+        let folder_restore = p.restore_file(&format!("{root}/sub"), "").await;
+
+        // Clean up first, so a failed assertion cannot litter the account.
+        p.delete(&format!("{root}/file.txt")).await.ok();
+        let cleanup = p.delete(&root).await;
+        let still_there = p.exists(&root).await.unwrap_or(false);
+        let _ = tokio::fs::remove_file(&local).await;
+        let _ = tokio::fs::remove_file(&back).await;
+
         // The two halves of the report: the folder must not read as a file, and
-        // the file must carry a revision that the restore can actually use.
+        // the file must carry a revision the restore can actually use.
         assert_eq!(
-            kind("sub"),
-            "folder",
-            "trashed folder read as {:?}",
-            kind("sub")
+            folder_kind, "folder",
+            "trashed folder read as {folder_kind:?}"
         );
-        assert_eq!(kind("file.txt"), "file");
+        assert_eq!(file_kind, "file");
         assert!(
-            deleted
-                .iter()
-                .find(|e| e.name == "file.txt")
-                .and_then(|e| e.metadata.get("rev"))
-                .is_some_and(|r| !r.is_empty()),
+            !file_rev.is_empty(),
             "no usable revision on the trashed file"
         );
-
-        // The file comes back, byte for byte. The stale rev is passed on purpose:
-        // restore_file revalidates the tombstone and picks a restorable revision.
-        p.restore_file(&format!("{root}/file.txt"), "stale-rev")
-            .await
-            .expect("restore file");
-        let back = std::env::temp_dir().join(format!("dbx-397-back-{stamp}.txt"));
-        p.download(&format!("{root}/file.txt"), back.to_str().unwrap(), None)
-            .await
-            .expect("download restored file");
+        restore_outcome.expect("restore file");
         assert_eq!(
-            tokio::fs::read(&back).await.unwrap(),
-            body.as_bytes(),
+            restored_bytes.as_deref(),
+            Some(body.as_bytes()),
             "restored file differs from what was uploaded"
         );
-
-        // The folder is refused, and refused in words. Dropbox restores file
-        // revisions and has no folder equivalent, so the 409 the reporter saw is
-        // the API being asked something it cannot do: the value here is that the
-        // message says so instead of surfacing the status code.
-        let err = p
-            .restore_file(&format!("{root}/sub"), "")
-            .await
+        // Dropbox restores file revisions and has no folder equivalent, so the
+        // 409 the reporter saw is the API being asked something it cannot do.
+        // What matters is that the message says so instead of the status code.
+        let err = folder_restore
             .expect_err("a folder restore cannot succeed on Dropbox")
             .to_string();
         assert!(
             err.contains("dropbox.com") && !err.contains("409"),
             "folder restore should explain itself, got: {err}"
         );
-
-        // Clean up what this test created, and prove it is gone.
-        p.delete(&format!("{root}/file.txt")).await.ok();
-        p.delete(&root).await.expect("cleanup root");
-        assert!(
-            !p.exists(&root).await.unwrap_or(false),
-            "test tree still present at {root}"
-        );
-        let _ = tokio::fs::remove_file(&local).await;
-        let _ = tokio::fs::remove_file(&back).await;
+        cleanup.expect("cleanup root");
+        assert!(!still_there, "test tree still present at {root}");
         eprintln!("live #397 retest passed against profile {profile_query:?}, tree {root} removed");
     }
 
