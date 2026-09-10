@@ -48,6 +48,43 @@ const PCLOUD_RESULT_THROTTLE: u32 = 4006;
 /// caller, so there is no fallback and no permission to request.
 const PCLOUD_RESULT_LOGIN_REQUIRED: u32 = 1000;
 
+/// The one place a pCloud `result` code becomes a `ProviderError`.
+///
+/// Both `check_response` and the trash mutations go through it, so a code
+/// cannot mean one thing on a listing and another on a delete. They used to
+/// have two tables: the listing classified through `check_response` while the
+/// three mutation endpoints had a single `result != 0` branch that answered
+/// `Other`, so an invalid token was an authentication failure on one and a
+/// generic failure on the other three. Two tables for one vendor's codes is how
+/// they drift apart.
+fn classify_pcloud_result(result: u32, error: Option<&str>) -> Option<ProviderError> {
+    if result == 0 {
+        return None;
+    }
+    let raw_msg = error
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("Error code: {result}"));
+    let msg = sanitize_api_error(&raw_msg);
+    Some(match result {
+        // 1000: "Log in required", 2000: "Log in failed", 2094: "Invalid access_token"
+        1000 | 2000 | 2094 => ProviderError::AuthenticationFailed(msg),
+        // 2005: "Directory does not exist", 2009: "File not found or invalid
+        // file/folder id", 2010: "Invalid path". All three are absence
+        // conditions: mapping them to NotFound lets `exists()` return
+        // Ok(false) (not a propagated error) so a probe for a missing file
+        // in an existing folder is a clean negative. Without 2005 here, the
+        // AeroCrypt overlay bootstrap probe (`exists(.aeroftp-crypt.json)`)
+        // saw a ServerError and failed "could not be unlocked" on pCloud.
+        2005 | 2009 | 2010 => ProviderError::NotFound(msg),
+        2003 | 2028 => ProviderError::PermissionDenied(msg),
+        2004 => ProviderError::AlreadyExists(msg),
+        // 4006: "Throttle limit reached", often inside HTTP 200 JSON.
+        // Map through a stable rate-limit phrase so AIMD sees RateLimited.
+        PCLOUD_RESULT_THROTTLE => pcloud_throttle_error("API", Some(msg.as_str())),
+        _ => ProviderError::ServerError(msg),
+    })
+}
+
 /// The refusal above, said as what it is.
 ///
 /// `check_response` maps 1000 to `AuthenticationFailed`, which is right
@@ -510,32 +547,10 @@ impl PCloudProvider {
 
     /// Check pCloud API response for errors (PA-014: sanitized messages)
     fn check_response(resp: &PCloudResponse) -> Result<(), ProviderError> {
-        if resp.result != 0 {
-            let raw_msg = resp
-                .error
-                .clone()
-                .unwrap_or_else(|| format!("Error code: {}", resp.result));
-            let msg = sanitize_api_error(&raw_msg);
-            return Err(match resp.result {
-                // 1000: "Log in required", 2000: "Log in failed", 2094: "Invalid access_token"
-                1000 | 2000 | 2094 => ProviderError::AuthenticationFailed(msg),
-                // 2005: "Directory does not exist", 2009: "File not found or invalid
-                // file/folder id", 2010: "Invalid path". All three are absence
-                // conditions: mapping them to NotFound lets `exists()` return
-                // Ok(false) (not a propagated error) so a probe for a missing file
-                // in an existing folder is a clean negative. Without 2005 here, the
-                // AeroCrypt overlay bootstrap probe (`exists(.aeroftp-crypt.json)`)
-                // saw a ServerError and failed "could not be unlocked" on pCloud.
-                2005 | 2009 | 2010 => ProviderError::NotFound(msg),
-                2003 | 2028 => ProviderError::PermissionDenied(msg),
-                2004 => ProviderError::AlreadyExists(msg),
-                // 4006: "Throttle limit reached", often inside HTTP 200 JSON.
-                // Map through a stable rate-limit phrase so AIMD sees RateLimited.
-                PCLOUD_RESULT_THROTTLE => pcloud_throttle_error("API", Some(msg.as_str())),
-                _ => ProviderError::ServerError(msg),
-            });
+        match classify_pcloud_result(resp.result, resp.error.as_deref()) {
+            Some(e) => Err(e),
+            None => Ok(()),
         }
-        Ok(())
     }
 
     /// Look up the `folderid` of a directory by path, creating the directory
@@ -2211,12 +2226,13 @@ impl PCloudProvider {
         if resp.result == PCLOUD_RESULT_LOGIN_REQUIRED {
             return Err(trash_refused_to_oauth());
         }
-        if resp.result != 0 {
-            return Err(ProviderError::Other(sanitize_api_error(
-                &resp
-                    .error
-                    .unwrap_or_else(|| "Failed to restore from trash".to_string()),
-            )));
+        if let Some(e) = classify_pcloud_result(
+            resp.result,
+            resp.error
+                .as_deref()
+                .or(Some("Failed to restore from trash")),
+        ) {
+            return Err(e);
         }
         info!("pCloud: restored item {} from trash", id);
         Ok(())
@@ -2235,12 +2251,11 @@ impl PCloudProvider {
         if resp.result == PCLOUD_RESULT_LOGIN_REQUIRED {
             return Err(trash_refused_to_oauth());
         }
-        if resp.result != 0 {
-            return Err(ProviderError::Other(sanitize_api_error(
-                &resp
-                    .error
-                    .unwrap_or_else(|| "Failed to empty trash".to_string()),
-            )));
+        if let Some(e) = classify_pcloud_result(
+            resp.result,
+            resp.error.as_deref().or(Some("Failed to empty trash")),
+        ) {
+            return Err(e);
         }
         info!("pCloud: trash emptied");
         Ok(())
@@ -2265,12 +2280,13 @@ impl PCloudProvider {
         if resp.result == PCLOUD_RESULT_LOGIN_REQUIRED {
             return Err(trash_refused_to_oauth());
         }
-        if resp.result != 0 {
-            return Err(ProviderError::Other(sanitize_api_error(
-                &resp
-                    .error
-                    .unwrap_or_else(|| "Failed to permanently delete".to_string()),
-            )));
+        if let Some(e) = classify_pcloud_result(
+            resp.result,
+            resp.error
+                .as_deref()
+                .or(Some("Failed to permanently delete")),
+        ) {
+            return Err(e);
         }
         info!("pCloud: permanently deleted item {} from trash", id);
         Ok(())
@@ -2454,15 +2470,21 @@ mod tests {
         // 1000 on a trash endpoint is pCloud saying OAuth cannot use the trash
         // at all, not that the login is broken: the reporter on #397 read the
         // latter, because that is what the message said. 2094 must keep saying
-        // what it means, which is why only 1000 is reinterpreted and only here.
+        // what it means, which is why only 1000 is reinterpreted.
+        //
+        // All four endpoints are exercised, not just the listing. Three of them
+        // used to answer through their own `result != 0` branch, so the same
+        // code meant different things depending on which one you called, and a
+        // test on the listing alone would have passed over that.
         use axum::{routing::get, Json, Router};
         for (result, expect_not_supported) in [(1000u32, true), (2094u32, false)] {
-            let app = Router::new().route(
-                "/trash_list",
-                get(move || async move {
-                    Json(serde_json::json!({"result": result, "error": "Log in required."}))
-                }),
-            );
+            let body = move || async move {
+                Json(serde_json::json!({"result": result, "error": "Log in required."}))
+            };
+            let app = Router::new()
+                .route("/trash_list", get(body))
+                .route("/trash_restore", get(body))
+                .route("/trash_clear", get(body));
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let addr = listener.local_addr().unwrap();
             let server = tokio::spawn(async move {
@@ -2470,16 +2492,45 @@ mod tests {
             });
             let mut provider = fixture_connected();
             provider.api_base_override = Some(format!("http://{addr}"));
-            let err = provider
-                .list_trash()
-                .await
-                .expect_err("the fixture never returns a listing");
-            match (&err, expect_not_supported) {
-                (ProviderError::NotSupported(m), true) => {
-                    assert!(m.contains("pcloud.com"), "{m}");
+
+            let outcomes: Vec<(&str, ProviderError)> = vec![
+                (
+                    "list_trash",
+                    provider
+                        .list_trash()
+                        .await
+                        .expect_err("fixture never lists"),
+                ),
+                (
+                    "restore_from_trash",
+                    provider
+                        .restore_from_trash("1", false)
+                        .await
+                        .expect_err("fixture never restores"),
+                ),
+                (
+                    "empty_trash",
+                    provider
+                        .empty_trash()
+                        .await
+                        .expect_err("fixture never empties"),
+                ),
+                (
+                    "permanent_delete_from_trash",
+                    provider
+                        .permanent_delete_from_trash("1", false)
+                        .await
+                        .expect_err("fixture never purges"),
+                ),
+            ];
+            for (endpoint, err) in outcomes {
+                match (&err, expect_not_supported) {
+                    (ProviderError::NotSupported(m), true) => {
+                        assert!(m.contains("pcloud.com"), "{endpoint}: {m}");
+                    }
+                    (ProviderError::AuthenticationFailed(_), false) => {}
+                    _ => panic!("{endpoint} turned result {result} into {err:?}"),
                 }
-                (ProviderError::AuthenticationFailed(_), false) => {}
-                _ => panic!("result {result} produced {err:?}"),
             }
             server.abort();
         }
