@@ -56296,7 +56296,10 @@ async fn cmd_check(
         checkers: Some(effective_checkers(cli)),
         compute_checksum: checksum && !crypt_active,
         disable_recursive_fastpath: crypt_active,
-        max_depth: Some(MAX_SCAN_DEPTH),
+        // `None` is the scanner's default depth, the same 100 as MAX_SCAN_DEPTH. An
+        // explicit depth, even that one, keeps the remote walk off the flat
+        // recursive listing (S3, WebDAV).
+        max_depth: None,
         ..Default::default()
     };
     let locals = scan_local_tree(local_path, &scan_opts);
@@ -56515,7 +56518,10 @@ async fn cmd_cryptcheck(
     let scan_opts = ScanOptions {
         checkers: Some(effective_checkers(cli)),
         compute_checksum: false,
-        max_depth: Some(MAX_SCAN_DEPTH),
+        // `None` is the scanner's default depth, the same 100 as MAX_SCAN_DEPTH. An
+        // explicit depth, even that one, keeps the remote walk off the flat
+        // recursive listing (S3, WebDAV).
+        max_depth: None,
         ..Default::default()
     };
 
@@ -56890,7 +56896,10 @@ async fn cmd_reconcile(
         compute_checksum: checksum && !crypt_active,
         compute_remote_checksum: checksum && !crypt_active,
         disable_recursive_fastpath: crypt_active,
-        max_depth: Some(MAX_SCAN_DEPTH),
+        // `None` is the scanner's default depth, the same 100 as MAX_SCAN_DEPTH. An
+        // explicit depth, even that one, keeps the remote walk off the flat
+        // recursive listing (S3, WebDAV).
+        max_depth: None,
         ..Default::default()
     };
     let local_spinner = maybe_create_scan_spinner(format, cli, "Scanning local...");
