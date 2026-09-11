@@ -75636,6 +75636,182 @@ mod tests {
         assert_eq!(stats.exit_code, 4, "the refusal shows in the exit code");
     }
 
+    /// A remote whose `/root` lists a directory, `broken/`, that cannot itself
+    /// be listed: the scan counts a listing error there.
+    fn remote_with_an_unlistable_directory() -> MemTreeProvider {
+        MemTreeProvider {
+            dirs: HashMap::from([(
+                "/root".to_string(),
+                vec![RemoteEntry::directory(
+                    "broken".to_string(),
+                    "/root/broken".to_string(),
+                )],
+            )]),
+            delete_attempts: Arc::default(),
+        }
+    }
+
+    /// The report of `check` (by size) against `remote`.
+    fn run_check(remote: MemTreeProvider, local: &str, one_way: bool) -> CliCheckReport {
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        run_against_remote(remote, || {
+            check_report(
+                "memory://",
+                local,
+                "/root",
+                false,
+                one_way,
+                &cli,
+                OutputFormat::Json,
+            )
+        })
+        .unwrap_or_else(|code| panic!("check failed with exit code {code}"))
+    }
+
+    /// The report of `cryptcheck` against `remote`, with names not encrypted
+    /// and the default `.bin` suffix. The URL only has to resolve: the
+    /// connection itself comes from the test seam.
+    fn run_cryptcheck(remote: MemTreeProvider, local: &str, one_way: bool) -> CliCheckReport {
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        run_against_remote(remote, || {
+            cryptcheck_report(
+                "sftp://tester:secret@127.0.0.1/",
+                local,
+                "/root",
+                Some("crypt password".to_string()),
+                Some(String::new()),
+                "off",
+                None,
+                one_way,
+                None,
+                "sha256",
+                &cli,
+                OutputFormat::Json,
+            )
+        })
+        .unwrap_or_else(|code| panic!("cryptcheck failed with exit code {code}"))
+    }
+
+    /// A local tree whose only file, `locked/keep.txt`, sits behind a
+    /// directory the current user cannot read.
+    #[cfg(unix)]
+    fn local_tree_behind_an_unreadable_directory() -> (FilesFromFixture, UnreadableDir) {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir(Path::new(&local).join("locked")).expect("locked directory");
+        fixture.local_file("locked/keep.txt", 1);
+        let locked = UnreadableDir::lock(Path::new(&local).join("locked"));
+        (fixture, locked)
+    }
+
+    /// `check` must not report `ok` over a local directory it could not read.
+    /// With `--one-way` the remote copy of the file behind it is not even
+    /// counted as missing, so the run read as a clean match: it must be
+    /// `partial` and exit 4.
+    #[cfg(unix)]
+    #[test]
+    fn check_reports_partial_when_a_local_directory_cannot_be_read() {
+        let (fixture, _locked) = local_tree_behind_an_unreadable_directory();
+
+        let report = run_check(
+            MemTreeProvider::tree(&[("locked/keep.txt", 1)]),
+            &fixture.local(),
+            true,
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+        assert!(
+            !report.local_scan.is_complete(),
+            "the unreadable directory is a local scan error"
+        );
+    }
+
+    /// `check` must not report `ok` when a remote directory could not be
+    /// listed: the files in it are unseen, not absent.
+    #[test]
+    fn check_reports_partial_when_a_remote_directory_cannot_be_listed() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_check(
+            remote_with_an_unlistable_directory(),
+            &fixture.local(),
+            false,
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+        assert!(
+            !report.remote_scan.is_complete(),
+            "the unlisted directory is a remote scan error"
+        );
+    }
+
+    /// Complete scans of matching trees still report `ok` and exit 0.
+    #[test]
+    fn check_reports_ok_on_matching_complete_trees() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+
+        let report = run_check(
+            MemTreeProvider::root_files(&[("a.txt", 1)]),
+            &fixture.local(),
+            false,
+        );
+
+        assert!(report.local_scan.is_complete() && report.remote_scan.is_complete());
+        assert_eq!(report.status(), "ok");
+        assert_eq!(report.exit_code(), 0);
+    }
+
+    /// `cryptcheck` over a local directory it could not read: as for
+    /// `check`, `--one-way` hid the remote file behind it and the run read as
+    /// clean. It must be `partial` and exit 4.
+    #[cfg(unix)]
+    #[test]
+    fn cryptcheck_reports_partial_when_a_local_directory_cannot_be_read() {
+        let (fixture, _locked) = local_tree_behind_an_unreadable_directory();
+
+        let report = run_cryptcheck(
+            MemTreeProvider::tree(&[("locked/keep.txt.bin", 1)]),
+            &fixture.local(),
+            true,
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+        assert!(
+            !report.local_scan.is_complete(),
+            "the unreadable directory is a local scan error"
+        );
+    }
+
+    /// `cryptcheck` when a remote directory could not be listed: `partial`,
+    /// exit 4, not `ok`.
+    #[test]
+    fn cryptcheck_reports_partial_when_a_remote_directory_cannot_be_listed() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_cryptcheck(
+            remote_with_an_unlistable_directory(),
+            &fixture.local(),
+            false,
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+        assert!(
+            !report.remote_scan.is_complete(),
+            "the unlisted directory is a remote scan error"
+        );
+    }
+
     struct CliEditFakeProvider {
         remote_files: HashMap<String, Vec<u8>>,
         uploads: Vec<(String, Vec<u8>)>,
