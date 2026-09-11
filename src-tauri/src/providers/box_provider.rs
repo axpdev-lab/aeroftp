@@ -498,7 +498,7 @@ impl BoxProvider {
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
-                return Err(ProviderError::NotFound(format!("Path not found: {}", path)));
+                return Err(ProviderError::NotFound(path.to_string()));
             }
 
             let items: BoxItemCollection = resp

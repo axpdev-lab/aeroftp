@@ -926,9 +926,7 @@ impl FileLuProvider {
                 .path_cache
                 .get(&child_virtual)
                 .cloned()
-                .ok_or_else(|| {
-                    ProviderError::NotFound(format!("Path not found: {}", child_virtual))
-                })?;
+                .ok_or_else(|| ProviderError::NotFound(child_virtual.clone()))?;
 
             if entry.is_dir {
                 current_fld_id = entry.fld_id;

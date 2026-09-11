@@ -219,13 +219,34 @@ impl Drop for MultipartAbortGuard {
     }
 }
 
-fn etag_to_md5(raw: &str) -> Option<String> {
+/// MD5 of the object content recovered from the ETag, or None when the ETag
+/// is not one. Per the AWS S3 API reference (API_Object), the ETag is the
+/// content MD5 only for single-part objects stored plaintext or with SSE-S3:
+/// multipart uploads carry a `-N` part suffix (rejected here by the 32-hex
+/// shape check) and SSE-KMS/SSE-C make the ETag opaque, which the caller
+/// reports through `sse_opaque`. Omit over guess, the way rclone does.
+fn etag_to_md5(raw: &str, sse_opaque: bool) -> Option<String> {
+    if sse_opaque {
+        return None;
+    }
     let v = raw.trim().trim_matches('"').to_ascii_lowercase();
     if v.len() == 32 && v.bytes().all(|b| b.is_ascii_hexdigit()) {
         Some(v)
     } else {
         None
     }
+}
+
+/// True when a response's headers say the object is stored under SSE-KMS
+/// (including DSSE) or SSE-C, in which case its ETag is not the content MD5.
+/// SSE-S3 (`AES256`) keeps the plain semantics and is not matched here.
+fn response_declares_opaque_etag(headers: &reqwest::header::HeaderMap) -> bool {
+    let kms = headers
+        .get("x-amz-server-side-encryption")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.starts_with("aws:kms"))
+        .unwrap_or(false);
+    kms || headers.contains_key("x-amz-server-side-encryption-customer-algorithm")
 }
 
 /// Plan the `UploadPartCopy` parts for a server-side multipart copy of
@@ -1972,7 +1993,14 @@ impl S3Provider {
                                             if let Some(raw_etag) = c_etag.as_ref() {
                                                 let etag =
                                                     raw_etag.trim().trim_matches('"').to_string();
-                                                if let Some(md5) = etag_to_md5(&etag) {
+                                                // A listing carries no per-object
+                                                // encryption flag; the profile's own
+                                                // SSE setting is the only signal.
+                                                let sse_opaque = matches!(
+                                                    self.config.sse_mode.as_deref(),
+                                                    Some("aws:kms")
+                                                );
+                                                if let Some(md5) = etag_to_md5(&etag, sse_opaque) {
                                                     metadata.insert("md5".to_string(), md5);
                                                 }
                                                 metadata.insert("etag".to_string(), etag);
@@ -4745,7 +4773,8 @@ impl StorageProvider for S3Provider {
 
                 let mut metadata = HashMap::new();
                 if let Some(etag) = etag {
-                    if let Some(md5) = etag_to_md5(&etag) {
+                    let sse_opaque = response_declares_opaque_etag(response.headers());
+                    if let Some(md5) = etag_to_md5(&etag, sse_opaque) {
                         metadata.insert("md5".to_string(), md5);
                     }
                     metadata.insert("etag".to_string(), etag);
@@ -9782,6 +9811,134 @@ mod tests {
             entry.modified.as_deref(),
             Some("Sun, 06 Sep 2026 20:11:32 GMT")
         );
+    }
+
+    /// HEAD answers for an SSE-KMS or SSE-C object carry an ETag that is not
+    /// the content MD5 (AWS API Object reference), so `stat` must not fill
+    /// `metadata["md5"]` from it. The plain case keeps deriving it, and a
+    /// multipart ETag ("-N" suffix) never yields one.
+    #[tokio::test]
+    async fn stat_omits_etag_md5_under_sse_kms_and_sse_c() {
+        for (label, extra_headers) in [
+            ("sse-kms", vec![("x-amz-server-side-encryption", "aws:kms")]),
+            (
+                "sse-kms-dsse",
+                vec![("x-amz-server-side-encryption", "aws:kms:dsse")],
+            ),
+            (
+                "sse-c",
+                vec![("x-amz-server-side-encryption-customer-algorithm", "AES256")],
+            ),
+        ] {
+            let app = axum::Router::new().route(
+                "/test-bucket/{*key}",
+                axum::routing::head(move || {
+                    let extra = extra_headers.clone();
+                    async move {
+                        let mut builder = axum::http::Response::builder()
+                            .header("content-length", "7")
+                            .header("etag", "\"d3b07384d113edec49eaa6238ad5ff00\"");
+                        for (k, v) in extra {
+                            builder = builder.header(k, v);
+                        }
+                        builder.body(axum::body::Body::empty()).unwrap()
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind");
+            let addr = listener.local_addr().unwrap();
+            let _server = tokio::spawn(async move {
+                axum::serve(listener, app).await.ok();
+            });
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.connected = true;
+            let entry = provider.stat("/enc.bin").await.expect("stat");
+            assert_eq!(
+                entry.metadata.get("etag").map(String::as_str),
+                Some("d3b07384d113edec49eaa6238ad5ff00"),
+                "{label}: the ETag itself stays visible"
+            );
+            assert!(
+                !entry.metadata.contains_key("md5"),
+                "{label}: an SSE-KMS/SSE-C ETag is not the content MD5"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn stat_derives_md5_from_a_plain_etag_only() {
+        for (label, etag, expect_md5) in [
+            ("plain", "\"d3b07384d113edec49eaa6238ad5ff00\"", true),
+            ("sse-s3", "\"d3b07384d113edec49eaa6238ad5ff00\"", true),
+            ("multipart", "\"d3b07384d113edec49eaa6238ad5ff00-3\"", false),
+        ] {
+            let sse_s3 = label == "sse-s3";
+            let app = axum::Router::new().route(
+                "/test-bucket/{*key}",
+                axum::routing::head(move || async move {
+                    let mut builder = axum::http::Response::builder()
+                        .header("content-length", "7")
+                        .header("etag", etag);
+                    if sse_s3 {
+                        // SSE-S3 (AES256) keeps the content MD5 as the ETag of
+                        // a single-part object, so the derivation stays.
+                        builder = builder.header("x-amz-server-side-encryption", "AES256");
+                    }
+                    builder.body(axum::body::Body::empty()).unwrap()
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind");
+            let addr = listener.local_addr().unwrap();
+            let _server = tokio::spawn(async move {
+                axum::serve(listener, app).await.ok();
+            });
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.connected = true;
+            let entry = provider.stat("/obj.bin").await.expect("stat");
+            assert_eq!(
+                entry.metadata.contains_key("md5"),
+                expect_md5,
+                "{label}: md5 presence"
+            );
+        }
+    }
+
+    /// The listing carries no per-object encryption flag, so the profile's
+    /// own SSE setting is the only honest signal: a profile that writes
+    /// SSE-KMS must not read an MD5 out of the listed ETags.
+    #[test]
+    fn list_omits_etag_md5_when_the_profile_writes_sse_kms() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult>
+  <Name>test-bucket</Name>
+  <Prefix></Prefix>
+  <Delimiter>/</Delimiter>
+  <Contents>
+    <Key>enc.bin</Key>
+    <Size>7</Size>
+    <LastModified>2026-09-06T20:11:32.000Z</LastModified>
+    <ETag>"d3b07384d113edec49eaa6238ad5ff00"</ETag>
+  </Contents>
+</ListBucketResult>"#;
+        for (label, sse_mode, expect_md5) in [
+            ("plain profile", None, true),
+            ("sse-s3 profile", Some("AES256"), true),
+            ("sse-kms profile", Some("aws:kms"), false),
+        ] {
+            let mut provider = make_provider(None);
+            provider.config.sse_mode = sse_mode.map(String::from);
+            let (entries, _) = provider.parse_list_response(xml).expect("parse");
+            let file = entries.iter().find(|e| !e.is_dir).expect("file entry");
+            assert_eq!(
+                file.metadata.contains_key("md5"),
+                expect_md5,
+                "{label}: md5 presence"
+            );
+        }
     }
 
     #[tokio::test]
