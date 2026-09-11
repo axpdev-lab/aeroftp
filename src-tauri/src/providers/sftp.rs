@@ -1534,19 +1534,85 @@ impl StorageProvider for SftpProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_with_size_hint(remote_path, local_path, None, on_progress)
+            .await
+    }
+
+    async fn download_with_size_hint(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        size_hint: Option<u64>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
         self.ensure_connected().await?;
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
 
         tracing::info!("SFTP: Downloading {} to {}", full_path, local_path);
 
-        // Get file size
-        let metadata = sftp.metadata(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::NotFound(format!("File not found: {}", s))
-            })
-        })?;
+        // Speculate on the serial path for a hint of at most one buffer:
+        // STAT and OPEN can share a round trip on the multiplexed session.
+        // The hint selects only this optimization; the fresh STAT still drives
+        // path selection, termination, throttling, resume and progress.
+        // A stale hint or an explicit fast-path setting can select a different
+        // downloader below, which closes the speculative handle first.
+        let small_enough_for_serial =
+            matches!(size_hint, Some(hint) if hint <= self.buffer_size as u64);
+        let (metadata, preopened) = if small_enough_for_serial {
+            let (metadata, opened) = tokio::join!(sftp.metadata(&full_path), sftp.open(&full_path));
+            (metadata, Some(opened))
+        } else {
+            (sftp.metadata(&full_path).await, None)
+        };
+        let metadata = match metadata {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                // OPEN may have succeeded independently of STAT. Finish its
+                // CLOSE before returning, including on servers that deny STAT.
+                if let Some(Ok(file)) = preopened {
+                    let _ = file.close().await;
+                }
+                return Err(classify_russh_err(error, |s| {
+                    ProviderError::NotFound(format!("File not found: {}", s))
+                }));
+            }
+        };
         let total_size = metadata.size.unwrap_or(0);
+        // The OPEN above is speculation, fired next to the STAT to overlap the
+        // two round trips. Its failure is not the download's failure: the fresh
+        // STAT can still select the pooled, read-ahead or pipelined path, and
+        // each of those opens handles of its own. Aborting here would turn a
+        // transient refusal, a warm worker hitting the server's handle limit
+        // being the realistic one, into a failed download that used to work.
+        //
+        // Degrading to "no speculative handle" hides nothing: the serial path
+        // opens again below and classifies the same error the same way, so a
+        // genuine permission or missing-file failure still surfaces, once.
+        let mut preopened = match preopened {
+            Some(Ok(file)) => Some(file),
+            Some(Err(e)) => {
+                tracing::debug!(
+                    "SFTP: speculative OPEN of {} failed ({}); continuing without it",
+                    full_path,
+                    e
+                );
+                None
+            }
+            None => None,
+        };
+
+        // A fast path engaging despite the hint (a stale one or an
+        // explicit fast-path setting) cannot use the pre-opened handle: it runs its
+        // own reads. Close it awaited, not dropped: a queued close_nowait is
+        // the handle-leak shape the awaited close was added for.
+        macro_rules! close_preopened {
+            () => {
+                if let Some(file) = preopened.take() {
+                    let _ = file.close().await;
+                }
+            };
+        }
 
         // PD-SFTP-2: intra-file parallelism. Engaged only when the user opted
         // in (`set_multi_thread_download(streams >= 2, ...)`), the file is
@@ -1558,6 +1624,7 @@ impl StorageProvider for SftpProvider {
             && total_size >= self.multi_thread_cutoff
             && self.connection_spec.is_some()
         {
+            close_preopened!();
             return self
                 .download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
                 .await;
@@ -1581,6 +1648,7 @@ impl StorageProvider for SftpProvider {
                     total_size,
                     1,
                 ) {
+                    close_preopened!();
                     let sftp = self.get_sftp()?;
                     sftp_readahead_download(
                         sftp,
@@ -1610,6 +1678,7 @@ impl StorageProvider for SftpProvider {
                     .bandwidth()
                     .is_unlimited()
             {
+                close_preopened!();
                 let sftp = self.get_sftp()?;
                 let mut atomic = super::atomic_write::AtomicFile::new(local_path)
                     .await
@@ -1639,137 +1708,166 @@ impl StorageProvider for SftpProvider {
         }
 
         // Open remote file
-        let mut remote_file = sftp.open(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
-            })
-        })?;
-
-        // Resumable local file: writes to `.aerotmp`, KEEPS the partial on
-        // cancel/error (drop) so a later re-download resumes, renames on commit.
-        let mut resumable = super::atomic_write::ResumableFile::open(local_path)
-            .await
-            .map_err(|e| {
-                ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
-            })?;
-
-        let mut resume_offset = resumable.offset();
-        // A partial larger than the current remote file is stale (the remote
-        // changed): discard it and start fresh rather than appending to bad data.
-        if total_size > 0 && resume_offset > total_size {
-            resumable.discard().await.ok();
-            resumable = super::atomic_write::ResumableFile::open_fresh(local_path)
-                .await
-                .map_err(|e| {
-                    ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
-                })?;
-            resume_offset = 0;
-        }
-
-        // The partial already holds the whole file: finalize, nothing to read.
-        if total_size > 0 && resume_offset == total_size {
-            if let Some(ref progress) = on_progress {
-                progress(total_size, total_size);
-            }
-            resumable.commit().await.map_err(|e| {
-                ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-            })?;
-            tracing::info!(
-                "SFTP: Download already complete from partial: {} bytes",
-                total_size
-            );
-            return Ok(());
-        }
-
-        // Resume: seek the remote read to the partial's end so we append the
-        // correct bytes instead of re-fetching from zero.
-        if resume_offset > 0 {
-            use tokio::io::AsyncSeekExt;
-            remote_file
-                .seek(std::io::SeekFrom::Start(resume_offset))
-                .await
-                .map_err(|e| {
-                    ProviderError::TransferFailed(format!("Failed to seek for resume: {}", e))
-                })?;
-            tracing::info!("SFTP: Resuming download from offset {}", resume_offset);
-        }
-
-        // Read and write in chunks with optional rate limiting
-        let mut buffer = vec![0u8; self.buffer_size];
-        let mut transferred: u64 = resume_offset;
-        if let Some(ref progress) = on_progress {
-            progress(transferred, total_size);
-        }
-        let start = std::time::Instant::now();
-        // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
-        let global_bw = crate::transfer_dag::governor::global();
-
-        loop {
-            if total_size > 0 && transferred >= total_size {
-                break;
-            }
-            // Reserve global tokens before the remote read so concurrent jobs
-            // cannot put bytes on the wire before the shared cap admits them.
-            // A short final read can over-reserve only the unused tail of one
-            // buffer, which is conservative and never lets the cap burst.
-            let remaining = total_size.saturating_sub(transferred);
-            let allowance = if remaining == 0 {
-                buffer.len() as u64
-            } else {
-                remaining.min(buffer.len() as u64)
-            };
-            global_bw
-                .charge(
-                    crate::transfer_dag::governor::TransferDirection::Download,
-                    allowance,
-                )
-                .await;
-            let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
+        // The handle may already be open from the STAT/OPEN overlap above.
+        let mut remote_file = match preopened.take() {
+            Some(file) => file,
+            None => sftp.open(&full_path).await.map_err(|e| {
                 classify_russh_err(e, |s| {
-                    ProviderError::TransferFailed(format!("Read error: {}", s))
+                    ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
                 })
-            })?;
+            })?,
+        };
 
-            if bytes_read == 0 {
-                break;
-            }
+        // Everything that can fail once the handle is open runs inside this
+        // block, so the handle is closed, awaited, on every exit and not only
+        // on the one that reaches the end. Dropping it only queues a close
+        // (`close_nowait`), and a worker that now lives across thousands of
+        // files (warm reuse) outran the server's per-session handle limit that
+        // way ("Limit exceeded: handle limit reached" on the 5000-file review
+        // cell). The awaited close used to sit on the success path alone, so a
+        // failed local create, seek, read or write, and the early return for a
+        // partial that already holds the whole file, all left it to Drop.
+        let streamed: Result<(super::atomic_write::ResumableFile, u64, bool), ProviderError> = {
+            // Moved in, not borrowed: a borrowed `on_progress` would make this
+            // future require `Sync` from a callback that is only `Send`. The
+            // remote handle is lent for the duration and closed right after.
+            let remote_file = &mut remote_file;
+            let buffer_size = self.buffer_size;
+            let download_limit_bps = self.download_limit_bps;
+            async move {
+                // Resumable local file: writes to `.aerotmp`, KEEPS the partial on
+                // cancel/error (drop) so a later re-download resumes, renames on commit.
+                let mut resumable = super::atomic_write::ResumableFile::open(local_path)
+                    .await
+                    .map_err(|e| {
+                        ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
+                    })?;
 
-            resumable
-                .write_all(&buffer[..bytes_read])
-                .await
-                .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
-
-            transferred += bytes_read as u64;
-
-            if let Some(ref progress) = on_progress {
-                progress(transferred, total_size);
-            }
-
-            // Apply bandwidth throttling on bytes moved THIS session, so a
-            // resume does not over-sleep for already-downloaded data.
-            if self.download_limit_bps > 0 {
-                let session_bytes = transferred - resume_offset;
-                let expected = std::time::Duration::from_secs_f64(
-                    session_bytes as f64 / self.download_limit_bps as f64,
-                );
-                let elapsed = start.elapsed();
-                if expected > elapsed {
-                    tokio::time::sleep(expected - elapsed).await;
+                let mut resume_offset = resumable.offset();
+                // A partial larger than the current remote file is stale (the remote
+                // changed): discard it and start fresh rather than appending to bad data.
+                if total_size > 0 && resume_offset > total_size {
+                    resumable.discard().await.ok();
+                    resumable = super::atomic_write::ResumableFile::open_fresh(local_path)
+                        .await
+                        .map_err(|e| {
+                            ProviderError::TransferFailed(format!(
+                                "Failed to create local file: {}",
+                                e
+                            ))
+                        })?;
+                    resume_offset = 0;
                 }
+
+                // The partial already holds the whole file: nothing to read.
+                if total_size > 0 && resume_offset == total_size {
+                    if let Some(ref progress) = on_progress {
+                        progress(total_size, total_size);
+                    }
+                    return Ok((resumable, total_size, true));
+                }
+
+                // Resume: seek the remote read to the partial's end so we append the
+                // correct bytes instead of re-fetching from zero.
+                if resume_offset > 0 {
+                    use tokio::io::AsyncSeekExt;
+                    remote_file
+                        .seek(std::io::SeekFrom::Start(resume_offset))
+                        .await
+                        .map_err(|e| {
+                            ProviderError::TransferFailed(format!(
+                                "Failed to seek for resume: {}",
+                                e
+                            ))
+                        })?;
+                    tracing::info!("SFTP: Resuming download from offset {}", resume_offset);
+                }
+
+                // Read and write in chunks with optional rate limiting
+                let mut buffer = vec![0u8; buffer_size];
+                let mut transferred: u64 = resume_offset;
+                if let Some(ref progress) = on_progress {
+                    progress(transferred, total_size);
+                }
+                let start = std::time::Instant::now();
+                // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
+                let global_bw = crate::transfer_dag::governor::global();
+
+                loop {
+                    if total_size > 0 && transferred >= total_size {
+                        break;
+                    }
+                    // Reserve global tokens before the remote read so concurrent jobs
+                    // cannot put bytes on the wire before the shared cap admits them.
+                    // A short final read can over-reserve only the unused tail of one
+                    // buffer, which is conservative and never lets the cap burst.
+                    let remaining = total_size.saturating_sub(transferred);
+                    let allowance = if remaining == 0 {
+                        buffer.len() as u64
+                    } else {
+                        remaining.min(buffer.len() as u64)
+                    };
+                    global_bw
+                        .charge(
+                            crate::transfer_dag::governor::TransferDirection::Download,
+                            allowance,
+                        )
+                        .await;
+                    let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
+                        classify_russh_err(e, |s| {
+                            ProviderError::TransferFailed(format!("Read error: {}", s))
+                        })
+                    })?;
+
+                    if bytes_read == 0 {
+                        break;
+                    }
+
+                    resumable
+                        .write_all(&buffer[..bytes_read])
+                        .await
+                        .map_err(|e| {
+                            ProviderError::TransferFailed(format!("Write error: {}", e))
+                        })?;
+
+                    transferred += bytes_read as u64;
+
+                    if let Some(ref progress) = on_progress {
+                        progress(transferred, total_size);
+                    }
+
+                    // Apply bandwidth throttling on bytes moved THIS session, so a
+                    // resume does not over-sleep for already-downloaded data.
+                    if download_limit_bps > 0 {
+                        let session_bytes = transferred - resume_offset;
+                        let expected = std::time::Duration::from_secs_f64(
+                            session_bytes as f64 / download_limit_bps as f64,
+                        );
+                        let elapsed = start.elapsed();
+                        if expected > elapsed {
+                            tokio::time::sleep(expected - elapsed).await;
+                        }
+                    }
+                }
+                Ok((resumable, transferred, false))
             }
         }
+        .await;
 
-        // Close the remote handle and WAIT for the server's reply. Dropping the
-        // handle only queues a close (`close_nowait`); a worker that now lives
-        // across thousands of files (warm reuse) outran the server's per-session
-        // handle limit that way ("Limit exceeded: handle limit reached" on the
-        // 5000-file review cell). Upload already awaits its close.
         let _ = remote_file.close().await;
+        let (resumable, transferred, from_partial) = streamed?;
         resumable.commit().await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
         })?;
 
-        tracing::info!("SFTP: Download complete: {} bytes", transferred);
+        if from_partial {
+            tracing::info!(
+                "SFTP: Download already complete from partial: {} bytes",
+                transferred
+            );
+        } else {
+            tracing::info!("SFTP: Download complete: {} bytes", transferred);
+        }
         Ok(())
     }
 
