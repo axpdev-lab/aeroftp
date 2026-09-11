@@ -281,6 +281,27 @@ pub(crate) fn scan_options_for_sync(opts: &SyncOptions) -> ScanOptions {
     scan
 }
 
+/// Refuse a run that reads from a root that does not exist. A missing root is an
+/// empty tree on the side a run writes to, so a sync into a new directory runs.
+/// On the side it reads from (the local side of an upload, the remote side of a
+/// download, both sides of a two-way run) an empty tree turns every file on the
+/// other side into an orphan, so the scan of that side is marked unbounded
+/// (`source_root_missing`) and the bound refuses the run before anything is
+/// planned.
+pub(crate) fn refuse_missing_source_roots(
+    direction: SyncDirection,
+    local: &mut crate::sync_core::ScanBoundaries,
+    remote: &mut crate::sync_core::ScanBoundaries,
+) {
+    let reads_local = matches!(direction, SyncDirection::Upload | SyncDirection::Both);
+    let reads_remote = matches!(direction, SyncDirection::Download | SyncDirection::Both);
+    for (reads, scan) in [(reads_local, local), (reads_remote, remote)] {
+        if reads && scan.root_missing {
+            scan.unbounded.get_or_insert("source_root_missing");
+        }
+    }
+}
+
 /// Direction of synchronization
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -1321,7 +1342,7 @@ pub async fn sync_tree_core(
     let start = std::time::Instant::now();
     sink.on_phase(SyncPhase::Scanning);
     let scan = scan_options_for_sync(opts);
-    let (mut locals, local_scan, local_boundaries) = scan_local_tree_checked(local_root, &scan);
+    let (mut locals, local_scan, mut local_boundaries) = scan_local_tree_checked(local_root, &scan);
 
     if !opts.dry_run
         && !locals.is_empty()
@@ -1330,8 +1351,13 @@ pub async fn sync_tree_core(
         ensure_remote_dir(provider, remote_root).await;
     }
 
-    let (mut remotes, remote_scan, remote_boundaries) =
+    let (mut remotes, remote_scan, mut remote_boundaries) =
         scan_remote_tree_checked(provider, remote_root, &scan).await;
+    refuse_missing_source_roots(
+        opts.direction,
+        &mut local_boundaries,
+        &mut remote_boundaries,
+    );
     // What the scans did not see stays out of the run on both sides, so no pass
     // below reads it as deleted, as missing or as safe to copy over (see
     // `ScanBound`).

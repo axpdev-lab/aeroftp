@@ -1033,7 +1033,7 @@ pub async fn execute_sync_dag(
             scan_local_tree_checked(&root, &scan_opts)
         })
     };
-    let (mut remotes, remote_scan, remote_boundaries) =
+    let (mut remotes, remote_scan, mut remote_boundaries) =
         scan_remote_tree_checked(provider, remote_root, &scan).await;
     // `scan_local_tree_checked` never fails: it returns what it saw with its
     // completeness and boundaries, so the only way the join returns `Err` is a
@@ -1046,7 +1046,8 @@ pub async fn execute_sync_dag(
     // download would copy over files it never compared. The local scan is a gap
     // with no name, which the refusal below turns into an empty plan
     // (CLAUDE-AV-B3-01).
-    let (mut locals, local_scan, local_boundaries, local_scan_panic) = match local_handle.await {
+    let (mut locals, local_scan, mut local_boundaries, local_scan_panic) = match local_handle.await
+    {
         Ok((entries, completeness, boundaries)) => (entries, completeness, boundaries, None),
         Err(join_err) => {
             eprintln!("[execute_sync_dag] local scan task failed: {}", join_err);
@@ -1064,6 +1065,11 @@ pub async fn execute_sync_dag(
             )
         }
     };
+    crate::sync::refuse_missing_source_roots(
+        opts.direction,
+        &mut local_boundaries,
+        &mut remote_boundaries,
+    );
     // What the scans did not see stays out of the plan on both sides, so no copy
     // or orphan delete reaches into it (see `ScanBound`).
     let bound = crate::sync_core::ScanBound::apply(
@@ -2991,23 +2997,61 @@ mod tests {
         }
     }
 
-    /// The other side of that refusal: a remote root that does not exist yet is
-    /// an empty tree, and a sync into it plans its copies as before.
+    /// The other side of that refusal: a root that does not exist on the side a
+    /// run writes to is an empty tree, and a sync into it runs as before. An
+    /// upload into a missing remote root plans its file and, on a real run,
+    /// uploads it; a download into a missing local root plans its file.
     #[tokio::test]
-    async fn sync_into_a_remote_root_that_does_not_exist_yet_plans_its_copies() {
-        let tree = crate::sync_core::scan::tests::WalkTreeProvider::new(
-            std::collections::HashMap::new(),
+    async fn sync_into_a_root_that_does_not_exist_yet_plans_its_copies() {
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        for dry_run in [true, false] {
+            let tree = WalkTreeProvider::new(std::collections::HashMap::new(), true);
+            let writes = Arc::clone(&tree.writes);
+            let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+            let local = tempfile::tempdir().expect("tempdir");
+            std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
+            let mut options = opts(SyncDirection::Upload);
+            options.dry_run = dry_run;
+            let mut sink = TestSyncSink::default();
+            let report = crate::sync::sync_tree_core(
+                &mut provider,
+                local.path().to_str().unwrap(),
+                "/root",
+                &options,
+                &mut sink,
+            )
+            .await;
+            assert_eq!(sink.starts, vec!["a.txt".to_string()], "dry_run={dry_run}");
+            assert!(
+                report.errors.iter().all(|error| error.operation != "scan"),
+                "dry_run={dry_run}: {:?}",
+                report.errors
+            );
+            if !dry_run {
+                assert_eq!(report.uploaded, 1, "{:?}", report.errors);
+                assert!(writes.load(Ordering::SeqCst) >= 1);
+            }
+        }
+        let tree = WalkTreeProvider::new(
+            std::collections::HashMap::from([(
+                "/root".to_string(),
+                vec![ProviderRemoteEntry::file(
+                    "a.txt".to_string(),
+                    "/root/a.txt".to_string(),
+                    1,
+                )],
+            )]),
             true,
         );
         let mut provider: Box<dyn StorageProvider> = Box::new(tree);
         let local = tempfile::tempdir().expect("tempdir");
-        std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
-        let mut options = opts(SyncDirection::Upload);
+        let missing_local = local.path().join("not-created-yet");
+        let mut options = opts(SyncDirection::Download);
         options.dry_run = true;
         let mut sink = TestSyncSink::default();
         let report = crate::sync::sync_tree_core(
             &mut provider,
-            local.path().to_str().unwrap(),
+            missing_local.to_str().unwrap(),
             "/root",
             &options,
             &mut sink,
@@ -3019,6 +3063,93 @@ mod tests {
             "{:?}",
             report.errors
         );
+    }
+
+    /// A root that does not exist is an empty tree only on the side a run writes
+    /// to. On the side it reads from, an empty tree turns every file on the
+    /// other side into an orphan: a download with deletes would empty the local
+    /// folder, an upload with deletes the remote one, and a two-way run either.
+    /// Such a run is refused before anything is planned, on the dry-run path and
+    /// on the DAG route, and nothing is written or deleted on either side.
+    #[tokio::test]
+    async fn sync_refuses_to_read_a_source_root_that_does_not_exist() {
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        for dry_run in [true, false] {
+            for direction in [
+                SyncDirection::Download,
+                SyncDirection::Upload,
+                SyncDirection::Both,
+            ] {
+                let case = format!("{direction:?} dry_run={dry_run}");
+                let local = tempfile::tempdir().expect("tempdir");
+                // The missing root is the side the run reads from: the remote
+                // root of a download or a two-way run, the local root of an upload.
+                let (tree, local_root) = if matches!(direction, SyncDirection::Upload) {
+                    let remote_file = ProviderRemoteEntry::file(
+                        "a.txt".to_string(),
+                        "/root/a.txt".to_string(),
+                        1,
+                    );
+                    (
+                        WalkTreeProvider::new(
+                            std::collections::HashMap::from([(
+                                "/root".to_string(),
+                                vec![remote_file],
+                            )]),
+                            true,
+                        ),
+                        local.path().join("not-created-yet"),
+                    )
+                } else {
+                    std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
+                    (
+                        WalkTreeProvider::new(std::collections::HashMap::new(), true),
+                        local.path().to_path_buf(),
+                    )
+                };
+                let writes = Arc::clone(&tree.writes);
+                let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+                let mut options = opts(direction);
+                options.dry_run = dry_run;
+                options.delete_orphans = true;
+                let mut sink = TestSyncSink::default();
+                let report = crate::sync::sync_tree_core(
+                    &mut provider,
+                    local_root.to_str().unwrap(),
+                    "/root",
+                    &options,
+                    &mut sink,
+                )
+                .await;
+                assert!(
+                    sink.starts.is_empty(),
+                    "nothing may be planned ({case}): {:?}",
+                    sink.starts
+                );
+                assert_eq!(
+                    writes.load(Ordering::SeqCst),
+                    0,
+                    "no remote write or delete ({case})"
+                );
+                if !matches!(direction, SyncDirection::Upload) {
+                    assert!(
+                        local.path().join("a.txt").exists(),
+                        "the local file stays ({case})"
+                    );
+                }
+                assert!(
+                    report.errors.iter().any(|error| error.operation == "scan"
+                        && error.message.contains("source_root_missing")),
+                    "the run is refused as a missing source ({case}): {:?}",
+                    report.errors
+                );
+                assert!(
+                    report.errors.iter().all(|error| error.operation == "scan"),
+                    "({case}): {:?}",
+                    report.errors
+                );
+            }
+        }
     }
 
     /// A local scan task that dies leaves the local side unseen, so every local

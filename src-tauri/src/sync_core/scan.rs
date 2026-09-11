@@ -310,6 +310,11 @@ pub struct ScanBoundaries {
     /// see its root, was cancelled, cut off at the entry cap, or lost its
     /// session), so no run can be bounded around it.
     pub unbounded: Option<&'static str>,
+    /// The scan root does not exist. That is an empty tree on the side a run
+    /// writes to, so a sync into a new directory runs, and a missing source on
+    /// the side it reads from, which refuses the run (see
+    /// `crate::sync::refuse_missing_source_roots`).
+    pub root_missing: bool,
 }
 
 impl ScanBoundaries {
@@ -612,8 +617,8 @@ pub fn scan_local_tree_checked(
                 // under it are invisible. Count it so delete propagation can
                 // refuse, and bound it so no copy reaches into it: at the root,
                 // or on an error that names no path, that is the whole tree. A
-                // root that does not exist is only counted: it is the empty tree
-                // a download into a new directory scans. CLAUDE-AV-B3-01.
+                // root that does not exist is counted and marked missing instead
+                // (see `ScanBoundaries::root_missing`). CLAUDE-AV-B3-01.
                 completeness.list_errors += 1;
                 let root_is_absent = error.depth() == 0
                     && error.io_error().is_some_and(|io| {
@@ -622,7 +627,9 @@ pub fn scan_local_tree_checked(
                             std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
                         )
                     });
-                if !root_is_absent {
+                if root_is_absent {
+                    boundaries.root_missing = true;
+                } else {
                     match error.path() {
                         Some(path) => record_unseen(
                             &mut boundaries,
@@ -982,7 +989,9 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                 // deletion downstream, so count it instead of only warning, and
                 // bound it so no copy reaches into what it might hold.
                 completeness.list_errors += 1;
-                if !failure.root_absent {
+                if failure.root_absent {
+                    boundaries.root_missing = true;
+                } else {
                     record_unseen(
                         &mut boundaries,
                         &mut completeness,
@@ -1151,7 +1160,9 @@ async fn scan_remote_tree_locked(
                 // CLAUDE-AV-B3-13: an unlisted directory hides every file under
                 // it, which downstream reads as "these files were deleted".
                 completeness.list_errors += 1;
-                if !failure.root_absent {
+                if failure.root_absent {
+                    boundaries.root_missing = true;
+                } else {
                     record_unseen(
                         &mut boundaries,
                         &mut completeness,
@@ -1484,9 +1495,10 @@ async fn scan_remote_dir(
     })
 }
 
-/// Whether a directory that did not list is a scan root that does not exist. A
-/// sync into a directory it has yet to create scans such a root, and that empty
-/// tree is not a gap to refuse the run over. The listing error does not say so
+/// Whether a directory that did not list is a scan root that does not exist.
+/// Such a root is no gap: a sync into a directory it has yet to create scans it
+/// as an empty tree, and a sync that reads from it is refused as a missing
+/// source (see [`ScanBoundaries::root_missing`]). The listing error does not say so
 /// (SFTP reports every listing failure it does not classify as `NotFound`, and
 /// FTP answers 550 for a missing and a forbidden directory alike), so the
 /// provider is asked whether the root exists: any answer but "no" leaves the
@@ -2796,7 +2808,8 @@ pub(crate) mod tests {
 
     /// The other side of that refusal: a root that does not exist is the empty
     /// tree a sync into a new directory scans. It is still counted, so no orphan
-    /// delete trusts the listing, but it is not a gap.
+    /// delete trusts the listing, and marked missing, so a run that reads from
+    /// it is refused, but it is not a gap.
     #[tokio::test]
     async fn a_root_that_does_not_exist_is_an_empty_tree_not_a_gap() {
         for pool in [false, true] {
@@ -2804,7 +2817,9 @@ pub(crate) mod tests {
             let (rows, completeness, boundaries) = walk_tree(tree, None).await;
             assert!(rows.is_empty(), "(pool={pool})");
             assert_eq!(completeness.list_errors, 1, "(pool={pool})");
-            assert_eq!(boundaries, ScanBoundaries::default(), "(pool={pool})");
+            assert!(boundaries.root_missing, "(pool={pool})");
+            assert_eq!(boundaries.unbounded, None, "(pool={pool})");
+            assert!(boundaries.unseen.is_empty(), "(pool={pool})");
         }
     }
 
@@ -2832,7 +2847,7 @@ pub(crate) mod tests {
     }
 
     /// A local root that does not exist is the empty tree a download into a new
-    /// directory scans: counted, not a gap.
+    /// directory scans: counted and marked missing, not a gap.
     #[test]
     fn a_local_root_that_does_not_exist_is_an_empty_tree_not_a_gap() {
         let tmp = tempdir().unwrap();
@@ -2841,7 +2856,9 @@ pub(crate) mod tests {
             scan_local_tree_checked(root.to_str().unwrap(), &ScanOptions::default());
         assert!(entries.is_empty());
         assert_eq!(completeness.list_errors, 1);
-        assert_eq!(boundaries, ScanBoundaries::default());
+        assert!(boundaries.root_missing);
+        assert_eq!(boundaries.unbounded, None);
+        assert!(boundaries.unseen.is_empty());
     }
 
     /// The flat recursive listing carries no directory structure to stop at, so
