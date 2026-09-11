@@ -503,7 +503,18 @@ pub fn scan_local_tree_checked(
             }
         }
 
-        let meta = walk_entry.metadata().ok();
+        let meta = match walk_entry.metadata() {
+            Ok(meta) => Some(meta),
+            Err(_) => {
+                // Listed but not stat'ed: a file inside a directory that can be
+                // read and not traversed (0400) keeps the type its directory
+                // entry reports while every stat fails. Its size and mtime were
+                // never seen, so the scan is incomplete; the entry stays, so it
+                // does not read as absent.
+                completeness.list_errors += 1;
+                None
+            }
+        };
         let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
         let mtime = meta.and_then(|m| {
             m.modified().ok().map(|t| {
@@ -1392,6 +1403,44 @@ pub(crate) mod tests {
                 rel_path: "link".to_string(),
                 link_target: Some("real".to_string()),
             }]
+        );
+    }
+
+    /// A directory that is readable but not traversable (0400) lists its names,
+    /// and the directory entry even says which are files, but every stat inside
+    /// it fails. The file is kept, so it does not read as absent, and the scan is
+    /// incomplete, because its size and mtime were never seen. Distinct from an
+    /// unreadable directory (000), which fails to list at all.
+    #[cfg(unix)]
+    #[test]
+    fn scan_local_tree_is_incomplete_when_it_cannot_stat_a_listed_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("a.txt"), b"a").unwrap();
+        let locked = root.join("locked");
+        fs::create_dir(&locked).unwrap();
+        fs::write(locked.join("x.txt"), b"x").unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o400)).unwrap();
+        let stat_blocked = fs::metadata(locked.join("x.txt")).is_err();
+        let (entries, completeness, _) =
+            scan_local_tree_checked(root.to_str().unwrap(), &ScanOptions::default());
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
+        if !stat_blocked {
+            // Running as root, or on a filesystem that ignores the mode: the
+            // stat succeeds and there is nothing to observe.
+            return;
+        }
+        let mut paths: Vec<_> = entries.iter().map(|e| e.rel_path.as_str()).collect();
+        paths.sort();
+        assert_eq!(
+            paths,
+            vec!["a.txt", "locked/x.txt"],
+            "the listed file is kept"
+        );
+        assert!(
+            !completeness.is_complete(),
+            "a listed file that could not be stat'ed makes the scan incomplete"
         );
     }
 

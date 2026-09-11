@@ -2717,4 +2717,65 @@ mod tests {
             }]
         );
     }
+
+    /// A file the local walk can list but not stat, inside a directory that is
+    /// readable and not traversable (0400), leaves its size and mtime unknown:
+    /// the local scan did not see it. An upload with orphan deletes must then
+    /// refuse its delete pass instead of trusting that scan, so `gone.txt`,
+    /// absent locally, is not planned for deletion.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn sync_upload_delete_refuses_when_the_local_walk_cannot_stat_a_file() {
+        use crate::providers::RemoteEntry;
+        use std::os::unix::fs::PermissionsExt;
+        let local = tempfile::tempdir().expect("tempdir");
+        std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
+        let locked = local.path().join("locked");
+        std::fs::create_dir(&locked).expect("create locked/");
+        std::fs::write(locked.join("x.txt"), b"x").expect("write locked/x.txt");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o400))
+            .expect("chmod 0400");
+        let stat_blocked = std::fs::metadata(locked.join("x.txt")).is_err();
+        let mut tree = crate::sync_core::scan::tests::PoolTreeProvider::fan(1, 1);
+        tree.dirs = std::collections::HashMap::from([(
+            "/root".to_string(),
+            vec![
+                RemoteEntry::file("a.txt".to_string(), "/root/a.txt".to_string(), 1),
+                RemoteEntry::file("gone.txt".to_string(), "/root/gone.txt".to_string(), 1),
+            ],
+        )]);
+        let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+        let mut options = opts(SyncDirection::Upload);
+        options.dry_run = true;
+        options.delete_orphans = true;
+        let mut sink = TestSyncSink::default();
+        let report = crate::sync::sync_tree_core(
+            &mut provider,
+            local.path().to_str().unwrap(),
+            "/root",
+            &options,
+            &mut sink,
+        )
+        .await;
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700))
+            .expect("restore the mode");
+        if !stat_blocked {
+            // Running as root, or on a filesystem that ignores the mode: the
+            // stat succeeds and there is nothing to observe.
+            return;
+        }
+        assert!(
+            !sink.starts.iter().any(|rel| rel == "gone.txt"),
+            "an incomplete local scan must not drive a remote delete: {:?}",
+            sink.starts
+        );
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|error| error.operation == "delete_skipped"),
+            "the refused delete pass is reported: {:?}",
+            report.errors
+        );
+    }
 }
