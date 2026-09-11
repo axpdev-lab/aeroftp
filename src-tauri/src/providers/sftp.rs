@@ -24,7 +24,7 @@ use russh::keys::{
 use russh::{compression, Preferred};
 use russh_sftp::client::SftpSession;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex as TokioMutex;
@@ -421,11 +421,17 @@ pub struct SftpProvider {
     /// only while this remains unspecified; GUI/CLI configuration replaces it
     /// with an isolated explicit value.
     sftp_readahead: SftpReadaheadSetting,
-    /// Token watched by the in-flight read-ahead download. Replaced at the
-    /// start of each download so a prior cancel cannot poison the next one.
-    /// Arc+Mutex so a test can cancel without holding `&mut self` during the
-    /// download future.
+    /// Test-only hook. Production never cancels this token; read-ahead used
+    /// to watch a local `CancellationToken::new()` that no caller cancelled.
+    /// Each download replaces the token in the slot, so two concurrent
+    /// downloads on the same instance leave the slot watching only the later
+    /// one. Arc+Mutex so a test can cancel without holding `&mut self`.
     transfer_cancel: Arc<std::sync::Mutex<CancellationToken>>,
+    /// Test-only hook. When true, the next read-ahead writer iteration fails
+    /// after the remote opens, so a test can count CLOSE on that exit.
+    /// Production never sets it. Per-instance so parallel tests do not share
+    /// one process-wide flag.
+    fail_readahead_write: Arc<AtomicBool>,
 }
 
 impl SftpProvider {
@@ -451,14 +457,22 @@ impl SftpProvider {
             multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
             sftp_readahead: SftpReadaheadSetting::LegacyEnvironment,
             transfer_cancel: Arc::new(std::sync::Mutex::new(CancellationToken::new())),
+            fail_readahead_write: Arc::new(AtomicBool::new(false)),
         }
     }
 
-    /// Shared slot for the in-flight download token, so a caller can cancel
-    /// while `download` holds `&mut self`.
+    /// Shared slot for the in-flight download token. Test-only hook; see
+    /// `transfer_cancel`.
     #[doc(hidden)]
     pub fn transfer_cancel_slot(&self) -> Arc<std::sync::Mutex<CancellationToken>> {
         Arc::clone(&self.transfer_cancel)
+    }
+
+    /// Arm the next read-ahead writer iteration to fail. Test-only hook; see
+    /// `fail_readahead_write`.
+    #[doc(hidden)]
+    pub fn set_fail_readahead_write(&self, fail: bool) {
+        self.fail_readahead_write.store(fail, Ordering::SeqCst);
     }
 
     /// Return the SHA-256 hex fingerprint of the host key that
@@ -1680,6 +1694,7 @@ impl StorageProvider for SftpProvider {
                         window,
                         on_progress,
                         &cancel,
+                        Arc::clone(&self.fail_readahead_write),
                     )
                     .await?;
                     return Ok(());
@@ -3164,13 +3179,6 @@ async fn shutdown_sftp_file(file: &mut russh_sftp::client::fs::File) -> std::io:
     first
 }
 
-/// When true, the next read-ahead writer iteration fails after the remote
-/// opens, so tests can count CLOSE on that exit. Hidden: production never
-/// sets it.
-#[doc(hidden)]
-pub static TEST_FAIL_READAHEAD_WRITE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
 #[allow(clippy::too_many_arguments)]
 async fn sftp_readahead_range_into(
     sftp: &SftpSession,
@@ -3184,6 +3192,7 @@ async fn sftp_readahead_range_into(
     cancel: &CancellationToken,
     total_for_progress: u64,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    fail_write: Arc<AtomicBool>,
 ) -> Result<(), ProviderError> {
     use tokio::io::{AsyncSeekExt, AsyncWriteExt};
     if expected == 0 {
@@ -3350,7 +3359,7 @@ async fn sftp_readahead_range_into(
                         "Transfer cancelled by user".to_string(),
                     ));
                 }
-                if TEST_FAIL_READAHEAD_WRITE.swap(false, Ordering::SeqCst) {
+                if fail_write.swap(false, Ordering::SeqCst) {
                     work_cancel.cancel();
                     return Err(ProviderError::IoError(std::io::Error::other(
                         "injected write fail",
@@ -3405,6 +3414,7 @@ async fn sftp_readahead_download(
     window: usize,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     cancel: &CancellationToken,
+    fail_write: Arc<AtomicBool>,
 ) -> Result<(), ProviderError> {
     use tokio::io::AsyncWriteExt;
 
@@ -3433,6 +3443,7 @@ async fn sftp_readahead_download(
         cancel,
         total_size,
         on_progress,
+        fail_write,
     )
     .await?;
 
@@ -3815,6 +3826,7 @@ async fn sftp_download_one_range(
                 &cancel,
                 expected,
                 None,
+                Arc::clone(&worker.fail_readahead_write),
             )
             .await?;
             out.flush().await.map_err(ProviderError::IoError)?;

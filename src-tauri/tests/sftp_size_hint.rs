@@ -34,6 +34,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
@@ -87,8 +88,13 @@ struct WireCounts {
     close_delay_ms: AtomicU32,
     /// Milliseconds an OPEN reply is held back. Zero replies at once.
     open_delay_ms: AtomicU32,
-    /// After this many READ requests, further READs fail. Zero never fails.
+    /// This numbered READ (1-based) fails; 0 never fails. Later READs still
+    /// succeed, so sibling readers can be left in-flight.
     fail_read_after: AtomicU32,
+    /// Milliseconds a successful READ reply is held back. Zero replies at
+    /// once. Combined with `fail_read_after`, this keeps sibling readers
+    /// in-flight so dropping them cannot sneak a close in before the assert.
+    read_delay_ms: AtomicU32,
 }
 
 fn w32(out: &mut Vec<u8>, v: u32) {
@@ -257,7 +263,7 @@ impl TestSftpHandler {
                 let Some(id) = r32(data, &mut pos) else {
                     return;
                 };
-                if fail_after > 0 && n >= fail_after {
+                if fail_after > 0 && n == fail_after {
                     self.send(channel, status(id, SSH_FX_FAILURE, "read refused"), session);
                     return;
                 }
@@ -284,7 +290,20 @@ impl TestSftpHandler {
                 let mut r = vec![SSH_FXP_DATA];
                 w32(&mut r, id);
                 wstr(&mut r, &content[offset..end]);
-                self.send(channel, r, session);
+                let delay = self.counts.read_delay_ms.load(Ordering::SeqCst);
+                if delay == 0 {
+                    self.send(channel, r, session);
+                } else {
+                    let session_handle = session.handle();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(u64::from(delay)))
+                            .await;
+                        let mut framed = Vec::with_capacity(4 + r.len());
+                        w32(&mut framed, r.len() as u32);
+                        framed.extend_from_slice(&r);
+                        let _ = session_handle.data(channel, framed).await;
+                    });
+                }
             }
             SSH_FXP_WRITE => {
                 // Present so an upload can open a handle and then fail the
@@ -468,10 +487,53 @@ async fn connect(port: u16) -> SftpProvider {
     p
 }
 
+/// HOME is process-wide (`known_hosts`). Tests that redirect it take this
+/// lock so they cannot clobber each other.
+static HOME_GUARD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+struct ReadaheadCloseHarness {
+    _home_guard: tokio::sync::MutexGuard<'static, ()>,
+    home: PathBuf,
+    provider: SftpProvider,
+    counts: Arc<WireCounts>,
+}
+
+/// Delayed-CLOSE server, large.bin, read-ahead of 4. Shared by the three
+/// leak tests so each path can fail independently of the others.
+async fn readahead_close_harness(label: &str) -> ReadaheadCloseHarness {
+    let home_guard = HOME_GUARD.lock().await;
+    let home =
+        std::env::temp_dir().join(format!("sftp-readahead-{}-{}", label, std::process::id()));
+    std::fs::create_dir_all(&home).unwrap();
+    unsafe { std::env::set_var("HOME", &home) };
+    let large_payload: Vec<u8> = (0..524288u32).map(|i| (i % 239) as u8).collect();
+    let mut files = HashMap::new();
+    files.insert("/large.bin".to_string(), large_payload);
+    let (port, counts) = start_server(files).await;
+    counts.close_delay_ms.store(300, Ordering::SeqCst);
+    let mut provider = connect(port).await;
+    provider.set_sftp_readahead(Some(4));
+    ReadaheadCloseHarness {
+        _home_guard: home_guard,
+        home,
+        provider,
+        counts,
+    }
+}
+
+impl ReadaheadCloseHarness {
+    async fn shutdown(mut self) {
+        self.counts.close_delay_ms.store(0, Ordering::SeqCst);
+        self.provider.disconnect().await.ok();
+        std::fs::remove_dir_all(&self.home).ok();
+    }
+}
+
 /// One test, sequential phases: HOME is process-wide and the detector flag
 /// is reset between phases, so nothing can race itself.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn hinted_download_overlaps_stat_and_open() {
+    let _home_guard = HOME_GUARD.lock().await;
     let home = std::env::temp_dir().join(format!("kimi-sftp-hint-{}", std::process::id()));
     std::fs::create_dir_all(&home).unwrap();
     // Safety: test process only; guards the real known_hosts from the
@@ -776,16 +838,25 @@ async fn hinted_download_overlaps_stat_and_open() {
         "upload left the handle to Drop after a failed write"
     );
 
-    // 16. Cancel during the read-ahead OPEN fan-out: the join_all future
-    // used to be dropped, so already-open File values only queued close_nowait.
-    counts.open_delay_ms.store(400, Ordering::SeqCst);
-    provider.set_sftp_readahead(Some(4));
-    let local = home.join("out-readahead-cancel.bin");
+    counts.close_delay_ms.store(0, Ordering::SeqCst);
+
+    provider.disconnect().await.ok();
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// Cancel during the read-ahead OPEN fan-out: the join_all future used to be
+/// dropped, so already-open File values only queued close_nowait.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn readahead_cancel_during_open_fanout_closes_handles() {
+    let mut h = readahead_close_harness("cancel-fanout").await;
+    h.counts.open_delay_ms.store(400, Ordering::SeqCst);
+    let local = h.home.join("out-readahead-cancel.bin");
     let dest = local.to_string_lossy().into_owned();
-    let slot = provider.transfer_cancel_slot();
+    let slot = h.provider.transfer_cancel_slot();
     let err = {
         let fut =
-            provider.download_with_size_hint("/large.bin", &dest, Some(8 * 1024 * 1024), None);
+            h.provider
+                .download_with_size_hint("/large.bin", &dest, Some(8 * 1024 * 1024), None);
         tokio::pin!(fut);
         tokio::select! {
             r = &mut fut => r,
@@ -801,17 +872,25 @@ async fn hinted_download_overlaps_stat_and_open() {
     let err = err.expect_err("cancel during open fan-out");
     assert!(err.to_string().to_lowercase().contains("cancel"), "{err}");
     assert_eq!(
-        counts.handles.load(Ordering::SeqCst),
+        h.counts.handles.load(Ordering::SeqCst),
         0,
         "cancel during read-ahead OPEN fan-out left handles to Drop"
     );
-    counts.open_delay_ms.store(0, Ordering::SeqCst);
+    h.shutdown().await;
+}
 
-    // 17. A reader error after the opens: try_join_all dropped the other
-    // readers before they awaited close.
-    counts.fail_read_after.store(1, Ordering::SeqCst);
-    let local = home.join("out-readahead-reader.bin");
-    let err = provider
+/// A reader error after the opens: try_join_all dropped the other readers
+/// before they awaited close.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn readahead_reader_error_closes_sibling_handles() {
+    let mut h = readahead_close_harness("reader-err").await;
+    h.counts.fail_read_after.store(1, Ordering::SeqCst);
+    // Keep the other readers blocked in READ so try_join_all dropping them
+    // cannot close before the handle count is observed.
+    h.counts.read_delay_ms.store(400, Ordering::SeqCst);
+    let local = h.home.join("out-readahead-reader.bin");
+    let err = h
+        .provider
         .download_with_size_hint("/large.bin", local.to_str().unwrap(), Some(4096), None)
         .await
         .expect_err("read-ahead reader failure");
@@ -821,16 +900,21 @@ async fn hinted_download_overlaps_stat_and_open() {
         "{err}"
     );
     assert_eq!(
-        counts.handles.load(Ordering::SeqCst),
+        h.counts.handles.load(Ordering::SeqCst),
         0,
         "read-ahead reader error left handles to Drop"
     );
-    counts.fail_read_after.store(0, Ordering::SeqCst);
+    h.shutdown().await;
+}
 
-    // 18. A writer error after the opens: try_join dropped the readers.
-    ftp_client_gui_lib::providers::sftp::TEST_FAIL_READAHEAD_WRITE.store(true, Ordering::SeqCst);
-    let local = home.join("out-readahead-writer.bin");
-    let err = provider
+/// A writer error after the opens: try_join dropped the readers.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn readahead_writer_error_closes_reader_handles() {
+    let mut h = readahead_close_harness("writer-err").await;
+    h.provider.set_fail_readahead_write(true);
+    let local = h.home.join("out-readahead-writer.bin");
+    let err = h
+        .provider
         .download_with_size_hint("/large.bin", local.to_str().unwrap(), Some(4096), None)
         .await
         .expect_err("read-ahead writer failure");
@@ -840,15 +924,10 @@ async fn hinted_download_overlaps_stat_and_open() {
         "{err}"
     );
     assert_eq!(
-        counts.handles.load(Ordering::SeqCst),
+        h.counts.handles.load(Ordering::SeqCst),
         0,
         "read-ahead writer error left handles to Drop"
     );
-    ftp_client_gui_lib::providers::sftp::TEST_FAIL_READAHEAD_WRITE.store(false, Ordering::SeqCst);
-    provider.set_sftp_readahead(None);
-
-    counts.close_delay_ms.store(0, Ordering::SeqCst);
-
-    provider.disconnect().await.ok();
-    std::fs::remove_dir_all(&home).ok();
+    h.provider.set_fail_readahead_write(false);
+    h.shutdown().await;
 }
