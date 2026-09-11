@@ -1949,6 +1949,30 @@ pub(crate) fn select_profile_by_name<'a>(
         .find(|p| p.get("name").and_then(|v| v.as_str()) == Some(name))
 }
 
+/// The kind an enabled binding takes when it does not name one: the native lane.
+pub const DEFAULT_OVERLAY_KIND: &str = "aerocrypt";
+
+/// The overlay kind a binding stands for, reading a missing `kind` as
+/// [`DEFAULT_OVERLAY_KIND`].
+///
+/// This is the one place that rule lives. It used to be restated wherever a
+/// binding is read (this resolver, `mcp::pool`, two CLI chokepoints), and the
+/// agent-facing JSON grew a fifth copy that answered differently: an enabled
+/// binding with no `kind` printed `"cryptOverlay": null` beside
+/// `"protocolClass": "Crypt"`. The copies existed because
+/// [`overlay_binding_from_profile`] is `pub(crate)` and the CLI binary cannot
+/// reach it, which is why this one is `pub`.
+///
+/// Takes the `aeroCryptOverlay` object rather than the profile: every caller has
+/// already established that the binding is enabled, and a function that checked
+/// again would hand each of them an impossible `None` to handle.
+pub fn overlay_kind(overlay: &serde_json::Value) -> &str {
+    overlay
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or(DEFAULT_OVERLAY_KIND)
+}
+
 /// Extract the [`OverlayUnlockParams`] binding from a saved profile's
 /// `aeroCryptOverlay` JSON, or `None` when the profile carries no enabled
 /// overlay. Pure (no vault access): the secret lookup is the caller's job. The
@@ -1967,11 +1991,7 @@ pub(crate) fn overlay_binding_from_profile(
         return None;
     }
     Some(OverlayUnlockParams {
-        kind: overlay
-            .get("kind")
-            .and_then(|v| v.as_str())
-            .unwrap_or("aerocrypt")
-            .to_string(),
+        kind: overlay_kind(overlay).to_string(),
         remote_scope: overlay
             .get("remoteScope")
             .and_then(|v| v.as_str())
@@ -4410,6 +4430,25 @@ mod tests {
         assert_eq!(params.remote_scope, "");
         assert_eq!(params.filename_encryption, "standard");
         assert!(params.directory_name_encryption);
+    }
+
+    #[test]
+    fn overlay_kind_reads_a_missing_kind_as_the_native_lane() {
+        // The one rule every binding reader shares: an explicit kind is kept, and
+        // a missing or non-string one falls back to the native lane.
+        assert_eq!(
+            overlay_kind(&serde_json::json!({ "enabled": true, "kind": "rclone-crypt" })),
+            "rclone-crypt"
+        );
+        assert_eq!(
+            overlay_kind(&serde_json::json!({ "enabled": true })),
+            DEFAULT_OVERLAY_KIND
+        );
+        assert_eq!(
+            overlay_kind(&serde_json::json!({ "enabled": true, "kind": 7 })),
+            DEFAULT_OVERLAY_KIND
+        );
+        assert_eq!(DEFAULT_OVERLAY_KIND, "aerocrypt");
     }
 
     #[test]

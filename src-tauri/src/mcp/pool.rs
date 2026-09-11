@@ -422,11 +422,7 @@ pub fn resolve_overlay_secrets(
         .cloned()
         .unwrap_or(serde_json::Value::Null);
     let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
-    let kind = overlay
-        .get("kind")
-        .and_then(|v| v.as_str())
-        .unwrap_or("aerocrypt")
-        .to_string();
+    let kind = crate::crypt_overlay_provider::overlay_kind(&overlay).to_string();
     let remote_scope = overlay
         .get("remoteScope")
         .and_then(|v| v.as_str())

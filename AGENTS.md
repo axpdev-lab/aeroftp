@@ -60,10 +60,26 @@ The `profiles --json` output:
     "host": "prod.example.com",
     "port": 22,
     "username": "deploy",
-    "initialPath": "/var/www"
+    "initialPath": "/var/www",
+    "cryptOverlay": null,
+    "protocolClass": "SFTP"
   }
 ]
 ```
+
+`protocol` is always the transport you connect over. `cryptOverlay` is the
+encrypted-overlay binding: `null` when there is none, otherwise `"aerocrypt"`
+(native, which is also what a binding that names no kind means) or
+`"rclone-crypt"` (interop). `protocolClass` is the class the GUI
+table shows for the same profile, so a profile with an enabled overlay reads
+`"protocol": "ftp"` and `"protocolClass": "Crypt"` together.
+
+Read `cryptOverlay` before writing to a path: on a bound profile the CLI
+decrypts names and contents transparently, so what you upload lands encrypted
+on the remote. The same two fields appear in `agent-bootstrap --json`,
+`agent-info --json` and the agent's `server_list_saved`, and they survive
+`agent-info --redact-identifiers`, which
+hides who the account is (host, username) and not how the connection is shaped.
 
 ## Common Commands
 
