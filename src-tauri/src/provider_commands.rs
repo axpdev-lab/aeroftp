@@ -7035,6 +7035,7 @@ pub async fn provider_compare_directories(
             &state.provider,
             &remote_path,
             &options.exclude_patterns,
+            crate::sync_core::scan::MAX_SCAN_ENTRIES,
             &state.cancel_flag,
             &|| generation.load(Ordering::SeqCst) == compare_generation,
             &mut |remote_count, dirs_found, bytes_found| {
@@ -12778,6 +12779,7 @@ async fn walk_compare_remote_serially(
     provider: &Mutex<Option<Box<dyn StorageProvider>>>,
     remote_path: &str,
     exclude_patterns: &[String],
+    max_entries: usize,
     cancel_flag: &AtomicBool,
     session_is_current: &(dyn Fn() -> bool + Send + Sync),
     on_listed: &mut (dyn FnMut(usize, usize, u64) + Send),
@@ -12837,6 +12839,16 @@ async fn walk_compare_remote_serially(
         };
 
         for entry in entries {
+            // The cap the shared walk applies, rows and skipped links alike: a
+            // tree beyond it is refused, not held without bound.
+            if remote_files.len() + skipped_links.len() >= max_entries {
+                return Err(format!(
+                    "{}: the remote scan of {} stopped at {} entries before the end of the tree; refusing to compare a partial tree.",
+                    crate::SCAN_INCOMPLETE_MARKER,
+                    remote_path,
+                    max_entries
+                ));
+            }
             if entry.name == "." || entry.name == ".." {
                 continue;
             }
@@ -13068,12 +13080,47 @@ mod tests {
             &provider,
             "/root",
             &[],
+            usize::MAX,
             &cancel,
             &|| true,
             &mut |_, _, _| {},
         )
         .await;
         let error = outcome.expect_err("a cancelled walk must not answer with rows");
+        assert!(error.contains(crate::SCAN_INCOMPLETE_MARKER), "{error}");
+    }
+
+    /// The serial compare walk holds no more entries than the cap the shared
+    /// walk applies: a tree beyond it, skipped links included, is refused as an
+    /// incomplete scan instead of growing its rows and links without bound.
+    #[tokio::test]
+    async fn compare_serial_walk_refuses_a_tree_beyond_its_entry_cap() {
+        use crate::providers::RemoteEntry;
+        let mut listing = vec![RemoteEntry::file(
+            "a.txt".to_string(),
+            "/root/a.txt".to_string(),
+            1,
+        )];
+        for i in 0..5 {
+            let mut link = RemoteEntry::directory(format!("link{i}"), format!("/root/link{i}"));
+            link.is_symlink = true;
+            listing.push(link);
+        }
+        let mut tree = crate::sync_core::scan::tests::PoolTreeProvider::fan(1, 1);
+        tree.dirs = HashMap::from([("/root".to_string(), listing)]);
+        let provider: Mutex<Option<Box<dyn StorageProvider>>> = Mutex::new(Some(Box::new(tree)));
+        let cancel = AtomicBool::new(false);
+        let outcome = walk_compare_remote_serially(
+            &provider,
+            "/root",
+            &[],
+            3,
+            &cancel,
+            &|| true,
+            &mut |_, _, _| {},
+        )
+        .await;
+        let error = outcome.expect_err("a tree beyond the cap must not answer with rows");
         assert!(error.contains(crate::SCAN_INCOMPLETE_MARKER), "{error}");
     }
 
@@ -13111,6 +13158,7 @@ mod tests {
             &provider,
             "/root",
             &[],
+            usize::MAX,
             &cancel,
             &|| true,
             &mut |_, _, _| {},
