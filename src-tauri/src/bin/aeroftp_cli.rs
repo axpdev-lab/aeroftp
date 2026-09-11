@@ -74606,6 +74606,30 @@ mod tests {
     }
 
     #[cfg(unix)]
+    impl UnreadableDir {
+        /// Leave the directory listable but not enterable (0400): its entries
+        /// can still be enumerated, with their type, while a stat of any of
+        /// them fails.
+        fn seal(path: std::path::PathBuf) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400))
+                .expect("seal the directory");
+            let guard = Self(path);
+            let child = std::fs::read_dir(&guard.0)
+                .expect("a 0400 directory still lists")
+                .filter_map(Result::ok)
+                .next()
+                .expect("the sealed directory holds an entry")
+                .path();
+            assert!(
+                std::fs::symlink_metadata(&child).is_err(),
+                "this test needs a directory the current user can list but not enter, and root enters every directory"
+            );
+            guard
+        }
+    }
+
+    #[cfg(unix)]
     impl Drop for UnreadableDir {
         fn drop(&mut self) {
             use std::os::unix::fs::PermissionsExt;
@@ -74930,6 +74954,117 @@ mod tests {
             .unwrap_or_else(|_| panic!("a summary in the earlier format must load"));
 
         assert_eq!(loaded.to_delete_remote, vec!["b.txt"]);
+    }
+
+    /// A file under a directory the walk can list but not enter (0400) comes
+    /// back from the walk with its type but without metadata. The watch
+    /// snapshot must count that as a read error, or it stays usable for
+    /// incremental `--delete` cycles, and must keep the file, or it reads as
+    /// deleted.
+    #[cfg(unix)]
+    #[test]
+    fn watch_snapshot_counts_a_file_it_can_list_but_not_stat() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        std::fs::create_dir(dir.path().join("sealed")).expect("sealed directory");
+        std::fs::write(dir.path().join("sealed").join("keep.txt"), b"k").expect("keep.txt");
+        let _sealed = UnreadableDir::seal(dir.path().join("sealed"));
+
+        let snapshot = build_watch_local_snapshot(
+            dir.path().to_str().expect("utf-8 root"),
+            &watch_test_filter(&[]),
+        );
+
+        assert!(
+            !snapshot.completeness.is_complete(),
+            "a file that cannot be statted leaves the snapshot incomplete"
+        );
+        assert!(
+            snapshot.files.contains_key("sealed/keep.txt"),
+            "the file stays in the snapshot, so it does not read as deleted"
+        );
+    }
+
+    /// `sync --direction upload --delete` over a local tree with a file it can
+    /// list but not stat must refuse its deletes (exit 4): the scan did not
+    /// read the whole tree. Here the delete it would otherwise make is of
+    /// `gone.txt`, a file present only on the remote.
+    #[cfg(unix)]
+    #[test]
+    fn sync_upload_delete_refuses_when_a_local_file_cannot_be_statted() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir(Path::new(&local).join("sealed")).expect("sealed directory");
+        fixture.local_file("a.txt", 1);
+        fixture.local_file("sealed/keep.txt", 1);
+        let _sealed = UnreadableDir::seal(Path::new(&local).join("sealed"));
+        let remote =
+            MemTreeProvider::tree(&[("a.txt", 1), ("sealed/keep.txt", 1), ("gone.txt", 1)]);
+        let delete_attempts = Arc::clone(&remote.delete_attempts);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+
+        let stats = run_sync_with_delete(remote, &local, "upload", false, &cli, None, None);
+
+        assert_eq!(
+            *delete_attempts.lock().expect("delete log"),
+            Vec::<String>::new(),
+            "no remote delete while a local file could not be statted"
+        );
+        assert_eq!(stats.exit_code, 4, "the refusal shows in the exit code");
+    }
+
+    /// The reconcile local scan over a file it can list but not stat must be
+    /// incomplete, keep the file, and so make `sync --from-reconcile --delete`
+    /// refuse (exit 4). The plan carries the summary fields `reconcile`
+    /// writes from that scan.
+    #[cfg(unix)]
+    #[test]
+    fn sync_from_reconcile_refuses_delete_when_reconcile_could_not_stat_a_local_file() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir(Path::new(&local).join("sealed")).expect("sealed directory");
+        fixture.local_file("sealed/keep.txt", 1);
+        let _sealed = UnreadableDir::seal(Path::new(&local).join("sealed"));
+
+        let (locals, local_health) = scan_local_tree_with_progress(
+            &local,
+            &ftp_client_gui_lib::sync_core::ScanOptions::default(),
+            &None,
+        );
+        assert!(
+            locals
+                .iter()
+                .any(|entry| entry.rel_path == "sealed/keep.txt"),
+            "the file stays listed"
+        );
+        let plan = write_reconcile_plan(
+            &fixture,
+            serde_json::json!({
+                "remote_scan_incomplete": false,
+                "remote_scan_errors": 0,
+                "remote_scan_truncated": false,
+                "local_scan_incomplete": !local_health.is_complete(),
+                "local_scan_errors": local_health.list_errors,
+                "local_scan_truncated": local_health.truncated,
+            }),
+        );
+        let remote = MemTreeProvider::root_files(&[("b.txt", 1)]);
+        let delete_attempts = Arc::clone(&remote.delete_attempts);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+
+        let stats = run_sync_with_delete(remote, &local, "upload", false, &cli, None, Some(&plan));
+
+        assert_eq!(
+            *delete_attempts.lock().expect("delete log"),
+            Vec::<String>::new(),
+            "no remote delete from a reconcile whose local scan could not stat a file"
+        );
+        assert_eq!(stats.exit_code, 4, "the refusal shows in the exit code");
     }
 
     struct CliEditFakeProvider {
