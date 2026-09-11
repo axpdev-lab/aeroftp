@@ -23,6 +23,15 @@
 //! - a stale LARGE hint takes the sequential path and still delivers the
 //!   exact bytes.
 
+// Unix only, and the reason is the redirected HOME rather than portability
+// taste: the guard against writing into a real `known_hosts` is a redirected
+// `HOME`, and on Windows `russh` resolves that file through the user profile
+// API, which no environment variable redirects. Left compiling there, helper
+// items in this file are unused and `cargo check --all-targets` warns
+// dead_code. The honest fix is to not compile the module rather than to
+// pretend the guard holds.
+#![cfg(unix)]
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -39,6 +48,8 @@ const SSH_FXP_VERSION: u8 = 2;
 const SSH_FXP_OPEN: u8 = 3;
 const SSH_FXP_CLOSE: u8 = 4;
 const SSH_FXP_READ: u8 = 5;
+const SSH_FXP_WRITE: u8 = 6;
+const SSH_FXF_CREAT: u32 = 0x00000008;
 const SSH_FXP_LSTAT: u8 = 7;
 const SSH_FXP_REALPATH: u8 = 16;
 const SSH_FXP_STAT: u8 = 17;
@@ -170,7 +181,14 @@ impl TestSftpHandler {
                         let mut r = vec![SSH_FXP_ATTRS];
                         w32(&mut r, id);
                         w32(&mut r, 0x1); // size flag
-                        w64(&mut r, content.len() as u64);
+                                          // `/under-size.bin` lies about size so the client opens
+                                          // and then hits the in-loop cap of download_to_bytes_capped.
+                        let size = if path == "/under-size.bin" {
+                            1
+                        } else {
+                            content.len() as u64
+                        };
+                        w64(&mut r, size);
                         r
                     }
                     None => status(id, SSH_FX_NO_SUCH_FILE, "not found"),
@@ -198,7 +216,8 @@ impl TestSftpHandler {
                     return;
                 };
                 let path = rstr(data, &mut pos).unwrap_or_default();
-                if !self.files.contains_key(&path) {
+                let pflags = r32(data, &mut pos).unwrap_or(0);
+                if !self.files.contains_key(&path) && (pflags & SSH_FXF_CREAT) == 0 {
                     self.send(
                         channel,
                         status(id, SSH_FX_NO_SUCH_FILE, "not found"),
@@ -244,6 +263,18 @@ impl TestSftpHandler {
                 w32(&mut r, id);
                 wstr(&mut r, &content[offset..end]);
                 self.send(channel, r, session);
+            }
+            SSH_FXP_WRITE => {
+                // Present so an upload can open a handle and then fail the
+                // write: that is the early exit that used to skip shutdown.
+                let Some(id) = r32(data, &mut pos) else {
+                    return;
+                };
+                self.send(
+                    channel,
+                    status(id, SSH_FX_FAILURE, "write refused"),
+                    session,
+                );
             }
             SSH_FXP_CLOSE => {
                 let Some(id) = r32(data, &mut pos) else {
@@ -417,14 +448,6 @@ async fn connect(port: u16) -> SftpProvider {
 
 /// One test, sequential phases: HOME is process-wide and the detector flag
 /// is reset between phases, so nothing can race itself.
-// Unix only, and the reason is the line below rather than portability taste:
-// the guard against writing into a real `known_hosts` is a redirected `HOME`,
-// and on Windows `russh` resolves that file through the user profile API, which
-// no environment variable redirects. Left running there, this test would learn
-// the ephemeral 127.0.0.1 key into the developer's own `.ssh\known_hosts`.
-// Setting the Windows profile variables would not help for the same reason, so
-// the honest fix is to not run rather than to pretend the guard holds.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn hinted_download_overlaps_stat_and_open() {
     let home = std::env::temp_dir().join(format!("kimi-sftp-hint-{}", std::process::id()));
@@ -443,6 +466,7 @@ async fn hinted_download_overlaps_stat_and_open() {
     files.insert("/large.bin".to_string(), large_payload.clone());
     files.insert("/stat-denied.bin".to_string(), payload.clone());
     files.insert("/empty.bin".to_string(), Vec::new());
+    files.insert("/under-size.bin".to_string(), payload.clone());
     let (port, counts) = start_server(files).await;
     let mut provider = connect(port).await;
 
@@ -647,6 +671,89 @@ async fn hinted_download_overlaps_stat_and_open() {
         0,
         "a failed local create left the handle to Drop"
     );
+
+    // 11. download_to_bytes_capped: STAT under-reports, the loop opens, then
+    // the cap fires. That return used to skip the awaited close.
+    let err = provider
+        .download_to_bytes_capped("/under-size.bin", 100)
+        .await
+        .expect_err("capped download must refuse the under-reported body");
+    assert!(
+        err.to_string().contains("cap") || err.to_string().contains("under-reported"),
+        "{err}"
+    );
+    assert_eq!(
+        counts.handles.load(Ordering::SeqCst),
+        0,
+        "download_to_bytes_capped left the handle to Drop on the cap exit"
+    );
+
+    // 12. read_range rejects an oversized length after the open.
+    let err = provider
+        .read_range("/file.bin", 0, 100 * 1024 * 1024 + 1)
+        .await
+        .expect_err("oversized read_range must fail");
+    assert!(err.to_string().contains("exceeds maximum"), "{err}");
+    assert_eq!(
+        counts.handles.load(Ordering::SeqCst),
+        0,
+        "read_range left the handle to Drop on the oversized-length exit"
+    );
+
+    // 13. Read-ahead success used Drop even on the happy path (N handles).
+    provider.set_sftp_readahead(Some(4));
+    let local = home.join("out-readahead-close.bin");
+    provider
+        .download_with_size_hint("/large.bin", local.to_str().unwrap(), Some(4096), None)
+        .await
+        .expect("readahead download under delayed CLOSE");
+    assert_eq!(std::fs::read(&local).unwrap(), large_payload);
+    assert_eq!(
+        counts.handles.load(Ordering::SeqCst),
+        0,
+        "read-ahead left handles to Drop"
+    );
+    provider.set_sftp_readahead(None);
+
+    // 14. Pipelined download, same: N handles, no awaited close.
+    unsafe { std::env::set_var("AEROFTP_SFTP_READ_PIPELINE", "4") };
+    let local = home.join("out-pipeline-close.bin");
+    provider
+        .download_with_size_hint(
+            "/large.bin",
+            local.to_str().unwrap(),
+            Some(8 * 1024 * 1024),
+            None,
+        )
+        .await
+        .expect("pipelined download under delayed CLOSE");
+    assert_eq!(std::fs::read(&local).unwrap(), large_payload);
+    assert_eq!(
+        counts.handles.load(Ordering::SeqCst),
+        0,
+        "pipelined download left handles to Drop"
+    );
+    unsafe { std::env::remove_var("AEROFTP_SFTP_READ_PIPELINE") };
+
+    // 15. Upload opens a write handle then fails the WRITE. shutdown used
+    // to run only after a successful copy.
+    let src = home.join("to-upload.bin");
+    std::fs::write(&src, b"hello-upload").unwrap();
+    let err = provider
+        .upload(src.to_str().unwrap(), "/upload-new.bin", None)
+        .await
+        .expect_err("fake server refuses WRITE");
+    assert!(
+        err.to_string().to_lowercase().contains("write")
+            || err.to_string().to_lowercase().contains("remote"),
+        "{err}"
+    );
+    assert_eq!(
+        counts.handles.load(Ordering::SeqCst),
+        0,
+        "upload left the handle to Drop after a failed write"
+    );
+
     counts.close_delay_ms.store(0, Ordering::SeqCst);
 
     provider.disconnect().await.ok();
