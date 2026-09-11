@@ -95,7 +95,7 @@ const statusToBucket = (
  * Directory rows are kept only when one side is missing entirely
  * (`only-left` / `only-right`) so empty directories still get created; a
  * directory present on both sides carries no meaningful size/mtime delta and
- * is dropped, mirroring the legacy `SyncPanel.handleCompare` filter.
+ * is dropped.
  */
 export const adaptFileComparisons = (
     comparisons: FileComparison[],
