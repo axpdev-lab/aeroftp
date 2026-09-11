@@ -3001,6 +3001,204 @@ mod tests {
         server.abort();
     }
 
+    // Live retest for #397: the reporter saw a 409 restoring from the Dropbox
+    // trash, and folders rendered with the file icon. Both come from the same
+    // place: a Dropbox tombstone does not carry the entry kind, so the listing
+    // was guessing it and the restore used the latest revision even when it was
+    // not restorable.
+    //
+    // This is the red/green proof on a live account. On a pre-#738 build the
+    // listing labels the trashed folder as a file and the restore of an expired
+    // revision answers 409; with the revision probe it passes.
+    //
+    // Run explicitly (never in CI):
+    //   cargo test --release --lib live_trash_identifies_kinds_and_restores -- --ignored --nocapture
+    // Env: DROPBOX_TEST_PROFILE (default "My Dropbox").
+    //
+    // The test builds its own uniquely named tree, trashes a file and a folder,
+    // reads the trash, restores the file and byte-compares it, checks that the
+    // folder restore is refused with the explanation rather than a raw 409, and
+    // removes what it created. It never empties the trash: that is the whole
+    // account's, not this test's.
+    #[tokio::test]
+    #[ignore = "live Dropbox test; run explicitly"]
+    async fn live_trash_identifies_kinds_and_restores_a_file() {
+        let profile_query =
+            std::env::var("DROPBOX_TEST_PROFILE").unwrap_or_else(|_| "My Dropbox".to_string());
+        let status = crate::credential_store::CredentialStore::init().expect("vault init failed");
+        if status == "MASTER_PASSWORD_REQUIRED" {
+            let password = zeroize::Zeroizing::new(
+                std::env::var("AEROFTP_MASTER_PASSWORD")
+                    .expect("set AEROFTP_MASTER_PASSWORD for this master-mode test vault"),
+            );
+            crate::credential_store::CredentialStore::unlock_with_master(&password, None)
+                .expect("test vault unlock failed");
+        }
+        let store = crate::credential_store::CredentialStore::from_cache().expect("vault not open");
+        let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)
+            .expect("profile listing failed");
+        let matched = profiles
+            .iter()
+            .find(|p| {
+                p.get("name")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|n| n.eq_ignore_ascii_case(&profile_query))
+            })
+            .cloned()
+            .unwrap_or_else(|| panic!("test profile {profile_query:?} not found"));
+        let profile_id = matched
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        // Same two steps the CLI takes for an OAuth profile: the app keys come
+        // from the vault's oauth client config, the refresh chain is bound by
+        // profile id, and connect() resolves the access token from it.
+        let (app_key, app_secret) =
+            crate::bridge_commands::resolve_oauth_client_config(&store, "dropbox");
+        let mut p = DropboxProvider::new(DropboxConfig::new(&app_key, &app_secret))
+            .with_profile_id(&profile_id);
+        p.connect().await.expect("connect failed");
+
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let root = format!("/aeroftp-397-live-{stamp}");
+        let body = format!("aeroftp 397 live retest\nstamp {stamp}\n");
+        // The local fixture lives in a directory the OS creates for this run,
+        // not under a predictable name in the shared temp dir: a path another
+        // local user could create first, as a symlink for instance, would turn
+        // this write into an overwrite of whatever the link points at.
+        let scratch = tempfile::tempdir().expect("private scratch dir");
+        let local = scratch.path().join("upload.txt");
+        let back = scratch.path().join("restored.txt");
+        tokio::fs::write(&local, body.as_bytes())
+            .await
+            .expect("write local fixture");
+
+        // Every remote step runs inside this block and reports instead of
+        // panicking. Once the first mkdir succeeds, a panic anywhere skips the
+        // cleanup below and leaves the tree on a real account, and the setup
+        // steps fail as easily as the listing does: they were the exits the
+        // previous version still left open. What the checks need is captured
+        // here and asserted only after the cleanup has run.
+        let observed: Result<(_, _, _, _), String> = async {
+            p.mkdir(&root)
+                .await
+                .map_err(|e| format!("mkdir root: {e}"))?;
+            p.mkdir(&format!("{root}/sub"))
+                .await
+                .map_err(|e| format!("mkdir sub: {e}"))?;
+            p.upload(local.to_str().unwrap(), &format!("{root}/file.txt"), None)
+                .await
+                .map_err(|e| format!("upload file: {e}"))?;
+            p.upload(
+                local.to_str().unwrap(),
+                &format!("{root}/sub/nested.txt"),
+                None,
+            )
+            .await
+            .map_err(|e| format!("upload nested: {e}"))?;
+
+            // Trash both kinds, then read the trash back.
+            p.delete(&format!("{root}/file.txt"))
+                .await
+                .map_err(|e| format!("delete file: {e}"))?;
+            p.delete(&format!("{root}/sub"))
+                .await
+                .map_err(|e| format!("delete sub: {e}"))?;
+            let deleted = p
+                .list_deleted(&root)
+                .await
+                .map_err(|e| format!("list_deleted: {e}"))?;
+
+            // The file must come back byte for byte. The stale rev is passed on
+            // purpose: passing means the tombstone was revalidated rather than
+            // trusted.
+            let restore_outcome = p
+                .restore_file(&format!("{root}/file.txt"), "stale-rev")
+                .await;
+            let restored_bytes = if restore_outcome.is_ok() {
+                p.download(&format!("{root}/file.txt"), back.to_str().unwrap(), None)
+                    .await
+                    .ok();
+                tokio::fs::read(&back).await.ok()
+            } else {
+                None
+            };
+            let folder_restore = p.restore_file(&format!("{root}/sub"), "").await;
+            Ok((deleted, restore_outcome, restored_bytes, folder_restore))
+        }
+        .await;
+
+        // Clean up first, whatever happened above, so a failure cannot litter
+        // the account. The local fixture goes with `scratch` when it drops.
+        p.delete(&format!("{root}/file.txt")).await.ok();
+        let cleanup = p.delete(&root).await;
+        let still_there = p.exists(&root).await.unwrap_or(false);
+
+        let (deleted, restore_outcome, restored_bytes, folder_restore) =
+            observed.unwrap_or_else(|e| {
+                panic!("live #397 retest failed before its checks (cleanup already ran): {e}")
+            });
+
+        // A row that is not in the listing at all and a row whose kind was not
+        // established have to stay distinguishable: Dropbox's trash listing is
+        // eventually consistent, so a missing row means "ask again", while an
+        // empty kind means the probe answered and could not name it. Collapsing
+        // them into one empty string would report the first as the second.
+        let row = |name: &str| deleted.iter().find(|e| e.name == name);
+        let kind = |name: &str| -> String {
+            row(name)
+                .and_then(|e| e.metadata.get("trash_kind").cloned())
+                .unwrap_or_default()
+        };
+        let folder_listed = row("sub").is_some();
+        let file_listed = row("file.txt").is_some();
+        let folder_kind = kind("sub");
+        let file_kind = kind("file.txt");
+        let file_rev = row("file.txt")
+            .and_then(|e| e.metadata.get("rev"))
+            .cloned()
+            .unwrap_or_default();
+
+        // The two halves of the report: the folder must not read as a file, and
+        // the file must carry a revision the restore can actually use.
+        assert!(
+            folder_listed && file_listed,
+            "the trash listing did not carry both rows back: {deleted:#?}"
+        );
+        assert_eq!(
+            folder_kind, "folder",
+            "trashed folder read as {folder_kind:?}"
+        );
+        assert_eq!(file_kind, "file");
+        assert!(
+            !file_rev.is_empty(),
+            "no usable revision on the trashed file"
+        );
+        restore_outcome.expect("restore file");
+        assert_eq!(
+            restored_bytes.as_deref(),
+            Some(body.as_bytes()),
+            "restored file differs from what was uploaded"
+        );
+        // Dropbox restores file revisions and has no folder equivalent, so the
+        // 409 the reporter saw is the API being asked something it cannot do.
+        // What matters is that the message says so instead of the status code.
+        let err = folder_restore
+            .expect_err("a folder restore cannot succeed on Dropbox")
+            .to_string();
+        assert!(
+            err.contains("dropbox.com") && !err.contains("409"),
+            "folder restore should explain itself, got: {err}"
+        );
+        cleanup.expect("cleanup root");
+        assert!(!still_there, "test tree still present at {root}");
+        eprintln!("live #397 retest passed against profile {profile_query:?}, tree {root} removed");
+    }
+
     #[test]
     fn clone_for_transfer_requires_connection() {
         let p = DropboxProvider::new(demo_cfg());
