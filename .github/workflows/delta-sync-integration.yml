@@ -128,31 +128,43 @@ jobs:
           restore-keys: |
             apt-delta-sync-keyauth-${{ runner.os }}-
 
-      # Bounded and retried. The budget is what makes the signal honest: a slow
-      # mirror now fails *this step*, with its name in the log, instead of
-      # cancelling the whole job and leaving every test marked `skipped`.
-      # 5 minutes is ~3.5x the slowest healthy run measured (86s; the other
-      # four sampled runs were 20-66s) and two attempts still fit under the
-      # job cap. The step-level `timeout-minutes` is a backstop in case the
-      # retry wrapper itself wedges.
+      # Bounded and retried by GNU timeout run as root, not nick-fields/retry.
+      # That wrapper (v3 pin ad98453, also tagged v4) dies with `kill EPERM`
+      # when the child is sudo/apt (issue #124, still open; PR #161 unmerged),
+      # so max_attempts never started attempt 2. Measured on #789 run
+      # 34603359227 attempts 1 and 2: both spent ~4m54s in Attempt 1, then
+      # EPERM, cache miss, 178 packages / 59.7 MB. Warm runs are 20-86s; 300s
+      # per attempt is a cold 59.7 MB fetch at ~200 kB/s plus unpack.
+      # Acquire::http::Timeout=30 and Retries=2 cut a hung mirror from 4.5 min
+      # of silence to 30s. timeout must run as root: kill(2) allows a signal
+      # only if the sender is privileged or the uids match, so a runner-user
+      # timeout cannot TERM/KILL apt and dpkg, which would leave the dpkg/apt
+      # locks held into attempt 2. uid/gid are captured before sudo because
+      # inside, id -u is 0 and chown would make the cache unsavable. Two
+      # attempts + 30s kill-after + 2s reap + 15s pause = 677s, so the step
+      # cap is 13 minutes.
       - name: Install system dependencies
-        timeout-minutes: 12
-        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v3
-        with:
-          timeout_minutes: 5
-          max_attempts: 2
-          retry_wait_seconds: 15
-          command: |
+        timeout-minutes: 13
+        run: |
+          set -euo pipefail
+          export RUNNER_UID RUNNER_GID
+          RUNNER_UID=$(id -u)
+          RUNNER_GID=$(id -g)
+          run_attempt() {
             set -euo pipefail
             # An attempt killed mid-unpack leaves dpkg half-configured, and the
             # next apt-get would refuse to run until it is told to finish.
-            sudo dpkg --configure -a || true
+            dpkg --configure -a || true
             mkdir -p "$HOME/apt-archives/partial"
             # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
             # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
             # mismatch on Packages.gz), and nothing here installs from any of them.
-            sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
-            sudo apt-get update
+            rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
+            apt-get update \
+              -o Acquire::Retries=2 \
+              -o Acquire::http::Timeout=30 \
+              -o Acquire::https::Timeout=30 \
+              -o DPkg::Lock::Timeout=30
             # rsync + ssh client for the host side of the integration test.
             # Webkit/GTK stack is needed because compiling the aeroftp
             # library pulls Tauri deps even when we only run one test binary.
@@ -160,9 +172,13 @@ jobs:
             # repo (cli-smoke, aerorsync-protocol, portal-chooser,
             # nightly-telemetry), which compile the same crate with the same
             # three -dev packages.
-            sudo apt-get install -y --no-install-recommends \
+            apt-get install -y --no-install-recommends \
               -o Dir::Cache::archives="$HOME/apt-archives/" \
               -o APT::Keep-Downloaded-Packages=true \
+              -o Acquire::Retries=2 \
+              -o Acquire::http::Timeout=30 \
+              -o Acquire::https::Timeout=30 \
+              -o DPkg::Lock::Timeout=30 \
               rsync \
               openssh-client \
               acl \
@@ -172,9 +188,31 @@ jobs:
               libwebkit2gtk-4.1-dev \
               libappindicator3-dev \
               librsvg2-dev
-            # apt ran as root; hand the archives back so the cache save (which
-            # runs as the runner user) can read them.
-            sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
+            # apt ran as root (sudo timeout); hand the archives back so the
+            # cache save (which runs as the runner user) can read them.
+            chown -R "${RUNNER_UID}:${RUNNER_GID}" "$HOME/apt-archives"
+          }
+          ok=0
+          for attempt in 1 2; do
+            echo "Install system dependencies: attempt ${attempt}/2"
+            if sudo --preserve-env=HOME,RUNNER_UID,RUNNER_GID \
+                 timeout --signal=TERM --kill-after=30s 300s \
+                 bash -euo pipefail -c "$(declare -f run_attempt); run_attempt"; then
+              ok=1
+              break
+            fi
+            echo "attempt ${attempt} failed (timeout or apt error)" >&2
+            sudo pkill -9 -x apt-get || true
+            sudo pkill -9 -x dpkg || true
+            sleep 2
+            if [ "$attempt" -lt 2 ]; then
+              sleep 15
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "Install system dependencies failed after 2 attempts" >&2
+            exit 1
+          fi
 
       - name: Generate fixture SSH key
         working-directory: src-tauri/tests/fixtures/sftp-rsync
@@ -339,25 +377,35 @@ jobs:
       - name: Install system dependencies
         # sshpass needed to poll the password-auth fixture readiness
         # (the integration test itself uses russh via SftpProvider -
-        # sshpass is just a scripting convenience).
-        timeout-minutes: 12
-        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v3
-        with:
-          timeout_minutes: 5
-          max_attempts: 2
-          retry_wait_seconds: 15
-          command: |
+        # sshpass is just a scripting convenience). Same sudo-timeout loop as
+        # the key-auth job: 300s per attempt, 13-minute step cap. See that
+        # job's comment for kill(2) and why nick-fields/retry is gone.
+        timeout-minutes: 13
+        run: |
+          set -euo pipefail
+          export RUNNER_UID RUNNER_GID
+          RUNNER_UID=$(id -u)
+          RUNNER_GID=$(id -g)
+          run_attempt() {
             set -euo pipefail
-            sudo dpkg --configure -a || true
+            dpkg --configure -a || true
             mkdir -p "$HOME/apt-archives/partial"
             # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
             # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
             # mismatch on Packages.gz), and nothing here installs from any of them.
-            sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends \
+            rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
+            apt-get update \
+              -o Acquire::Retries=2 \
+              -o Acquire::http::Timeout=30 \
+              -o Acquire::https::Timeout=30 \
+              -o DPkg::Lock::Timeout=30
+            apt-get install -y --no-install-recommends \
               -o Dir::Cache::archives="$HOME/apt-archives/" \
               -o APT::Keep-Downloaded-Packages=true \
+              -o Acquire::Retries=2 \
+              -o Acquire::http::Timeout=30 \
+              -o Acquire::https::Timeout=30 \
+              -o DPkg::Lock::Timeout=30 \
               rsync \
               openssh-client \
               sshpass \
@@ -365,17 +413,53 @@ jobs:
               libwebkit2gtk-4.1-dev \
               libappindicator3-dev \
               librsvg2-dev
-            sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
+            chown -R "${RUNNER_UID}:${RUNNER_GID}" "$HOME/apt-archives"
+          }
+          ok=0
+          for attempt in 1 2; do
+            echo "Install system dependencies: attempt ${attempt}/2"
+            if sudo --preserve-env=HOME,RUNNER_UID,RUNNER_GID \
+                 timeout --signal=TERM --kill-after=30s 300s \
+                 bash -euo pipefail -c "$(declare -f run_attempt); run_attempt"; then
+              ok=1
+              break
+            fi
+            echo "attempt ${attempt} failed (timeout or apt error)" >&2
+            sudo pkill -9 -x apt-get || true
+            sudo pkill -9 -x dpkg || true
+            sleep 2
+            if [ "$attempt" -lt 2 ]; then
+              sleep 15
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "Install system dependencies failed after 2 attempts" >&2
+            exit 1
+          fi
 
       - name: Build & start password-auth docker fixture
-        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v3
-        with:
-          timeout_minutes: 5
-          max_attempts: 2
-          retry_wait_seconds: 10
-          command: |
-            cd src-tauri/tests/fixtures/sftp-rsync
-            docker compose -f docker-compose.password.yml up -d --build
+        timeout-minutes: 13
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in 1 2; do
+            echo "Build & start password-auth docker fixture: attempt ${attempt}/2"
+            if timeout --signal=TERM --kill-after=30s 300s bash -euo pipefail -c '
+              cd src-tauri/tests/fixtures/sftp-rsync
+              docker compose -f docker-compose.password.yml up -d --build
+            '; then
+              ok=1
+              break
+            fi
+            echo "attempt ${attempt} failed (timeout or docker error)" >&2
+            if [ "$attempt" -lt 2 ]; then
+              sleep 10
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "Build & start password-auth docker fixture failed after 2 attempts" >&2
+            exit 1
+          fi
 
       - name: Wait for password fixture SSH
         run: |

@@ -1354,10 +1354,7 @@ impl StorageProvider for JottacloudProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             if status.as_u16() == 404 {
-                return Err(ProviderError::NotFound(format!(
-                    "Path not found: {}",
-                    resolved
-                )));
+                return Err(ProviderError::NotFound(resolved.clone()));
             }
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
@@ -1684,10 +1681,7 @@ impl StorageProvider for JottacloudProvider {
         let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::NotFound(format!(
-                "Path not found: {}",
-                resolved
-            )));
+            return Err(ProviderError::NotFound(resolved.clone()));
         }
 
         let xml = resp
