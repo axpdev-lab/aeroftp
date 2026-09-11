@@ -9861,7 +9861,7 @@ mod tests {
                 "{label}: the ETag itself stays visible"
             );
             assert!(
-                entry.metadata.get("md5").is_none(),
+                !entry.metadata.contains_key("md5"),
                 "{label}: an SSE-KMS/SSE-C ETag is not the content MD5"
             );
         }
@@ -9900,7 +9900,7 @@ mod tests {
             provider.connected = true;
             let entry = provider.stat("/obj.bin").await.expect("stat");
             assert_eq!(
-                entry.metadata.get("md5").is_some(),
+                entry.metadata.contains_key("md5"),
                 expect_md5,
                 "{label}: md5 presence"
             );
@@ -9934,7 +9934,7 @@ mod tests {
             let (entries, _) = provider.parse_list_response(xml).expect("parse");
             let file = entries.iter().find(|e| !e.is_dir).expect("file entry");
             assert_eq!(
-                file.metadata.get("md5").is_some(),
+                file.metadata.contains_key("md5"),
                 expect_md5,
                 "{label}: md5 presence"
             );
