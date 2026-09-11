@@ -53,7 +53,9 @@ jobs:
                 shown="$expected"
                 ;;
             esac
-            if git show -s --format='%B' "$sha" | grep -qiF "$expected"; then
+            # Anchor on real sign-off LINES before the substring match: a commit
+            # that quotes "Signed-off-by: ..." inside prose must not pass.
+            if git show -s --format='%B' "$sha" | grep -i '^Signed-off-by:' | grep -qiF "$expected"; then
               continue
             fi
             echo "::error::commit $sha is missing '$shown'"
