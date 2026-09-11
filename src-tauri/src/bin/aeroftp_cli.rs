@@ -27161,11 +27161,25 @@ impl ConnectMetadata {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// A connected provider the next `create_and_connect` on this thread
+    /// returns instead of dialling its URL, so a test can drive a whole
+    /// command (scan, planning, report) against an in-memory tree. Test builds
+    /// only: a release binary has no way to reach it.
+    static TEST_CONNECTED_PROVIDER: std::cell::RefCell<Option<Box<dyn StorageProvider>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 async fn create_and_connect(
     url: &str,
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
+    #[cfg(test)]
+    if let Some(provider) = TEST_CONNECTED_PROVIDER.with(|slot| slot.borrow_mut().take()) {
+        return Ok((provider, "/".to_string()));
+    }
     create_and_connect_detailed(url, cli, format)
         .await
         .map(|(provider, path, _metadata)| (provider, path))
@@ -55054,6 +55068,55 @@ async fn cmd_sync_doctor(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    let result = match sync_doctor_report(
+        url,
+        local,
+        remote,
+        direction,
+        delete,
+        exclude,
+        error_correction_pct,
+        error_correction_max_overhead_pct,
+        track_renames,
+        conflict_mode,
+        resync,
+        checksum,
+        cli,
+        format,
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(code) => return code,
+    };
+    print_sync_doctor_report(&result, error_correction_max_overhead_pct, cli, format);
+    if result.status == "ok" {
+        0
+    } else {
+        4
+    }
+}
+
+/// Scan both sides and assess the sync they describe: the report
+/// `sync-doctor` prints. `Err` carries the exit code of a failure that has
+/// already been reported.
+#[allow(clippy::too_many_arguments)]
+async fn sync_doctor_report(
+    url: &str,
+    local: &str,
+    remote: &str,
+    direction: &str,
+    delete: bool,
+    exclude: &[String],
+    error_correction_pct: Option<u32>,
+    error_correction_max_overhead_pct: u32,
+    track_renames: bool,
+    conflict_mode: &str,
+    resync: bool,
+    checksum: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<CliDoctorResult, i32> {
     if !is_valid_sync_direction(direction) {
         print_error(
             format,
@@ -55063,13 +55126,13 @@ async fn cmd_sync_doctor(
             ),
             5,
         );
-        return 5;
+        return Err(5);
     }
 
     let doctor_cfg = if let Some(profile_name) = cli.profile.as_deref() {
         match profile_to_provider_config(profile_name, cli, format) {
             Ok((cfg, _)) => Some(cfg),
-            Err(code) => return code,
+            Err(code) => return Err(code),
         }
     } else {
         None
@@ -55077,7 +55140,7 @@ async fn cmd_sync_doctor(
 
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
-        Err(code) => return code,
+        Err(code) => return Err(code),
     };
     let remote = resolve_cli_remote_path(&initial_path, remote);
 
@@ -55089,7 +55152,7 @@ async fn cmd_sync_doctor(
             5,
         );
         let _ = provider.disconnect().await;
-        return 5;
+        return Err(5);
     }
 
     let error_correction_enabled = error_correction_pct.is_some();
@@ -55310,38 +55373,64 @@ async fn cmd_sync_doctor(
         ec_max_file_size: error_correction_pct.map(|_| ec_max_file_size),
     };
 
+    let _ = provider.disconnect().await;
+    Ok(result)
+}
+
+/// Print a `sync-doctor` report: the JSON document as is, or its text summary.
+fn print_sync_doctor_report(
+    result: &CliDoctorResult,
+    error_correction_max_overhead_pct: u32,
+    cli: &Cli,
+    format: OutputFormat,
+) {
     match format {
-        OutputFormat::Json => print_json(&result),
+        OutputFormat::Json => print_json(result),
         OutputFormat::Text => {
+            let summary_count = |key: &str| result.summary[key].as_u64().unwrap_or(0);
             println!("Sync doctor");
             println!(
                 "  Local:  {} file(s), {}",
-                local_files,
-                format_size(local_bytes)
+                summary_count("local_files"),
+                format_size(summary_count("local_bytes"))
             );
             println!(
                 "  Remote: {} file(s), {}",
-                remote_files,
-                format_size(remote_bytes)
+                summary_count("remote_files"),
+                format_size(summary_count("remote_bytes"))
             );
-            println!("  Direction: {}", direction);
-            if let (Some(pct), Some(estimate)) = (error_correction_pct, ec_estimate) {
+            println!(
+                "  Direction: {}",
+                result.summary["direction"].as_str().unwrap_or_default()
+            );
+            if let (
+                Some(pct),
+                Some(sidecars),
+                Some(overhead_bytes),
+                Some(skipped_too_large),
+                Some(skipped_low_benefit),
+                Some(max_file_size),
+            ) = (
+                result.ec_level_pct,
+                result.ec_estimated_sidecars,
+                result.ec_estimated_overhead_bytes,
+                result.ec_skipped_too_large,
+                result.ec_skipped_low_benefit,
+                result.ec_max_file_size,
+            ) {
                 println!("  AeroSync EC:");
                 println!("    Level: {}%", pct);
-                println!("    Estimated sidecars: {}", estimate.estimated_sidecars);
-                println!(
-                    "    Estimated overhead: {}",
-                    format_size(estimate.estimated_overhead_bytes)
-                );
+                println!("    Estimated sidecars: {}", sidecars);
+                println!("    Estimated overhead: {}", format_size(overhead_bytes));
                 println!(
                     "    Skipped too large: {} (cap {})",
-                    estimate.skipped_too_large,
-                    format_size(ec_max_file_size)
+                    skipped_too_large,
+                    format_size(max_file_size)
                 );
                 if error_correction_max_overhead_pct > 0 {
                     println!(
                         "    Skipped low benefit: {} (max overhead {}%)",
-                        estimate.skipped_low_benefit, error_correction_max_overhead_pct
+                        skipped_low_benefit, error_correction_max_overhead_pct
                     );
                 }
             }
@@ -55355,13 +55444,6 @@ async fn cmd_sync_doctor(
                 eprintln!("Next: {}", result.suggested_next_command);
             }
         }
-    }
-
-    let _ = provider.disconnect().await;
-    if remote_root_ok {
-        0
-    } else {
-        4
     }
 }
 
@@ -73439,6 +73521,451 @@ mod tests {
             }
         }
         assert_eq!(delivered, 8, "--checkers 8 must list 8 directories at once");
+    }
+
+    /// The mtime every `--files-from` fixture file carries on both sides, in
+    /// the planner's own format, so a file of the same size on both sides is
+    /// current in every direction, `both` included (which wants equality).
+    const FIXTURE_MTIME: &str = "2020-01-01T00:00:00";
+    const FIXTURE_MTIME_EPOCH_SECS: u64 = 1_577_836_800;
+
+    /// A remote tree held in memory, for driving `sync` and `sync-doctor` end
+    /// to end: `list` answers from a map, and every mutation is refused, so a
+    /// run that tried to change the tree fails instead of passing on a no-op.
+    struct MemTreeProvider {
+        dirs: HashMap<String, Vec<RemoteEntry>>,
+    }
+
+    impl MemTreeProvider {
+        /// Files directly under `/root`, as `(name, size)`, stamped with
+        /// [`FIXTURE_MTIME`].
+        fn root_files(files: &[(&str, u64)]) -> Self {
+            let entries = files
+                .iter()
+                .map(|(name, size)| {
+                    let mut entry =
+                        RemoteEntry::file(name.to_string(), format!("/root/{name}"), *size);
+                    entry.modified = Some(FIXTURE_MTIME.to_string());
+                    entry
+                })
+                .collect();
+            Self {
+                dirs: HashMap::from([("/root".to_string(), entries)]),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for MemTreeProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "mem-tree".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.dirs
+                .get(path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("delete".to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir".to_string()))
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(self.dirs.contains_key(path))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("mem-tree".to_string())
+        }
+    }
+
+    /// A scratch directory holding a local tree and a `--files-from` list.
+    struct FilesFromFixture {
+        dir: tempfile::TempDir,
+    }
+
+    impl FilesFromFixture {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().expect("scratch directory");
+            std::fs::create_dir(dir.path().join("local")).expect("local tree");
+            Self { dir }
+        }
+
+        fn local(&self) -> String {
+            self.dir.path().join("local").to_string_lossy().into_owned()
+        }
+
+        /// A local file of `size` bytes, stamped with [`FIXTURE_MTIME`].
+        fn local_file(&self, name: &str, size: usize) {
+            let path = self.dir.path().join("local").join(name);
+            std::fs::write(&path, vec![b'x'; size]).expect("write the local file");
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .and_then(|file| {
+                    file.set_modified(
+                        std::time::UNIX_EPOCH
+                            + std::time::Duration::from_secs(FIXTURE_MTIME_EPOCH_SECS),
+                    )
+                })
+                .expect("stamp the local mtime");
+        }
+
+        /// A quiet CLI whose `--files-from` list names `paths`.
+        fn cli_listing(&self, paths: &[&str]) -> Cli {
+            let list = self.dir.path().join("list.txt");
+            std::fs::write(&list, paths.join("\n")).expect("write the list");
+            Cli {
+                files_from: Some(list.to_string_lossy().into_owned()),
+                quiet: true,
+                ..test_cli()
+            }
+        }
+    }
+
+    /// Drive one command against `remote` to completion, on a thread with a
+    /// wide stack and a runtime of its own: the command connects through the
+    /// per-thread test seam in `create_and_connect`, and the `cmd_sync`
+    /// future outgrows the default test stack in a debug build.
+    fn run_against_remote<T: Send, F: std::future::Future<Output = T>>(
+        remote: MemTreeProvider,
+        command: impl FnOnce() -> F + Send,
+    ) -> T {
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .name("files-from-command".to_string())
+                .stack_size(64 * 1024 * 1024)
+                .spawn_scoped(scope, move || {
+                    TEST_CONNECTED_PROVIDER
+                        .with(|slot| *slot.borrow_mut() = Some(Box::new(remote)));
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("test runtime")
+                        .block_on(command())
+                })
+                .expect("spawn the command thread")
+                .join()
+                .expect("the command thread panicked")
+        })
+    }
+
+    /// The real `cmd_sync`, as a dry run with `--delete`, against `remote`:
+    /// the counts it returns are what the run would have done.
+    fn plan_sync_with_delete(
+        remote: MemTreeProvider,
+        local: &str,
+        direction: &str,
+        cli: &Cli,
+        precomputed_local: Option<Vec<(String, u64, Option<String>)>>,
+        from_reconcile: Option<&str>,
+    ) -> SyncCycleStats {
+        run_against_remote(remote, move || {
+            cmd_sync(
+                "memory://",
+                local,
+                "/root",
+                direction,
+                true, // dry_run
+                true, // delete
+                &[],
+                None,
+                0,
+                false,
+                None,
+                None,
+                "",
+                false,
+                None,
+                None,
+                from_reconcile,
+                "newer",
+                false,
+                false,
+                cli,
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+                precomputed_local,
+                false,
+            )
+        })
+    }
+
+    /// The data-loss case: `sync --direction upload --delete --files-from`
+    /// must not plan a single remote delete outside the list. Remote a.txt and
+    /// b.txt, local a.txt, the list a.txt: nothing is left to do. The pooled
+    /// remote walk ignored the list, so b.txt read as a remote orphan.
+    #[test]
+    fn sync_upload_delete_plans_no_remote_delete_outside_the_files_from_list() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+        let cli = fixture.cli_listing(&["a.txt"]);
+        let stats = plan_sync_with_delete(
+            MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1)]),
+            &fixture.local(),
+            "upload",
+            &cli,
+            None,
+            None,
+        );
+        assert_eq!(stats.exit_code, 0);
+        assert_eq!(
+            stats.deleted, 0,
+            "b.txt is outside the list: no remote delete"
+        );
+        assert_eq!(stats.uploaded, 0, "a.txt is already current on the remote");
+    }
+
+    /// Download with a list: an unlisted remote file must not be fetched over
+    /// the local file of the same name, which the list keeps out of the run.
+    /// With only the local side bounded, b.txt looked missing locally and was
+    /// planned for download.
+    #[test]
+    fn sync_download_does_not_overwrite_a_local_file_outside_the_files_from_list() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+        fixture.local_file("b.txt", 1);
+        let cli = fixture.cli_listing(&["a.txt"]);
+        let stats = plan_sync_with_delete(
+            MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 2)]),
+            &fixture.local(),
+            "download",
+            &cli,
+            None,
+            None,
+        );
+        assert_eq!(stats.exit_code, 0);
+        assert_eq!(
+            stats.downloaded, 0,
+            "b.txt is outside the list: the local copy stays"
+        );
+        assert_eq!(stats.deleted, 0);
+    }
+
+    /// Bidirectional with a previous snapshot: an unlisted file present on
+    /// both sides and in the snapshot must not read as deleted on one side.
+    /// With only the local side bounded, b.txt was absent locally, known to
+    /// the snapshot, and planned for a remote delete.
+    #[test]
+    fn sync_both_with_a_snapshot_plans_no_delete_outside_the_files_from_list() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+        fixture.local_file("b.txt", 1);
+        let snapshot = BisyncSnapshot {
+            synced_at: "2020-01-01T00:00:00Z".to_string(),
+            files: HashMap::from([
+                ("a.txt".to_string(), (1, FIXTURE_MTIME.to_string())),
+                ("b.txt".to_string(), (1, FIXTURE_MTIME.to_string())),
+            ]),
+        };
+        std::fs::write(
+            Path::new(&fixture.local()).join(BISYNC_SNAPSHOT_FILE),
+            serde_json::to_string(&snapshot).expect("serialize the snapshot"),
+        )
+        .expect("write the snapshot");
+        let cli = fixture.cli_listing(&["a.txt"]);
+        let stats = plan_sync_with_delete(
+            MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1)]),
+            &fixture.local(),
+            "both",
+            &cli,
+            None,
+            None,
+        );
+        assert_eq!(stats.exit_code, 0);
+        assert_eq!(
+            stats.deleted, 0,
+            "b.txt is outside the list: no delete on either side"
+        );
+        assert_eq!(stats.downloaded, 0);
+        assert_eq!(stats.uploaded, 0);
+    }
+
+    /// A watch cycle hands the sync a local list it precomputed without the
+    /// list. The run must still be bounded by it: no upload of the unlisted
+    /// c.txt, no delete of the unlisted remote b.txt.
+    #[test]
+    fn sync_watch_cycle_local_entries_are_bounded_by_the_files_from_list() {
+        let fixture = FilesFromFixture::new();
+        let cli = fixture.cli_listing(&["a.txt"]);
+        let precomputed_local = vec![
+            ("a.txt".to_string(), 1, Some(FIXTURE_MTIME.to_string())),
+            ("c.txt".to_string(), 1, Some(FIXTURE_MTIME.to_string())),
+        ];
+        let stats = plan_sync_with_delete(
+            MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1)]),
+            &fixture.local(),
+            "upload",
+            &cli,
+            Some(precomputed_local),
+            None,
+        );
+        assert_eq!(stats.exit_code, 0);
+        assert_eq!(stats.uploaded, 0, "c.txt is outside the list: not uploaded");
+        assert_eq!(stats.deleted, 0, "b.txt is outside the list: not deleted");
+    }
+
+    /// A reconcile plan fed to `sync --from-reconcile` is bounded by the list
+    /// too: its unlisted upload (c.txt) and unlisted remote delete (b.txt)
+    /// are dropped, and only the listed path is considered.
+    #[test]
+    fn sync_from_reconcile_is_bounded_by_the_files_from_list() {
+        let fixture = FilesFromFixture::new();
+        let cli = fixture.cli_listing(&["a.txt"]);
+        let plan = fixture.dir.path().join("reconcile.json");
+        std::fs::write(
+            &plan,
+            serde_json::json!({
+                "status": "differences_found",
+                "groups": {
+                    "match": [{"path": "a.txt", "local_size": 1, "remote_size": 1}],
+                    "differ": [],
+                    "missing_remote": [{"path": "c.txt", "local_size": 1}],
+                    "missing_local": [{"path": "b.txt", "remote_size": 1}],
+                },
+            })
+            .to_string(),
+        )
+        .expect("write the reconcile plan");
+        let stats = plan_sync_with_delete(
+            MemTreeProvider::root_files(&[]),
+            &fixture.local(),
+            "upload",
+            &cli,
+            None,
+            Some(plan.to_str().expect("utf-8 plan path")),
+        );
+        assert_eq!(stats.exit_code, 0);
+        assert_eq!(stats.uploaded, 0, "c.txt is outside the list: not uploaded");
+        assert_eq!(stats.deleted, 0, "b.txt is outside the list: not deleted");
+    }
+
+    /// `sync-doctor` previews the run `sync` would make, so it must count the
+    /// same bounded file set and say that a list bounds it: in its checks, in
+    /// the delete risk, and in the dry run it suggests next.
+    #[test]
+    fn sync_doctor_counts_only_listed_files_and_names_the_files_from_list() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+        fixture.local_file("c.txt", 1);
+        let cli = fixture.cli_listing(&["a.txt"]);
+        let list = cli.files_from.clone().expect("the fixture sets a list");
+        let local = fixture.local();
+        let report = run_against_remote(
+            MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1)]),
+            || {
+                sync_doctor_report(
+                    "memory://",
+                    &local,
+                    "/root",
+                    "upload",
+                    true,
+                    &[],
+                    None,
+                    0,
+                    false,
+                    "newer",
+                    false,
+                    false,
+                    &cli,
+                    OutputFormat::Json,
+                )
+            },
+        )
+        .unwrap_or_else(|code| panic!("sync-doctor failed with exit code {code}"));
+        assert_eq!(
+            report.summary["local_files"], 1,
+            "c.txt is outside the list"
+        );
+        assert_eq!(
+            report.summary["remote_files"], 1,
+            "b.txt is outside the list"
+        );
+        let check = report
+            .checks
+            .iter()
+            .find(|check| check["name"] == "files_from")
+            .expect("a files_from check");
+        assert_eq!(check["path"], list.as_str());
+        assert_eq!(check["count"], 1);
+        assert!(
+            report
+                .risks
+                .iter()
+                .any(|risk| risk.contains("--files-from") && risk.contains(&list)),
+            "the delete risk names the list: {:?}",
+            report.risks
+        );
+        assert!(
+            report.suggested_next_command.contains("--files-from"),
+            "the suggested dry run keeps the list: {}",
+            report.suggested_next_command
+        );
     }
 
     struct CliEditFakeProvider {
