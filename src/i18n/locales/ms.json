@@ -2448,7 +2448,7 @@
                 "general": "Umum",
                 "generalDesc": "Lalai untuk tugas tidak diklasifikasikan",
                 "autoDefault": "Automatik (Lalai)",
-                "autoRoutingTip": "Petua: Biarkan sebagai \"Automatik (Lalai)\" untuk menggunakan model yang dipilih dalam pengepala sembang. Konfigurasikan model tertentu hanya apabila anda mahukan model berbeza untuk tugas berbeza.",
+                "autoRoutingTip": "Petua: biarkan tugas pada \"Automatik (Lalai)\" dan model lalai anda akan digunakan. Tetapkan model pilihan hanya untuk tugas yang memerlukan model berbeza, dan model sandaran yang menjawab apabila model pilihan gagal.",
                 "advancedDescription": "Konfigurasikan parameter AI lanjutan untuk penjanaan respons.",
                 "conversationStyle": "Gaya Perbualan",
                 "styleHelp": "Tepat = respons faktual. Kreatif = lebih imaginatif. Seimbang = lalai.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Ringkas",
                 "styleDefault": "Lalai",
                 "styleExplanatory": "Penjelasan",
-                "styleLearning": "Pembelajaran"
+                "styleLearning": "Pembelajaran",
+                "routingPreferred": "Pilihan",
+                "routingFallback": "Sandaran",
+                "routingNoFallback": "Tiada"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan imej",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Layari Plugin"
             },
-            "stopGeneration": "Hentikan penjanaan"
+            "stopGeneration": "Hentikan penjanaan",
+            "routing": {
+                "fallbackUsed": "sandaran",
+                "fallbackUsedTooltip": "{model} gagal, jadi model sandaran yang menjawab"
+            }
         },
         "archive": {
             "passwordRequired": "Arkib ini dilindungi kata laluan",

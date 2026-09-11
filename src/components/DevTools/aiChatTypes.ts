@@ -392,6 +392,10 @@ export interface Message {
         modelName: string;
         providerName: string;
         providerType: AIProviderType;
+        /** Display name of the routed model this answer fell back from, set
+         *  only when the preferred model failed and the rule's fallback
+         *  answered instead. */
+        fallbackFrom?: string;
     };
     tokenInfo?: {
         inputTokens?: number;

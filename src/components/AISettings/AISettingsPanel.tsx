@@ -1260,7 +1260,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                             },
                                         ].map((task) => {
                                             const rule = settings.autoRouting.rules.find((r) => r.taskType === task.type);
-                                            const allModels = settings.providers.filter((p) => p.isEnabled && p.apiKey).flatMap((p) => settings.models.filter((m) => m.providerId === p.id && m.isEnabled).map((m) => ({ ...m, providerName: p.name })));
+                                            const allModels = settings.providers.filter((p) => p.isEnabled && (p.apiKey || p.type === 'ollama')).flatMap((p) => settings.models.filter((m) => m.providerId === p.id && m.isEnabled).map((m) => ({ ...m, providerName: p.name })));
 
                                             return (
                                                 <div key={task.type} className="flex items-center gap-4 p-3 bg-gray-800 rounded-lg">
@@ -1268,33 +1268,74 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                         <div className="font-medium text-sm">{task.label}</div>
                                                         <div className="text-xs text-gray-500">{task.desc}</div>
                                                     </div>
-                                                    <select
-                                                        value={rule?.preferredModelId || ''}
-                                                        onChange={(e) => {
-                                                            const newRules = settings.autoRouting.rules.filter((r) => r.taskType !== task.type);
-                                                            if (e.target.value) {
-                                                                newRules.push({
-                                                                    taskType: task.type,
-                                                                    preferredModelId: e.target.value,
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-[10px] uppercase tracking-wide text-gray-500">{t('ai.settings.routingPreferred')}</span>
+                                                        <select
+                                                            value={rule?.preferredModelId || ''}
+                                                            onChange={(e) => {
+                                                                const newRules = settings.autoRouting.rules.filter((r) => r.taskType !== task.type);
+                                                                if (e.target.value) {
+                                                                    // Carry the existing fallback across a change of preferred model,
+                                                                    // unless it would now point at the same model and turn the
+                                                                    // failover into a pointless retry of the endpoint that failed.
+                                                                    const keptFallback = rule?.fallbackModelId && rule.fallbackModelId !== e.target.value
+                                                                        ? { fallbackModelId: rule.fallbackModelId }
+                                                                        : {};
+                                                                    newRules.push({
+                                                                        taskType: task.type,
+                                                                        preferredModelId: e.target.value,
+                                                                        ...keptFallback,
+                                                                    });
+                                                                }
+                                                                saveSettings({
+                                                                    ...settings,
+                                                                    autoRouting: {
+                                                                        ...settings.autoRouting,
+                                                                        rules: newRules,
+                                                                    },
                                                                 });
-                                                            }
-                                                            saveSettings({
-                                                                ...settings,
-                                                                autoRouting: {
-                                                                    ...settings.autoRouting,
-                                                                    rules: newRules,
-                                                                },
-                                                            });
-                                                        }}
-                                                        className="px-3 py-1.5 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[200px]"
-                                                    >
-                                                        <option value="">{t('ai.settings.autoDefault')}</option>
-                                                        {allModels.map((model) => (
-                                                            <option key={model.id} value={model.id}>
-                                                                {model.displayName} ({model.providerName})
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                            }}
+                                                            className="px-3 py-1.5 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[200px]"
+                                                        >
+                                                            <option value="">{t('ai.settings.autoDefault')}</option>
+                                                            {allModels.map((model) => (
+                                                                <option key={model.id} value={model.id}>
+                                                                    {model.displayName} ({model.providerName})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-[10px] uppercase tracking-wide text-gray-500">{t('ai.settings.routingFallback')}</span>
+                                                        <select
+                                                            value={rule?.fallbackModelId || ''}
+                                                            disabled={!rule}
+                                                            title={rule ? undefined : t('ai.settings.autoDefault')}
+                                                            onChange={(e) => {
+                                                                if (!rule) return;
+                                                                const newRules = settings.autoRouting.rules.map((r) => {
+                                                                    if (r.taskType !== task.type) return r;
+                                                                    const { fallbackModelId: _dropped, ...rest } = r;
+                                                                    return e.target.value ? { ...rest, fallbackModelId: e.target.value } : rest;
+                                                                });
+                                                                saveSettings({
+                                                                    ...settings,
+                                                                    autoRouting: {
+                                                                        ...settings.autoRouting,
+                                                                        rules: newRules,
+                                                                    },
+                                                                });
+                                                            }}
+                                                            className={`px-3 py-1.5 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[200px] ${!rule ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            <option value="">{t('ai.settings.routingNoFallback')}</option>
+                                                            {allModels.filter((model) => model.id !== rule?.preferredModelId).map((model) => (
+                                                                <option key={model.id} value={model.id}>
+                                                                    {model.displayName} ({model.providerName})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
                                                 </div>
                                             );
                                         })}

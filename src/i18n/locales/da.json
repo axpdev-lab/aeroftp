@@ -2448,7 +2448,7 @@
                 "general": "Generelt",
                 "generalDesc": "Standard for uklassificerede opgaver",
                 "autoDefault": "Auto (Standard)",
-                "autoRoutingTip": "Tip: Lad stå som \"Auto (Standard)\" for at bruge den model, der er valgt i chatheaderen. Konfigurér specifikke modeller kun når du ønsker forskellige modeller til forskellige opgaver.",
+                "autoRoutingTip": "Tip: lad en opgave stå på \"Auto (Standard)\", så bruges din standardmodel. Angiv kun en foretrukken model til de opgaver, hvor du vil have en anden, og en reservemodel, der svarer, når den foretrukne fejler.",
                 "advancedDescription": "Konfigurér avancerede AI-parametre for svargenerering.",
                 "conversationStyle": "Samtalestil",
                 "styleHelp": "Præcis = faktuelle svar. Kreativ = mere fantasifuld. Balanceret = standard.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Kortfattet",
                 "styleDefault": "Standard",
                 "styleExplanatory": "Forklarende",
-                "styleLearning": "Læring"
+                "styleLearning": "Læring",
+                "routingPreferred": "Foretrukken",
+                "routingFallback": "Reserve",
+                "routingNoFallback": "Ingen"
             },
             "copy": "Kopiér",
             "attachImage": "Vedhæft billede",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Gennemse Plugins"
             },
-            "stopGeneration": "Stop generering"
+            "stopGeneration": "Stop generering",
+            "routing": {
+                "fallbackUsed": "reserve",
+                "fallbackUsedTooltip": "{model} fejlede, så reservemodellen svarede i stedet"
+            }
         },
         "archive": {
             "passwordRequired": "Dette arkiv er adgangskodebeskyttet",

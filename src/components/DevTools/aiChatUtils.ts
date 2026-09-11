@@ -70,6 +70,33 @@ export async function withRetry<T>(
     throw lastError;
 }
 
+/**
+ * Whether a failed request is worth retrying on a different model.
+ *
+ * The test is whether the failure is a property of the endpoint rather than of
+ * the request or of a limit the user set on purpose. A provider that is down,
+ * throttling, overloaded, or holding a dead key will answer no better on the
+ * second attempt, so a different provider is a real remedy. A blown monthly
+ * budget or a cancelled request is the opposite: failing over would spend money
+ * the user capped, or resurrect work the user stopped.
+ */
+export function isFailoverWorthy(error: unknown): boolean {
+    const err = String(error).toLowerCase();
+
+    // The user's own ceilings and choices: never route around them.
+    if (err.includes('budget')) return false;
+    if (err.includes('cancel') || err.includes('abort')) return false;
+
+    const endpointFailures = [
+        '429', '500', '502', '503', '504',
+        'timeout', 'timed out', 'network', 'fetch',
+        'rate limit', 'overloaded', 'capacity', 'unavailable',
+        '401', '403', 'unauthorized', 'forbidden', 'api key', 'invalid key',
+        'model not found', 'does not exist', 'not available', 'unsupported model',
+    ];
+    return endpointFailures.some(marker => err.includes(marker));
+}
+
 // Estimate token count for a string (~4 chars per token heuristic)
 export function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);

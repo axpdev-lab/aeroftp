@@ -2448,7 +2448,7 @@
                 "general": "Umum",
                 "generalDesc": "Default untuk tugas yang tidak dikategorikan",
                 "autoDefault": "Otomatis (Default)",
-                "autoRoutingTip": "Tips: Biarkan sebagai \"Otomatis (Default)\" untuk menggunakan model yang dipilih di header obrolan. Konfigurasikan model tertentu hanya jika Anda menginginkan model yang berbeda untuk tugas yang berbeda.",
+                "autoRoutingTip": "Tips: biarkan tugas pada \"Otomatis (Default)\" dan model bawaan Anda akan digunakan. Tetapkan model pilihan hanya untuk tugas yang memerlukan model berbeda, dan model cadangan yang menjawab saat model pilihan gagal.",
                 "advancedDescription": "Konfigurasikan parameter AI lanjutan untuk pembuatan respons.",
                 "conversationStyle": "Gaya Percakapan",
                 "styleHelp": "Tepat = respons faktual. Kreatif = lebih imajinatif. Seimbang = default.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Ringkas",
                 "styleDefault": "Bawaan",
                 "styleExplanatory": "Penjelasan",
-                "styleLearning": "Pembelajaran"
+                "styleLearning": "Pembelajaran",
+                "routingPreferred": "Pilihan",
+                "routingFallback": "Cadangan",
+                "routingNoFallback": "Tidak ada"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan Gambar",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Jelajahi Plugin"
             },
-            "stopGeneration": "Hentikan pembuatan"
+            "stopGeneration": "Hentikan pembuatan",
+            "routing": {
+                "fallbackUsed": "cadangan",
+                "fallbackUsedTooltip": "{model} gagal, sehingga model cadangan yang menjawab"
+            }
         },
         "archive": {
             "passwordRequired": "Arsip ini dilindungi kata sandi",

@@ -2448,7 +2448,7 @@
                 "general": "Üldine",
                 "generalDesc": "Vaikimisi klassifitseerimata ülesannete jaoks",
                 "autoDefault": "Automaatne (vaikimisi)",
-                "autoRoutingTip": "Vihje: Jätke \"Automaatne (vaikimisi)\" vestluse päises valitud mudeli kasutamiseks. Seadistage kindlad mudelid ainult siis, kui soovite eri mudeleid eri ülesannete jaoks.",
+                "autoRoutingTip": "Nõuanne: jätke ülesanne valikule „Automaatne (vaikimisi)“ ja kasutatakse teie vaikemudelit. Määrake eelistatud mudel ainult nendele ülesannetele, kus soovite teistsugust, ja varumudel, mis vastab siis, kui eelistatu ebaõnnestub.",
                 "advancedDescription": "Seadistage täpsemad AI parameetrid vastuste genereerimiseks.",
                 "conversationStyle": "Vestluse stiil",
                 "styleHelp": "Täpne = faktipõhised vastused. Loov = loomingulisem. Tasakaalus = vaikimisi.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Lühike",
                 "styleDefault": "Vaikimisi",
                 "styleExplanatory": "Selgitav",
-                "styleLearning": "Õpetlik"
+                "styleLearning": "Õpetlik",
+                "routingPreferred": "Eelistatud",
+                "routingFallback": "Varumudel",
+                "routingNoFallback": "Puudub"
             },
             "copy": "Kopeeri",
             "attachImage": "Lisa pilt",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Sirvi Plugins"
             },
-            "stopGeneration": "Peata genereerimine"
+            "stopGeneration": "Peata genereerimine",
+            "routing": {
+                "fallbackUsed": "varumudel",
+                "fallbackUsedTooltip": "{model} ebaõnnestus, seetõttu vastas varumudel"
+            }
         },
         "archive": {
             "passwordRequired": "See arhiiv on parooliga kaitstud",

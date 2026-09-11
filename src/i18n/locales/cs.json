@@ -2448,7 +2448,7 @@
                 "general": "Obecné",
                 "generalDesc": "Výchozí pro nezařazené úkoly",
                 "autoDefault": "Auto (výchozí)",
-                "autoRoutingTip": "Tip: nechte «Auto (výchozí)» pro použití modelu z hlavičky chatu. Konfigurujte konkrétní modely pouze v případě potřeby.",
+                "autoRoutingTip": "Tip: ponechte úlohu na „Auto (výchozí)“ a použije se váš výchozí model. Preferovaný model nastavte jen u úloh, kde chcete jiný, a záložní model, který odpoví, když preferovaný selže.",
                 "advancedDescription": "Nakonfigurujte pokročilé parametry AI pro generování odpovědí.",
                 "conversationStyle": "Styl konverzace",
                 "styleHelp": "Přesný = věcné odpovědi. Kreativní = více imaginativní. Vyvážený = výchozí.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Stručný",
                 "styleDefault": "Výchozí",
                 "styleExplanatory": "Vysvětlující",
-                "styleLearning": "Výukový"
+                "styleLearning": "Výukový",
+                "routingPreferred": "Preferovaný",
+                "routingFallback": "Záložní",
+                "routingNoFallback": "Žádný"
             },
             "copy": "Kopírovat",
             "attachImage": "Přiložit obrázek",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Procházet Plugins"
             },
-            "stopGeneration": "Zastavit generování"
+            "stopGeneration": "Zastavit generování",
+            "routing": {
+                "fallbackUsed": "záložní",
+                "fallbackUsedTooltip": "{model} selhal, proto odpověděl záložní model"
+            }
         },
         "archive": {
             "passwordRequired": "Tento archiv je chráněn heslem",

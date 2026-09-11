@@ -2448,7 +2448,7 @@
                 "general": "Yleinen",
                 "generalDesc": "Oletus luokittelemattomille tehtäville",
                 "autoDefault": "Automaattinen (oletus)",
-                "autoRoutingTip": "Vinkki: Jätä \"Automaattinen (oletus)\" käyttääksesi keskustelussa valittua mallia.",
+                "autoRoutingTip": "Vinkki: jätä tehtävä asetukseen ”Automaattinen (oletus)”, niin käytetään oletusmalliasi. Aseta ensisijainen malli vain niihin tehtäviin, joihin haluat eri mallin, ja varamalli vastaamaan silloin, kun ensisijainen epäonnistuu.",
                 "advancedDescription": "Määritä tekoälyn lisäparametrit vastausten generointiin.",
                 "conversationStyle": "Keskustelutyyli",
                 "styleHelp": "Tarkka = tosiasiapohjaiset. Luova = mielikuvituksellisempi. Tasapainoinen = oletus.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Ytimekäs",
                 "styleDefault": "Oletus",
                 "styleExplanatory": "Selittävä",
-                "styleLearning": "Oppiva"
+                "styleLearning": "Oppiva",
+                "routingPreferred": "Ensisijainen",
+                "routingFallback": "Varamalli",
+                "routingNoFallback": "Ei mitään"
             },
             "copy": "Kopioi",
             "attachImage": "Liitä kuva",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Selaa Plugins"
             },
-            "stopGeneration": "Pysäytä luonti"
+            "stopGeneration": "Pysäytä luonti",
+            "routing": {
+                "fallbackUsed": "varamalli",
+                "fallbackUsedTooltip": "{model} epäonnistui, joten varamalli vastasi"
+            }
         },
         "archive": {
             "passwordRequired": "Tämä arkisto on salasanasuojattu",

@@ -2448,7 +2448,7 @@
                 "general": "Bendras",
                 "generalDesc": "Numatytasis neklasifikuotoms užduotims",
                 "autoDefault": "Automatinis (numatytasis)",
-                "autoRoutingTip": "Patarimas: Palikite \"Automatinis (numatytasis)\" pokalbio antraštėje pasirinkto modelio naudojimui. Konfigūruokite konkrecius modelius tik tada, kai norite skirtingų modelių skirtingoms užduotims.",
+                "autoRoutingTip": "Patarimas: palikite užduotį ties „Automatinis (numatytasis)“ ir bus naudojamas numatytasis modelis. Pageidaujamą modelį nustatykite tik toms užduotims, kurioms norite kito, ir atsarginį modelį, kuris atsakys, kai pageidaujamas nepavyks.",
                 "advancedDescription": "Sukonfigūruokite išplėstinius AI parametrus atsakymų generavimui.",
                 "conversationStyle": "Pokalbio stilius",
                 "styleHelp": "Tikslus = faktinės informacijos atsakymai. Kūrybinis = vaizdingesnis. Subalansuotas = numatytasis.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Glaustas",
                 "styleDefault": "Numatytasis",
                 "styleExplanatory": "Aiškinamasis",
-                "styleLearning": "Mokomasis"
+                "styleLearning": "Mokomasis",
+                "routingPreferred": "Pageidaujamas",
+                "routingFallback": "Atsarginis",
+                "routingNoFallback": "Nėra"
             },
             "copy": "Kopijuoti",
             "attachImage": "Pridėti vaizdą",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Naršyti papildinius"
             },
-            "stopGeneration": "Sustabdyti generavimą"
+            "stopGeneration": "Sustabdyti generavimą",
+            "routing": {
+                "fallbackUsed": "atsarginis",
+                "fallbackUsedTooltip": "{model} nepavyko, todėl atsakė atsarginis modelis"
+            }
         },
         "archive": {
             "passwordRequired": "Šis archyvas apsaugotas slaptažodžiu",

@@ -2448,7 +2448,7 @@
                 "general": "Allmänt",
                 "generalDesc": "Standard för oklassificerade uppgifter",
                 "autoDefault": "Auto (Standard)",
-                "autoRoutingTip": "Tips: Lämna som \"Auto (Standard)\" för att använda modellen vald i chatthuvudet. Konfigurera specifika modeller bara när du vill ha olika modeller för olika uppgifter.",
+                "autoRoutingTip": "Tips: lämna en uppgift på ”Auto (Standard)” så används din standardmodell. Ange en föredragen modell endast för de uppgifter där du vill ha en annan, och en reservmodell som svarar när den föredragna misslyckas.",
                 "advancedDescription": "Konfigurera avancerade AI-parametrar för svarsgenerering.",
                 "conversationStyle": "Samtalsstil",
                 "styleHelp": "Precis = faktabaserade svar. Kreativ = mer fantasifull. Balanserad = standard.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Koncis",
                 "styleDefault": "Standard",
                 "styleExplanatory": "Förklarande",
-                "styleLearning": "Lärande"
+                "styleLearning": "Lärande",
+                "routingPreferred": "Föredragen",
+                "routingFallback": "Reserv",
+                "routingNoFallback": "Ingen"
             },
             "copy": "Kopiera",
             "attachImage": "Bifoga bild",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Bläddra bland plugins"
             },
-            "stopGeneration": "Stoppa generering"
+            "stopGeneration": "Stoppa generering",
+            "routing": {
+                "fallbackUsed": "reserv",
+                "fallbackUsedTooltip": "{model} misslyckades, så reservmodellen svarade i stället"
+            }
         },
         "archive": {
             "passwordRequired": "Detta arkiv är lösenordsskyddat",

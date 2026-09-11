@@ -2448,7 +2448,7 @@
                 "general": "General",
                 "generalDesc": "Per defecte per a tasques no classificades",
                 "autoDefault": "Automàtic (Per defecte)",
-                "autoRoutingTip": "Consell: Deixeu com a \"Automàtic (Per defecte)\" per utilitzar el model seleccionat a la capçalera del xat. Configureu models específics només quan vulgueu models diferents per a tasques diferents.",
+                "autoRoutingTip": "Consell: si deixeu una tasca en «Automàtic (Per defecte)», s'utilitza el vostre model predeterminat. Definiu un model preferit només per a les tasques on en vulgueu un altre, i un model alternatiu que respongui quan el preferit falli.",
                 "advancedDescription": "Configureu els paràmetres avançats d'IA per a la generació de respostes.",
                 "conversationStyle": "Estil de conversa",
                 "styleHelp": "Precís = respostes factuals. Creatiu = més imaginatiu. Equilibrat = per defecte.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Concís",
                 "styleDefault": "Predeterminat",
                 "styleExplanatory": "Explicatiu",
-                "styleLearning": "Aprenentatge"
+                "styleLearning": "Aprenentatge",
+                "routingPreferred": "Preferit",
+                "routingFallback": "Alternatiu",
+                "routingNoFallback": "Cap"
             },
             "copy": "Copiar",
             "attachImage": "Adjuntar imatge",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Explorar Plugins"
             },
-            "stopGeneration": "Atura la generació"
+            "stopGeneration": "Atura la generació",
+            "routing": {
+                "fallbackUsed": "alternatiu",
+                "fallbackUsedTooltip": "{model} ha fallat, així que ha respost el model alternatiu"
+            }
         },
         "archive": {
             "passwordRequired": "Aquest arxiu està protegit amb contrasenya",

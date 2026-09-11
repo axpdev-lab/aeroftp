@@ -2448,7 +2448,7 @@
                 "general": "Allgemein",
                 "generalDesc": "Standard für nicht klassifizierte Aufgaben",
                 "autoDefault": "Auto (Standard)",
-                "autoRoutingTip": "Tipp: Belassen Sie \"Auto (Standard)\", um das im Chat-Header ausgewählte Modell zu verwenden. Konfigurieren Sie spezifische Modelle nur, wenn Sie verschiedene Modelle für verschiedene Aufgaben möchten.",
+                "autoRoutingTip": "Tipp: Wenn eine Aufgabe auf „Auto (Standard)“ bleibt, wird Ihr Standardmodell verwendet. Legen Sie ein bevorzugtes Modell nur für die Aufgaben fest, bei denen Sie ein anderes möchten, und ein Ersatzmodell, das antwortet, wenn das bevorzugte fehlschlägt.",
                 "advancedDescription": "Erweiterte KI-Parameter für die Antwortgenerierung konfigurieren.",
                 "conversationStyle": "Gesprächsstil",
                 "styleHelp": "Präzise = sachliche Antworten. Kreativ = einfallsreicher. Ausgewogen = Standard.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Prägnant",
                 "styleDefault": "Standard",
                 "styleExplanatory": "Erklärend",
-                "styleLearning": "Lernend"
+                "styleLearning": "Lernend",
+                "routingPreferred": "Bevorzugt",
+                "routingFallback": "Ersatz",
+                "routingNoFallback": "Keiner"
             },
             "copy": "Kopieren",
             "attachImage": "Bild anhängen",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Plugins durchsuchen"
             },
-            "stopGeneration": "Generierung stoppen"
+            "stopGeneration": "Generierung stoppen",
+            "routing": {
+                "fallbackUsed": "Ersatz",
+                "fallbackUsedTooltip": "{model} ist fehlgeschlagen, daher hat das Ersatzmodell geantwortet"
+            }
         },
         "archive": {
             "passwordRequired": "Dieses Archiv ist passwortgeschützt",

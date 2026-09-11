@@ -2448,7 +2448,7 @@
                 "general": "Vispārēji",
                 "generalDesc": "Noklusējums neklasificētiem uzdevumiem",
                 "autoDefault": "Automātisks (noklusējums)",
-                "autoRoutingTip": "Padoms: Atstājiet \"Automātisks (noklusējums)\", lai izmantotu sarunas galvenes izvēlēto modeli. Konfigurējiet konkrētus modeļus tikai tad, ja vēlaties atšķirīgus modeļus dažādiem uzdevumiem.",
+                "autoRoutingTip": "Padoms: atstājiet uzdevumu uz „Automātisks (noklusējums)“, un tiks izmantots jūsu noklusējuma modelis. Vēlamo modeli iestatiet tikai tiem uzdevumiem, kuriem vēlaties citu, un rezerves modeli, kas atbildēs, kad vēlamais neizdosies.",
                 "advancedDescription": "Konfigurējiet papildu AI parametrus atbilžu ģenerēšanai.",
                 "conversationStyle": "Sarunas stils",
                 "styleHelp": "Precīzs = faktu atbildes. Radošs = iedomīgāks. Līdzsvarots = noklusējums.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Kodolīgs",
                 "styleDefault": "Noklusējums",
                 "styleExplanatory": "Skaidrojošs",
-                "styleLearning": "Mācību"
+                "styleLearning": "Mācību",
+                "routingPreferred": "Vēlamais",
+                "routingFallback": "Rezerves",
+                "routingNoFallback": "Nav"
             },
             "copy": "Kopēt",
             "attachImage": "Pievienot attēlu",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Pārlūkot spraudņus"
             },
-            "stopGeneration": "Apturēt ģenerēšanu"
+            "stopGeneration": "Apturēt ģenerēšanu",
+            "routing": {
+                "fallbackUsed": "rezerves",
+                "fallbackUsedTooltip": "{model} neizdevās, tāpēc atbildēja rezerves modelis"
+            }
         },
         "archive": {
             "passwordRequired": "Šis arhīvs ir aizsargāts ar paroli",

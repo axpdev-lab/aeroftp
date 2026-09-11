@@ -2448,7 +2448,7 @@
                 "general": "常规",
                 "generalDesc": "未分类任务的默认设置",
                 "autoDefault": "自动（默认）",
-                "autoRoutingTip": "提示：保持\"自动（默认）\"将使用聊天窗口顶部选择的模型。仅在需要为不同任务使用不同模型时才配置特定模型。",
+                "autoRoutingTip": "提示：将某项任务保留为「自动（默认）」即使用你的默认模型。仅为需要不同模型的任务设置首选模型，并设置一个在首选模型失败时作答的备用模型。",
                 "advancedDescription": "配置高级 AI 参数以控制响应生成。",
                 "conversationStyle": "对话风格",
                 "styleHelp": "精确 = 事实性回答。创意 = 更有想象力。均衡 = 默认。",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "简洁",
                 "styleDefault": "默认",
                 "styleExplanatory": "解释性",
-                "styleLearning": "学习"
+                "styleLearning": "学习",
+                "routingPreferred": "首选",
+                "routingFallback": "备用",
+                "routingNoFallback": "无"
             },
             "copy": "复制",
             "attachImage": "附加图片",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "浏览插件"
             },
-            "stopGeneration": "停止生成"
+            "stopGeneration": "停止生成",
+            "routing": {
+                "fallbackUsed": "备用",
+                "fallbackUsedTooltip": "{model} 失败，因此由备用模型作答"
+            }
         },
         "archive": {
             "passwordRequired": "此压缩包受密码保护",

@@ -2448,7 +2448,7 @@
                 "general": "Jumla",
                 "generalDesc": "Chaguo-msingi kwa kazi zisizoainishwa",
                 "autoDefault": "Otomatiki (Chaguo-msingi)",
-                "autoRoutingTip": "Dokezo: Acha kama \"Otomatiki (Chaguo-msingi)\" kutumia modeli iliyochaguliwa kwenye kichwa cha mazungumzo. Sanidi modeli maalum tu unapotaka modeli tofauti kwa kazi tofauti.",
+                "autoRoutingTip": "Kidokezo: acha kazi kwenye \"Otomatiki (Chaguo-msingi)\" na modeli yako chaguo-msingi itatumika. Weka modeli inayopendelewa kwa kazi zile tu unazotaka modeli tofauti, na modeli mbadala itakayojibu pale inayopendelewa inaposhindwa.",
                 "advancedDescription": "Sanidi vigezo vya juu vya AI kwa kuzalisha majibu.",
                 "conversationStyle": "Mtindo wa Mazungumzo",
                 "styleHelp": "Sahihi = majibu ya ukweli. Ubunifu = mawazo zaidi. Wastani = chaguo-msingi.",
@@ -2532,7 +2532,10 @@
                 "styleConcise": "Fupi",
                 "styleDefault": "Chaguo-msingi",
                 "styleExplanatory": "Maelezo",
-                "styleLearning": "Kujifunza"
+                "styleLearning": "Kujifunza",
+                "routingPreferred": "Inayopendelewa",
+                "routingFallback": "Mbadala",
+                "routingNoFallback": "Hakuna"
             },
             "copy": "Nakili",
             "attachImage": "Ambatanisha picha",
@@ -2900,7 +2903,11 @@
             "plugins": {
                 "browsePlugins": "Vinjari plugini"
             },
-            "stopGeneration": "Simamisha uzalishaji"
+            "stopGeneration": "Simamisha uzalishaji",
+            "routing": {
+                "fallbackUsed": "mbadala",
+                "fallbackUsedTooltip": "{model} imeshindwa, kwa hivyo modeli mbadala ndiyo iliyojibu"
+            }
         },
         "archive": {
             "passwordRequired": "Kumbukumbu hii inalindwa na nenosiri",
