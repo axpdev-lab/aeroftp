@@ -645,19 +645,16 @@ export const runRemoteSync = async (
         const entryIdx = journalEntryMap.get(item.relativePath);
         const journalEntry = entryIdx !== undefined ? journal.entries[entryIdx] : undefined;
 
-        // Resume: skip entries the prior run already finished.
-        if (
-            deps.resumeJournal &&
-            (journalEntry?.status === 'completed' || journalEntry?.status === 'skipped')
-        ) {
-            if (journalEntry.status === 'completed') {
-                if (journalEntry.action === 'upload') uploaded++;
-                else if (journalEntry.action === 'download') downloaded++;
-                else deleted++;
-                totalBytes += journalEntry.bytes_transferred;
-            } else {
-                skipped++;
-            }
+        // Resume: skip only entries the prior run already finished.
+        // `skipped` is retried: cancellation used to stamp remaining pending
+        // entries as skipped, and journals already on disk still have that
+        // status, so treating skipped like completed would drop the files
+        // Resume is supposed to transfer.
+        if (deps.resumeJournal && journalEntry?.status === 'completed') {
+            if (journalEntry.action === 'upload') uploaded++;
+            else if (journalEntry.action === 'download') downloaded++;
+            else deleted++;
+            totalBytes += journalEntry.bytes_transferred;
             completed++;
             callbacks.onProgress?.(completed, files.length);
             continue;
@@ -670,10 +667,8 @@ export const runRemoteSync = async (
         if (budgetReached || isCancelled()) {
             runCancelled = true;
             for (let j = i; j < files.length; j++) {
-                const jIdx = journalEntryMap.get(files[j].relativePath);
-                if (jIdx !== undefined && journal.entries[jIdx]?.status === 'pending') {
-                    journal.entries[jIdx].status = 'skipped';
-                }
+                // Leave journal entries pending so a later resume transfers
+                // them. The live UI of this run still shows skipped.
                 setStatus(files[j].relativePath, 'skipped');
             }
             skipped += files.length - i;

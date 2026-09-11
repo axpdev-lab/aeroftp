@@ -502,6 +502,81 @@ describe('remoteSyncRunner — journal resume', () => {
         expect((uploadCalls[0].args?.params as { local_path: string }).local_path)
             .toBe('/home/u/work/bad.txt');
     });
+
+    it('transfers remaining files when resuming a cancelled run', async () => {
+        let seen = 0;
+        const first = makeInvoke();
+        await runRemoteSync(
+            [file('a.txt', 'upload'), file('b.txt', 'upload'), file('c.txt', 'upload')],
+            noDirs,
+            baseConfig(),
+            { isCancelled: () => { seen += 1; return seen > 1; } },
+            noWaitDeps(first.invoke),
+        );
+        const journal = JSON.parse(JSON.stringify(lastSavedJournal(first.calls))) as SyncJournal;
+        expect(journal.completed).toBe(false);
+
+        const second = makeInvoke();
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload'), file('b.txt', 'upload'), file('c.txt', 'upload')],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(second.invoke, { resumeJournal: journal }),
+        );
+        expect(report.uploaded).toBe(3);
+        const uploadCalls = second.calls.filter((c) => c.cmd === 'upload_file');
+        expect(uploadCalls).toHaveLength(2);
+        expect(uploadCalls.map((c) => (c.args?.params as { local_path: string }).local_path))
+            .toEqual(['/home/u/work/b.txt', '/home/u/work/c.txt']);
+    });
+
+    it('retries skipped entries saved by an older cancelled journal', async () => {
+        const resumeJournal: SyncJournal = {
+            id: 'j-skipped',
+            created_at: '2026-05-22T09:00:00Z',
+            updated_at: '2026-05-22T09:05:00Z',
+            local_path: '/home/u/work',
+            remote_path: '/srv/data',
+            direction: 'bidirectional',
+            retry_policy: RETRY,
+            verify_policy: 'none',
+            entries: [
+                {
+                    relative_path: 'a.txt',
+                    action: 'upload',
+                    status: 'completed',
+                    attempts: 1,
+                    last_error: null,
+                    verified: true,
+                    bytes_transferred: 100,
+                },
+                {
+                    relative_path: 'b.txt',
+                    action: 'upload',
+                    status: 'skipped',
+                    attempts: 0,
+                    last_error: null,
+                    verified: null,
+                    bytes_transferred: 0,
+                },
+            ],
+            completed: false,
+        };
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload', { size: 100 }), file('b.txt', 'upload', { size: 200 })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { resumeJournal }),
+        );
+        expect(report.uploaded).toBe(2);
+        const uploadCalls = calls.filter((c) => c.cmd === 'upload_file');
+        expect(uploadCalls).toHaveLength(1);
+        expect((uploadCalls[0].args?.params as { local_path: string }).local_path)
+            .toBe('/home/u/work/b.txt');
+    });
 });
 
 describe('remoteSyncRunner: journal kept on failures', () => {
