@@ -85,6 +85,10 @@ struct WireCounts {
     /// returns with the count at zero, the second returns before the server
     /// has let go of the handle.
     close_delay_ms: AtomicU32,
+    /// Milliseconds an OPEN reply is held back. Zero replies at once.
+    open_delay_ms: AtomicU32,
+    /// After this many READ requests, further READs fail. Zero never fails.
+    fail_read_after: AtomicU32,
 }
 
 fn w32(out: &mut Vec<u8>, v: u32) {
@@ -232,13 +236,31 @@ impl TestSftpHandler {
                 let mut r = vec![SSH_FXP_HANDLE];
                 w32(&mut r, id);
                 wstr(&mut r, h.as_bytes());
-                self.send(channel, r, session);
+                let delay = self.counts.open_delay_ms.load(Ordering::SeqCst);
+                if delay == 0 {
+                    self.send(channel, r, session);
+                } else {
+                    let session_handle = session.handle();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(u64::from(delay)))
+                            .await;
+                        let mut framed = Vec::with_capacity(4 + r.len());
+                        w32(&mut framed, r.len() as u32);
+                        framed.extend_from_slice(&r);
+                        let _ = session_handle.data(channel, framed).await;
+                    });
+                }
             }
             SSH_FXP_READ => {
-                self.counts.reads.fetch_add(1, Ordering::SeqCst);
+                let n = self.counts.reads.fetch_add(1, Ordering::SeqCst) + 1;
+                let fail_after = self.counts.fail_read_after.load(Ordering::SeqCst);
                 let Some(id) = r32(data, &mut pos) else {
                     return;
                 };
+                if fail_after > 0 && n >= fail_after {
+                    self.send(channel, status(id, SSH_FX_FAILURE, "read refused"), session);
+                    return;
+                }
                 let handle = rstr(data, &mut pos).unwrap_or_default();
                 let Some(offset) = r64(data, &mut pos) else {
                     return;
@@ -753,6 +775,77 @@ async fn hinted_download_overlaps_stat_and_open() {
         0,
         "upload left the handle to Drop after a failed write"
     );
+
+    // 16. Cancel during the read-ahead OPEN fan-out: the join_all future
+    // used to be dropped, so already-open File values only queued close_nowait.
+    counts.open_delay_ms.store(400, Ordering::SeqCst);
+    provider.set_sftp_readahead(Some(4));
+    let local = home.join("out-readahead-cancel.bin");
+    let dest = local.to_string_lossy().into_owned();
+    let slot = provider.transfer_cancel_slot();
+    let err = {
+        let fut =
+            provider.download_with_size_hint("/large.bin", &dest, Some(8 * 1024 * 1024), None);
+        tokio::pin!(fut);
+        tokio::select! {
+            r = &mut fut => r,
+            _ = async {
+                // Large hint: no speculative OPEN. STAT is delayed 250 ms,
+                // then the fan-out waits 400 ms for OPEN replies.
+                tokio::time::sleep(std::time::Duration::from_millis(320)).await;
+                slot.lock().expect("cancel slot").cancel();
+                std::future::pending::<()>().await;
+            } => unreachable!(),
+        }
+    };
+    let err = err.expect_err("cancel during open fan-out");
+    assert!(err.to_string().to_lowercase().contains("cancel"), "{err}");
+    assert_eq!(
+        counts.handles.load(Ordering::SeqCst),
+        0,
+        "cancel during read-ahead OPEN fan-out left handles to Drop"
+    );
+    counts.open_delay_ms.store(0, Ordering::SeqCst);
+
+    // 17. A reader error after the opens: try_join_all dropped the other
+    // readers before they awaited close.
+    counts.fail_read_after.store(1, Ordering::SeqCst);
+    let local = home.join("out-readahead-reader.bin");
+    let err = provider
+        .download_with_size_hint("/large.bin", local.to_str().unwrap(), Some(4096), None)
+        .await
+        .expect_err("read-ahead reader failure");
+    assert!(
+        err.to_string().to_lowercase().contains("read")
+            || err.to_string().to_lowercase().contains("fail"),
+        "{err}"
+    );
+    assert_eq!(
+        counts.handles.load(Ordering::SeqCst),
+        0,
+        "read-ahead reader error left handles to Drop"
+    );
+    counts.fail_read_after.store(0, Ordering::SeqCst);
+
+    // 18. A writer error after the opens: try_join dropped the readers.
+    ftp_client_gui_lib::providers::sftp::TEST_FAIL_READAHEAD_WRITE.store(true, Ordering::SeqCst);
+    let local = home.join("out-readahead-writer.bin");
+    let err = provider
+        .download_with_size_hint("/large.bin", local.to_str().unwrap(), Some(4096), None)
+        .await
+        .expect_err("read-ahead writer failure");
+    assert!(
+        err.to_string().to_lowercase().contains("write")
+            || err.to_string().to_lowercase().contains("injected"),
+        "{err}"
+    );
+    assert_eq!(
+        counts.handles.load(Ordering::SeqCst),
+        0,
+        "read-ahead writer error left handles to Drop"
+    );
+    ftp_client_gui_lib::providers::sftp::TEST_FAIL_READAHEAD_WRITE.store(false, Ordering::SeqCst);
+    provider.set_sftp_readahead(None);
 
     counts.close_delay_ms.store(0, Ordering::SeqCst);
 

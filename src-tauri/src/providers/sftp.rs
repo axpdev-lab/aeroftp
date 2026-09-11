@@ -421,6 +421,11 @@ pub struct SftpProvider {
     /// only while this remains unspecified; GUI/CLI configuration replaces it
     /// with an isolated explicit value.
     sftp_readahead: SftpReadaheadSetting,
+    /// Token watched by the in-flight read-ahead download. Replaced at the
+    /// start of each download so a prior cancel cannot poison the next one.
+    /// Arc+Mutex so a test can cancel without holding `&mut self` during the
+    /// download future.
+    transfer_cancel: Arc<std::sync::Mutex<CancellationToken>>,
 }
 
 impl SftpProvider {
@@ -445,7 +450,15 @@ impl SftpProvider {
             multi_thread_streams: 1,
             multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
             sftp_readahead: SftpReadaheadSetting::LegacyEnvironment,
+            transfer_cancel: Arc::new(std::sync::Mutex::new(CancellationToken::new())),
         }
+    }
+
+    /// Shared slot for the in-flight download token, so a caller can cancel
+    /// while `download` holds `&mut self`.
+    #[doc(hidden)]
+    pub fn transfer_cancel_slot(&self) -> Arc<std::sync::Mutex<CancellationToken>> {
+        Arc::clone(&self.transfer_cancel)
     }
 
     /// Return the SHA-256 hex fingerprint of the host key that
@@ -1650,6 +1663,14 @@ impl StorageProvider for SftpProvider {
                 ) {
                     close_preopened!();
                     let sftp = self.get_sftp()?;
+                    let cancel = {
+                        let mut slot = self
+                            .transfer_cancel
+                            .lock()
+                            .expect("transfer cancel mutex poisoned");
+                        *slot = CancellationToken::new();
+                        slot.clone()
+                    };
                     sftp_readahead_download(
                         sftp,
                         &full_path,
@@ -1658,6 +1679,7 @@ impl StorageProvider for SftpProvider {
                         self.buffer_size,
                         window,
                         on_progress,
+                        &cancel,
                     )
                     .await?;
                     return Ok(());
@@ -3142,6 +3164,13 @@ async fn shutdown_sftp_file(file: &mut russh_sftp::client::fs::File) -> std::io:
     first
 }
 
+/// When true, the next read-ahead writer iteration fails after the remote
+/// opens, so tests can count CLOSE on that exit. Hidden: production never
+/// sets it.
+#[doc(hidden)]
+pub static TEST_FAIL_READAHEAD_WRITE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 #[allow(clippy::too_many_arguments)]
 async fn sftp_readahead_range_into(
     sftp: &SftpSession,
@@ -3169,15 +3198,28 @@ async fn sftp_readahead_range_into(
     // Successful opens from a failed batch are closed and awaited before
     // retrying with a smaller window: Drop would only queue close_nowait.
     let handles = loop {
+        let open_fut =
+            futures_util::future::join_all((0..eff_window).map(|_| sftp.open(full_path)));
+        tokio::pin!(open_fut);
+        let mut cancelled = false;
         let opened = tokio::select! {
             _ = cancel.cancelled() => {
-                return Err(ProviderError::TransferFailed(
-                    "Transfer cancelled by user".to_string(),
-                ));
+                cancelled = true;
+                // Stay in this function: wait for in-flight OPENs so their
+                // File values can be closed with await. Beyond 2s the
+                // remaining opens are dropped (close_nowait).
+                match tokio::time::timeout(std::time::Duration::from_secs(2), &mut open_fut)
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(_) => {
+                        return Err(ProviderError::TransferFailed(
+                            "Transfer cancelled by user".to_string(),
+                        ));
+                    }
+                }
             }
-            result = futures_util::future::join_all(
-                (0..eff_window).map(|_| sftp.open(full_path))
-            ) => result,
+            result = &mut open_fut => result,
         };
         let mut ok = Vec::new();
         let mut err = None;
@@ -3186,6 +3228,12 @@ async fn sftp_readahead_range_into(
                 Ok(file) => ok.push(file),
                 Err(e) => err = Some(e),
             }
+        }
+        if cancelled {
+            close_sftp_files(ok).await;
+            return Err(ProviderError::TransferFailed(
+                "Transfer cancelled by user".to_string(),
+            ));
         }
         match err {
             None => break ok,
@@ -3215,92 +3263,131 @@ async fn sftp_readahead_range_into(
     // `eff_window` readers -> one writer. The writer owns `out` (no cursor race)
     // and is the sole caller of `on_progress`.
     let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(eff_window.max(2));
+    // Child token: an I/O error here must not cancel the caller's token.
+    let work_cancel = cancel.child_token();
 
-    let readers = async {
-        let mut reader_tasks = Vec::with_capacity(eff_window);
-        let next_chunk = Arc::new(AtomicU64::new(0));
-        for mut file in handles {
-            let tx = tx.clone();
-            let cancel = cancel.clone();
-            let next_chunk = next_chunk.clone();
-            reader_tasks.push(async move {
-                let result: Result<(), ProviderError> = async {
-                    loop {
-                        let j = next_chunk.fetch_add(1, Ordering::Relaxed);
-                        if j >= n_chunks {
-                            break;
-                        }
-                        let rel_off = j * chunk;
-                        let abs_off = start + rel_off;
-                        let want = std::cmp::min(chunk, expected - rel_off) as usize;
-                        let buf = tokio::select! {
-                            _ = cancel.cancelled() => {
+    let readers = {
+        let work_cancel = work_cancel.clone();
+        async move {
+            let mut reader_tasks = Vec::with_capacity(eff_window);
+            let next_chunk = Arc::new(AtomicU64::new(0));
+            for mut file in handles {
+                let tx = tx.clone();
+                let work_cancel = work_cancel.clone();
+                let next_chunk = next_chunk.clone();
+                reader_tasks.push(async move {
+                    let result: Result<(), ProviderError> = async {
+                        loop {
+                            if work_cancel.is_cancelled() {
                                 return Err(ProviderError::TransferFailed(
                                     "Transfer cancelled by user".to_string(),
                                 ));
                             }
-                            r = sftp_pipelined_read_window(&mut file, abs_off, want) => r?,
-                        };
-                        if buf.len() != want {
-                            return Err(ProviderError::TransferFailed(format!(
-                                "Short read at offset {} ({} of {} bytes): remote file changed or truncated",
-                                abs_off,
-                                buf.len(),
-                                want
-                            )));
-                        }
-                        tokio::select! {
-                            _ = cancel.cancelled() => {
-                                return Err(ProviderError::TransferFailed(
-                                    "Transfer cancelled by user".to_string(),
-                                ));
+                            let j = next_chunk.fetch_add(1, Ordering::Relaxed);
+                            if j >= n_chunks {
+                                break;
                             }
-                            sent = tx.send((abs_off, buf)) => {
-                                if sent.is_err() {
-                                    // Writer went away; its error propagates.
-                                    break;
+                            let rel_off = j * chunk;
+                            let abs_off = start + rel_off;
+                            let want = std::cmp::min(chunk, expected - rel_off) as usize;
+                            let buf = tokio::select! {
+                                _ = work_cancel.cancelled() => {
+                                    return Err(ProviderError::TransferFailed(
+                                        "Transfer cancelled by user".to_string(),
+                                    ));
+                                }
+                                r = sftp_pipelined_read_window(&mut file, abs_off, want) => r?,
+                            };
+                            if buf.len() != want {
+                                return Err(ProviderError::TransferFailed(format!(
+                                    "Short read at offset {} ({} of {} bytes): remote file changed or truncated",
+                                    abs_off,
+                                    buf.len(),
+                                    want
+                                )));
+                            }
+                            tokio::select! {
+                                _ = work_cancel.cancelled() => {
+                                    return Err(ProviderError::TransferFailed(
+                                        "Transfer cancelled by user".to_string(),
+                                    ));
+                                }
+                                sent = tx.send((abs_off, buf)) => {
+                                    if sent.is_err() {
+                                        // Writer went away; its error propagates.
+                                        break;
+                                    }
                                 }
                             }
                         }
+                        Ok(())
                     }
-                    Ok(())
-                }
-                .await;
-                let _ = file.close().await;
-                result
-            });
+                    .await;
+                    let _ = file.close().await;
+                    if result.is_err() {
+                        work_cancel.cancel();
+                    }
+                    result
+                });
+            }
+            // Drop the original sender so `rx` closes once every reader clone is
+            // gone; otherwise the writer would wait forever.
+            drop(tx);
+            let results = futures_util::future::join_all(reader_tasks).await;
+            results.into_iter().find(|r| r.is_err()).unwrap_or(Ok(()))
         }
-        // Drop the original sender so `rx` closes once every reader clone is
-        // gone; otherwise the writer would wait forever.
-        drop(tx);
-        futures_util::future::try_join_all(reader_tasks).await?;
-        Ok::<(), ProviderError>(())
     };
 
     // `async move` so `on_progress` is captured BY VALUE (owned `Box<dyn Fn +
     // Send>` is `Send`); capturing it by reference would need it to be `Sync`,
     // which a bare `dyn Fn + Send` is not, and would make this future `!Send`.
-    let writer = async move {
-        while let Some((abs_off, buf)) = rx.recv().await {
-            if cancel.is_cancelled() {
-                return Err(ProviderError::TransferFailed(
-                    "Transfer cancelled by user".to_string(),
-                ));
+    let writer = {
+        let work_cancel = work_cancel.clone();
+        async move {
+            while let Some((abs_off, buf)) = rx.recv().await {
+                if work_cancel.is_cancelled() {
+                    return Err(ProviderError::TransferFailed(
+                        "Transfer cancelled by user".to_string(),
+                    ));
+                }
+                if TEST_FAIL_READAHEAD_WRITE.swap(false, Ordering::SeqCst) {
+                    work_cancel.cancel();
+                    return Err(ProviderError::IoError(std::io::Error::other(
+                        "injected write fail",
+                    )));
+                }
+                if let Err(e) = out.seek(std::io::SeekFrom::Start(abs_off)).await {
+                    work_cancel.cancel();
+                    return Err(ProviderError::IoError(e));
+                }
+                if let Err(e) = out.write_all(&buf).await {
+                    work_cancel.cancel();
+                    return Err(ProviderError::IoError(e));
+                }
+                let done =
+                    aggregate.fetch_add(buf.len() as u64, Ordering::Relaxed) + buf.len() as u64;
+                if let Some(ref cb) = on_progress {
+                    cb(done, total_for_progress);
+                }
             }
-            out.seek(std::io::SeekFrom::Start(abs_off))
-                .await
-                .map_err(ProviderError::IoError)?;
-            out.write_all(&buf).await.map_err(ProviderError::IoError)?;
-            let done = aggregate.fetch_add(buf.len() as u64, Ordering::Relaxed) + buf.len() as u64;
-            if let Some(ref cb) = on_progress {
-                cb(done, total_for_progress);
-            }
+            Ok::<(), ProviderError>(())
         }
-        Ok::<(), ProviderError>(())
     };
 
-    tokio::try_join!(readers, writer)?;
-    Ok(())
+    let (reader_res, writer_res) = tokio::join!(readers, writer);
+    match (reader_res, writer_res) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Ok(()), Err(e)) | (Err(e), Ok(())) => Err(e),
+        (Err(a), Err(b)) => {
+            let a_cancel = a.to_string().contains("cancelled");
+            let b_cancel = b.to_string().contains("cancelled");
+            if a_cancel && !b_cancel {
+                Err(b)
+            } else {
+                Err(a)
+            }
+        }
+    }
 }
 
 /// Single-connection sliding-window read-ahead download of a whole file, over
@@ -3308,6 +3395,7 @@ async fn sftp_readahead_range_into(
 /// through provider state; see `sftp_readahead_range_into` for the mechanism
 /// and the issue #70 rationale. Byte-identical to the serial loop for a static
 /// file; SHA-256 gated.
+#[allow(clippy::too_many_arguments)]
 async fn sftp_readahead_download(
     sftp: &SftpSession,
     full_path: &str,
@@ -3316,6 +3404,7 @@ async fn sftp_readahead_download(
     chunk: usize,
     window: usize,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    cancel: &CancellationToken,
 ) -> Result<(), ProviderError> {
     use tokio::io::AsyncWriteExt;
 
@@ -3328,7 +3417,6 @@ async fn sftp_readahead_download(
     let mut out = file;
 
     let aggregate = Arc::new(AtomicU64::new(0));
-    let cancel = CancellationToken::new();
 
     // The writer owns `on_progress` and calls it directly (real, incremental);
     // an owned `Box<dyn Fn + Send>` stays `Send` across the writer's awaits, so
@@ -3342,7 +3430,7 @@ async fn sftp_readahead_download(
         chunk,
         window,
         &aggregate,
-        &cancel,
+        cancel,
         total_size,
         on_progress,
     )
