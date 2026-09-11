@@ -5570,6 +5570,15 @@ struct StoredReconcileSummary {
     remote_scan_errors: u64,
     #[serde(default)]
     remote_scan_truncated: bool,
+    // The local fields were added after the remote ones; a summary written
+    // before them loads with the local scan read as complete, which is what
+    // that version reported.
+    #[serde(default)]
+    local_scan_incomplete: bool,
+    #[serde(default)]
+    local_scan_errors: u64,
+    #[serde(default)]
+    local_scan_truncated: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -5577,7 +5586,7 @@ struct StoredReconcileResult {
     /// Top-level reconcile verdict: "ok", "differences_found", or "partial".
     #[serde(default)]
     status: Option<String>,
-    /// Scan-health summary; "partial" is keyed on an incomplete remote scan.
+    /// Scan-health summary; "partial" is keyed on an incomplete scan of either side.
     #[serde(default)]
     summary: Option<StoredReconcileSummary>,
     groups: Option<StoredReconcileGroups>,
@@ -8244,14 +8253,24 @@ fn scan_local_tree_with_progress(
         .checked_sub(std::time::Duration::from_millis(500))
         .unwrap_or_else(Instant::now);
     let mut entries = Vec::new();
+    let mut completeness = ftp_client_gui_lib::sync_core::ScanCompleteness::default();
 
-    for walk_entry in walkdir::WalkDir::new(root)
+    for result in walkdir::WalkDir::new(root)
         .follow_links(false)
         .max_depth(depth)
-        .into_iter()
-        .filter_map(|entry| entry.ok())
     {
+        let walk_entry = match result {
+            Ok(entry) => entry,
+            Err(_) => {
+                // A directory the walk could not read hides the files below
+                // it: counted, so `reconcile` reports a partial result instead
+                // of listing those files as missing locally.
+                completeness.list_errors += 1;
+                continue;
+            }
+        };
         if entries.len() >= cap {
+            completeness.truncated = true;
             break;
         }
         if !walk_entry.file_type().is_file() {
@@ -8313,7 +8332,7 @@ fn scan_local_tree_with_progress(
         pb.set_message(format!("Scanning local... {} files", entries.len()));
     }
 
-    (entries, Default::default())
+    (entries, completeness)
 }
 
 /// Health of a remote BFS scan: how many `list()` calls failed and whether the
@@ -8425,45 +8444,89 @@ async fn scan_remote_tree_with_progress(
     )
 }
 
+/// Why a stored reconcile plan cannot drive this `sync`.
+#[derive(Debug)]
+enum ReconcilePlanError {
+    /// `--delete` refused on a plan produced from an incomplete scan: the
+    /// TX-01 refusal of a live scan, with its exit code.
+    DeleteRefused(String),
+    /// The plan cannot be read, parsed or used with these flags.
+    Invalid(String),
+}
+
+impl std::fmt::Display for ReconcilePlanError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.message())
+    }
+}
+
+impl ReconcilePlanError {
+    fn message(&self) -> &str {
+        match self {
+            Self::DeleteRefused(message) | Self::Invalid(message) => message,
+        }
+    }
+
+    fn exit_code(&self) -> i32 {
+        match self {
+            Self::DeleteRefused(_) => 4,
+            Self::Invalid(_) => 5,
+        }
+    }
+}
+
 fn load_sync_plan_from_reconcile(
     path: &str,
     direction: &str,
     delete: bool,
     listed: Option<&std::collections::HashSet<String>>,
-) -> Result<ReconcileSyncPlan, String> {
-    let raw = std::fs::read_to_string(path)
-        .map_err(|err| format!("Cannot read reconcile file '{}': {}", path, err))?;
-    let stored: StoredReconcileResult = serde_json::from_str(&raw)
-        .map_err(|err| format!("Invalid reconcile JSON '{}': {}", path, err))?;
-    // TX-01 (reconcile path): a reconcile produced from an incomplete remote scan
-    // marks "missing_remote"/"missing_local" unreliably. Feeding it into
+) -> Result<ReconcileSyncPlan, ReconcilePlanError> {
+    let raw = std::fs::read_to_string(path).map_err(|err| {
+        ReconcilePlanError::Invalid(format!("Cannot read reconcile file '{}': {}", path, err))
+    })?;
+    let stored: StoredReconcileResult = serde_json::from_str(&raw).map_err(|err| {
+        ReconcilePlanError::Invalid(format!("Invalid reconcile JSON '{}': {}", path, err))
+    })?;
+    // TX-01 (reconcile path): a reconcile produced from an incomplete scan marks
+    // "missing_remote"/"missing_local" unreliably: a file the scan could not see,
+    // on either side, reads as missing there. Feeding it into
     // `sync --from-reconcile --delete` would classify intact files as orphans and
     // delete them, bypassing the live-scan completeness gate (which trusts a
     // user-supplied reconcile as a complete source of truth). Refuse delete when
-    // the stored verdict is "partial" or the summary flags an incomplete remote
-    // scan. Non-delete transfers from a partial reconcile stay allowed (they only
-    // move fewer files, never destroy data).
+    // the stored verdict is "partial" or the summary flags an incomplete scan of
+    // either side. The refusal reads the whole plan, before the `--files-from`
+    // bound below. Non-delete transfers from a partial reconcile stay allowed
+    // (they only move fewer files, never destroy data).
     if delete {
         let status_partial = stored.status.as_deref() == Some("partial");
-        let summary_incomplete = stored.summary.as_ref().is_some_and(|s| {
+        let summary = stored.summary.as_ref();
+        let remote_incomplete = summary.is_some_and(|s| {
             s.remote_scan_incomplete || s.remote_scan_errors > 0 || s.remote_scan_truncated
         });
-        if status_partial || summary_incomplete {
-            return Err(format!(
-                "refusing --delete: reconcile file '{}' was produced from an incomplete remote scan \
+        let local_incomplete = summary.is_some_and(|s| {
+            s.local_scan_incomplete || s.local_scan_errors > 0 || s.local_scan_truncated
+        });
+        if status_partial || remote_incomplete || local_incomplete {
+            let side = match (remote_incomplete, local_incomplete) {
+                (false, true) => "local",
+                (true, true) => "remote and local",
+                _ => "remote",
+            };
+            return Err(ReconcilePlanError::DeleteRefused(format!(
+                "refusing --delete: reconcile file '{}' was produced from an incomplete {} scan \
                  (status=partial). A partial listing would classify intact files as orphans and \
-                 delete them. Re-run reconcile to completion (restore connectivity / raise --max-depth) \
-                 or drop --delete.",
-                path
-            ));
+                 delete them. Re-run reconcile to completion (restore connectivity and local read \
+                 access / raise --max-depth) or drop --delete.",
+                path, side
+            )));
         }
     }
 
     let mut groups = stored.groups.ok_or_else(|| {
-        format!(
+        ReconcilePlanError::Invalid(format!(
             "Reconcile file '{}' does not contain detailed groups. Re-run reconcile without --format summary.",
             path
-        )
+        ))
     })?;
     // A `--files-from` list bounds a stored plan the way it bounds a live
     // scan. The groups are filtered before anything is derived from them, so
@@ -8481,10 +8544,10 @@ fn load_sync_plan_from_reconcile(
     }
 
     if direction == "both" && (delete || !groups.differ.is_empty()) {
-        return Err(
+        return Err(ReconcilePlanError::Invalid(
             "--from-reconcile supports --direction both only when there are no differ entries and --delete is off"
                 .to_string(),
-        );
+        ));
     }
 
     let mut plan = ReconcileSyncPlan::default();
@@ -8558,10 +8621,10 @@ fn load_sync_plan_from_reconcile(
                 .collect();
         }
         other => {
-            return Err(format!(
+            return Err(ReconcilePlanError::Invalid(format!(
                 "--from-reconcile does not support direction '{}'",
                 other
-            ))
+            )))
         }
     }
 
@@ -45953,10 +46016,11 @@ struct SyncOrphanDeletes<'a> {
 /// The orphan deletes a `sync` pass plans from its two scans, or the reason it
 /// must plan none.
 ///
+/// `delete` is false for a run without `--delete` and for a `--from-reconcile`
+/// plan, which carries its own deletes and is guarded when it is loaded.
 /// `guarded` is false for a dry run, which stays read-only and reports its
-/// plan, and for a `--from-reconcile` plan, which the user supplied as the
-/// source of truth. Orphans are planned for the one-way directions only:
-/// `both` decides its deletes from the bisync snapshot.
+/// plan. Orphans are planned for the one-way directions only: `both` decides
+/// its deletes from the bisync snapshot.
 fn plan_sync_orphan_deletes<'a>(
     direction: &str,
     delete: bool,
@@ -46171,9 +46235,9 @@ async fn cmd_sync(
                     (local_scan, remote_entries)
                 }
                 Err(err) => {
-                    print_error(format, &err, 5);
+                    print_error(format, err.message(), err.exit_code());
                     let _ = provider.disconnect().await;
-                    return 5.into();
+                    return err.exit_code().into();
                 }
             }
         } else {
@@ -46401,10 +46465,13 @@ async fn cmd_sync(
     let scan_incomplete = reconcile_plan.is_none()
         && !(local_scan_health.is_complete() && remote_scan_health.is_complete());
 
+    // A reconcile plan carries its own deletes and its own scan guard (in
+    // `load_sync_plan_from_reconcile`): planning orphans from its entries again
+    // would ask the remote for every one of them twice.
     let orphan_deletes = match plan_sync_orphan_deletes(
         direction,
-        delete,
-        !dry_run && reconcile_plan.is_none(),
+        delete && reconcile_plan.is_none(),
+        !dry_run,
         &local_scan_health,
         &remote_scan_health,
         &local_map,
@@ -47547,7 +47614,7 @@ async fn cmd_sync(
     if direction == "both" && errors.is_empty() && !dry_run {
         save_bisync_snapshot(
             local,
-            &local_entries,
+            local_entries,
             &remote_entries,
             files_from_set.as_ref(),
         );
@@ -54795,35 +54862,29 @@ impl WatchLocalSnapshot {
     }
 }
 
-/// The snapshot a watch loop starts its incremental cycles from.
-fn build_watch_local_snapshot(local_dir: &str, _filter: &SyncLocalFilter) -> WatchLocalSnapshot {
-    let mut snap = std::collections::HashMap::new();
-    let walker = walkdir::WalkDir::new(local_dir)
-        .follow_links(false)
-        .max_depth(100);
-    for entry in walker {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let relative = match entry.path().strip_prefix(local_dir) {
-            Ok(r) => r.to_string_lossy().replace('\\', "/"),
-            Err(_) => continue,
-        };
-        if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-            continue;
-        }
-        if let Ok(meta) = entry.metadata() {
-            snap.insert(relative, (meta.len(), sync_local_mtime(&meta)));
-        }
+/// The snapshot a watch loop starts its incremental cycles from: the walk
+/// `cmd_sync` itself runs, so it keeps the same files and counts what it could
+/// not read.
+fn build_watch_local_snapshot(local_dir: &str, filter: &SyncLocalFilter) -> WatchLocalSnapshot {
+    WatchLocalSnapshot::from_scan(&scan_sync_local(local_dir, filter))
+}
+
+/// Say on stderr when a watch snapshot could not read the whole tree: until a
+/// snapshot does, watcher events run full sync cycles instead of incremental
+/// ones.
+fn note_incomplete_watch_snapshot(snapshot: &WatchLocalSnapshot, quiet: bool) {
+    if quiet || snapshot.completeness.is_complete() {
+        return;
     }
-    WatchLocalSnapshot {
-        files: snap,
-        completeness: Default::default(),
-    }
+    eprintln!(
+        "Warning: local snapshot incomplete ({} read error(s){}); watcher events run full sync cycles until the whole tree can be read.",
+        snapshot.completeness.list_errors,
+        if snapshot.completeness.truncated {
+            ", truncated"
+        } else {
+            ""
+        }
+    );
 }
 
 /// Build the local side of a watch cycle incrementally: refresh metadata only
@@ -54835,9 +54896,9 @@ fn incremental_local_scan(
     previous: &WatchLocalSnapshot,
     filter: &SyncLocalFilter,
 ) -> SyncScan {
-    let exclude_matchers = filter.exclude;
     let mut result: std::collections::HashMap<String, (u64, Option<String>)> =
         previous.files.clone();
+    let mut completeness = previous.completeness;
 
     for changed in changed_paths {
         // Compute relative path
@@ -54848,23 +54909,37 @@ fn incremental_local_scan(
         if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
             continue;
         }
-        // Check excludes
-        let fname = changed.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if exclude_matchers
-            .iter()
-            .any(|m| m.is_match(&relative) || m.is_match(fname))
-        {
+        // The same depth bound and excludes as the walk
+        let fname = changed
+            .file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default();
+        if !filter.keeps(&relative, &fname) {
             result.remove(&relative);
             continue;
         }
-        // Read current metadata: if file was deleted, remove from snapshot
         match std::fs::metadata(changed) {
             Ok(meta) if meta.is_file() => {
                 result.insert(relative, (meta.len(), sync_local_mtime(&meta)));
             }
-            _ => {
-                // File deleted or not a regular file
+            Ok(_) => {
+                // Not a regular file (any more)
                 result.remove(&relative);
+            }
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) =>
+            {
+                // Deleted, or a directory on its path is gone
+                result.remove(&relative);
+            }
+            Err(_) => {
+                // Unreadable is not absent: keep what the snapshot knew and
+                // count the error, so this cycle plans no orphan deletes
+                // (TX-01) and the next one rescans.
+                completeness.list_errors += 1;
             }
         }
     }
@@ -54874,7 +54949,7 @@ fn incremental_local_scan(
             .into_iter()
             .map(|(path, (size, mtime))| (path, size, mtime))
             .collect(),
-        completeness: previous.completeness,
+        completeness,
     }
 }
 
@@ -55197,6 +55272,7 @@ async fn cmd_sync_watch(
     // Build initial snapshot after first sync (or immediately if --watch-no-initial)
     if use_incremental {
         local_snapshot = build_watch_local_snapshot(local, &local_filter);
+        note_incomplete_watch_snapshot(&local_snapshot, quiet);
     }
 
     // Watch loop
@@ -55230,7 +55306,7 @@ async fn cmd_sync_watch(
                 let path_count = changed_paths.len();
                 let trigger = format!("watcher: {} paths", path_count);
 
-                if use_incremental {
+                if use_incremental && local_snapshot.completeness.is_complete() {
                     let scan = incremental_local_scan(
                         local_path,
                         &changed_paths,
@@ -55246,7 +55322,16 @@ async fn cmd_sync_watch(
                         return 0;
                     }
                 } else {
+                    // A snapshot that could not read the whole tree is no base
+                    // for an incremental cycle: run a full one, whose own walk
+                    // decides whether --delete may proceed (TX-01), and take a
+                    // fresh snapshot for the next event, so a transient error
+                    // heals instead of lasting until the periodic rescan.
                     run_sync_cycle!(trigger.as_str());
+                    if use_incremental {
+                        local_snapshot = build_watch_local_snapshot(local, &local_filter);
+                        note_incomplete_watch_snapshot(&local_snapshot, quiet);
+                    }
                     if cancelled.load(Ordering::SeqCst) {
                         if !quiet {
                             eprintln!("\nWatch mode stopped. {} sync cycles completed.", cycle_count);
@@ -55264,6 +55349,7 @@ async fn cmd_sync_watch(
                 // Rebuild snapshot after full rescan
                 if use_incremental {
                     local_snapshot = build_watch_local_snapshot(local, &local_filter);
+                    note_incomplete_watch_snapshot(&local_snapshot, quiet);
                 }
                 if cancelled.load(Ordering::SeqCst) {
                     if !quiet {
@@ -56791,7 +56877,7 @@ async fn cmd_reconcile(
         ..Default::default()
     };
     let local_spinner = maybe_create_scan_spinner(format, cli, "Scanning local...");
-    let (locals, _local_health) =
+    let (locals, local_health) =
         scan_local_tree_with_progress(local_path, &scan_opts, &local_spinner);
     if let Some(pb) = local_spinner {
         pb.finish_and_clear();
@@ -56826,6 +56912,15 @@ async fn cmd_reconcile(
             "Warning: remote scan incomplete ({} list error(s){}); reconcile result is partial and unsafe to feed into `sync --delete`.",
             remote_health.errors,
             if remote_health.truncated { ", truncated" } else { "" }
+        );
+    }
+    // The same holds for the local side: a directory the walk could not read
+    // lists its files as missing locally.
+    if !local_health.is_complete() && !cli.quiet {
+        eprintln!(
+            "Warning: local scan incomplete ({} read error(s){}); reconcile result is partial and unsafe to feed into `sync --delete`.",
+            local_health.list_errors,
+            if local_health.truncated { ", truncated" } else { "" }
         );
     }
     let diff = compare_trees(&locals, &remotes, one_way);
@@ -56884,7 +56979,7 @@ async fn cmd_reconcile(
     );
 
     let result = CliReconcileResult {
-        status: if remote_health.is_incomplete() {
+        status: if remote_health.is_incomplete() || !local_health.is_complete() {
             "partial"
         } else if differ_group.is_empty()
             && missing_remote_group.is_empty()
@@ -56904,6 +56999,9 @@ async fn cmd_reconcile(
             "remote_scan_incomplete": remote_health.is_incomplete(),
             "remote_scan_errors": remote_health.errors,
             "remote_scan_truncated": remote_health.truncated,
+            "local_scan_incomplete": !local_health.is_complete(),
+            "local_scan_errors": local_health.list_errors,
+            "local_scan_truncated": local_health.truncated,
             "elapsed_secs": elapsed,
         }),
         groups: serde_json::json!({
@@ -71800,7 +71898,7 @@ mod tests {
         let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", false, None)
             .unwrap_err();
 
-        assert!(err.contains("does not contain detailed groups"));
+        assert!(err.message().contains("does not contain detailed groups"));
     }
 
     #[test]
@@ -71831,7 +71929,7 @@ mod tests {
         let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true, None)
             .unwrap_err();
         assert!(
-            err.contains("incomplete remote scan"),
+            err.message().contains("incomplete remote scan"),
             "unexpected error: {err}"
         );
 
@@ -71867,7 +71965,7 @@ mod tests {
         let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true, None)
             .unwrap_err();
         assert!(
-            err.contains("incomplete remote scan"),
+            err.message().contains("incomplete remote scan"),
             "unexpected error: {err}"
         );
     }
