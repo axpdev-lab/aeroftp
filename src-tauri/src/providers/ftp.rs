@@ -1376,11 +1376,8 @@ impl StorageProvider for FtpProvider {
             }
         }
 
-        // Set binary mode
-        stream
-            .transfer_type(FileType::Binary)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+        // No TYPE I here: connect() already put the session in binary mode
+        // (the same invariant upload_single relies on).
 
         // Download using retr_as_stream
         let opened = Self::open_with_cap(stream.retr_as_stream(remote_path))
@@ -1712,10 +1709,8 @@ impl StorageProvider for FtpProvider {
             },
         };
 
-        stream
-            .transfer_type(FileType::Binary)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+        // No TYPE I here: connect() already put the session in binary mode
+        // (the same invariant upload_single relies on).
 
         // Send REST command to set offset
         stream
@@ -1814,10 +1809,9 @@ impl StorageProvider for FtpProvider {
             .map_err(ProviderError::IoError)?;
 
         let stream = self.stream_mut()?;
-        stream
-            .transfer_type(FileType::Binary)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+
+        // No TYPE I here: connect() already put the session in binary mode
+        // (the same invariant upload_single relies on).
 
         stream
             .append_file(remote_path, &mut file)
@@ -2014,12 +2008,9 @@ impl StorageProvider for FtpProvider {
         // worker, so without this self-dial every segmented download
         // against a clone pool fails with `Not connected`.
         self.ensure_connected().await?;
+        // No TYPE I here: connect() already put the session in binary mode
+        // (the same invariant upload_single relies on).
         let stream = self.stream_mut()?;
-
-        stream
-            .transfer_type(FileType::Binary)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
         // REST sets the byte offset for the next RETR
         stream
@@ -2906,13 +2897,9 @@ impl FtpProvider {
         total_size: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        // No TYPE I here: connect() already put the session in binary mode
+        // (the same invariant upload_single relies on).
         let stream = self.stream_mut()?;
-
-        // Set binary mode
-        stream
-            .transfer_type(FileType::Binary)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
         // Download using retr_as_stream: stream directly to disk (no full-file RAM buffer)
         let opened = Self::open_with_cap(stream.retr_as_stream(remote_path))
@@ -2978,19 +2965,16 @@ impl FtpProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        use suppaftp::types::FileType;
         use tokio::io::AsyncReadExt;
-
-        // Capture before the &mut self borrow below; needed later to decide
-        // whether to insert the TLS-drain sleep.
 
         let stream = self.stream_mut()?;
 
-        // Set binary transfer mode explicitly
-        stream
-            .transfer_type(FileType::Binary)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        // No TYPE I here: connect() already put the session in binary mode
+        // (the only type this provider ever sets, at every one of its eight
+        // transfer_type sites, and again on every reconnect), so a per-upload
+        // TYPE was one dead round trip per file: 47 ms on the lab link, which
+        // the DAG engine review's 1 MiB upload row pays against a 12 ms
+        // transfer, and a folder upload pays once per file.
 
         let mut file = tokio::fs::File::open(local_path)
             .await
@@ -3183,14 +3167,12 @@ async fn ftp_download_one_range(
 
     // Independent worker: its own control + data connection.
     let mut worker = FtpProvider::new(spec);
+    // connect() puts the session in binary mode; no per-range TYPE I (the
+    // same invariant upload_single relies on).
     worker.connect().await?;
 
     {
         let stream = worker.stream_mut()?;
-        stream
-            .transfer_type(FileType::Binary)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
         // REST sets the byte offset for the next RETR.
         stream
             .resume_transfer(start as usize)

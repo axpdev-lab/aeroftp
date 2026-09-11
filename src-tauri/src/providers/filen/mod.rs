@@ -1079,7 +1079,7 @@ impl FilenProvider {
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if !content.status {
-                return Err(ProviderError::NotFound(format!("Path not found: {}", path)));
+                return Err(ProviderError::NotFound(path.to_string()));
             }
 
             let data = content.data.unwrap_or(DirContentData {

@@ -527,9 +527,7 @@ impl StorageProvider for MegaCmdProvider {
             .run_mega_cmd_with_reauth("mega-ls", &["-l", &target_path])
             .await
             .map_err(|e| match e {
-                ProviderError::NotFound(_) => {
-                    ProviderError::NotFound(format!("Path not found: {}", target_path))
-                }
+                ProviderError::NotFound(_) => ProviderError::NotFound(target_path.clone()),
                 other => other,
             })?;
 
@@ -855,10 +853,7 @@ impl StorageProvider for MegaCmdProvider {
             }
         }
 
-        Err(ProviderError::NotFound(format!(
-            "Path not found: {}",
-            abs_path
-        )))
+        Err(ProviderError::NotFound(abs_path))
     }
 
     async fn size(&mut self, p: &str) -> Result<u64, ProviderError> {

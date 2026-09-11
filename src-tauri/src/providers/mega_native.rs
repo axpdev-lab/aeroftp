@@ -1110,7 +1110,7 @@ impl MegaNativeProvider {
             });
             match found {
                 Some(h) => current_handle = h.clone(),
-                None => return Err(ProviderError::NotFound(format!("Path not found: {path}"))),
+                None => return Err(ProviderError::NotFound(path.to_string())),
             }
         }
         Ok(current_handle)
@@ -2556,5 +2556,28 @@ mod tests {
         assert_eq!(normalize_path("/a/./b"), "/a/b");
         assert_eq!(normalize_path("/a/b/.."), "/a");
         assert_eq!(normalize_path("//a///b//"), "/a/b");
+    }
+
+    #[test]
+    fn not_found_display_carries_the_prefix_once() {
+        let config = super::MegaConfig {
+            email: "test@example.com".to_string(),
+            password: secrecy::SecretString::new("unused".into()),
+            two_factor_code: None,
+            totp_secret: None,
+            save_session: false,
+            logout_on_disconnect: None,
+            connection_mode: crate::providers::types::MegaConnectionMode::Native,
+        };
+        let mut provider = super::MegaNativeProvider::new(config);
+        provider.root_handle = Some("ROOT".to_string());
+        let err = provider.resolve_path("/missing/dir").unwrap_err();
+        assert!(matches!(err, ProviderError::NotFound(_)));
+        let rendered = err.to_string();
+        assert_eq!(
+            rendered.matches("Path not found").count(),
+            1,
+            "NotFound display must carry the prefix once, got: {rendered}"
+        );
     }
 }
