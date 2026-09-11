@@ -1041,8 +1041,8 @@ pub async fn execute_sync_dag(
     // keep `locals` empty so the remote-only side of the run still proceeds.
     // A panicked scan is treated as maximally incomplete so the orphan-delete
     // guard below refuses (CLAUDE-AV-B3-01).
-    let (mut locals, local_scan, local_scan_panic) = match local_handle.await {
-        Ok((entries, completeness)) => (entries, completeness, None),
+    let (mut locals, local_scan, local_links, local_scan_panic) = match local_handle.await {
+        Ok((entries, completeness, links)) => (entries, completeness, links, None),
         Err(join_err) => {
             eprintln!("[execute_sync_dag] local scan task failed: {}", join_err);
             (
@@ -1051,13 +1051,15 @@ pub async fn execute_sync_dag(
                     list_errors: 1,
                     truncated: false,
                 },
+                Vec::new(),
                 Some(join_err.to_string()),
             )
         }
     };
     // What a skipped link hides stays out of the plan on both sides, so the
     // orphan pass cannot read it as deleted (see `LinkBound`).
-    crate::sync_core::LinkBound::apply(local_root, &mut locals, &mut remotes, remote_links);
+    let link_bound =
+        crate::sync_core::LinkBound::apply(local_root, &mut locals, &mut remotes, remote_links);
 
     // Phase 2: Planning. Decisions read only the pre-transfer scan
     // snapshots, so resolving the whole plan up front is decision-equivalent
@@ -1067,6 +1069,7 @@ pub async fn execute_sync_dag(
         dry_run: opts.dry_run,
         direction: Some(opts.direction),
         delta_policy: Some(opts.delta_policy),
+        skipped_links: link_bound.reported(local_links),
         ..SyncReport::default()
     };
     if let Some(msg) = local_scan_panic {
@@ -2595,6 +2598,14 @@ mod tests {
             "nothing under the skipped link may be planned: {:?}",
             sink.starts
         );
+        assert_eq!(
+            report.skipped_links,
+            vec![crate::sync_core::SkippedLink {
+                rel_path: "link".to_string(),
+                link_target: Some("real".to_string()),
+            }],
+            "the report names the remote link it left alone"
+        );
     }
 
     /// The same case on a real run, which takes the DAG route: the local file
@@ -2655,6 +2666,55 @@ mod tests {
             !sink.starts.iter().any(|rel| rel.starts_with("link/")),
             "nothing under the skipped local link may be planned: {:?}",
             sink.starts
+        );
+        assert_eq!(
+            report.skipped_links,
+            vec![crate::sync_core::SkippedLink {
+                rel_path: "link".to_string(),
+                link_target: Some("real".to_string()),
+            }],
+            "the report names the local link it left alone"
+        );
+    }
+
+    /// A local symlinked directory with nothing under its path on the remote is
+    /// still named in the report: the walk did not load that subtree, and the
+    /// run says so even though nothing had to be left out.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn sync_report_names_a_local_symlinked_dir_the_remote_has_nothing_under() {
+        use crate::providers::RemoteEntry;
+        let mut tree = crate::sync_core::scan::tests::PoolTreeProvider::fan(1, 1);
+        tree.dirs = std::collections::HashMap::from([(
+            "/root".to_string(),
+            vec![RemoteEntry::file(
+                "a.txt".to_string(),
+                "/root/a.txt".to_string(),
+                1,
+            )],
+        )]);
+        let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+        let local = tempfile::tempdir().expect("tempdir");
+        std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
+        std::fs::create_dir(local.path().join("real")).expect("create real/");
+        std::os::unix::fs::symlink("real", local.path().join("link")).expect("link -> real");
+        let mut options = opts(SyncDirection::Upload);
+        options.dry_run = true;
+        let mut sink = TestSyncSink::default();
+        let report = crate::sync::sync_tree_core(
+            &mut provider,
+            local.path().to_str().unwrap(),
+            "/root",
+            &options,
+            &mut sink,
+        )
+        .await;
+        assert_eq!(
+            report.skipped_links,
+            vec![crate::sync_core::SkippedLink {
+                rel_path: "link".to_string(),
+                link_target: Some("real".to_string()),
+            }]
         );
     }
 }

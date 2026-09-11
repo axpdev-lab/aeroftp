@@ -1625,7 +1625,7 @@ pub async fn execute_tool(
                     // run there is no meaningful `plan`/`planned` block. This
                     // removes the old ambiguity where both fields coexisted
                     // with contradicting counters.
-                    let payload = if dry_run {
+                    let mut payload = if dry_run {
                         // Fold the sink plan into action counters. `reason ==
                         // "dry-run"` means the core would have acted on the
                         // file; anything else (e.g. `"identical size"`) is a
@@ -1775,6 +1775,17 @@ pub async fn execute_tool(
                             "errors_truncated": total_errors > 50,
                         })
                     };
+                    // Additive: present only when the run left a symbolic link,
+                    // and everything under it, alone on both sides, so a tree
+                    // without links answers exactly as before.
+                    if !report.skipped_links.is_empty() {
+                        if let Value::Object(map) = &mut payload {
+                            map.insert(
+                                "skipped_links".into(),
+                                serde_json::to_value(&report.skipped_links).unwrap_or(Value::Null),
+                            );
+                        }
+                    }
                     // Release the provider lock and pool Arc BEFORE invalidate
                     // so the pool sees `strong_count == 1` and actually closes
                     // the underlying socket on the detached disconnect.

@@ -580,6 +580,10 @@ pub struct SyncReport {
     /// core path; populated by `execute_sync_dag`. Additive: `SyncReport` is not
     /// serialized directly, and every existing constructor uses `..default()`.
     pub engine_stats: Option<crate::transfer_dag::EngineTransferStats>,
+    /// Symbolic links the run left alone, with everything under them, on both
+    /// sides: the remote links the scan did not follow and the local links above
+    /// a path only the remote holds. Empty when the tree has none.
+    pub skipped_links: Vec<crate::sync_core::SkippedLink>,
 }
 
 impl SyncReport {
@@ -1315,7 +1319,7 @@ pub async fn sync_tree_core(
     let start = std::time::Instant::now();
     sink.on_phase(SyncPhase::Scanning);
     let scan = scan_options_for_sync(opts);
-    let (mut locals, local_scan) = scan_local_tree_checked(local_root, &scan);
+    let (mut locals, local_scan, local_links) = scan_local_tree_checked(local_root, &scan);
 
     if !opts.dry_run
         && !locals.is_empty()
@@ -1328,13 +1332,15 @@ pub async fn sync_tree_core(
         scan_remote_tree_checked(provider, remote_root, &scan).await;
     // What a skipped link hides stays out of the run on both sides, so no pass
     // below reads it as deleted or as missing (see `LinkBound`).
-    crate::sync_core::LinkBound::apply(local_root, &mut locals, &mut remotes, remote_links);
+    let link_bound =
+        crate::sync_core::LinkBound::apply(local_root, &mut locals, &mut remotes, remote_links);
 
     sink.on_phase(SyncPhase::Planning);
     let mut report = SyncReport {
         dry_run: opts.dry_run,
         direction: Some(opts.direction),
         delta_policy: Some(opts.delta_policy),
+        skipped_links: link_bound.reported(local_links),
         ..SyncReport::default()
     };
 

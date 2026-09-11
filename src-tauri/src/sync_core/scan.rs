@@ -139,6 +139,11 @@ fn adapt_fastpath_entries(
             // Listed and not followed, as the BFS treats a link to a directory,
             // and reported so a sync leaves the link's path alone.
             if let Some(rel) = rel_from_abs(&entry.path, root).filter(|rel| !rel.is_empty()) {
+                tracing::warn!(
+                    "[scan_remote_tree] fast-path skipping symlink {} -> {}: not followed",
+                    rel,
+                    entry.link_target.as_deref().unwrap_or("?")
+                );
                 skipped_links.push(SkippedLink {
                     rel_path: rel,
                     link_target: entry.link_target.clone(),
@@ -244,7 +249,7 @@ impl ScanCompleteness {
 /// would copy the target's tree under another name, and a link to `..` never
 /// terminates. Whatever sits behind a link is therefore absent from that
 /// side's scan, which is not the same as deleted.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SkippedLink {
     /// The link itself, relative to the scan root.
     pub rel_path: String,
@@ -313,11 +318,17 @@ impl LinkBound {
                         let path = root.join(prefix);
                         let state = match std::fs::symlink_metadata(&path) {
                             Ok(meta) if meta.file_type().is_symlink() => {
+                                let link_target = std::fs::read_link(&path)
+                                    .ok()
+                                    .map(|target| target.to_string_lossy().into_owned());
+                                tracing::warn!(
+                                    "[sync] skipping local symlink {} -> {}: not followed, its subtree is left out on both sides",
+                                    prefix,
+                                    link_target.as_deref().unwrap_or("?")
+                                );
                                 bound.add(SkippedLink {
                                     rel_path: prefix.to_string(),
-                                    link_target: std::fs::read_link(&path)
-                                        .ok()
-                                        .map(|target| target.to_string_lossy().into_owned()),
+                                    link_target,
                                 });
                                 LocalPrefix::Link
                             }
@@ -378,6 +389,18 @@ impl LinkBound {
         &self.links
     }
 
+    /// Every link a run names: the links the bound left out, then the local
+    /// links a walk skipped that nothing on the remote sits under.
+    pub fn reported(&self, local_walk_links: Vec<SkippedLink>) -> Vec<SkippedLink> {
+        let mut links = self.links.clone();
+        links.extend(
+            local_walk_links
+                .into_iter()
+                .filter(|link| !self.paths.contains(&link.rel_path)),
+        );
+        links
+    }
+
     fn add(&mut self, link: SkippedLink) {
         if self.paths.insert(link.rel_path.clone()) {
             self.links.push(link);
@@ -395,16 +418,21 @@ pub fn scan_local_tree(root: &str, opts: &ScanOptions) -> Vec<LocalEntry> {
 /// Like [`scan_local_tree`] but also reports [`ScanCompleteness`] so an
 /// orphan-delete caller can refuse to delete off an incomplete scan.
 /// CLAUDE-AV-B3-01.
+///
+/// The third element names the symlinks to directories the walk did not
+/// follow, so a run can say which subtrees it did not load. They are reported
+/// only: excluding a path from a sync is [`LinkBound`]'s decision.
 pub fn scan_local_tree_checked(
     root: &str,
     opts: &ScanOptions,
-) -> (Vec<LocalEntry>, ScanCompleteness) {
+) -> (Vec<LocalEntry>, ScanCompleteness, Vec<SkippedLink>) {
     let matchers = compile_matchers(&opts.exclude_patterns);
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
 
     let mut entries = Vec::new();
     let mut completeness = ScanCompleteness::default();
+    let mut skipped_links = Vec::new();
     for result in walkdir::WalkDir::new(root)
         .follow_links(false)
         .max_depth(depth)
@@ -424,6 +452,31 @@ pub fn scan_local_tree_checked(
         if entries.len() >= cap {
             completeness.truncated = true;
             break;
+        }
+        if walk_entry.path_is_symlink() && walk_entry.depth() > 0 {
+            // Not followed. A link to a directory is named, so the run can say
+            // which subtree it did not load; a link to a file is passed over.
+            if walk_entry.path().is_dir() {
+                let rel_path = walk_entry
+                    .path()
+                    .strip_prefix(root)
+                    .unwrap_or(walk_entry.path())
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let link_target = std::fs::read_link(walk_entry.path())
+                    .ok()
+                    .map(|target| target.to_string_lossy().into_owned());
+                tracing::warn!(
+                    "[scan_local_tree] skipping symlink {} -> {}: not followed",
+                    rel_path,
+                    link_target.as_deref().unwrap_or("?")
+                );
+                skipped_links.push(SkippedLink {
+                    rel_path,
+                    link_target,
+                });
+            }
+            continue;
         }
         if !walk_entry.file_type().is_file() {
             continue;
@@ -472,7 +525,7 @@ pub fn scan_local_tree_checked(
             sha256,
         });
     }
-    (entries, completeness)
+    (entries, completeness, skipped_links)
 }
 
 /// Recursively list the remote tree rooted at `remote_root`. Uses the
@@ -974,6 +1027,11 @@ async fn scan_remote_dir(
             } else {
                 // Reported, so a sync leaves the link's path alone on both
                 // sides instead of reading the absence behind it as a delete.
+                tracing::warn!(
+                    "[scan_remote_tree] skipping symlink {} -> {}: not followed",
+                    entry_rel,
+                    entry.link_target.as_deref().unwrap_or("?")
+                );
                 skipped_links.push(SkippedLink {
                     rel_path: entry_rel,
                     link_target: entry.link_target.clone(),
@@ -1309,6 +1367,32 @@ pub(crate) mod tests {
         let entries = scan_local_tree(root.to_str().unwrap(), &opts);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].rel_path, "a.txt");
+    }
+
+    /// The local walk does not follow a symlink, and names the ones that point
+    /// at a directory: that subtree was not loaded. A link to a file is passed
+    /// over without a name, as before.
+    #[cfg(unix)]
+    #[test]
+    fn scan_local_tree_names_a_symlinked_directory_it_does_not_follow() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir(root.join("real")).unwrap();
+        fs::write(root.join("real/x.txt"), b"x").unwrap();
+        std::os::unix::fs::symlink("real", root.join("link")).unwrap();
+        std::os::unix::fs::symlink("real/x.txt", root.join("file-link.txt")).unwrap();
+        let (entries, completeness, links) =
+            scan_local_tree_checked(root.to_str().unwrap(), &ScanOptions::default());
+        let paths: Vec<_> = entries.iter().map(|e| e.rel_path.as_str()).collect();
+        assert_eq!(paths, vec!["real/x.txt"]);
+        assert!(completeness.is_complete());
+        assert_eq!(
+            links,
+            vec![SkippedLink {
+                rel_path: "link".to_string(),
+                link_target: Some("real".to_string()),
+            }]
+        );
     }
 
     // --- GAP-9f: provider-native recursive listing fast-path ----------
