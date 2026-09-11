@@ -13332,20 +13332,31 @@ fn profile_has_crypt_overlay(profile: &serde_json::Value) -> bool {
 
 /// The crypt-overlay kind when the binding is enabled, `None` otherwise.
 ///
-/// Mirrors `getServerCryptOverlay` in `src/types.ts`, which returns the kind or
-/// null rather than a boolean, and for the same reason: `aerocrypt` (native) and
-/// `rclone-crypt` (interop) are different lanes, so a bare `true` would tell a
-/// reader that something is encrypted while hiding which one it is looking at.
+/// The kind rather than a boolean, for the reason `getServerCryptOverlay` in
+/// `src/types.ts` returns one: `aerocrypt` (native) and `rclone-crypt` (interop)
+/// are different lanes, so a bare `true` would tell a reader that something is
+/// encrypted while hiding which one it is looking at.
+///
+/// Both halves are borrowed rather than restated. The gate is
+/// `profile_has_crypt_overlay`, the same predicate that makes
+/// `profile_protocol_class` answer `Crypt`; the kind comes from the library's
+/// `overlay_kind`, the rule the overlay resolver applies when it opens the
+/// binding. So this can never report "no overlay" for a profile the table
+/// calls `Crypt`.
+///
+/// It agrees with the TypeScript helper on every binding the GUI writes, since
+/// the GUI always writes `kind`. It departs from it on purpose for a binding
+/// that lacks one (hand-edited, imported, older schema): the helper returns
+/// `undefined` there, while this reports `aerocrypt`, the lane the CLI will
+/// actually encrypt with. Any other answer would describe a rule no code path
+/// follows.
 fn profile_crypt_overlay_kind(profile: &serde_json::Value) -> Option<&str> {
-    let overlay = profile.get("aeroCryptOverlay")?;
-    if !overlay
-        .get("enabled")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
+    if !profile_has_crypt_overlay(profile) {
         return None;
     }
-    overlay.get("kind").and_then(|v| v.as_str())
+    profile
+        .get("aeroCryptOverlay")
+        .map(ftp_client_gui_lib::crypt_overlay_provider::overlay_kind)
 }
 
 /// Resolve the leading URL and encrypted-directory positionals of a `crypt`
@@ -24597,6 +24608,21 @@ fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
         Err(_) => return Ok(vec![]),
     };
 
+    Ok(safe_profile_records(&store, &profiles))
+}
+
+/// Build the agent-facing records for a list of saved profiles, listing the vault
+/// keys once for all of them.
+///
+/// The single path for every agent surface that lists saved servers:
+/// `agent-bootstrap` and `agent-info` reach it through `safe_vault_profiles`, and
+/// the agent's `server_list_saved` tool through `safe_vault_profiles_for_agent`.
+/// That last one used to assemble its own eight-field record, so a field added to
+/// the shared shape never reached the tool agents call most.
+fn safe_profile_records(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    profiles: &[serde_json::Value],
+) -> Vec<serde_json::Value> {
     // List vault keys ONCE; per-profile auth-state derivation then checks
     // existence in this set instead of issuing N decryptions.
     let accounts: std::collections::HashSet<String> = store
@@ -24604,26 +24630,24 @@ fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
         .unwrap_or_default()
         .into_iter()
         .collect();
-
-    Ok(profiles
+    profiles
         .iter()
         .map(|p| {
             let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
             let auth_state = ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
-                &store, &accounts, id, proto,
+                store, &accounts, id, proto,
             );
             safe_profile_record(p, auth_state)
         })
-        .collect())
+        .collect()
 }
 
 /// Build the agent-facing record for one saved profile.
 ///
-/// Extracted from `safe_vault_profiles` so the emitted shape can be unit-tested
-/// without opening a vault: this is the surface `agent-bootstrap` inlines and
-/// the agent's `server_list_saved` reads, so a field missing here is a field an
-/// agent cannot see at all.
+/// Extracted so the emitted shape can be unit-tested without opening a vault.
+/// Every agent listing goes through `safe_profile_records`, so a field missing
+/// here is a field no agent can see.
 fn safe_profile_record(p: &serde_json::Value, auth_state: &str) -> serde_json::Value {
     serde_json::json!({
         "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
@@ -24665,21 +24689,7 @@ fn safe_vault_profiles_for_agent() -> Result<Vec<serde_json::Value>, String> {
             }
         };
 
-    Ok(profiles
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
-                "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
-                "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
-                "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
-                "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
-                "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
-                "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
-                "providerId": p.get("providerId").and_then(|v| v.as_str()).unwrap_or(""),
-            })
-        })
-        .collect())
+    Ok(safe_profile_records(&store, &profiles))
 }
 
 /// Create a provider connection from a server profile name (for agent tool context).
@@ -27047,11 +27057,7 @@ async fn cli_apply_crypt_overlay(
         .get("aeroCryptOverlay")
         .cloned()
         .unwrap_or(serde_json::Value::Null);
-    let kind = overlay
-        .get("kind")
-        .and_then(|v| v.as_str())
-        .unwrap_or("aerocrypt")
-        .to_string();
+    let kind = ftp_client_gui_lib::crypt_overlay_provider::overlay_kind(&overlay).to_string();
     let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
     // The bound plaintext anchor: "" / unset = whole-remote crypt. Unlike the
     // compare path (which targets a specific remote path) the chokepoint wraps
@@ -55755,11 +55761,7 @@ async fn cli_unlock_crypt_compare_keys(
         .get("aeroCryptOverlay")
         .cloned()
         .unwrap_or(serde_json::Value::Null);
-    let kind = overlay
-        .get("kind")
-        .and_then(|v| v.as_str())
-        .unwrap_or("aerocrypt")
-        .to_string();
+    let kind = ftp_client_gui_lib::crypt_overlay_provider::overlay_kind(&overlay).to_string();
     let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
     let remote_scope = overlay
         .get("remoteScope")
@@ -72451,6 +72453,65 @@ mod tests {
             obj.get("protocolClass").and_then(|v| v.as_str()),
             Some("SFTP"),
             "with no overlay the class falls back to the transport"
+        );
+    }
+
+    /// An enabled binding with no explicit `kind` must still be reported as a
+    /// bound profile. Every backend path that actually opens the overlay reads a
+    /// missing kind as `aerocrypt`; the agent-facing record has to give the same
+    /// answer, or it prints `"cryptOverlay": null` next to
+    /// `"protocolClass": "Crypt"`, which is the ambiguity these fields exist to
+    /// remove.
+    #[test]
+    fn safe_profile_record_reads_missing_kind_as_aerocrypt() {
+        let bound_without_kind = json!({
+            "id": "srv_no_kind",
+            "name": "binding without kind",
+            "protocol": "sftp",
+            "host": "h",
+            "port": 22,
+            "username": "u",
+            "aeroCryptOverlay": { "enabled": true }
+        });
+        let record = safe_profile_record(&bound_without_kind, "valid");
+        let obj = record.as_object().expect("record is an object");
+
+        assert_eq!(
+            obj.get("protocolClass").and_then(|v| v.as_str()),
+            Some("Crypt"),
+            "an enabled overlay classifies the profile as Crypt"
+        );
+        assert_eq!(
+            obj.get("cryptOverlay").and_then(|v| v.as_str()),
+            Some("aerocrypt"),
+            "cryptOverlay must agree with protocolClass: an enabled binding with no \
+             kind is the native lane, which is how the overlay resolver reads it"
+        );
+    }
+
+    /// A disabled binding keeps its `kind` on disk but binds nothing. Guards the
+    /// gate: the kind may only be read once the overlay is known to be enabled.
+    #[test]
+    fn safe_profile_record_ignores_the_kind_of_a_disabled_overlay() {
+        let disabled = json!({
+            "id": "srv_disabled",
+            "name": "disabled binding",
+            "protocol": "ftp",
+            "host": "h",
+            "port": 21,
+            "username": "u",
+            "aeroCryptOverlay": { "enabled": false, "kind": "rclone-crypt" }
+        });
+        let record = safe_profile_record(&disabled, "valid");
+        let obj = record.as_object().expect("record is an object");
+
+        assert!(
+            obj.contains_key("cryptOverlay") && obj["cryptOverlay"].is_null(),
+            "a disabled overlay reports no binding, whatever kind it still stores"
+        );
+        assert_eq!(
+            obj.get("protocolClass").and_then(|v| v.as_str()),
+            Some("FTP")
         );
     }
 
