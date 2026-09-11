@@ -23,7 +23,7 @@ use tokio::task::JoinSet;
 pub(crate) const MAX_SCAN_ENTRIES: usize = 500_000;
 
 /// Maximum directory depth when recursing the remote tree.
-const DEFAULT_SCAN_DEPTH: usize = 100;
+pub const DEFAULT_SCAN_DEPTH: usize = 100;
 
 /// Minimum gap between periodic scan-progress notifications. Matches the
 /// transfer progress throttle so a large tree streams a moving counter
@@ -129,12 +129,40 @@ fn adapt_fastpath_entries(
     entries: Vec<crate::providers::RemoteEntry>,
     root: &str,
     opts: &ScanOptions,
-) -> Option<(Vec<RemoteEntry>, Vec<SkippedLink>)> {
+) -> Option<(Vec<RemoteEntry>, Vec<SkippedLink>, Vec<UnseenPath>)> {
     let matchers = compile_matchers(&opts.exclude_patterns);
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
+    let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let mut results = Vec::new();
     let mut skipped_links = Vec::new();
+    let mut unseen: Vec<UnseenPath> = Vec::new();
+    let mut stopped_at: HashSet<String> = HashSet::new();
     for entry in entries {
+        // The BFS lists a directory only while its depth is below the limit, so
+        // an entry below that level sits under the directory the walk stops at.
+        // Name that directory once, as the BFS does, and keep nothing under it:
+        // a flat listing that answered past the limit left every entry below it
+        // with no counterpart on a side that stopped at the limit, which reads
+        // as missing there.
+        if let Some(rel) = rel_from_abs(&entry.path, root).filter(|rel| !rel.is_empty()) {
+            let components = rel.split('/').count();
+            let stops_here = entry.is_dir && !entry.is_symlink && components == depth;
+            if components > depth || stops_here {
+                let stop: String = rel.split('/').take(depth).collect::<Vec<_>>().join("/");
+                if stopped_at.insert(stop.clone()) {
+                    // A limit that stops at the root leaves the whole tree
+                    // unseen, which the caller reads from the empty path.
+                    unseen.push(UnseenPath {
+                        rel_path: stop,
+                        reason: "depth_limit",
+                    });
+                    if results.len() + skipped_links.len() + unseen.len() >= cap {
+                        break;
+                    }
+                }
+                continue;
+            }
+        }
         if entry.is_symlink {
             // Listed and not followed, as the BFS treats a link to a directory,
             // and reported so a sync leaves the link's path alone.
@@ -148,7 +176,7 @@ fn adapt_fastpath_entries(
                     rel_path: rel,
                     link_target: entry.link_target.clone(),
                 });
-                if results.len() + skipped_links.len() >= cap {
+                if results.len() + skipped_links.len() + unseen.len() >= cap {
                     break;
                 }
             }
@@ -199,11 +227,11 @@ fn adapt_fastpath_entries(
             checksum_alg: None,
             checksum_hex: None,
         });
-        if results.len() + skipped_links.len() >= cap {
+        if results.len() + skipped_links.len() + unseen.len() >= cap {
             break;
         }
     }
-    Some((results, skipped_links))
+    Some((results, skipped_links, unseen))
 }
 
 /// GAP-9f: attempt the provider-native single-shot recursive listing for the
@@ -215,7 +243,7 @@ async fn try_recursive_fastpath(
     provider: &mut Box<dyn StorageProvider>,
     remote_root: &str,
     opts: &ScanOptions,
-) -> Option<(Vec<RemoteEntry>, Vec<SkippedLink>)> {
+) -> Option<(Vec<RemoteEntry>, Vec<SkippedLink>, Vec<UnseenPath>)> {
     let listing = crate::used_scan::provider_list_recursive_fastpath(provider, remote_root).await?;
     if !listing.structured_paths {
         return None;
@@ -234,6 +262,7 @@ async fn try_recursive_fastpath(
 fn fastpath_scan(
     results: Vec<RemoteEntry>,
     links: Vec<SkippedLink>,
+    unseen: Vec<UnseenPath>,
     opts: &ScanOptions,
     cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
 ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
@@ -242,6 +271,12 @@ fn fastpath_scan(
         links,
         ..ScanBoundaries::default()
     };
+    for path in unseen {
+        // A limit that stops at the root leaves the whole tree unseen, which
+        // `unseen` turns into a gap with no name.
+        boundaries.unseen(&path.rel_path, path.reason);
+        completeness.truncated = true;
+    }
     if results.len() + boundaries.len() >= opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES) {
         completeness.truncated = true;
         boundaries.unbounded = Some("entry_cap");
@@ -850,8 +885,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     // GAP-9f: provider-native single-shot recursive listing fast-path,
     // tried once before either BFS branch (clone-pool or locked). S3's flat
     // ListObjectsV2 returns the whole subtree in one paginated call.
-    // Skipped when checksums are requested, under a depth limit, or when the
-    // scan is already cancelled.
+    // Skipped when checksums are requested or the scan is already cancelled.
     if uses_recursive_fastpath(opts, &cancel) {
         let fast = {
             let mut guard = provider.lock().await;
@@ -860,11 +894,11 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                 None => None,
             }
         };
-        if let Some((results, links)) = fast {
+        if let Some((results, links, unseen)) = fast {
             if let Some(obs) = observer {
                 obs.on_scan_progress(results.len(), 0);
             }
-            return fastpath_scan(results, links, opts, &cancel);
+            return fastpath_scan(results, links, unseen, opts, &cancel);
         }
     }
 
@@ -1359,16 +1393,13 @@ fn scan_worker_is_reusable(listed_ok: bool, opted_in: bool) -> bool {
 }
 
 /// Whether a walk tries the provider's flat recursive listing before the BFS.
-/// Not under a depth limit: the flat listing has no directory structure to stop
-/// at, while the BFS applies the limit and names the directories it stops at.
+/// A depth limit is no reason to skip it: the listing stops where the walk
+/// would and names the directories it stops at, so both answer the same tree.
 fn uses_recursive_fastpath(
     opts: &ScanOptions,
     cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
 ) -> bool {
-    !opts.compute_remote_checksum
-        && !opts.disable_recursive_fastpath
-        && opts.max_depth.is_none()
-        && !scan_cancelled(cancel)
+    !opts.compute_remote_checksum && !opts.disable_recursive_fastpath && !scan_cancelled(cancel)
 }
 
 /// Returns true when an optional cancel flag has been raised by the UI.
@@ -1924,7 +1955,8 @@ pub(crate) mod tests {
             provider_file("c.txt", "/root/a/b/c.txt", 20),
             ProviderEntry::directory("a".to_string(), "/root/a".to_string()),
         ];
-        let (rows, _) = adapt_fastpath_entries(entries, "/root", &ScanOptions::default()).unwrap();
+        let (rows, _, _) =
+            adapt_fastpath_entries(entries, "/root", &ScanOptions::default()).unwrap();
         let mut paths: Vec<String> = rows.iter().map(|r| r.rel_path.clone()).collect();
         paths.sort();
         // The directory entry is dropped; both files keep their nesting.
@@ -1938,7 +1970,7 @@ pub(crate) mod tests {
             provider_file("skip.tmp", "/root/skip.tmp", 1),
             provider_file("nested.txt", "/root/sub/nested.txt", 1),
         ];
-        let (excluded, _) = adapt_fastpath_entries(
+        let (excluded, _, _) = adapt_fastpath_entries(
             entries.clone(),
             "/root",
             &ScanOptions {
@@ -1951,7 +1983,7 @@ pub(crate) mod tests {
 
         let mut files_from = HashSet::new();
         files_from.insert("sub/nested.txt".to_string());
-        let (filtered, _) = adapt_fastpath_entries(
+        let (filtered, _, _) = adapt_fastpath_entries(
             entries.clone(),
             "/root",
             &ScanOptions {
@@ -1963,7 +1995,7 @@ pub(crate) mod tests {
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].rel_path, "sub/nested.txt");
 
-        let (capped, _) = adapt_fastpath_entries(
+        let (capped, _, _) = adapt_fastpath_entries(
             entries,
             "/root",
             &ScanOptions {
@@ -1991,7 +2023,7 @@ pub(crate) mod tests {
         let mut link = provider_file("link.txt", "/root/link.txt", 0);
         link.is_symlink = true;
         link.link_target = Some("target.txt".to_string());
-        let (rows, links) = adapt_fastpath_entries(
+        let (rows, links, _) = adapt_fastpath_entries(
             vec![link, provider_file("real.txt", "/root/real.txt", 5)],
             "/root",
             &ScanOptions::default(),
@@ -2861,11 +2893,11 @@ pub(crate) mod tests {
         assert!(boundaries.unseen.is_empty());
     }
 
-    /// The flat recursive listing carries no directory structure to stop at, so
-    /// a walk under a depth limit must not take it: the BFS applies the limit and
-    /// names the directories it stops at.
+    /// The flat recursive listing stops where the walk would, so a depth limit
+    /// is no longer a reason to keep a scan off it: the listing applies the
+    /// limit itself and names the directories it stops at.
     #[test]
-    fn the_recursive_fast_path_is_not_used_under_a_depth_limit() {
+    fn the_recursive_fast_path_applies_the_depth_limit_it_is_given() {
         let unlimited = ScanOptions::default();
         assert!(uses_recursive_fastpath(&unlimited, &None));
         let limited = ScanOptions {
@@ -2873,8 +2905,75 @@ pub(crate) mod tests {
             ..ScanOptions::default()
         };
         assert!(
-            !uses_recursive_fastpath(&limited, &None),
-            "a depth limit keeps the walk on the BFS"
+            uses_recursive_fastpath(&limited, &None),
+            "the listing applies the limit, so the walk is not needed a second time"
+        );
+    }
+
+    /// Under a depth limit the flat listing must answer exactly as the walk
+    /// does: the same entries, and the same directories named as unseen. They
+    /// used to disagree, so a scan that took the fast path returned entries
+    /// deeper than the limit while the other side of a run stopped at it, and
+    /// every one of those entries read as missing on that side.
+    #[tokio::test]
+    async fn a_fast_path_listing_stops_where_the_walk_would() {
+        use crate::providers::RemoteEntry as ProviderEntry;
+        let root_listing = || {
+            vec![
+                provider_file("a.txt", "/root/a.txt", 1),
+                ProviderEntry::directory("d1".to_string(), "/root/d1".to_string()),
+            ]
+        };
+        let d1_listing = || {
+            vec![
+                provider_file("b.txt", "/root/d1/b.txt", 1),
+                ProviderEntry::directory("d2".to_string(), "/root/d1/d2".to_string()),
+            ]
+        };
+        let d2_listing = || vec![provider_file("c.txt", "/root/d1/d2/c.txt", 1)];
+        let mut flat = root_listing();
+        flat.extend(d1_listing());
+        flat.extend(d2_listing());
+        let tree = WalkTreeProvider::new(
+            std::collections::HashMap::from([
+                ("/root".to_string(), root_listing()),
+                ("/root/d1".to_string(), d1_listing()),
+                ("/root/d1/d2".to_string(), d2_listing()),
+            ]),
+            false,
+        );
+        let opts = ScanOptions {
+            disable_recursive_fastpath: true,
+            max_depth: Some(2),
+            ..ScanOptions::default()
+        };
+        let (walked, _, walk_boundaries) = walk_tree_with(tree, opts.clone(), None).await;
+        let (fast, _, fast_unseen) =
+            adapt_fastpath_entries(flat, "/root", &opts).expect("the listing adapts");
+        let mut walked_paths: Vec<&str> = walked.iter().map(|row| row.rel_path.as_str()).collect();
+        let mut fast_paths: Vec<&str> = fast.iter().map(|row| row.rel_path.as_str()).collect();
+        walked_paths.sort();
+        fast_paths.sort();
+        assert_eq!(
+            walked_paths,
+            vec!["a.txt", "d1/b.txt"],
+            "what the walk keeps"
+        );
+        assert_eq!(
+            fast_paths, walked_paths,
+            "the listing keeps the same entries"
+        );
+        assert_eq!(
+            walk_boundaries.unseen,
+            vec![UnseenPath {
+                rel_path: "d1/d2".to_string(),
+                reason: "depth_limit",
+            }],
+            "what the walk stops at"
+        );
+        assert_eq!(
+            fast_unseen, walk_boundaries.unseen,
+            "the listing names the same directories"
         );
     }
 
@@ -2891,12 +2990,22 @@ pub(crate) mod tests {
             checksum_hex: None,
         };
         let raised = Some(Arc::new(std::sync::atomic::AtomicBool::new(true)));
-        let (_, completeness, boundaries) =
-            fastpath_scan(vec![row()], Vec::new(), &ScanOptions::default(), &raised);
+        let (_, completeness, boundaries) = fastpath_scan(
+            vec![row()],
+            Vec::new(),
+            Vec::new(),
+            &ScanOptions::default(),
+            &raised,
+        );
         assert!(!completeness.is_complete());
         assert_eq!(boundaries.unbounded, Some("cancelled"));
-        let (_, completeness, boundaries) =
-            fastpath_scan(vec![row()], Vec::new(), &ScanOptions::default(), &None);
+        let (_, completeness, boundaries) = fastpath_scan(
+            vec![row()],
+            Vec::new(),
+            Vec::new(),
+            &ScanOptions::default(),
+            &None,
+        );
         assert!(completeness.is_complete());
         assert_eq!(boundaries, ScanBoundaries::default());
     }

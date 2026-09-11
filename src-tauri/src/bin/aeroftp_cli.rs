@@ -7388,7 +7388,11 @@ fn remote_entry_to_cli(e: &RemoteEntry) -> CliFileEntry {
 }
 
 /// Maximum BFS scan depth for recursive operations (find, get -r, tree).
-const MAX_SCAN_DEPTH: usize = 100;
+/// The scanner's own default depth. The local walk and the remote walk of one
+/// command have to stop at the same level: an entry below one side's limit has
+/// no counterpart on the other and reads as missing there, which a later
+/// `sync --from-reconcile --delete` turns into a delete.
+const MAX_SCAN_DEPTH: usize = ftp_client_gui_lib::sync_core::scan::DEFAULT_SCAN_DEPTH;
 /// Maximum entries to collect during BFS scan to prevent OOM.
 const MAX_SCAN_ENTRIES: usize = 500_000;
 /// Default base path for `find` when the positional is omitted. Shared with
@@ -56296,10 +56300,7 @@ async fn cmd_check(
         checkers: Some(effective_checkers(cli)),
         compute_checksum: checksum && !crypt_active,
         disable_recursive_fastpath: crypt_active,
-        // `None` is the scanner's default depth, the same 100 as MAX_SCAN_DEPTH. An
-        // explicit depth, even that one, keeps the remote walk off the flat
-        // recursive listing (S3, WebDAV).
-        max_depth: None,
+        max_depth: Some(MAX_SCAN_DEPTH),
         ..Default::default()
     };
     let locals = scan_local_tree(local_path, &scan_opts);
@@ -56518,10 +56519,7 @@ async fn cmd_cryptcheck(
     let scan_opts = ScanOptions {
         checkers: Some(effective_checkers(cli)),
         compute_checksum: false,
-        // `None` is the scanner's default depth, the same 100 as MAX_SCAN_DEPTH. An
-        // explicit depth, even that one, keeps the remote walk off the flat
-        // recursive listing (S3, WebDAV).
-        max_depth: None,
+        max_depth: Some(MAX_SCAN_DEPTH),
         ..Default::default()
     };
 
@@ -56896,10 +56894,7 @@ async fn cmd_reconcile(
         compute_checksum: checksum && !crypt_active,
         compute_remote_checksum: checksum && !crypt_active,
         disable_recursive_fastpath: crypt_active,
-        // `None` is the scanner's default depth, the same 100 as MAX_SCAN_DEPTH. An
-        // explicit depth, even that one, keeps the remote walk off the flat
-        // recursive listing (S3, WebDAV).
-        max_depth: None,
+        max_depth: Some(MAX_SCAN_DEPTH),
         ..Default::default()
     };
     let local_spinner = maybe_create_scan_spinner(format, cli, "Scanning local...");
