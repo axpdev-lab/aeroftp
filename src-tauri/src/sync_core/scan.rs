@@ -223,6 +223,35 @@ async fn try_recursive_fastpath(
     adapt_fastpath_entries(listing.entries, remote_root, opts)
 }
 
+/// A flat recursive listing as a scan result. `Some` from the fast path means
+/// the provider returned the whole subtree in one call, and it degrades to
+/// `None` on any error, so there are no per-directory failures to count. The
+/// cap still bites though: `adapt_fastpath_entries` stops filling at
+/// `max_entries`, counting the skipped links with the entries, and a listing cut
+/// off at the cap is a truncated tree like any other. A cancel raised while the
+/// listing ran does not cut it short, but the user asked the scan to stop, so
+/// the result is a cancelled scan rather than a complete tree.
+fn fastpath_scan(
+    results: Vec<RemoteEntry>,
+    links: Vec<SkippedLink>,
+    opts: &ScanOptions,
+    cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
+    let mut completeness = ScanCompleteness::default();
+    let mut boundaries = ScanBoundaries {
+        links,
+        ..ScanBoundaries::default()
+    };
+    if results.len() + boundaries.len() >= opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES) {
+        completeness.truncated = true;
+        boundaries.unbounded = Some("entry_cap");
+    }
+    if scan_cancelled(cancel) {
+        record_cancelled(&mut completeness, &mut boundaries);
+    }
+    (results, completeness, boundaries)
+}
+
 /// Completeness signal for a tree scan.
 ///
 /// A scan is INCOMPLETE when a directory listing failed (`list_errors > 0`) or
@@ -277,9 +306,9 @@ pub struct ScanBoundaries {
     /// Paths the scan could not see: a directory at the depth limit or one that
     /// failed to list, an entry whose metadata could not be read.
     pub unseen: Vec<UnseenPath>,
-    /// Set when the scan missed a part of the tree it cannot name (it was
-    /// cancelled, cut off at the entry cap, or lost its session), so no run can
-    /// be bounded around it.
+    /// Set when the scan missed a part of the tree it cannot name (it did not
+    /// see its root, was cancelled, cut off at the entry cap, or lost its
+    /// session), so no run can be bounded around it.
     pub unbounded: Option<&'static str>,
 }
 
@@ -289,11 +318,14 @@ impl ScanBoundaries {
         self.links.len() + self.unseen.len()
     }
 
-    /// Record a path the scan did not see. The scan root is not recorded: an
-    /// unlisted root is the incomplete scan the completeness counters already
-    /// report, and there is no path to bound a run around.
+    /// Record a path the scan did not see. The scan root has no path to bound a
+    /// run around: a root the scan did not see leaves the whole tree unseen, a
+    /// gap with no name.
     fn unseen(&mut self, rel_path: &str, reason: &'static str) {
-        if !rel_path.is_empty() {
+        if rel_path.is_empty() {
+            tracing::warn!("[scan] not seen: the scan root ({})", reason);
+            self.unbounded.get_or_insert(reason);
+        } else {
             tracing::warn!("[scan] not seen: {} ({})", rel_path, reason);
             self.unseen.push(UnseenPath {
                 rel_path: rel_path.to_string(),
@@ -578,12 +610,24 @@ pub fn scan_local_tree_checked(
                 // A directory we could not read (the root itself when the mount
                 // is gone, or any subtree) makes the scan incomplete: files
                 // under it are invisible. Count it so delete propagation can
-                // refuse, and bound a subtree so no copy reaches into it.
-                // CLAUDE-AV-B3-01.
+                // refuse, and bound it so no copy reaches into it: at the root,
+                // or on an error that names no path, that is the whole tree. A
+                // root that does not exist is only counted: it is the empty tree
+                // a download into a new directory scans. CLAUDE-AV-B3-01.
                 completeness.list_errors += 1;
-                if error.depth() > 0 {
-                    if let Some(path) = error.path() {
-                        boundaries.unseen(&relative_of(path), "unreadable");
+                let root_is_absent = error.depth() == 0
+                    && error.io_error().is_some_and(|io| {
+                        matches!(
+                            io.kind(),
+                            std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                        )
+                    });
+                if !root_is_absent {
+                    match error.path() {
+                        Some(path) => boundaries.unseen(&relative_of(path), "unreadable"),
+                        None => {
+                            boundaries.unbounded.get_or_insert("unreadable");
+                        }
                     }
                 }
                 continue;
@@ -629,11 +673,7 @@ pub fn scan_local_tree_checked(
             // Listed at the depth limit and not descended into: what it holds is
             // unknown, like the contents of a directory that failed to list.
             completeness.truncated = true;
-            if depth == 0 {
-                boundaries.unbounded.get_or_insert("depth_limit");
-            } else {
-                boundaries.unseen(&relative_of(walk_entry.path()), "depth_limit");
-            }
+            boundaries.unseen(&relative_of(walk_entry.path()), "depth_limit");
             continue;
         }
         if !walk_entry.file_type().is_file() {
@@ -779,9 +819,9 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     // GAP-9f: provider-native single-shot recursive listing fast-path,
     // tried once before either BFS branch (clone-pool or locked). S3's flat
     // ListObjectsV2 returns the whole subtree in one paginated call.
-    // Skipped when checksums are requested or the scan is already cancelled.
-    if !opts.compute_remote_checksum && !opts.disable_recursive_fastpath && !scan_cancelled(&cancel)
-    {
+    // Skipped when checksums are requested, under a depth limit, or when the
+    // scan is already cancelled.
+    if uses_recursive_fastpath(opts, &cancel) {
         let fast = {
             let mut guard = provider.lock().await;
             match guard.as_mut() {
@@ -793,21 +833,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
             if let Some(obs) = observer {
                 obs.on_scan_progress(results.len(), 0);
             }
-            // `Some` means the provider returned a full recursive listing in one
-            // call, and it degrades to `None` on any error, so there are no
-            // per-directory failures to count here. The cap still bites though:
-            // `adapt_fastpath_entries` stops filling at `max_entries`, counting
-            // the skipped links with the entries, and a listing cut off at the
-            // cap is a truncated tree like any other.
-            let mut boundaries = ScanBoundaries {
-                links,
-                ..ScanBoundaries::default()
-            };
-            if results.len() + boundaries.len() >= opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES) {
-                completeness.truncated = true;
-                boundaries.unbounded = Some("entry_cap");
-            }
-            return (results, completeness, boundaries);
+            return fastpath_scan(results, links, opts, &cancel);
         }
     }
 
@@ -851,16 +877,12 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
 
     while (!queue.is_empty() || in_flight > 0) && results.len() + boundaries.len() < cap {
         if scan_cancelled(&cancel) {
-            // CLAUDE-AV-B3-13: a cancelled walk stopped mid-tree, at no
-            // particular directory, so nothing it missed has a name.
-            completeness.truncated = true;
-            boundaries.unbounded.get_or_insert("cancelled");
+            record_cancelled(&mut completeness, &mut boundaries);
             break;
         }
         while in_flight < max_workers {
             if scan_cancelled(&cancel) {
-                completeness.truncated = true;
-                boundaries.unbounded.get_or_insert("cancelled");
+                record_cancelled(&mut completeness, &mut boundaries);
                 break;
             }
             let Some(dir) = queue.pop_front() else {
@@ -870,7 +892,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                 // CLAUDE-AV-B3-13: everything under this directory is below the
                 // depth limit and therefore invisible to the scan.
                 completeness.truncated = true;
-                bound_unlisted_below_depth(&mut boundaries, &dir);
+                boundaries.unseen(&dir.rel_prefix, "depth_limit");
                 continue;
             }
             spawn_remote_scan_task(
@@ -894,6 +916,11 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
         match join_set.join_next().await {
             Some(Ok(Ok(batch))) => {
                 in_flight = in_flight.saturating_sub(1);
+                if batch.cancelled {
+                    // The listing stopped part way, and the loop may have no
+                    // iteration left to see the flag in.
+                    record_cancelled(&mut completeness, &mut boundaries);
+                }
                 absorb_skipped_links(
                     &mut boundaries,
                     &mut completeness,
@@ -923,7 +950,9 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                 // deletion downstream, so count it instead of only warning, and
                 // bound it so no copy reaches into what it might hold.
                 completeness.list_errors += 1;
-                boundaries.unseen(&failure.rel_prefix, "list_error");
+                if !failure.root_absent {
+                    boundaries.unseen(&failure.rel_prefix, "list_error");
+                }
                 eprintln!("[scan_remote_tree] warning: {}", failure.message);
             }
             Some(Err(error)) => {
@@ -949,6 +978,11 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     if results.len() + boundaries.len() >= cap {
         completeness.truncated = true;
         boundaries.unbounded.get_or_insert("entry_cap");
+    }
+    // A cancel raised during the last listings has no loop iteration left to be
+    // seen in.
+    if scan_cancelled(&cancel) {
+        record_cancelled(&mut completeness, &mut boundaries);
     }
 
     if let Some(obs) = observer {
@@ -991,15 +1025,14 @@ async fn scan_remote_tree_locked(
     }]);
     while let Some(dir) = queue.pop_front() {
         if scan_cancelled(&cancel) {
-            completeness.truncated = true;
-            boundaries.unbounded.get_or_insert("cancelled");
+            record_cancelled(&mut completeness, &mut boundaries);
             break;
         }
         // CLAUDE-AV-B3-13: both of these skip a directory we were asked to walk,
         // so the tree we report is smaller than the tree that exists.
         if dir.depth >= depth {
             completeness.truncated = true;
-            bound_unlisted_below_depth(&mut boundaries, &dir);
+            boundaries.unseen(&dir.rel_prefix, "depth_limit");
             continue;
         }
         if results.len() + boundaries.len() >= cap {
@@ -1037,6 +1070,9 @@ async fn scan_remote_tree_locked(
 
         match batch {
             Ok(batch) => {
+                if batch.cancelled {
+                    record_cancelled(&mut completeness, &mut boundaries);
+                }
                 absorb_skipped_links(
                     &mut boundaries,
                     &mut completeness,
@@ -1055,15 +1091,14 @@ async fn scan_remote_tree_locked(
                     queue.push_back(dir);
                 }
             }
-            Err(error) => {
+            Err(failure) => {
                 // CLAUDE-AV-B3-13: an unlisted directory hides every file under
                 // it, which downstream reads as "these files were deleted".
                 completeness.list_errors += 1;
-                boundaries.unseen(&dir.rel_prefix, "list_error");
-                eprintln!(
-                    "[scan_remote_tree] warning: failed to list {}: {}",
-                    dir.abs_dir, error
-                );
+                if !failure.root_absent {
+                    boundaries.unseen(&failure.rel_prefix, "list_error");
+                }
+                eprintln!("[scan_remote_tree] warning: {}", failure.message);
             }
         }
 
@@ -1074,21 +1109,22 @@ async fn scan_remote_tree_locked(
         }
     }
 
+    // A cancel raised during the last listing has no loop iteration left to be
+    // seen in.
+    if scan_cancelled(&cancel) {
+        record_cancelled(&mut completeness, &mut boundaries);
+    }
     if let Some(obs) = observer {
         obs.on_scan_progress(results.len(), 0);
     }
     (results, completeness, boundaries)
 }
 
-/// Bound a directory the walk reached at its depth limit and did not list. The
-/// root has no path to bound around, so a limit that stops at the root leaves
-/// the whole tree unseen.
-fn bound_unlisted_below_depth(boundaries: &mut ScanBoundaries, dir: &RemoteScanDir) {
-    if dir.rel_prefix.is_empty() {
-        boundaries.unbounded.get_or_insert("depth_limit");
-    } else {
-        boundaries.unseen(&dir.rel_prefix, "depth_limit");
-    }
+/// Mark a scan cancelled: it stopped at no particular directory, so nothing it
+/// missed has a name. CLAUDE-AV-B3-13.
+fn record_cancelled(completeness: &mut ScanCompleteness, boundaries: &mut ScanBoundaries) {
+    completeness.truncated = true;
+    boundaries.unbounded.get_or_insert("cancelled");
 }
 
 /// Record a batch's skipped links within the room the entry cap leaves them: a
@@ -1119,12 +1155,16 @@ struct RemoteScanBatch {
     files: Vec<RemoteEntry>,
     dirs: Vec<RemoteScanDir>,
     skipped_links: Vec<SkippedLink>,
+    /// The listing stopped part way because the scan was cancelled.
+    cancelled: bool,
 }
 
-/// A directory a scan task could not list, and why.
+/// A directory a scan could not list, and why.
 struct RemoteScanFailure {
     rel_prefix: String,
     message: String,
+    /// It is the scan root and it does not exist (see [`root_is_absent`]).
+    root_absent: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1143,6 +1183,7 @@ fn spawn_remote_scan_task(
         let failure = |message: String| RemoteScanFailure {
             rel_prefix: dir.rel_prefix.clone(),
             message,
+            root_absent: false,
         };
         let _checker_lease = resource_manager
             .acquire(ResourceRequest::checker())
@@ -1158,6 +1199,7 @@ fn spawn_remote_scan_task(
                 files: Vec::new(),
                 dirs: Vec::new(),
                 skipped_links: Vec::new(),
+                cancelled: true,
             });
         }
         let mut worker = match warm_workers.take().await {
@@ -1171,9 +1213,7 @@ fn spawn_remote_scan_task(
                     .map_err(|error| failure(error.to_string()))?
             }
         };
-        let result = scan_remote_dir(&mut worker, &dir, &opts, want_remote_checksum, &cancel)
-            .await
-            .map_err(|error| failure(format!("failed to list {}: {}", dir.abs_dir, error)));
+        let result = scan_remote_dir(&mut worker, &dir, &opts, want_remote_checksum, &cancel).await;
         // Parked before the lease is released, so the waiter that wakes on
         // the freed permit finds the warm worker ready to pop.
         warm_workers.park(worker, result.is_ok()).await;
@@ -1211,6 +1251,19 @@ fn scan_worker_is_reusable(listed_ok: bool, opted_in: bool) -> bool {
     listed_ok && opted_in
 }
 
+/// Whether a walk tries the provider's flat recursive listing before the BFS.
+/// Not under a depth limit: the flat listing has no directory structure to stop
+/// at, while the BFS applies the limit and names the directories it stops at.
+fn uses_recursive_fastpath(
+    opts: &ScanOptions,
+    cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> bool {
+    !opts.compute_remote_checksum
+        && !opts.disable_recursive_fastpath
+        && opts.max_depth.is_none()
+        && !scan_cancelled(cancel)
+}
+
 /// Returns true when an optional cancel flag has been raised by the UI.
 fn scan_cancelled(cancel: &Option<Arc<std::sync::atomic::AtomicBool>>) -> bool {
     cancel
@@ -1225,15 +1278,26 @@ async fn scan_remote_dir(
     opts: &ScanOptions,
     want_remote_checksum: bool,
     cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
-) -> Result<RemoteScanBatch, ProviderError> {
+) -> Result<RemoteScanBatch, RemoteScanFailure> {
     let matchers = compile_matchers(&opts.exclude_patterns);
-    let entries = list_with_transport_retry(provider, &dir.abs_dir).await?;
+    let entries = match list_with_transport_retry(provider, &dir.abs_dir).await {
+        Ok(entries) => entries,
+        Err(error) => {
+            return Err(RemoteScanFailure {
+                rel_prefix: dir.rel_prefix.clone(),
+                root_absent: root_is_absent(provider, dir).await,
+                message: format!("failed to list {}: {}", dir.abs_dir, error),
+            })
+        }
+    };
     let mut files = Vec::new();
     let mut dirs = Vec::new();
     let mut skipped_links = Vec::new();
+    let mut cancelled = false;
 
     for entry in entries {
         if scan_cancelled(cancel) {
+            cancelled = true;
             break;
         }
         let entry_rel = if dir.rel_prefix.is_empty() {
@@ -1314,7 +1378,19 @@ async fn scan_remote_dir(
         files,
         dirs,
         skipped_links,
+        cancelled,
     })
+}
+
+/// Whether a directory that did not list is a scan root that does not exist. A
+/// sync into a directory it has yet to create scans such a root, and that empty
+/// tree is not a gap to refuse the run over. The listing error does not say so
+/// (SFTP reports every listing failure it does not classify as `NotFound`, and
+/// FTP answers 550 for a missing and a forbidden directory alike), so the
+/// provider is asked whether the root exists: any answer but "no" leaves the
+/// root a gap.
+async fn root_is_absent(provider: &mut Box<dyn StorageProvider>, dir: &RemoteScanDir) -> bool {
+    dir.rel_prefix.is_empty() && matches!(provider.exists(&dir.abs_dir).await, Ok(false))
 }
 
 /// Run `provider.list(dir)` with one automatic reconnect on transport-level
@@ -2253,6 +2329,382 @@ pub(crate) mod tests {
             ScanBoundaries::default(),
         );
         assert_eq!(bounded.refusal(), None);
+    }
+
+    /// An in-memory tree either walk can be driven through: with `pool` it lists
+    /// on independent clones, otherwise on one locked session. It can hold a
+    /// directory that exists and does not list, raise a cancel flag while it
+    /// lists one directory, and it counts the remote writes a run attempts.
+    pub(crate) struct WalkTreeProvider {
+        pub(crate) dirs: std::collections::HashMap<String, Vec<crate::providers::RemoteEntry>>,
+        /// Directories that exist and do not list: `list` fails with `NotFound`,
+        /// which is how SFTP reports any listing failure it does not classify,
+        /// while `stat` finds them.
+        pub(crate) unlistable: std::collections::HashSet<String>,
+        /// The directory whose listing raises `cancel`, the way a user's cancel
+        /// lands in the middle of a listing.
+        pub(crate) cancel_on: Option<String>,
+        pub(crate) cancel: Arc<std::sync::atomic::AtomicBool>,
+        /// Uploads, directory creations, deletes and renames attempted.
+        pub(crate) writes: Arc<std::sync::atomic::AtomicUsize>,
+        pub(crate) pool: bool,
+    }
+
+    impl WalkTreeProvider {
+        pub(crate) fn new(
+            dirs: std::collections::HashMap<String, Vec<crate::providers::RemoteEntry>>,
+            pool: bool,
+        ) -> Self {
+            Self {
+                dirs,
+                unlistable: std::collections::HashSet::new(),
+                cancel_on: None,
+                cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                writes: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                pool,
+            }
+        }
+
+        fn count_write(&self) -> Result<(), ProviderError> {
+            self.writes
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for WalkTreeProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> crate::providers::ProviderType {
+            crate::providers::ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "walk-tree".to_string()
+        }
+        fn list_executor_kind(&self) -> crate::providers::ProviderListExecutorKind {
+            if self.pool {
+                crate::providers::ProviderListExecutorKind::HttpClonePool
+            } else {
+                crate::providers::ProviderListExecutorKind::LockedSingle
+            }
+        }
+        fn list_executor_max_sessions(&self) -> u16 {
+            1
+        }
+        fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            if !self.pool {
+                return Err(ProviderError::NotSupported("clone_for_list".to_string()));
+            }
+            Ok(Box::new(Self {
+                dirs: self.dirs.clone(),
+                unlistable: self.unlistable.clone(),
+                cancel_on: self.cancel_on.clone(),
+                cancel: Arc::clone(&self.cancel),
+                writes: Arc::clone(&self.writes),
+                pool: true,
+            }))
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(
+            &mut self,
+            path: &str,
+        ) -> Result<Vec<crate::providers::RemoteEntry>, ProviderError> {
+            if self.cancel_on.as_deref() == Some(path) {
+                self.cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            if self.unlistable.contains(path) {
+                return Err(ProviderError::NotFound(format!(
+                    "Failed to list directory: {path}"
+                )));
+            }
+            self.dirs
+                .get(path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.count_write()
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.count_write()
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.count_write()
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.count_write()
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.count_write()
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            self.count_write()
+        }
+        async fn stat(
+            &mut self,
+            path: &str,
+        ) -> Result<crate::providers::RemoteEntry, ProviderError> {
+            if self.dirs.contains_key(path) || self.unlistable.contains(path) {
+                let name = path.rsplit('/').next().unwrap_or(path).to_string();
+                Ok(crate::providers::RemoteEntry::directory(
+                    name,
+                    path.to_string(),
+                ))
+            } else {
+                Err(ProviderError::NotFound(path.to_string()))
+            }
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(self.dirs.contains_key(path) || self.unlistable.contains(path))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("walk-tree".to_string())
+        }
+    }
+
+    /// `a.txt` at the root and one directory `d1` holding `x.txt`, the last
+    /// directory the walk lists; the cancel lands while it lists `d1`.
+    pub(crate) fn tree_cancelled_on_its_last_listing(
+        pool: bool,
+    ) -> (WalkTreeProvider, Arc<std::sync::atomic::AtomicBool>) {
+        use crate::providers::RemoteEntry;
+        let mut tree = WalkTreeProvider::new(
+            std::collections::HashMap::from([
+                (
+                    "/root".to_string(),
+                    vec![
+                        RemoteEntry::file("a.txt".to_string(), "/root/a.txt".to_string(), 1),
+                        RemoteEntry::directory("d1".to_string(), "/root/d1".to_string()),
+                    ],
+                ),
+                (
+                    "/root/d1".to_string(),
+                    vec![RemoteEntry::file(
+                        "x.txt".to_string(),
+                        "/root/d1/x.txt".to_string(),
+                        1,
+                    )],
+                ),
+            ]),
+            pool,
+        );
+        tree.cancel_on = Some("/root/d1".to_string());
+        let cancel = Arc::clone(&tree.cancel);
+        (tree, cancel)
+    }
+
+    /// Walk `/root` of `tree` off the fast path, on the walk its `pool` flag
+    /// selects.
+    async fn walk_tree(
+        tree: WalkTreeProvider,
+        cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
+        let pool = tree.pool;
+        let holder: Arc<Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(Mutex::new(Some(Box::new(tree))));
+        let model =
+            crate::provider_transfer_executor::resolve_provider_list_session_model(&holder, 1)
+                .await;
+        assert_eq!(
+            model.is_clone_pool(),
+            pool,
+            "the walk under test (pool={pool})"
+        );
+        let opts = ScanOptions {
+            disable_recursive_fastpath: true,
+            ..ScanOptions::default()
+        };
+        scan_remote_tree_with_provider_lock_checked(holder, "/root", &opts, &model, cancel, None)
+            .await
+    }
+
+    /// A cancel that lands while the walk lists its last directory used to be
+    /// lost: the listing broke off, returned what it had as a success, and the
+    /// loop ended before its next cancel check, so the scan looked complete and
+    /// a sync could read the unlisted files as deleted. On both walks the scan
+    /// must come back incomplete with a gap it cannot name, which refuses the
+    /// run before anything is planned.
+    #[tokio::test]
+    async fn a_scan_cancelled_during_its_last_listing_refuses_the_run() {
+        for pool in [false, true] {
+            let (tree, cancel) = tree_cancelled_on_its_last_listing(pool);
+            let (rows, completeness, boundaries) = walk_tree(tree, Some(cancel)).await;
+            assert!(
+                !completeness.is_complete(),
+                "a cancelled scan is not complete (pool={pool})"
+            );
+            assert_eq!(
+                boundaries.unbounded,
+                Some("cancelled"),
+                "what a cancelled scan missed has no name (pool={pool})"
+            );
+            let bound = ScanBound::for_sync(
+                "/nonexistent-local-root",
+                std::iter::empty(),
+                rows.iter().map(|row| row.rel_path.as_str()),
+                &ScanBoundaries::default(),
+                boundaries,
+            );
+            assert!(
+                bound.refusal().is_some(),
+                "the run is refused, so no copy or delete is planned (pool={pool})"
+            );
+        }
+    }
+
+    /// A root that exists and does not list hides the whole tree: there is no
+    /// path to bound a run around, so the gap has no name and the run is
+    /// refused. It lists as `NotFound` and stats as a directory, the way an
+    /// unreadable directory looks on SFTP.
+    #[tokio::test]
+    async fn a_root_that_exists_and_does_not_list_refuses_the_run() {
+        for pool in [false, true] {
+            let mut tree = WalkTreeProvider::new(std::collections::HashMap::new(), pool);
+            tree.unlistable.insert("/root".to_string());
+            let (rows, completeness, boundaries) = walk_tree(tree, None).await;
+            assert!(rows.is_empty(), "(pool={pool})");
+            assert!(!completeness.is_complete(), "(pool={pool})");
+            assert_eq!(
+                boundaries.unbounded,
+                Some("list_error"),
+                "an unlisted root is a gap with no name (pool={pool})"
+            );
+        }
+    }
+
+    /// The other side of that refusal: a root that does not exist is the empty
+    /// tree a sync into a new directory scans. It is still counted, so no orphan
+    /// delete trusts the listing, but it is not a gap.
+    #[tokio::test]
+    async fn a_root_that_does_not_exist_is_an_empty_tree_not_a_gap() {
+        for pool in [false, true] {
+            let tree = WalkTreeProvider::new(std::collections::HashMap::new(), pool);
+            let (rows, completeness, boundaries) = walk_tree(tree, None).await;
+            assert!(rows.is_empty(), "(pool={pool})");
+            assert_eq!(completeness.list_errors, 1, "(pool={pool})");
+            assert_eq!(boundaries, ScanBoundaries::default(), "(pool={pool})");
+        }
+    }
+
+    /// The local walk's twin of an unlisted root: a root that cannot be read
+    /// hides the whole tree and refuses the run.
+    #[cfg(unix)]
+    #[test]
+    fn a_local_root_that_cannot_be_read_refuses_the_run() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("root");
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("a.txt"), b"a").unwrap();
+        let running_as_root = fs::metadata(&root).unwrap().uid() == 0;
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o000)).unwrap();
+        let (entries, completeness, boundaries) =
+            scan_local_tree_checked(root.to_str().unwrap(), &ScanOptions::default());
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        if running_as_root {
+            eprintln!("skipped: running as root, which reads a 0000 directory");
+            return;
+        }
+        assert!(entries.is_empty());
+        assert!(!completeness.is_complete());
+        assert_eq!(boundaries.unbounded, Some("unreadable"));
+    }
+
+    /// A local root that does not exist is the empty tree a download into a new
+    /// directory scans: counted, not a gap.
+    #[test]
+    fn a_local_root_that_does_not_exist_is_an_empty_tree_not_a_gap() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("not-created-yet");
+        let (entries, completeness, boundaries) =
+            scan_local_tree_checked(root.to_str().unwrap(), &ScanOptions::default());
+        assert!(entries.is_empty());
+        assert_eq!(completeness.list_errors, 1);
+        assert_eq!(boundaries, ScanBoundaries::default());
+    }
+
+    /// The flat recursive listing carries no directory structure to stop at, so
+    /// a walk under a depth limit must not take it: the BFS applies the limit and
+    /// names the directories it stops at.
+    #[test]
+    fn the_recursive_fast_path_is_not_used_under_a_depth_limit() {
+        let unlimited = ScanOptions::default();
+        assert!(uses_recursive_fastpath(&unlimited, &None));
+        let limited = ScanOptions {
+            max_depth: Some(1),
+            ..ScanOptions::default()
+        };
+        assert!(
+            !uses_recursive_fastpath(&limited, &None),
+            "a depth limit keeps the walk on the BFS"
+        );
+    }
+
+    /// A cancel that lands while the flat recursive listing runs cannot cut the
+    /// listing short, but the user asked the scan to stop: the result must not
+    /// come back as a complete tree a sync would act on.
+    #[test]
+    fn a_fast_path_listing_cancelled_while_it_ran_refuses_the_run() {
+        let row = || RemoteEntry {
+            rel_path: "a.txt".to_string(),
+            size: 1,
+            mtime: None,
+            checksum_alg: None,
+            checksum_hex: None,
+        };
+        let raised = Some(Arc::new(std::sync::atomic::AtomicBool::new(true)));
+        let (_, completeness, boundaries) =
+            fastpath_scan(vec![row()], Vec::new(), &ScanOptions::default(), &raised);
+        assert!(!completeness.is_complete());
+        assert_eq!(boundaries.unbounded, Some("cancelled"));
+        let (_, completeness, boundaries) =
+            fastpath_scan(vec![row()], Vec::new(), &ScanOptions::default(), &None);
+        assert!(completeness.is_complete());
+        assert_eq!(boundaries, ScanBoundaries::default());
     }
 
     /// An in-memory tree that lists on independent clones and counts how many

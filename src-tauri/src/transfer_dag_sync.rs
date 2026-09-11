@@ -1027,7 +1027,11 @@ pub async fn execute_sync_dag(
     let local_handle = {
         let root = local_root.to_string();
         let scan_opts = scan.clone();
-        tokio::task::spawn_blocking(move || scan_local_tree_checked(&root, &scan_opts))
+        tokio::task::spawn_blocking(move || {
+            #[cfg(test)]
+            tests::panic_if_local_scan_is_rigged(&root);
+            scan_local_tree_checked(&root, &scan_opts)
+        })
     };
     let (mut remotes, remote_scan, remote_boundaries) =
         scan_remote_tree_checked(provider, remote_root, &scan).await;
@@ -1037,10 +1041,11 @@ pub async fn execute_sync_dag(
     // turn that panic into an empty local listing, which then drives a "no
     // uploads needed" decision through the planner: the run would report
     // success while the local side was never scanned. Surface the panic as a
-    // hard `SyncError` on the report so the caller sees the failure; keep
-    // `locals` empty so the remote-only side of the run still proceeds. A
-    // panicked scan is treated as maximally incomplete so the orphan-delete
-    // guard below refuses (CLAUDE-AV-B3-01).
+    // hard `SyncError` on the report so the caller sees the failure, and refuse
+    // the run: with no local listing every local file reads as missing, so a
+    // download would copy over files it never compared. The local scan is a gap
+    // with no name, which the refusal below turns into an empty plan
+    // (CLAUDE-AV-B3-01).
     let (mut locals, local_scan, local_boundaries, local_scan_panic) = match local_handle.await {
         Ok((entries, completeness, boundaries)) => (entries, completeness, boundaries, None),
         Err(join_err) => {
@@ -1051,7 +1056,10 @@ pub async fn execute_sync_dag(
                     list_errors: 1,
                     truncated: false,
                 },
-                crate::sync_core::ScanBoundaries::default(),
+                crate::sync_core::ScanBoundaries {
+                    unbounded: Some("scan_task_failed"),
+                    ..Default::default()
+                },
                 Some(join_err.to_string()),
             )
         }
@@ -2888,5 +2896,159 @@ mod tests {
             sink.starts
         );
         assert_eq!(report.uploaded, 0);
+    }
+
+    /// Local roots whose scan task panics, so a test can drive a run whose local
+    /// scan never came back.
+    static RIGGED_LOCAL_SCANS: StdMutex<Vec<String>> = StdMutex::new(Vec::new());
+
+    fn rig_local_scan_panic(root: &str) {
+        RIGGED_LOCAL_SCANS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(root.to_string());
+    }
+
+    /// Called from the local scan task of `execute_sync_dag`: panics for a
+    /// rigged root.
+    pub(super) fn panic_if_local_scan_is_rigged(root: &str) {
+        let rigged = RIGGED_LOCAL_SCANS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .iter()
+            .any(|rigged| rigged == root);
+        if rigged {
+            panic!("rigged local scan failure for {root}");
+        }
+    }
+
+    /// A remote root that exists and does not list hides the whole remote tree:
+    /// no local file can be compared against it, so no copy and no delete may be
+    /// planned, on the dry-run path or on the DAG route, with or without orphan
+    /// deletes. The root lists as `NotFound` and stats as a directory, the way
+    /// an unreadable directory looks on SFTP.
+    #[tokio::test]
+    async fn sync_refuses_when_the_remote_root_does_not_list() {
+        for dry_run in [true, false] {
+            for delete_orphans in [false, true] {
+                let case = format!("dry_run={dry_run} delete_orphans={delete_orphans}");
+                let mut tree = crate::sync_core::scan::tests::WalkTreeProvider::new(
+                    std::collections::HashMap::new(),
+                    true,
+                );
+                tree.unlistable.insert("/root".to_string());
+                let writes = Arc::clone(&tree.writes);
+                let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+                let local = tempfile::tempdir().expect("tempdir");
+                std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
+                let mut options = opts(SyncDirection::Upload);
+                options.dry_run = dry_run;
+                options.delete_orphans = delete_orphans;
+                let mut sink = TestSyncSink::default();
+                let report = crate::sync::sync_tree_core(
+                    &mut provider,
+                    local.path().to_str().unwrap(),
+                    "/root",
+                    &options,
+                    &mut sink,
+                )
+                .await;
+                assert!(
+                    sink.starts.is_empty(),
+                    "nothing may be planned ({case}): {:?}",
+                    sink.starts
+                );
+                assert_eq!(writes.load(Ordering::SeqCst), 0, "no remote write ({case})");
+                assert_eq!(report.uploaded, 0, "({case})");
+                assert!(
+                    !report.errors.is_empty()
+                        && report.errors.iter().all(|error| error.operation == "scan"),
+                    "the run is refused with a scan error ({case}): {:?}",
+                    report.errors
+                );
+            }
+        }
+    }
+
+    /// The other side of that refusal: a remote root that does not exist yet is
+    /// an empty tree, and a sync into it plans its copies as before.
+    #[tokio::test]
+    async fn sync_into_a_remote_root_that_does_not_exist_yet_plans_its_copies() {
+        let tree = crate::sync_core::scan::tests::WalkTreeProvider::new(
+            std::collections::HashMap::new(),
+            true,
+        );
+        let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+        let local = tempfile::tempdir().expect("tempdir");
+        std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
+        let mut options = opts(SyncDirection::Upload);
+        options.dry_run = true;
+        let mut sink = TestSyncSink::default();
+        let report = crate::sync::sync_tree_core(
+            &mut provider,
+            local.path().to_str().unwrap(),
+            "/root",
+            &options,
+            &mut sink,
+        )
+        .await;
+        assert_eq!(sink.starts, vec!["a.txt".to_string()]);
+        assert!(
+            report.errors.iter().all(|error| error.operation != "scan"),
+            "{:?}",
+            report.errors
+        );
+    }
+
+    /// A local scan task that dies leaves the local side unseen, so every local
+    /// file reads as missing and a download would plan copies over files it
+    /// never compared. The run is refused with the failure on the report, and
+    /// nothing is transferred.
+    #[tokio::test]
+    async fn sync_dag_refuses_when_the_local_scan_task_fails() {
+        let tree = crate::sync_core::scan::tests::WalkTreeProvider::new(
+            std::collections::HashMap::from([(
+                "/root".to_string(),
+                vec![ProviderRemoteEntry::file(
+                    "a.txt".to_string(),
+                    "/root/a.txt".to_string(),
+                    99,
+                )],
+            )]),
+            true,
+        );
+        let writes = Arc::clone(&tree.writes);
+        let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+        let local = tempfile::tempdir().expect("tempdir");
+        std::fs::write(local.path().join("a.txt"), b"local").expect("write a.txt");
+        let root = local.path().to_str().unwrap().to_string();
+        rig_local_scan_panic(&root);
+        let options = opts(SyncDirection::Download);
+        let mut sink = TestSyncSink::default();
+        let report =
+            crate::sync::sync_tree_core(&mut provider, &root, "/root", &options, &mut sink).await;
+        assert!(
+            sink.starts.is_empty(),
+            "nothing may be planned: {:?}",
+            sink.starts
+        );
+        assert_eq!(writes.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            std::fs::read(local.path().join("a.txt")).expect("read a.txt"),
+            b"local"
+        );
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|error| error.message.contains("local scan task failed")),
+            "{:?}",
+            report.errors
+        );
+        assert!(
+            report.errors.iter().all(|error| error.operation == "scan"),
+            "{:?}",
+            report.errors
+        );
     }
 }

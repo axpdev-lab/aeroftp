@@ -12936,6 +12936,14 @@ async fn walk_compare_remote_serially(
         // aggregates are kept correct on re-insert at the insert site.
         on_listed(remote_files.len(), remote_dirs_found, remote_bytes_found);
     }
+    // A cancel raised during the last listing has no loop iteration left to be
+    // seen in, and the rows it produced were asked for no longer.
+    if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err(format!(
+            "{}: compare cancelled by user before the remote tree was fully listed.",
+            crate::SCAN_INCOMPLETE_MARKER
+        ));
+    }
     Ok((remote_files, skipped_links))
 }
 
@@ -13045,6 +13053,28 @@ mod tests {
                 .any(|path| *path == "parent" || path.starts_with("parent/link")),
             "the compare offers nothing at or above the protected file: {offered:?}"
         );
+    }
+
+    /// A cancel that lands while the serial walk lists its last directory must
+    /// still end the compare: the listing itself completes, the loop has no
+    /// directory left to check the flag before, and the walk used to answer
+    /// with rows the user had asked it to stop producing.
+    #[tokio::test]
+    async fn compare_serial_walk_ends_on_a_cancel_during_its_last_listing() {
+        let (tree, cancel) =
+            crate::sync_core::scan::tests::tree_cancelled_on_its_last_listing(false);
+        let provider: Mutex<Option<Box<dyn StorageProvider>>> = Mutex::new(Some(Box::new(tree)));
+        let outcome = walk_compare_remote_serially(
+            &provider,
+            "/root",
+            &[],
+            &cancel,
+            &|| true,
+            &mut |_, _, _| {},
+        )
+        .await;
+        let error = outcome.expect_err("a cancelled walk must not answer with rows");
+        assert!(error.contains(crate::SCAN_INCOMPLETE_MARKER), "{error}");
     }
 
     /// Compare's serial remote walk, the one a single-session provider takes (an
