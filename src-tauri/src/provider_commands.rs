@@ -12986,8 +12986,9 @@ mod tests {
     /// A skipped link nested under a directory. Withdrawing the link's subtree
     /// alone left `parent` present on one side only, and a Mirror preset turned
     /// that row into a recursive delete that took `parent/link/x.txt` with it.
-    /// The directories above a bounded path are withdrawn on both sides too, so
-    /// the compare offers nothing at or above the protected file.
+    /// The directory rows above a bounded path are withdrawn on both sides too,
+    /// and nothing more: a normal file in the same directory keeps its row, so
+    /// the compare still offers it, one file at a time.
     #[test]
     fn compare_rows_withdraw_the_directories_above_a_skipped_link() {
         let mut local = HashMap::from([
@@ -12996,6 +12997,10 @@ mod tests {
             (
                 "parent/link/x.txt".to_string(),
                 compare_row("parent/link/x.txt", false),
+            ),
+            (
+                "parent/y.txt".to_string(),
+                compare_row("parent/y.txt", false),
             ),
             ("other.txt".to_string(), compare_row("other.txt", false)),
         ]);
@@ -13017,8 +13022,8 @@ mod tests {
         local_paths.sort();
         assert_eq!(
             local_paths,
-            vec!["other.txt"],
-            "neither the link's subtree nor a directory above it is a row"
+            vec!["other.txt", "parent/y.txt"],
+            "only the link's subtree and the directory row above it are withdrawn"
         );
         let comparisons = crate::sync::build_comparison_results_with_index(
             local,
@@ -13031,7 +13036,13 @@ mod tests {
             .map(|c| c.relative_path.as_str())
             .collect();
         assert!(
-            offered.iter().all(|path| !path.starts_with("parent")),
+            offered.contains(&"parent/y.txt"),
+            "the normal file next to the link stays actionable: {offered:?}"
+        );
+        assert!(
+            !offered
+                .iter()
+                .any(|path| *path == "parent" || path.starts_with("parent/link")),
             "the compare offers nothing at or above the protected file: {offered:?}"
         );
     }
