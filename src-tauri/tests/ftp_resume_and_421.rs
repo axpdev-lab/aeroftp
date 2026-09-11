@@ -175,6 +175,50 @@ async fn connected(port: u16) -> FtpProvider {
     provider
 }
 
+/// A resume whose `APPE` is never answered has to end by itself.
+///
+/// Every other data open on this provider is bounded; `resume_upload` reached
+/// the server through `append_file`, which opens and transfers in one call with
+/// no cap of its own, so this wait had no end. The assertion is that the call
+/// returns at all: the error it returns is the server's business, the hang is
+/// ours. The outer timeout is the test's own limit and is far above the
+/// provider's, so it only fires when nothing bounds the wait.
+#[tokio::test]
+async fn a_resume_whose_append_is_never_answered_gives_up() {
+    let server = start_fake_ftp(Script::SwallowAppe).await;
+    let mut provider = connected(server.port).await;
+
+    let local = std::env::temp_dir().join(format!("aeroftp-resume-{}.bin", std::process::id()));
+    std::fs::File::create(&local)
+        .unwrap()
+        .write_all(&vec![b'x'; 4096])
+        .unwrap();
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(90),
+        provider.resume_upload(local.to_str().unwrap(), "/resume.bin", 1024, None),
+    )
+    .await;
+    let _ = std::fs::remove_file(&local);
+
+    let ended = outcome.expect(
+        "the resume never came back: an APPE the server does not answer must be bounded like \
+         every other data open on this provider",
+    );
+    assert!(
+        ended.is_err(),
+        "a resume the server never answered must fail, not report success"
+    );
+    let commands = server.commands.lock().unwrap().clone();
+    assert!(
+        commands
+            .iter()
+            .any(|c| c.to_uppercase().starts_with("APPE")),
+        "the test drove the path it is about: {:?}",
+        commands
+    );
+}
+
 /// A refusal followed by a goodbye must not answer the next command.
 ///
 /// The server sends `550` and `421` in one write. The `550` answers the `RETR`;

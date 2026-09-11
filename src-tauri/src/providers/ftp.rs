@@ -1791,7 +1791,7 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        use tokio::io::AsyncSeekExt;
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
         let total_size = tokio::fs::metadata(local_path)
             .await
@@ -1815,8 +1815,66 @@ impl StorageProvider for FtpProvider {
         // No TYPE I here: connect() already put the session in binary mode
         // (the same invariant upload_single relies on).
 
+        // Open the data channel under the cap every other open on this provider
+        // already had. `append_file` did the open AND the whole transfer in one
+        // call, so there was nowhere for the cap to sit, and an `APPE` the
+        // server takes without answering waited for as long as the process
+        // lived: the one transfer entry point still unbounded. Same shape as
+        // `upload_single`, one verb apart.
+        let opened = match Self::open_with_cap(stream.append_with_stream(remote_path)).await {
+            Ok(opened) => opened,
+            Err(err) => return Err(self.refused_store(remote_path, err)),
+        };
+        let mut data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => {
+                return Err(self
+                    .after_timed_out_open("resuming the upload of", remote_path)
+                    .await)
+            }
+        };
+
+        let mut chunk = [0u8; 65536];
+        let mut sent = offset;
+        loop {
+            let n = file
+                .read(&mut chunk)
+                .await
+                .map_err(ProviderError::IoError)?;
+            if n == 0 {
+                break;
+            }
+            crate::transfer_dag::throttle::charge(
+                crate::transfer_dag::governor::TransferDirection::Upload,
+                n as u64,
+            )
+            .await;
+            data_stream
+                .write_all(&chunk[..n])
+                .await
+                .map_err(|e| ProviderError::TransferFailed(format!("Data write error: {}", e)))?;
+            sent += n as u64;
+            if let Some(ref progress) = on_progress {
+                progress(sent, total_size);
+            }
+        }
+
+        data_stream
+            .flush()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
+        // The same end-of-data signal as `upload_single`: our close, then the
+        // server's, bounded so a server that never closes cannot hang the resume
+        // where it can no longer hang the upload.
+        data_stream
+            .shutdown()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Data close error: {}", e)))?;
+        let _ = tokio::time::timeout(DATA_DRAIN_BUDGET, drain_to_eof(&mut data_stream)).await;
+
+        let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
         stream
-            .append_file(remote_path, &mut file)
+            .finalize_put_stream(AlreadyShutDown(data_stream))
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
