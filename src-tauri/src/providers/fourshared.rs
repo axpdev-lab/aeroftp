@@ -462,7 +462,7 @@ impl FourSharedProvider {
                     status,
                     &body[..body.len().min(200)]
                 );
-                return Err(ProviderError::NotFound(format!("Path not found: {}", path)));
+                return Err(ProviderError::NotFound(path.to_string()));
             }
 
             let body = resp
