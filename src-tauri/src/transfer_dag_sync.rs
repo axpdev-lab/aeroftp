@@ -1029,7 +1029,8 @@ pub async fn execute_sync_dag(
         let scan_opts = scan.clone();
         tokio::task::spawn_blocking(move || scan_local_tree_checked(&root, &scan_opts))
     };
-    let (remotes, remote_scan) = scan_remote_tree_checked(provider, remote_root, &scan).await;
+    let (mut remotes, remote_scan, remote_links) =
+        scan_remote_tree_checked(provider, remote_root, &scan).await;
     // `scan_local_tree_checked` itself returns a `Vec` (best-effort, mirroring
     // `scan_remote_tree`), so the only way the join returns `Err` is a panic
     // inside the blocking thread. `.unwrap_or_default()` would silently turn
@@ -1040,7 +1041,7 @@ pub async fn execute_sync_dag(
     // keep `locals` empty so the remote-only side of the run still proceeds.
     // A panicked scan is treated as maximally incomplete so the orphan-delete
     // guard below refuses (CLAUDE-AV-B3-01).
-    let (locals, local_scan, local_scan_panic) = match local_handle.await {
+    let (mut locals, local_scan, local_scan_panic) = match local_handle.await {
         Ok((entries, completeness)) => (entries, completeness, None),
         Err(join_err) => {
             eprintln!("[execute_sync_dag] local scan task failed: {}", join_err);
@@ -1054,6 +1055,9 @@ pub async fn execute_sync_dag(
             )
         }
     };
+    // What a skipped link hides stays out of the plan on both sides, so the
+    // orphan pass cannot read it as deleted (see `LinkBound`).
+    crate::sync_core::LinkBound::apply(local_root, &mut locals, &mut remotes, remote_links);
 
     // Phase 2: Planning. Decisions read only the pre-transfer scan
     // snapshots, so resolving the whole plan up front is decision-equivalent
@@ -2516,5 +2520,141 @@ mod tests {
         assert_eq!(report.skipped, 8, "one planned download per directory");
         assert_eq!(sink.done.len(), 8, "every planned file reached the sink");
         assert_eq!(delivered, 8, "--checkers 8 must list 8 directories at once");
+    }
+
+    /// `a.txt` at the root, present on both sides, and `link`, a directory
+    /// the provider lists at the root. Under the link's own path the tree
+    /// holds what SFTP answers for it: the entries of its target.
+    fn tree_with_a_link_dir(
+        link_is_symlink: bool,
+    ) -> crate::sync_core::scan::tests::PoolTreeProvider {
+        use crate::providers::RemoteEntry;
+        let mut link = RemoteEntry::directory("link".to_string(), "/root/link".to_string());
+        if link_is_symlink {
+            link.is_symlink = true;
+            link.link_target = Some("real".to_string());
+        }
+        let mut tree = crate::sync_core::scan::tests::PoolTreeProvider::fan(1, 1);
+        tree.dirs = std::collections::HashMap::from([
+            (
+                "/root".to_string(),
+                vec![
+                    RemoteEntry::file("a.txt".to_string(), "/root/a.txt".to_string(), 1),
+                    link,
+                ],
+            ),
+            (
+                "/root/link".to_string(),
+                vec![RemoteEntry::file(
+                    "x.txt".to_string(),
+                    "/root/link/x.txt".to_string(),
+                    1,
+                )],
+            ),
+        ]);
+        tree
+    }
+
+    /// A local tree with `a.txt` and a real directory `link` holding `x.txt`:
+    /// what an earlier walk that descended into the remote link left on disk.
+    fn local_tree_with_a_real_link_dir() -> tempfile::TempDir {
+        let local = tempfile::tempdir().expect("tempdir");
+        std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
+        std::fs::create_dir(local.path().join("link")).expect("create link/");
+        std::fs::write(local.path().join("link/x.txt"), b"x").expect("write link/x.txt");
+        local
+    }
+
+    /// The walker does not descend into a symlinked directory (GAP-A02), so
+    /// the link's subtree is absent from the remote scan. A download with
+    /// orphan deletes must not read the local files at that path as deleted
+    /// on the remote: they are still there, behind the link.
+    #[tokio::test]
+    async fn sync_download_delete_plans_nothing_under_a_remote_symlinked_dir() {
+        let mut provider: Box<dyn StorageProvider> = Box::new(tree_with_a_link_dir(true));
+        let local = local_tree_with_a_real_link_dir();
+        let mut options = opts(SyncDirection::Download);
+        options.dry_run = true;
+        options.delete_orphans = true;
+        let mut sink = TestSyncSink::default();
+        let report = crate::sync::sync_tree_core(
+            &mut provider,
+            local.path().to_str().unwrap(),
+            "/root",
+            &options,
+            &mut sink,
+        )
+        .await;
+        assert!(
+            report.errors.is_empty(),
+            "the dry run must finish clean: {:?}",
+            report.errors
+        );
+        assert!(
+            !sink.starts.iter().any(|rel| rel.starts_with("link/")),
+            "nothing under the skipped link may be planned: {:?}",
+            sink.starts
+        );
+    }
+
+    /// The same case on a real run, which takes the DAG route: the local file
+    /// under the skipped link is still on disk afterwards.
+    #[tokio::test]
+    async fn sync_dag_download_delete_keeps_local_files_under_a_remote_symlinked_dir() {
+        let mut provider: Box<dyn StorageProvider> = Box::new(tree_with_a_link_dir(true));
+        let local = local_tree_with_a_real_link_dir();
+        let mut options = opts(SyncDirection::Download);
+        options.delete_orphans = true;
+        let mut sink = TestSyncSink::default();
+        let report = crate::sync::sync_tree_core(
+            &mut provider,
+            local.path().to_str().unwrap(),
+            "/root",
+            &options,
+            &mut sink,
+        )
+        .await;
+        assert!(
+            local.path().join("link/x.txt").exists(),
+            "the local file under the skipped link was deleted (errors: {:?})",
+            report.errors
+        );
+        assert_eq!(report.deleted, 0);
+    }
+
+    /// The mirror case on the local side: the local walk does not follow a
+    /// symlinked directory either, so an upload with orphan deletes must not
+    /// read the remote files at the link's path as deleted locally.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn sync_upload_delete_plans_nothing_under_a_local_symlinked_dir() {
+        let mut provider: Box<dyn StorageProvider> = Box::new(tree_with_a_link_dir(false));
+        let local = tempfile::tempdir().expect("tempdir");
+        std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
+        std::fs::create_dir(local.path().join("real")).expect("create real/");
+        std::fs::write(local.path().join("real/x.txt"), b"x").expect("write real/x.txt");
+        std::os::unix::fs::symlink("real", local.path().join("link")).expect("link -> real");
+        let mut options = opts(SyncDirection::Upload);
+        options.dry_run = true;
+        options.delete_orphans = true;
+        let mut sink = TestSyncSink::default();
+        let report = crate::sync::sync_tree_core(
+            &mut provider,
+            local.path().to_str().unwrap(),
+            "/root",
+            &options,
+            &mut sink,
+        )
+        .await;
+        assert!(
+            report.errors.is_empty(),
+            "the dry run must finish clean: {:?}",
+            report.errors
+        );
+        assert!(
+            !sink.starts.iter().any(|rel| rel.starts_with("link/")),
+            "nothing under the skipped local link may be planned: {:?}",
+            sink.starts
+        );
     }
 }

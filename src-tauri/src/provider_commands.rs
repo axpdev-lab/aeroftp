@@ -6863,7 +6863,7 @@ pub async fn provider_compare_directories(
     // Get local files (reuse the same logic from lib.rs).
     // Pass the AppHandle so the scan emits throttled progress events -
     // otherwise large trees (e.g. a home directory) look like a stall.
-    let (local_files, local_scan) = crate::get_local_files_recursive_checked(
+    let (mut local_files, local_scan) = crate::get_local_files_recursive_checked(
         &local_path,
         &local_path,
         &options.exclude_patterns,
@@ -6916,6 +6916,10 @@ pub async fn provider_compare_directories(
     // the post-scan flag mis-classified the whole map.
     let overlay_wrapped_at_scan_start = state.overlay_wrapped.load(Ordering::SeqCst);
 
+    // Links the remote walk listed and did not follow; only the shared walker
+    // below reports them (the legacy walk runs on providers that cannot list a
+    // link as a directory).
+    let mut remote_links = Vec::new();
     let list_model = resolve_provider_list_session_model(&state.provider, 8).await;
     if list_model.is_clone_pool() {
         use crate::sync_core::scan::{scan_remote_tree_with_provider_lock_checked, ScanOptions};
@@ -6938,15 +6942,17 @@ pub async fn provider_compare_directories(
             progress_id: progress_id.clone(),
             base_count: local_files.len(),
         };
-        let (remote_entries, remote_scan) = scan_remote_tree_with_provider_lock_checked(
-            state.provider.clone(),
-            &remote_path,
-            &scan_options,
-            &list_model,
-            Some(state.cancel_flag.clone()),
-            Some(&scan_observer),
-        )
-        .await;
+        let (remote_entries, remote_scan, skipped_links) =
+            scan_remote_tree_with_provider_lock_checked(
+                state.provider.clone(),
+                &remote_path,
+                &scan_options,
+                &list_model,
+                Some(state.cancel_flag.clone()),
+                Some(&scan_observer),
+            )
+            .await;
+        remote_links = skipped_links;
 
         // CLAUDE-AV-B3-13: a directory the provider refused to list contributes
         // no rows, which is indistinguishable from the user having deleted its
@@ -7188,6 +7194,23 @@ pub async fn provider_compare_directories(
                 crate::SCAN_INCOMPLETE_MARKER
             ));
         }
+    }
+
+    // What a skipped link hides stays out of the compare on both sides. The
+    // remote walk does not follow a link to a directory and the local walk
+    // skips every link, so the other side's files at that path would show as
+    // rows present on one side only, which a Mirror or Pull preset turns into
+    // deletes (see `LinkBound`). Under an unwrapped crypt overlay the remote
+    // link paths are still ciphertext here and cannot match plaintext rows.
+    let link_bound = crate::sync_core::LinkBound::for_sync(
+        &local_path,
+        local_files.keys().map(String::as_str),
+        remote_files.keys().map(String::as_str),
+        remote_links,
+    );
+    if !link_bound.is_empty() {
+        local_files.retain(|path, _| !link_bound.covers(path));
+        remote_files.retain(|path, _| !link_bound.covers(path));
     }
 
     // The remote scan above ran through `state.provider`, which IS the crypt

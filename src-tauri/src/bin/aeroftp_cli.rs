@@ -8393,7 +8393,7 @@ async fn scan_remote_tree_with_progress(
         .unwrap_or(ftp_client_gui_lib::sync_core::scan::DEFAULT_SCAN_CHECKERS)
         .max(1);
     let list_model = resolve_provider_list_session_model(&holder, checkers).await;
-    let (results, completeness) = scan_remote_tree_with_provider_lock_checked(
+    let (results, completeness, _) = scan_remote_tree_with_provider_lock_checked(
         Arc::clone(&holder),
         remote_root,
         opts,

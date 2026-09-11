@@ -12,7 +12,7 @@ use crate::transfer_dag::{
     TransferSessionPoolHandle,
 };
 use sha2::Digest;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -119,8 +119,8 @@ fn rel_from_abs(abs_path: &str, root: &str) -> Option<String> {
 /// GAP-9f: convert a provider-native flat recursive listing
 /// (`provider_list_recursive_fastpath`) into the scan's `RemoteEntry` rows,
 /// applying the same exclude / skip / files_from / cap filters the BFS path
-/// applies. Directories and symlinks are dropped (the scan result is
-/// files-only, exactly like the BFS).
+/// applies. Directories are dropped (the scan result is files-only, exactly
+/// like the BFS) and symlinks are returned as skipped links.
 ///
 /// Returns `None` when any file entry's path cannot be made relative to
 /// `root`: that means the flat listing and the root disagree, so the BFS is
@@ -129,12 +129,24 @@ fn adapt_fastpath_entries(
     entries: Vec<crate::providers::RemoteEntry>,
     root: &str,
     opts: &ScanOptions,
-) -> Option<Vec<RemoteEntry>> {
+) -> Option<(Vec<RemoteEntry>, Vec<SkippedLink>)> {
     let matchers = compile_matchers(&opts.exclude_patterns);
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let mut results = Vec::new();
+    let mut skipped_links = Vec::new();
     for entry in entries {
-        if entry.is_dir || entry.is_symlink {
+        if entry.is_symlink {
+            // Listed and not followed, as the BFS treats a link to a directory,
+            // and reported so a sync leaves the link's path alone.
+            if let Some(rel) = rel_from_abs(&entry.path, root).filter(|rel| !rel.is_empty()) {
+                skipped_links.push(SkippedLink {
+                    rel_path: rel,
+                    link_target: entry.link_target.clone(),
+                });
+            }
+            continue;
+        }
+        if entry.is_dir {
             continue;
         }
         let rel = match rel_from_abs(&entry.path, root) {
@@ -183,7 +195,7 @@ fn adapt_fastpath_entries(
             break;
         }
     }
-    Some(results)
+    Some((results, skipped_links))
 }
 
 /// GAP-9f: attempt the provider-native single-shot recursive listing for the
@@ -195,7 +207,7 @@ async fn try_recursive_fastpath(
     provider: &mut Box<dyn StorageProvider>,
     remote_root: &str,
     opts: &ScanOptions,
-) -> Option<Vec<RemoteEntry>> {
+) -> Option<(Vec<RemoteEntry>, Vec<SkippedLink>)> {
     let listing = crate::used_scan::provider_list_recursive_fastpath(provider, remote_root).await?;
     if !listing.structured_paths {
         return None;
@@ -223,6 +235,153 @@ impl ScanCompleteness {
     /// The scan saw the whole tree: no listing errors and no cap truncation.
     pub fn is_complete(&self) -> bool {
         self.list_errors == 0 && !self.truncated
+    }
+}
+
+/// A symbolic link a scan listed and did not follow.
+///
+/// No walker follows a link to a directory (GAP-A02): syncing through one
+/// would copy the target's tree under another name, and a link to `..` never
+/// terminates. Whatever sits behind a link is therefore absent from that
+/// side's scan, which is not the same as deleted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkippedLink {
+    /// The link itself, relative to the scan root.
+    pub rel_path: String,
+    /// What the link points to, when it could be read.
+    pub link_target: Option<String>,
+}
+
+/// The part of a sync a skipped link hides: the link and everything under
+/// it, left alone on both sides.
+///
+/// One side's scan does not follow the link, so the other side's files at the
+/// same path read as present on that side only. A download with orphan deletes
+/// then deletes the local copies of files still on the remote behind the link,
+/// an upload deletes the remote files behind a local link, and a bidirectional
+/// run copies files through the link into its target. The scan has the facts
+/// for none of those decisions, so the run stays out of that subtree.
+#[derive(Debug, Default)]
+pub struct LinkBound {
+    links: Vec<SkippedLink>,
+    paths: HashSet<String>,
+}
+
+/// What a local path prefix is on disk, cached by [`LinkBound::for_sync`].
+#[derive(Clone, Copy)]
+enum LocalPrefix {
+    Link,
+    Present,
+    Absent,
+}
+
+impl LinkBound {
+    /// Bound a sync by the links the remote scan skipped and by the local
+    /// links above any path only the remote holds.
+    ///
+    /// Local walkers skip links too, but they are not asked to report them. A
+    /// local link matters only where the remote holds something under it, and
+    /// every such path is absent from the local entries, so checking the
+    /// ancestors of those paths on disk finds exactly the links that would be
+    /// misread, whichever walker (or watch cycle) produced the local list.
+    pub fn for_sync<'a>(
+        local_root: &str,
+        local_paths: impl IntoIterator<Item = &'a str>,
+        remote_paths: impl IntoIterator<Item = &'a str>,
+        remote_links: Vec<SkippedLink>,
+    ) -> Self {
+        let mut bound = Self::default();
+        for link in remote_links {
+            bound.add(link);
+        }
+        let local: HashSet<&str> = local_paths.into_iter().collect();
+        let root = Path::new(local_root);
+        let mut on_disk: HashMap<String, LocalPrefix> = HashMap::new();
+        for rel in remote_paths {
+            if local.contains(rel) || bound.covers(rel) {
+                continue;
+            }
+            let prefix_ends = rel
+                .match_indices('/')
+                .map(|(end, _)| end)
+                .chain(std::iter::once(rel.len()));
+            for end in prefix_ends {
+                let prefix = &rel[..end];
+                let state = match on_disk.get(prefix) {
+                    Some(state) => *state,
+                    None => {
+                        let path = root.join(prefix);
+                        let state = match std::fs::symlink_metadata(&path) {
+                            Ok(meta) if meta.file_type().is_symlink() => {
+                                bound.add(SkippedLink {
+                                    rel_path: prefix.to_string(),
+                                    link_target: std::fs::read_link(&path)
+                                        .ok()
+                                        .map(|target| target.to_string_lossy().into_owned()),
+                                });
+                                LocalPrefix::Link
+                            }
+                            Ok(_) => LocalPrefix::Present,
+                            Err(_) => LocalPrefix::Absent,
+                        };
+                        on_disk.insert(prefix.to_string(), state);
+                        state
+                    }
+                };
+                if !matches!(state, LocalPrefix::Present) {
+                    break;
+                }
+            }
+        }
+        bound
+    }
+
+    /// [`LinkBound::for_sync`] over the entries of a sync scan, applied to
+    /// them: every entry the bound covers is dropped on both sides.
+    pub fn apply(
+        local_root: &str,
+        locals: &mut Vec<LocalEntry>,
+        remotes: &mut Vec<RemoteEntry>,
+        remote_links: Vec<SkippedLink>,
+    ) -> Self {
+        let bound = Self::for_sync(
+            local_root,
+            locals.iter().map(|entry| entry.rel_path.as_str()),
+            remotes.iter().map(|entry| entry.rel_path.as_str()),
+            remote_links,
+        );
+        if !bound.is_empty() {
+            locals.retain(|entry| !bound.covers(&entry.rel_path));
+            remotes.retain(|entry| !bound.covers(&entry.rel_path));
+        }
+        bound
+    }
+
+    /// Whether `rel` is a skipped link or sits under one.
+    pub fn covers(&self, rel: &str) -> bool {
+        if self.paths.is_empty() {
+            return false;
+        }
+        self.paths.contains(rel)
+            || rel
+                .match_indices('/')
+                .any(|(end, _)| self.paths.contains(&rel[..end]))
+    }
+
+    /// No link bounds the run.
+    pub fn is_empty(&self) -> bool {
+        self.links.is_empty()
+    }
+
+    /// The links the bound was built from, remote first, in the order found.
+    pub fn links(&self) -> &[SkippedLink] {
+        &self.links
+    }
+
+    fn add(&mut self, link: SkippedLink) {
+        if self.paths.insert(link.rel_path.clone()) {
+            self.links.push(link);
+        }
     }
 }
 
@@ -347,11 +506,14 @@ pub const DEFAULT_SCAN_CHECKERS: usize = 8;
 /// rclone in the scan alone. The caller's provider is parked behind a
 /// fail-closed placeholder while the pool owns it and handed back before this
 /// returns.
+///
+/// The third element lists the links the walk listed and did not follow; see
+/// [`LinkBound`] for what a sync does with them.
 pub async fn scan_remote_tree_checked(
     provider: &mut Box<dyn StorageProvider>,
     remote_root: &str,
     opts: &ScanOptions,
-) -> (Vec<RemoteEntry>, ScanCompleteness) {
+) -> (Vec<RemoteEntry>, ScanCompleteness, Vec<SkippedLink>) {
     let parked: Box<dyn StorageProvider> =
         Box::new(crate::crypt_overlay_provider::DetachedProvider);
     let real = std::mem::replace(provider, parked);
@@ -392,7 +554,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     list_model: &ProviderListSessionModel,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
-) -> (Vec<RemoteEntry>, ScanCompleteness) {
+) -> (Vec<RemoteEntry>, ScanCompleteness, Vec<SkippedLink>) {
     let mut completeness = ScanCompleteness::default();
 
     // GAP-9f: provider-native single-shot recursive listing fast-path,
@@ -408,7 +570,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                 None => None,
             }
         };
-        if let Some(results) = fast {
+        if let Some((results, skipped_links)) = fast {
             if let Some(obs) = observer {
                 obs.on_scan_progress(results.len(), 0);
             }
@@ -420,7 +582,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
             if results.len() >= opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES) {
                 completeness.truncated = true;
             }
-            return (results, completeness);
+            return (results, completeness, skipped_links);
         }
     }
 
@@ -452,6 +614,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     };
 
     let mut results = Vec::new();
+    let mut skipped_links = Vec::new();
     let mut queue = VecDeque::from([RemoteScanDir {
         abs_dir: remote_root.to_string(),
         rel_prefix: String::new(),
@@ -502,6 +665,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
         match join_set.join_next().await {
             Some(Ok(Ok(batch))) => {
                 in_flight = in_flight.saturating_sub(1);
+                skipped_links.extend(batch.skipped_links);
                 for file in batch.files {
                     if results.len() >= cap {
                         completeness.truncated = true;
@@ -550,7 +714,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     if let Some(obs) = observer {
         obs.on_scan_progress(results.len(), 0);
     }
-    (results, completeness)
+    (results, completeness, skipped_links)
 }
 
 async fn scan_remote_tree_locked(
@@ -560,7 +724,7 @@ async fn scan_remote_tree_locked(
     list_model: &ProviderListSessionModel,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
-) -> (Vec<RemoteEntry>, ScanCompleteness) {
+) -> (Vec<RemoteEntry>, ScanCompleteness, Vec<SkippedLink>) {
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let want_remote_checksum = {
@@ -573,6 +737,7 @@ async fn scan_remote_tree_locked(
     };
 
     let mut results = Vec::new();
+    let mut skipped_links = Vec::new();
     let mut completeness = ScanCompleteness::default();
     let resource_manager = TransferResourceManager::new(TransferBudget {
         checker_slots: 1,
@@ -621,6 +786,7 @@ async fn scan_remote_tree_locked(
 
         match batch {
             Ok(batch) => {
+                skipped_links.extend(batch.skipped_links);
                 for file in batch.files {
                     if results.len() >= cap {
                         completeness.truncated = true;
@@ -653,7 +819,7 @@ async fn scan_remote_tree_locked(
     if let Some(obs) = observer {
         obs.on_scan_progress(results.len(), 0);
     }
-    (results, completeness)
+    (results, completeness, skipped_links)
 }
 
 #[derive(Debug, Clone)]
@@ -666,6 +832,7 @@ struct RemoteScanDir {
 struct RemoteScanBatch {
     files: Vec<RemoteEntry>,
     dirs: Vec<RemoteScanDir>,
+    skipped_links: Vec<SkippedLink>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -694,6 +861,7 @@ fn spawn_remote_scan_task(
             return Ok(RemoteScanBatch {
                 files: Vec::new(),
                 dirs: Vec::new(),
+                skipped_links: Vec::new(),
             });
         }
         let mut worker = match warm_workers.take().await {
@@ -766,6 +934,7 @@ async fn scan_remote_dir(
     let entries = list_with_transport_retry(provider, &dir.abs_dir).await?;
     let mut files = Vec::new();
     let mut dirs = Vec::new();
+    let mut skipped_links = Vec::new();
 
     for entry in entries {
         if scan_cancelled(cancel) {
@@ -802,6 +971,13 @@ async fn scan_remote_dir(
                     rel_prefix: entry_rel,
                     depth: dir.depth + 1,
                 });
+            } else {
+                // Reported, so a sync leaves the link's path alone on both
+                // sides instead of reading the absence behind it as a delete.
+                skipped_links.push(SkippedLink {
+                    rel_path: entry_rel,
+                    link_target: entry.link_target.clone(),
+                });
             }
             continue;
         }
@@ -833,7 +1009,11 @@ async fn scan_remote_dir(
         });
     }
 
-    Ok(RemoteScanBatch { files, dirs })
+    Ok(RemoteScanBatch {
+        files,
+        dirs,
+        skipped_links,
+    })
 }
 
 /// Run `provider.list(dir)` with one automatic reconnect on transport-level
@@ -987,7 +1167,7 @@ pub(crate) mod tests {
             provider_type: None,
         };
 
-        let (entries, scan) = scan_remote_tree_with_provider_lock_checked(
+        let (entries, scan, _) = scan_remote_tree_with_provider_lock_checked(
             provider,
             "/remote",
             &ScanOptions::default(),
@@ -1027,7 +1207,7 @@ pub(crate) mod tests {
             max_leases: 2,
         };
 
-        let (entries, scan) = scan_remote_tree_with_provider_lock_checked(
+        let (entries, scan, _) = scan_remote_tree_with_provider_lock_checked(
             provider,
             "/remote",
             &ScanOptions::default(),
@@ -1050,7 +1230,7 @@ pub(crate) mod tests {
         };
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
-        let (_entries, scan) = scan_remote_tree_with_provider_lock_checked(
+        let (_entries, scan, _) = scan_remote_tree_with_provider_lock_checked(
             provider,
             "/remote",
             &ScanOptions::default(),
@@ -1171,7 +1351,7 @@ pub(crate) mod tests {
             provider_file("c.txt", "/root/a/b/c.txt", 20),
             ProviderEntry::directory("a".to_string(), "/root/a".to_string()),
         ];
-        let rows = adapt_fastpath_entries(entries, "/root", &ScanOptions::default()).unwrap();
+        let (rows, _) = adapt_fastpath_entries(entries, "/root", &ScanOptions::default()).unwrap();
         let mut paths: Vec<String> = rows.iter().map(|r| r.rel_path.clone()).collect();
         paths.sort();
         // The directory entry is dropped; both files keep their nesting.
@@ -1185,7 +1365,7 @@ pub(crate) mod tests {
             provider_file("skip.tmp", "/root/skip.tmp", 1),
             provider_file("nested.txt", "/root/sub/nested.txt", 1),
         ];
-        let excluded = adapt_fastpath_entries(
+        let (excluded, _) = adapt_fastpath_entries(
             entries.clone(),
             "/root",
             &ScanOptions {
@@ -1198,7 +1378,7 @@ pub(crate) mod tests {
 
         let mut files_from = HashSet::new();
         files_from.insert("sub/nested.txt".to_string());
-        let filtered = adapt_fastpath_entries(
+        let (filtered, _) = adapt_fastpath_entries(
             entries.clone(),
             "/root",
             &ScanOptions {
@@ -1210,7 +1390,7 @@ pub(crate) mod tests {
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].rel_path, "sub/nested.txt");
 
-        let capped = adapt_fastpath_entries(
+        let (capped, _) = adapt_fastpath_entries(
             entries,
             "/root",
             &ScanOptions {
@@ -1237,7 +1417,8 @@ pub(crate) mod tests {
     fn adapt_fastpath_entries_drops_symlinks() {
         let mut link = provider_file("link.txt", "/root/link.txt", 0);
         link.is_symlink = true;
-        let rows = adapt_fastpath_entries(
+        link.link_target = Some("target.txt".to_string());
+        let (rows, links) = adapt_fastpath_entries(
             vec![link, provider_file("real.txt", "/root/real.txt", 5)],
             "/root",
             &ScanOptions::default(),
@@ -1245,6 +1426,14 @@ pub(crate) mod tests {
         .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].rel_path, "real.txt");
+        // Dropped from the rows, but reported, so a sync can leave it alone.
+        assert_eq!(
+            links,
+            vec![SkippedLink {
+                rel_path: "link.txt".to_string(),
+                link_target: Some("target.txt".to_string()),
+            }]
+        );
     }
 
     /// An in-memory tree for walking tests: `list` answers from a map, every
@@ -1378,7 +1567,7 @@ pub(crate) mod tests {
             disable_recursive_fastpath: true,
             ..ScanOptions::default()
         };
-        let (rows, completeness) = tokio::time::timeout(
+        let (rows, completeness, links) = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             scan_remote_tree_checked(&mut provider, "/root", &opts),
         )
@@ -1388,6 +1577,100 @@ pub(crate) mod tests {
         paths.sort();
         assert_eq!(paths, vec!["a.txt", "sub/b.txt"]);
         assert!(completeness.is_complete());
+        // Not walked, and reported, so a sync leaves its path alone.
+        assert_eq!(
+            links,
+            vec![SkippedLink {
+                rel_path: "loop".to_string(),
+                link_target: None,
+            }]
+        );
+    }
+
+    fn link(rel: &str) -> SkippedLink {
+        SkippedLink {
+            rel_path: rel.to_string(),
+            link_target: None,
+        }
+    }
+
+    /// The bound is the link and everything under it, by path component: a
+    /// sibling that merely starts with the same characters is not under it.
+    #[test]
+    fn link_bound_covers_the_link_and_its_subtree_and_nothing_else() {
+        let bound = LinkBound::for_sync(
+            "/nonexistent-local-root",
+            std::iter::empty(),
+            std::iter::empty(),
+            vec![link("a/link")],
+        );
+        assert!(bound.covers("a/link"));
+        assert!(bound.covers("a/link/x.txt"));
+        assert!(bound.covers("a/link/deep/y.txt"));
+        assert!(!bound.covers("a/link2/x.txt"));
+        assert!(!bound.covers("a/linkx.txt"));
+        assert!(!bound.covers("a"));
+        assert!(!bound.covers("b/a/link/x.txt"));
+    }
+
+    /// The local side of the bound: a path only the remote holds, sitting under
+    /// a local symlink the local walk skipped, reveals that link on disk. A
+    /// remote-only path with no link above it adds nothing.
+    #[cfg(unix)]
+    #[test]
+    fn link_bound_finds_a_local_link_above_a_path_only_the_remote_holds() {
+        let local = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(local.path().join("real")).unwrap();
+        std::fs::write(local.path().join("real/x.txt"), b"x").unwrap();
+        std::os::unix::fs::symlink("real", local.path().join("link")).unwrap();
+        let bound = LinkBound::for_sync(
+            local.path().to_str().unwrap(),
+            ["real/x.txt"],
+            ["real/x.txt", "link/x.txt", "other/y.txt"],
+            Vec::new(),
+        );
+        assert_eq!(
+            bound.links(),
+            &[SkippedLink {
+                rel_path: "link".to_string(),
+                link_target: Some("real".to_string()),
+            }]
+        );
+        assert!(bound.covers("link/x.txt"));
+        assert!(!bound.covers("real/x.txt"));
+        assert!(!bound.covers("other/y.txt"));
+    }
+
+    /// Applied to a sync scan, the bound drops what it covers on both sides and
+    /// leaves every other entry alone.
+    #[test]
+    fn link_bound_apply_drops_covered_entries_on_both_sides() {
+        let local_entry = |rel: &str| LocalEntry {
+            rel_path: rel.to_string(),
+            size: 1,
+            mtime: None,
+            sha256: None,
+        };
+        let remote_entry = |rel: &str| RemoteEntry {
+            rel_path: rel.to_string(),
+            size: 1,
+            mtime: None,
+            checksum_alg: None,
+            checksum_hex: None,
+        };
+        let mut locals = vec![local_entry("a.txt"), local_entry("link/x.txt")];
+        let mut remotes = vec![remote_entry("a.txt"), remote_entry("link")];
+        let bound = LinkBound::apply(
+            "/nonexistent-local-root",
+            &mut locals,
+            &mut remotes,
+            vec![link("link")],
+        );
+        assert_eq!(bound.links().len(), 1);
+        let local_paths: Vec<_> = locals.iter().map(|e| e.rel_path.as_str()).collect();
+        let remote_paths: Vec<_> = remotes.iter().map(|e| e.rel_path.as_str()).collect();
+        assert_eq!(local_paths, vec!["a.txt"]);
+        assert_eq!(remote_paths, vec!["a.txt"]);
     }
 
     /// An in-memory tree that lists on independent clones and counts how many
@@ -1589,7 +1872,7 @@ pub(crate) mod tests {
             disable_recursive_fastpath: true,
             ..ScanOptions::default()
         };
-        let (rows, completeness) = tokio::time::timeout(
+        let (rows, completeness, _) = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             scan_remote_tree_checked(&mut provider, "/root", &opts),
         )
@@ -1621,7 +1904,7 @@ pub(crate) mod tests {
         )
         .await;
         let delivered = peak.load(std::sync::atomic::Ordering::SeqCst);
-        let (rows, completeness) = outcome.unwrap_or_else(|_| {
+        let (rows, completeness, _) = outcome.unwrap_or_else(|_| {
             panic!("the walk listed at most {delivered} directories at once, 8 requested")
         });
         assert_eq!(rows.len(), 8);

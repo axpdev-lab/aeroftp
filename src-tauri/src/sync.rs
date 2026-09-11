@@ -1315,7 +1315,7 @@ pub async fn sync_tree_core(
     let start = std::time::Instant::now();
     sink.on_phase(SyncPhase::Scanning);
     let scan = scan_options_for_sync(opts);
-    let (locals, local_scan) = scan_local_tree_checked(local_root, &scan);
+    let (mut locals, local_scan) = scan_local_tree_checked(local_root, &scan);
 
     if !opts.dry_run
         && !locals.is_empty()
@@ -1324,7 +1324,11 @@ pub async fn sync_tree_core(
         ensure_remote_dir(provider, remote_root).await;
     }
 
-    let (remotes, remote_scan) = scan_remote_tree_checked(provider, remote_root, &scan).await;
+    let (mut remotes, remote_scan, remote_links) =
+        scan_remote_tree_checked(provider, remote_root, &scan).await;
+    // What a skipped link hides stays out of the run on both sides, so no pass
+    // below reads it as deleted or as missing (see `LinkBound`).
+    crate::sync_core::LinkBound::apply(local_root, &mut locals, &mut remotes, remote_links);
 
     sink.on_phase(SyncPhase::Planning);
     let mut report = SyncReport {
