@@ -133,7 +133,6 @@ if require_or_skip "AppImage" "$APPIMAGE"; then
   chmod +x "$APPIMAGE" || true
   offset="$("$APPIMAGE" --appimage-offset)"
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
   unsquashfs -d "$tmp/root" -o "$offset" "$APPIMAGE" >/dev/null
   inner="$tmp/root/usr/lib/aeroftp/aeroftp-cli"
   if [ ! -f "$inner" ]; then
@@ -146,7 +145,6 @@ if require_or_skip "AppImage" "$APPIMAGE"; then
   else
     echo "OK: AppImage does not bundle libacl.so*"
   fi
-  trap - RETURN
   rm -rf "$tmp"
 fi
 
