@@ -1626,7 +1626,8 @@ enum Commands {
         /// Remote file path
         #[arg(default_value = "")]
         path: String,
-        /// Download and hash locally
+        /// Download the file and hash it locally, even when the backend
+        /// has a server-side digest
         #[arg(long)]
         download: bool,
     },
@@ -56004,10 +56005,85 @@ async fn cmd_touch(
     }
 }
 
+#[derive(Debug)]
+enum HashsumDigestError {
+    ServerOnly,
+    Provider(ProviderError),
+}
+
+impl From<ProviderError> for HashsumDigestError {
+    fn from(e: ProviderError) -> Self {
+        HashsumDigestError::Provider(e)
+    }
+}
+
+fn hash_local_bytes(algorithm: HashAlgorithm, data: &[u8]) -> String {
+    match algorithm {
+        HashAlgorithm::Md5 => {
+            use md5::Digest;
+            format!("{:x}", md5::Md5::digest(data))
+        }
+        HashAlgorithm::Sha1 => {
+            use sha1::Digest;
+            format!("{:x}", sha1::Sha1::digest(data))
+        }
+        HashAlgorithm::Sha256 => {
+            use sha2::Digest;
+            format!("{:x}", sha2::Sha256::digest(data))
+        }
+        HashAlgorithm::Sha512 => {
+            use sha2::Digest;
+            format!("{:x}", sha2::Sha512::digest(data))
+        }
+        HashAlgorithm::Blake3 => blake3::hash(data).to_hex().to_string(),
+        HashAlgorithm::Quickxor | HashAlgorithm::Dropbox => {
+            unreachable!("server-only hashes return before download")
+        }
+    }
+}
+
+/// Digest a remote file for `hashsum`.
+///
+/// Without `download`, a server-side digest for the requested algorithm is
+/// used when the backend supplies one. With `download`, the file is
+/// transferred and hashed locally even if the server has a digest.
+/// `sha512`/`blake3` and backends without the requested digest still fall
+/// through to download-and-digest. Proprietary algorithms (quickxor/dropbox)
+/// have no local fallback.
+async fn hashsum_digest(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    algorithm: HashAlgorithm,
+    download: bool,
+) -> Result<(String, u64), HashsumDigestError> {
+    // Fast-path: prefer a server-side digest (S3 ETag md5, B2 contentSha1,
+    // pCloud /checksumfile, SFTP sha256sum) so the file never leaves the
+    // server. `--download` skips it and hashes the transferred bytes.
+    // Falls through to download+digest for sha512/blake3 (never
+    // server-side) and for multipart/SSE objects with no usable hash.
+    if !download && provider.supports_checksum() {
+        if let Ok(map) = provider.checksum(path).await {
+            if let Some(h) = map.get(hash_algo_key(algorithm)) {
+                let hash = h.trim().to_ascii_lowercase();
+                let size = provider.stat(path).await.map(|e| e.size).unwrap_or(0);
+                return Ok((hash, size));
+            }
+        }
+    }
+
+    if algorithm.is_server_only() {
+        return Err(HashsumDigestError::ServerOnly);
+    }
+
+    let data = provider.download_to_bytes(path).await?;
+    Ok((hash_local_bytes(algorithm, &data), data.len() as u64))
+}
+
 async fn cmd_hashsum(
     algorithm: HashAlgorithm,
     url: &str,
     path: &str,
+    download: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -56017,81 +56093,15 @@ async fn cmd_hashsum(
     };
     let path = &resolve_cli_remote_path(&initial_path, path);
 
-    // Fast-path: prefer a server-side digest (S3 ETag md5, B2 contentSha1,
-    // pCloud /checksumfile, SFTP sha256sum) so the file never leaves the
-    // server. Falls through to download+digest for sha512/blake3 (never
-    // server-side) and for multipart/SSE objects with no usable hash.
-    if provider.supports_checksum() {
-        if let Ok(map) = provider.checksum(path).await {
-            if let Some(h) = map.get(hash_algo_key(algorithm)) {
-                let hash = h.trim().to_ascii_lowercase();
-                let size = provider.stat(path).await.map(|e| e.size).unwrap_or(0);
-                if matches!(format, OutputFormat::Json) {
-                    print_json(&CliHashResult {
-                        status: "ok",
-                        algorithm: hash_algo_key(algorithm).to_string(),
-                        hash: hash.clone(),
-                        path: path.to_string(),
-                        size,
-                    });
-                } else {
-                    println!("{}  {}", hash, path);
-                }
-                let _ = provider.disconnect().await;
-                return 0;
-            }
-        }
-    }
-
-    if algorithm.is_server_only() {
-        // quickxor/dropbox cannot be computed locally: if the backend
-        // did not expose it above there is no honest fallback. Exit 7
-        // (NotSupported), never a misleading download-and-digest.
-        print_error(
-            format,
-            &format!(
-                "hashsum failed: {} is server-side only and this backend did not provide it for {}",
-                hash_algo_key(algorithm),
-                path
-            ),
-            7,
-        );
-        let _ = provider.disconnect().await;
-        return 7;
-    }
-
-    match provider.download_to_bytes(path).await {
-        Ok(data) => {
-            let hash = match algorithm {
-                HashAlgorithm::Md5 => {
-                    use md5::Digest;
-                    format!("{:x}", md5::Md5::digest(&data))
-                }
-                HashAlgorithm::Sha1 => {
-                    use sha1::Digest;
-                    format!("{:x}", sha1::Sha1::digest(&data))
-                }
-                HashAlgorithm::Sha256 => {
-                    use sha2::Digest;
-                    format!("{:x}", sha2::Sha256::digest(&data))
-                }
-                HashAlgorithm::Sha512 => {
-                    use sha2::Digest;
-                    format!("{:x}", sha2::Sha512::digest(&data))
-                }
-                HashAlgorithm::Blake3 => blake3::hash(&data).to_hex().to_string(),
-                HashAlgorithm::Quickxor | HashAlgorithm::Dropbox => {
-                    unreachable!("server-only hashes return before download")
-                }
-            };
-            let algo_name = hash_algo_key(algorithm);
+    match hashsum_digest(&mut *provider, path, algorithm, download).await {
+        Ok((hash, size)) => {
             if matches!(format, OutputFormat::Json) {
                 print_json(&CliHashResult {
                     status: "ok",
-                    algorithm: algo_name.to_string(),
+                    algorithm: hash_algo_key(algorithm).to_string(),
                     hash: hash.clone(),
                     path: path.to_string(),
-                    size: data.len() as u64,
+                    size,
                 });
             } else {
                 println!("{}  {}", hash, path);
@@ -56099,12 +56109,224 @@ async fn cmd_hashsum(
             let _ = provider.disconnect().await;
             0
         }
-        Err(e) => {
+        Err(HashsumDigestError::ServerOnly) => {
+            // quickxor/dropbox cannot be computed locally: if the backend
+            // did not expose it above there is no honest fallback. Exit 7
+            // (NotSupported), never a misleading download-and-digest.
+            print_error(
+                format,
+                &format!(
+                    "hashsum failed: {} is server-side only and this backend did not provide it for {}",
+                    hash_algo_key(algorithm),
+                    path
+                ),
+                7,
+            );
+            let _ = provider.disconnect().await;
+            7
+        }
+        Err(HashsumDigestError::Provider(e)) => {
             let code = provider_error_to_exit_code(&e);
             print_error(format, &format!("hashsum failed: {}", e), code);
             let _ = provider.disconnect().await;
             code
         }
+    }
+}
+
+#[cfg(test)]
+mod hashsum_digest_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    const PATH: &str = "/file.bin";
+    const CONTENT: &[u8] = b"payload-for-hashsum-download";
+    const CONTENT_MD5: &str = "c27421d615eb1c0fa6a88ca00e784beb";
+    const SERVER_MD5: &str = "ffffffffffffffffffffffffffffffff";
+
+    struct FakeHashProvider {
+        path: String,
+        content: Vec<u8>,
+        server_hashes: HashMap<String, String>,
+    }
+
+    impl FakeHashProvider {
+        fn with_lying_md5() -> Self {
+            let mut server_hashes = HashMap::new();
+            server_hashes.insert("md5".to_string(), SERVER_MD5.to_string());
+            Self {
+                path: PATH.to_string(),
+                content: CONTENT.to_vec(),
+                server_hashes,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for FakeHashProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Ftp
+        }
+        fn display_name(&self) -> String {
+            "fake-hash".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(vec![])
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            if remote_path != self.path {
+                return Err(ProviderError::NotFound(remote_path.to_string()));
+            }
+            Ok(self.content.clone())
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            if path != self.path {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
+            Ok(RemoteEntry::file(
+                path.rsplit('/').next().unwrap_or(path).to_string(),
+                path.to_string(),
+                self.content.len() as u64,
+            ))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Ok(self.stat(path).await?.size)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(path == self.path)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("fake-hash".to_string())
+        }
+        fn supports_checksum(&self) -> bool {
+            true
+        }
+        async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
+            if path != self.path {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
+            Ok(self.server_hashes.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn hashsum_without_download_returns_the_server_digest() {
+        let mut provider = FakeHashProvider::with_lying_md5();
+        let (hash, size) = hashsum_digest(&mut provider, PATH, HashAlgorithm::Md5, false)
+            .await
+            .expect("server digest");
+        assert_eq!(hash, SERVER_MD5);
+        assert_eq!(size, CONTENT.len() as u64);
+    }
+
+    /// The server hash is deliberately not the hash of the payload. With
+    /// `--download` the CLI must stream the file and hash the bytes, not
+    /// return the lying server digest.
+    #[tokio::test]
+    async fn hashsum_download_hashes_content_not_the_server_digest() {
+        let mut provider = FakeHashProvider::with_lying_md5();
+        let (hash, size) = hashsum_digest(&mut provider, PATH, HashAlgorithm::Md5, true)
+            .await
+            .expect("local digest");
+        assert_eq!(
+            hash, CONTENT_MD5,
+            "--download must hash the file bytes, not the server digest ({SERVER_MD5})"
+        );
+        assert_eq!(size, CONTENT.len() as u64);
+        assert_ne!(CONTENT_MD5, SERVER_MD5);
+    }
+
+    #[test]
+    fn hashsum_download_flag_parses() {
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let with = Cli::try_parse_from([
+                    "aeroftp",
+                    "hashsum",
+                    "--download",
+                    "--algorithm",
+                    "md5",
+                    "sftp://example",
+                    "/file.bin",
+                ])
+                .expect("--download must parse");
+                match with.command {
+                    Commands::Hashsum { download, .. } => assert!(download),
+                    _ => panic!("expected hashsum"),
+                }
+                let without = Cli::try_parse_from([
+                    "aeroftp",
+                    "hashsum",
+                    "--algorithm",
+                    "md5",
+                    "sftp://example",
+                    "/file.bin",
+                ])
+                .expect("hashsum without --download must parse");
+                match without.command {
+                    Commands::Hashsum { download, .. } => assert!(!download),
+                    _ => panic!("expected hashsum"),
+                }
+            })
+            .expect("spawn")
+            .join()
+            .expect("parse thread");
     }
 }
 
@@ -64101,14 +64323,14 @@ async fn main() {
             algorithm,
             url,
             path,
-            download: _,
+            download,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
             };
-            cmd_hashsum(*algorithm, u, p, &cli, format).await
+            cmd_hashsum(*algorithm, u, p, *download, &cli, format).await
         }
         Commands::Check {
             url,

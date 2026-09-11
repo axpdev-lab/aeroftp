@@ -1397,7 +1397,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_hashsum",
-            description: "Compute a cryptographic hash of a remote file by streaming it through the chosen algorithm. Mirrors `aeroftp hashsum --download` from the CLI. Useful for verifying integrity after upload, comparing files across profiles, or producing checksums for audit. Hard cap: 256 MB per file (returns `error: file_too_large` above the cap). Algorithms: sha256 (default), sha1, sha512, md5, blake3.",
+            description: "Compute a cryptographic hash of a remote file by downloading it and hashing the bytes locally. Always transfers the file; does not use a server-side digest even when the backend has one. Hard cap: 256 MB per file (returns `error: file_too_large` above the cap). Algorithms: sha256 (default), sha1, sha512, md5, blake3.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
