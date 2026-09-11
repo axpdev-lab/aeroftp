@@ -5560,10 +5560,12 @@ struct CliCheckReport {
 }
 
 impl CliCheckReport {
-    /// `partial` when some files could not be compared, `ok` when both trees
-    /// match, `differences_found` otherwise.
+    /// `partial` when some files could not be compared or either scan did not
+    /// read its whole tree, `ok` when both trees match, `differences_found`
+    /// otherwise.
     fn status(&self) -> &'static str {
-        if self.error_count > 0 {
+        if self.error_count > 0 || !self.local_scan.is_complete() || !self.remote_scan.is_complete()
+        {
             "partial"
         } else if self.differ_count == 0 && self.missing_local == 0 && self.missing_remote == 0 {
             "ok"
@@ -5578,6 +5580,50 @@ impl CliCheckReport {
             0
         } else {
             4
+        }
+    }
+
+    fn scans(
+        &self,
+    ) -> [(
+        &'static str,
+        &ftp_client_gui_lib::sync_core::ScanCompleteness,
+    ); 2] {
+        [("local", &self.local_scan), ("remote", &self.remote_scan)]
+    }
+
+    /// Add the completeness of both scans to a JSON report, with the field
+    /// names `reconcile` uses.
+    fn add_scan_fields(&self, doc: &mut serde_json::Value) {
+        let Some(fields) = doc.as_object_mut() else {
+            return;
+        };
+        for (side, scan) in self.scans() {
+            fields.insert(
+                format!("{side}_scan_incomplete"),
+                serde_json::json!(!scan.is_complete()),
+            );
+            fields.insert(
+                format!("{side}_scan_errors"),
+                serde_json::json!(scan.list_errors),
+            );
+            fields.insert(
+                format!("{side}_scan_truncated"),
+                serde_json::json!(scan.truncated),
+            );
+        }
+    }
+
+    /// Say on stderr which scan did not read its whole tree.
+    fn warn_incomplete_scans(&self) {
+        for (side, scan) in self.scans() {
+            if !scan.is_complete() {
+                eprintln!(
+                    "Warning: {side} scan incomplete ({} error(s){}); the result is partial.",
+                    scan.list_errors,
+                    if scan.truncated { ", truncated" } else { "" }
+                );
+            }
         }
     }
 }
@@ -56775,7 +56821,7 @@ async fn check_report(
 
     // Delegate scan + comparison to sync_core. Both CLI and MCP now share
     // the same implementation, so a fix in one propagates to the other.
-    use ftp_client_gui_lib::sync_core::{compare_trees, scan_local_tree, ScanOptions};
+    use ftp_client_gui_lib::sync_core::{compare_trees, scan_local_tree_checked, ScanOptions};
     // When the profile carries a crypt overlay, unlock the compare keys before
     // the scan so the remote tree is decrypted (names + rclone sizes) to match
     // the plaintext local tree. Fail closed if the overlay cannot be unlocked.
@@ -56800,8 +56846,11 @@ async fn check_report(
         max_depth: Some(MAX_SCAN_DEPTH),
         ..Default::default()
     };
-    let locals = scan_local_tree(local_path, &scan_opts);
-    let (remotes, _remote_health, returned) =
+    // Both scans report what they could not read: a directory the local walk
+    // could not open or a remote directory that did not list hides its files,
+    // and the report has to say so instead of reading as a clean match.
+    let (locals, local_scan) = scan_local_tree_checked(local_path, &scan_opts);
+    let (remotes, remote_health, returned) =
         scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &None, None).await;
     let mut remotes = remotes;
     provider = returned;
@@ -56859,8 +56908,11 @@ async fn check_report(
         missing_local,
         missing_remote,
         details,
-        local_scan: Default::default(),
-        remote_scan: Default::default(),
+        local_scan,
+        remote_scan: ftp_client_gui_lib::sync_core::ScanCompleteness {
+            list_errors: remote_health.errors,
+            truncated: remote_health.truncated,
+        },
         elapsed_secs: start.elapsed().as_secs_f64(),
     };
     let _ = provider.disconnect().await;
@@ -56870,7 +56922,7 @@ async fn check_report(
 /// Print a `check` report: the JSON document, or its text summary.
 fn print_check_report(report: &CliCheckReport, local_path: &str, cli: &Cli, format: OutputFormat) {
     if matches!(format, OutputFormat::Json) {
-        print_json(&serde_json::json!({
+        let mut doc = serde_json::json!({
             "status": report.status(),
             "match_count": report.match_count,
             "differ_count": report.differ_count,
@@ -56884,7 +56936,9 @@ fn print_check_report(report: &CliCheckReport, local_path: &str, cli: &Cli, form
                 shell_double_quote(local_path),
                 shell_double_quote(&report.remote_path)
             ),
-        }));
+        });
+        report.add_scan_fields(&mut doc);
+        print_json(&doc);
     } else {
         eprintln!(
             "\n  Match: {}  Differ: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
@@ -56894,6 +56948,7 @@ fn print_check_report(report: &CliCheckReport, local_path: &str, cli: &Cli, form
             report.missing_remote,
             report.elapsed_secs
         );
+        report.warn_incomplete_scans();
         eprintln!(
             "Next: aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json",
             profile_or_placeholder(cli),
@@ -56996,7 +57051,7 @@ async fn cmd_cryptcheck(
 /// per-file lines are printed while the files are compared).
 fn print_cryptcheck_report(report: &CliCheckReport, algorithm: &str, format: OutputFormat) {
     if matches!(format, OutputFormat::Json) {
-        print_json(&serde_json::json!({
+        let mut doc = serde_json::json!({
             "status": report.status(),
             "match_count": report.match_count,
             "differ_count": report.differ_count,
@@ -57006,7 +57061,9 @@ fn print_cryptcheck_report(report: &CliCheckReport, algorithm: &str, format: Out
             "elapsed_secs": report.elapsed_secs,
             "algorithm": algorithm,
             "details": report.details,
-        }));
+        });
+        report.add_scan_fields(&mut doc);
+        print_json(&doc);
     } else {
         eprintln!(
             "\n  Match: {}  Differ: {}  Errors: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
@@ -57017,6 +57074,7 @@ fn print_cryptcheck_report(report: &CliCheckReport, algorithm: &str, format: Out
             report.missing_remote,
             report.elapsed_secs
         );
+        report.warn_incomplete_scans();
     }
 }
 
@@ -57090,7 +57148,7 @@ async fn cryptcheck_report(
         return Err(5);
     }
 
-    use ftp_client_gui_lib::sync_core::{scan_local_tree, ScanOptions};
+    use ftp_client_gui_lib::sync_core::{scan_local_tree_checked, ScanOptions};
     let scan_opts = ScanOptions {
         checkers: Some(effective_checkers(cli)),
         compute_checksum: false,
@@ -57098,8 +57156,11 @@ async fn cryptcheck_report(
         ..Default::default()
     };
 
-    let locals = scan_local_tree(local_path, &scan_opts);
-    let (remotes, _remote_health, returned) =
+    // Both scans report what they could not read: a directory the local walk
+    // could not open or a remote directory that did not list hides its files,
+    // and the report has to say so instead of reading as a clean match.
+    let (locals, local_scan) = scan_local_tree_checked(local_path, &scan_opts);
+    let (remotes, remote_health, returned) =
         scan_remote_tree_with_progress(provider, &remote_path_resolved, &scan_opts, &None, None)
             .await;
     provider = returned;
@@ -57378,8 +57439,11 @@ async fn cryptcheck_report(
         missing_local,
         missing_remote,
         details,
-        local_scan: Default::default(),
-        remote_scan: Default::default(),
+        local_scan,
+        remote_scan: ftp_client_gui_lib::sync_core::ScanCompleteness {
+            list_errors: remote_health.errors,
+            truncated: remote_health.truncated,
+        },
         elapsed_secs: start.elapsed().as_secs_f64(),
     };
     let _ = provider.disconnect().await;

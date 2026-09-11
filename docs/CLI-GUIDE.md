@@ -702,7 +702,7 @@ aeroftp-cli check --profile "server" /local/ /remote/ --one-way
 aeroftp-cli check --profile "server" /local/ /remote/ --json
 ```
 
-Verifies that a local directory and remote directory are identical. Compares by file size (default) or SHA-256 checksum (`--checksum`). Reports: matches, differences, files missing on either side.
+Verifies that a local directory and remote directory are identical. Compares by file size (default) or SHA-256 checksum (`--checksum`). Reports: matches, differences, files missing on either side. When either scan could not read its whole tree (a local directory it cannot read, a remote directory that fails to list, the entry cap), the result is `partial` rather than `ok`, and the JSON output says which scan: `local_scan_incomplete`, `local_scan_errors`, `local_scan_truncated`, `remote_scan_incomplete`, `remote_scan_errors`, `remote_scan_truncated`. Exit codes: `0` (the trees match and both scans are complete), `4` (differences found, or the result is partial), `5` (invalid usage).
 
 ### cryptcheck - Verify Crypt/Cleartext Integrity
 
@@ -720,7 +720,7 @@ aeroftp-cli cryptcheck --profile "server" /local/ /remote/ --password "secret"
 aeroftp-cli cryptcheck --profile "server" /local/ /remote/ --json
 ```
 
-Verifies the integrity of files stored on a remote encrypted with `rclone crypt`. Stream-decrypts the remote files (without saving to disk) and computes their hash to compare against local cleartext files. Supports `sha256` and `md5`. Reports: matches, differences, files missing on either side. Exit codes: `0` (success), `4` (differences found), `5` (invalid usage).
+Verifies the integrity of files stored on a remote encrypted with `rclone crypt`. Stream-decrypts the remote files (without saving to disk) and computes their hash to compare against local cleartext files. Supports `sha256` and `md5`. Reports: matches, differences, files missing on either side, and files that could not be compared. The result is `partial` when a file could not be compared or when either scan could not read its whole tree, with the same `local_scan_*` and `remote_scan_*` JSON fields as `check`. Exit codes: `0` (success), `4` (differences found, or the result is partial), `5` (invalid usage).
 
 ### audit - Autonomous Server Audits
 
