@@ -820,6 +820,10 @@ export function MyServersPanel({
     }, []);
 
     const handleDragEnter = useCallback((idx: number, e: React.DragEvent) => {
+        // Claim only the panel's own reorder drags: without the guard an
+        // external text or file drag gets preventDefault() and dropEffect
+        // and the strip reads as a drop target for content it cannot take.
+        if (dragServerIdRef.current === null) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         maybeAutoScrollWhileDrag(e.clientY);
@@ -827,6 +831,7 @@ export function MyServersPanel({
     }, [maybeAutoScrollWhileDrag]);
 
     const handleDragOver = useCallback((idx: number, e: React.DragEvent) => {
+        if (dragServerIdRef.current === null) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         maybeAutoScrollWhileDrag(e.clientY);
@@ -834,6 +839,7 @@ export function MyServersPanel({
     }, [maybeAutoScrollWhileDrag]);
 
     const handleDrop = useCallback((idx: number, e: React.DragEvent) => {
+        if (dragServerIdRef.current === null) return;
         e.preventDefault();
         const visible = visibleListRef.current;
         if (visible.length === 0) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
