@@ -7643,15 +7643,21 @@ fn parse_manual_total_size(s: &str) -> Result<u64, String> {
     Ok(bytes.round() as u64)
 }
 
+/// The list given to `--files-from` or `--files-from-raw` (the first wins),
+/// and whether it is the raw form.
+fn files_from_source(cli: &Cli) -> Option<(&str, bool)> {
+    match (&cli.files_from, &cli.files_from_raw) {
+        (Some(p), _) => Some((p.as_str(), false)),
+        (_, Some(p)) => Some((p.as_str(), true)),
+        _ => None,
+    }
+}
+
 /// Load patterns from a file (one per line, # comments, blank lines skipped).
 /// Load file list from --files-from or --files-from-raw.
 /// Returns None if neither flag is set, or Some(HashSet) with normalized paths.
 fn load_files_from(cli: &Cli) -> Option<std::collections::HashSet<String>> {
-    let (path, raw) = match (&cli.files_from, &cli.files_from_raw) {
-        (Some(p), _) => (p.as_str(), false),
-        (_, Some(p)) => (p.as_str(), true),
-        _ => return None,
-    };
+    let (path, raw) = files_from_source(cli)?;
     // Cap file size at 10 MB to prevent OOM
     const MAX_FILES_FROM_SIZE: u64 = 10 * 1024 * 1024;
     match std::fs::metadata(path) {
@@ -8420,6 +8426,7 @@ fn load_sync_plan_from_reconcile(
     path: &str,
     direction: &str,
     delete: bool,
+    listed: Option<&std::collections::HashSet<String>>,
 ) -> Result<ReconcileSyncPlan, String> {
     let raw = std::fs::read_to_string(path)
         .map_err(|err| format!("Cannot read reconcile file '{}': {}", path, err))?;
@@ -8449,12 +8456,26 @@ fn load_sync_plan_from_reconcile(
         }
     }
 
-    let groups = stored.groups.ok_or_else(|| {
+    let mut groups = stored.groups.ok_or_else(|| {
         format!(
             "Reconcile file '{}' does not contain detailed groups. Re-run reconcile without --format summary.",
             path
         )
     })?;
+    // A `--files-from` list bounds a stored plan the way it bounds a live
+    // scan. The groups are filtered before anything is derived from them, so
+    // the planned operations, the comparison entries and the skipped count
+    // all describe the same listed paths.
+    if let Some(listed) = listed {
+        for group in [
+            &mut groups.matches,
+            &mut groups.differ,
+            &mut groups.missing_remote,
+            &mut groups.missing_local,
+        ] {
+            group.retain(|entry| listed.contains(&entry.path));
+        }
+    }
 
     if direction == "both" && (delete || !groups.differ.is_empty()) {
         return Err(
@@ -45165,6 +45186,7 @@ fn save_bisync_snapshot(
     local_dir: &str,
     local_entries: &[(String, u64, Option<String>)],
     remote_entries: &[(String, u64, Option<String>)],
+    listed: Option<&std::collections::HashSet<String>>,
 ) {
     let mut files = HashMap::new();
     // Merge both sides - after a successful sync they should be equal
@@ -45172,6 +45194,19 @@ fn save_bisync_snapshot(
         files
             .entry(path.clone())
             .or_insert_with(|| (*size, mtime.as_deref().unwrap_or("").to_string()));
+    }
+    // A `--files-from` run saw only the listed paths, so it may rewrite only
+    // those. The previous snapshot's entries for every other path are kept:
+    // dropped, the next full run would read those files as never synced and
+    // copy back a deletion made on one side instead of propagating it.
+    if let Some(listed) = listed {
+        if let Some(previous) = load_bisync_snapshot(local_dir) {
+            for (path, state) in previous.files {
+                if !listed.contains(&path) {
+                    files.entry(path).or_insert(state);
+                }
+            }
+        }
     }
     let snapshot = BisyncSnapshot {
         synced_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
@@ -45846,11 +45881,16 @@ async fn cmd_sync(
 
     let mut reconcile_plan: Option<ReconcileSyncPlan> = None;
     #[allow(clippy::type_complexity)]
-    let (local_entries, remote_entries): (
+    let (mut local_entries, mut remote_entries): (
         Vec<(String, u64, Option<String>)>,
         Vec<(String, u64, Option<String>)>,
     ) = if let Some(reconcile_path) = from_reconcile {
-        match load_sync_plan_from_reconcile(reconcile_path, direction, delete) {
+        match load_sync_plan_from_reconcile(
+            reconcile_path,
+            direction,
+            delete,
+            files_from_set.as_ref(),
+        ) {
             Ok(plan) => {
                 let local_entries = plan.local_entries.clone();
                 let remote_entries = plan.remote_entries.clone();
@@ -46086,6 +46126,20 @@ async fn cmd_sync(
 
         (local_entries, remote_entries)
     };
+
+    // `--files-from` bounds the run, not one side of it. The planner reads a
+    // path present on one side only as a copy or an orphan, so a list applied
+    // to one side turns every unlisted file of the other side into one: with
+    // `--direction upload --delete` that deleted the remote tree outside the
+    // list. The local walk and the S3 fast-list prune by the list early; the
+    // pooled remote walk, a watch cycle's precomputed local list and a
+    // reconcile plan do not, and neither will the next scan path. Applying
+    // the list here, once, to every entry that reaches the planner is what
+    // keeps all of them bounded.
+    if let Some(listed) = files_from_set.as_ref() {
+        local_entries.retain(|(path, _, _)| listed.contains(path));
+        remote_entries.retain(|(path, _, _)| listed.contains(path));
+    }
 
     // Build comparison maps
     let local_map: HashMap<&str, (u64, Option<&str>)> = local_entries
@@ -47336,7 +47390,12 @@ async fn cmd_sync(
 
     // Save bisync snapshot after successful sync (--direction both)
     if direction == "both" && errors.is_empty() && !dry_run {
-        save_bisync_snapshot(local, &local_entries, &remote_entries);
+        save_bisync_snapshot(
+            local,
+            &local_entries,
+            &remote_entries,
+            files_from_set.as_ref(),
+        );
         if !quiet {
             eprintln!(
                 "Bisync snapshot saved to {}/{}",
@@ -55198,8 +55257,9 @@ async fn sync_doctor_report(
         });
         local_entries.insert(relative, (size, mtime));
     }
-    let local_files = local_entries.len();
-    let local_bytes = local_entries.values().map(|(size, _)| *size).sum::<u64>();
+    // The bound `sync` applies to the run this report previews: counted over
+    // the whole tree, the doctor would assess a different file set.
+    let files_from_set = load_files_from(cli);
 
     let remote_root_ok = provider.list(&remote).await.is_ok();
     let mut remote_entries: HashMap<String, (u64, Option<String>)> = HashMap::new();
@@ -55237,6 +55297,25 @@ async fn sync_doctor_report(
             }
         }
     }
+    if let Some(listed) = files_from_set.as_ref() {
+        local_entries.retain(|path, _| listed.contains(path));
+        remote_entries.retain(|path, _| listed.contains(path));
+    }
+    // The list as it was given (flag, path, entry count), for the checks, the
+    // delete risk and the dry run suggested next.
+    let files_from =
+        files_from_source(cli)
+            .zip(files_from_set.as_ref())
+            .map(|((path, raw), listed)| {
+                let flag = if raw {
+                    "--files-from-raw"
+                } else {
+                    "--files-from"
+                };
+                (flag, path, listed.len())
+            });
+    let local_files = local_entries.len();
+    let local_bytes = local_entries.values().map(|(size, _)| *size).sum::<u64>();
     let remote_files = remote_entries.len();
     let remote_bytes = remote_entries.values().map(|(size, _)| *size).sum::<u64>();
 
@@ -55268,13 +55347,27 @@ async fn sync_doctor_report(
             serde_json::json!({"name": "exclude_patterns", "ok": true, "count": effective_exclude.len()}),
         );
     }
+    if let Some((flag, path, count)) = files_from {
+        checks.push(serde_json::json!({
+            "name": "files_from",
+            "ok": true,
+            "flag": flag,
+            "path": path,
+            "count": count,
+        }));
+    }
 
     let mut risks = Vec::new();
     if let Some(cfg) = doctor_cfg.as_ref() {
         push_s3_doctor_checks(&mut checks, &mut risks, "remote", cfg);
     }
     if delete {
-        risks.push("delete is enabled; sync may remove orphaned files".to_string());
+        risks.push(match files_from {
+            Some((flag, path, count)) => format!(
+                "delete is enabled; sync may remove orphaned files among the {count} path(s) listed in {flag} {path}"
+            ),
+            None => "delete is enabled; sync may remove orphaned files".to_string(),
+        });
     }
     if direction == "both" {
         risks.push(format!(
@@ -55322,7 +55415,7 @@ async fn sync_doctor_report(
 
     let suggested_next_command =
         format!(
-        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}{}{}",
+        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}{}{}{}",
         profile_or_placeholder(cli),
         shell_double_quote(local),
         shell_double_quote(&remote),
@@ -55332,6 +55425,9 @@ async fn sync_doctor_report(
         if resync { " --resync" } else { "" },
         error_correction_pct
             .map(|pct| format!(" --error-correction={pct}"))
+            .unwrap_or_default(),
+        files_from
+            .map(|(flag, path, _)| format!(" {flag} \"{}\"", shell_double_quote(path)))
             .unwrap_or_default(),
         if exclude.is_empty() {
             String::new()
@@ -71515,7 +71611,8 @@ mod tests {
         )
         .unwrap();
 
-        let plan = load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", true).unwrap();
+        let plan =
+            load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", true, None).unwrap();
 
         assert_eq!(plan.skipped, 1);
         assert_eq!(plan.to_upload, vec!["changed.txt", "upload.txt"]);
@@ -71537,8 +71634,8 @@ mod tests {
         )
         .unwrap();
 
-        let err =
-            load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", false).unwrap_err();
+        let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", false, None)
+            .unwrap_err();
 
         assert!(err.contains("does not contain detailed groups"));
     }
@@ -71568,8 +71665,8 @@ mod tests {
         std::fs::write(&path, &body).unwrap();
 
         // --delete is refused on a partial reconcile.
-        let err =
-            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true).unwrap_err();
+        let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true, None)
+            .unwrap_err();
         assert!(
             err.contains("incomplete remote scan"),
             "unexpected error: {err}"
@@ -71577,7 +71674,7 @@ mod tests {
 
         // The same partial file is still usable for a non-delete transfer.
         let plan =
-            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", false).unwrap();
+            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", false, None).unwrap();
         assert!(plan.to_delete_local.is_empty());
     }
 
@@ -71604,8 +71701,8 @@ mod tests {
         .to_string();
         std::fs::write(&path, &body).unwrap();
 
-        let err =
-            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true).unwrap_err();
+        let err = load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true, None)
+            .unwrap_err();
         assert!(
             err.contains("incomplete remote scan"),
             "unexpected error: {err}"
@@ -71635,7 +71732,8 @@ mod tests {
         .to_string();
         std::fs::write(&path, &body).unwrap();
 
-        let plan = load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true).unwrap();
+        let plan =
+            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true, None).unwrap();
         assert_eq!(plan.to_delete_local, vec!["orphan.txt"]);
     }
 
@@ -73965,6 +74063,54 @@ mod tests {
             report.suggested_next_command.contains("--files-from"),
             "the suggested dry run keeps the list: {}",
             report.suggested_next_command
+        );
+    }
+
+    /// A `--files-from` run of `--direction both` saw only the listed paths,
+    /// so the snapshot it saves rewrites only those and keeps the previous
+    /// entries for every other path. A run without a list still replaces the
+    /// snapshot whole.
+    #[test]
+    fn bisync_snapshot_of_a_listed_run_keeps_the_unlisted_entries() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        let previous = BisyncSnapshot {
+            synced_at: "2020-01-01T00:00:00Z".to_string(),
+            files: HashMap::from([
+                ("a.txt".to_string(), (1, FIXTURE_MTIME.to_string())),
+                ("b.txt".to_string(), (2, FIXTURE_MTIME.to_string())),
+            ]),
+        };
+        std::fs::write(
+            Path::new(&local).join(BISYNC_SNAPSHOT_FILE),
+            serde_json::to_string(&previous).expect("serialize the snapshot"),
+        )
+        .expect("write the snapshot");
+        let synced = vec![(
+            "a.txt".to_string(),
+            5,
+            Some("2021-06-01T12:00:00".to_string()),
+        )];
+        let listed = std::collections::HashSet::from(["a.txt".to_string()]);
+
+        save_bisync_snapshot(&local, &synced, &synced, Some(&listed));
+        let saved = load_bisync_snapshot(&local).expect("the snapshot is saved");
+        assert_eq!(
+            saved.files.get("a.txt"),
+            Some(&(5, "2021-06-01T12:00:00".to_string())),
+            "the listed path is rewritten"
+        );
+        assert_eq!(
+            saved.files.get("b.txt"),
+            Some(&(2, FIXTURE_MTIME.to_string())),
+            "the unlisted path keeps its previous entry"
+        );
+
+        save_bisync_snapshot(&local, &synced, &synced, None);
+        let saved = load_bisync_snapshot(&local).expect("the snapshot is saved");
+        assert!(
+            !saved.files.contains_key("b.txt"),
+            "a run without a list replaces the snapshot whole"
         );
     }
 
