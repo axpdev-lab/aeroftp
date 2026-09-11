@@ -75515,6 +75515,93 @@ mod tests {
         assert_eq!(stats.exit_code, 4, "the refusal shows in the exit code");
     }
 
+    /// The `sync-doctor` report for an upload with `--delete` against `remote`.
+    fn doctor_report_against(remote: MemTreeProvider, local: &str) -> CliDoctorResult {
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        run_against_remote(remote, || {
+            sync_doctor_report(
+                "memory://",
+                local,
+                "/root",
+                "upload",
+                true,
+                &[],
+                None,
+                0,
+                false,
+                "newer",
+                false,
+                false,
+                &cli,
+                OutputFormat::Json,
+            )
+        })
+        .unwrap_or_else(|code| panic!("sync-doctor failed with exit code {code}"))
+    }
+
+    /// `sync-doctor` previews the run `sync` would make. A local directory it
+    /// cannot read hides files the run will not see either, so the report
+    /// must not read `ok`: it is `attention`, and the summary names the
+    /// incomplete local scan.
+    #[cfg(unix)]
+    #[test]
+    fn sync_doctor_reports_a_local_directory_it_cannot_read() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        fixture.local_file("a.txt", 1);
+        std::fs::create_dir(Path::new(&local).join("locked")).expect("locked directory");
+        fixture.local_file("locked/keep.txt", 1);
+        let _locked = UnreadableDir::lock(Path::new(&local).join("locked"));
+
+        let report = doctor_report_against(MemTreeProvider::root_files(&[("a.txt", 1)]), &local);
+
+        assert_eq!(report.status, "attention");
+        assert_eq!(report.summary["local_scan_incomplete"], true);
+    }
+
+    /// A local file the walk can list but not stat (its directory is 0400) is
+    /// a read error too: the report is `attention`.
+    #[cfg(unix)]
+    #[test]
+    fn sync_doctor_reports_a_local_file_it_cannot_stat() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir(Path::new(&local).join("sealed")).expect("sealed directory");
+        fixture.local_file("sealed/keep.txt", 1);
+        let _sealed = UnreadableDir::seal(Path::new(&local).join("sealed"));
+
+        let report = doctor_report_against(MemTreeProvider::root_files(&[]), &local);
+
+        assert_eq!(report.status, "attention");
+        assert_eq!(report.summary["local_scan_incomplete"], true);
+    }
+
+    /// A remote directory that cannot be listed hides its files: the remote
+    /// root still lists, so the report used to read `ok`. It must be
+    /// `attention`, with the incomplete remote scan named in the summary.
+    #[test]
+    fn sync_doctor_reports_a_remote_directory_that_cannot_be_listed() {
+        let fixture = FilesFromFixture::new();
+        let remote = MemTreeProvider {
+            dirs: HashMap::from([(
+                "/root".to_string(),
+                vec![RemoteEntry::directory(
+                    "unlisted".to_string(),
+                    "/root/unlisted".to_string(),
+                )],
+            )]),
+            delete_attempts: Arc::default(),
+        };
+
+        let report = doctor_report_against(remote, &fixture.local());
+
+        assert_eq!(report.status, "attention");
+        assert_eq!(report.summary["remote_scan_incomplete"], true);
+    }
+
     struct CliEditFakeProvider {
         remote_files: HashMap<String, Vec<u8>>,
         uploads: Vec<(String, Vec<u8>)>,
