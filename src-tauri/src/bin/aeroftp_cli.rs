@@ -55512,78 +55512,66 @@ async fn sync_doctor_report(
         .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
         .collect();
 
-    let mut local_entries: HashMap<String, (u64, Option<String>)> = HashMap::new();
-    for entry in walkdir::WalkDir::new(local)
-        .follow_links(false)
-        .max_depth(100)
-    {
-        let Ok(entry) = entry else { continue };
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let relative = entry
-            .path()
-            .strip_prefix(local)
-            .unwrap_or(entry.path())
-            .to_string_lossy()
-            .replace('\\', "/");
-        if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-            continue;
-        }
-        let fname = entry.file_name().to_string_lossy();
-        let fname_ref: &str = fname.as_ref();
-        if exclude_matchers
-            .iter()
-            .any(|m| m.is_match(&relative) || m.is_match(fname_ref))
-        {
-            continue;
-        }
-        let meta = entry.metadata().ok();
-        let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-        let mtime = meta.and_then(|m| {
-            m.modified().ok().map(|t| {
-                let dt: chrono::DateTime<chrono::Utc> = t.into();
-                dt.format("%Y-%m-%dT%H:%M:%S").to_string()
-            })
-        });
-        local_entries.insert(relative, (size, mtime));
-    }
+    // The walk `sync` itself runs, so the report counts what it could not
+    // read (a directory it cannot open, a file it cannot stat, the entry cap)
+    // instead of previewing a smaller tree as if it were the whole one.
+    let local_scan = scan_sync_local(
+        local,
+        &SyncLocalFilter {
+            max_depth: 100,
+            exclude: &exclude_matchers,
+        },
+    );
+    let mut local_entries: HashMap<String, (u64, Option<String>)> = local_scan
+        .entries
+        .iter()
+        .map(|(path, size, mtime)| (path.clone(), (*size, mtime.clone())))
+        .collect();
     // The bound `sync` applies to the run this report previews: counted over
     // the whole tree, the doctor would assess a different file set.
     let files_from_set = load_files_from(cli);
 
     let remote_root_ok = provider.list(&remote).await.is_ok();
     let mut remote_entries: HashMap<String, (u64, Option<String>)> = HashMap::new();
+    let mut remote_scan = ftp_client_gui_lib::sync_core::ScanCompleteness::default();
     if remote_root_ok {
         let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
         while let Some((dir, depth)) = queue.pop() {
             if depth >= MAX_SCAN_DEPTH || remote_entries.len() >= MAX_SCAN_ENTRIES {
+                // The walk stops here, so whatever is still queued is unseen.
+                remote_scan.truncated = true;
                 break;
             }
-            if let Ok(entries) = provider.list(&dir).await {
-                for e in entries {
-                    if e.is_dir {
-                        if e.is_walkable_dir() {
-                            queue.push((e.path.clone(), depth + 1));
-                        }
-                    } else {
-                        let relative = e
-                            .path
-                            .strip_prefix(&remote)
-                            .unwrap_or(&e.path)
-                            .trim_start_matches('/')
-                            .to_string();
-                        if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                            continue;
-                        }
-                        if exclude_matchers
-                            .iter()
-                            .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                        {
-                            continue;
-                        }
-                        remote_entries.insert(relative, (e.size, e.modified));
+            let entries = match provider.list(&dir).await {
+                Ok(entries) => entries,
+                Err(_) => {
+                    // A directory that did not list hides its files.
+                    remote_scan.list_errors += 1;
+                    continue;
+                }
+            };
+            for e in entries {
+                if e.is_dir {
+                    if e.is_walkable_dir() {
+                        queue.push((e.path.clone(), depth + 1));
                     }
+                } else {
+                    let relative = e
+                        .path
+                        .strip_prefix(&remote)
+                        .unwrap_or(&e.path)
+                        .trim_start_matches('/')
+                        .to_string();
+                    if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+                        continue;
+                    }
+                    if exclude_matchers
+                        .iter()
+                        .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+                    {
+                        continue;
+                    }
+                    remote_entries.insert(relative, (e.size, e.modified));
                 }
             }
         }
@@ -55633,6 +55621,18 @@ async fn sync_doctor_report(
         serde_json::json!({"name": "local_path_exists", "ok": true, "path": local}),
         serde_json::json!({"name": "remote_path_reachable", "ok": remote_root_ok, "path": remote}),
     ];
+    let scans = [
+        ("local", &local_scan.completeness),
+        ("remote", &remote_scan),
+    ];
+    for (side, scan) in scans {
+        checks.push(serde_json::json!({
+            "name": format!("{side}_scan_complete"),
+            "ok": scan.is_complete(),
+            "errors": scan.list_errors,
+            "truncated": scan.truncated,
+        }));
+    }
     if !effective_exclude.is_empty() {
         checks.push(
             serde_json::json!({"name": "exclude_patterns", "ok": true, "count": effective_exclude.len()}),
@@ -55703,6 +55703,15 @@ async fn sync_doctor_report(
     if !remote_root_ok {
         risks.push("remote path could not be listed".to_string());
     }
+    for (side, scan) in scans {
+        if !scan.is_complete() {
+            risks.push(format!(
+                "the {side} scan did not read the whole tree ({} error(s){}); the file counts above are partial",
+                scan.list_errors,
+                if scan.truncated { ", truncated" } else { "" }
+            ));
+        }
+    }
 
     let suggested_next_command =
         format!(
@@ -55735,7 +55744,11 @@ async fn sync_doctor_report(
     );
 
     let result = CliDoctorResult {
-        status: if remote_root_ok { "ok" } else { "attention" },
+        status: if remote_root_ok && scans.iter().all(|(_, scan)| scan.is_complete()) {
+            "ok"
+        } else {
+            "attention"
+        },
         doctor: "sync".to_string(),
         summary: serde_json::json!({
             "direction": direction,
@@ -55747,6 +55760,12 @@ async fn sync_doctor_report(
             "track_renames": track_renames,
             "conflict_mode": conflict_mode,
             "resync": resync,
+            "local_scan_incomplete": !local_scan.completeness.is_complete(),
+            "local_scan_errors": local_scan.completeness.list_errors,
+            "local_scan_truncated": local_scan.completeness.truncated,
+            "remote_scan_incomplete": !remote_scan.is_complete(),
+            "remote_scan_errors": remote_scan.list_errors,
+            "remote_scan_truncated": remote_scan.truncated,
         }),
         checks,
         risks,
