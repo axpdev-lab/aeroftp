@@ -24,5 +24,6 @@ pub use crate::sync::{
 pub use compare::{compare_trees, DiffEntry, DiffReport};
 pub use scan::{
     scan_local_tree, scan_local_tree_checked, scan_remote_tree, scan_remote_tree_checked,
-    LinkBound, LocalEntry, RemoteEntry, ScanCompleteness, ScanOptions, SkippedLink,
+    LocalEntry, RemoteEntry, ScanBound, ScanBoundaries, ScanCompleteness, ScanOptions, SkippedLink,
+    UnseenPath,
 };

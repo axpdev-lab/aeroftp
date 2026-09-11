@@ -148,6 +148,9 @@ fn adapt_fastpath_entries(
                     rel_path: rel,
                     link_target: entry.link_target.clone(),
                 });
+                if results.len() + skipped_links.len() >= cap {
+                    break;
+                }
             }
             continue;
         }
@@ -196,7 +199,7 @@ fn adapt_fastpath_entries(
             checksum_alg: None,
             checksum_hex: None,
         });
-        if results.len() >= cap {
+        if results.len() + skipped_links.len() >= cap {
             break;
         }
     }
@@ -257,53 +260,121 @@ pub struct SkippedLink {
     pub link_target: Option<String>,
 }
 
-/// The part of a sync a skipped link hides: the link and everything under
-/// it, left alone on both sides.
-///
-/// One side's scan does not follow the link, so the other side's files at the
-/// same path read as present on that side only. A download with orphan deletes
-/// then deletes the local copies of files still on the remote behind the link,
-/// an upload deletes the remote files behind a local link, and a bidirectional
-/// run copies files through the link into its target. The scan has the facts
-/// for none of those decisions, so the run stays out of that subtree.
-#[derive(Debug, Default)]
-pub struct LinkBound {
-    links: Vec<SkippedLink>,
-    paths: HashSet<String>,
+/// A path a scan could not see, so what sits at or under it is unknown.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct UnseenPath {
+    /// The path, relative to the scan root.
+    pub rel_path: String,
+    /// Why it was not seen: `depth_limit`, `list_error` or `unreadable`.
+    pub reason: &'static str,
 }
 
-/// What a local path prefix is on disk, cached by [`LinkBound::for_sync`].
+/// What a tree scan skipped or could not see, beyond the entries it returned.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ScanBoundaries {
+    /// Symbolic links the scan listed and did not follow.
+    pub links: Vec<SkippedLink>,
+    /// Paths the scan could not see: a directory at the depth limit or one that
+    /// failed to list, an entry whose metadata could not be read.
+    pub unseen: Vec<UnseenPath>,
+    /// Set when the scan missed a part of the tree it cannot name (it was
+    /// cancelled, cut off at the entry cap, or lost its session), so no run can
+    /// be bounded around it.
+    pub unbounded: Option<&'static str>,
+}
+
+impl ScanBoundaries {
+    /// How many boundaries the scan recorded; they count against its entry cap.
+    fn len(&self) -> usize {
+        self.links.len() + self.unseen.len()
+    }
+
+    /// Record a path the scan did not see. The scan root is not recorded: an
+    /// unlisted root is the incomplete scan the completeness counters already
+    /// report, and there is no path to bound a run around.
+    fn unseen(&mut self, rel_path: &str, reason: &'static str) {
+        if !rel_path.is_empty() {
+            tracing::warn!("[scan] not seen: {} ({})", rel_path, reason);
+            self.unseen.push(UnseenPath {
+                rel_path: rel_path.to_string(),
+                reason,
+            });
+        }
+    }
+}
+
+/// The part of a sync its scans did not see, left alone on both sides: every
+/// skipped link and unseen path, with everything under them.
+///
+/// A scan does not see behind a link, below its depth limit, into a directory
+/// that failed to list or past metadata it could not read, so the other side's
+/// files at those paths read as present on that side only. A download with
+/// orphan deletes then deletes the local copies of files still on the remote,
+/// an upload deletes the remote files behind a local link, and any copy may
+/// write through a link into its target. The scans have the facts for none of
+/// those decisions, so the run stays out of those subtrees; and when a scan
+/// missed a part of the tree it cannot name, the run is refused instead.
+#[derive(Debug, Default)]
+pub struct ScanBound {
+    links: Vec<SkippedLink>,
+    unseen: Vec<UnseenPath>,
+    paths: HashSet<String>,
+    ancestors: HashSet<String>,
+    refusal: Option<String>,
+}
+
+/// What a local path prefix is on disk, cached by [`ScanBound::for_sync`].
 #[derive(Clone, Copy)]
 enum LocalPrefix {
     Link,
     Present,
     Absent,
+    Unreadable,
 }
 
-impl LinkBound {
-    /// Bound a sync by the links the remote scan skipped and by the local
-    /// links above any path only the remote holds.
+impl ScanBound {
+    /// Bound a sync by what its two scans did not see: the remote links and
+    /// unseen paths, the local unseen paths, and the local links above any path
+    /// only the remote holds.
     ///
-    /// Local walkers skip links too, but they are not asked to report them. A
-    /// local link matters only where the remote holds something under it, and
-    /// every such path is absent from the local entries, so checking the
-    /// ancestors of those paths on disk finds exactly the links that would be
-    /// misread, whichever walker (or watch cycle) produced the local list.
+    /// Local walkers skip links too, but a local link matters only where the
+    /// remote holds something under it, and every such path is absent from the
+    /// local entries: checking the ancestors of those paths on disk finds exactly
+    /// the links that would be misread, whichever walker (or watch cycle)
+    /// produced the local list. An ancestor whose metadata cannot be read, for a
+    /// reason other than absence, is left out the same way.
     pub fn for_sync<'a>(
         local_root: &str,
         local_paths: impl IntoIterator<Item = &'a str>,
         remote_paths: impl IntoIterator<Item = &'a str>,
-        remote_links: Vec<SkippedLink>,
+        local: &ScanBoundaries,
+        remote: ScanBoundaries,
     ) -> Self {
         let mut bound = Self::default();
-        for link in remote_links {
-            bound.add(link);
+        if let Some(reason) = remote.unbounded {
+            bound.refusal = Some(format!(
+                "the remote scan did not see the whole tree ({reason})"
+            ));
+        } else if let Some(reason) = local.unbounded {
+            bound.refusal = Some(format!(
+                "the local scan did not see the whole tree ({reason})"
+            ));
         }
-        let local: HashSet<&str> = local_paths.into_iter().collect();
+        for link in remote.links {
+            bound.add_link(link);
+        }
+        for path in remote
+            .unseen
+            .into_iter()
+            .chain(local.unseen.iter().cloned())
+        {
+            bound.add_unseen(path);
+        }
+        let local_set: HashSet<&str> = local_paths.into_iter().collect();
         let root = Path::new(local_root);
         let mut on_disk: HashMap<String, LocalPrefix> = HashMap::new();
         for rel in remote_paths {
-            if local.contains(rel) || bound.covers(rel) {
+            if local_set.contains(rel) || bound.covers(rel) {
                 continue;
             }
             let prefix_ends = rel
@@ -326,14 +397,34 @@ impl LinkBound {
                                     prefix,
                                     link_target.as_deref().unwrap_or("?")
                                 );
-                                bound.add(SkippedLink {
+                                bound.add_link(SkippedLink {
                                     rel_path: prefix.to_string(),
                                     link_target,
                                 });
                                 LocalPrefix::Link
                             }
                             Ok(_) => LocalPrefix::Present,
-                            Err(_) => LocalPrefix::Absent,
+                            Err(error)
+                                if matches!(
+                                    error.kind(),
+                                    std::io::ErrorKind::NotFound
+                                        | std::io::ErrorKind::NotADirectory
+                                ) =>
+                            {
+                                LocalPrefix::Absent
+                            }
+                            Err(error) => {
+                                tracing::warn!(
+                                    "[sync] cannot read local {}: {}; its subtree is left out on both sides",
+                                    prefix,
+                                    error
+                                );
+                                bound.add_unseen(UnseenPath {
+                                    rel_path: prefix.to_string(),
+                                    reason: "unreadable",
+                                });
+                                LocalPrefix::Unreadable
+                            }
                         };
                         on_disk.insert(prefix.to_string(), state);
                         state
@@ -347,19 +438,21 @@ impl LinkBound {
         bound
     }
 
-    /// [`LinkBound::for_sync`] over the entries of a sync scan, applied to
-    /// them: every entry the bound covers is dropped on both sides.
+    /// [`ScanBound::for_sync`] over the entries of a sync scan, applied to them:
+    /// every entry the bound covers is dropped on both sides.
     pub fn apply(
         local_root: &str,
         locals: &mut Vec<LocalEntry>,
         remotes: &mut Vec<RemoteEntry>,
-        remote_links: Vec<SkippedLink>,
+        local: &ScanBoundaries,
+        remote: ScanBoundaries,
     ) -> Self {
         let bound = Self::for_sync(
             local_root,
             locals.iter().map(|entry| entry.rel_path.as_str()),
             remotes.iter().map(|entry| entry.rel_path.as_str()),
-            remote_links,
+            local,
+            remote,
         );
         if !bound.is_empty() {
             locals.retain(|entry| !bound.covers(&entry.rel_path));
@@ -368,7 +461,7 @@ impl LinkBound {
         bound
     }
 
-    /// Whether `rel` is a skipped link or sits under one.
+    /// Whether `rel` is a bounded path or sits under one.
     pub fn covers(&self, rel: &str) -> bool {
         if self.paths.is_empty() {
             return false;
@@ -379,9 +472,21 @@ impl LinkBound {
                 .any(|(end, _)| self.paths.contains(&rel[..end]))
     }
 
-    /// No link bounds the run.
+    /// Whether a bounded path sits under the directory `rel`: such a directory
+    /// cannot be copied or deleted as a whole without reaching into the bound.
+    pub fn holds_bounded_paths(&self, rel: &str) -> bool {
+        self.ancestors.contains(rel)
+    }
+
+    /// Nothing bounds the run.
     pub fn is_empty(&self) -> bool {
-        self.links.is_empty()
+        self.paths.is_empty()
+    }
+
+    /// Why the run must not be planned at all: a scan missed a part of the tree
+    /// it cannot name.
+    pub fn refusal(&self) -> Option<&str> {
+        self.refusal.as_deref()
     }
 
     /// The links the bound was built from, remote first, in the order found.
@@ -389,28 +494,50 @@ impl LinkBound {
         &self.links
     }
 
+    /// The unseen paths that bound the run, remote first.
+    pub fn unseen(&self) -> &[UnseenPath] {
+        &self.unseen
+    }
+
     /// Every link a run names: the links the bound left out, then the local
     /// links a walk skipped that nothing on the remote sits under.
-    pub fn reported(&self, local_walk_links: Vec<SkippedLink>) -> Vec<SkippedLink> {
+    pub fn reported_links(&self, local: &ScanBoundaries) -> Vec<SkippedLink> {
         let mut links = self.links.clone();
         links.extend(
-            local_walk_links
-                .into_iter()
-                .filter(|link| !self.paths.contains(&link.rel_path)),
+            local
+                .links
+                .iter()
+                .filter(|link| !self.paths.contains(&link.rel_path))
+                .cloned(),
         );
         links
     }
 
-    fn add(&mut self, link: SkippedLink) {
-        if self.paths.insert(link.rel_path.clone()) {
+    fn add_link(&mut self, link: SkippedLink) {
+        if self.insert_path(&link.rel_path) {
             self.links.push(link);
         }
     }
+
+    fn add_unseen(&mut self, path: UnseenPath) {
+        if self.insert_path(&path.rel_path) {
+            self.unseen.push(path);
+        }
+    }
+
+    fn insert_path(&mut self, rel: &str) -> bool {
+        if !self.paths.insert(rel.to_string()) {
+            return false;
+        }
+        for (end, _) in rel.match_indices('/') {
+            self.ancestors.insert(rel[..end].to_string());
+        }
+        true
+    }
 }
 
-/// Walk the local directory tree and return files matching the filter.
-/// Errors that hit non-root entries are silently dropped (same behaviour as
-/// the CLI) so that partial scans still return useful data on messy trees.
+/// Walk the local directory tree and return files matching the filter; see
+/// [`scan_local_tree_checked`] for what the walk could not see.
 pub fn scan_local_tree(root: &str, opts: &ScanOptions) -> Vec<LocalEntry> {
     scan_local_tree_checked(root, opts).0
 }
@@ -419,20 +546,27 @@ pub fn scan_local_tree(root: &str, opts: &ScanOptions) -> Vec<LocalEntry> {
 /// orphan-delete caller can refuse to delete off an incomplete scan.
 /// CLAUDE-AV-B3-01.
 ///
-/// The third element names the symlinks to directories the walk did not
-/// follow, so a run can say which subtrees it did not load. They are reported
-/// only: excluding a path from a sync is [`LinkBound`]'s decision.
+/// The third element names what the walk did not see: the symlinks to
+/// directories it did not follow (reported only: whether a sync leaves a path
+/// alone is [`ScanBound`]'s decision), the directories at the depth limit, and
+/// the entries it could not read.
 pub fn scan_local_tree_checked(
     root: &str,
     opts: &ScanOptions,
-) -> (Vec<LocalEntry>, ScanCompleteness, Vec<SkippedLink>) {
+) -> (Vec<LocalEntry>, ScanCompleteness, ScanBoundaries) {
     let matchers = compile_matchers(&opts.exclude_patterns);
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
+    let relative_of = |path: &Path| {
+        path.strip_prefix(root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
 
     let mut entries = Vec::new();
     let mut completeness = ScanCompleteness::default();
-    let mut skipped_links = Vec::new();
+    let mut boundaries = ScanBoundaries::default();
     for result in walkdir::WalkDir::new(root)
         .follow_links(false)
         .max_depth(depth)
@@ -440,53 +574,72 @@ pub fn scan_local_tree_checked(
     {
         let walk_entry = match result {
             Ok(e) => e,
-            Err(_) => {
+            Err(error) => {
                 // A directory we could not read (the root itself when the mount
                 // is gone, or any subtree) makes the scan incomplete: files
                 // under it are invisible. Count it so delete propagation can
-                // refuse. CLAUDE-AV-B3-01.
+                // refuse, and bound a subtree so no copy reaches into it.
+                // CLAUDE-AV-B3-01.
                 completeness.list_errors += 1;
+                if error.depth() > 0 {
+                    if let Some(path) = error.path() {
+                        boundaries.unseen(&relative_of(path), "unreadable");
+                    }
+                }
                 continue;
             }
         };
-        if entries.len() >= cap {
+        if entries.len() + boundaries.len() >= cap {
             completeness.truncated = true;
+            boundaries.unbounded.get_or_insert("entry_cap");
             break;
         }
         if walk_entry.path_is_symlink() && walk_entry.depth() > 0 {
             // Not followed. A link to a directory is named, so the run can say
             // which subtree it did not load; a link to a file is passed over.
-            if walk_entry.path().is_dir() {
-                let rel_path = walk_entry
-                    .path()
-                    .strip_prefix(root)
-                    .unwrap_or(walk_entry.path())
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                let link_target = std::fs::read_link(walk_entry.path())
-                    .ok()
-                    .map(|target| target.to_string_lossy().into_owned());
-                tracing::warn!(
-                    "[scan_local_tree] skipping symlink {} -> {}: not followed",
-                    rel_path,
-                    link_target.as_deref().unwrap_or("?")
-                );
-                skipped_links.push(SkippedLink {
-                    rel_path,
-                    link_target,
-                });
+            match std::fs::metadata(walk_entry.path()) {
+                Ok(target) if target.is_dir() => {
+                    let rel_path = relative_of(walk_entry.path());
+                    let link_target = std::fs::read_link(walk_entry.path())
+                        .ok()
+                        .map(|target| target.to_string_lossy().into_owned());
+                    tracing::warn!(
+                        "[scan_local_tree] skipping symlink {} -> {}: not followed",
+                        rel_path,
+                        link_target.as_deref().unwrap_or("?")
+                    );
+                    boundaries.links.push(SkippedLink {
+                        rel_path,
+                        link_target,
+                    });
+                }
+                Ok(_) => {}
+                // A dangling link points at nothing to load.
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(_) => {
+                    // Listed but not resolved: it sits in a directory that can
+                    // be read and not traversed, so what it points at is unknown.
+                    completeness.list_errors += 1;
+                    boundaries.unseen(&relative_of(walk_entry.path()), "unreadable");
+                }
+            }
+            continue;
+        }
+        if walk_entry.depth() == depth && walk_entry.file_type().is_dir() {
+            // Listed at the depth limit and not descended into: what it holds is
+            // unknown, like the contents of a directory that failed to list.
+            completeness.truncated = true;
+            if depth == 0 {
+                boundaries.unbounded.get_or_insert("depth_limit");
+            } else {
+                boundaries.unseen(&relative_of(walk_entry.path()), "depth_limit");
             }
             continue;
         }
         if !walk_entry.file_type().is_file() {
             continue;
         }
-        let relative = walk_entry
-            .path()
-            .strip_prefix(root)
-            .unwrap_or(walk_entry.path())
-            .to_string_lossy()
-            .replace('\\', "/");
+        let relative = relative_of(walk_entry.path());
         if relative.is_empty() {
             continue;
         }
@@ -510,8 +663,10 @@ pub fn scan_local_tree_checked(
                 // read and not traversed (0400) keeps the type its directory
                 // entry reports while every stat fails. Its size and mtime were
                 // never seen, so the scan is incomplete; the entry stays, so it
-                // does not read as absent.
+                // does not read as absent, and its path is bounded, so nothing is
+                // copied over it on the strength of a size it never had.
                 completeness.list_errors += 1;
+                boundaries.unseen(&relative, "unreadable");
                 None
             }
         };
@@ -536,7 +691,7 @@ pub fn scan_local_tree_checked(
             sha256,
         });
     }
-    (entries, completeness, skipped_links)
+    (entries, completeness, boundaries)
 }
 
 /// Recursively list the remote tree rooted at `remote_root`. Uses the
@@ -571,13 +726,13 @@ pub const DEFAULT_SCAN_CHECKERS: usize = 8;
 /// fail-closed placeholder while the pool owns it and handed back before this
 /// returns.
 ///
-/// The third element lists the links the walk listed and did not follow; see
-/// [`LinkBound`] for what a sync does with them.
+/// The third element names what the walk skipped or could not see; see
+/// [`ScanBound`] for what a sync does with it.
 pub async fn scan_remote_tree_checked(
     provider: &mut Box<dyn StorageProvider>,
     remote_root: &str,
     opts: &ScanOptions,
-) -> (Vec<RemoteEntry>, ScanCompleteness, Vec<SkippedLink>) {
+) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
     let parked: Box<dyn StorageProvider> =
         Box::new(crate::crypt_overlay_provider::DetachedProvider);
     let real = std::mem::replace(provider, parked);
@@ -618,7 +773,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     list_model: &ProviderListSessionModel,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
-) -> (Vec<RemoteEntry>, ScanCompleteness, Vec<SkippedLink>) {
+) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
     let mut completeness = ScanCompleteness::default();
 
     // GAP-9f: provider-native single-shot recursive listing fast-path,
@@ -634,19 +789,25 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                 None => None,
             }
         };
-        if let Some((results, skipped_links)) = fast {
+        if let Some((results, links)) = fast {
             if let Some(obs) = observer {
                 obs.on_scan_progress(results.len(), 0);
             }
             // `Some` means the provider returned a full recursive listing in one
             // call, and it degrades to `None` on any error, so there are no
             // per-directory failures to count here. The cap still bites though:
-            // `adapt_fastpath_entries` stops filling at `max_entries`, and a
-            // listing cut off at the cap is a truncated tree like any other.
-            if results.len() >= opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES) {
+            // `adapt_fastpath_entries` stops filling at `max_entries`, counting
+            // the skipped links with the entries, and a listing cut off at the
+            // cap is a truncated tree like any other.
+            let mut boundaries = ScanBoundaries {
+                links,
+                ..ScanBoundaries::default()
+            };
+            if results.len() + boundaries.len() >= opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES) {
                 completeness.truncated = true;
+                boundaries.unbounded = Some("entry_cap");
             }
-            return (results, completeness, skipped_links);
+            return (results, completeness, boundaries);
         }
     }
 
@@ -678,7 +839,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     };
 
     let mut results = Vec::new();
-    let mut skipped_links = Vec::new();
+    let mut boundaries = ScanBoundaries::default();
     let mut queue = VecDeque::from([RemoteScanDir {
         abs_dir: remote_root.to_string(),
         rel_prefix: String::new(),
@@ -688,15 +849,18 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
     let mut in_flight = 0usize;
     let mut last_progress = std::time::Instant::now();
 
-    while (!queue.is_empty() || in_flight > 0) && results.len() < cap {
+    while (!queue.is_empty() || in_flight > 0) && results.len() + boundaries.len() < cap {
         if scan_cancelled(&cancel) {
-            // CLAUDE-AV-B3-13: a cancelled walk stopped mid-tree.
+            // CLAUDE-AV-B3-13: a cancelled walk stopped mid-tree, at no
+            // particular directory, so nothing it missed has a name.
             completeness.truncated = true;
+            boundaries.unbounded.get_or_insert("cancelled");
             break;
         }
         while in_flight < max_workers {
             if scan_cancelled(&cancel) {
                 completeness.truncated = true;
+                boundaries.unbounded.get_or_insert("cancelled");
                 break;
             }
             let Some(dir) = queue.pop_front() else {
@@ -706,6 +870,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                 // CLAUDE-AV-B3-13: everything under this directory is below the
                 // depth limit and therefore invisible to the scan.
                 completeness.truncated = true;
+                bound_unlisted_below_depth(&mut boundaries, &dir);
                 continue;
             }
             spawn_remote_scan_task(
@@ -729,16 +894,21 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
         match join_set.join_next().await {
             Some(Ok(Ok(batch))) => {
                 in_flight = in_flight.saturating_sub(1);
-                skipped_links.extend(batch.skipped_links);
+                absorb_skipped_links(
+                    &mut boundaries,
+                    &mut completeness,
+                    batch.skipped_links,
+                    cap.saturating_sub(results.len()),
+                );
                 for file in batch.files {
-                    if results.len() >= cap {
+                    if results.len() + boundaries.len() >= cap {
                         completeness.truncated = true;
                         break;
                     }
                     results.push(file);
                 }
                 for dir in batch.dirs {
-                    if results.len() >= cap {
+                    if results.len() + boundaries.len() >= cap {
                         // Dropping a queued directory drops its whole subtree.
                         completeness.truncated = true;
                         break;
@@ -746,17 +916,21 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                     queue.push_back(dir);
                 }
             }
-            Some(Ok(Err(error))) => {
+            Some(Ok(Err(failure))) => {
                 in_flight = in_flight.saturating_sub(1);
                 // CLAUDE-AV-B3-13: this directory did not list. Its files are
                 // simply absent from `results`, which reads exactly like a
-                // deletion downstream, so count it instead of only warning.
+                // deletion downstream, so count it instead of only warning, and
+                // bound it so no copy reaches into what it might hold.
                 completeness.list_errors += 1;
-                eprintln!("[scan_remote_tree] warning: {}", error);
+                boundaries.unseen(&failure.rel_prefix, "list_error");
+                eprintln!("[scan_remote_tree] warning: {}", failure.message);
             }
             Some(Err(error)) => {
                 in_flight = in_flight.saturating_sub(1);
                 completeness.list_errors += 1;
+                // The task that failed took the name of its directory with it.
+                boundaries.unbounded.get_or_insert("scan_task_failed");
                 eprintln!("[scan_remote_tree] warning: scan task failed: {}", error);
             }
             None => break,
@@ -770,15 +944,17 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
         }
     }
 
-    // The loop also exits when the cap is hit, which is a truncated tree.
-    if results.len() >= cap {
+    // The loop also exits when the cap is hit, which is a truncated tree whose
+    // missing part has no name.
+    if results.len() + boundaries.len() >= cap {
         completeness.truncated = true;
+        boundaries.unbounded.get_or_insert("entry_cap");
     }
 
     if let Some(obs) = observer {
         obs.on_scan_progress(results.len(), 0);
     }
-    (results, completeness, skipped_links)
+    (results, completeness, boundaries)
 }
 
 async fn scan_remote_tree_locked(
@@ -788,7 +964,7 @@ async fn scan_remote_tree_locked(
     list_model: &ProviderListSessionModel,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
-) -> (Vec<RemoteEntry>, ScanCompleteness, Vec<SkippedLink>) {
+) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
     let want_remote_checksum = {
@@ -801,7 +977,7 @@ async fn scan_remote_tree_locked(
     };
 
     let mut results = Vec::new();
-    let mut skipped_links = Vec::new();
+    let mut boundaries = ScanBoundaries::default();
     let mut completeness = ScanCompleteness::default();
     let resource_manager = TransferResourceManager::new(TransferBudget {
         checker_slots: 1,
@@ -816,25 +992,35 @@ async fn scan_remote_tree_locked(
     while let Some(dir) = queue.pop_front() {
         if scan_cancelled(&cancel) {
             completeness.truncated = true;
+            boundaries.unbounded.get_or_insert("cancelled");
             break;
         }
         // CLAUDE-AV-B3-13: both of these skip a directory we were asked to walk,
         // so the tree we report is smaller than the tree that exists.
-        if dir.depth >= depth || results.len() >= cap {
+        if dir.depth >= depth {
             completeness.truncated = true;
+            bound_unlisted_below_depth(&mut boundaries, &dir);
             continue;
+        }
+        if results.len() + boundaries.len() >= cap {
+            completeness.truncated = true;
+            boundaries.unbounded.get_or_insert("entry_cap");
+            break;
         }
 
         // CLAUDE-AV-B3-13: each of the three aborts below abandons the queue
-        // mid-walk. They used to leave only a stderr warning behind.
+        // mid-walk. They used to leave only a stderr warning behind; what they
+        // abandon has no single name, so no run can be bounded around it.
         let Ok(_checker_lease) = resource_manager.acquire(ResourceRequest::checker()).await else {
             eprintln!("[scan_remote_tree] warning: failed to acquire checker slot");
             completeness.truncated = true;
+            boundaries.unbounded.get_or_insert("scan_session_lost");
             break;
         };
         let Ok(session_lease) = session_pool.acquire().await else {
             eprintln!("[scan_remote_tree] warning: failed to acquire list lease");
             completeness.truncated = true;
+            boundaries.unbounded.get_or_insert("scan_session_lost");
             break;
         };
         let batch = {
@@ -842,6 +1028,7 @@ async fn scan_remote_tree_locked(
             let Some(provider) = provider_lock.as_mut() else {
                 eprintln!("[scan_remote_tree] warning: provider disconnected");
                 completeness.truncated = true;
+                boundaries.unbounded.get_or_insert("scan_session_lost");
                 break;
             };
             scan_remote_dir(provider, &dir, opts, want_remote_checksum, &cancel).await
@@ -850,10 +1037,16 @@ async fn scan_remote_tree_locked(
 
         match batch {
             Ok(batch) => {
-                skipped_links.extend(batch.skipped_links);
+                absorb_skipped_links(
+                    &mut boundaries,
+                    &mut completeness,
+                    batch.skipped_links,
+                    cap.saturating_sub(results.len()),
+                );
                 for file in batch.files {
-                    if results.len() >= cap {
+                    if results.len() + boundaries.len() >= cap {
                         completeness.truncated = true;
+                        boundaries.unbounded.get_or_insert("entry_cap");
                         break;
                     }
                     results.push(file);
@@ -866,6 +1059,7 @@ async fn scan_remote_tree_locked(
                 // CLAUDE-AV-B3-13: an unlisted directory hides every file under
                 // it, which downstream reads as "these files were deleted".
                 completeness.list_errors += 1;
+                boundaries.unseen(&dir.rel_prefix, "list_error");
                 eprintln!(
                     "[scan_remote_tree] warning: failed to list {}: {}",
                     dir.abs_dir, error
@@ -883,7 +1077,35 @@ async fn scan_remote_tree_locked(
     if let Some(obs) = observer {
         obs.on_scan_progress(results.len(), 0);
     }
-    (results, completeness, skipped_links)
+    (results, completeness, boundaries)
+}
+
+/// Bound a directory the walk reached at its depth limit and did not list. The
+/// root has no path to bound around, so a limit that stops at the root leaves
+/// the whole tree unseen.
+fn bound_unlisted_below_depth(boundaries: &mut ScanBoundaries, dir: &RemoteScanDir) {
+    if dir.rel_prefix.is_empty() {
+        boundaries.unbounded.get_or_insert("depth_limit");
+    } else {
+        boundaries.unseen(&dir.rel_prefix, "depth_limit");
+    }
+}
+
+/// Record a batch's skipped links within the room the entry cap leaves them: a
+/// directory holding many links must not grow the list without bound, and links
+/// that no longer fit make the scan truncated, with a gap it cannot name.
+fn absorb_skipped_links(
+    boundaries: &mut ScanBoundaries,
+    completeness: &mut ScanCompleteness,
+    links: Vec<SkippedLink>,
+    room: usize,
+) {
+    let room = room.saturating_sub(boundaries.len());
+    if links.len() > room {
+        completeness.truncated = true;
+        boundaries.unbounded.get_or_insert("entry_cap");
+    }
+    boundaries.links.extend(links.into_iter().take(room));
 }
 
 #[derive(Debug, Clone)]
@@ -899,9 +1121,15 @@ struct RemoteScanBatch {
     skipped_links: Vec<SkippedLink>,
 }
 
+/// A directory a scan task could not list, and why.
+struct RemoteScanFailure {
+    rel_prefix: String,
+    message: String,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn spawn_remote_scan_task(
-    join_set: &mut JoinSet<Result<RemoteScanBatch, String>>,
+    join_set: &mut JoinSet<Result<RemoteScanBatch, RemoteScanFailure>>,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     resource_manager: Arc<TransferResourceManager>,
     session_pool: Arc<TransferSessionPoolHandle>,
@@ -912,14 +1140,18 @@ fn spawn_remote_scan_task(
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
 ) {
     join_set.spawn(async move {
+        let failure = |message: String| RemoteScanFailure {
+            rel_prefix: dir.rel_prefix.clone(),
+            message,
+        };
         let _checker_lease = resource_manager
             .acquire(ResourceRequest::checker())
             .await
-            .map_err(|error| format!("failed to acquire checker slot: {}", error))?;
+            .map_err(|error| failure(format!("failed to acquire checker slot: {}", error)))?;
         let session_lease = session_pool
             .acquire()
             .await
-            .map_err(|error| format!("failed to acquire list lease: {}", error))?;
+            .map_err(|error| failure(format!("failed to acquire list lease: {}", error)))?;
         if scan_cancelled(&cancel) {
             drop(session_lease);
             return Ok(RemoteScanBatch {
@@ -934,14 +1166,14 @@ fn spawn_remote_scan_task(
                 let provider_lock = provider.lock().await;
                 provider_lock
                     .as_ref()
-                    .ok_or_else(|| "provider disconnected".to_string())?
+                    .ok_or_else(|| failure("provider disconnected".to_string()))?
                     .clone_for_list()
-                    .map_err(|error| error.to_string())?
+                    .map_err(|error| failure(error.to_string()))?
             }
         };
         let result = scan_remote_dir(&mut worker, &dir, &opts, want_remote_checksum, &cancel)
             .await
-            .map_err(|error| format!("failed to list {}: {}", dir.abs_dir, error));
+            .map_err(|error| failure(format!("failed to list {}: {}", dir.abs_dir, error)));
         // Parked before the lease is released, so the waiter that wakes on
         // the freed permit finds the warm worker ready to pop.
         warm_workers.park(worker, result.is_ok()).await;
@@ -1392,13 +1624,13 @@ pub(crate) mod tests {
         fs::write(root.join("real/x.txt"), b"x").unwrap();
         std::os::unix::fs::symlink("real", root.join("link")).unwrap();
         std::os::unix::fs::symlink("real/x.txt", root.join("file-link.txt")).unwrap();
-        let (entries, completeness, links) =
+        let (entries, completeness, boundaries) =
             scan_local_tree_checked(root.to_str().unwrap(), &ScanOptions::default());
         let paths: Vec<_> = entries.iter().map(|e| e.rel_path.as_str()).collect();
         assert_eq!(paths, vec!["real/x.txt"]);
         assert!(completeness.is_complete());
         assert_eq!(
-            links,
+            boundaries.links,
             vec![SkippedLink {
                 rel_path: "link".to_string(),
                 link_target: Some("real".to_string()),
@@ -1700,7 +1932,7 @@ pub(crate) mod tests {
             disable_recursive_fastpath: true,
             ..ScanOptions::default()
         };
-        let (rows, completeness, links) = tokio::time::timeout(
+        let (rows, completeness, boundaries) = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             scan_remote_tree_checked(&mut provider, "/root", &opts),
         )
@@ -1712,7 +1944,7 @@ pub(crate) mod tests {
         assert!(completeness.is_complete());
         // Not walked, and reported, so a sync leaves its path alone.
         assert_eq!(
-            links,
+            boundaries.links,
             vec![SkippedLink {
                 rel_path: "loop".to_string(),
                 link_target: None,
@@ -1731,11 +1963,15 @@ pub(crate) mod tests {
     /// sibling that merely starts with the same characters is not under it.
     #[test]
     fn link_bound_covers_the_link_and_its_subtree_and_nothing_else() {
-        let bound = LinkBound::for_sync(
+        let bound = ScanBound::for_sync(
             "/nonexistent-local-root",
             std::iter::empty(),
             std::iter::empty(),
-            vec![link("a/link")],
+            &ScanBoundaries::default(),
+            ScanBoundaries {
+                links: vec![link("a/link")],
+                ..ScanBoundaries::default()
+            },
         );
         assert!(bound.covers("a/link"));
         assert!(bound.covers("a/link/x.txt"));
@@ -1756,11 +1992,12 @@ pub(crate) mod tests {
         std::fs::create_dir(local.path().join("real")).unwrap();
         std::fs::write(local.path().join("real/x.txt"), b"x").unwrap();
         std::os::unix::fs::symlink("real", local.path().join("link")).unwrap();
-        let bound = LinkBound::for_sync(
+        let bound = ScanBound::for_sync(
             local.path().to_str().unwrap(),
             ["real/x.txt"],
             ["real/x.txt", "link/x.txt", "other/y.txt"],
-            Vec::new(),
+            &ScanBoundaries::default(),
+            ScanBoundaries::default(),
         );
         assert_eq!(
             bound.links(),
@@ -1793,17 +2030,229 @@ pub(crate) mod tests {
         };
         let mut locals = vec![local_entry("a.txt"), local_entry("link/x.txt")];
         let mut remotes = vec![remote_entry("a.txt"), remote_entry("link")];
-        let bound = LinkBound::apply(
+        let bound = ScanBound::apply(
             "/nonexistent-local-root",
             &mut locals,
             &mut remotes,
-            vec![link("link")],
+            &ScanBoundaries::default(),
+            ScanBoundaries {
+                links: vec![link("link")],
+                ..ScanBoundaries::default()
+            },
         );
         assert_eq!(bound.links().len(), 1);
         let local_paths: Vec<_> = locals.iter().map(|e| e.rel_path.as_str()).collect();
         let remote_paths: Vec<_> = remotes.iter().map(|e| e.rel_path.as_str()).collect();
         assert_eq!(local_paths, vec!["a.txt"]);
         assert_eq!(remote_paths, vec!["a.txt"]);
+    }
+
+    /// The local side of the bound when the local tree cannot be read: a link
+    /// inside a directory that is readable but not traversable (0400) fails its
+    /// lstat with a permission error, not with absence. Its path is left out on
+    /// both sides instead of being taken as absent, which left the remote files
+    /// under it free to be planned for deletion.
+    #[cfg(unix)]
+    #[test]
+    fn link_bound_protects_a_local_prefix_it_cannot_read() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir(root.join("real")).unwrap();
+        let locked = root.join("locked");
+        fs::create_dir(&locked).unwrap();
+        std::os::unix::fs::symlink("../real", locked.join("link")).unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o400)).unwrap();
+        let blocked = fs::symlink_metadata(locked.join("link")).is_err();
+        let bound = ScanBound::for_sync(
+            root.to_str().unwrap(),
+            std::iter::empty(),
+            ["locked/link/x.txt"],
+            &ScanBoundaries::default(),
+            ScanBoundaries::default(),
+        );
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
+        if !blocked {
+            // Running as root, or on a filesystem that ignores the mode.
+            return;
+        }
+        assert!(
+            bound.covers("locked/link/x.txt"),
+            "a prefix that cannot be read is left out, not taken as absent"
+        );
+        assert_eq!(
+            bound.unseen(),
+            &[UnseenPath {
+                rel_path: "locked/link".to_string(),
+                reason: "unreadable",
+            }]
+        );
+    }
+
+    /// A symlink the local walk lists but cannot resolve, because it sits in a
+    /// 0400 directory: what it points at is unknown, so the scan is incomplete.
+    #[cfg(unix)]
+    #[test]
+    fn scan_local_tree_is_incomplete_when_it_cannot_resolve_a_listed_link() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir(root.join("real")).unwrap();
+        let locked = root.join("locked");
+        fs::create_dir(&locked).unwrap();
+        std::os::unix::fs::symlink("../real", locked.join("link")).unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o400)).unwrap();
+        let blocked = fs::metadata(locked.join("link")).is_err();
+        let (_, completeness, _) =
+            scan_local_tree_checked(root.to_str().unwrap(), &ScanOptions::default());
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
+        if !blocked {
+            return;
+        }
+        assert!(
+            !completeness.is_complete(),
+            "a listed link that could not be resolved makes the scan incomplete"
+        );
+    }
+
+    /// Skipped links count against the scan's entry cap like entries do: a
+    /// directory holding many links and few files must not grow the link list
+    /// without bound, and a scan cut off at the cap says so.
+    #[tokio::test]
+    async fn a_scan_counts_skipped_links_against_its_entry_cap() {
+        use crate::providers::RemoteEntry;
+        let mut listing = vec![RemoteEntry::file(
+            "a.txt".to_string(),
+            "/root/a.txt".to_string(),
+            1,
+        )];
+        for i in 0..5 {
+            let mut link = RemoteEntry::directory(format!("link{i}"), format!("/root/link{i}"));
+            link.is_symlink = true;
+            listing.push(link);
+        }
+        let mut provider: Box<dyn StorageProvider> = Box::new(TreeProvider {
+            dirs: std::collections::HashMap::from([("/root".to_string(), listing)]),
+        });
+        let opts = ScanOptions {
+            disable_recursive_fastpath: true,
+            max_entries: Some(3),
+            ..ScanOptions::default()
+        };
+        let (_rows, completeness, boundaries) =
+            scan_remote_tree_checked(&mut provider, "/root", &opts).await;
+        assert!(
+            !completeness.is_complete(),
+            "a scan cut off at the cap is not complete"
+        );
+        assert!(
+            boundaries.links.len() <= 3,
+            "the links stay within the cap, got {}",
+            boundaries.links.len()
+        );
+        assert_eq!(
+            boundaries.unbounded,
+            Some("entry_cap"),
+            "the part cut off has no name, so a sync must refuse rather than bound it"
+        );
+    }
+
+    /// A directory the walk reaches at its depth limit is not listed; the scan
+    /// names it, so a sync can leave what it might hold alone on both sides.
+    #[tokio::test]
+    async fn a_directory_at_the_depth_limit_is_reported_unseen() {
+        use crate::providers::RemoteEntry;
+        let mut provider: Box<dyn StorageProvider> = Box::new(TreeProvider {
+            dirs: std::collections::HashMap::from([
+                (
+                    "/root".to_string(),
+                    vec![
+                        RemoteEntry::file("a.txt".to_string(), "/root/a.txt".to_string(), 1),
+                        RemoteEntry::directory("d1".to_string(), "/root/d1".to_string()),
+                    ],
+                ),
+                (
+                    "/root/d1".to_string(),
+                    vec![RemoteEntry::file(
+                        "x.txt".to_string(),
+                        "/root/d1/x.txt".to_string(),
+                        1,
+                    )],
+                ),
+            ]),
+        });
+        let opts = ScanOptions {
+            disable_recursive_fastpath: true,
+            max_depth: Some(1),
+            ..ScanOptions::default()
+        };
+        let (rows, completeness, boundaries) =
+            scan_remote_tree_checked(&mut provider, "/root", &opts).await;
+        let paths: Vec<_> = rows.iter().map(|r| r.rel_path.as_str()).collect();
+        assert_eq!(paths, vec!["a.txt"]);
+        assert!(completeness.truncated);
+        assert_eq!(
+            boundaries.unseen,
+            vec![UnseenPath {
+                rel_path: "d1".to_string(),
+                reason: "depth_limit",
+            }]
+        );
+        assert_eq!(
+            boundaries.unbounded, None,
+            "a named gap can be bounded around"
+        );
+    }
+
+    /// The bound knows the directories above every bounded path, and only those.
+    #[test]
+    fn scan_bound_knows_the_directories_above_a_bounded_path() {
+        let bound = ScanBound::for_sync(
+            "/nonexistent-local-root",
+            std::iter::empty(),
+            std::iter::empty(),
+            &ScanBoundaries::default(),
+            ScanBoundaries {
+                links: vec![link("a/b/link")],
+                ..ScanBoundaries::default()
+            },
+        );
+        assert!(bound.holds_bounded_paths("a"));
+        assert!(bound.holds_bounded_paths("a/b"));
+        assert!(
+            !bound.holds_bounded_paths("a/b/link"),
+            "the bounded path itself is covered, not above"
+        );
+        assert!(!bound.holds_bounded_paths("c"));
+    }
+
+    /// A scan that missed a part of the tree it cannot name leaves nothing to
+    /// bound around: the bound refuses the run and says which side and why.
+    #[test]
+    fn scan_bound_refuses_a_run_a_scan_could_not_bound() {
+        let bound = ScanBound::for_sync(
+            "/nonexistent-local-root",
+            std::iter::empty(),
+            std::iter::empty(),
+            &ScanBoundaries::default(),
+            ScanBoundaries {
+                unbounded: Some("cancelled"),
+                ..ScanBoundaries::default()
+            },
+        );
+        let refusal = bound.refusal().expect("an unnamed gap refuses the run");
+        assert!(
+            refusal.contains("remote") && refusal.contains("cancelled"),
+            "{refusal}"
+        );
+        let bounded = ScanBound::for_sync(
+            "/nonexistent-local-root",
+            std::iter::empty(),
+            std::iter::empty(),
+            &ScanBoundaries::default(),
+            ScanBoundaries::default(),
+        );
+        assert_eq!(bounded.refusal(), None);
     }
 
     /// An in-memory tree that lists on independent clones and counts how many

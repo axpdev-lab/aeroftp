@@ -584,6 +584,10 @@ pub struct SyncReport {
     /// sides: the remote links the scan did not follow and the local links above
     /// a path only the remote holds. Empty when the tree has none.
     pub skipped_links: Vec<crate::sync_core::SkippedLink>,
+    /// Paths the run left alone, with everything under them, because a scan
+    /// could not see them: a directory at the depth limit or one that failed to
+    /// list, a local entry whose metadata could not be read.
+    pub unseen_paths: Vec<crate::sync_core::UnseenPath>,
 }
 
 impl SyncReport {
@@ -1298,13 +1302,11 @@ pub async fn sync_tree_core(
     opts: &SyncOptions,
     sink: &mut dyn SyncProgressSink,
 ) -> SyncReport {
-    // DAG-ENGINE phase 2 (F2-T07b): with the sync flag on, route a real
-    // (non-dry-run) sync through the shared graph engine instead of this
-    // hand-rolled interleaved decide/perform loop. Dry-run always stays on
-    // the legacy path below: it must never build or execute a DAG, so the
-    // dry-run plan is structurally guaranteed free of any mutating graph.
-    // Default OFF, so the legacy path is the default and a rollback is a
-    // runtime toggle, never a revert.
+    // DAG-ENGINE phase 2 (F2-T07b): every real (non-dry-run) sync goes through
+    // the shared graph engine instead of this hand-rolled interleaved
+    // decide/perform loop. Dry-run always stays on the legacy path below: it
+    // must never build or execute a DAG, so the dry-run plan is structurally
+    // guaranteed free of any mutating graph.
     if crate::transfer_dag_sync::should_route_sync_to_dag(opts.dry_run) {
         return crate::transfer_dag_sync::execute_sync_dag(
             provider,
@@ -1319,7 +1321,7 @@ pub async fn sync_tree_core(
     let start = std::time::Instant::now();
     sink.on_phase(SyncPhase::Scanning);
     let scan = scan_options_for_sync(opts);
-    let (mut locals, local_scan, local_links) = scan_local_tree_checked(local_root, &scan);
+    let (mut locals, local_scan, local_boundaries) = scan_local_tree_checked(local_root, &scan);
 
     if !opts.dry_run
         && !locals.is_empty()
@@ -1328,21 +1330,40 @@ pub async fn sync_tree_core(
         ensure_remote_dir(provider, remote_root).await;
     }
 
-    let (mut remotes, remote_scan, remote_links) =
+    let (mut remotes, remote_scan, remote_boundaries) =
         scan_remote_tree_checked(provider, remote_root, &scan).await;
-    // What a skipped link hides stays out of the run on both sides, so no pass
-    // below reads it as deleted or as missing (see `LinkBound`).
-    let link_bound =
-        crate::sync_core::LinkBound::apply(local_root, &mut locals, &mut remotes, remote_links);
+    // What the scans did not see stays out of the run on both sides, so no pass
+    // below reads it as deleted, as missing or as safe to copy over (see
+    // `ScanBound`).
+    let bound = crate::sync_core::ScanBound::apply(
+        local_root,
+        &mut locals,
+        &mut remotes,
+        &local_boundaries,
+        remote_boundaries,
+    );
 
     sink.on_phase(SyncPhase::Planning);
     let mut report = SyncReport {
         dry_run: opts.dry_run,
         direction: Some(opts.direction),
         delta_policy: Some(opts.delta_policy),
-        skipped_links: link_bound.reported(local_links),
+        skipped_links: bound.reported_links(&local_boundaries),
+        unseen_paths: bound.unseen().to_vec(),
         ..SyncReport::default()
     };
+    // A scan that missed a part of the tree it cannot name leaves nothing to
+    // bound the run around: plan nothing rather than a partial run.
+    if let Some(reason) = bound.refusal() {
+        report.errors.push(SyncError {
+            rel_path: String::new(),
+            operation: "scan",
+            message: format!("sync refused, nothing was planned: {reason}"),
+            decision_policy: opts.delta_policy,
+        });
+        sink.on_phase(SyncPhase::Done);
+        return report;
+    }
 
     use std::collections::{HashMap as Map, HashSet};
     let mut seen_local: HashSet<String> = HashSet::new();

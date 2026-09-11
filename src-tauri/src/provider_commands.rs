@@ -6823,9 +6823,7 @@ pub async fn provider_compare_directories(
     options: Option<crate::sync::CompareOptions>,
     progress_id: Option<String>,
 ) -> Result<Vec<crate::sync::FileComparison>, String> {
-    use crate::sync::{
-        build_comparison_results_with_index, load_sync_index, should_exclude, FileInfo,
-    };
+    use crate::sync::{build_comparison_results_with_index, load_sync_index, FileInfo};
 
     let mut options = options.unwrap_or_default();
     crate::sync::apply_error_correction_excludes(&mut options);
@@ -6916,10 +6914,12 @@ pub async fn provider_compare_directories(
     // the post-scan flag mis-classified the whole map.
     let overlay_wrapped_at_scan_start = state.overlay_wrapped.load(Ordering::SeqCst);
 
-    // Links the remote walk listed and did not follow; only the shared walker
-    // below reports them (the legacy walk runs on providers that cannot list a
-    // link as a directory).
-    let mut remote_links = Vec::new();
+    // What the remote walk did not see or follow. Both walks below report the
+    // symlinks they do not follow (an armed crypt overlay keeps `is_symlink` and
+    // takes the serial walk); only the shared walker reports unseen paths, since
+    // the serial walk fails the whole compare on the first directory that does
+    // not list.
+    let mut remote_boundaries = crate::sync_core::ScanBoundaries::default();
     let list_model = resolve_provider_list_session_model(&state.provider, 8).await;
     if list_model.is_clone_pool() {
         use crate::sync_core::scan::{scan_remote_tree_with_provider_lock_checked, ScanOptions};
@@ -6942,7 +6942,7 @@ pub async fn provider_compare_directories(
             progress_id: progress_id.clone(),
             base_count: local_files.len(),
         };
-        let (remote_entries, remote_scan, skipped_links) =
+        let (remote_entries, remote_scan, boundaries) =
             scan_remote_tree_with_provider_lock_checked(
                 state.provider.clone(),
                 &remote_path,
@@ -6952,7 +6952,7 @@ pub async fn provider_compare_directories(
                 Some(&scan_observer),
             )
             .await;
-        remote_links = skipped_links;
+        remote_boundaries = boundaries;
 
         // CLAUDE-AV-B3-13: a directory the provider refused to list contributes
         // no rows, which is indistinguishable from the user having deleted its
@@ -7029,149 +7029,30 @@ pub async fn provider_compare_directories(
             }),
         );
     } else {
-        let mut dirs_to_process = vec![remote_path.clone()];
-        let mut remote_dirs_found: usize = 0;
-        let mut remote_bytes_found: u64 = 0;
-        while let Some(current_dir) = dirs_to_process.pop() {
-            // Abort the remote scan if the user cancelled from the UI.
-            // Without this, the walk keeps listing directories until the tree is
-            // exhausted, which can look like a runaway scan on large providers.
-            if state.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
-                return Err(format!(
-                    "{}: compare cancelled by user before the remote tree was fully listed.",
-                    crate::SCAN_INCOMPLETE_MARKER
-                ));
-            }
-
-            // Lock provider only for this single list operation, then release
-            let entries = {
-                let mut provider_lock = state.provider.lock().await;
-                if state.connection_generation.load(Ordering::SeqCst) != compare_generation {
-                    return Err(format!(
-                        "{}: provider session changed during Compare; retry the scan.",
-                        crate::SCAN_INCOMPLETE_MARKER
-                    ));
-                }
-                let provider = provider_lock
-                    .as_mut()
-                    .ok_or("Not connected to any provider")?;
-                if !provider.listing_is_authoritative() {
-                    return Err(format!(
-                        "{}: the current provider listing is not authoritative; refusing to build an actionable compare plan.",
-                        crate::SCAN_INCOMPLETE_MARKER
-                    ));
-                }
-                provider.list(&current_dir).await.map_err(|e| {
-                    // CLAUDE-AV-B3-13: a directory that would not list leaves
-                    // its files out of the compare, where they read as deleted.
-                    // Mark it so the UI fails closed instead of falling back to
-                    // a flat plan built from the panel listings.
-                    format!(
-                        "{}: failed to list {}: {}",
-                        crate::SCAN_INCOMPLETE_MARKER,
-                        current_dir,
-                        e
-                    )
-                })?
-            };
-
-            for entry in entries {
-                if entry.name == "." || entry.name == ".." {
-                    continue;
-                }
-
-                let relative_path = if current_dir == remote_path {
-                    entry.name.clone()
-                } else {
-                    let rel_dir = current_dir
-                        .strip_prefix(&remote_path)
-                        .unwrap_or(&current_dir);
-                    let rel_dir = rel_dir.trim_start_matches('/');
-                    if rel_dir.is_empty() {
-                        entry.name.clone()
-                    } else {
-                        format!("{}/{}", rel_dir, entry.name)
-                    }
-                };
-
-                if should_exclude(&relative_path, &options.exclude_patterns) {
-                    continue;
-                }
-
-                let modified = entry.modified.and_then(|s| {
-                    chrono::DateTime::parse_from_rfc3339(&s)
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .ok()
-                        .or_else(|| {
-                            let clean = s.strip_suffix('Z').unwrap_or(&s);
-                            chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
-                                .or_else(|_| {
-                                    chrono::NaiveDateTime::parse_from_str(
-                                        clean,
-                                        "%Y-%m-%d %H:%M:%S",
-                                    )
-                                })
-                                .ok()
-                                .map(|dt| {
-                                    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                                        dt,
-                                        chrono::Utc,
-                                    )
-                                })
-                        })
-                });
-
-                let file_info = FileInfo {
-                    name: entry.name.clone(),
-                    path: entry.path.clone(),
-                    size: entry.size,
-                    modified,
-                    is_dir: entry.is_dir,
-                    checksum_alg: None,
-                    checksum: None,
-                };
-
-                // A walk can revisit a path, so adjust by what the insert
-                // replaced instead of counting the new entry unconditionally.
-                let replaced = remote_files.insert(relative_path, file_info);
-                if let Some(old) = replaced.as_ref() {
-                    if old.is_dir {
-                        remote_dirs_found -= 1;
-                    } else {
-                        remote_bytes_found -= old.size;
-                    }
-                }
-                if entry.is_dir {
-                    remote_dirs_found += 1;
-                } else {
-                    remote_bytes_found += entry.size;
-                }
-
-                if entry.is_dir {
-                    let sub_path = if current_dir.ends_with('/') {
-                        format!("{}{}", current_dir, entry.name)
-                    } else {
-                        format!("{}/{}", current_dir, entry.name)
-                    };
-                    dirs_to_process.push(sub_path);
-                }
-            }
-
-            // Counters rather than a re-walk of the map: this fires once per
-            // listed directory, so recomputing would cost O(directories x
-            // entries) on exactly the large trees the progress exists for. The
-            // aggregates are kept correct on re-insert at the insert site.
-            let _ = app.emit(
-                "sync_scan_progress",
-                serde_json::json!({
-                    "phase": "remote",
-                    "files_found": local_files.len() + remote_files.len(),
-                    "dirs_found": remote_dirs_found,
-                    "bytes_found": remote_bytes_found,
-                    "progress_id": progress_id,
-                }),
-            );
-        }
+        let local_count = local_files.len();
+        let generation = &state.connection_generation;
+        let (rows, links) = walk_compare_remote_serially(
+            &state.provider,
+            &remote_path,
+            &options.exclude_patterns,
+            &state.cancel_flag,
+            &|| generation.load(Ordering::SeqCst) == compare_generation,
+            &mut |remote_count, dirs_found, bytes_found| {
+                let _ = app.emit(
+                    "sync_scan_progress",
+                    serde_json::json!({
+                        "phase": "remote",
+                        "files_found": local_count + remote_count,
+                        "dirs_found": dirs_found,
+                        "bytes_found": bytes_found,
+                        "progress_id": progress_id,
+                    }),
+                );
+            },
+        )
+        .await?;
+        remote_files = rows;
+        remote_boundaries.links = links;
     }
 
     // Clone-pool scans acquire and release provider leases internally, while
@@ -7196,21 +7077,19 @@ pub async fn provider_compare_directories(
         }
     }
 
-    // What a skipped link hides stays out of the compare on both sides. The
-    // remote walk does not follow a link to a directory and the local walk
-    // skips every link, so the other side's files at that path would show as
-    // rows present on one side only, which a Mirror or Pull preset turns into
-    // deletes (see `LinkBound`). Under an unwrapped crypt overlay the remote
-    // link paths are still ciphertext here and cannot match plaintext rows.
-    let link_bound = crate::sync_core::LinkBound::for_sync(
+    // What the scans did not see stays out of the compare on both sides: the
+    // bounded paths and, because a preset copies or deletes a directory row as a
+    // whole, every directory row above them (see `bound_compare_rows`). Under an
+    // unwrapped crypt overlay the remote link paths are still ciphertext here and
+    // cannot match plaintext rows.
+    let bound = bound_compare_rows(
         &local_path,
-        local_files.keys().map(String::as_str),
-        remote_files.keys().map(String::as_str),
-        remote_links,
+        &mut local_files,
+        &mut remote_files,
+        remote_boundaries,
     );
-    if !link_bound.is_empty() {
-        local_files.retain(|path, _| !link_bound.covers(path));
-        remote_files.retain(|path, _| !link_bound.covers(path));
+    if let Some(reason) = bound.refusal() {
+        return Err(format!("{}: {}", crate::SCAN_INCOMPLETE_MARKER, reason));
     }
 
     // The remote scan above ran through `state.provider`, which IS the crypt
@@ -12888,9 +12767,330 @@ pub async fn b2_permanent_delete(
         .map_err(|e| e.to_string())
 }
 
+/// Compare's remote walk on a provider that lists one directory at a time
+/// through the shared session: every provider without a clone pool, an armed
+/// crypt overlay among them. The session is checked before each listing, a
+/// directory that does not list fails the whole compare, and `on_listed`
+/// receives the running row, directory and byte counts after each listing. A
+/// symlink to a directory is neither walked nor a row; it is returned, so the
+/// compare leaves its path alone on both sides.
+async fn walk_compare_remote_serially(
+    provider: &Mutex<Option<Box<dyn StorageProvider>>>,
+    remote_path: &str,
+    exclude_patterns: &[String],
+    cancel_flag: &AtomicBool,
+    session_is_current: &(dyn Fn() -> bool + Send + Sync),
+    on_listed: &mut (dyn FnMut(usize, usize, u64) + Send),
+) -> Result<
+    (
+        HashMap<String, crate::sync::FileInfo>,
+        Vec<crate::sync_core::SkippedLink>,
+    ),
+    String,
+> {
+    let mut remote_files: HashMap<String, crate::sync::FileInfo> = HashMap::new();
+    let mut skipped_links = Vec::new();
+    let mut dirs_to_process = vec![remote_path.to_string()];
+    let mut remote_dirs_found: usize = 0;
+    let mut remote_bytes_found: u64 = 0;
+    while let Some(current_dir) = dirs_to_process.pop() {
+        // Abort the remote scan if the user cancelled from the UI.
+        // Without this, the walk keeps listing directories until the tree is
+        // exhausted, which can look like a runaway scan on large providers.
+        if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(format!(
+                "{}: compare cancelled by user before the remote tree was fully listed.",
+                crate::SCAN_INCOMPLETE_MARKER
+            ));
+        }
+
+        // Lock provider only for this single list operation, then release
+        let entries = {
+            let mut provider_lock = provider.lock().await;
+            if !session_is_current() {
+                return Err(format!(
+                    "{}: provider session changed during Compare; retry the scan.",
+                    crate::SCAN_INCOMPLETE_MARKER
+                ));
+            }
+            let provider = provider_lock
+                .as_mut()
+                .ok_or("Not connected to any provider")?;
+            if !provider.listing_is_authoritative() {
+                return Err(format!(
+                    "{}: the current provider listing is not authoritative; refusing to build an actionable compare plan.",
+                    crate::SCAN_INCOMPLETE_MARKER
+                ));
+            }
+            provider.list(&current_dir).await.map_err(|e| {
+                // CLAUDE-AV-B3-13: a directory that would not list leaves
+                // its files out of the compare, where they read as deleted.
+                // Mark it so the UI fails closed instead of falling back to
+                // a flat plan built from the panel listings.
+                format!(
+                    "{}: failed to list {}: {}",
+                    crate::SCAN_INCOMPLETE_MARKER,
+                    current_dir,
+                    e
+                )
+            })?
+        };
+
+        for entry in entries {
+            if entry.name == "." || entry.name == ".." {
+                continue;
+            }
+
+            let relative_path = if current_dir == remote_path {
+                entry.name.clone()
+            } else {
+                let rel_dir = current_dir
+                    .strip_prefix(remote_path)
+                    .unwrap_or(&current_dir);
+                let rel_dir = rel_dir.trim_start_matches('/');
+                if rel_dir.is_empty() {
+                    entry.name.clone()
+                } else {
+                    format!("{}/{}", rel_dir, entry.name)
+                }
+            };
+
+            if crate::sync::should_exclude(&relative_path, exclude_patterns) {
+                continue;
+            }
+
+            // A symlink to a directory is not walked (GAP-A02) and is not a row:
+            // what sits behind it is not part of the compared tree.
+            if entry.is_dir && entry.is_symlink {
+                tracing::warn!(
+                    "[compare] skipping symlink {} -> {}: not followed",
+                    relative_path,
+                    entry.link_target.as_deref().unwrap_or("?")
+                );
+                skipped_links.push(crate::sync_core::SkippedLink {
+                    rel_path: relative_path,
+                    link_target: entry.link_target.clone(),
+                });
+                continue;
+            }
+
+            let modified = entry.modified.and_then(|s| {
+                chrono::DateTime::parse_from_rfc3339(&s)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .ok()
+                    .or_else(|| {
+                        let clean = s.strip_suffix('Z').unwrap_or(&s);
+                        chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
+                            .or_else(|_| {
+                                chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
+                            })
+                            .ok()
+                            .map(|dt| {
+                                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                                    dt,
+                                    chrono::Utc,
+                                )
+                            })
+                    })
+            });
+
+            let file_info = crate::sync::FileInfo {
+                name: entry.name.clone(),
+                path: entry.path.clone(),
+                size: entry.size,
+                modified,
+                is_dir: entry.is_dir,
+                checksum_alg: None,
+                checksum: None,
+            };
+
+            // A walk can revisit a path, so adjust by what the insert
+            // replaced instead of counting the new entry unconditionally.
+            let replaced = remote_files.insert(relative_path, file_info);
+            if let Some(old) = replaced.as_ref() {
+                if old.is_dir {
+                    remote_dirs_found -= 1;
+                } else {
+                    remote_bytes_found -= old.size;
+                }
+            }
+            if entry.is_dir {
+                remote_dirs_found += 1;
+            } else {
+                remote_bytes_found += entry.size;
+            }
+
+            if entry.is_dir {
+                let sub_path = if current_dir.ends_with('/') {
+                    format!("{}{}", current_dir, entry.name)
+                } else {
+                    format!("{}/{}", current_dir, entry.name)
+                };
+                dirs_to_process.push(sub_path);
+            }
+        }
+
+        // Counters rather than a re-walk of the map: this fires once per
+        // listed directory, so recomputing would cost O(directories x
+        // entries) on exactly the large trees the progress exists for. The
+        // aggregates are kept correct on re-insert at the insert site.
+        on_listed(remote_files.len(), remote_dirs_found, remote_bytes_found);
+    }
+    Ok((remote_files, skipped_links))
+}
+
+/// Leave what the scans did not see out of the compare rows on both sides:
+/// every bounded path with what sits under it, and every directory row above a
+/// bounded path. A preset copies or deletes a directory row as a whole, so a
+/// directory left present on one side only, its bounded contents withdrawn,
+/// would be planned for a recursive delete that reaches the protected files.
+fn bound_compare_rows(
+    local_root: &str,
+    local_files: &mut HashMap<String, crate::sync::FileInfo>,
+    remote_files: &mut HashMap<String, crate::sync::FileInfo>,
+    remote: crate::sync_core::ScanBoundaries,
+) -> crate::sync_core::ScanBound {
+    let bound = crate::sync_core::ScanBound::for_sync(
+        local_root,
+        local_files.keys().map(String::as_str),
+        remote_files.keys().map(String::as_str),
+        &crate::sync_core::ScanBoundaries::default(),
+        remote,
+    );
+    if !bound.is_empty() {
+        let outside = |path: &str, row: &crate::sync::FileInfo| {
+            !bound.covers(path) && !(row.is_dir && bound.holds_bounded_paths(path))
+        };
+        local_files.retain(|path, row| outside(path, row));
+        remote_files.retain(|path, row| outside(path, row));
+    }
+    bound
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn compare_row(rel: &str, is_dir: bool) -> crate::sync::FileInfo {
+        crate::sync::FileInfo {
+            name: rel.rsplit('/').next().unwrap_or(rel).to_string(),
+            path: format!("/local/{rel}"),
+            size: u64::from(!is_dir),
+            modified: None,
+            is_dir,
+            checksum_alg: None,
+            checksum: None,
+        }
+    }
+
+    /// A skipped link nested under a directory. Withdrawing the link's subtree
+    /// alone left `parent` present on one side only, and a Mirror preset turned
+    /// that row into a recursive delete that took `parent/link/x.txt` with it.
+    /// The directories above a bounded path are withdrawn on both sides too, so
+    /// the compare offers nothing at or above the protected file.
+    #[test]
+    fn compare_rows_withdraw_the_directories_above_a_skipped_link() {
+        let mut local = HashMap::from([
+            ("parent".to_string(), compare_row("parent", true)),
+            ("parent/link".to_string(), compare_row("parent/link", true)),
+            (
+                "parent/link/x.txt".to_string(),
+                compare_row("parent/link/x.txt", false),
+            ),
+            ("other.txt".to_string(), compare_row("other.txt", false)),
+        ]);
+        let mut remote =
+            HashMap::from([("other.txt".to_string(), compare_row("other.txt", false))]);
+        bound_compare_rows(
+            "/nonexistent-local-root",
+            &mut local,
+            &mut remote,
+            crate::sync_core::ScanBoundaries {
+                links: vec![crate::sync_core::SkippedLink {
+                    rel_path: "parent/link".to_string(),
+                    link_target: Some("target".to_string()),
+                }],
+                ..Default::default()
+            },
+        );
+        let mut local_paths: Vec<_> = local.keys().cloned().collect();
+        local_paths.sort();
+        assert_eq!(
+            local_paths,
+            vec!["other.txt"],
+            "neither the link's subtree nor a directory above it is a row"
+        );
+        let comparisons = crate::sync::build_comparison_results_with_index(
+            local,
+            remote,
+            &crate::sync::CompareOptions::default(),
+            None,
+        );
+        let offered: Vec<_> = comparisons
+            .iter()
+            .map(|c| c.relative_path.as_str())
+            .collect();
+        assert!(
+            offered.iter().all(|path| !path.starts_with("parent")),
+            "the compare offers nothing at or above the protected file: {offered:?}"
+        );
+    }
+
+    /// Compare's serial remote walk, the one a single-session provider takes (an
+    /// armed crypt overlay among them), must not walk into a symlink to a
+    /// directory: the link and what sits behind it are not rows, and the link is
+    /// reported so the compare leaves its path alone on both sides.
+    #[tokio::test]
+    async fn compare_serial_walk_does_not_follow_a_symlinked_directory() {
+        use crate::providers::RemoteEntry;
+        let mut link = RemoteEntry::directory("link".to_string(), "/root/link".to_string());
+        link.is_symlink = true;
+        link.link_target = Some("/root/real".to_string());
+        let mut tree = crate::sync_core::scan::tests::PoolTreeProvider::fan(1, 1);
+        tree.dirs = HashMap::from([
+            (
+                "/root".to_string(),
+                vec![
+                    RemoteEntry::file("a.txt".to_string(), "/root/a.txt".to_string(), 1),
+                    link,
+                ],
+            ),
+            (
+                "/root/link".to_string(),
+                vec![RemoteEntry::file(
+                    "x.txt".to_string(),
+                    "/root/link/x.txt".to_string(),
+                    1,
+                )],
+            ),
+        ]);
+        let provider: Mutex<Option<Box<dyn StorageProvider>>> = Mutex::new(Some(Box::new(tree)));
+        let cancel = AtomicBool::new(false);
+        let (rows, links) = walk_compare_remote_serially(
+            &provider,
+            "/root",
+            &[],
+            &cancel,
+            &|| true,
+            &mut |_, _, _| {},
+        )
+        .await
+        .expect("the walk lists");
+        let mut paths: Vec<_> = rows.keys().cloned().collect();
+        paths.sort();
+        assert_eq!(
+            paths,
+            vec!["a.txt"],
+            "neither the link nor what is behind it is a row"
+        );
+        assert_eq!(
+            links,
+            vec![crate::sync_core::SkippedLink {
+                rel_path: "link".to_string(),
+                link_target: Some("/root/real".to_string()),
+            }]
+        );
+    }
 
     /// The GUI download paths arm every provider's multi-stream download:
     /// Auto becomes the measured default of the provider's type, an explicit

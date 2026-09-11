@@ -1778,13 +1778,8 @@ pub async fn execute_tool(
                     // Additive: present only when the run left a symbolic link,
                     // and everything under it, alone on both sides, so a tree
                     // without links answers exactly as before.
-                    if !report.skipped_links.is_empty() {
-                        if let Value::Object(map) = &mut payload {
-                            map.insert(
-                                "skipped_links".into(),
-                                serde_json::to_value(&report.skipped_links).unwrap_or(Value::Null),
-                            );
-                        }
+                    if let Value::Object(map) = &mut payload {
+                        map.extend(sync_boundaries_json(&report));
                     }
                     // Release the provider lock and pool Arc BEFORE invalidate
                     // so the pool sees `strong_count == 1` and actually closes
@@ -1815,6 +1810,40 @@ pub async fn execute_tool(
             start,
         ),
     }
+}
+
+/// Most entries of each boundary list a `sync_tree` result carries.
+const SYNC_BOUNDARIES_JSON_CAP: usize = 1000;
+
+/// The additive keys a `sync_tree` result gains when the run left paths alone:
+/// the symbolic links it did not follow and the paths its scans could not see.
+/// Each list is capped, with its total and a truncation flag, and absent
+/// entirely when empty, so a tree without either answers exactly as before.
+fn sync_boundaries_json(report: &crate::sync_core::SyncReport) -> serde_json::Map<String, Value> {
+    let mut keys = serde_json::Map::new();
+    insert_capped_list(&mut keys, "skipped_links", &report.skipped_links);
+    insert_capped_list(&mut keys, "unseen_paths", &report.unseen_paths);
+    keys
+}
+
+fn insert_capped_list<T: serde::Serialize>(
+    keys: &mut serde_json::Map<String, Value>,
+    name: &str,
+    items: &[T],
+) {
+    if items.is_empty() {
+        return;
+    }
+    let shown = &items[..items.len().min(SYNC_BOUNDARIES_JSON_CAP)];
+    keys.insert(
+        name.to_string(),
+        serde_json::to_value(shown).unwrap_or(Value::Null),
+    );
+    keys.insert(format!("{name}_total"), items.len().into());
+    keys.insert(
+        format!("{name}_truncated"),
+        (items.len() > SYNC_BOUNDARIES_JSON_CAP).into(),
+    );
 }
 
 /// A single entry in the dry-run plan returned by `aeroftp_sync_tree`.
@@ -2019,6 +2048,40 @@ mod tests {
         parse_benchmark_skipped, tool_definitions, validate_read_preview_target,
         MAX_READ_PREVIEW_BYTES,
     };
+
+    /// A tree with many symbolic links must not turn the `sync_tree` result into
+    /// an unbounded array: each boundary list is capped, with its total and a
+    /// truncation flag, and a tree without links adds no keys at all.
+    #[test]
+    fn sync_tree_result_caps_the_skipped_links_it_lists() {
+        let cap = super::SYNC_BOUNDARIES_JSON_CAP;
+        let report = crate::sync_core::SyncReport {
+            skipped_links: (0..cap + 500)
+                .map(|i| crate::sync_core::SkippedLink {
+                    rel_path: format!("link{i}"),
+                    link_target: None,
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let keys = super::sync_boundaries_json(&report);
+        assert_eq!(
+            keys.get("skipped_links")
+                .and_then(|v| v.as_array())
+                .map(Vec::len),
+            Some(cap)
+        );
+        assert_eq!(
+            keys.get("skipped_links_total"),
+            Some(&serde_json::json!(cap + 500))
+        );
+        assert_eq!(
+            keys.get("skipped_links_truncated"),
+            Some(&serde_json::json!(true))
+        );
+        let empty = super::sync_boundaries_json(&crate::sync_core::SyncReport::default());
+        assert!(empty.is_empty(), "a tree without links adds no keys");
+    }
 
     #[test]
     fn read_preview_rejects_directories() {
