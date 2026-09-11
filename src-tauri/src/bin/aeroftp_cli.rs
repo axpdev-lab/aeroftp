@@ -8301,7 +8301,14 @@ fn scan_local_tree_with_progress(
             }
         }
 
-        let meta = walk_entry.metadata().ok();
+        // Listed but not statted: kept, and counted, as in `scan_sync_local`.
+        let meta = match walk_entry.metadata() {
+            Ok(meta) => Some(meta),
+            Err(_) => {
+                completeness.list_errors += 1;
+                None
+            }
+        };
         let size = meta.as_ref().map(|value| value.len()).unwrap_or(0);
         let mtime = meta.and_then(|value| {
             value.modified().ok().map(|timestamp| {
@@ -45988,7 +45995,17 @@ fn scan_sync_local(local: &str, filter: &SyncLocalFilter) -> SyncScan {
             continue;
         }
 
-        let meta = entry.metadata().ok();
+        // A file the walk can list but not stat (its directory can be read but
+        // not entered) comes with its type and nothing else. Keep it, so it
+        // does not read as deleted, and count the failure, so no delete pass
+        // trusts a scan that did not read the whole tree.
+        let meta = match entry.metadata() {
+            Ok(meta) => Some(meta),
+            Err(_) => {
+                scan.completeness.list_errors += 1;
+                None
+            }
+        };
         let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
         let mtime = meta.as_ref().and_then(sync_local_mtime);
         scan.entries.push((relative, size, mtime));
@@ -57061,7 +57078,7 @@ async fn cmd_reconcile(
     }
 
     let _ = provider.disconnect().await;
-    // "ok" -> 0; "differences_found" and "partial" (incomplete remote scan) -> 4.
+    // "ok" -> 0; "differences_found" and "partial" (an incomplete remote or local scan) -> 4.
     if result.status == "ok" {
         0
     } else {
