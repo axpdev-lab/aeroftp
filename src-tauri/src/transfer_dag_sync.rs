@@ -1109,6 +1109,7 @@ pub async fn execute_sync_dag(
             message: format!("sync refused, nothing was planned: {reason}"),
             decision_policy: opts.delta_policy,
         });
+        finish_sync_report(&mut report, start, None, resource_guard);
         sink.on_phase(SyncPhase::Done);
         return report;
     }
@@ -1402,14 +1403,27 @@ pub async fn execute_sync_dag(
         }
     }
 
-    report.elapsed_secs = start.elapsed().as_secs_f64();
+    finish_sync_report(&mut report, start, job_metrics, resource_guard);
 
-    // DAG-P2-07 (block E): build the single engine-stats source once from the
-    // folded job totals, the real wall clock, and the process resource bracket.
-    // Attach it to the report (read in-band by programmatic/GUI callers) and
-    // publish it for the out-of-band MCP accessor. A sync that transferred
-    // nothing (`job_metrics` is `None`) still publishes an honest empty-metrics
-    // snapshot with the real wall clock and resource delta.
+    sink.on_phase(SyncPhase::Done);
+    report
+}
+
+/// DAG-P2-07 (block E): close a sync report the way every exit of the DAG route
+/// does. Build the single engine-stats source once from the folded job totals,
+/// the real wall clock, and the process resource bracket; attach it to the
+/// report (read in-band by programmatic/GUI callers) and publish it for the
+/// out-of-band MCP accessor. A sync that transferred nothing (`job_metrics` is
+/// `None`), a refused one included, still publishes an honest empty-metrics
+/// snapshot with the real wall clock and resource delta, so the accessor never
+/// keeps answering with an earlier run's numbers.
+fn finish_sync_report(
+    report: &mut SyncReport,
+    start: Instant,
+    job_metrics: Option<TransferDagMetrics>,
+    resource_guard: Option<crate::proc_stats::ResourceSampleGuard>,
+) {
+    report.elapsed_secs = start.elapsed().as_secs_f64();
     let engine_stats = EngineTransferStats::from_job(
         job_metrics.unwrap_or_default(),
         start.elapsed().as_millis() as u64,
@@ -1417,9 +1431,6 @@ pub async fn execute_sync_dag(
     );
     crate::transfer_dag::engine_stats::publish(engine_stats.clone());
     report.engine_stats = Some(engine_stats);
-
-    sink.on_phase(SyncPhase::Done);
-    report
 }
 
 #[cfg(test)]
@@ -3063,6 +3074,81 @@ mod tests {
             "{:?}",
             report.errors
         );
+    }
+
+    /// A refused run closes its report like every other exit of the DAG route:
+    /// its wall clock is set, and it attaches and publishes its own (empty)
+    /// engine-stats snapshot, so the out-of-band MCP accessor stops answering
+    /// with the previous run's numbers. The dry-run path sets its wall clock
+    /// too. The slot is process-global and sibling tests publish in parallel,
+    /// so the published half asserts only what no other writer can fake: the
+    /// snapshot is no longer the one the earlier run left.
+    #[tokio::test]
+    async fn a_refused_sync_still_closes_its_report_and_publishes_its_stats() {
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        let local = tempfile::tempdir().expect("tempdir");
+        std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
+        let local_root = local.path().to_str().unwrap();
+
+        let mut provider: Box<dyn StorageProvider> = Box::new(WalkTreeProvider::new(
+            std::collections::HashMap::new(),
+            true,
+        ));
+        let mut sink = TestSyncSink::default();
+        let normal = crate::sync::sync_tree_core(
+            &mut provider,
+            local_root,
+            "/root",
+            &opts(SyncDirection::Upload),
+            &mut sink,
+        )
+        .await;
+        assert_eq!(normal.uploaded, 1, "{:?}", normal.errors);
+        let earlier = normal
+            .engine_stats
+            .clone()
+            .expect("a finished run publishes its stats");
+
+        for dry_run in [false, true] {
+            let mut tree = WalkTreeProvider::new(std::collections::HashMap::new(), true);
+            tree.unlistable.insert("/root".to_string());
+            let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+            let mut options = opts(SyncDirection::Upload);
+            options.dry_run = dry_run;
+            let mut sink = TestSyncSink::default();
+            let refused = crate::sync::sync_tree_core(
+                &mut provider,
+                local_root,
+                "/root",
+                &options,
+                &mut sink,
+            )
+            .await;
+            assert!(
+                refused
+                    .errors
+                    .iter()
+                    .any(|error| error.message.starts_with("sync refused")),
+                "dry_run={dry_run}: {:?}",
+                refused.errors
+            );
+            assert!(
+                refused.elapsed_secs > 0.0,
+                "the refused run has a wall clock (dry_run={dry_run})"
+            );
+            if !dry_run {
+                let stats = refused
+                    .engine_stats
+                    .clone()
+                    .expect("the refused run attaches its own stats");
+                assert_ne!(stats, earlier, "the refused run's stats are its own");
+                assert_ne!(
+                    crate::transfer_dag::engine_stats::latest(),
+                    Some(earlier.clone()),
+                    "the accessor no longer answers with the earlier run's snapshot"
+                );
+            }
+        }
     }
 
     /// A root that does not exist is an empty tree only on the side a run writes

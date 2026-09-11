@@ -1387,6 +1387,7 @@ pub async fn sync_tree_core(
             message: format!("sync refused, nothing was planned: {reason}"),
             decision_policy: opts.delta_policy,
         });
+        report.elapsed_secs = start.elapsed().as_secs_f64();
         sink.on_phase(SyncPhase::Done);
         return report;
     }
