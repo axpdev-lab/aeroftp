@@ -8225,7 +8225,10 @@ fn scan_local_tree_with_progress(
     root: &str,
     opts: &ftp_client_gui_lib::sync_core::ScanOptions,
     spinner: &Option<ProgressBar>,
-) -> Vec<ftp_client_gui_lib::sync_core::scan::LocalEntry> {
+) -> (
+    Vec<ftp_client_gui_lib::sync_core::scan::LocalEntry>,
+    ftp_client_gui_lib::sync_core::ScanCompleteness,
+) {
     let matchers: Vec<globset::GlobMatcher> = opts
         .exclude_patterns
         .iter()
@@ -8310,7 +8313,7 @@ fn scan_local_tree_with_progress(
         pb.set_message(format!("Scanning local... {} files", entries.len()));
     }
 
-    entries
+    (entries, Default::default())
 }
 
 /// Health of a remote BFS scan: how many `list()` calls failed and whether the
@@ -45846,6 +45849,209 @@ async fn cmd_sync_local_to_local(
     stats
 }
 
+/// One side of a sync as its scan saw it: the files the walk kept and whether
+/// it read the whole tree. A `--delete` pass plans orphans off `entries`, so
+/// `completeness` has to travel with them (TX-01).
+#[derive(Default, Clone)]
+struct SyncScan {
+    entries: Vec<(String, u64, Option<String>)>,
+    completeness: ftp_client_gui_lib::sync_core::ScanCompleteness,
+}
+
+/// Which local files `sync` scans: walk depth and `--exclude`. `--files-from`
+/// is not part of it: `cmd_sync` bounds every entry that reaches the planner
+/// by the list, whatever produced it.
+struct SyncLocalFilter<'a> {
+    max_depth: usize,
+    exclude: &'a [globset::GlobMatcher],
+}
+
+impl SyncLocalFilter<'_> {
+    /// Whether the local file at `relative` (forward slashes, no leading
+    /// slash) takes part in the sync. A walk bounded at `max_depth` yields
+    /// files at most that many components deep; the depth check repeats that
+    /// bound for paths that do not come from a walk.
+    fn keeps(&self, relative: &str, file_name: &str) -> bool {
+        relative.split('/').count() <= self.max_depth
+            && !self
+                .exclude
+                .iter()
+                .any(|m| m.is_match(relative) || m.is_match(file_name))
+    }
+}
+
+/// A local file's modification time in the form `sync` compares.
+fn sync_local_mtime(meta: &std::fs::Metadata) -> Option<String> {
+    meta.modified().ok().map(|t| {
+        let dt: chrono::DateTime<chrono::Utc> = t.into();
+        dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+    })
+}
+
+/// Walk the local tree for `sync`, capped at 500,000 entries. An entry the
+/// walker cannot read counts as a listing error: the files below it are
+/// unseen, not absent.
+fn scan_sync_local(local: &str, filter: &SyncLocalFilter) -> SyncScan {
+    let mut scan = SyncScan::default();
+    let walker = walkdir::WalkDir::new(local)
+        .follow_links(false)
+        .max_depth(filter.max_depth);
+    for entry in walker {
+        if scan.entries.len() >= 500_000 {
+            eprintln!("Warning: local scan capped at 500,000 entries");
+            scan.completeness.truncated = true;
+            break;
+        }
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => {
+                scan.completeness.list_errors += 1;
+                continue;
+            }
+        };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let relative = entry
+            .path()
+            .strip_prefix(local)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+            continue;
+        }
+        if !filter.keeps(&relative, &entry.file_name().to_string_lossy()) {
+            continue;
+        }
+
+        let meta = entry.metadata().ok();
+        let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let mtime = meta.as_ref().and_then(sync_local_mtime);
+        scan.entries.push((relative, size, mtime));
+    }
+    scan
+}
+
+/// Path-keyed view of scan entries, the shape `sync` plans from.
+fn sync_entry_map(entries: &[(String, u64, Option<String>)]) -> HashMap<&str, (u64, Option<&str>)> {
+    entries
+        .iter()
+        .map(|(p, s, m)| (p.as_str(), (*s, m.as_deref())))
+        .collect()
+}
+
+/// The orphan deletes of a `sync --delete` pass, one list per side.
+#[derive(Default)]
+struct SyncOrphanDeletes<'a> {
+    /// Remote files with no local counterpart (upload).
+    remote: Vec<&'a str>,
+    /// Local files with no remote counterpart (download).
+    local: Vec<&'a str>,
+}
+
+/// The orphan deletes a `sync` pass plans from its two scans, or the reason it
+/// must plan none.
+///
+/// `guarded` is false for a dry run, which stays read-only and reports its
+/// plan, and for a `--from-reconcile` plan, which the user supplied as the
+/// source of truth. Orphans are planned for the one-way directions only:
+/// `both` decides its deletes from the bisync snapshot.
+fn plan_sync_orphan_deletes<'a>(
+    direction: &str,
+    delete: bool,
+    guarded: bool,
+    local_scan: &ftp_client_gui_lib::sync_core::ScanCompleteness,
+    remote_scan: &ftp_client_gui_lib::sync_core::ScanCompleteness,
+    local_map: &HashMap<&'a str, (u64, Option<&'a str>)>,
+    remote_map: &HashMap<&'a str, (u64, Option<&'a str>)>,
+) -> Result<SyncOrphanDeletes<'a>, String> {
+    let mut orphans = SyncOrphanDeletes::default();
+    if !delete {
+        return Ok(orphans);
+    }
+    if guarded {
+        // TX-01: refuse --delete when the governing scan is incomplete. Local
+        // orphans are derived from the remote listing (download), remote
+        // orphans from the local listing (upload), and "both" reads both sides.
+        // A partial listing on the governing side would classify intact files
+        // as orphans and delete them, so fail closed with zero deletions.
+        let blocking = match direction {
+            "download" => !remote_scan.is_complete(),
+            "upload" => !local_scan.is_complete(),
+            _ => !(remote_scan.is_complete() && local_scan.is_complete()),
+        };
+        if blocking {
+            return Err(format!(
+                "refusing --delete: source-of-truth scan is incomplete \
+                 (remote: {} list error(s){}, local: {} error(s){}). A partial \
+                 listing would classify intact files as orphans and delete them. \
+                 Re-run without --delete or restore full connectivity.",
+                remote_scan.list_errors,
+                if remote_scan.truncated {
+                    ", truncated"
+                } else {
+                    ""
+                },
+                local_scan.list_errors,
+                if local_scan.truncated {
+                    ", truncated"
+                } else {
+                    ""
+                },
+            ));
+        }
+
+        // The check above refuses a delete pass when the scan reported ERRORS.
+        // It cannot see the other half of the same danger: a listing that
+        // succeeded and came back empty. FTP produced exactly that for a
+        // directory that does not exist, so a mistyped path was
+        // indistinguishable from an emptied one, and nothing here noticed
+        // because there was no error to count.
+        //
+        // The core (`sync.rs`) and the DAG both consult the shared guard for
+        // this; this path did not, so the one surface a person drives by hand
+        // was the one without the protection. Calling the shared guard rather
+        // than restating the rule is the point: a fourth copy of the policy is
+        // how the third one came to be missing.
+        //
+        // Kept even though that FTP defect is fixed: it is depth, not
+        // redundancy. Any provider that answers an empty listing where it
+        // should answer an error would otherwise walk the same path.
+        let sync_direction = match direction {
+            "download" => ftp_client_gui_lib::sync::SyncDirection::Download,
+            "upload" => ftp_client_gui_lib::sync::SyncDirection::Upload,
+            _ => ftp_client_gui_lib::sync::SyncDirection::Both,
+        };
+        ftp_client_gui_lib::sync::orphan_delete_guard_over(
+            sync_direction,
+            local_map.is_empty(),
+            remote_map.is_empty(),
+            local_scan,
+            remote_scan,
+        )
+        .map_err(|reason| format!("refusing --delete: {reason}"))?;
+    }
+    match direction {
+        "upload" => {
+            orphans.remote = remote_map
+                .keys()
+                .filter(|path| !local_map.contains_key(*path))
+                .copied()
+                .collect();
+        }
+        "download" => {
+            orphans.local = local_map
+                .keys()
+                .filter(|path| !remote_map.contains_key(*path))
+                .copied()
+                .collect();
+        }
+        _ => {}
+    }
+    Ok(orphans)
+}
+
 // `use_aerorsync_batch` is only consumed inside an `aerorsync`-gated
 // block below; tolerate the dead argument when the feature is off.
 #[cfg_attr(not(feature = "aerorsync"), allow(unused_variables))]
@@ -45874,7 +46080,7 @@ async fn cmd_sync(
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
-    precomputed_local: Option<Vec<(String, u64, Option<String>)>>,
+    precomputed_local: Option<SyncScan>,
     // Z.1.2 lane: when true, attempt to route remote SFTP uploads
     // through the AerorsyncBatch session-reuse path. No-op (warn-only)
     // when the provider does not expose a delta transport.
@@ -45945,280 +46151,229 @@ async fn cmd_sync(
     // scan surfaces in the exit code / JSON status instead of reporting success.
     let mut remote_scan_errors: usize = 0;
     let mut remote_scan_truncated = false;
-    let mut local_scan_errors: usize = 0;
-    let mut local_scan_truncated = false;
 
     let mut reconcile_plan: Option<ReconcileSyncPlan> = None;
-    #[allow(clippy::type_complexity)]
-    let (mut local_entries, mut remote_entries): (
-        Vec<(String, u64, Option<String>)>,
-        Vec<(String, u64, Option<String>)>,
-    ) = if let Some(reconcile_path) = from_reconcile {
-        match load_sync_plan_from_reconcile(
-            reconcile_path,
-            direction,
-            delete,
-            files_from_set.as_ref(),
-        ) {
-            Ok(plan) => {
-                let local_entries = plan.local_entries.clone();
-                let remote_entries = plan.remote_entries.clone();
-                reconcile_plan = Some(plan);
-                (local_entries, remote_entries)
+    let (mut local_scan, mut remote_entries): (SyncScan, Vec<(String, u64, Option<String>)>) =
+        if let Some(reconcile_path) = from_reconcile {
+            match load_sync_plan_from_reconcile(
+                reconcile_path,
+                direction,
+                delete,
+                files_from_set.as_ref(),
+            ) {
+                Ok(plan) => {
+                    let local_scan = SyncScan {
+                        entries: plan.local_entries.clone(),
+                        completeness: Default::default(),
+                    };
+                    let remote_entries = plan.remote_entries.clone();
+                    reconcile_plan = Some(plan);
+                    (local_scan, remote_entries)
+                }
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    let _ = provider.disconnect().await;
+                    return 5.into();
+                }
             }
-            Err(err) => {
-                print_error(format, &err, 5);
+        } else {
+            // Scan local files (bounded: max depth, 500K entries). Incremental
+            // watch mode hands in the scan it keeps between cycles, together with
+            // the completeness of the walk it came from.
+            let local_scan = match precomputed_local {
+                Some(scan) => scan,
+                None => scan_sync_local(
+                    local,
+                    &SyncLocalFilter {
+                        max_depth: scan_depth,
+                        exclude: &exclude_matchers,
+                    },
+                ),
+            };
+
+            if cli.no_check_dest && delete {
+                print_error(format, "--no-check-dest cannot be used with --delete (would mark all destination files as orphans for deletion)", 5);
                 let _ = provider.disconnect().await;
                 return 5.into();
             }
-        }
-    } else {
-        // Scan local files (bounded: max depth, 500K entries)
-        // If precomputed_local is provided (incremental watch mode), skip walkdir entirely.
-        let local_entries: Vec<(String, u64, Option<String>)> = if let Some(pre) = precomputed_local
-        {
-            pre
-        } else {
-            let walker = walkdir::WalkDir::new(local)
-                .follow_links(false)
-                .max_depth(scan_depth);
-            let mut entries = Vec::new();
-            for entry in walker {
-                if entries.len() >= 500_000 {
-                    eprintln!("Warning: local scan capped at 500,000 entries");
-                    local_scan_truncated = true;
-                    break;
-                }
-                let entry = match entry {
-                    Ok(e) => e,
-                    Err(_) => {
-                        local_scan_errors += 1;
-                        continue;
-                    }
-                };
-                if !entry.file_type().is_file() {
-                    continue;
-                }
-                let relative = entry
-                    .path()
-                    .strip_prefix(local)
-                    .unwrap_or(entry.path())
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                    continue;
-                }
-
-                let fname = entry.file_name().to_string_lossy();
-                let fname_ref: &str = fname.as_ref();
-                if exclude_matchers
-                    .iter()
-                    .any(|m| m.is_match(&relative) || m.is_match(fname_ref))
-                {
-                    continue;
-                }
-                if let Some(ref set) = files_from_set {
-                    if !set.contains(relative.as_str()) {
-                        continue;
-                    }
-                }
-
-                let meta = entry.metadata().ok();
-                let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-                let mtime = meta.and_then(|m| {
-                    m.modified().ok().map(|t| {
-                        let dt: chrono::DateTime<chrono::Utc> = t.into();
-                        dt.format("%Y-%m-%dT%H:%M:%S").to_string()
-                    })
-                });
-                entries.push((relative, size, mtime));
+            if cli.immutable && cli.no_check_dest {
+                print_error(format, "--immutable cannot be used with --no-check-dest (immutable needs remote listing to detect existing files)", 5);
+                let _ = provider.disconnect().await;
+                return 5.into();
             }
-            entries
-        };
-
-        if cli.no_check_dest && delete {
-            print_error(format, "--no-check-dest cannot be used with --delete (would mark all destination files as orphans for deletion)", 5);
-            let _ = provider.disconnect().await;
-            return 5.into();
-        }
-        if cli.immutable && cli.no_check_dest {
-            print_error(format, "--immutable cannot be used with --no-check-dest (immutable needs remote listing to detect existing files)", 5);
-            let _ = provider.disconnect().await;
-            return 5.into();
-        }
-        // KE-A4: --no-traverse is upload-only. With download or both, we
-        // need the remote listing to know what is on the other side.
-        if cli.no_traverse && direction != "upload" {
-            print_error(
+            // KE-A4: --no-traverse is upload-only. With download or both, we
+            // need the remote listing to know what is on the other side.
+            if cli.no_traverse && direction != "upload" {
+                print_error(
                 format,
                 "--no-traverse requires --direction upload (download/both need the remote listing)",
                 5,
             );
-            let _ = provider.disconnect().await;
-            return 5.into();
-        }
-        if cli.no_traverse && delete {
-            print_error(
+                let _ = provider.disconnect().await;
+                return 5.into();
+            }
+            if cli.no_traverse && delete {
+                print_error(
                 format,
                 "--no-traverse cannot be used with --delete (orphan detection needs the remote listing)",
                 5,
             );
-            let _ = provider.disconnect().await;
-            return 5.into();
-        }
-        let no_traverse_active = cli.no_traverse && !cli.no_check_dest;
-
-        let mut remote_entries: Vec<(String, u64, Option<String>)> = Vec::new();
-        if cli.no_check_dest {
-            if !quiet {
-                eprintln!(
-                    "Note: --no-check-dest skipping remote scan (assuming empty destination)"
-                );
+                let _ = provider.disconnect().await;
+                return 5.into();
             }
-        } else if no_traverse_active {
-            if !quiet {
-                eprintln!(
+            let no_traverse_active = cli.no_traverse && !cli.no_check_dest;
+
+            let mut remote_entries: Vec<(String, u64, Option<String>)> = Vec::new();
+            if cli.no_check_dest {
+                if !quiet {
+                    eprintln!(
+                        "Note: --no-check-dest skipping remote scan (assuming empty destination)"
+                    );
+                }
+            } else if no_traverse_active {
+                if !quiet {
+                    eprintln!(
                     "Note: --no-traverse skipping remote scan (per-file stat will run during planning)"
                 );
-            }
-        } else {
-            let mut used_fast_list = false;
-            if cli.fast_list {
-                if let Some(s3) = provider
-                    .as_any_mut()
-                    .downcast_mut::<ftp_client_gui_lib::providers::s3::S3Provider>()
-                {
-                    if !quiet {
-                        eprintln!("Using --fast-list (S3 recursive listing)...");
-                    }
-                    match s3.list_recursive(remote).await {
-                        Ok(entries) => {
-                            let max_depth = cli.max_depth.map(|d| d as usize);
-                            for e in entries {
-                                if e.is_dir {
-                                    continue;
-                                }
-                                if remote_entries.len() >= MAX_SCAN_ENTRIES {
-                                    if !quiet {
-                                        eprintln!(
-                                            "Warning: --fast-list capped at {} entries",
-                                            MAX_SCAN_ENTRIES
-                                        );
-                                    }
-                                    remote_scan_truncated = true;
-                                    break;
-                                }
-                                let relative = e
-                                    .path
-                                    .strip_prefix(remote)
-                                    .unwrap_or(&e.path)
-                                    .trim_start_matches('/')
-                                    .to_string();
-                                if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                                    continue;
-                                }
-                                if let Some(max_d) = max_depth {
-                                    let depth = relative.matches('/').count();
-                                    if depth >= max_d {
+                }
+            } else {
+                let mut used_fast_list = false;
+                if cli.fast_list {
+                    if let Some(s3) = provider
+                        .as_any_mut()
+                        .downcast_mut::<ftp_client_gui_lib::providers::s3::S3Provider>(
+                    ) {
+                        if !quiet {
+                            eprintln!("Using --fast-list (S3 recursive listing)...");
+                        }
+                        match s3.list_recursive(remote).await {
+                            Ok(entries) => {
+                                let max_depth = cli.max_depth.map(|d| d as usize);
+                                for e in entries {
+                                    if e.is_dir {
                                         continue;
                                     }
-                                }
-                                if exclude_matchers
-                                    .iter()
-                                    .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                                {
-                                    continue;
-                                }
-                                if let Some(ref set) = files_from_set {
-                                    if !set.contains(relative.as_str()) {
+                                    if remote_entries.len() >= MAX_SCAN_ENTRIES {
+                                        if !quiet {
+                                            eprintln!(
+                                                "Warning: --fast-list capped at {} entries",
+                                                MAX_SCAN_ENTRIES
+                                            );
+                                        }
+                                        remote_scan_truncated = true;
+                                        break;
+                                    }
+                                    let relative = e
+                                        .path
+                                        .strip_prefix(remote)
+                                        .unwrap_or(&e.path)
+                                        .trim_start_matches('/')
+                                        .to_string();
+                                    if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
                                         continue;
                                     }
+                                    if let Some(max_d) = max_depth {
+                                        let depth = relative.matches('/').count();
+                                        if depth >= max_d {
+                                            continue;
+                                        }
+                                    }
+                                    if exclude_matchers
+                                        .iter()
+                                        .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+                                    {
+                                        continue;
+                                    }
+                                    if let Some(ref set) = files_from_set {
+                                        if !set.contains(relative.as_str()) {
+                                            continue;
+                                        }
+                                    }
+                                    remote_entries.push((relative, e.size, e.modified));
                                 }
-                                remote_entries.push((relative, e.size, e.modified));
+                                used_fast_list = true;
                             }
-                            used_fast_list = true;
-                        }
-                        Err(e) => {
-                            if !quiet {
-                                eprintln!(
-                                    "Warning: --fast-list failed, falling back to BFS scan: {}",
-                                    e
-                                );
+                            Err(e) => {
+                                if !quiet {
+                                    eprintln!(
+                                        "Warning: --fast-list failed, falling back to BFS scan: {}",
+                                        e
+                                    );
+                                }
                             }
                         }
+                    } else if !quiet {
+                        eprintln!("Note: --fast-list only supported for S3; using standard scan");
                     }
-                } else if !quiet {
-                    eprintln!("Note: --fast-list only supported for S3; using standard scan");
+                }
+
+                if !used_fast_list {
+                    // The remote walk runs on the provider's list pool, like
+                    // `check`, `reconcile` and the GUI scan: up to --checkers
+                    // directories at once on a clone-backed provider, one at a
+                    // time on a single-session one. Same filters as the walk this
+                    // replaces: depth, entry cap, excludes, the bisync snapshot
+                    // file, symlinked directories listed but never walked.
+                    let remote_scan_depth =
+                        cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
+                    let pooled_opts = ftp_client_gui_lib::sync_core::ScanOptions {
+                        exclude_patterns: effective_exclude.clone(),
+                        max_depth: Some(remote_scan_depth),
+                        checkers: Some(effective_checkers(cli)),
+                        disable_recursive_fastpath: true,
+                        ..Default::default()
+                    };
+                    let (remotes, health, returned) = scan_remote_tree_with_progress(
+                        provider,
+                        remote,
+                        &pooled_opts,
+                        &None,
+                        Some(Arc::clone(&cancelled)),
+                    )
+                    .await;
+                    provider = returned;
+                    if health.truncated && !quiet {
+                        eprintln!("Warning: remote scan truncated (depth or entry cap reached)");
+                    }
+                    remote_scan_errors += health.errors;
+                    remote_scan_truncated |= health.truncated;
+                    // The bisync snapshot is skipped at the root only, as the walk
+                    // this replaces did: a same-named file deeper in the tree is
+                    // the user's.
+                    remote_entries.extend(
+                        remotes
+                            .into_iter()
+                            .filter(|r| {
+                                !r.rel_path.is_empty() && r.rel_path != BISYNC_SNAPSHOT_FILE
+                            })
+                            .map(|r| (r.rel_path, r.size, r.mtime)),
+                    );
                 }
             }
 
-            if !used_fast_list {
-                // The remote walk runs on the provider's list pool, like
-                // `check`, `reconcile` and the GUI scan: up to --checkers
-                // directories at once on a clone-backed provider, one at a
-                // time on a single-session one. Same filters as the walk this
-                // replaces: depth, entry cap, excludes, the bisync snapshot
-                // file, symlinked directories listed but never walked.
-                let remote_scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
-                let pooled_opts = ftp_client_gui_lib::sync_core::ScanOptions {
-                    exclude_patterns: effective_exclude.clone(),
-                    max_depth: Some(remote_scan_depth),
-                    checkers: Some(effective_checkers(cli)),
-                    disable_recursive_fastpath: true,
-                    ..Default::default()
-                };
-                let (remotes, health, returned) = scan_remote_tree_with_progress(
-                    provider,
-                    remote,
-                    &pooled_opts,
-                    &None,
-                    Some(Arc::clone(&cancelled)),
-                )
-                .await;
-                provider = returned;
-                if health.truncated && !quiet {
-                    eprintln!("Warning: remote scan truncated (depth or entry cap reached)");
-                }
-                remote_scan_errors += health.errors;
-                remote_scan_truncated |= health.truncated;
-                // The bisync snapshot is skipped at the root only, as the walk
-                // this replaces did: a same-named file deeper in the tree is
-                // the user's.
-                remote_entries.extend(
-                    remotes
-                        .into_iter()
-                        .filter(|r| !r.rel_path.is_empty() && r.rel_path != BISYNC_SNAPSHOT_FILE)
-                        .map(|r| (r.rel_path, r.size, r.mtime)),
-                );
-            }
-        }
-
-        (local_entries, remote_entries)
-    };
+            (local_scan, remote_entries)
+        };
 
     // `--files-from` bounds the run, not one side of it. The planner reads a
     // path present on one side only as a copy or an orphan, so a list applied
     // to one side turns every unlisted file of the other side into one: with
     // `--direction upload --delete` that deleted the remote tree outside the
-    // list. The local walk and the S3 fast-list prune by the list early; the
-    // pooled remote walk, a watch cycle's precomputed local list and a
+    // list. The S3 fast-list prunes by the list early; the local walk, the
+    // pooled remote walk, a watch cycle's precomputed local scan and a
     // reconcile plan do not, and neither will the next scan path. Applying
     // the list here, once, to every entry that reaches the planner is what
     // keeps all of them bounded.
     if let Some(listed) = files_from_set.as_ref() {
-        local_entries.retain(|(path, _, _)| listed.contains(path));
+        local_scan
+            .entries
+            .retain(|(path, _, _)| listed.contains(path));
         remote_entries.retain(|(path, _, _)| listed.contains(path));
     }
+    let local_entries = &local_scan.entries;
 
     // Build comparison maps
-    let local_map: HashMap<&str, (u64, Option<&str>)> = local_entries
-        .iter()
-        .map(|(p, s, m)| (p.as_str(), (*s, m.as_deref())))
-        .collect();
-    let remote_map: HashMap<&str, (u64, Option<&str>)> = remote_entries
-        .iter()
-        .map(|(p, s, m)| (p.as_str(), (*s, m.as_deref())))
-        .collect();
+    let local_map = sync_entry_map(local_entries);
+    let remote_map = sync_entry_map(&remote_entries);
 
     // Load previous snapshot for bisync delta detection (--direction both only)
     let prev_snapshot = if direction == "both" && !resync {
@@ -46233,98 +46388,43 @@ async fn cmd_sync(
     let default_time_val = resolve_default_time(cli);
     let default_time_ref = default_time_val.as_deref();
 
-    // TX-01: refuse --delete when the governing scan is incomplete. Local orphans
-    // are derived from the remote listing (download), remote orphans from the
-    // local listing (upload), and "both" reads both sides. A partial listing on
-    // the governing side would classify intact files as orphans and delete them,
-    // so fail closed (exit 4) with zero deletions. Dry-run stays read-only and
-    // reports the partial state below (SCAN-01). A from-reconcile plan is an
-    // explicit, user-supplied source of truth and is treated as complete.
-    let remote_scan_incomplete = remote_scan_errors > 0 || remote_scan_truncated;
-    let local_scan_incomplete = local_scan_errors > 0 || local_scan_truncated;
-    let scan_incomplete =
-        reconcile_plan.is_none() && (remote_scan_incomplete || local_scan_incomplete);
+    // TX-01 / SCAN-01: a partial scan never drives --delete orphan planning
+    // (`plan_sync_orphan_deletes` refuses, exit 4, zero deletions) and surfaces
+    // in the exit code / JSON status instead of reporting success. A
+    // from-reconcile plan is an explicit, user-supplied source of truth and is
+    // treated as complete.
+    let local_scan_health = local_scan.completeness;
+    let remote_scan_health = ftp_client_gui_lib::sync_core::ScanCompleteness {
+        list_errors: remote_scan_errors,
+        truncated: remote_scan_truncated,
+    };
+    let scan_incomplete = reconcile_plan.is_none()
+        && !(local_scan_health.is_complete() && remote_scan_health.is_complete());
 
-    if delete && !dry_run && reconcile_plan.is_none() {
-        let blocking = match direction {
-            "download" => remote_scan_incomplete,
-            "upload" => local_scan_incomplete,
-            _ => remote_scan_incomplete || local_scan_incomplete,
-        };
-        if blocking {
-            print_error(
-                format,
-                &format!(
-                    "refusing --delete: source-of-truth scan is incomplete \
-                     (remote: {} list error(s){}, local: {} error(s){}). A partial \
-                     listing would classify intact files as orphans and delete them. \
-                     Re-run without --delete or restore full connectivity.",
-                    remote_scan_errors,
-                    if remote_scan_truncated {
-                        ", truncated"
-                    } else {
-                        ""
-                    },
-                    local_scan_errors,
-                    if local_scan_truncated {
-                        ", truncated"
-                    } else {
-                        ""
-                    },
-                ),
-                4,
-            );
+    let orphan_deletes = match plan_sync_orphan_deletes(
+        direction,
+        delete,
+        !dry_run && reconcile_plan.is_none(),
+        &local_scan_health,
+        &remote_scan_health,
+        &local_map,
+        &remote_map,
+    ) {
+        Ok(orphans) => orphans,
+        Err(reason) => {
+            print_error(format, &reason, 4);
             let _ = provider.disconnect().await;
             return 4.into();
         }
-    }
-
-    // The block above refuses a delete pass when the scan reported ERRORS. It
-    // cannot see the other half of the same danger: a listing that succeeded
-    // and came back empty. FTP produced exactly that for a directory that does
-    // not exist, so a mistyped path was indistinguishable from an emptied one,
-    // and nothing here noticed because there was no error to count.
-    //
-    // The core (`sync.rs`) and the DAG both consult the shared guard for this;
-    // this path did not, so the one surface a person drives by hand was the one
-    // without the protection. Calling the shared guard rather than restating
-    // the rule is the point: a fourth copy of the policy is how the third one
-    // came to be missing.
-    //
-    // Kept even though the FTP defect above is fixed in the same change: it is
-    // depth, not redundancy. Any provider that answers an empty listing where
-    // it should answer an error would otherwise walk the same path.
-    if delete && !dry_run && reconcile_plan.is_none() {
-        let sync_direction = match direction {
-            "download" => ftp_client_gui_lib::sync::SyncDirection::Download,
-            "upload" => ftp_client_gui_lib::sync::SyncDirection::Upload,
-            _ => ftp_client_gui_lib::sync::SyncDirection::Both,
-        };
-        let local_scan = ftp_client_gui_lib::sync_core::ScanCompleteness {
-            list_errors: local_scan_errors,
-            truncated: local_scan_truncated,
-        };
-        let remote_scan = ftp_client_gui_lib::sync_core::ScanCompleteness {
-            list_errors: remote_scan_errors,
-            truncated: remote_scan_truncated,
-        };
-        if let Err(reason) = ftp_client_gui_lib::sync::orphan_delete_guard_over(
-            sync_direction,
-            local_map.is_empty(),
-            remote_map.is_empty(),
-            &local_scan,
-            &remote_scan,
-        ) {
-            print_error(format, &format!("refusing --delete: {reason}"), 4);
-            let _ = provider.disconnect().await;
-            return 4.into();
-        }
-    }
+    };
 
     if scan_incomplete && !quiet {
         eprintln!(
             "Warning: scan incomplete (remote errors: {}, local errors: {}, remote truncated: {}, local truncated: {}); results may be partial.",
-            remote_scan_errors, local_scan_errors, remote_scan_truncated, local_scan_truncated
+            remote_scan_errors,
+            local_scan_health.list_errors,
+            remote_scan_truncated,
+            local_scan_health.truncated
         );
     }
 
@@ -46479,22 +46579,8 @@ async fn cmd_sync(
     }
 
     // Orphan deletion (for upload/download-only modes)
-    if delete && direction != "both" {
-        if direction == "upload" {
-            for path in remote_map.keys() {
-                if !local_map.contains_key(path) {
-                    to_delete_remote.push(path);
-                }
-            }
-        }
-        if direction == "download" {
-            for path in local_map.keys() {
-                if !remote_map.contains_key(path) {
-                    to_delete_local.push(path);
-                }
-            }
-        }
-    }
+    to_delete_remote.extend(orphan_deletes.remote);
+    to_delete_local.extend(orphan_deletes.local);
 
     // --track-renames: detect files that were renamed (same hash, different path)
     let mut renames: Vec<(String, String)> = Vec::new(); // (old_remote, new_local)
@@ -54687,17 +54773,71 @@ fn should_exclude_watch_path(path: &std::path::Path) -> bool {
     false
 }
 
-/// Build a local entry list incrementally: refresh metadata only for watcher-reported paths,
-/// and merge with the previous full snapshot for everything else.
+/// The local files a watch loop keeps between cycles, so that a watcher event
+/// only re-reads the paths it names, and the completeness of the walk they
+/// came from.
+#[derive(Default, Clone)]
+struct WatchLocalSnapshot {
+    files: std::collections::HashMap<String, (u64, Option<String>)>,
+    completeness: ftp_client_gui_lib::sync_core::ScanCompleteness,
+}
+
+impl WatchLocalSnapshot {
+    fn from_scan(scan: &SyncScan) -> Self {
+        Self {
+            files: scan
+                .entries
+                .iter()
+                .map(|(path, size, mtime)| (path.clone(), (*size, mtime.clone())))
+                .collect(),
+            completeness: scan.completeness,
+        }
+    }
+}
+
+/// The snapshot a watch loop starts its incremental cycles from.
+fn build_watch_local_snapshot(local_dir: &str, _filter: &SyncLocalFilter) -> WatchLocalSnapshot {
+    let mut snap = std::collections::HashMap::new();
+    let walker = walkdir::WalkDir::new(local_dir)
+        .follow_links(false)
+        .max_depth(100);
+    for entry in walker {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let relative = match entry.path().strip_prefix(local_dir) {
+            Ok(r) => r.to_string_lossy().replace('\\', "/"),
+            Err(_) => continue,
+        };
+        if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+            continue;
+        }
+        if let Ok(meta) = entry.metadata() {
+            snap.insert(relative, (meta.len(), sync_local_mtime(&meta)));
+        }
+    }
+    WatchLocalSnapshot {
+        files: snap,
+        completeness: Default::default(),
+    }
+}
+
+/// Build the local side of a watch cycle incrementally: refresh metadata only
+/// for watcher-reported paths, and take everything else from the snapshot.
 /// This avoids a full walkdir when only a few files changed.
 fn incremental_local_scan(
     base: &std::path::Path,
     changed_paths: &[std::path::PathBuf],
-    previous_entries: &std::collections::HashMap<String, (u64, Option<String>)>,
-    exclude_matchers: &[globset::GlobMatcher],
-) -> Vec<(String, u64, Option<String>)> {
+    previous: &WatchLocalSnapshot,
+    filter: &SyncLocalFilter,
+) -> SyncScan {
+    let exclude_matchers = filter.exclude;
     let mut result: std::collections::HashMap<String, (u64, Option<String>)> =
-        previous_entries.clone();
+        previous.files.clone();
 
     for changed in changed_paths {
         // Compute relative path
@@ -54720,12 +54860,7 @@ fn incremental_local_scan(
         // Read current metadata: if file was deleted, remove from snapshot
         match std::fs::metadata(changed) {
             Ok(meta) if meta.is_file() => {
-                let size = meta.len();
-                let mtime = meta.modified().ok().map(|t| {
-                    let dt: chrono::DateTime<chrono::Utc> = t.into();
-                    dt.format("%Y-%m-%dT%H:%M:%S").to_string()
-                });
-                result.insert(relative, (size, mtime));
+                result.insert(relative, (meta.len(), sync_local_mtime(&meta)));
             }
             _ => {
                 // File deleted or not a regular file
@@ -54734,10 +54869,13 @@ fn incremental_local_scan(
         }
     }
 
-    result
-        .into_iter()
-        .map(|(path, (size, mtime))| (path, size, mtime))
-        .collect()
+    SyncScan {
+        entries: result
+            .into_iter()
+            .map(|(path, (size, mtime))| (path, size, mtime))
+            .collect(),
+        completeness: previous.completeness,
+    }
 }
 
 /// Start a filesystem watcher and return a boxed handle (dropped to stop).
@@ -55039,43 +55177,14 @@ async fn cmd_sync_watch(
     // - track_renames is off (needs full file set for hash matching)
     let use_incremental = direction != "download" && !track_renames;
 
-    // Local snapshot: populated after each full scan for incremental merging
-    let mut local_snapshot: std::collections::HashMap<String, (u64, Option<String>)> =
-        std::collections::HashMap::new();
+    // The same filters `cmd_sync` applies to its own local walk.
+    let local_filter = SyncLocalFilter {
+        max_depth: cli.max_depth.map(|d| d as usize).unwrap_or(100),
+        exclude: &exclude_matchers,
+    };
 
-    // Helper: build snapshot from a full local walkdir scan
-    let build_snapshot =
-        |local_dir: &str| -> std::collections::HashMap<String, (u64, Option<String>)> {
-            let mut snap = std::collections::HashMap::new();
-            let walker = walkdir::WalkDir::new(local_dir)
-                .follow_links(false)
-                .max_depth(100);
-            for entry in walker {
-                let entry = match entry {
-                    Ok(e) => e,
-                    Err(_) => continue,
-                };
-                if !entry.file_type().is_file() {
-                    continue;
-                }
-                let relative = match entry.path().strip_prefix(local_dir) {
-                    Ok(r) => r.to_string_lossy().replace('\\', "/"),
-                    Err(_) => continue,
-                };
-                if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                    continue;
-                }
-                if let Ok(meta) = entry.metadata() {
-                    let size = meta.len();
-                    let mtime = meta.modified().ok().map(|t| {
-                        let dt: chrono::DateTime<chrono::Utc> = t.into();
-                        dt.format("%Y-%m-%dT%H:%M:%S").to_string()
-                    });
-                    snap.insert(relative, (size, mtime));
-                }
-            }
-            snap
-        };
+    // Local snapshot: populated after each full scan for incremental merging
+    let mut local_snapshot = WatchLocalSnapshot::default();
 
     // Initial sync
     if !watch_no_initial {
@@ -55087,7 +55196,7 @@ async fn cmd_sync_watch(
 
     // Build initial snapshot after first sync (or immediately if --watch-no-initial)
     if use_incremental {
-        local_snapshot = build_snapshot(local);
+        local_snapshot = build_watch_local_snapshot(local, &local_filter);
     }
 
     // Watch loop
@@ -55122,26 +55231,14 @@ async fn cmd_sync_watch(
                 let trigger = format!("watcher: {} paths", path_count);
 
                 if use_incremental {
-                    let entries = incremental_local_scan(
+                    let scan = incremental_local_scan(
                         local_path,
                         &changed_paths,
                         &local_snapshot,
-                        &exclude_matchers,
+                        &local_filter,
                     );
-                    // Update snapshot with changes
-                    for (ref rel, size, ref mtime) in &entries {
-                        local_snapshot.insert(rel.clone(), (*size, mtime.clone()));
-                    }
-                    // Remove deleted files from snapshot
-                    for p in &changed_paths {
-                        if let Ok(rel) = p.strip_prefix(local_path) {
-                            let rel_str = rel.to_string_lossy().replace('\\', "/");
-                            if !entries.iter().any(|(r, _, _)| r == &rel_str) {
-                                local_snapshot.remove(&rel_str);
-                            }
-                        }
-                    }
-                    run_sync_cycle!(trigger.as_str(), Some(entries));
+                    local_snapshot = WatchLocalSnapshot::from_scan(&scan);
+                    run_sync_cycle!(trigger.as_str(), Some(scan));
                     if cancelled.load(Ordering::SeqCst) {
                         if !quiet {
                             eprintln!("\nWatch mode stopped. {} sync cycles completed.", cycle_count);
@@ -55166,7 +55263,7 @@ async fn cmd_sync_watch(
                 run_sync_cycle!("rescan");
                 // Rebuild snapshot after full rescan
                 if use_incremental {
-                    local_snapshot = build_snapshot(local);
+                    local_snapshot = build_watch_local_snapshot(local, &local_filter);
                 }
                 if cancelled.load(Ordering::SeqCst) {
                     if !quiet {
@@ -56694,7 +56791,8 @@ async fn cmd_reconcile(
         ..Default::default()
     };
     let local_spinner = maybe_create_scan_spinner(format, cli, "Scanning local...");
-    let locals = scan_local_tree_with_progress(local_path, &scan_opts, &local_spinner);
+    let (locals, _local_health) =
+        scan_local_tree_with_progress(local_path, &scan_opts, &local_spinner);
     if let Some(pb) = local_spinner {
         pb.finish_and_clear();
     }
@@ -71908,8 +72006,14 @@ mod tests {
         let file = dir.join("hello.txt");
         std::fs::write(&file, "hello world").unwrap();
 
-        let previous = std::collections::HashMap::new();
-        let result = incremental_local_scan(&dir, std::slice::from_ref(&file), &previous, &[]);
+        let previous = WatchLocalSnapshot::default();
+        let result = incremental_local_scan(
+            &dir,
+            std::slice::from_ref(&file),
+            &previous,
+            &watch_test_filter(&[]),
+        )
+        .entries;
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "hello.txt");
@@ -71918,20 +72022,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The filter a watch loop builds with no `--max-depth`.
+    fn watch_test_filter(exclude: &[globset::GlobMatcher]) -> SyncLocalFilter<'_> {
+        SyncLocalFilter {
+            max_depth: 100,
+            exclude,
+        }
+    }
+
     #[test]
     fn test_incremental_local_scan_deleted_file() {
         let dir = std::env::temp_dir().join("aeroftp_test_incr_del");
         let _ = std::fs::create_dir_all(&dir);
 
-        let mut previous = std::collections::HashMap::new();
-        previous.insert(
+        let mut previous = WatchLocalSnapshot::default();
+        previous.files.insert(
             "gone.txt".to_string(),
             (100u64, Some("2026-01-01T00:00:00".to_string())),
         );
 
         // File does not exist on disk
         let ghost = dir.join("gone.txt");
-        let result = incremental_local_scan(&dir, &[ghost], &previous, &[]);
+        let result =
+            incremental_local_scan(&dir, &[ghost], &previous, &watch_test_filter(&[])).entries;
 
         assert!(result.is_empty()); // deleted file removed from snapshot
 
@@ -71945,13 +72058,19 @@ mod tests {
         let file = dir.join("changed.txt");
         std::fs::write(&file, "new content").unwrap();
 
-        let mut previous = std::collections::HashMap::new();
-        previous.insert(
+        let mut previous = WatchLocalSnapshot::default();
+        previous.files.insert(
             "existing.txt".to_string(),
             (50u64, Some("2026-01-01T00:00:00".to_string())),
         );
 
-        let result = incremental_local_scan(&dir, std::slice::from_ref(&file), &previous, &[]);
+        let result = incremental_local_scan(
+            &dir,
+            std::slice::from_ref(&file),
+            &previous,
+            &watch_test_filter(&[]),
+        )
+        .entries;
 
         // Should contain both: existing (from snapshot) + changed (from disk)
         assert_eq!(result.len(), 2);
@@ -71973,9 +72092,10 @@ mod tests {
         let result = incremental_local_scan(
             &dir,
             std::slice::from_ref(&file),
-            &std::collections::HashMap::new(),
-            &[matcher],
-        );
+            &WatchLocalSnapshot::default(),
+            &watch_test_filter(std::slice::from_ref(&matcher)),
+        )
+        .entries;
 
         assert!(result.is_empty()); // excluded by glob
 
@@ -74017,7 +74137,7 @@ mod tests {
         local: &str,
         direction: &str,
         cli: &Cli,
-        precomputed_local: Option<Vec<(String, u64, Option<String>)>>,
+        precomputed_local: Option<SyncScan>,
         from_reconcile: Option<&str>,
     ) -> SyncCycleStats {
         run_against_remote(remote, move || {
@@ -74148,10 +74268,13 @@ mod tests {
     fn sync_watch_cycle_local_entries_are_bounded_by_the_files_from_list() {
         let fixture = FilesFromFixture::new();
         let cli = fixture.cli_listing(&["a.txt"]);
-        let precomputed_local = vec![
-            ("a.txt".to_string(), 1, Some(FIXTURE_MTIME.to_string())),
-            ("c.txt".to_string(), 1, Some(FIXTURE_MTIME.to_string())),
-        ];
+        let precomputed_local = SyncScan {
+            entries: vec![
+                ("a.txt".to_string(), 1, Some(FIXTURE_MTIME.to_string())),
+                ("c.txt".to_string(), 1, Some(FIXTURE_MTIME.to_string())),
+            ],
+            completeness: Default::default(),
+        };
         let stats = plan_sync_with_delete(
             MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1)]),
             &fixture.local(),
