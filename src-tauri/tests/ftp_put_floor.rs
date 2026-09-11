@@ -13,8 +13,8 @@
 //!
 //! Neither needs the Docker fixture: the server below is a scripted fake on
 //! loopback, enough FTP for connect + PASV + STOR + RETR + MFMT + QUIT, and
-//! it records every command so the wire itself is asserted on, not a
-//! constant.
+//! it records every command, with the moment it arrived, so the wire itself
+//! is asserted on, not a constant.
 
 use std::collections::HashMap;
 use std::io::Write as _;
@@ -26,10 +26,28 @@ use ftp_client_gui_lib::providers::{FtpProvider, StorageProvider};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
+/// One control command as the fake server received it.
+#[derive(Clone, Debug)]
+struct Received {
+    line: String,
+    at: Instant,
+}
+
+impl Received {
+    fn verb(&self) -> String {
+        self.line
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_uppercase()
+    }
+}
+
 /// What the fake server saw (and holds), asserted on by the tests.
 #[derive(Clone, Default)]
 struct Wire {
-    commands: Arc<Mutex<Vec<String>>>,
+    /// Every control command, with the moment it arrived.
+    commands: Arc<Mutex<Vec<Received>>>,
     stored: Arc<Mutex<Vec<u8>>>,
     files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
@@ -60,7 +78,10 @@ async fn session(stream: tokio::net::TcpStream, wire: Wire) {
     // A PASV listener lives until the next data command consumes it.
     let mut pasv: Option<TcpListener> = None;
     while let Ok(Some(line)) = lines.next_line().await {
-        wire.commands.lock().unwrap().push(line.clone());
+        wire.commands.lock().unwrap().push(Received {
+            line: line.clone(),
+            at: Instant::now(),
+        });
         let verb = line.split_whitespace().next().unwrap_or("").to_uppercase();
         let arg = line
             .split_once(' ')
@@ -235,33 +256,50 @@ async fn transfer_session_sends_type_exactly_once() {
 
     assert_eq!(std::fs::read(&down_local).unwrap(), payload);
     let commands = server.wire.commands.lock().unwrap();
-    let types: Vec<&String> = commands
+    let lines: Vec<&str> = commands.iter().map(|c| c.line.as_str()).collect();
+    let types: Vec<&str> = lines
         .iter()
+        .copied()
         .filter(|c| c.to_uppercase().starts_with("TYPE"))
         .collect();
     assert_eq!(
         types.len(),
         1,
         "the session must pay TYPE once (at connect), not once per transfer: {:?}",
-        commands.as_slice()
+        lines
     );
     assert_eq!(types[0].to_uppercase(), "TYPE I");
     std::fs::remove_file(&up_local).ok();
     std::fs::remove_file(&down_local).ok();
 }
 
+/// The commands the fake server has received once it has seen QUIT, or when
+/// five seconds have passed without it.
+async fn commands_through_quit(wire: &Wire) -> Vec<Received> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let commands = wire.commands.lock().unwrap().clone();
+        if commands.iter().any(|c| c.verb() == "QUIT") || Instant::now() >= deadline {
+            return commands;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
 /// The 500 ms post-upload settle exists for russh's buffered SFTP writes; it
 /// used to run for every provider. This drives the COMMAND itself
-/// (`aeroftp-cli put` against a URL, no profile, no vault) and times it
-/// end to end against a loopback server, where the whole exchange is a few
-/// milliseconds: before the fix the process cannot come back in under half a
-/// second, after it the floor is process startup. 400 ms leaves >100 ms of
-/// margin on both sides of the old and new behaviour.
+/// (`aeroftp-cli put` against a URL, no profile, no vault) and measures the
+/// interval where that sleep sits: `cmd_put` settles after the upload and
+/// before it disconnects, so the fake server times the gap between the last
+/// command it receives before QUIT (MFMT, or the STOR itself when there is no
+/// MFMT) and QUIT. On loopback that gap is a few milliseconds; with the
+/// settle on the FTP path it is at least 500 ms. 300 ms tells them apart.
 ///
-/// It has to be the process wall clock, not the CLI's own number: `cmd_put`
-/// closes its `elapsed_secs` BEFORE the settle sleep, so a test asserting on
-/// the JSON's `elapsed_secs` would be green both before and after the fix
-/// and would prove nothing. The bench times the process for the same reason.
+/// Neither the process wall clock nor the CLI's own number can carry this.
+/// The wall clock includes starting a debug binary, which on a loaded CI
+/// runner can take longer than any threshold below the 500 ms signal.
+/// `cmd_put` closes its `elapsed_secs` before the settle sleep, so that
+/// number is the same with and without the sleep.
 #[tokio::test]
 async fn cli_put_to_ftp_has_no_half_second_settle() {
     let server = start_fake_ftp().await;
@@ -273,7 +311,6 @@ async fn cli_put_to_ftp_has_no_half_second_settle() {
         .unwrap();
 
     let url = format!("ftp://testuser:testpass@127.0.0.1:{}/", server.port);
-    let start = Instant::now();
     // tokio::process, not std: the fake server lives on this same runtime, so
     // a blocking wait would starve the very tasks the child is talking to.
     let child = tokio::process::Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
@@ -289,20 +326,32 @@ async fn cli_put_to_ftp_has_no_half_second_settle() {
         Ok(o) => o.expect("spawn aeroftp-cli put"),
         Err(_) => panic!("aeroftp-cli put to a loopback server did not finish in 30 s"),
     };
-    let elapsed = start.elapsed();
 
     assert!(
         output.status.success(),
         "put failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    // Give the server task a moment to record the tail of the session.
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // The child can exit before the server task has read its QUIT.
+    let commands = commands_through_quit(&server.wire).await;
+    let lines: Vec<&str> = commands.iter().map(|c| c.line.as_str()).collect();
     assert_eq!(server.wire.stored.lock().unwrap().as_slice(), payload);
+    let quit = commands
+        .iter()
+        .position(|c| c.verb() == "QUIT")
+        .unwrap_or_else(|| panic!("the put never sent QUIT: {:?}", lines));
     assert!(
-        elapsed < Duration::from_millis(400),
-        "a localhost put took {:?}; the SFTP-only settle sleep is back on the FTP path",
-        elapsed
+        commands[..quit].iter().any(|c| c.verb() == "STOR"),
+        "QUIT has to follow the upload: {:?}",
+        lines
+    );
+    let before_quit = &commands[quit - 1];
+    let gap = commands[quit].at.duration_since(before_quit.at);
+    assert!(
+        gap < Duration::from_millis(300),
+        "{:?} passed between `{}` and QUIT; the SFTP-only settle sleep is back on the FTP path",
+        gap,
+        before_quit.line
     );
     std::fs::remove_file(&local).ok();
 }
