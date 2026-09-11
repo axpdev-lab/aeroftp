@@ -935,7 +935,11 @@ export const runRemoteSync = async (
     }
 
     // ── Finalize the journal ───────────────────────────────────────────────
-    journal.completed = !runCancelled;
+    // completed is true only when the run was not cancelled AND no file
+    // failed (transfer or verification). App.tsx offers Resume only when
+    // `journal && !journal.completed`, so a partially failed run must keep
+    // the journal; a fully successful run still deletes it.
+    journal.completed = !runCancelled && errors.length === 0;
     await saveJournal();
     if (journalEnabled && journal.completed) {
         await invoke('delete_sync_journal_cmd', {

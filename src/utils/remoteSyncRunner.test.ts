@@ -70,6 +70,27 @@ const makeInvoke = (handlers: Record<string, Handler> = {}) => {
     return { invoke, calls };
 };
 
+const lastSavedJournal = (calls: Call[]): SyncJournal | undefined => {
+    for (let i = calls.length - 1; i >= 0; i--) {
+        if (calls[i].cmd === 'save_sync_journal_cmd') {
+            return calls[i].args?.journal as SyncJournal | undefined;
+        }
+    }
+    return undefined;
+};
+
+const denyUpload: Record<string, Handler> = {
+    upload_file: () => {
+        throw new Error('permission denied');
+    },
+    classify_transfer_error: (args) => ({
+        kind: 'permission_denied',
+        message: String(args?.rawError),
+        retryable: false,
+        file_path: String(args?.filePath),
+    } satisfies SyncErrorInfo),
+};
+
 const noWaitDeps = (
     invoke: RemoteSyncDeps['invoke'],
     extra: Partial<RemoteSyncDeps> = {},
@@ -125,6 +146,7 @@ describe('remoteSyncRunner — copy legs', () => {
             && c.args?.path === '/srv/data/newdir')).toBe(true);
         // Journal lifecycle: written then deleted on clean completion.
         expect(calls.some((c) => c.cmd === 'save_sync_journal_cmd')).toBe(true);
+        expect(lastSavedJournal(calls)?.completed).toBe(true);
         expect(calls.some((c) => c.cmd === 'delete_sync_journal_cmd')).toBe(true);
         expect(calls.some((c) => c.cmd === 'reset_cancel_flag')).toBe(true);
     });
@@ -372,6 +394,7 @@ describe('remoteSyncRunner — cancellation and budget', () => {
         expect(report.skipped).toBe(2);
         expect(report.cancelled).toBe(true);
         // Interrupted run keeps its journal for a later resume.
+        expect(lastSavedJournal(calls)?.completed).toBe(false);
         expect(calls.some((c) => c.cmd === 'delete_sync_journal_cmd')).toBe(false);
     });
 
@@ -426,6 +449,137 @@ describe('remoteSyncRunner — journal resume', () => {
         expect(uploadCalls).toHaveLength(1);
         expect((uploadCalls[0].args?.params as { local_path: string }).local_path)
             .toBe('/home/u/work/b.txt');
+    });
+
+    it('retries failed journal entries on resume and skips completed ones', async () => {
+        const resumeJournal: SyncJournal = {
+            id: 'j-fail',
+            created_at: '2026-05-22T09:00:00Z',
+            updated_at: '2026-05-22T09:05:00Z',
+            local_path: '/home/u/work',
+            remote_path: '/srv/data',
+            direction: 'bidirectional',
+            retry_policy: RETRY,
+            verify_policy: 'none',
+            entries: [
+                {
+                    relative_path: 'ok.txt',
+                    action: 'upload',
+                    status: 'completed',
+                    attempts: 1,
+                    last_error: null,
+                    verified: true,
+                    bytes_transferred: 100,
+                },
+                {
+                    relative_path: 'bad.txt',
+                    action: 'upload',
+                    status: 'failed',
+                    attempts: 1,
+                    last_error: {
+                        kind: 'permission_denied',
+                        message: 'permission denied',
+                        retryable: false,
+                        file_path: 'bad.txt',
+                    },
+                    verified: null,
+                    bytes_transferred: 0,
+                },
+            ],
+            completed: false,
+        };
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync(
+            [file('ok.txt', 'upload', { size: 100 }), file('bad.txt', 'upload', { size: 200 })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { resumeJournal }),
+        );
+        expect(report.uploaded).toBe(2);
+        const uploadCalls = calls.filter((c) => c.cmd === 'upload_file');
+        expect(uploadCalls).toHaveLength(1);
+        expect((uploadCalls[0].args?.params as { local_path: string }).local_path)
+            .toBe('/home/u/work/bad.txt');
+    });
+});
+
+describe('remoteSyncRunner: journal kept on failures', () => {
+    it('does not complete or delete the journal when a non-cancelled run has a failed file', async () => {
+        const { invoke, calls } = makeInvoke(denyUpload);
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload'), file('b.txt', 'upload')],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.cancelled).toBe(false);
+        expect(report.uploaded).toBe(0);
+        expect(report.errors).toHaveLength(2);
+        const saved = lastSavedJournal(calls);
+        expect(saved?.completed).toBe(false);
+        expect(saved?.entries.every((e) => e.status === 'failed')).toBe(true);
+        expect(calls.some((c) => c.cmd === 'delete_sync_journal_cmd')).toBe(false);
+    });
+
+    it('keeps the journal resumable when one file succeeds and another fails', async () => {
+        const { invoke, calls } = makeInvoke({
+            upload_file: (_args, idx) => {
+                if (idx >= 1) throw new Error('permission denied');
+                return undefined;
+            },
+            classify_transfer_error: (args) => ({
+                kind: 'permission_denied',
+                message: String(args?.rawError),
+                retryable: false,
+                file_path: String(args?.filePath),
+            } satisfies SyncErrorInfo),
+        });
+        const report = await runRemoteSync(
+            [file('ok.txt', 'upload', { size: 100 }), file('bad.txt', 'upload', { size: 200 })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.cancelled).toBe(false);
+        expect(report.uploaded).toBe(1);
+        expect(report.errors).toHaveLength(1);
+        const saved = lastSavedJournal(calls);
+        expect(saved?.completed).toBe(false);
+        expect(saved?.entries.find((e) => e.relative_path === 'ok.txt')?.status).toBe('completed');
+        expect(saved?.entries.find((e) => e.relative_path === 'bad.txt')?.status).toBe('failed');
+        expect(calls.some((c) => c.cmd === 'delete_sync_journal_cmd')).toBe(false);
+    });
+
+    it('does not complete or delete the journal when a download fails verification', async () => {
+        const { invoke, calls } = makeInvoke({
+            verify_local_transfer: (): VerifyResult => ({
+                path: '/home/u/work/a.txt',
+                passed: false,
+                policy: 'size_only',
+                expected_size: 100,
+                actual_size: 40,
+                size_match: false,
+                mtime_match: null,
+                hash_match: null,
+                message: 'size mismatch',
+            }),
+        });
+        const report = await runRemoteSync(
+            [file('a.txt', 'download', { size: 100 })],
+            noDirs,
+            baseConfig({ verifyPolicy: 'size_only' }),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.cancelled).toBe(false);
+        expect(report.verifyFailed).toBe(1);
+        const saved = lastSavedJournal(calls);
+        expect(saved?.completed).toBe(false);
+        expect(saved?.entries[0]?.status).toBe('verify_failed');
+        expect(calls.some((c) => c.cmd === 'delete_sync_journal_cmd')).toBe(false);
     });
 });
 
