@@ -21693,8 +21693,7 @@ mod scan_completeness_gate_tests {
 
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700))
             .expect("restore the mode");
-        if !blocked {
-            // Running as root, or on a filesystem that ignores the mode.
+        if crate::sync_core::scan::tests::mode_did_not_block(blocked, dir.path()) {
             return;
         }
         assert!(

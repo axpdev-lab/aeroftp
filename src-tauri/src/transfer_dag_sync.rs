@@ -2798,9 +2798,7 @@ mod tests {
         .await;
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700))
             .expect("restore the mode");
-        if !stat_blocked {
-            // Running as root, or on a filesystem that ignores the mode: the
-            // stat succeeds and there is nothing to observe.
+        if crate::sync_core::scan::tests::mode_did_not_block(stat_blocked, local.path()) {
             return;
         }
         assert!(
@@ -2822,23 +2820,28 @@ mod tests {
     /// holds files under the same path. What the remote directory contains is
     /// unknown (it could be a link to elsewhere), so the upload must not plan
     /// anything under it: the remote scan's completeness only guarded deletes,
-    /// and the transfer plan ran on the unlisted tree.
-    fn remote_tree_with_an_unlisted_dir() -> crate::sync_core::scan::tests::PoolTreeProvider {
+    /// and the transfer plan ran on the unlisted tree. A local file outside that
+    /// path is still planned and copied: the run is bounded, not stopped.
+    fn remote_tree_with_an_unlisted_dir() -> crate::sync_core::scan::tests::WalkTreeProvider {
         use crate::providers::RemoteEntry;
-        let mut tree = crate::sync_core::scan::tests::PoolTreeProvider::fan(1, 1);
-        tree.dirs = std::collections::HashMap::from([(
-            "/root".to_string(),
-            vec![
-                RemoteEntry::file("a.txt".to_string(), "/root/a.txt".to_string(), 1),
-                RemoteEntry::directory("d1".to_string(), "/root/d1".to_string()),
-            ],
-        )]);
+        let mut tree = crate::sync_core::scan::tests::WalkTreeProvider::new(
+            std::collections::HashMap::from([(
+                "/root".to_string(),
+                vec![
+                    RemoteEntry::file("a.txt".to_string(), "/root/a.txt".to_string(), 1),
+                    RemoteEntry::directory("d1".to_string(), "/root/d1".to_string()),
+                ],
+            )]),
+            true,
+        );
+        tree.unlistable.insert("/root/d1".to_string());
         tree
     }
 
     fn local_tree_under_the_unlisted_dir() -> tempfile::TempDir {
         let local = tempfile::tempdir().expect("tempdir");
         std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
+        std::fs::write(local.path().join("new.txt"), b"new").expect("write new.txt");
         std::fs::create_dir_all(local.path().join("d1/link")).expect("create d1/link/");
         std::fs::write(local.path().join("d1/link/x.txt"), b"x").expect("write d1/link/x.txt");
         local
@@ -2864,6 +2867,11 @@ mod tests {
             "nothing under the unlisted remote directory may be planned: {:?}",
             sink.starts
         );
+        assert!(
+            sink.starts.iter().any(|rel| rel == "new.txt"),
+            "the file outside the unlisted directory is still planned: {:?}",
+            sink.starts
+        );
         assert_eq!(
             report.unseen_paths,
             vec![crate::sync_core::UnseenPath {
@@ -2875,10 +2883,13 @@ mod tests {
     }
 
     /// The same case on a real run, which takes the DAG route: no upload is
-    /// attempted under the unlisted directory.
+    /// attempted under the unlisted directory, and the file outside it is
+    /// uploaded.
     #[tokio::test]
     async fn sync_dag_upload_writes_nothing_under_a_remote_directory_that_did_not_list() {
-        let mut provider: Box<dyn StorageProvider> = Box::new(remote_tree_with_an_unlisted_dir());
+        let tree = remote_tree_with_an_unlisted_dir();
+        let writes = Arc::clone(&tree.writes);
+        let mut provider: Box<dyn StorageProvider> = Box::new(tree);
         let local = local_tree_under_the_unlisted_dir();
         let options = opts(SyncDirection::Upload);
         let mut sink = TestSyncSink::default();
@@ -2895,7 +2906,17 @@ mod tests {
             "no transfer may start under the unlisted remote directory: {:?}",
             sink.starts
         );
-        assert_eq!(report.uploaded, 0);
+        assert_eq!(
+            report.uploaded, 1,
+            "the file outside the unlisted directory is still uploaded: {:?}",
+            report.errors
+        );
+        assert!(
+            sink.done.iter().any(|rel| rel == "new.txt"),
+            "{:?}",
+            sink.done
+        );
+        assert!(writes.load(Ordering::SeqCst) >= 1);
     }
 
     /// Local roots whose scan task panics, so a test can drive a run whose local

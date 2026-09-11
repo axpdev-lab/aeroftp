@@ -1775,9 +1775,10 @@ pub async fn execute_tool(
                             "errors_truncated": total_errors > 50,
                         })
                     };
-                    // Additive: present only when the run left a symbolic link,
-                    // and everything under it, alone on both sides, so a tree
-                    // without links answers exactly as before.
+                    // Additive: present only when the run left paths alone on
+                    // both sides (a symbolic link it did not follow, a path its
+                    // scans could not see, and everything under them), so a tree
+                    // without either answers exactly as before.
                     if let Value::Object(map) = &mut payload {
                         map.extend(sync_boundaries_json(&report));
                     }
@@ -2081,6 +2082,33 @@ mod tests {
         );
         let empty = super::sync_boundaries_json(&crate::sync_core::SyncReport::default());
         assert!(empty.is_empty(), "a tree without links adds no keys");
+    }
+
+    /// The paths a run's scans could not see reach the `sync_tree` result as a
+    /// list of their own, each named with the reason it was not seen.
+    #[test]
+    fn sync_tree_result_lists_the_unseen_paths() {
+        let report = crate::sync_core::SyncReport {
+            unseen_paths: vec![crate::sync_core::UnseenPath {
+                rel_path: "d1".to_string(),
+                reason: "list_error",
+            }],
+            ..Default::default()
+        };
+        let keys = super::sync_boundaries_json(&report);
+        assert_eq!(
+            keys.get("unseen_paths"),
+            Some(&serde_json::json!([{ "rel_path": "d1", "reason": "list_error" }]))
+        );
+        assert_eq!(keys.get("unseen_paths_total"), Some(&serde_json::json!(1)));
+        assert_eq!(
+            keys.get("unseen_paths_truncated"),
+            Some(&serde_json::json!(false))
+        );
+        assert!(
+            !keys.contains_key("skipped_links"),
+            "no links, no link keys"
+        );
     }
 
     #[test]
