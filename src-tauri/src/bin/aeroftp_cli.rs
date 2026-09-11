@@ -73947,25 +73947,48 @@ mod tests {
     /// A remote tree held in memory, for driving `sync` and `sync-doctor` end
     /// to end: `list` answers from a map, and every mutation is refused, so a
     /// run that tried to change the tree fails instead of passing on a no-op.
+    /// Deletes are also recorded, refused or not, so a test can tell a delete
+    /// the run attempted from one it never planned.
     struct MemTreeProvider {
         dirs: HashMap<String, Vec<RemoteEntry>>,
+        delete_attempts: Arc<Mutex<Vec<String>>>,
     }
 
     impl MemTreeProvider {
         /// Files directly under `/root`, as `(name, size)`, stamped with
         /// [`FIXTURE_MTIME`].
         fn root_files(files: &[(&str, u64)]) -> Self {
-            let entries = files
-                .iter()
-                .map(|(name, size)| {
-                    let mut entry =
-                        RemoteEntry::file(name.to_string(), format!("/root/{name}"), *size);
-                    entry.modified = Some(FIXTURE_MTIME.to_string());
-                    entry
-                })
-                .collect();
+            Self::tree(files)
+        }
+
+        /// Files under `/root` at any depth, as `(relative path, size)`,
+        /// stamped with [`FIXTURE_MTIME`]; the directories on their way are
+        /// listed too.
+        fn tree(files: &[(&str, u64)]) -> Self {
+            let mut dirs: HashMap<String, Vec<RemoteEntry>> =
+                HashMap::from([("/root".to_string(), Vec::new())]);
+            for (path, size) in files {
+                let mut parent = "/root".to_string();
+                let mut parts = path.split('/').peekable();
+                while let Some(part) = parts.next() {
+                    let full = format!("{parent}/{part}");
+                    if parts.peek().is_some() {
+                        let listing = dirs.entry(parent.clone()).or_default();
+                        if !listing.iter().any(|entry| entry.path == full) {
+                            listing.push(RemoteEntry::directory(part.to_string(), full.clone()));
+                        }
+                        dirs.entry(full.clone()).or_default();
+                    } else {
+                        let mut entry = RemoteEntry::file(part.to_string(), full.clone(), *size);
+                        entry.modified = Some(FIXTURE_MTIME.to_string());
+                        dirs.entry(parent.clone()).or_default().push(entry);
+                    }
+                    parent = full;
+                }
+            }
             Self {
-                dirs: HashMap::from([("/root".to_string(), entries)]),
+                dirs,
+                delete_attempts: Arc::default(),
             }
         }
     }
@@ -74030,7 +74053,11 @@ mod tests {
         async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
             Err(ProviderError::NotSupported("mkdir".to_string()))
         }
-        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.delete_attempts
+                .lock()
+                .expect("delete log")
+                .push(path.to_string());
             Err(ProviderError::NotSupported("delete".to_string()))
         }
         async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
@@ -74140,19 +74167,44 @@ mod tests {
         precomputed_local: Option<SyncScan>,
         from_reconcile: Option<&str>,
     ) -> SyncCycleStats {
+        run_sync_with_delete(
+            remote,
+            local,
+            direction,
+            true,
+            cli,
+            precomputed_local,
+            from_reconcile,
+        )
+    }
+
+    /// The real `cmd_sync` with `--delete` against `remote`, as a dry run or
+    /// not. A run that is not dry reaches the scan guards (TX-01) and the
+    /// deletes themselves, which the remote records and refuses.
+    fn run_sync_with_delete(
+        remote: MemTreeProvider,
+        local: &str,
+        direction: &str,
+        dry_run: bool,
+        cli: &Cli,
+        precomputed_local: Option<SyncScan>,
+        from_reconcile: Option<&str>,
+    ) -> SyncCycleStats {
         run_against_remote(remote, move || {
             cmd_sync(
                 "memory://",
                 local,
                 "/root",
                 direction,
-                true, // dry_run
+                dry_run,
                 true, // delete
                 &[],
                 None,
                 0,
                 false,
-                None,
+                // An unattended live --delete must state its cap (DEL-01); a
+                // wide one keeps the cap out of what the tests observe.
+                Some("1000"),
                 None,
                 "",
                 false,
@@ -74432,6 +74484,354 @@ mod tests {
             !saved.files.contains_key("b.txt"),
             "a run without a list replaces the snapshot whole"
         );
+    }
+
+    /// Makes a directory unreadable for the rest of a test and gives it back
+    /// its permissions when dropped, pass or panic, so the scratch tree can be
+    /// removed.
+    #[cfg(unix)]
+    struct UnreadableDir(std::path::PathBuf);
+
+    #[cfg(unix)]
+    impl UnreadableDir {
+        fn lock(path: std::path::PathBuf) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000))
+                .expect("lock the directory");
+            let guard = Self(path);
+            assert!(
+                std::fs::read_dir(&guard.0).is_err(),
+                "this test needs a directory the current user cannot read, and root reads every directory"
+            );
+            guard
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for UnreadableDir {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    /// A local tree with `a.txt` and `locked/keep.txt`, both also on the
+    /// remote with the same size and mtime, so nothing is left to upload and
+    /// any delete the run attempts is a wrong one.
+    #[cfg(unix)]
+    fn watch_fixture() -> (FilesFromFixture, MemTreeProvider) {
+        let fixture = FilesFromFixture::new();
+        std::fs::create_dir(Path::new(&fixture.local()).join("locked")).expect("locked directory");
+        fixture.local_file("a.txt", 1);
+        fixture.local_file("locked/keep.txt", 1);
+        let remote = MemTreeProvider::tree(&[("a.txt", 1), ("locked/keep.txt", 1)]);
+        (fixture, remote)
+    }
+
+    /// A watch snapshot taken while a local directory cannot be read must not
+    /// let an incremental `--delete` cycle take the files behind it for remote
+    /// orphans. The snapshot cannot see into `locked/` and the watcher reports
+    /// `a.txt`: the cycle must refuse its deletes, with the exit code of a full
+    /// scan that hits the same directory (4), and must not delete
+    /// `locked/keep.txt` from the remote.
+    #[cfg(unix)]
+    #[test]
+    fn watch_cycle_deletes_nothing_behind_a_directory_the_snapshot_could_not_read() {
+        let (fixture, remote) = watch_fixture();
+        let local = fixture.local();
+        let _locked = UnreadableDir::lock(Path::new(&local).join("locked"));
+        let filter = watch_test_filter(&[]);
+        let snapshot = build_watch_local_snapshot(&local, &filter);
+        let scan = incremental_local_scan(
+            Path::new(&local),
+            &[Path::new(&local).join("a.txt")],
+            &snapshot,
+            &filter,
+        );
+        let delete_attempts = Arc::clone(&remote.delete_attempts);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+
+        let stats = run_sync_with_delete(remote, &local, "upload", false, &cli, Some(scan), None);
+
+        assert_eq!(
+            *delete_attempts.lock().expect("delete log"),
+            Vec::<String>::new(),
+            "no remote delete may be attempted behind the unreadable directory"
+        );
+        assert_eq!(stats.exit_code, 4, "the refusal shows in the exit code");
+    }
+
+    /// The watcher reports a file the cycle cannot stat, because its directory
+    /// became unreadable after the snapshot. A file that cannot be read is not
+    /// a file that was deleted: the cycle must not plan it as a remote orphan.
+    #[cfg(unix)]
+    #[test]
+    fn watch_cycle_does_not_take_a_file_it_cannot_stat_for_a_deleted_one() {
+        let (fixture, remote) = watch_fixture();
+        let local = fixture.local();
+        let filter = watch_test_filter(&[]);
+        let snapshot = build_watch_local_snapshot(&local, &filter);
+        let _locked = UnreadableDir::lock(Path::new(&local).join("locked"));
+        let scan = incremental_local_scan(
+            Path::new(&local),
+            &[Path::new(&local).join("locked").join("keep.txt")],
+            &snapshot,
+            &filter,
+        );
+        let delete_attempts = Arc::clone(&remote.delete_attempts);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+
+        let stats = run_sync_with_delete(remote, &local, "upload", false, &cli, Some(scan), None);
+
+        assert_eq!(
+            *delete_attempts.lock().expect("delete log"),
+            Vec::<String>::new(),
+            "an unreadable file must not be deleted from the remote"
+        );
+        assert_eq!(stats.exit_code, 4, "the refusal shows in the exit code");
+    }
+
+    /// A watch cycle's local side holds the files a full `sync` scan would:
+    /// the snapshot and the incremental refresh both apply the depth bound and
+    /// the exclude patterns. The snapshot applied neither, so an excluded file
+    /// already on disk reached the planner at the first watcher event.
+    #[test]
+    fn watch_cycle_local_side_applies_the_sync_depth_and_exclude_filters() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        let root = dir.path();
+        std::fs::write(root.join("a.txt"), b"a").expect("a.txt");
+        std::fs::write(root.join("secret.env"), b"s").expect("secret.env");
+        std::fs::create_dir(root.join("d")).expect("d/");
+        std::fs::write(root.join("d").join("deep.txt"), b"d").expect("d/deep.txt");
+        let exclude = [globset::Glob::new("*.env").expect("glob").compile_matcher()];
+        let filter = SyncLocalFilter {
+            max_depth: 1,
+            exclude: &exclude,
+        };
+
+        let snapshot = build_watch_local_snapshot(root.to_str().expect("utf-8 root"), &filter);
+        let snapshot_files: std::collections::BTreeSet<&str> =
+            snapshot.files.keys().map(String::as_str).collect();
+        assert_eq!(
+            snapshot_files,
+            std::collections::BTreeSet::from(["a.txt"]),
+            "the snapshot keeps only what the sync scan keeps"
+        );
+
+        let scan = incremental_local_scan(
+            root,
+            &[root.join("secret.env"), root.join("d").join("deep.txt")],
+            &snapshot,
+            &filter,
+        );
+        let scan_files: std::collections::BTreeSet<&str> = scan
+            .entries
+            .iter()
+            .map(|(path, _, _)| path.as_str())
+            .collect();
+        assert_eq!(
+            scan_files,
+            std::collections::BTreeSet::from(["a.txt"]),
+            "a watcher event does not bring in a filtered file"
+        );
+    }
+
+    /// `reconcile` walks the local tree with `scan_local_tree_with_progress`.
+    /// A directory it cannot read must leave that scan incomplete: its files
+    /// would otherwise be reported as missing locally.
+    #[cfg(unix)]
+    #[test]
+    fn reconcile_local_scan_is_incomplete_behind_an_unreadable_directory() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        std::fs::create_dir(dir.path().join("locked")).expect("locked directory");
+        std::fs::write(dir.path().join("locked").join("keep.txt"), b"k").expect("keep.txt");
+        let _locked = UnreadableDir::lock(dir.path().join("locked"));
+
+        let (_, completeness) = scan_local_tree_with_progress(
+            dir.path().to_str().expect("utf-8 root"),
+            &ftp_client_gui_lib::sync_core::ScanOptions::default(),
+            &None,
+        );
+
+        assert!(
+            !completeness.is_complete(),
+            "the unreadable directory must count as a listing error"
+        );
+    }
+
+    /// Write a reconcile plan with one remote-only file, `b.txt`, and the
+    /// given summary.
+    fn write_reconcile_plan(fixture: &FilesFromFixture, summary: serde_json::Value) -> String {
+        let plan = fixture.dir.path().join("reconcile.json");
+        std::fs::write(
+            &plan,
+            serde_json::json!({
+                "status": "differences_found",
+                "summary": summary,
+                "groups": {
+                    "match": [],
+                    "differ": [],
+                    "missing_remote": [],
+                    "missing_local": [{"path": "b.txt", "remote_size": 1}],
+                },
+            })
+            .to_string(),
+        )
+        .expect("write the reconcile plan");
+        plan.to_string_lossy().into_owned()
+    }
+
+    /// `sync --from-reconcile --delete` on a plan whose local scan was
+    /// incomplete must refuse, as a live scan does (exit 4, no delete): the
+    /// files it lists as missing locally may be files the scan could not read.
+    /// A `--files-from` list naming them does not change that.
+    #[test]
+    fn sync_from_reconcile_refuses_delete_on_an_incomplete_local_scan() {
+        for listed in [None, Some("b.txt")] {
+            let fixture = FilesFromFixture::new();
+            let cli = match listed {
+                Some(path) => fixture.cli_listing(&[path]),
+                None => Cli {
+                    quiet: true,
+                    ..test_cli()
+                },
+            };
+            let plan = write_reconcile_plan(
+                &fixture,
+                serde_json::json!({
+                    "remote_scan_incomplete": false,
+                    "remote_scan_errors": 0,
+                    "remote_scan_truncated": false,
+                    "local_scan_incomplete": true,
+                    "local_scan_errors": 1,
+                    "local_scan_truncated": false,
+                }),
+            );
+            let remote = MemTreeProvider::root_files(&[("b.txt", 1)]);
+            let delete_attempts = Arc::clone(&remote.delete_attempts);
+
+            let stats = run_sync_with_delete(
+                remote,
+                &fixture.local(),
+                "upload",
+                false,
+                &cli,
+                None,
+                Some(&plan),
+            );
+
+            assert_eq!(
+                *delete_attempts.lock().expect("delete log"),
+                Vec::<String>::new(),
+                "no remote delete from a plan with an incomplete local scan (list: {listed:?})"
+            );
+            assert_eq!(stats.exit_code, 4, "a TX-01 refusal (list: {listed:?})");
+        }
+    }
+
+    /// Refusing `--delete` on a partial reconcile plan is the TX-01 refusal of
+    /// a live scan, so it exits with the same code (4), not with the code of a
+    /// malformed plan (5).
+    #[test]
+    fn sync_from_reconcile_refusal_of_a_partial_remote_scan_exits_4() {
+        let fixture = FilesFromFixture::new();
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let plan = write_reconcile_plan(
+            &fixture,
+            serde_json::json!({
+                "remote_scan_incomplete": true,
+                "remote_scan_errors": 1,
+                "remote_scan_truncated": false,
+            }),
+        );
+        let remote = MemTreeProvider::root_files(&[("b.txt", 1)]);
+        let delete_attempts = Arc::clone(&remote.delete_attempts);
+
+        let stats = run_sync_with_delete(
+            remote,
+            &fixture.local(),
+            "upload",
+            false,
+            &cli,
+            None,
+            Some(&plan),
+        );
+
+        assert!(delete_attempts.lock().expect("delete log").is_empty());
+        assert_eq!(stats.exit_code, 4);
+    }
+
+    /// A complete reconcile plan driving `sync --from-reconcile --direction
+    /// upload --delete` asks the remote for each orphan once. The plan lists
+    /// its deletes already, and the live orphan pass added the same paths a
+    /// second time, so every delete was attempted twice.
+    #[test]
+    fn sync_from_reconcile_attempts_each_remote_delete_once() {
+        let fixture = FilesFromFixture::new();
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let plan = write_reconcile_plan(
+            &fixture,
+            serde_json::json!({
+                "remote_scan_incomplete": false,
+                "remote_scan_errors": 0,
+                "remote_scan_truncated": false,
+            }),
+        );
+        let remote = MemTreeProvider::root_files(&[("b.txt", 1)]);
+        let delete_attempts = Arc::clone(&remote.delete_attempts);
+
+        run_sync_with_delete(
+            remote,
+            &fixture.local(),
+            "upload",
+            false,
+            &cli,
+            None,
+            Some(&plan),
+        );
+
+        assert_eq!(
+            *delete_attempts.lock().expect("delete log"),
+            vec!["/root/b.txt".to_string()]
+        );
+    }
+
+    /// A reconcile file written before the summary carried the local scan
+    /// fields still loads, and still drives `--delete` when its scans were
+    /// complete.
+    #[test]
+    fn reconcile_summary_without_the_local_scan_fields_still_drives_delete() {
+        let fixture = FilesFromFixture::new();
+        let plan = write_reconcile_plan(
+            &fixture,
+            serde_json::json!({
+                "match_count": 0,
+                "differ_count": 0,
+                "missing_remote_count": 0,
+                "missing_local_count": 1,
+                "remote_scan_incomplete": false,
+                "remote_scan_errors": 0,
+                "remote_scan_truncated": false,
+                "elapsed_secs": 0.1,
+            }),
+        );
+
+        let loaded = load_sync_plan_from_reconcile(&plan, "upload", true, None)
+            .unwrap_or_else(|_| panic!("a summary in the earlier format must load"));
+
+        assert_eq!(loaded.to_delete_remote, vec!["b.txt"]);
     }
 
     struct CliEditFakeProvider {
