@@ -5541,6 +5541,47 @@ struct CliCheckEntry {
     remote_size: Option<u64>,
 }
 
+/// What `check` or `cryptcheck` found, and how complete the two scans it
+/// compared were.
+struct CliCheckReport {
+    /// The remote directory as resolved against the connection's start path.
+    remote_path: String,
+    match_count: u32,
+    differ_count: u32,
+    /// Files that could not be compared (cryptcheck: an unreadable local file,
+    /// a failed connect, download or decrypt). Always 0 for `check`.
+    error_count: u32,
+    missing_local: u32,
+    missing_remote: u32,
+    details: Vec<CliCheckEntry>,
+    local_scan: ftp_client_gui_lib::sync_core::ScanCompleteness,
+    remote_scan: ftp_client_gui_lib::sync_core::ScanCompleteness,
+    elapsed_secs: f64,
+}
+
+impl CliCheckReport {
+    /// `partial` when some files could not be compared, `ok` when both trees
+    /// match, `differences_found` otherwise.
+    fn status(&self) -> &'static str {
+        if self.error_count > 0 {
+            "partial"
+        } else if self.differ_count == 0 && self.missing_local == 0 && self.missing_remote == 0 {
+            "ok"
+        } else {
+            "differences_found"
+        }
+    }
+
+    /// 0 for a clean `ok`; 4 ("partial") for anything else, as `reconcile` does.
+    fn exit_code(&self) -> i32 {
+        if self.status() == "ok" {
+            0
+        } else {
+            4
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct CliReconcileResult {
     status: &'static str,
@@ -56694,10 +56735,30 @@ async fn cmd_check(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    match check_report(url, local_path, remote_path, checksum, one_way, cli, format).await {
+        Ok(report) => {
+            print_check_report(&report, local_path, cli, format);
+            report.exit_code()
+        }
+        Err(code) => code,
+    }
+}
+
+/// Scan both sides and compare them: the report `check` prints. `Err` carries
+/// the exit code of a failure that has already been reported.
+async fn check_report(
+    url: &str,
+    local_path: &str,
+    remote_path: &str,
+    checksum: bool,
+    one_way: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<CliCheckReport, i32> {
     let start = Instant::now();
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
-        Err(code) => return code,
+        Err(code) => return Err(code),
     };
     let remote_path = &resolve_cli_remote_path(&initial_path, remote_path);
 
@@ -56709,7 +56770,7 @@ async fn cmd_check(
             5,
         );
         let _ = provider.disconnect().await;
-        return 5;
+        return Err(5);
     }
 
     // Delegate scan + comparison to sync_core. Both CLI and MCP now share
@@ -56727,7 +56788,7 @@ async fn cmd_check(
             Ok(keys) => keys,
             Err(code) => {
                 let _ = provider.disconnect().await;
-                return code;
+                return Err(code);
             }
         }
     };
@@ -56754,7 +56815,7 @@ async fn cmd_check(
                 6,
             );
             let _ = provider.disconnect().await;
-            return 6;
+            return Err(6);
         }
     }
     let diff = compare_trees(&locals, &remotes, one_way);
@@ -56790,40 +56851,56 @@ async fn cmd_check(
         });
     }
 
-    let elapsed = start.elapsed().as_secs_f64();
+    let report = CliCheckReport {
+        remote_path: remote_path.to_string(),
+        match_count,
+        differ_count,
+        error_count: 0,
+        missing_local,
+        missing_remote,
+        details,
+        local_scan: Default::default(),
+        remote_scan: Default::default(),
+        elapsed_secs: start.elapsed().as_secs_f64(),
+    };
+    let _ = provider.disconnect().await;
+    Ok(report)
+}
 
+/// Print a `check` report: the JSON document, or its text summary.
+fn print_check_report(report: &CliCheckReport, local_path: &str, cli: &Cli, format: OutputFormat) {
     if matches!(format, OutputFormat::Json) {
         print_json(&serde_json::json!({
-            "status": if differ_count == 0 && missing_local == 0 && missing_remote == 0 {
-                "ok"
-            } else {
-                "differences_found"
-            },
-            "match_count": match_count,
-            "differ_count": differ_count,
-            "missing_local": missing_local,
-            "missing_remote": missing_remote,
-            "elapsed_secs": elapsed,
-            "details": details,
+            "status": report.status(),
+            "match_count": report.match_count,
+            "differ_count": report.differ_count,
+            "missing_local": report.missing_local,
+            "missing_remote": report.missing_remote,
+            "elapsed_secs": report.elapsed_secs,
+            "details": report.details,
             "suggested_next_command": format!(
                 "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json",
                 profile_or_placeholder(cli),
                 shell_double_quote(local_path),
-                shell_double_quote(remote_path)
+                shell_double_quote(&report.remote_path)
             ),
         }));
     } else {
         eprintln!(
             "\n  Match: {}  Differ: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
-            match_count, differ_count, missing_local, missing_remote, elapsed
+            report.match_count,
+            report.differ_count,
+            report.missing_local,
+            report.missing_remote,
+            report.elapsed_secs
         );
         eprintln!(
             "Next: aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json",
             profile_or_placeholder(cli),
             shell_double_quote(local_path),
-            shell_double_quote(remote_path)
+            shell_double_quote(&report.remote_path)
         );
-        for d in &details {
+        for d in &report.details {
             let icon = match d.status.as_str() {
                 "differ" => "~",
                 "missing_local" => "-",
@@ -56832,13 +56909,6 @@ async fn cmd_check(
             };
             eprintln!("  {} {}", icon, d.path);
         }
-    }
-
-    let _ = provider.disconnect().await;
-    if differ_count > 0 || missing_local > 0 || missing_remote > 0 {
-        4
-    } else {
-        0
     }
 }
 
@@ -56893,11 +56963,80 @@ async fn cmd_cryptcheck(
     filename_encryption: &str,
     suffix: Option<&str>,
     one_way: bool,
-    _checkfile: Option<String>,
+    checkfile: Option<String>,
     algorithm: &str,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    match cryptcheck_report(
+        url,
+        local_path,
+        remote_path,
+        password,
+        password2,
+        filename_encryption,
+        suffix,
+        one_way,
+        checkfile,
+        algorithm,
+        cli,
+        format,
+    )
+    .await
+    {
+        Ok(report) => {
+            print_cryptcheck_report(&report, algorithm, format);
+            report.exit_code()
+        }
+        Err(code) => code,
+    }
+}
+
+/// Print a `cryptcheck` report: the JSON document, or its text summary (the
+/// per-file lines are printed while the files are compared).
+fn print_cryptcheck_report(report: &CliCheckReport, algorithm: &str, format: OutputFormat) {
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": report.status(),
+            "match_count": report.match_count,
+            "differ_count": report.differ_count,
+            "error_count": report.error_count,
+            "missing_local": report.missing_local,
+            "missing_remote": report.missing_remote,
+            "elapsed_secs": report.elapsed_secs,
+            "algorithm": algorithm,
+            "details": report.details,
+        }));
+    } else {
+        eprintln!(
+            "\n  Match: {}  Differ: {}  Errors: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
+            report.match_count,
+            report.differ_count,
+            report.error_count,
+            report.missing_local,
+            report.missing_remote,
+            report.elapsed_secs
+        );
+    }
+}
+
+/// Decrypt and compare every file: the report `cryptcheck` prints. `Err`
+/// carries the exit code of a failure that has already been reported.
+#[allow(clippy::too_many_arguments)]
+async fn cryptcheck_report(
+    url: &str,
+    local_path: &str,
+    remote_path: &str,
+    password: Option<String>,
+    password2: Option<String>,
+    filename_encryption: &str,
+    suffix: Option<&str>,
+    one_way: bool,
+    _checkfile: Option<String>,
+    algorithm: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<CliCheckReport, i32> {
     let start = Instant::now();
     // With name encryption off, AeroFTP/rclone tag objects with a suffix
     // (default ".bin"); strip it from the leaf before comparing to local.
@@ -56909,7 +57048,7 @@ async fn cmd_cryptcheck(
             &format!("unsupported filename_encryption={}", filename_encryption),
             5,
         );
-        return 5;
+        return Err(5);
     }
 
     let pwd = password
@@ -56920,7 +57059,7 @@ async fn cmd_cryptcheck(
             "wrong password or non-crypt remote (missing password)",
             5,
         );
-        return 5;
+        return Err(5);
     }
     let salt = password2
         .unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD2").unwrap_or_default());
@@ -56930,13 +57069,13 @@ async fn cmd_cryptcheck(
             Ok(keys) => keys,
             Err(e) => {
                 print_error(format, &format!("Key derivation failed: {}", e), 5);
-                return 5;
+                return Err(5);
             }
         };
 
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
-        Err(code) => return code,
+        Err(code) => return Err(code),
     };
     let remote_path_resolved = resolve_cli_remote_path(&initial_path, remote_path);
 
@@ -56948,7 +57087,7 @@ async fn cmd_cryptcheck(
             5,
         );
         let _ = provider.disconnect().await;
-        return 5;
+        return Err(5);
     }
 
     use ftp_client_gui_lib::sync_core::{scan_local_tree, ScanOptions};
@@ -57033,7 +57172,7 @@ async fn cmd_cryptcheck(
 
     let cfg = match resolve_url_or_profile(url, cli, format) {
         Ok(v) => v.0,
-        Err(code) => return code,
+        Err(code) => return Err(code),
     };
 
     let semaphore = Arc::new(Semaphore::new(concurrency));
@@ -57228,41 +57367,23 @@ async fn cmd_cryptcheck(
         }
     }
 
-    let elapsed = start.elapsed().as_secs_f64();
-
-    if matches!(format, OutputFormat::Json) {
-        print_json(&serde_json::json!({
-            "status": if error_count > 0 {
-                "partial"
-            } else if differ_count == 0 && missing_local == 0 && missing_remote == 0 {
-                "ok"
-            } else {
-                "differences_found"
-            },
-            "match_count": match_count,
-            "differ_count": differ_count,
-            "error_count": error_count,
-            "missing_local": missing_local,
-            "missing_remote": missing_remote,
-            "elapsed_secs": elapsed,
-            "algorithm": algorithm,
-            "details": details,
-        }));
-    } else {
-        eprintln!(
-            "\n  Match: {}  Differ: {}  Errors: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
-            match_count, differ_count, error_count, missing_local, missing_remote, elapsed
-        );
-    }
-
+    // CRYPT-01: an operational error makes the report `partial` (exit 4,
+    // incomplete check), distinct from a clean run; differences and missing
+    // files also exit 4. Only a fully clean run is 0.
+    let report = CliCheckReport {
+        remote_path: remote_path_resolved,
+        match_count,
+        differ_count,
+        error_count,
+        missing_local,
+        missing_remote,
+        details,
+        local_scan: Default::default(),
+        remote_scan: Default::default(),
+        elapsed_secs: start.elapsed().as_secs_f64(),
+    };
     let _ = provider.disconnect().await;
-    // CRYPT-01: an operational error is exit 4 (incomplete check), distinct from a
-    // clean run; differences/missing also exit 4. Only a fully clean run is 0.
-    if differ_count > 0 || missing_local > 0 || missing_remote > 0 || error_count > 0 {
-        4
-    } else {
-        0
-    }
+    Ok(report)
 }
 
 #[allow(clippy::too_many_arguments)]
