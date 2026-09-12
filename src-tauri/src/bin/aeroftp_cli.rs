@@ -5600,12 +5600,54 @@ impl CliCheckReport {
         [("local", &self.local_scan), ("remote", &self.remote_scan)]
     }
 
+    fn boundaries(&self) -> [(&'static str, &ftp_client_gui_lib::sync_core::ScanBoundaries); 2] {
+        [
+            ("local", &self.local_boundaries),
+            ("remote", &self.remote_boundaries),
+        ]
+    }
+
+    /// Every path one scan did not see, as `(path, reason)`. A link is in the
+    /// list because a walk does not follow one, so what sits behind it was not
+    /// read either, and the verdict does not cover it.
+    fn named_gaps(boundaries: &ftp_client_gui_lib::sync_core::ScanBoundaries) -> Vec<(&str, &str)> {
+        boundaries
+            .unseen
+            .iter()
+            .map(|path| (path.rel_path.as_str(), path.reason))
+            .chain(
+                boundaries
+                    .links
+                    .iter()
+                    .map(|link| (link.rel_path.as_str(), "link_not_followed")),
+            )
+            .collect()
+    }
+
     /// Add the completeness of both scans to a JSON report, with the field
-    /// names `reconcile` uses.
+    /// names `reconcile` uses, and the paths each scan did not see.
+    ///
+    /// The boundary key is absent when a scan saw everything, so the document
+    /// of a clean run is the one it always was.
     fn add_scan_fields(&self, doc: &mut serde_json::Value) {
         let Some(fields) = doc.as_object_mut() else {
             return;
         };
+        for (side, boundaries) in self.boundaries() {
+            let named = Self::named_gaps(boundaries);
+            if named.is_empty() {
+                continue;
+            }
+            fields.insert(
+                format!("{side}_scan_boundaries"),
+                serde_json::Value::Array(
+                    named
+                        .into_iter()
+                        .map(|(path, reason)| serde_json::json!({ "path": path, "reason": reason }))
+                        .collect(),
+                ),
+            );
+        }
         for (side, scan) in self.scans() {
             fields.insert(
                 format!("{side}_scan_incomplete"),
@@ -5622,7 +5664,9 @@ impl CliCheckReport {
         }
     }
 
-    /// Say on stderr which scan did not read its whole tree.
+    /// Say on stderr which scan did not read its whole tree, and name the
+    /// paths it did not see. A count alone leaves the reader to work out which
+    /// part of the tree the verdict covers, and that part is the answer.
     fn warn_incomplete_scans(&self) {
         for (side, scan) in self.scans() {
             if !scan.is_complete() {
@@ -5631,6 +5675,24 @@ impl CliCheckReport {
                     scan.list_errors,
                     if scan.truncated { ", truncated" } else { "" }
                 );
+            }
+        }
+        // A skipped link makes no scan error, so this is its own pass: a tree
+        // can be read whole and still have paths the walk did not go into.
+        for (side, boundaries) in self.boundaries() {
+            let named = Self::named_gaps(boundaries);
+            if named.is_empty() {
+                continue;
+            }
+            eprintln!(
+                "The {side} scan did not see {} path(s); the result does not cover them:",
+                named.len()
+            );
+            for (path, reason) in named.iter().take(CHECK_BOUNDARY_LINES) {
+                eprintln!("  {path} ({reason})");
+            }
+            if named.len() > CHECK_BOUNDARY_LINES {
+                eprintln!("  and {} more", named.len() - CHECK_BOUNDARY_LINES);
             }
         }
     }
@@ -56803,6 +56865,33 @@ async fn cmd_check(
 
 /// Scan both sides and compare them: the report `check` prints. `Err` carries
 /// the exit code of a failure that has already been reported.
+/// How many boundary paths `check` and `cryptcheck` print before summarising
+/// the rest. The walker caps its own lists, but a capped list is still long
+/// enough to bury the summary line above it.
+const CHECK_BOUNDARY_LINES: usize = 20;
+
+/// The side whose scan missed a part of the tree it cannot name, and why.
+///
+/// A gap with a name is a result: the report says which paths the verdict
+/// leaves out, and the reader can act on the rest. A gap with no name (the scan
+/// root itself did not open, the scan was cancelled, it stopped at the entry
+/// cap) leaves nothing to say how much of the tree was read, so a comparison
+/// over what happened to arrive is not a partial answer, it is an unknown one.
+fn scan_gap_with_no_name(
+    local: &ftp_client_gui_lib::sync_core::ScanBoundaries,
+    remote: &ftp_client_gui_lib::sync_core::ScanBoundaries,
+) -> Option<(&'static str, &'static str)> {
+    [("local", local), ("remote", remote)]
+        .into_iter()
+        .find_map(|(side, boundaries)| boundaries.unbounded.map(|reason| (side, reason)))
+}
+
+fn gap_with_no_name_message(side: &str, reason: &str) -> String {
+    format!(
+        "The {side} scan did not see the whole tree ({reason}) and cannot name what it missed, so there is nothing to say which part of the tree a verdict would cover."
+    )
+}
+
 async fn check_report(
     url: &str,
     local_path: &str,
@@ -56862,14 +56951,18 @@ async fn check_report(
     // and the report has to say so instead of reading as a clean match.
     // The boundaries name what the walk did not see (a directory that did not
     // open, one at the depth limit, an entry whose metadata could not be read).
-    // Bound here so the compare compiles against the walker as it is since
-    // #796; the commits that follow report them and refuse the gaps that have
-    // no name.
+    // They are reported with the verdict, and a gap that has no name is refused
+    // below instead of being answered.
     let (locals, local_scan, local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
     let (remotes, remote_health, remote_boundaries, returned) =
         scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &None, None).await;
     let mut remotes = remotes;
     provider = returned;
+    if let Some((side, reason)) = scan_gap_with_no_name(&local_boundaries, &remote_boundaries) {
+        print_error(format, &gap_with_no_name_message(side, reason), 4);
+        let _ = provider.disconnect().await;
+        return Err(4);
+    }
     if let Some(keys) = &crypt_keys {
         let raw_len = remotes.len();
         remotes = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(remotes, keys);
@@ -57179,14 +57272,18 @@ async fn cryptcheck_report(
     // and the report has to say so instead of reading as a clean match.
     // The boundaries name what the walk did not see (a directory that did not
     // open, one at the depth limit, an entry whose metadata could not be read).
-    // Bound here so the compare compiles against the walker as it is since
-    // #796; the commits that follow report them and refuse the gaps that have
-    // no name.
+    // They are reported with the verdict, and a gap that has no name is refused
+    // below instead of being answered.
     let (locals, local_scan, local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
     let (remotes, remote_health, remote_boundaries, returned) =
         scan_remote_tree_with_progress(provider, &remote_path_resolved, &scan_opts, &None, None)
             .await;
     provider = returned;
+    if let Some((side, reason)) = scan_gap_with_no_name(&local_boundaries, &remote_boundaries) {
+        print_error(format, &gap_with_no_name_message(side, reason), 4);
+        let _ = provider.disconnect().await;
+        return Err(4);
+    }
 
     let mut decrypted_remotes = std::collections::HashMap::new();
     for r in &remotes {
