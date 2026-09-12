@@ -13063,6 +13063,188 @@ fn bound_compare_rows(
 mod tests {
     use super::*;
 
+    /// The same derived keys under another naming mode. The mode is what
+    /// decides how a directory is spelled on the wire, which is what the two
+    /// cases below are about.
+    fn rclone_keys_in_mode(
+        mode: crate::rclone_crypt::FilenameEncryption,
+        directory_name_encryption: bool,
+    ) -> crate::rclone_crypt::RcloneCryptKeys {
+        let (name_key, data_key, name_tweak) =
+            crate::rclone_crypt::derive_keys_with_tweak("compare-pass", "compare-salt")
+                .expect("derive the test keys");
+        crate::rclone_crypt::RcloneCryptKeys {
+            name_key,
+            data_key,
+            name_tweak,
+            filename_encryption: mode,
+            off_suffix: ".bin".to_string(),
+            directory_name_encryption,
+        }
+    }
+
+    /// `Off` mode spells a file with the configured suffix and a directory
+    /// without one, so reading a directory boundary as if it were a file looks
+    /// for a suffix that was never added. That refuses a compare which works,
+    /// and on a directory whose own name happens to end in the suffix it
+    /// quietly anchors the bound to a path that does not exist. The boundary
+    /// carries its type, so the decode can ask for a directory.
+    #[test]
+    fn an_off_mode_directory_boundary_bounds_the_compare_it_was_meant_to() {
+        let overlay = crate::crypt_overlay_provider::OverlayKeys::Rclone(rclone_keys_in_mode(
+            crate::rclone_crypt::FilenameEncryption::Off,
+            true,
+        ));
+        // On the wire in `Off` mode a directory keeps its plaintext name, so
+        // the link and the directory above it are spelled as they read.
+        let mut boundaries = crate::sync_core::ScanBoundaries {
+            links: vec![crate::sync_core::SkippedLink {
+                rel_path: "parent/link".to_string(),
+                link_target: None,
+                is_dir: true,
+            }],
+            ..Default::default()
+        };
+
+        normalize_remote_boundaries_for_compare(&overlay, &mut boundaries)
+            .expect("a directory name carries no file suffix to strip");
+
+        assert_eq!(boundaries.links[0].rel_path, "parent/link");
+
+        let mut local = HashMap::from([
+            ("parent".to_string(), compare_row("parent", true)),
+            ("parent/link".to_string(), compare_row("parent/link", true)),
+            (
+                "parent/link/x.txt".to_string(),
+                compare_row("parent/link/x.txt", false),
+            ),
+            (
+                "parent/y.txt".to_string(),
+                compare_row("parent/y.txt", false),
+            ),
+        ]);
+        let mut remote = HashMap::new();
+        bound_compare_rows(
+            "/nonexistent-local-root",
+            &mut local,
+            &mut remote,
+            boundaries,
+        );
+
+        let mut left: Vec<_> = local.keys().cloned().collect();
+        left.sort();
+        assert_eq!(
+            left,
+            vec!["parent/y.txt"],
+            "the link's subtree and the directory above it are withdrawn, and the sibling file is still compared"
+        );
+    }
+
+    /// With `directory_name_encryption` off, rclone leaves directory names in
+    /// the clear and encrypts only file names. A directory boundary is then
+    /// cleartext, and reading it as ciphertext fails: a compare that works was
+    /// refused, with a message that sent the user to the overlay password.
+    #[test]
+    fn cleartext_directory_names_do_not_refuse_a_directory_boundary() {
+        let keys = rclone_keys_in_mode(crate::rclone_crypt::FilenameEncryption::Standard, false);
+        let wire_link = format!(
+            "parent/{}",
+            crate::rclone_crypt::encrypt_name(&keys.name_key, &keys.name_tweak, "link.txt")
+                .expect("encrypt the file name")
+        );
+        let overlay = crate::crypt_overlay_provider::OverlayKeys::Rclone(keys);
+        let mut boundaries = crate::sync_core::ScanBoundaries {
+            links: vec![crate::sync_core::SkippedLink {
+                rel_path: wire_link,
+                link_target: None,
+                is_dir: false,
+            }],
+            unseen: vec![crate::sync_core::scan::UnseenPath {
+                rel_path: "parent/blocked".to_string(),
+                reason: "list_error",
+                is_dir: Some(true),
+            }],
+            ..Default::default()
+        };
+
+        normalize_remote_boundaries_for_compare(&overlay, &mut boundaries)
+            .expect("a cleartext directory name is not ciphertext to be refused");
+
+        assert_eq!(boundaries.links[0].rel_path, "parent/link.txt");
+        assert_eq!(boundaries.unseen[0].rel_path, "parent/blocked");
+    }
+
+    /// AeroCrypt encrypts every name the same way, directory or not, so the
+    /// type-aware decode has to leave it exactly as it was: a nested boundary
+    /// still round trips, and a name that is not an AeroCrypt name still
+    /// refuses the run instead of being dropped. This one is a guard, green
+    /// before this change as well as after it.
+    #[test]
+    fn an_aerocrypt_nested_boundary_round_trips_and_a_foreign_name_still_refuses() {
+        let master_key = [7u8; 32];
+        let overlay = crate::crypt_overlay_provider::OverlayKeys::AeroCrypt {
+            master_key,
+            // Only the master key decodes a name, so the config is a stub: the
+            // test does not pay for a KDF it never uses.
+            config: crate::aerocrypt::overlay::OverlayConfig::V2 { salt: [0u8; 32] },
+        };
+        let encrypt = |segment: &str| {
+            crate::aerocrypt::names::encrypt_filename(&master_key, segment)
+                .expect("encrypt the segment")
+        };
+        let mut boundaries = crate::sync_core::ScanBoundaries {
+            unseen: vec![crate::sync_core::scan::UnseenPath {
+                rel_path: format!("{}/{}", encrypt("alpha"), encrypt("beta")),
+                reason: "list_error",
+                is_dir: Some(true),
+            }],
+            ..Default::default()
+        };
+
+        normalize_remote_boundaries_for_compare(&overlay, &mut boundaries)
+            .expect("every segment decrypts with the master key");
+        assert_eq!(boundaries.unseen[0].rel_path, "alpha/beta");
+
+        let mut foreign = crate::sync_core::ScanBoundaries {
+            unseen: vec![crate::sync_core::scan::UnseenPath {
+                rel_path: "not-base64-$$$".to_string(),
+                reason: "list_error",
+                is_dir: Some(true),
+            }],
+            ..Default::default()
+        };
+        normalize_remote_boundaries_for_compare(&overlay, &mut foreign)
+            .expect_err("a name that does not decrypt refuses the run instead of being dropped");
+    }
+
+    /// A link whose target did not resolve leaves the walk without a type, and
+    /// the overlay spells a directory differently from a file. Guessing either
+    /// way is how a bound ends up anchored to a path that does not exist, so a
+    /// boundary with no type refuses the run, as a name that does not decrypt
+    /// does.
+    #[test]
+    fn a_boundary_whose_type_is_unknown_refuses_the_run() {
+        let keys = rclone_keys_for_test();
+        let wire = crate::rclone_crypt::encrypt_name(&keys.name_key, &keys.name_tweak, "blocked")
+            .expect("encrypt the segment");
+        let overlay = crate::crypt_overlay_provider::OverlayKeys::Rclone(keys);
+        let mut boundaries = crate::sync_core::ScanBoundaries {
+            unseen: vec![crate::sync_core::scan::UnseenPath {
+                rel_path: wire,
+                reason: "unreadable",
+                is_dir: None,
+            }],
+            ..Default::default()
+        };
+
+        let err = normalize_remote_boundaries_for_compare(&overlay, &mut boundaries)
+            .expect_err("an unknown type is refused, not guessed");
+        assert!(
+            err.contains("whether it is a directory"),
+            "the refusal says what is missing: {err}"
+        );
+    }
+
     fn rclone_keys_for_test() -> crate::rclone_crypt::RcloneCryptKeys {
         let (name_key, data_key, name_tweak) =
             crate::rclone_crypt::derive_keys_with_tweak("compare-pass", "compare-salt")
