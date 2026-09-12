@@ -1906,7 +1906,11 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             description: "Get application version, OS, and connection status.",
             input_schema: json!({ "type": "object" }),
             danger: DangerLevel::Safe,
-            surfaces: Surfaces::GUI,
+            // The CLI offers this one to the model as well, so the CLI surface
+            // has to reach it: the dispatcher refuses a surface it does not
+            // declare, and that refusal is not a fallback, so the answer never
+            // arrives.
+            surfaces: local_surfaces,
         },
         ToolDef {
             name: "sync_control",
@@ -1941,7 +1945,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             description: "Compute the hash of a local file.",
             input_schema: json!({ "type": "object" }),
             danger: DangerLevel::Safe,
-            surfaces: Surfaces::GUI,
+            // Offered by the CLI too, over a file `local_read` can already
+            // open. Same reason as `app_info` above.
+            surfaces: local_surfaces,
         },
         ToolDef {
             name: "generate_transfer_plan",
