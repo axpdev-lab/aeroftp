@@ -55626,8 +55626,8 @@ async fn scan_doctor_remote_tree(
     let mut entries_found: HashMap<String, (u64, Option<String>)> = HashMap::new();
     let mut scan = ftp_client_gui_lib::sync_core::ScanCompleteness::default();
     let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
-    while let Some((dir, depth)) = queue.pop() {
-        if depth >= max_depth || entries_found.len() >= max_entries {
+    'walk: while let Some((dir, depth)) = queue.pop() {
+        if depth >= max_depth {
             // The walk stops here, so whatever is still queued is unseen.
             scan.truncated = true;
             break;
@@ -55660,6 +55660,17 @@ async fn scan_doctor_remote_tree(
                     .any(|m| m.is_match(&relative) || m.is_match(&e.name))
                 {
                     continue;
+                }
+                if entries_found.len() >= max_entries {
+                    // The cap is read where the walk grows, not where it starts
+                    // a directory. One listing can hold more entries than the
+                    // ceiling: checked only on entry, they all go in, the queue
+                    // empties, and the walk ends normally reporting a complete
+                    // scan of a tree it had already cut. A cap that is wrong is
+                    // almost never wrong in the number, it is wrong in the
+                    // moment it is read.
+                    scan.truncated = true;
+                    break 'walk;
                 }
                 entries_found.insert(relative, (e.size, e.modified));
             }
