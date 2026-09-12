@@ -179,8 +179,9 @@ fn adapt_fastpath_entries(
                     rel_path: rel,
                     link_target: entry.link_target.clone(),
                     // A flat listing reports links to files as well as to
-                    // directories, so the type comes from the entry.
-                    is_dir: entry.is_dir,
+                    // directories, so the type comes from the entry, which the
+                    // provider typed for us.
+                    is_dir: Some(entry.is_dir),
                 });
                 if results.len() + skipped_links.len() + unseen.len() >= cap {
                     break;
@@ -349,8 +350,12 @@ pub struct SkippedLink {
     /// Not serialized: it helps the decoding inside this process, and the
     /// boundary lists that reach an agent through the MCP `sync_tree` result
     /// should not grow a key for that.
+    /// `None` where the walk could not tell: a link whose target does not
+    /// resolve stands for something nobody read. A consumer that needs the type
+    /// must refuse such a path rather than assume one, because assuming "file"
+    /// is what strips a suffix a directory never carried.
     #[serde(skip)]
-    pub is_dir: bool,
+    pub is_dir: Option<bool>,
 }
 
 /// A path a scan could not see, so what sits at or under it is unknown.
@@ -517,17 +522,25 @@ impl ScanBound {
                                     prefix,
                                     link_target.as_deref().unwrap_or("?")
                                 );
+                                // What the link stands for comes from its
+                                // target, which `metadata` follows, and is
+                                // unknown when the target does not resolve.
+                                //
+                                // The comment that stood here claimed a link to
+                                // a FILE could never reach this loop, because it
+                                // would be listed as a file and so sit in
+                                // `local_set`. That was wrong, and reproduced on
+                                // a real filesystem: the local walk skips EVERY
+                                // symlink (the `Ok(_) => {}` arm below), so a
+                                // link to a file never enters `local_set`, the
+                                // loop offers the whole path, and this arm used
+                                // to record `is_dir: true` for a link pointing
+                                // at a file.
+                                let is_dir = std::fs::metadata(&path).ok().map(|t| t.is_dir());
                                 bound.add_link(SkippedLink {
                                     rel_path: prefix.to_string(),
                                     link_target,
-                                    // A path prefix stands where a directory
-                                    // does: something on the remote sits under
-                                    // it. The loop also offers the whole path,
-                                    // where that would not hold, but a local
-                                    // link to a FILE is listed as a file, so it
-                                    // is in `local_set` and the loop skipped it
-                                    // before reaching here.
-                                    is_dir: true,
+                                    is_dir,
                                 });
                                 LocalPrefix::Link
                             }
@@ -732,9 +745,13 @@ pub fn scan_local_tree_checked(
                             &mut completeness,
                             &relative_of(path),
                             "unreadable",
-                            // The walk names a path here when it could not open
-                            // a directory to read it.
-                            Some(true),
+                            // Unknown, not a directory. This arm is reached for
+                            // a failed listing, where the path IS a directory,
+                            // but also for a `DirEntry` that could not be built:
+                            // on a filesystem that needs a stat to type a child,
+                            // that child can be a file. One arm, two shapes, so
+                            // the type is not certified here.
+                            None,
                             cap.saturating_sub(entries.len()),
                         ),
                         None => {
@@ -768,8 +785,9 @@ pub fn scan_local_tree_checked(
                         rel_path,
                         link_target,
                         // Only a link to a directory is recorded here: the arm
-                        // above matched on the target being one.
-                        is_dir: true,
+                        // above matched on the target being one, so this is the
+                        // one place where the type is certain.
+                        is_dir: Some(true),
                     });
                 }
                 Ok(_) => {}
@@ -1577,8 +1595,8 @@ async fn scan_remote_dir(
                     rel_path: entry_rel,
                     link_target: entry.link_target.clone(),
                     // This arm sits inside `entry.is_dir`: the link stands
-                    // where a directory does.
-                    is_dir: true,
+                    // where a directory does, and the provider typed it.
+                    is_dir: Some(true),
                 });
             } else {
                 // Past the budget the walk's cap leaves: counted, not kept.
@@ -1976,7 +1994,7 @@ pub(crate) mod tests {
             vec![SkippedLink {
                 rel_path: "link".to_string(),
                 link_target: Some("real".to_string()),
-                is_dir: true,
+                is_dir: Some(true),
             }]
         );
     }
@@ -2034,6 +2052,48 @@ pub(crate) mod tests {
         assert!(
             !completeness.is_complete(),
             "a listed file that could not be stat'ed makes the scan incomplete"
+        );
+    }
+
+    /// A directory the walk cannot open at all (000) makes WalkDir yield an
+    /// error that carries the path, and the walk records it as unseen.
+    ///
+    /// The type it records is unknown, not "directory". That arm is reached for
+    /// a listing that failed, where the path is indeed a directory, but also for
+    /// a directory entry that could not be built: on a filesystem that needs a
+    /// stat to type a child, that child can be a file. One arm, two shapes, so
+    /// the walk does not certify a type it did not observe.
+    #[cfg(unix)]
+    #[test]
+    fn scan_local_tree_leaves_the_type_unknown_for_a_path_it_could_not_open() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("a.txt"), b"a").unwrap();
+        let locked = root.join("locked");
+        fs::create_dir(&locked).unwrap();
+        fs::write(locked.join("x.txt"), b"x").unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        let listing_blocked = fs::read_dir(&locked).is_err();
+        let (_, completeness, boundaries) =
+            scan_local_tree_checked(root.to_str().unwrap(), &ScanOptions::default());
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
+        if mode_did_not_block(listing_blocked, root) {
+            return;
+        }
+        assert!(
+            !completeness.is_complete(),
+            "a directory that would not open makes the scan incomplete"
+        );
+        let named: Vec<(&str, Option<bool>)> = boundaries
+            .unseen
+            .iter()
+            .map(|path| (path.rel_path.as_str(), path.is_dir))
+            .collect();
+        assert_eq!(
+            named,
+            vec![("locked", None)],
+            "the path is named, and its type is left unknown rather than asserted"
         );
     }
 
@@ -2160,7 +2220,7 @@ pub(crate) mod tests {
                 rel_path: "link.txt".to_string(),
                 link_target: Some("target.txt".to_string()),
                 // The listing said file, and the fast path repeats what it said.
-                is_dir: false,
+                is_dir: Some(false),
             }]
         );
     }
@@ -2312,7 +2372,7 @@ pub(crate) mod tests {
             vec![SkippedLink {
                 rel_path: "loop".to_string(),
                 link_target: None,
-                is_dir: true,
+                is_dir: Some(true),
             }]
         );
     }
@@ -2323,7 +2383,7 @@ pub(crate) mod tests {
             link_target: None,
             // These tests are about what a bound covers, which is a subtree, so
             // the link stands where a directory does.
-            is_dir: true,
+            is_dir: Some(true),
         }
     }
 
@@ -2372,12 +2432,80 @@ pub(crate) mod tests {
             &[SkippedLink {
                 rel_path: "link".to_string(),
                 link_target: Some("real".to_string()),
-                is_dir: true,
+                is_dir: Some(true),
             }]
         );
         assert!(bound.covers("link/x.txt"));
         assert!(!bound.covers("real/x.txt"));
         assert!(!bound.covers("other/y.txt"));
+    }
+
+    /// A local symlink that points at a FILE, standing exactly where the remote
+    /// holds an entry of the same name.
+    ///
+    /// The comment that used to sit at this site said the case could not happen,
+    /// because a link to a file would be listed as a file and therefore sit in
+    /// `local_set`. It is not there: the local walk skips EVERY symlink, links
+    /// to files included, so the path never enters `local_set`, this loop offers
+    /// the whole path, and the link was recorded as if it stood where a
+    /// directory does. The type now comes from the target, which is the only
+    /// thing that knows.
+    #[cfg(unix)]
+    #[test]
+    fn link_bound_types_a_local_link_to_a_file_from_its_target() {
+        let local = tempfile::tempdir().expect("tempdir");
+        std::fs::write(local.path().join("target.txt"), b"x").unwrap();
+        std::os::unix::fs::symlink("target.txt", local.path().join("leaf")).unwrap();
+
+        let bound = ScanBound::for_sync(
+            local.path().to_str().unwrap(),
+            ["target.txt"],
+            ["leaf"],
+            &ScanBoundaries::default(),
+            ScanBoundaries::default(),
+        );
+
+        assert_eq!(
+            bound.links(),
+            &[SkippedLink {
+                rel_path: "leaf".to_string(),
+                link_target: Some("target.txt".to_string()),
+                is_dir: Some(false),
+            }],
+            "a link to a file is not a directory position"
+        );
+        assert!(
+            bound.covers("leaf"),
+            "the path is still bounded: what the link stands for was not read either"
+        );
+    }
+
+    /// A link whose target does not resolve. Nothing on disk can say what it
+    /// stands for, so the type is unknown rather than assumed, and a consumer
+    /// that needs it has to refuse the path instead of guessing.
+    #[cfg(unix)]
+    #[test]
+    fn link_bound_leaves_the_type_unknown_when_the_target_does_not_resolve() {
+        let local = tempfile::tempdir().expect("tempdir");
+        std::os::unix::fs::symlink("nowhere", local.path().join("dangling")).unwrap();
+
+        let bound = ScanBound::for_sync(
+            local.path().to_str().unwrap(),
+            [],
+            ["dangling"],
+            &ScanBoundaries::default(),
+            ScanBoundaries::default(),
+        );
+
+        assert_eq!(
+            bound.links(),
+            &[SkippedLink {
+                rel_path: "dangling".to_string(),
+                link_target: Some("nowhere".to_string()),
+                is_dir: None,
+            }],
+            "an unresolved target leaves the type unknown, not false and not true"
+        );
     }
 
     /// Applied to a sync scan, the bound drops what it covers on both sides and
