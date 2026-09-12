@@ -26,6 +26,16 @@ All local data can be deleted by removing the AeroFTP application data directori
 - **macOS**: `~/Library/Application Support/aeroftp/`
 - **Windows**: `%APPDATA%\aeroftp\`
 
+One thing is kept outside those directories and is not removed with them. If your vault is protected by the system keyring rather than by a master password, the key that opens it is held by the operating system's own credential store, and deleting the directories above leaves it there. AeroFTP removes it only when you switch the vault to a master password; no other action in the app deletes it.
+
+It is stored under the service name `com.aeroftp.AeroFTP`. That name is deliberately unchanged from an earlier version of the app, so that existing vaults keep working, and it is correct even though the application identifier is now different. The account name follows how AeroFTP was installed: `vault-passphrase` for a normal installation, or `vault-passphrase-portable`, `vault-passphrase-flatpak` or `vault-passphrase-snap` for those. Development builds use the same names with a `-dev` suffix. One installation stores one entry, so there is a single item to find. The commands below use the normal name; substitute the one for your installation.
+
+- **Linux**: in "Passwords and Keys" (Seahorse) or your desktop's keyring application, or from a terminal: `secret-tool clear service com.aeroftp.AeroFTP username vault-passphrase`
+- **macOS**: in Keychain Access, where the entry is listed under the name `com.aeroftp.AeroFTP`, or from a terminal: `security delete-generic-password -s com.aeroftp.AeroFTP -a vault-passphrase`
+- **Windows**: in Credential Manager, under Windows Credentials, where the entry is listed as `vault-passphrase.com.aeroftp.AeroFTP`
+
+If the vault is protected by a master password instead, nothing is kept in the keyring: the key is stored encrypted inside the data directory and is removed along with it.
+
 ## External Connections
 
 AeroFTP connects to external services **only when you explicitly initiate a connection**:
