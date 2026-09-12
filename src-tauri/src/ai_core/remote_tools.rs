@@ -1567,7 +1567,7 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
 /// Hard cap per `aeroftp_hashsum`: sopra questo size il tool ritorna errore
 /// `file_too_large` invece di tentare il download. Coerente con il fatto che
 /// il backend.download_to_bytes carica tutto il payload in RAM (stessa
-/// pipeline della CLI `aeroftp hashsum`).
+/// pipeline della CLI `aeroftp hashsum --download`).
 const MAX_HASHSUM_BYTES: u64 = 256 * 1024 * 1024;
 
 async fn hashsum(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {

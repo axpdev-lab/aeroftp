@@ -47,9 +47,10 @@ export type BucketAction =
     /** Conflict surfaced but left untouched; user must resolve. */
     | 'conflict-skip'
     /**
-     * Z.3.9 — keep BOTH copies: copy the source side to the destination
-     * under a timestamped suffix (e.g. `file.txt.20260514T143012.bak`).
-     * Non-destructive. Execution wiring lands with Z.3.9.2.
+     * Keep both copies: copy the source side to the destination under a
+     * timestamped suffix (e.g. `file.txt.20260514T143012.bak`).
+     * Non-destructive. Executed as a suffixed upload or download by
+     * `presetToSyncRun` / `remoteSyncRunner`.
      */
     | 'rename-to-right'
     | 'rename-to-left';
@@ -80,9 +81,9 @@ export type ConflictPolicy =
  * Z.3.9 — Versioned backup: before an overwrite or delete fires, capture
  * the destination copy under `backupDir/<timestamp>/<relative-path>`.
  *
- * The helper only flags the BucketPlan (and totals) with the predicted
- * cost; actual backup-dir staging lives in the execution layer
- * (Z.3.9.2) since it requires new IPC and per-pair semantics.
+ * The helper flags the BucketPlan (and totals) with the predicted cost;
+ * the runner archives the destination copy via `archive_before_sync_delete`
+ * when `versioningStrategy` is set.
  */
 export interface VersionedBackupConfig {
     enabled: boolean;

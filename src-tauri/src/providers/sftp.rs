@@ -24,7 +24,7 @@ use russh::keys::{
 use russh::{compression, Preferred};
 use russh_sftp::client::SftpSession;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex as TokioMutex;
@@ -421,6 +421,17 @@ pub struct SftpProvider {
     /// only while this remains unspecified; GUI/CLI configuration replaces it
     /// with an isolated explicit value.
     sftp_readahead: SftpReadaheadSetting,
+    /// Test-only hook. Production never cancels this token; read-ahead used
+    /// to watch a local `CancellationToken::new()` that no caller cancelled.
+    /// Each download replaces the token in the slot, so two concurrent
+    /// downloads on the same instance leave the slot watching only the later
+    /// one. Arc+Mutex so a test can cancel without holding `&mut self`.
+    transfer_cancel: Arc<std::sync::Mutex<CancellationToken>>,
+    /// Test-only hook. When true, the next read-ahead writer iteration fails
+    /// after the remote opens, so a test can count CLOSE on that exit.
+    /// Production never sets it. Per-instance so parallel tests do not share
+    /// one process-wide flag.
+    fail_readahead_write: Arc<AtomicBool>,
 }
 
 impl SftpProvider {
@@ -445,7 +456,23 @@ impl SftpProvider {
             multi_thread_streams: 1,
             multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
             sftp_readahead: SftpReadaheadSetting::LegacyEnvironment,
+            transfer_cancel: Arc::new(std::sync::Mutex::new(CancellationToken::new())),
+            fail_readahead_write: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Shared slot for the in-flight download token. Test-only hook; see
+    /// `transfer_cancel`.
+    #[doc(hidden)]
+    pub fn transfer_cancel_slot(&self) -> Arc<std::sync::Mutex<CancellationToken>> {
+        Arc::clone(&self.transfer_cancel)
+    }
+
+    /// Arm the next read-ahead writer iteration to fail. Test-only hook; see
+    /// `fail_readahead_write`.
+    #[doc(hidden)]
+    pub fn set_fail_readahead_write(&self, fail: bool) {
+        self.fail_readahead_write.store(fail, Ordering::SeqCst);
     }
 
     /// Return the SHA-256 hex fingerprint of the host key that
@@ -1650,6 +1677,14 @@ impl StorageProvider for SftpProvider {
                 ) {
                     close_preopened!();
                     let sftp = self.get_sftp()?;
+                    let cancel = {
+                        let mut slot = self
+                            .transfer_cancel
+                            .lock()
+                            .expect("transfer cancel mutex poisoned");
+                        *slot = CancellationToken::new();
+                        slot.clone()
+                    };
                     sftp_readahead_download(
                         sftp,
                         &full_path,
@@ -1658,6 +1693,8 @@ impl StorageProvider for SftpProvider {
                         self.buffer_size,
                         window,
                         on_progress,
+                        &cancel,
+                        Arc::clone(&self.fail_readahead_write),
                     )
                     .await?;
                     return Ok(());
@@ -1942,28 +1979,35 @@ impl StorageProvider for SftpProvider {
 
         // Bound the accumulator to `max_bytes`: refuse a chunk that would push
         // it over the cap instead of `read`-ing the whole file into memory.
-        let mut data: Vec<u8> = Vec::new();
-        let mut buffer = vec![0u8; self.buffer_size.max(4096)];
-        loop {
-            let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
-                classify_russh_err(e, |s| {
-                    ProviderError::TransferFailed(format!("Read error: {}", s))
-                })
-            })?;
-            if bytes_read == 0 {
-                break;
+        let buffer_size = self.buffer_size;
+        let streamed: Result<Vec<u8>, ProviderError> = {
+            let remote_file = &mut remote_file;
+            async move {
+                let mut data: Vec<u8> = Vec::new();
+                let mut buffer = vec![0u8; buffer_size.max(4096)];
+                loop {
+                    let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
+                        classify_russh_err(e, |s| {
+                            ProviderError::TransferFailed(format!("Read error: {}", s))
+                        })
+                    })?;
+                    if bytes_read == 0 {
+                        break;
+                    }
+                    if data.len() as u64 + bytes_read as u64 > max_bytes {
+                        return Err(ProviderError::TransferFailed(format!(
+                            "Download exceeded the {:.0} MB cap (server under-reported size). Use streaming download for larger files.",
+                            max_bytes as f64 / 1_048_576.0,
+                        )));
+                    }
+                    data.extend_from_slice(&buffer[..bytes_read]);
+                }
+                Ok(data)
             }
-            if data.len() as u64 + bytes_read as u64 > max_bytes {
-                return Err(ProviderError::TransferFailed(format!(
-                    "Download exceeded the {:.0} MB cap (server under-reported size). Use streaming download for larger files.",
-                    max_bytes as f64 / 1_048_576.0,
-                )));
-            }
-            data.extend_from_slice(&buffer[..bytes_read]);
         }
+        .await;
         let _ = remote_file.close().await;
-
-        Ok(data)
+        streamed
     }
 
     async fn upload(
@@ -2000,59 +2044,68 @@ impl StorageProvider for SftpProvider {
             })
         })?;
 
-        // Read and write in chunks with optional rate limiting
-        let mut buffer = vec![0u8; self.buffer_size];
-        let mut transferred: u64 = 0;
-        let start = std::time::Instant::now();
-        // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
-        let global_bw = crate::transfer_dag::governor::global();
+        let buffer_size = self.buffer_size;
+        let upload_limit_bps = self.upload_limit_bps;
+        let streamed: Result<u64, ProviderError> = {
+            let remote_file = &mut remote_file;
+            async move {
+                let mut buffer = vec![0u8; buffer_size];
+                let mut transferred: u64 = 0;
+                let start = std::time::Instant::now();
+                let global_bw = crate::transfer_dag::governor::global();
 
-        loop {
-            let bytes_read = tokio::io::AsyncReadExt::read(&mut local_file, &mut buffer)
-                .await
-                .map_err(|e| ProviderError::TransferFailed(format!("Local read error: {}", e)))?;
+                loop {
+                    let bytes_read = tokio::io::AsyncReadExt::read(&mut local_file, &mut buffer)
+                        .await
+                        .map_err(|e| {
+                            ProviderError::TransferFailed(format!("Local read error: {}", e))
+                        })?;
 
-            if bytes_read == 0 {
-                break;
-            }
+                    if bytes_read == 0 {
+                        break;
+                    }
 
-            // Reserve global tokens before the remote write so concurrent jobs
-            // cannot put bytes on the wire before the shared cap admits them.
-            global_bw
-                .charge(
-                    crate::transfer_dag::governor::TransferDirection::Upload,
-                    bytes_read as u64,
-                )
-                .await;
-            remote_file
-                .write_all(&buffer[..bytes_read])
-                .await
-                .map_err(|e| {
-                    classify_russh_err(e, |s| {
-                        ProviderError::TransferFailed(format!("Remote write error: {}", s))
-                    })
-                })?;
+                    global_bw
+                        .charge(
+                            crate::transfer_dag::governor::TransferDirection::Upload,
+                            bytes_read as u64,
+                        )
+                        .await;
+                    remote_file
+                        .write_all(&buffer[..bytes_read])
+                        .await
+                        .map_err(|e| {
+                            classify_russh_err(e, |s| {
+                                ProviderError::TransferFailed(format!("Remote write error: {}", s))
+                            })
+                        })?;
 
-            transferred += bytes_read as u64;
+                    transferred += bytes_read as u64;
 
-            if let Some(ref progress) = on_progress {
-                progress(transferred, total_size);
-            }
+                    if let Some(ref progress) = on_progress {
+                        progress(transferred, total_size);
+                    }
 
-            // Apply bandwidth throttling
-            if self.upload_limit_bps > 0 {
-                let expected = std::time::Duration::from_secs_f64(
-                    transferred as f64 / self.upload_limit_bps as f64,
-                );
-                let elapsed = start.elapsed();
-                if expected > elapsed {
-                    tokio::time::sleep(expected - elapsed).await;
+                    if upload_limit_bps > 0 {
+                        let expected = std::time::Duration::from_secs_f64(
+                            transferred as f64 / upload_limit_bps as f64,
+                        );
+                        let elapsed = start.elapsed();
+                        if expected > elapsed {
+                            tokio::time::sleep(expected - elapsed).await;
+                        }
+                    }
                 }
+                Ok(transferred)
             }
         }
-
-        // Ensure all data is flushed to remote
-        remote_file.shutdown().await.map_err(|e| {
+        .await;
+        // shutdown() is the awaited close for a write handle (russh-sftp
+        // File::close is equivalent). Run it on every exit, then propagate
+        // the copy error if any, then a flush failure on the success path.
+        let shutdown_res = shutdown_sftp_file(&mut remote_file).await;
+        let transferred = streamed?;
+        shutdown_res.map_err(|e| {
             classify_russh_err(e, |s| {
                 ProviderError::TransferFailed(format!("Failed to flush remote file: {}", s))
             })
@@ -2198,82 +2251,99 @@ impl StorageProvider for SftpProvider {
                             ))
                         })
                     })?;
-                remote_file
-                    .seek(std::io::SeekFrom::Start(start_offset))
-                    .await
-                    .map_err(|e| {
-                        ProviderError::TransferFailed(format!(
-                            "Failed to seek remote for resume: {}",
-                            e
-                        ))
-                    })?;
+                let buffer_size = self.buffer_size;
+                let upload_limit_bps = self.upload_limit_bps;
+                let local_path_owned = local_path.to_string();
+                let streamed: Result<u64, ProviderError> = {
+                    let remote_file = &mut remote_file;
+                    async move {
+                        remote_file
+                            .seek(std::io::SeekFrom::Start(start_offset))
+                            .await
+                            .map_err(|e| {
+                                ProviderError::TransferFailed(format!(
+                                    "Failed to seek remote for resume: {}",
+                                    e
+                                ))
+                            })?;
 
-                let mut local_file = tokio::fs::File::open(local_path).await.map_err(|e| {
-                    ProviderError::TransferFailed(format!("Failed to open local file: {}", e))
-                })?;
-                local_file
-                    .seek(std::io::SeekFrom::Start(start_offset))
-                    .await
-                    .map_err(|e| {
-                        ProviderError::TransferFailed(format!(
-                            "Failed to seek local for resume: {}",
-                            e
-                        ))
-                    })?;
+                        let mut local_file = tokio::fs::File::open(&local_path_owned)
+                            .await
+                            .map_err(|e| {
+                                ProviderError::TransferFailed(format!(
+                                    "Failed to open local file: {}",
+                                    e
+                                ))
+                            })?;
+                        local_file
+                            .seek(std::io::SeekFrom::Start(start_offset))
+                            .await
+                            .map_err(|e| {
+                                ProviderError::TransferFailed(format!(
+                                    "Failed to seek local for resume: {}",
+                                    e
+                                ))
+                            })?;
 
-                let mut buffer = vec![0u8; self.buffer_size];
-                let mut transferred: u64 = start_offset;
-                if let Some(ref progress) = on_progress {
-                    progress(transferred, total_size);
-                }
-                let start = std::time::Instant::now();
-                // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
-                let global_bw = crate::transfer_dag::governor::global();
-
-                loop {
-                    let bytes_read = AsyncReadExt::read(&mut local_file, &mut buffer)
-                        .await
-                        .map_err(|e| {
-                            ProviderError::TransferFailed(format!("Local read error: {}", e))
-                        })?;
-                    if bytes_read == 0 {
-                        break;
-                    }
-                    // Reserve global tokens before the remote write so the
-                    // resumed path shares the same process-wide cap.
-                    global_bw
-                        .charge(
-                            crate::transfer_dag::governor::TransferDirection::Upload,
-                            bytes_read as u64,
-                        )
-                        .await;
-                    remote_file
-                        .write_all(&buffer[..bytes_read])
-                        .await
-                        .map_err(|e| {
-                            classify_russh_err(e, |s| {
-                                ProviderError::TransferFailed(format!("Remote write error: {}", s))
-                            })
-                        })?;
-                    transferred += bytes_read as u64;
-                    if let Some(ref progress) = on_progress {
-                        progress(transferred, total_size);
-                    }
-                    // Throttle only on bytes moved THIS session so a resume does
-                    // not over-sleep for already-uploaded data.
-                    if self.upload_limit_bps > 0 {
-                        let session_bytes = transferred - start_offset;
-                        let expected = std::time::Duration::from_secs_f64(
-                            session_bytes as f64 / self.upload_limit_bps as f64,
-                        );
-                        let elapsed = start.elapsed();
-                        if expected > elapsed {
-                            tokio::time::sleep(expected - elapsed).await;
+                        let mut buffer = vec![0u8; buffer_size];
+                        let mut transferred: u64 = start_offset;
+                        if let Some(ref progress) = on_progress {
+                            progress(transferred, total_size);
                         }
+                        let start = std::time::Instant::now();
+                        let global_bw = crate::transfer_dag::governor::global();
+
+                        loop {
+                            let bytes_read = AsyncReadExt::read(&mut local_file, &mut buffer)
+                                .await
+                                .map_err(|e| {
+                                    ProviderError::TransferFailed(format!(
+                                        "Local read error: {}",
+                                        e
+                                    ))
+                                })?;
+                            if bytes_read == 0 {
+                                break;
+                            }
+                            global_bw
+                                .charge(
+                                    crate::transfer_dag::governor::TransferDirection::Upload,
+                                    bytes_read as u64,
+                                )
+                                .await;
+                            remote_file
+                                .write_all(&buffer[..bytes_read])
+                                .await
+                                .map_err(|e| {
+                                    classify_russh_err(e, |s| {
+                                        ProviderError::TransferFailed(format!(
+                                            "Remote write error: {}",
+                                            s
+                                        ))
+                                    })
+                                })?;
+                            transferred += bytes_read as u64;
+                            if let Some(ref progress) = on_progress {
+                                progress(transferred, total_size);
+                            }
+                            if upload_limit_bps > 0 {
+                                let session_bytes = transferred - start_offset;
+                                let expected = std::time::Duration::from_secs_f64(
+                                    session_bytes as f64 / upload_limit_bps as f64,
+                                );
+                                let elapsed = start.elapsed();
+                                if expected > elapsed {
+                                    tokio::time::sleep(expected - elapsed).await;
+                                }
+                            }
+                        }
+                        Ok(transferred)
                     }
                 }
-
-                remote_file.shutdown().await.map_err(|e| {
+                .await;
+                let shutdown_res = shutdown_sftp_file(&mut remote_file).await;
+                let transferred = streamed?;
+                shutdown_res.map_err(|e| {
                     classify_russh_err(e, |s| {
                         ProviderError::TransferFailed(format!("Failed to flush remote file: {}", s))
                     })
@@ -2828,42 +2898,47 @@ impl StorageProvider for SftpProvider {
             })
         })?;
 
-        // Seek to offset
-        use tokio::io::{AsyncReadExt, AsyncSeekExt};
-        file.seek(std::io::SeekFrom::Start(offset))
-            .await
-            .map_err(|e| {
-                classify_russh_err(e, |s| {
-                    ProviderError::ServerError(format!("Failed to seek: {}", s))
-                })
-            })?;
+        let streamed: Result<Vec<u8>, ProviderError> = {
+            let file = &mut file;
+            async move {
+                use tokio::io::{AsyncReadExt, AsyncSeekExt};
+                file.seek(std::io::SeekFrom::Start(offset))
+                    .await
+                    .map_err(|e| {
+                        classify_russh_err(e, |s| {
+                            ProviderError::ServerError(format!("Failed to seek: {}", s))
+                        })
+                    })?;
 
-        // GAP-A03: Cap read_range allocation to prevent attacker-controlled OOM
-        const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
-        if len > MAX_READ_RANGE {
-            return Err(ProviderError::Other(format!(
-                "Read range size {} exceeds maximum {} bytes",
-                len, MAX_READ_RANGE
-            )));
-        }
+                // GAP-A03: Cap read_range allocation to prevent attacker-controlled OOM
+                const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
+                if len > MAX_READ_RANGE {
+                    return Err(ProviderError::Other(format!(
+                        "Read range size {} exceeds maximum {} bytes",
+                        len, MAX_READ_RANGE
+                    )));
+                }
 
-        // Read exact len bytes
-        let mut buf = vec![0u8; len as usize];
-        let mut total_read = 0usize;
-        while total_read < len as usize {
-            let n = file.read(&mut buf[total_read..]).await.map_err(|e| {
-                classify_russh_err(e, |s| {
-                    ProviderError::ServerError(format!("Failed to read range: {}", s))
-                })
-            })?;
-            if n == 0 {
-                break;
+                let mut buf = vec![0u8; len as usize];
+                let mut total_read = 0usize;
+                while total_read < len as usize {
+                    let n = file.read(&mut buf[total_read..]).await.map_err(|e| {
+                        classify_russh_err(e, |s| {
+                            ProviderError::ServerError(format!("Failed to read range: {}", s))
+                        })
+                    })?;
+                    if n == 0 {
+                        break;
+                    }
+                    total_read += n;
+                }
+                buf.truncate(total_read);
+                Ok(buf)
             }
-            total_read += n;
         }
-        buf.truncate(total_read);
+        .await;
         let _ = file.close().await;
-        Ok(buf)
+        streamed
     }
 }
 
@@ -3085,6 +3160,25 @@ impl Drop for ReadaheadTempGuard {
 /// `total_for_progress`; it is taken by value (an owned `Box<dyn Fn + Send>` is
 /// `Send`, so holding it across the writer's awaits keeps this future `Send`,
 /// with no spawned ticker to leak).
+async fn close_sftp_files(files: Vec<russh_sftp::client::fs::File>) {
+    for file in files {
+        let _ = file.close().await;
+    }
+}
+
+/// Awaited close of a write handle. `File::shutdown` drains pending WRITE
+/// acks first; a rejected write returns before CLOSE is sent, so Drop would
+/// only queue `close_nowait`. A second shutdown, with the ack queue empty,
+/// awaits the CLOSE.
+async fn shutdown_sftp_file(file: &mut russh_sftp::client::fs::File) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    let first = file.shutdown().await;
+    if first.is_err() {
+        let _ = file.shutdown().await;
+    }
+    first
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn sftp_readahead_range_into(
     sftp: &SftpSession,
@@ -3098,6 +3192,7 @@ async fn sftp_readahead_range_into(
     cancel: &CancellationToken,
     total_for_progress: u64,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    fail_write: Arc<AtomicBool>,
 ) -> Result<(), ProviderError> {
     use tokio::io::{AsyncSeekExt, AsyncWriteExt};
     if expected == 0 {
@@ -3109,20 +3204,50 @@ async fn sftp_readahead_range_into(
 
     // Open concurrently, but degrade on servers with a tighter handle limit.
     // Cancellation covers the OPEN fan-out as well as subsequent reads.
+    // Successful opens from a failed batch are closed and awaited before
+    // retrying with a smaller window: Drop would only queue close_nowait.
     let handles = loop {
+        let open_fut =
+            futures_util::future::join_all((0..eff_window).map(|_| sftp.open(full_path)));
+        tokio::pin!(open_fut);
+        let mut cancelled = false;
         let opened = tokio::select! {
             _ = cancel.cancelled() => {
-                return Err(ProviderError::TransferFailed(
-                    "Transfer cancelled by user".to_string(),
-                ));
+                cancelled = true;
+                // Stay in this function: wait for in-flight OPENs so their
+                // File values can be closed with await. Beyond 2s the
+                // remaining opens are dropped (close_nowait).
+                match tokio::time::timeout(std::time::Duration::from_secs(2), &mut open_fut)
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(_) => {
+                        return Err(ProviderError::TransferFailed(
+                            "Transfer cancelled by user".to_string(),
+                        ));
+                    }
+                }
             }
-            result = futures_util::future::try_join_all(
-                (0..eff_window).map(|_| sftp.open(full_path))
-            ) => result,
+            result = &mut open_fut => result,
         };
-        match opened {
-            Ok(handles) => break handles,
-            Err(e) if eff_window > 1 => {
+        let mut ok = Vec::new();
+        let mut err = None;
+        for r in opened {
+            match r {
+                Ok(file) => ok.push(file),
+                Err(e) => err = Some(e),
+            }
+        }
+        if cancelled {
+            close_sftp_files(ok).await;
+            return Err(ProviderError::TransferFailed(
+                "Transfer cancelled by user".to_string(),
+            ));
+        }
+        match err {
+            None => break ok,
+            Some(e) if eff_window > 1 => {
+                close_sftp_files(ok).await;
                 let reduced = (eff_window / 2).max(1);
                 tracing::warn!(
                     "SFTP read-ahead: opening {} handles failed ({}); retrying with {}",
@@ -3132,7 +3257,8 @@ async fn sftp_readahead_range_into(
                 );
                 eff_window = reduced;
             }
-            Err(e) => {
+            Some(e) => {
+                close_sftp_files(ok).await;
                 return Err(classify_russh_err(e, |s| {
                     ProviderError::TransferFailed(format!(
                         "Failed to open remote file (readahead): {}",
@@ -3146,87 +3272,131 @@ async fn sftp_readahead_range_into(
     // `eff_window` readers -> one writer. The writer owns `out` (no cursor race)
     // and is the sole caller of `on_progress`.
     let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(eff_window.max(2));
+    // Child token: an I/O error here must not cancel the caller's token.
+    let work_cancel = cancel.child_token();
 
-    let readers = async {
-        let mut reader_tasks = Vec::with_capacity(eff_window);
-        let next_chunk = Arc::new(AtomicU64::new(0));
-        for mut file in handles {
-            let tx = tx.clone();
-            let cancel = cancel.clone();
-            let next_chunk = next_chunk.clone();
-            reader_tasks.push(async move {
-                loop {
-                    let j = next_chunk.fetch_add(1, Ordering::Relaxed);
-                    if j >= n_chunks {
-                        break;
-                    }
-                    let rel_off = j * chunk;
-                    let abs_off = start + rel_off;
-                    let want = std::cmp::min(chunk, expected - rel_off) as usize;
-                    let buf = tokio::select! {
-                        _ = cancel.cancelled() => {
-                            return Err(ProviderError::TransferFailed(
-                                "Transfer cancelled by user".to_string(),
-                            ));
-                        }
-                        r = sftp_pipelined_read_window(&mut file, abs_off, want) => r?,
-                    };
-                    if buf.len() != want {
-                        return Err(ProviderError::TransferFailed(format!(
-                            "Short read at offset {} ({} of {} bytes): remote file changed or truncated",
-                            abs_off,
-                            buf.len(),
-                            want
-                        )));
-                    }
-                    tokio::select! {
-                        _ = cancel.cancelled() => {
-                            return Err(ProviderError::TransferFailed(
-                                "Transfer cancelled by user".to_string(),
-                            ));
-                        }
-                        sent = tx.send((abs_off, buf)) => {
-                            if sent.is_err() {
-                                // Writer went away; its error propagates.
+    let readers = {
+        let work_cancel = work_cancel.clone();
+        async move {
+            let mut reader_tasks = Vec::with_capacity(eff_window);
+            let next_chunk = Arc::new(AtomicU64::new(0));
+            for mut file in handles {
+                let tx = tx.clone();
+                let work_cancel = work_cancel.clone();
+                let next_chunk = next_chunk.clone();
+                reader_tasks.push(async move {
+                    let result: Result<(), ProviderError> = async {
+                        loop {
+                            if work_cancel.is_cancelled() {
+                                return Err(ProviderError::TransferFailed(
+                                    "Transfer cancelled by user".to_string(),
+                                ));
+                            }
+                            let j = next_chunk.fetch_add(1, Ordering::Relaxed);
+                            if j >= n_chunks {
                                 break;
                             }
+                            let rel_off = j * chunk;
+                            let abs_off = start + rel_off;
+                            let want = std::cmp::min(chunk, expected - rel_off) as usize;
+                            let buf = tokio::select! {
+                                _ = work_cancel.cancelled() => {
+                                    return Err(ProviderError::TransferFailed(
+                                        "Transfer cancelled by user".to_string(),
+                                    ));
+                                }
+                                r = sftp_pipelined_read_window(&mut file, abs_off, want) => r?,
+                            };
+                            if buf.len() != want {
+                                return Err(ProviderError::TransferFailed(format!(
+                                    "Short read at offset {} ({} of {} bytes): remote file changed or truncated",
+                                    abs_off,
+                                    buf.len(),
+                                    want
+                                )));
+                            }
+                            tokio::select! {
+                                _ = work_cancel.cancelled() => {
+                                    return Err(ProviderError::TransferFailed(
+                                        "Transfer cancelled by user".to_string(),
+                                    ));
+                                }
+                                sent = tx.send((abs_off, buf)) => {
+                                    if sent.is_err() {
+                                        // Writer went away; its error propagates.
+                                        break;
+                                    }
+                                }
+                            }
                         }
+                        Ok(())
                     }
-                }
-                Ok::<(), ProviderError>(())
-            });
+                    .await;
+                    let _ = file.close().await;
+                    if result.is_err() {
+                        work_cancel.cancel();
+                    }
+                    result
+                });
+            }
+            // Drop the original sender so `rx` closes once every reader clone is
+            // gone; otherwise the writer would wait forever.
+            drop(tx);
+            let results = futures_util::future::join_all(reader_tasks).await;
+            results.into_iter().find(|r| r.is_err()).unwrap_or(Ok(()))
         }
-        // Drop the original sender so `rx` closes once every reader clone is
-        // gone; otherwise the writer would wait forever.
-        drop(tx);
-        futures_util::future::try_join_all(reader_tasks).await?;
-        Ok::<(), ProviderError>(())
     };
 
     // `async move` so `on_progress` is captured BY VALUE (owned `Box<dyn Fn +
     // Send>` is `Send`); capturing it by reference would need it to be `Sync`,
     // which a bare `dyn Fn + Send` is not, and would make this future `!Send`.
-    let writer = async move {
-        while let Some((abs_off, buf)) = rx.recv().await {
-            if cancel.is_cancelled() {
-                return Err(ProviderError::TransferFailed(
-                    "Transfer cancelled by user".to_string(),
-                ));
+    let writer = {
+        let work_cancel = work_cancel.clone();
+        async move {
+            while let Some((abs_off, buf)) = rx.recv().await {
+                if work_cancel.is_cancelled() {
+                    return Err(ProviderError::TransferFailed(
+                        "Transfer cancelled by user".to_string(),
+                    ));
+                }
+                if fail_write.swap(false, Ordering::SeqCst) {
+                    work_cancel.cancel();
+                    return Err(ProviderError::IoError(std::io::Error::other(
+                        "injected write fail",
+                    )));
+                }
+                if let Err(e) = out.seek(std::io::SeekFrom::Start(abs_off)).await {
+                    work_cancel.cancel();
+                    return Err(ProviderError::IoError(e));
+                }
+                if let Err(e) = out.write_all(&buf).await {
+                    work_cancel.cancel();
+                    return Err(ProviderError::IoError(e));
+                }
+                let done =
+                    aggregate.fetch_add(buf.len() as u64, Ordering::Relaxed) + buf.len() as u64;
+                if let Some(ref cb) = on_progress {
+                    cb(done, total_for_progress);
+                }
             }
-            out.seek(std::io::SeekFrom::Start(abs_off))
-                .await
-                .map_err(ProviderError::IoError)?;
-            out.write_all(&buf).await.map_err(ProviderError::IoError)?;
-            let done = aggregate.fetch_add(buf.len() as u64, Ordering::Relaxed) + buf.len() as u64;
-            if let Some(ref cb) = on_progress {
-                cb(done, total_for_progress);
-            }
+            Ok::<(), ProviderError>(())
         }
-        Ok::<(), ProviderError>(())
     };
 
-    tokio::try_join!(readers, writer)?;
-    Ok(())
+    let (reader_res, writer_res) = tokio::join!(readers, writer);
+    match (reader_res, writer_res) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Ok(()), Err(e)) | (Err(e), Ok(())) => Err(e),
+        (Err(a), Err(b)) => {
+            let a_cancel = a.to_string().contains("cancelled");
+            let b_cancel = b.to_string().contains("cancelled");
+            if a_cancel && !b_cancel {
+                Err(b)
+            } else {
+                Err(a)
+            }
+        }
+    }
 }
 
 /// Single-connection sliding-window read-ahead download of a whole file, over
@@ -3234,6 +3404,7 @@ async fn sftp_readahead_range_into(
 /// through provider state; see `sftp_readahead_range_into` for the mechanism
 /// and the issue #70 rationale. Byte-identical to the serial loop for a static
 /// file; SHA-256 gated.
+#[allow(clippy::too_many_arguments)]
 async fn sftp_readahead_download(
     sftp: &SftpSession,
     full_path: &str,
@@ -3242,6 +3413,8 @@ async fn sftp_readahead_download(
     chunk: usize,
     window: usize,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    cancel: &CancellationToken,
+    fail_write: Arc<AtomicBool>,
 ) -> Result<(), ProviderError> {
     use tokio::io::AsyncWriteExt;
 
@@ -3254,7 +3427,6 @@ async fn sftp_readahead_download(
     let mut out = file;
 
     let aggregate = Arc::new(AtomicU64::new(0));
-    let cancel = CancellationToken::new();
 
     // The writer owns `on_progress` and calls it directly (real, incremental);
     // an owned `Box<dyn Fn + Send>` stays `Send` across the writer's awaits, so
@@ -3268,9 +3440,10 @@ async fn sftp_readahead_download(
         chunk,
         window,
         &aggregate,
-        &cancel,
+        cancel,
         total_size,
         on_progress,
+        fail_write,
     )
     .await?;
 
@@ -3336,64 +3509,75 @@ async fn sftp_pipelined_download(
     // RawSftpSession multiplexes the concurrent reads by request id.
     let mut handles: Vec<russh_sftp::client::fs::File> = Vec::with_capacity(eff_window);
     for _ in 0..eff_window {
-        let f = sftp.open(full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!(
-                    "Failed to open remote file (pipeline): {}",
-                    s
-                ))
-            })
-        })?;
-        handles.push(f);
-    }
-
-    let mut transferred: u64 = 0;
-    let mut offset: u64 = 0;
-    'outer: while offset < total_size {
-        // Plan up to `eff_window` consecutive chunks for this batch.
-        let mut wants: Vec<usize> = Vec::with_capacity(eff_window);
-        for _ in 0..eff_window {
-            if offset >= total_size {
-                break;
-            }
-            let want = std::cmp::min(chunk, total_size - offset) as usize;
-            wants.push(want);
-            offset += want as u64;
-        }
-        if wants.is_empty() {
-            break;
-        }
-
-        // Issue the batch concurrently: each future borrows one distinct
-        // handle (disjoint &mut via split_at_mut), so `window` reads are in
-        // flight on the single connection at once.
-        let n = wants.len();
-        let batch_base = offset - wants.iter().map(|w| *w as u64).sum::<u64>();
-        let (used, _rest) = handles.split_at_mut(n);
-        let mut futs = Vec::with_capacity(n);
-        let mut abs = batch_base;
-        for (f, &want) in used.iter_mut().zip(wants.iter()) {
-            futs.push(sftp_pipelined_read_window(f, abs, want));
-            abs += want as u64;
-        }
-        let results = futures_util::future::try_join_all(futs).await?;
-
-        // Write in strict offset order; the first short read is EOF.
-        for (buf, &want) in results.iter().zip(wants.iter()) {
-            atomic
-                .write_all(buf)
-                .await
-                .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
-            transferred += buf.len() as u64;
-            if let Some(ref progress) = on_progress {
-                progress(transferred, total_size);
-            }
-            if buf.len() < want {
-                break 'outer;
+        match sftp.open(full_path).await {
+            Ok(f) => handles.push(f),
+            Err(e) => {
+                close_sftp_files(handles).await;
+                return Err(classify_russh_err(e, |s| {
+                    ProviderError::TransferFailed(format!(
+                        "Failed to open remote file (pipeline): {}",
+                        s
+                    ))
+                }));
             }
         }
     }
 
+    let streamed: Result<u64, ProviderError> = {
+        let handles = &mut handles;
+        async move {
+            let mut transferred: u64 = 0;
+            let mut offset: u64 = 0;
+            'outer: while offset < total_size {
+                // Plan up to `eff_window` consecutive chunks for this batch.
+                let mut wants: Vec<usize> = Vec::with_capacity(eff_window);
+                for _ in 0..eff_window {
+                    if offset >= total_size {
+                        break;
+                    }
+                    let want = std::cmp::min(chunk, total_size - offset) as usize;
+                    wants.push(want);
+                    offset += want as u64;
+                }
+                if wants.is_empty() {
+                    break;
+                }
+
+                // Issue the batch concurrently: each future borrows one distinct
+                // handle (disjoint &mut via split_at_mut), so `window` reads are in
+                // flight on the single connection at once.
+                let n = wants.len();
+                let batch_base = offset - wants.iter().map(|w| *w as u64).sum::<u64>();
+                let (used, _rest) = handles.split_at_mut(n);
+                let mut futs = Vec::with_capacity(n);
+                let mut abs = batch_base;
+                for (f, &want) in used.iter_mut().zip(wants.iter()) {
+                    futs.push(sftp_pipelined_read_window(f, abs, want));
+                    abs += want as u64;
+                }
+                let results = futures_util::future::try_join_all(futs).await?;
+
+                // Write in strict offset order; the first short read is EOF.
+                for (buf, &want) in results.iter().zip(wants.iter()) {
+                    atomic.write_all(buf).await.map_err(|e| {
+                        ProviderError::TransferFailed(format!("Write error: {}", e))
+                    })?;
+                    transferred += buf.len() as u64;
+                    if let Some(ref progress) = on_progress {
+                        progress(transferred, total_size);
+                    }
+                    if buf.len() < want {
+                        break 'outer;
+                    }
+                }
+            }
+
+            Ok(transferred)
+        }
+    }
+    .await;
+    close_sftp_files(handles).await;
+    streamed?;
     Ok(())
 }
 
@@ -3490,73 +3674,81 @@ async fn sftp_pipelined_range_into(
     // SSH channel, the RawSftpSession multiplexes the concurrent reads by id.
     let mut handles: Vec<russh_sftp::client::fs::File> = Vec::with_capacity(eff_window);
     for _ in 0..eff_window {
-        let f = sftp.open(full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::TransferFailed(format!(
-                    "Failed to open remote file for range (pipeline): {}",
-                    s
-                ))
-            })
-        })?;
-        handles.push(f);
+        match sftp.open(full_path).await {
+            Ok(f) => handles.push(f),
+            Err(e) => {
+                close_sftp_files(handles).await;
+                return Err(classify_russh_err(e, |s| {
+                    ProviderError::TransferFailed(format!(
+                        "Failed to open remote file for range (pipeline): {}",
+                        s
+                    ))
+                }));
+            }
+        }
     }
 
-    let stop = start + expected;
-    let mut offset: u64 = start;
-    while offset < stop {
-        // Plan up to `eff_window` consecutive strict sub-stripes.
-        let batch_base = offset;
-        let mut wants: Vec<usize> = Vec::with_capacity(eff_window);
-        for _ in 0..eff_window {
-            if offset >= stop {
+    let streamed: Result<(), ProviderError> = async {
+        let stop = start + expected;
+        let mut offset: u64 = start;
+        while offset < stop {
+            // Plan up to `eff_window` consecutive strict sub-stripes.
+            let batch_base = offset;
+            let mut wants: Vec<usize> = Vec::with_capacity(eff_window);
+            for _ in 0..eff_window {
+                if offset >= stop {
+                    break;
+                }
+                let want = std::cmp::min(chunk, stop - offset) as usize;
+                wants.push(want);
+                offset += want as u64;
+            }
+            if wants.is_empty() {
                 break;
             }
-            let want = std::cmp::min(chunk, stop - offset) as usize;
-            wants.push(want);
-            offset += want as u64;
-        }
-        if wants.is_empty() {
-            break;
-        }
 
-        // Issue the batch concurrently: each future borrows one distinct
-        // handle (disjoint &mut via split_at_mut), so `window` strict reads
-        // are in flight on the single connection at once.
-        let n = wants.len();
-        let (used, _rest) = handles.split_at_mut(n);
-        let mut futs = Vec::with_capacity(n);
-        let mut abs = batch_base;
-        for (f, &want) in used.iter_mut().zip(wants.iter()) {
-            futs.push(sftp_pipelined_range_read_strict(f, abs, want));
-            abs += want as u64;
-        }
-
-        // Cancellation stays responsive per batch and returns the EXACT
-        // serial-worker "Transfer cancelled by user" error.
-        let results = tokio::select! {
-            _ = cancel.cancelled() => {
-                return Err(ProviderError::TransferFailed(
-                    "Transfer cancelled by user".to_string(),
-                ));
+            // Issue the batch concurrently: each future borrows one distinct
+            // handle (disjoint &mut via split_at_mut), so `window` strict reads
+            // are in flight on the single connection at once.
+            let n = wants.len();
+            let (used, _rest) = handles.split_at_mut(n);
+            let mut futs = Vec::with_capacity(n);
+            let mut abs = batch_base;
+            for (f, &want) in used.iter_mut().zip(wants.iter()) {
+                futs.push(sftp_pipelined_range_read_strict(f, abs, want));
+                abs += want as u64;
             }
-            r = futures_util::future::try_join_all(futs) => r?,
-        };
 
-        // Write each strict sub-stripe in strict offset order at its
-        // absolute file offset; aggregate per chunk (the shared progress
-        // counter, same as the serial worker).
-        let mut abs = batch_base;
-        for buf in results.iter() {
-            out.seek(std::io::SeekFrom::Start(abs))
-                .await
-                .map_err(ProviderError::IoError)?;
-            out.write_all(buf).await.map_err(ProviderError::IoError)?;
-            aggregate.fetch_add(buf.len() as u64, Ordering::Relaxed);
-            abs += buf.len() as u64;
+            // Cancellation stays responsive per batch and returns the EXACT
+            // serial-worker "Transfer cancelled by user" error.
+            let results = tokio::select! {
+                _ = cancel.cancelled() => {
+                    return Err(ProviderError::TransferFailed(
+                        "Transfer cancelled by user".to_string(),
+                    ));
+                }
+                r = futures_util::future::try_join_all(futs) => r?,
+            };
+
+            // Write each strict sub-stripe in strict offset order at its
+            // absolute file offset; aggregate per chunk (the shared progress
+            // counter, same as the serial worker).
+            let mut abs = batch_base;
+            for buf in results.iter() {
+                out.seek(std::io::SeekFrom::Start(abs))
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                out.write_all(buf).await.map_err(ProviderError::IoError)?;
+                aggregate.fetch_add(buf.len() as u64, Ordering::Relaxed);
+                abs += buf.len() as u64;
+            }
         }
-    }
 
-    Ok(())
+        Ok(())
+    }
+    .await;
+    close_sftp_files(handles).await;
+    streamed
 }
 
 /// PD-SFTP-2 per-range worker: dial an **independent** SSH+SFTP connection
@@ -3634,6 +3826,7 @@ async fn sftp_download_one_range(
                 &cancel,
                 expected,
                 None,
+                Arc::clone(&worker.fail_readahead_write),
             )
             .await?;
             out.flush().await.map_err(ProviderError::IoError)?;
@@ -3685,78 +3878,83 @@ async fn sftp_download_one_range(
             ProviderError::TransferFailed(format!("Failed to open remote file for range: {}", s))
         })
     })?;
-    remote_file
-        .seek(std::io::SeekFrom::Start(start))
-        .await
-        .map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!("Failed to seek to range start: {}", s))
-            })
-        })?;
+    let streamed: Result<(), ProviderError> = async {
+        remote_file
+            .seek(std::io::SeekFrom::Start(start))
+            .await
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("Failed to seek to range start: {}", s))
+                })
+            })?;
 
-    let mut out = tokio::fs::OpenOptions::new()
-        .write(true)
-        .open(&temp_path)
-        .await
-        .map_err(ProviderError::IoError)?;
-    out.seek(std::io::SeekFrom::Start(start))
-        .await
-        .map_err(ProviderError::IoError)?;
+        let mut out = tokio::fs::OpenOptions::new()
+            .write(true)
+            .open(&temp_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        out.seek(std::io::SeekFrom::Start(start))
+            .await
+            .map_err(ProviderError::IoError)?;
 
-    let mut buf = vec![0u8; buffer_size];
-    let mut written: u64 = 0;
-    let started = std::time::Instant::now();
-    while written < expected {
-        let allowance = (expected - written).min(buf.len() as u64);
-        tokio::select! {
-            _ = cancel.cancelled() => {
-                return Err(ProviderError::TransferFailed(
-                    "Transfer cancelled by user".to_string(),
-                ));
-            }
-            _ = global_bw.charge(crate::transfer_dag::governor::TransferDirection::Download, allowance) => {}
-        }
-        tokio::select! {
-            _ = cancel.cancelled() => {
-                return Err(ProviderError::TransferFailed(
-                    "Transfer cancelled by user".to_string(),
-                ));
-            }
-            read = remote_file.read(&mut buf) => {
-                let n = read.map_err(|e| {
-                    classify_russh_err(e, |s| {
-                        ProviderError::TransferFailed(format!("Range read error: {}", s))
-                    })
-                })?;
-                if n == 0 {
-                    // Strict gate: premature EOF, no silent short read.
-                    return Err(ProviderError::TransferFailed(format!(
-                        "SFTP range short read: expected {} bytes at offset {}, got {}",
-                        expected, start, written
-                    )));
+        let mut buf = vec![0u8; buffer_size];
+        let mut written: u64 = 0;
+        let started = std::time::Instant::now();
+        while written < expected {
+            let allowance = (expected - written).min(buf.len() as u64);
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    return Err(ProviderError::TransferFailed(
+                        "Transfer cancelled by user".to_string(),
+                    ));
                 }
-                let take = std::cmp::min(n as u64, expected - written) as usize;
-                out.write_all(&buf[..take])
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                aggregate.fetch_add(take as u64, Ordering::Relaxed);
-                written += take as u64;
+                _ = global_bw.charge(crate::transfer_dag::governor::TransferDirection::Download, allowance) => {}
+            }
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    return Err(ProviderError::TransferFailed(
+                        "Transfer cancelled by user".to_string(),
+                    ));
+                }
+                read = remote_file.read(&mut buf) => {
+                    let n = read.map_err(|e| {
+                        classify_russh_err(e, |s| {
+                            ProviderError::TransferFailed(format!("Range read error: {}", s))
+                        })
+                    })?;
+                    if n == 0 {
+                        return Err(ProviderError::TransferFailed(format!(
+                            "SFTP range short read: expected {} bytes at offset {}, got {}",
+                            expected, start, written
+                        )));
+                    }
+                    let take = std::cmp::min(n as u64, expected - written) as usize;
+                    out.write_all(&buf[..take])
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    aggregate.fetch_add(take as u64, Ordering::Relaxed);
+                    written += take as u64;
 
-                if limit_bps > 0 {
-                    let expected_elapsed = std::time::Duration::from_secs_f64(
-                        written as f64 / limit_bps as f64,
-                    );
-                    let elapsed = started.elapsed();
-                    if expected_elapsed > elapsed {
-                        tokio::time::sleep(expected_elapsed - elapsed).await;
+                    if limit_bps > 0 {
+                        let expected_elapsed = std::time::Duration::from_secs_f64(
+                            written as f64 / limit_bps as f64,
+                        );
+                        let elapsed = started.elapsed();
+                        if expected_elapsed > elapsed {
+                            tokio::time::sleep(expected_elapsed - elapsed).await;
+                        }
                     }
                 }
             }
         }
-    }
 
-    out.flush().await.map_err(ProviderError::IoError)?;
-    out.sync_all().await.map_err(ProviderError::IoError)?;
+        out.flush().await.map_err(ProviderError::IoError)?;
+        out.sync_all().await.map_err(ProviderError::IoError)?;
+        Ok(())
+    }
+    .await;
+    let _ = remote_file.close().await;
+    streamed?;
     let _ = worker.disconnect().await;
     Ok(ConcurrentRangeOutcome::Completed)
 }
