@@ -3545,10 +3545,18 @@ const App: React.FC = () => {
             fileCount: res.file_count,
           });
         }
+        // A cancelled scan carries `truncated` too, because the backend marks a
+        // stopped walk as a lower bound. So the cancel is named first, in the
+        // same order as `size_bound_marker` on the Rust side, which exists to
+        // keep the two states from sharing a word.
         const doneDetail = t('statusBar.usedScanDoneDetail', {
           used: formatBytes(res.used),
           files: String(res.file_count),
-        }) + (res.truncated ? ` (${t('statusBar.usedScanTruncated')})` : '');
+        }) + (res.cancelled
+          ? ` (${t('transfer.cancelled')})`
+          : res.truncated
+            ? ` (${t('statusBar.usedScanTruncated')})`
+            : '');
         notify.success(t('statusBar.usedScanDone'), doneDetail);
         activityLog.updateEntry(scanLogId, {
           status: 'success',
