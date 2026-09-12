@@ -45553,6 +45553,7 @@ fn save_bisync_snapshot(
     remote_entries: &[(String, u64, Option<String>)],
     listed: Option<&std::collections::HashSet<String>>,
     bound: &ftp_client_gui_lib::sync_core::ScanBound,
+    left_alone: &[ftp_client_gui_lib::sync_core::SkippedLink],
 ) {
     let mut files = HashMap::new();
     // Merge both sides - after a successful sync they should be equal
@@ -45566,11 +45567,27 @@ fn save_bisync_snapshot(
     // it saw. The previous snapshot's entries for the rest are kept: dropped, the
     // next full run would read those files as never synced and copy back a
     // deletion made on one side instead of propagating it.
-    if listed.is_some() || !bound.is_empty() {
+    //
+    // `bound.covers` does not answer for every path a run left alone. A link on
+    // the LOCAL side enters the bound only when remote entries sit below it, so
+    // a local link with nothing under it on the remote is reported and not
+    // covered: its subtree was skipped all the same, and asking `covers` alone
+    // drops exactly those entries. `left_alone` carries the links the run
+    // reported, and a path at or under one of them is kept like any other.
+    let under_a_reported_link = |path: &str| {
+        left_alone.iter().any(|link| {
+            path == link.rel_path
+                || path
+                    .strip_prefix(&link.rel_path)
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
+    };
+    if listed.is_some() || !bound.is_empty() || !left_alone.is_empty() {
         if let Some(previous) = load_bisync_snapshot(local_dir) {
             for (path, state) in previous.files {
-                let saw =
-                    listed.is_none_or(|listed| listed.contains(&path)) && !bound.covers(&path);
+                let saw = listed.is_none_or(|listed| listed.contains(&path))
+                    && !bound.covers(&path)
+                    && !under_a_reported_link(&path);
                 if !saw {
                     files.entry(path).or_insert(state);
                 }
@@ -48018,6 +48035,7 @@ async fn cmd_sync(
             &remote_entries,
             files_from_set.as_ref(),
             &bound,
+            &reported_links,
         );
         if !quiet {
             eprintln!(
@@ -74304,6 +74322,7 @@ mod tests {
             &synced,
             Some(&listed),
             &ftp_client_gui_lib::sync_core::ScanBound::default(),
+            &[],
         );
         let saved = load_bisync_snapshot(&local).expect("the snapshot is saved");
         assert_eq!(
@@ -74323,6 +74342,7 @@ mod tests {
             &synced,
             None,
             &ftp_client_gui_lib::sync_core::ScanBound::default(),
+            &[],
         );
         let saved = load_bisync_snapshot(&local).expect("the snapshot is saved");
         assert!(
@@ -74365,7 +74385,7 @@ mod tests {
             },
         );
         let synced = vec![("a.txt".to_string(), 2, Some(FIXTURE_MTIME.to_string()))];
-        save_bisync_snapshot(&local, &synced, &synced, None, &bound);
+        save_bisync_snapshot(&local, &synced, &synced, None, &bound, &[]);
         let saved = load_bisync_snapshot(&local).expect("the snapshot is saved");
         assert_eq!(
             saved.files.get("a.txt"),
@@ -74376,6 +74396,60 @@ mod tests {
             saved.files.get("link/x.txt"),
             Some(&(1, FIXTURE_MTIME.to_string())),
             "the path under the skipped link keeps its previous entry"
+        );
+    }
+
+    /// The same for a link on the LOCAL side with nothing under it on the
+    /// remote. `ScanBound` takes a local link only when remote entries sit below
+    /// it, so this one never enters the bound and `covers` does not answer for
+    /// it: what names it is `reported_links`. Rewritten without that entry, the
+    /// next run that can see the path reads the file as never synced and copies
+    /// it back instead of propagating the deletion made on the other side.
+    #[test]
+    fn a_bisync_snapshot_keeps_the_entries_under_a_local_link() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        let local = dir.path().to_string_lossy().into_owned();
+        let previous = BisyncSnapshot {
+            synced_at: "2020-01-01T00:00:00Z".to_string(),
+            files: HashMap::from([
+                ("a.txt".to_string(), (1, FIXTURE_MTIME.to_string())),
+                ("link/x.txt".to_string(), (1, FIXTURE_MTIME.to_string())),
+            ]),
+        };
+        std::fs::write(
+            Path::new(&local).join(BISYNC_SNAPSHOT_FILE),
+            serde_json::to_string(&previous).expect("serialize the snapshot"),
+        )
+        .expect("write the snapshot");
+        let local_boundaries = ftp_client_gui_lib::sync_core::ScanBoundaries {
+            links: vec![ftp_client_gui_lib::sync_core::SkippedLink {
+                rel_path: "link".to_string(),
+                link_target: Some("real".to_string()),
+                is_dir: Some(true),
+            }],
+            ..Default::default()
+        };
+        let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
+            &local,
+            std::iter::empty(),
+            std::iter::empty(),
+            &local_boundaries,
+            ftp_client_gui_lib::sync_core::ScanBoundaries::default(),
+        );
+        assert!(
+            !bound.covers("link/x.txt"),
+            "a local link with nothing remote under it does not enter the bound"
+        );
+        let reported = bound.reported_links(&local_boundaries);
+        assert_eq!(reported.len(), 1, "but the run reports it all the same");
+
+        let synced = vec![("a.txt".to_string(), 2, Some(FIXTURE_MTIME.to_string()))];
+        save_bisync_snapshot(&local, &synced, &synced, None, &bound, &reported);
+        let saved = load_bisync_snapshot(&local).expect("the snapshot is saved");
+        assert_eq!(
+            saved.files.get("link/x.txt"),
+            Some(&(1, FIXTURE_MTIME.to_string())),
+            "the path under the local link keeps its previous entry"
         );
     }
 
