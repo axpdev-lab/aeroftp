@@ -187,14 +187,19 @@ pub async fn scan_used_bytes(
         let unreadable_dirs: u64 = 0;
         let cancelled = false;
         for e in fast.entries {
-            if e.is_dir {
-                dirs += 1;
-                continue;
-            }
-            if files >= max_entries as u64 {
+            // Directories count against the cap alongside files, as they do in
+            // `bfs_used_bytes`, so the two ways of walking the same tree cut at
+            // the same place. Counting files alone let a listing made mostly of
+            // directory markers (which the recursive listing keeps since #796)
+            // run past `max_entries` without ever reaching this check.
+            if (files + dirs) >= max_entries as u64 {
                 truncated = true;
                 hit_cap = true;
                 break;
+            }
+            if e.is_dir {
+                dirs += 1;
+                continue;
             }
             used = used.saturating_add(e.size);
             files += 1;
