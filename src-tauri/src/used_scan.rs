@@ -202,6 +202,11 @@ fn relative_component_count(abs_path: &str, root: &str) -> Option<usize> {
 /// path: directories count against the cap with files, and a cancel raised
 /// while the listing ran is read on the way out, keeping the sums.
 ///
+/// Unlike the BFS, this reducer has no symlink guard: its only production
+/// sources are S3 and WebDAV, whose listing parsers always set `is_symlink`
+/// to false. A provider that reports links must preserve the BFS's skip rule
+/// before it can use this path.
+///
 /// `max_depth` is applied only when it is `Some` (the caller asked) and the
 /// listing carries structured paths. The parachute (`None`) does not filter
 /// a list the provider already delivered. A requested depth that is
