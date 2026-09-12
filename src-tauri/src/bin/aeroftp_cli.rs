@@ -5435,6 +5435,13 @@ struct CliSyncResult {
     /// output is unchanged for callers that never pass `--dry-run`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     plan: Vec<CliSyncPlanEntry>,
+    /// Additive: the symbolic links the run left alone on both sides, and the
+    /// paths its scans could not see. Absent when there are none, so a tree
+    /// without either answers exactly as before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    skipped_links: Vec<ftp_client_gui_lib::sync_core::SkippedLink>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    unseen_paths: Vec<ftp_client_gui_lib::sync_core::UnseenPath>,
     /// DAG-P2-07 (block E): engine-level telemetry of the transfer(s) this
     /// result covers (folded DAG metrics + wall clock + process resource
     /// bracket). Present only for real runs on the converged pool-backed engine
@@ -31915,6 +31922,8 @@ async fn cmd_get_recursive(
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
+                skipped_links: Vec::new(),
+                unseen_paths: Vec::new(),
                 stats: engine_stats,
             });
         }
@@ -32152,6 +32161,8 @@ async fn cmd_get_glob(
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
+                skipped_links: Vec::new(),
+                unseen_paths: Vec::new(),
                 stats: engine_stats,
             });
         }
@@ -32823,6 +32834,8 @@ async fn cmd_put_recursive(
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
+                skipped_links: Vec::new(),
+                unseen_paths: Vec::new(),
                 stats: engine_stats,
             });
         }
@@ -45490,6 +45503,7 @@ fn save_bisync_snapshot(
     local_entries: &[(String, u64, Option<String>)],
     remote_entries: &[(String, u64, Option<String>)],
     listed: Option<&std::collections::HashSet<String>>,
+    bound: &ftp_client_gui_lib::sync_core::ScanBound,
 ) {
     let mut files = HashMap::new();
     // Merge both sides - after a successful sync they should be equal
@@ -45498,14 +45512,17 @@ fn save_bisync_snapshot(
             .entry(path.clone())
             .or_insert_with(|| (*size, mtime.as_deref().unwrap_or("").to_string()));
     }
-    // A `--files-from` run saw only the listed paths, so it may rewrite only
-    // those. The previous snapshot's entries for every other path are kept:
-    // dropped, the next full run would read those files as never synced and
-    // copy back a deletion made on one side instead of propagating it.
-    if let Some(listed) = listed {
+    // A `--files-from` run saw only the listed paths, and a bounded run left
+    // every path its scans could not see alone, so either may rewrite only what
+    // it saw. The previous snapshot's entries for the rest are kept: dropped, the
+    // next full run would read those files as never synced and copy back a
+    // deletion made on one side instead of propagating it.
+    if listed.is_some() || !bound.is_empty() {
         if let Some(previous) = load_bisync_snapshot(local_dir) {
             for (path, state) in previous.files {
-                if !listed.contains(&path) {
+                let saw =
+                    listed.map_or(true, |listed| listed.contains(&path)) && !bound.covers(&path);
+                if !saw {
                     files.entry(path).or_insert(state);
                 }
             }
@@ -46087,6 +46104,10 @@ async fn cmd_sync_local_to_local(
 struct SyncScan {
     entries: Vec<(String, u64, Option<String>)>,
     completeness: ftp_client_gui_lib::sync_core::ScanCompleteness,
+    /// What the walk did not see or follow: the symbolic links to directories it
+    /// did not descend into (named whether or not the remote holds anything
+    /// under them), the entries it could not read, and a gap it cannot name.
+    boundaries: ftp_client_gui_lib::sync_core::ScanBoundaries,
 }
 
 /// Which local files `sync` scans: walk depth and `--exclude`. `--files-from`
@@ -46111,6 +46132,14 @@ impl SyncLocalFilter<'_> {
     }
 }
 
+/// A local path as `sync` names it: relative to the scan root, forward slashes.
+fn sync_relative_path(path: &Path, root: &str) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 /// A local file's modification time in the form `sync` compares.
 fn sync_local_mtime(meta: &std::fs::Metadata) -> Option<String> {
     meta.modified().ok().map(|t| {
@@ -46128,27 +46157,93 @@ fn scan_sync_local(local: &str, filter: &SyncLocalFilter) -> SyncScan {
         .follow_links(false)
         .max_depth(filter.max_depth);
     for entry in walker {
-        if scan.entries.len() >= 500_000 {
+        if scan.entries.len() + scan.boundaries.links.len() + scan.boundaries.unseen.len()
+            >= 500_000
+        {
             eprintln!("Warning: local scan capped at 500,000 entries");
             scan.completeness.truncated = true;
+            // What the walk did not reach past the cap has no name to bound a run
+            // around, so the run is refused rather than planned in part.
+            scan.boundaries.unbounded.get_or_insert("entry_cap");
             break;
         }
         let entry = match entry {
             Ok(e) => e,
-            Err(_) => {
+            Err(error) => {
+                // A directory the walk could not read hides the files under it:
+                // counted, and named so a run can leave that path alone on both
+                // sides. A root that does not exist is the empty tree a download
+                // into a new directory scans, and is marked missing instead; any
+                // other root failure, or an error that names no path, leaves the
+                // whole tree unseen, which refuses the run.
                 scan.completeness.list_errors += 1;
+                let at_root = error.depth() == 0;
+                let missing = error.io_error().is_some_and(|io| {
+                    matches!(
+                        io.kind(),
+                        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                    )
+                });
+                if at_root && missing {
+                    scan.boundaries.root_missing = true;
+                } else if let Some(path) = error.path().filter(|_| !at_root) {
+                    scan.boundaries
+                        .unseen
+                        .push(ftp_client_gui_lib::sync_core::UnseenPath {
+                            rel_path: sync_relative_path(path, local),
+                            reason: "unreadable",
+                            // The walk failed either opening a directory or
+                            // reading an entry, and nothing here tells which.
+                            is_dir: None,
+                        });
+                } else {
+                    scan.boundaries.unbounded.get_or_insert("unreadable");
+                }
                 continue;
             }
         };
+        if entry.path_is_symlink() && entry.depth() > 0 {
+            // Not followed: what sits behind the link is not part of this side's
+            // tree. A link to a directory is named, so a run can leave its path
+            // alone on both sides; a link to a file is passed over, as before.
+            let relative = sync_relative_path(entry.path(), local);
+            match std::fs::metadata(entry.path()) {
+                Ok(target) if target.is_dir() => {
+                    scan.boundaries
+                        .links
+                        .push(ftp_client_gui_lib::sync_core::SkippedLink {
+                            rel_path: relative,
+                            link_target: std::fs::read_link(entry.path())
+                                .ok()
+                                .map(|target| target.to_string_lossy().into_owned()),
+                            // This arm matched on the target being a directory,
+                            // so the type is certain here.
+                            is_dir: Some(true),
+                        });
+                }
+                Ok(_) => {}
+                // A dangling link points at nothing to load.
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(_) => {
+                    // Listed and not resolved: what it points at is unknown.
+                    scan.completeness.list_errors += 1;
+                    scan.boundaries
+                        .unseen
+                        .push(ftp_client_gui_lib::sync_core::UnseenPath {
+                            rel_path: relative,
+                            reason: "unreadable",
+                            // A link whose target did not resolve: nobody read
+                            // what it stands for, so the type is unknown.
+                            is_dir: None,
+                        });
+                }
+            }
+            continue;
+        }
         if !entry.file_type().is_file() {
             continue;
         }
-        let relative = entry
-            .path()
-            .strip_prefix(local)
-            .unwrap_or(entry.path())
-            .to_string_lossy()
-            .replace('\\', "/");
+        let relative = sync_relative_path(entry.path(), local);
         if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
             continue;
         }
@@ -46164,6 +46259,17 @@ fn scan_sync_local(local: &str, filter: &SyncLocalFilter) -> SyncScan {
             Ok(meta) => Some(meta),
             Err(_) => {
                 scan.completeness.list_errors += 1;
+                // Its size and mtime were never read, so nothing may be copied
+                // over it on the strength of a size it never had.
+                scan.boundaries
+                    .unseen
+                    .push(ftp_client_gui_lib::sync_core::UnseenPath {
+                        rel_path: relative.clone(),
+                        reason: "unreadable",
+                        // Reached past the guard that skips everything which is
+                        // not a file: the type is known, the metadata is not.
+                        is_dir: Some(false),
+                    });
                 None
             }
         };
@@ -46393,6 +46499,9 @@ async fn cmd_sync(
     // scan surfaces in the exit code / JSON status instead of reporting success.
     let mut remote_scan_errors: usize = 0;
     let mut remote_scan_truncated = false;
+    // What the remote walk did not see or follow; the local side travels in its
+    // own scan.
+    let mut remote_boundaries = ftp_client_gui_lib::sync_core::ScanBoundaries::default();
 
     let mut reconcile_plan: Option<ReconcileSyncPlan> = None;
     let (mut local_scan, mut remote_entries): (SyncScan, Vec<(String, u64, Option<String>)>) =
@@ -46407,6 +46516,7 @@ async fn cmd_sync(
                     let local_scan = SyncScan {
                         entries: plan.local_entries.clone(),
                         completeness: Default::default(),
+                        boundaries: Default::default(),
                     };
                     let remote_entries = plan.remote_entries.clone();
                     reconcile_plan = Some(plan);
@@ -46573,7 +46683,7 @@ async fn cmd_sync(
                         disable_recursive_fastpath: true,
                         ..Default::default()
                     };
-                    let (remotes, health, _remote_boundaries, returned) =
+                    let (remotes, health, scanned_boundaries, returned) =
                         scan_remote_tree_with_progress(
                             provider,
                             remote,
@@ -46588,6 +46698,7 @@ async fn cmd_sync(
                     }
                     remote_scan_errors += health.errors;
                     remote_scan_truncated |= health.truncated;
+                    remote_boundaries = scanned_boundaries;
                     // The bisync snapshot is skipped at the root only, as the walk
                     // this replaces did: a same-named file deeper in the tree is
                     // the user's.
@@ -46619,6 +46730,57 @@ async fn cmd_sync(
             .entries
             .retain(|(path, _, _)| listed.contains(path));
         remote_entries.retain(|(path, _, _)| listed.contains(path));
+    }
+
+    // What the scans did not see stays out of the run on both sides: every
+    // skipped link and unseen path, with everything under it, so no copy writes
+    // through a link and no delete pass reads an unlisted subtree as gone. A scan
+    // that missed a part of the tree it cannot name leaves nothing to bound the
+    // run around, so the run is refused instead of planned in part.
+    let mut local_boundaries = std::mem::take(&mut local_scan.boundaries);
+    // A root that does not exist is an empty tree on the side a run writes to,
+    // and a missing source on the side it reads from: read as empty there, it
+    // would turn every file on the other side into an orphan.
+    if matches!(direction, "upload" | "both") && local_boundaries.root_missing {
+        local_boundaries
+            .unbounded
+            .get_or_insert("source_root_missing");
+    }
+    if matches!(direction, "download" | "both") && remote_boundaries.root_missing {
+        remote_boundaries
+            .unbounded
+            .get_or_insert("source_root_missing");
+    }
+    let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
+        local,
+        local_scan.entries.iter().map(|(path, _, _)| path.as_str()),
+        remote_entries.iter().map(|(path, _, _)| path.as_str()),
+        &local_boundaries,
+        remote_boundaries,
+    );
+    if let Some(reason) = bound.refusal() {
+        print_error(
+            format,
+            &format!("sync refused, nothing was planned: {}", reason),
+            4,
+        );
+        let _ = provider.disconnect().await;
+        return 4.into();
+    }
+    let reported_links = bound.reported_links(&local_boundaries);
+    let unseen_paths = bound.unseen().to_vec();
+    if !bound.is_empty() {
+        local_scan
+            .entries
+            .retain(|(path, _, _)| !bound.covers(path));
+        remote_entries.retain(|(path, _, _)| !bound.covers(path));
+    }
+    if !quiet && !(reported_links.is_empty() && unseen_paths.is_empty()) {
+        eprintln!(
+            "Note: leaving {} skipped symlink(s) and {} unseen path(s) alone on both sides",
+            reported_links.len(),
+            unseen_paths.len()
+        );
     }
     let local_entries = &local_scan.entries;
 
@@ -47233,6 +47395,8 @@ async fn cmd_sync(
                     errors: vec![],
                     elapsed_secs: start.elapsed().as_secs_f64(),
                     plan,
+                    skipped_links: reported_links.clone(),
+                    unseen_paths: unseen_paths.clone(),
                     // Dry run performs no transfer, so there is no engine job.
                     stats: None,
                 });
@@ -47804,6 +47968,7 @@ async fn cmd_sync(
             local_entries,
             &remote_entries,
             files_from_set.as_ref(),
+            &bound,
         );
         if !quiet {
             eprintln!(
@@ -47880,6 +48045,8 @@ async fn cmd_sync(
                 errors: errors.clone(),
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
+                skipped_links: reported_links.clone(),
+                unseen_paths: unseen_paths.clone(),
                 stats: engine_stats,
             });
         }
@@ -54964,6 +55131,8 @@ async fn cmd_put_glob(
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
                 plan: Vec::new(),
+                skipped_links: Vec::new(),
+                unseen_paths: Vec::new(),
                 stats: engine_stats,
             });
         }
@@ -55034,6 +55203,11 @@ fn should_exclude_watch_path(path: &std::path::Path) -> bool {
 struct WatchLocalSnapshot {
     files: std::collections::HashMap<String, (u64, Option<String>)>,
     completeness: ftp_client_gui_lib::sync_core::ScanCompleteness,
+    /// What the walk that built this snapshot did not see or follow. A link made
+    /// between cycles is not in it; the bound still checks on disk the ancestors
+    /// of every path only the remote holds, which is where a local link would be
+    /// misread.
+    boundaries: ftp_client_gui_lib::sync_core::ScanBoundaries,
 }
 
 impl WatchLocalSnapshot {
@@ -55045,6 +55219,7 @@ impl WatchLocalSnapshot {
                 .map(|(path, size, mtime)| (path.clone(), (*size, mtime.clone())))
                 .collect(),
             completeness: scan.completeness,
+            boundaries: scan.boundaries.clone(),
         }
     }
 }
@@ -55086,6 +55261,7 @@ fn incremental_local_scan(
     let mut result: std::collections::HashMap<String, (u64, Option<String>)> =
         previous.files.clone();
     let mut completeness = previous.completeness;
+    let mut boundaries = previous.boundaries.clone();
 
     for changed in changed_paths {
         // Compute relative path
@@ -55125,8 +55301,18 @@ fn incremental_local_scan(
             Err(_) => {
                 // Unreadable is not absent: keep what the snapshot knew and
                 // count the error, so this cycle plans no orphan deletes
-                // (TX-01) and the next one rescans.
+                // (TX-01) and the next one rescans. Its path is named too, so
+                // nothing is copied over what this cycle could not read.
                 completeness.list_errors += 1;
+                boundaries
+                    .unseen
+                    .push(ftp_client_gui_lib::sync_core::UnseenPath {
+                        rel_path: relative,
+                        reason: "unreadable",
+                        // `metadata` is what failed, and it is what would have
+                        // said the type: the arm above is the one that knows.
+                        is_dir: None,
+                    });
             }
         }
     }
@@ -55137,6 +55323,7 @@ fn incremental_local_scan(
             .map(|(path, (size, mtime))| (path, size, mtime))
             .collect(),
         completeness,
+        boundaries,
     }
 }
 
@@ -57691,14 +57878,14 @@ async fn cmd_reconcile(
         ..Default::default()
     };
     let local_spinner = maybe_create_scan_spinner(format, cli, "Scanning local...");
-    let (locals, local_health) =
+    let (mut locals, local_health) =
         scan_local_tree_with_progress(local_path, &scan_opts, &local_spinner);
     if let Some(pb) = local_spinner {
         pb.finish_and_clear();
     }
 
     let remote_spinner = maybe_create_scan_spinner(format, cli, "Scanning remote...");
-    let (mut remotes, remote_health, _remote_boundaries, returned) =
+    let (mut remotes, remote_health, remote_boundaries, returned) =
         scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &remote_spinner, None)
             .await;
     provider = returned;
@@ -57736,6 +57923,29 @@ async fn cmd_reconcile(
             local_health.list_errors,
             if local_health.truncated { ", truncated" } else { "" }
         );
+    }
+    // What the scans did not see stays out of the comparison on both sides, so a
+    // plan fed to `sync --from-reconcile` cannot copy through a link or read an
+    // unlisted subtree as missing. A scan that missed a part of the tree it
+    // cannot name leaves nothing to bound around, so the comparison is refused.
+    // The local walk here reports no boundaries of its own; the bound still
+    // checks on disk the ancestors of every path only the remote holds, which is
+    // where a local link would be misread.
+    let bound = ftp_client_gui_lib::sync_core::ScanBound::apply(
+        local_path,
+        &mut locals,
+        &mut remotes,
+        &ftp_client_gui_lib::sync_core::ScanBoundaries::default(),
+        remote_boundaries,
+    );
+    if let Some(reason) = bound.refusal() {
+        print_error(
+            format,
+            &format!("reconcile refused, nothing was compared: {}", reason),
+            4,
+        );
+        let _ = provider.disconnect().await;
+        return 4;
     }
     let diff = compare_trees(&locals, &remotes, one_way);
 
@@ -73898,6 +74108,7 @@ mod tests {
                 ("c.txt".to_string(), 1, Some(FIXTURE_MTIME.to_string())),
             ],
             completeness: Default::default(),
+            boundaries: Default::default(),
         };
         let stats = plan_sync_with_delete(
             MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1)]),
@@ -74037,7 +74248,13 @@ mod tests {
         )];
         let listed = std::collections::HashSet::from(["a.txt".to_string()]);
 
-        save_bisync_snapshot(&local, &synced, &synced, Some(&listed));
+        save_bisync_snapshot(
+            &local,
+            &synced,
+            &synced,
+            Some(&listed),
+            &ftp_client_gui_lib::sync_core::ScanBound::default(),
+        );
         let saved = load_bisync_snapshot(&local).expect("the snapshot is saved");
         assert_eq!(
             saved.files.get("a.txt"),
@@ -74050,11 +74267,98 @@ mod tests {
             "the unlisted path keeps its previous entry"
         );
 
-        save_bisync_snapshot(&local, &synced, &synced, None);
+        save_bisync_snapshot(
+            &local,
+            &synced,
+            &synced,
+            None,
+            &ftp_client_gui_lib::sync_core::ScanBound::default(),
+        );
         let saved = load_bisync_snapshot(&local).expect("the snapshot is saved");
         assert!(
             !saved.files.contains_key("b.txt"),
             "a run without a list replaces the snapshot whole"
+        );
+    }
+
+    /// A run that left a path alone may not rewrite the snapshot without it:
+    /// dropped, the next full run would read that file as never synced and copy
+    /// a deletion back over it.
+    #[test]
+    fn a_bisync_snapshot_keeps_the_entries_a_run_left_alone() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        let local = dir.path().to_string_lossy().into_owned();
+        let previous = BisyncSnapshot {
+            synced_at: "2020-01-01T00:00:00Z".to_string(),
+            files: HashMap::from([
+                ("a.txt".to_string(), (1, FIXTURE_MTIME.to_string())),
+                ("link/x.txt".to_string(), (1, FIXTURE_MTIME.to_string())),
+            ]),
+        };
+        std::fs::write(
+            Path::new(&local).join(BISYNC_SNAPSHOT_FILE),
+            serde_json::to_string(&previous).expect("serialize the snapshot"),
+        )
+        .expect("write the snapshot");
+        let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
+            &local,
+            std::iter::empty(),
+            std::iter::empty(),
+            &ftp_client_gui_lib::sync_core::ScanBoundaries::default(),
+            ftp_client_gui_lib::sync_core::ScanBoundaries {
+                links: vec![ftp_client_gui_lib::sync_core::SkippedLink {
+                    rel_path: "link".to_string(),
+                    link_target: None,
+                    is_dir: Some(true),
+                }],
+                ..Default::default()
+            },
+        );
+        let synced = vec![("a.txt".to_string(), 2, Some(FIXTURE_MTIME.to_string()))];
+        save_bisync_snapshot(&local, &synced, &synced, None, &bound);
+        let saved = load_bisync_snapshot(&local).expect("the snapshot is saved");
+        assert_eq!(
+            saved.files.get("a.txt"),
+            Some(&(2, FIXTURE_MTIME.to_string())),
+            "the path the run saw is rewritten"
+        );
+        assert_eq!(
+            saved.files.get("link/x.txt"),
+            Some(&(1, FIXTURE_MTIME.to_string())),
+            "the path under the skipped link keeps its previous entry"
+        );
+    }
+
+    /// A watch cycle refreshes the paths its watcher named and keeps the rest of
+    /// the snapshot, boundaries included: the links the last full walk did not
+    /// follow still bound the run of that cycle.
+    #[test]
+    fn an_incremental_watch_cycle_keeps_the_boundaries_of_its_snapshot() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        std::fs::write(dir.path().join("a.txt"), b"a").expect("write a.txt");
+        let scan = SyncScan {
+            entries: vec![("a.txt".to_string(), 1, Some(FIXTURE_MTIME.to_string()))],
+            completeness: Default::default(),
+            boundaries: ftp_client_gui_lib::sync_core::ScanBoundaries {
+                links: vec![ftp_client_gui_lib::sync_core::SkippedLink {
+                    rel_path: "link".to_string(),
+                    link_target: Some("real".to_string()),
+                    is_dir: Some(true),
+                }],
+                ..Default::default()
+            },
+        };
+        let snapshot = WatchLocalSnapshot::from_scan(&scan);
+        let exclude: Vec<globset::GlobMatcher> = Vec::new();
+        let filter = SyncLocalFilter {
+            max_depth: 100,
+            exclude: &exclude,
+        };
+        let cycle =
+            incremental_local_scan(dir.path(), &[dir.path().join("a.txt")], &snapshot, &filter);
+        assert_eq!(
+            cycle.boundaries.links, scan.boundaries.links,
+            "the cycle keeps the links its snapshot knows"
         );
     }
 
@@ -75038,6 +75342,292 @@ mod tests {
 
         assert_eq!(report.status, "attention");
         assert_eq!(report.summary["remote_scan_incomplete"], true);
+    }
+
+    /// `a.txt` at the root, present on both sides, and `link`, a directory
+    /// listed at the root. Under the link's own path the tree holds what SFTP
+    /// answers for it: the entries of its target.
+    fn mem_tree_with_a_link_dir(link_is_symlink: bool) -> MemTreeProvider {
+        let mut a = RemoteEntry::file("a.txt".to_string(), "/root/a.txt".to_string(), 1);
+        a.modified = Some(FIXTURE_MTIME.to_string());
+        let mut link = RemoteEntry::directory("link".to_string(), "/root/link".to_string());
+        if link_is_symlink {
+            link.is_symlink = true;
+            link.link_target = Some("real".to_string());
+        }
+        let mut x = RemoteEntry::file("x.txt".to_string(), "/root/link/x.txt".to_string(), 1);
+        x.modified = Some(FIXTURE_MTIME.to_string());
+        MemTreeProvider {
+            dirs: HashMap::from([
+                ("/root".to_string(), vec![a, link]),
+                ("/root/link".to_string(), vec![x]),
+            ]),
+            delete_attempts: Arc::default(),
+        }
+    }
+
+    /// `a.txt` and a real directory `link` holding `x.txt` in the local tree:
+    /// what an earlier walk that descended into the remote link left on disk.
+    fn fixture_with_a_real_link_dir() -> FilesFromFixture {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+        std::fs::create_dir(Path::new(&fixture.local()).join("link")).expect("create link/");
+        fixture.local_file("link/x.txt", 1);
+        fixture
+    }
+
+    /// The remote walk does not descend into a symlinked directory, so the
+    /// link's subtree is absent from the remote side. `sync --direction
+    /// download --delete` must not read the local files at that path as
+    /// deleted on the remote: they are still there, behind the link.
+    #[test]
+    fn sync_download_delete_plans_no_local_delete_under_a_remote_symlinked_dir() {
+        let fixture = fixture_with_a_real_link_dir();
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = plan_sync_with_delete(
+            mem_tree_with_a_link_dir(true),
+            &fixture.local(),
+            "download",
+            &cli,
+            None,
+            None,
+        );
+        assert_eq!(stats.exit_code, 0);
+        assert_eq!(
+            stats.deleted, 0,
+            "link/x.txt sits under the skipped link: no local delete"
+        );
+    }
+
+    /// Bidirectional with a snapshot that knows `link/x.txt`: absent from the
+    /// remote scan only because the link was skipped, it must not read as
+    /// deleted remotely (a local delete) nor as new locally (an upload
+    /// written through the link into its target).
+    #[test]
+    fn sync_both_delete_with_a_snapshot_plans_nothing_under_a_remote_symlinked_dir() {
+        let fixture = fixture_with_a_real_link_dir();
+        let snapshot = BisyncSnapshot {
+            synced_at: "2020-01-01T00:00:00Z".to_string(),
+            files: HashMap::from([
+                ("a.txt".to_string(), (1, FIXTURE_MTIME.to_string())),
+                ("link/x.txt".to_string(), (1, FIXTURE_MTIME.to_string())),
+            ]),
+        };
+        std::fs::write(
+            Path::new(&fixture.local()).join(BISYNC_SNAPSHOT_FILE),
+            serde_json::to_string(&snapshot).expect("serialize the snapshot"),
+        )
+        .expect("write the snapshot");
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = plan_sync_with_delete(
+            mem_tree_with_a_link_dir(true),
+            &fixture.local(),
+            "both",
+            &cli,
+            None,
+            None,
+        );
+        assert_eq!(stats.exit_code, 0);
+        assert_eq!(
+            stats.deleted, 0,
+            "link/x.txt sits under the skipped link: no delete"
+        );
+        assert_eq!(
+            stats.uploaded, 0,
+            "link/x.txt sits under the skipped link: no upload through it"
+        );
+    }
+
+    /// The mirror case on the local side: the local walk does not follow a
+    /// symlinked directory, so `sync --direction upload --delete` must not
+    /// read the remote files at the link's path as deleted locally.
+    #[cfg(unix)]
+    #[test]
+    fn sync_upload_delete_plans_no_remote_delete_under_a_local_symlinked_dir() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+        std::fs::create_dir(Path::new(&fixture.local()).join("real")).expect("create real/");
+        fixture.local_file("real/x.txt", 1);
+        std::os::unix::fs::symlink("real", Path::new(&fixture.local()).join("link"))
+            .expect("link -> real");
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = plan_sync_with_delete(
+            mem_tree_with_a_link_dir(false),
+            &fixture.local(),
+            "upload",
+            &cli,
+            None,
+            None,
+        );
+        assert_eq!(stats.exit_code, 0);
+        assert_eq!(
+            stats.deleted, 0,
+            "link/x.txt sits under the skipped local link: no remote delete"
+        );
+    }
+
+    /// A remote directory that fails to list, with a local tree holding files
+    /// under the same path. What the remote directory holds is unknown (it could
+    /// be a link to elsewhere), so the upload must not plan anything under it:
+    /// the scan's completeness only guarded deletes, and the transfer plan ran on
+    /// the unlisted tree.
+    #[test]
+    fn sync_upload_plans_nothing_under_a_remote_directory_that_did_not_list() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+        std::fs::create_dir_all(Path::new(&fixture.local()).join("d1/link"))
+            .expect("create d1/link/");
+        fixture.local_file("d1/link/x.txt", 1);
+        let mut a = RemoteEntry::file("a.txt".to_string(), "/root/a.txt".to_string(), 1);
+        a.modified = Some(FIXTURE_MTIME.to_string());
+        let remote = MemTreeProvider {
+            dirs: HashMap::from([(
+                "/root".to_string(),
+                vec![
+                    a,
+                    RemoteEntry::directory("d1".to_string(), "/root/d1".to_string()),
+                ],
+            )]),
+            delete_attempts: Arc::default(),
+        };
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = plan_sync_with_delete(remote, &fixture.local(), "upload", &cli, None, None);
+        assert_eq!(
+            stats.uploaded, 0,
+            "nothing under the unlisted remote directory may be planned"
+        );
+    }
+
+    /// A remote root that does not exist is an empty tree only for a run that
+    /// writes to it. `--direction download --delete` reads from it, and an empty
+    /// tree there turns every local file into an orphan: the run must be refused
+    /// instead of planning the local folder away.
+    #[test]
+    fn sync_download_delete_refuses_a_remote_root_that_does_not_exist() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = plan_sync_with_delete(
+            MemTreeProvider {
+                dirs: HashMap::new(),
+                delete_attempts: Arc::default(),
+            },
+            &fixture.local(),
+            "download",
+            &cli,
+            None,
+            None,
+        );
+        assert_eq!(
+            stats.deleted, 0,
+            "a source root that does not exist plans no delete"
+        );
+        assert_eq!(stats.exit_code, 4, "the refusal shows in the exit code");
+        assert!(
+            Path::new(&fixture.local()).join("a.txt").exists(),
+            "the local file stays"
+        );
+    }
+
+    /// The other side of that refusal: the same missing remote root is the
+    /// destination of an upload, which is the empty tree a sync into a directory
+    /// it has yet to create scans, so the copies are still planned.
+    #[test]
+    fn sync_upload_into_a_remote_root_that_does_not_exist_plans_its_copies() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = plan_sync_with_delete(
+            MemTreeProvider {
+                dirs: HashMap::new(),
+                delete_attempts: Arc::default(),
+            },
+            &fixture.local(),
+            "upload",
+            &cli,
+            None,
+            None,
+        );
+        assert_eq!(
+            stats.uploaded, 1,
+            "a destination root that does not exist is an empty tree"
+        );
+    }
+
+    /// The real `cmd_sync` as a dry-run upload whose scans start cancelled.
+    fn plan_sync_with_a_cancelled_scan(
+        remote: MemTreeProvider,
+        local: &str,
+        cli: &Cli,
+    ) -> SyncCycleStats {
+        run_against_remote(remote, move || {
+            cmd_sync(
+                "memory://",
+                local,
+                "/root",
+                "upload",
+                true,  // dry_run
+                false, // delete
+                &[],
+                None,
+                0,
+                false,
+                None,
+                None,
+                "",
+                false,
+                None,
+                None,
+                None,
+                "newer",
+                false,
+                false,
+                cli,
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(true)),
+                None,
+                false,
+            )
+        })
+    }
+
+    /// A cancelled scan stopped at no particular directory, so what it missed
+    /// has no name to bound a plan around. The run must plan nothing rather
+    /// than upload every local file over a remote it never finished listing.
+    #[test]
+    fn sync_plans_nothing_when_its_remote_scan_was_cancelled() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+        fixture.local_file("b.txt", 1);
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = plan_sync_with_a_cancelled_scan(
+            MemTreeProvider::root_files(&[("a.txt", 1)]),
+            &fixture.local(),
+            &cli,
+        );
+        assert_eq!(stats.uploaded, 0, "a cancelled scan plans nothing");
+        assert_eq!(stats.exit_code, 4);
     }
 
     struct CliEditFakeProvider {
