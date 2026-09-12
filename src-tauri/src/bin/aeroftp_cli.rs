@@ -76231,6 +76231,41 @@ mod tests {
         assert!(scan.is_complete(), "nothing was cut here: {scan:?}");
     }
 
+    /// An honest walk is worth nothing if the report ignores what it says, so
+    /// this drives the whole command and asserts the verdict, not the walk.
+    ///
+    /// It reaches truncation through the depth limit rather than the entry cap,
+    /// because 100 nested directories can be built and 500_000 entries cannot.
+    /// That makes it a guard rather than a red-then-green test: it passes
+    /// before the cap fix as well as after it. What it pins is the step the cap
+    /// fix would otherwise leave unchecked, a scan that reports `truncated` and
+    /// a report that still answers `ok`.
+    #[test]
+    fn a_truncated_remote_scan_reaches_the_doctor_verdict() {
+        let fixture = FilesFromFixture::new();
+        let deep: String = (0..=MAX_SCAN_DEPTH)
+            .map(|i| format!("d{i}"))
+            .collect::<Vec<_>>()
+            .join("/");
+        let deep_file = format!("{deep}/f.txt");
+
+        let report = doctor_report_against(
+            MemTreeProvider::tree(&[(deep_file.as_str(), 1)]),
+            &fixture.local(),
+        );
+
+        assert_eq!(
+            report.summary["remote_scan_truncated"], true,
+            "the walk stopped at the depth limit: {}",
+            report.summary
+        );
+        assert_eq!(
+            report.status, "attention",
+            "a report over a tree the walk cut short is not ok: {}",
+            report.summary
+        );
+    }
+
     /// `sync-doctor` previews the run `sync` would make. A local directory it
     /// cannot read hides files the run will not see either, so the report
     /// must not read `ok`: it is `attention`, and the summary names the
