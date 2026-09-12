@@ -46176,6 +46176,91 @@ struct SyncScan {
     boundaries: ftp_client_gui_lib::sync_core::ScanBoundaries,
 }
 
+/// The same scope note for sync actions and reconcile comparisons.
+fn print_scan_bound_summary(skipped_links: usize, unseen_paths: usize, quiet: bool) {
+    if !quiet && (skipped_links > 0 || unseen_paths > 0) {
+        eprintln!(
+            "Note: leaving {} skipped symlink(s) and {} unseen path(s) alone on both sides",
+            skipped_links, unseen_paths
+        );
+    }
+}
+
+/// Adapt the S3 recursive listing to the same scan contract as the BFS.
+/// The cap is an argument so a small listing can exercise the cut in tests.
+fn scan_sync_s3_listing(
+    listing: (Vec<RemoteEntry>, bool),
+    remote: &str,
+    max_depth: Option<usize>,
+    max_entries: usize,
+    exclude_matchers: &[globset::GlobMatcher],
+    files_from: Option<&std::collections::HashSet<String>>,
+) -> SyncScan {
+    let (entries, listing_truncated) = listing;
+    let mut scan = SyncScan::default();
+    scan.completeness.truncated = listing_truncated;
+    if listing_truncated {
+        // Unlisted keys have no path to bound around, just as on the BFS.
+        scan.boundaries.unbounded = Some("entry_cap");
+    }
+    let mut stopped_at = std::collections::HashSet::new();
+    for e in entries {
+        if !e.is_dir && scan.entries.len() >= max_entries {
+            scan.completeness.truncated = true;
+            scan.boundaries.unbounded.get_or_insert("entry_cap");
+            break;
+        }
+        let relative = e
+            .path
+            .strip_prefix(remote)
+            .unwrap_or(&e.path)
+            .trim_start_matches('/')
+            .to_string();
+        if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+            continue;
+        }
+        if let Some(max_d) = max_depth {
+            let components = relative.split('/').count();
+            if components > max_d || (e.is_dir && components == max_d) {
+                // A flat key names the directory at which a BFS would stop.
+                // Directory markers and descendants must name it only once.
+                let stop = relative
+                    .split('/')
+                    .take(max_d)
+                    .collect::<Vec<_>>()
+                    .join("/");
+                scan.completeness.truncated = true;
+                if stop.is_empty() {
+                    scan.boundaries.unbounded.get_or_insert("depth_limit");
+                } else if stopped_at.insert(stop.clone()) {
+                    scan.boundaries
+                        .unseen
+                        .push(ftp_client_gui_lib::sync_core::UnseenPath {
+                            rel_path: stop,
+                            reason: "depth_limit",
+                            is_dir: Some(true),
+                        });
+                }
+                continue;
+            }
+        }
+        if e.is_dir {
+            continue;
+        }
+        if exclude_matchers
+            .iter()
+            .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+        {
+            continue;
+        }
+        if files_from.is_some_and(|set| !set.contains(relative.as_str())) {
+            continue;
+        }
+        scan.entries.push((relative, e.size, e.modified));
+    }
+    scan
+}
+
 /// Which local files `sync` scans: walk depth and `--exclude`. `--files-from`
 /// is not part of it: `cmd_sync` bounds every entry that reaches the planner
 /// by the list, whatever produced it.
@@ -46666,57 +46751,20 @@ async fn cmd_sync(
                         }
                         match s3.list_recursive(remote).await {
                             Ok((entries, listing_truncated)) => {
-                                if listing_truncated {
-                                    if !quiet {
-                                        eprintln!(
-                                            "Warning: --fast-list stopped at the provider's entry cap; the listing is partial"
-                                        );
-                                    }
-                                    remote_scan_truncated = true;
+                                let scan = scan_sync_s3_listing(
+                                    (entries, listing_truncated),
+                                    remote,
+                                    cli.max_depth.map(|d| d as usize),
+                                    MAX_SCAN_ENTRIES,
+                                    &exclude_matchers,
+                                    files_from_set.as_ref(),
+                                );
+                                if scan.completeness.truncated && !quiet {
+                                    eprintln!("Warning: --fast-list is partial (depth or entry cap reached)");
                                 }
-                                let max_depth = cli.max_depth.map(|d| d as usize);
-                                for e in entries {
-                                    if e.is_dir {
-                                        continue;
-                                    }
-                                    if remote_entries.len() >= MAX_SCAN_ENTRIES {
-                                        if !quiet {
-                                            eprintln!(
-                                                "Warning: --fast-list capped at {} entries",
-                                                MAX_SCAN_ENTRIES
-                                            );
-                                        }
-                                        remote_scan_truncated = true;
-                                        break;
-                                    }
-                                    let relative = e
-                                        .path
-                                        .strip_prefix(remote)
-                                        .unwrap_or(&e.path)
-                                        .trim_start_matches('/')
-                                        .to_string();
-                                    if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                                        continue;
-                                    }
-                                    if let Some(max_d) = max_depth {
-                                        let depth = relative.matches('/').count();
-                                        if depth >= max_d {
-                                            continue;
-                                        }
-                                    }
-                                    if exclude_matchers
-                                        .iter()
-                                        .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                                    {
-                                        continue;
-                                    }
-                                    if let Some(ref set) = files_from_set {
-                                        if !set.contains(relative.as_str()) {
-                                            continue;
-                                        }
-                                    }
-                                    remote_entries.push((relative, e.size, e.modified));
-                                }
+                                remote_scan_truncated = scan.completeness.truncated;
+                                remote_boundaries = scan.boundaries;
+                                remote_entries = scan.entries;
                                 used_fast_list = true;
                             }
                             Err(e) => {
@@ -46841,13 +46889,7 @@ async fn cmd_sync(
             .retain(|(path, _, _)| !bound.covers(path));
         remote_entries.retain(|(path, _, _)| !bound.covers(path));
     }
-    if !quiet && !(reported_links.is_empty() && unseen_paths.is_empty()) {
-        eprintln!(
-            "Note: leaving {} skipped symlink(s) and {} unseen path(s) alone on both sides",
-            reported_links.len(),
-            unseen_paths.len()
-        );
-    }
+    print_scan_bound_summary(reported_links.len(), unseen_paths.len(), quiet);
     let local_entries = &local_scan.entries;
 
     // Build comparison maps
@@ -58019,6 +58061,9 @@ async fn cmd_reconcile(
         let _ = provider.disconnect().await;
         return 4;
     }
+    let reported_links = bound.reported_links(&local_boundaries);
+    let unseen_paths = bound.unseen();
+    print_scan_bound_summary(reported_links.len(), unseen_paths.len(), cli.quiet);
     let diff = compare_trees(&locals, &remotes, one_way);
 
     let matches_group: Vec<serde_json::Value> = diff
@@ -67362,6 +67407,99 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
 
+    #[test]
+    fn s3_sync_boundaries_refuse_both_kinds_of_entry_cap() {
+        for (provider_cut, cap) in [(true, 10), (false, 1)] {
+            let entries = ["a.txt", "b.txt"]
+                .into_iter()
+                .map(|name| RemoteEntry::file(name.to_string(), format!("/root/{name}"), 1))
+                .collect();
+            let scan = scan_sync_s3_listing((entries, provider_cut), "/root", None, cap, &[], None);
+            assert!(scan.completeness.truncated);
+            assert_eq!(scan.boundaries.unbounded, Some("entry_cap"));
+            let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
+                "/unused",
+                std::iter::empty::<&str>(),
+                std::iter::empty::<&str>(),
+                &Default::default(),
+                scan.boundaries,
+            );
+            assert!(
+                bound.refusal().is_some(),
+                "a partial S3 listing must refuse even without delete"
+            );
+        }
+    }
+
+    #[test]
+    fn s3_sync_boundaries_name_depth_cuts_and_bound_both_sides() {
+        let entries = vec![
+            RemoteEntry::file("visible.txt".into(), "/root/visible.txt".into(), 1),
+            RemoteEntry::directory("deep".into(), "/root/deep".into()),
+            RemoteEntry::file("one.txt".into(), "/root/deep/one.txt".into(), 2),
+            RemoteEntry::file("two.txt".into(), "/root/deep/two.txt".into(), 3),
+        ];
+        let scan = scan_sync_s3_listing((entries, false), "/root", Some(1), 10, &[], None);
+        assert_eq!(scan.entries.len(), 1);
+        assert_eq!(
+            scan.boundaries.unseen.len(),
+            1,
+            "one boundary per stopped directory"
+        );
+        assert_eq!(scan.boundaries.unseen[0].rel_path, "deep");
+        assert_eq!(scan.boundaries.unseen[0].reason, "depth_limit");
+        assert_eq!(scan.boundaries.unseen[0].is_dir, Some(true));
+        let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
+            "/unused",
+            ["visible.txt", "deep/local.txt"],
+            ["visible.txt"],
+            &Default::default(),
+            scan.boundaries,
+        );
+        assert!(bound.refusal().is_none());
+        assert!(bound.covers("deep/local.txt"));
+        assert!(bound.covers("deep/one.txt"));
+        assert!(!bound.covers("visible.txt"));
+    }
+
+    #[test]
+    fn s3_sync_boundaries_report_a_root_depth_cut() {
+        let scan = scan_sync_s3_listing(
+            (
+                vec![RemoteEntry::file("a.txt".into(), "/root/a.txt".into(), 1)],
+                false,
+            ),
+            "/root",
+            Some(0),
+            10,
+            &[],
+            None,
+        );
+        assert!(scan.entries.is_empty());
+        assert_eq!(scan.boundaries.unbounded, Some("depth_limit"));
+    }
+
+    #[test]
+    fn s3_sync_boundaries_leave_a_complete_filtered_listing_complete() {
+        let entries = ["keep.txt", "skip.tmp", BISYNC_SNAPSHOT_FILE]
+            .into_iter()
+            .map(|name| RemoteEntry::file(name.to_string(), format!("/root/{name}"), 1))
+            .collect();
+        let excludes = [globset::Glob::new("*.tmp").unwrap().compile_matcher()];
+        let listed = std::collections::HashSet::from(["keep.txt".to_string()]);
+        let scan = scan_sync_s3_listing(
+            (entries, false),
+            "/root",
+            None,
+            10,
+            &excludes,
+            Some(&listed),
+        );
+        assert_eq!(scan.entries, vec![("keep.txt".to_string(), 1, None)]);
+        assert!(scan.completeness.is_complete());
+        assert_eq!(scan.boundaries, Default::default());
+    }
+
     /// Pin the exit code to the error VARIANT, so a reworded message cannot
     /// move it. The previous version searched `to_string()` for words, which
     /// meant every one of these mappings depended on a sentence nobody had been
@@ -75225,6 +75363,69 @@ mod tests {
         fixture.local_file("locked/keep.txt", 1);
         let locked = UnreadableDir::lock(Path::new(&local).join("locked"));
         (fixture, locked)
+    }
+
+    /// Exercise the command's actual stderr, including the quiet path. A
+    /// helper-only assertion would miss a command that never prints the note.
+    #[cfg(unix)]
+    #[test]
+    fn reconcile_reports_the_boundaries_it_applies() {
+        const CHILD: &str = "AEROFTP_TEST_RECONCILE_BOUNDARY_OUTPUT";
+        if let Ok(mode) = std::env::var(CHILD) {
+            let (fixture, _locked) = local_tree_behind_an_unreadable_directory();
+            let local = fixture.local();
+            std::fs::create_dir(Path::new(&local).join("target")).expect("target directory");
+            fixture.local_file("target/keep.txt", 1);
+            std::os::unix::fs::symlink("target", Path::new(&local).join("alias"))
+                .expect("local link");
+            let remote = MemTreeProvider::tree(&[
+                ("target/keep.txt", 1),
+                ("alias/keep.txt", 1),
+                ("locked/keep.txt", 1),
+            ]);
+            let cli = Cli {
+                quiet: mode == "quiet",
+                ..test_cli()
+            };
+            let code = run_against_remote(remote, || {
+                cmd_reconcile(
+                    "memory://",
+                    &local,
+                    "/root",
+                    false,
+                    false,
+                    &[],
+                    ReconcileFormat::Summary,
+                    &cli,
+                    OutputFormat::Json,
+                )
+            });
+            assert_eq!(code, 4, "the incomplete scan remains partial");
+            return;
+        }
+        for mode in ["normal", "quiet"] {
+            let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+                .args([
+                    "--exact",
+                    "tests::reconcile_reports_the_boundaries_it_applies",
+                    "--nocapture",
+                ])
+                .env(CHILD, mode)
+                .output()
+                .expect("run reconcile fixture");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "fixture failed: {stderr}");
+            let note =
+                "Note: leaving 1 skipped symlink(s) and 1 unseen path(s) alone on both sides";
+            assert_eq!(
+                stderr.contains(note),
+                mode == "normal",
+                "{mode} stderr: {stderr}"
+            );
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(stdout.contains("\"missing_local_count\": 0"), "{stdout}");
+            assert!(stdout.contains("\"missing_remote_count\": 0"), "{stdout}");
+        }
     }
 
     /// `check` must not report `ok` over a local directory it could not read.
