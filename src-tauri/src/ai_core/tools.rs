@@ -2472,4 +2472,116 @@ mod tests {
     // The validator tests above cover the surface+required paths at
     // the unit level; Gate 2 will add integration coverage through
     // actual migrated tools.
+
+    /// The CLI tool names this dispatcher routes on the CLI surface, with the
+    /// fields each one requires, so a call can be made that reaches a handler
+    /// and is refused by it.
+    ///
+    /// Written out by hand ON PURPOSE. A list derived from `TOOL_DEFINITIONS`,
+    /// or from this dispatcher's own match, would lose a name at the same
+    /// moment the code lost it, and would stay green on the one day it
+    /// mattered: the day a tool stops being routed here while the CLI binary no
+    /// longer keeps a legacy arm to answer it. This is where the list lives.
+    const ROUTED_CLI_TOOLS: [(&str, &[&str]); 33] = [
+        ("archive_compress", &["paths", "output_path"]),
+        ("archive_decompress", &["archive_path", "output_dir"]),
+        ("local_batch_rename", &["paths", "mode"]),
+        ("local_copy_files", &["paths", "destination"]),
+        ("local_delete", &["path"]),
+        ("local_diff", &["path_a", "path_b"]),
+        ("local_disk_usage", &["path"]),
+        ("local_edit", &["path", "find", "replace"]),
+        ("local_file_info", &["path"]),
+        ("local_find_duplicates", &["path"]),
+        ("local_grep", &["path", "pattern"]),
+        ("local_head", &["path"]),
+        ("local_list", &["path"]),
+        ("local_mkdir", &["path"]),
+        ("local_move_files", &["paths", "destination"]),
+        ("local_read", &["path"]),
+        ("local_rename", &["from", "to"]),
+        ("local_search", &["path", "pattern"]),
+        ("local_stat_batch", &["paths"]),
+        ("local_tail", &["path"]),
+        ("local_trash", &["paths"]),
+        ("local_tree", &["path"]),
+        ("local_write", &["path", "content"]),
+        // The remote names refuse a NUL path in a validator of their own, one
+        // layer inside the handler, which says they were routed more plainly
+        // than a missing `NotMigrated` ever could: the refusal names the tool
+        // that produced it. `remote_list` and `remote_search` have no path to
+        // refuse and ask this context for a backend, which it does not have.
+        ("remote_delete", &["server", "path"]),
+        ("remote_download", &["server", "remote_path", "local_path"]),
+        ("remote_info", &["server", "path"]),
+        ("remote_list", &["server"]),
+        ("remote_mkdir", &["server", "path"]),
+        ("remote_read", &["server", "path"]),
+        ("remote_rename", &["server", "from", "to"]),
+        ("remote_search", &["server", "pattern"]),
+        ("remote_upload", &["server", "remote_path"]),
+        ("server_exec", &["server", "operation"]),
+    ];
+
+    /// The other four names of the thirty-seven. They are asserted more weakly
+    /// below, and the weaker claim is stated rather than disguised: a call that
+    /// reached their handlers would run a shell command, write the clipboard,
+    /// write to the memory database or list the saved profiles, and a test that
+    /// did any of that would be worse than the dead code it certifies.
+    ///
+    /// `server_list_saved` is here for a reason worth keeping: it declares no
+    /// required field, so there is no argument to make invalid, and a call with
+    /// an empty object runs it. "The arguments are invalid" does not imply "the
+    /// handler refuses", and a tool with no arguments has neither.
+    const ROUTED_CLI_TOOLS_NOT_CALLED: [&str; 4] = [
+        "agent_memory_write",
+        "clipboard_write",
+        "server_list_saved",
+        "shell_execute",
+    ];
+
+    /// Every name above reaches a handler in this dispatcher on the CLI
+    /// surface, so the legacy match in the CLI binary can never see it:
+    /// `execute_cli_tool` falls back ONLY on `Unknown` and `NotMigrated`, and
+    /// returns every other error to its caller.
+    ///
+    /// Each call carries the fields the tool requires, so it gets past the
+    /// validator, which runs BEFORE the routing match: an `InvalidArgs` would
+    /// have proved nothing about routing, only that the name is in the registry
+    /// with this surface. Every value is a string holding a NUL byte, which no
+    /// filesystem can create, open or delete, so the call cannot act even if a
+    /// handler validated late. The refusal is the point: it can only come from
+    /// a handler that was reached.
+    #[tokio::test]
+    async fn every_tool_whose_legacy_arm_is_removed_is_routed_here() {
+        for (name, required) in ROUTED_CLI_TOOLS {
+            let mut args = serde_json::Map::new();
+            for field in required {
+                args.insert((*field).to_string(), json!("\u{0}"));
+            }
+            let outcome = dispatch_tool(&mock_ctx(Surfaces::CLI), name, &Value::Object(args)).await;
+            assert!(
+                !matches!(
+                    outcome,
+                    Err(ToolError::Unknown(_)) | Err(ToolError::NotMigrated(_))
+                ),
+                "{name} must be routed here, or removing its legacy arm makes it unreachable: {outcome:?}"
+            );
+        }
+    }
+
+    /// The weaker half, declared as weaker: for these three the registry entry
+    /// and the surface are checked, and the routing is not, because proving it
+    /// would mean letting them run.
+    #[test]
+    fn the_three_tools_that_cannot_be_called_are_at_least_declared_for_the_cli() {
+        for name in ROUTED_CLI_TOOLS_NOT_CALLED {
+            let def =
+                find_tool(name).unwrap_or_else(|| panic!("{name} is missing from the registry"));
+            assert!(
+                def.surfaces.contains(Surfaces::CLI),
+                "{name} must declare the CLI surface"
+            );
+        }
+    }
 }
