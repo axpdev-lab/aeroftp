@@ -182,10 +182,8 @@ pub async fn scan_used_bytes(
         let mut truncated = fast.truncated;
         let mut hit_cap = fast.truncated;
         // The provider handed us a complete single-shot listing, so there is no
-        // per-directory walk here: nothing can be unreadable and nothing polls
-        // cancellation. Fixed at their empty values rather than tracked.
+        // per-directory walk here and nothing can be unreadable.
         let unreadable_dirs: u64 = 0;
-        let cancelled = false;
         for e in fast.entries {
             // Directories count against the cap alongside files, as they do in
             // `bfs_used_bytes`, so the two ways of walking the same tree cut at
@@ -203,6 +201,18 @@ pub async fn scan_used_bytes(
             }
             used = used.saturating_add(e.size);
             files += 1;
+        }
+        // One call, but not an instant one: a cancel raised while the listing
+        // ran is a cancel this scan has to honour. The BFS polls the flag
+        // between directories; this path has no walk to poll inside, so it
+        // polls on the way out. The figure keeps what was already summed, as
+        // the BFS does when it breaks out of its queue: `df --scan` and `size`
+        // print this number, so a stopped scan has to answer a lower bound and
+        // not a zero. A cancel is not a cap, so `hit_cap` stays as the
+        // provider left it.
+        let cancelled = cancel.load(Ordering::Relaxed);
+        if cancelled {
+            truncated = true;
         }
         on_progress(files, used);
         return Ok(UsedScan {
