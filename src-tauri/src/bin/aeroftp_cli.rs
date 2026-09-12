@@ -1613,7 +1613,14 @@ enum Commands {
         #[arg(long)]
         timestamp: Option<String>,
     },
-    /// Compute hash of remote file(s)
+    /// Compute hash of remote file(s).
+    ///
+    /// Prefers a server-side digest when the backend supplies the requested
+    /// algorithm. If that checksum is missing or fails, md5, sha1, sha256,
+    /// sha512 and blake3 fall back to downloading the file and hashing it
+    /// locally. `--download` skips the server digest and always hashes the
+    /// transferred bytes. quickxor and dropbox are server-only and have no
+    /// local fallback.
     Hashsum {
         /// Hash algorithm (md5/sha1/sha256/sha512/blake3). Defaults to sha256.
         /// Accepts `-a sha256` or `--algorithm sha256`. Omitting the flag
@@ -1627,7 +1634,9 @@ enum Commands {
         #[arg(default_value = "")]
         path: String,
         /// Download the file and hash it locally, even when the backend
-        /// has a server-side digest
+        /// has a server-side digest. Without this flag, a missing or failed
+        /// server checksum still falls back to a local download for md5,
+        /// sha1, sha256, sha512 and blake3.
         #[arg(long)]
         download: bool,
     },
@@ -56007,7 +56016,7 @@ async fn cmd_touch(
 
 #[derive(Debug)]
 enum HashsumDigestError {
-    ServerOnly,
+    ServerOnly { skipped_by_download: bool },
     Provider(ProviderError),
 }
 
@@ -56017,25 +56026,62 @@ impl From<ProviderError> for HashsumDigestError {
     }
 }
 
-fn hash_local_bytes(algorithm: HashAlgorithm, data: &[u8]) -> String {
+fn feed_file(
+    file: &mut std::fs::File,
+    buf: &mut [u8],
+    mut update: impl FnMut(&[u8]),
+) -> Result<(), std::io::Error> {
+    use std::io::Read;
+    loop {
+        let n = file.read(buf)?;
+        if n == 0 {
+            break;
+        }
+        update(&buf[..n]);
+    }
+    Ok(())
+}
+
+/// Stream-hash a file from disk in 1 MB chunks. Unlike `hash_file_streaming`
+/// this covers every locally computable `hashsum` algorithm.
+fn hash_file_streaming_algo(
+    algorithm: HashAlgorithm,
+    path: &Path,
+) -> Result<String, std::io::Error> {
+    let mut file = std::fs::File::open(path)?;
+    let mut buf = vec![0u8; 1024 * 1024];
     match algorithm {
         HashAlgorithm::Md5 => {
             use md5::Digest;
-            format!("{:x}", md5::Md5::digest(data))
+            let mut hasher = md5::Md5::new();
+            feed_file(&mut file, &mut buf, |chunk| hasher.update(chunk))?;
+            Ok(format!("{:x}", hasher.finalize()))
         }
         HashAlgorithm::Sha1 => {
             use sha1::Digest;
-            format!("{:x}", sha1::Sha1::digest(data))
+            let mut hasher = sha1::Sha1::new();
+            feed_file(&mut file, &mut buf, |chunk| hasher.update(chunk))?;
+            Ok(format!("{:x}", hasher.finalize()))
         }
         HashAlgorithm::Sha256 => {
             use sha2::Digest;
-            format!("{:x}", sha2::Sha256::digest(data))
+            let mut hasher = sha2::Sha256::new();
+            feed_file(&mut file, &mut buf, |chunk| hasher.update(chunk))?;
+            Ok(format!("{:x}", hasher.finalize()))
         }
         HashAlgorithm::Sha512 => {
             use sha2::Digest;
-            format!("{:x}", sha2::Sha512::digest(data))
+            let mut hasher = sha2::Sha512::new();
+            feed_file(&mut file, &mut buf, |chunk| hasher.update(chunk))?;
+            Ok(format!("{:x}", hasher.finalize()))
         }
-        HashAlgorithm::Blake3 => blake3::hash(data).to_hex().to_string(),
+        HashAlgorithm::Blake3 => {
+            let mut hasher = blake3::Hasher::new();
+            feed_file(&mut file, &mut buf, |chunk| {
+                hasher.update(chunk);
+            })?;
+            Ok(hasher.finalize().to_hex().to_string())
+        }
         HashAlgorithm::Quickxor | HashAlgorithm::Dropbox => {
             unreachable!("server-only hashes return before download")
         }
@@ -56046,7 +56092,9 @@ fn hash_local_bytes(algorithm: HashAlgorithm, data: &[u8]) -> String {
 ///
 /// Without `download`, a server-side digest for the requested algorithm is
 /// used when the backend supplies one. With `download`, the file is
-/// transferred and hashed locally even if the server has a digest.
+/// transferred through `StorageProvider::download` to a temp file and hashed
+/// in chunks, even if the server has a digest. That path has no in-memory
+/// size cap (`download_to_bytes` is capped at 500 MiB).
 /// `sha512`/`blake3` and backends without the requested digest still fall
 /// through to download-and-digest. Proprietary algorithms (quickxor/dropbox)
 /// have no local fallback.
@@ -56072,11 +56120,46 @@ async fn hashsum_digest(
     }
 
     if algorithm.is_server_only() {
-        return Err(HashsumDigestError::ServerOnly);
+        return Err(HashsumDigestError::ServerOnly {
+            skipped_by_download: download,
+        });
     }
 
-    let data = provider.download_to_bytes(path).await?;
-    Ok((hash_local_bytes(algorithm, &data), data.len() as u64))
+    // Streaming download, not `download_to_bytes`: that path is capped at
+    // 500 MiB and holds the whole file in RAM. `NamedTempFile` removes the
+    // scratch file on drop, including after a transfer or hash error, so a
+    // failed download cannot yield a partial digest.
+    let tmp = NamedTempFile::new().map_err(ProviderError::from)?;
+    let tmp_str = tmp.path().to_str().ok_or_else(|| {
+        ProviderError::IoError(std::io::Error::other("hashsum temp path is not UTF-8"))
+    })?;
+    provider.download(path, tmp_str, None).await?;
+    let size = std::fs::metadata(tmp.path())
+        .map(|m| m.len())
+        .map_err(ProviderError::from)?;
+    let hash = hash_file_streaming_algo(algorithm, tmp.path()).map_err(ProviderError::from)?;
+    Ok((hash, size))
+}
+
+/// Bind clap's Hashsum fields the same way the command dispatcher does, so a
+/// test can take `--download` from the parser into `hashsum_digest`.
+fn hashsum_request_from_cli(cli: &Cli) -> Option<(HashAlgorithm, &str, &str, bool)> {
+    match &cli.command {
+        Commands::Hashsum {
+            algorithm,
+            url,
+            path,
+            download,
+        } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            Some((*algorithm, u, p, *download))
+        }
+        _ => None,
+    }
 }
 
 async fn cmd_hashsum(
@@ -56109,19 +56192,25 @@ async fn cmd_hashsum(
             let _ = provider.disconnect().await;
             0
         }
-        Err(HashsumDigestError::ServerOnly) => {
-            // quickxor/dropbox cannot be computed locally: if the backend
-            // did not expose it above there is no honest fallback. Exit 7
+        Err(HashsumDigestError::ServerOnly {
+            skipped_by_download,
+        }) => {
+            // quickxor/dropbox cannot be computed locally. Exit 7
             // (NotSupported), never a misleading download-and-digest.
-            print_error(
-                format,
-                &format!(
+            let message = if skipped_by_download {
+                format!(
+                    "hashsum failed: {} is server-side only and cannot be computed locally; omit --download to use a backend digest for {}",
+                    hash_algo_key(algorithm),
+                    path
+                )
+            } else {
+                format!(
                     "hashsum failed: {} is server-side only and this backend did not provide it for {}",
                     hash_algo_key(algorithm),
                     path
-                ),
-                7,
-            );
+                )
+            };
+            print_error(format, &message, 7);
             let _ = provider.disconnect().await;
             7
         }
@@ -56148,6 +56237,10 @@ mod hashsum_digest_tests {
         path: String,
         content: Vec<u8>,
         server_hashes: HashMap<String, String>,
+        refuse_in_memory: bool,
+        fail_download: bool,
+        download_calls: usize,
+        download_to_bytes_calls: usize,
     }
 
     impl FakeHashProvider {
@@ -56158,7 +56251,17 @@ mod hashsum_digest_tests {
                 path: PATH.to_string(),
                 content: CONTENT.to_vec(),
                 server_hashes,
+                refuse_in_memory: false,
+                fail_download: false,
+                download_calls: 0,
+                download_to_bytes_calls: 0,
             }
+        }
+
+        fn over_in_memory_cap() -> Self {
+            let mut provider = Self::with_lying_md5();
+            provider.refuse_in_memory = true;
+            provider
         }
     }
 
@@ -56196,13 +56299,30 @@ mod hashsum_digest_tests {
         }
         async fn download(
             &mut self,
-            _remote_path: &str,
-            _local_path: &str,
+            remote_path: &str,
+            local_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
-            Err(ProviderError::NotSupported("download".to_string()))
+            self.download_calls += 1;
+            if self.fail_download {
+                return Err(ProviderError::TransferFailed(
+                    "injected download fail".to_string(),
+                ));
+            }
+            if remote_path != self.path {
+                return Err(ProviderError::NotFound(remote_path.to_string()));
+            }
+            std::fs::write(local_path, &self.content).map_err(ProviderError::IoError)
         }
         async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            self.download_to_bytes_calls += 1;
+            if self.refuse_in_memory {
+                return Err(ProviderError::TransferFailed(format!(
+                    "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
+                    (MAX_DOWNLOAD_TO_BYTES + 1) as f64 / 1_048_576.0,
+                    MAX_DOWNLOAD_TO_BYTES as f64 / 1_048_576.0,
+                )));
+            }
             if remote_path != self.path {
                 return Err(ProviderError::NotFound(remote_path.to_string()));
             }
@@ -56275,7 +56395,7 @@ mod hashsum_digest_tests {
     }
 
     /// The server hash is deliberately not the hash of the payload. With
-    /// `--download` the CLI must stream the file and hash the bytes, not
+    /// `--download` the CLI must download to a temp file and hash that, not
     /// return the lying server digest.
     #[tokio::test]
     async fn hashsum_download_hashes_content_not_the_server_digest() {
@@ -56327,6 +56447,92 @@ mod hashsum_digest_tests {
             .expect("spawn")
             .join()
             .expect("parse thread");
+    }
+
+    /// `download_to_bytes` is capped at 500 MiB. `--download` must still hash
+    /// a file that path refuses, by using the streaming `download` path.
+    #[tokio::test]
+    async fn hashsum_download_hashes_when_in_memory_download_is_capped() {
+        let mut provider = FakeHashProvider::over_in_memory_cap();
+        let (hash, size) = hashsum_digest(&mut provider, PATH, HashAlgorithm::Md5, true)
+            .await
+            .expect("local digest above the in-memory cap");
+        assert_eq!(hash, CONTENT_MD5);
+        assert_eq!(size, CONTENT.len() as u64);
+        assert_eq!(provider.download_to_bytes_calls, 0);
+        assert_eq!(provider.download_calls, 1);
+    }
+
+    /// Parser and helper used to be tested apart. Dispatch goes through
+    /// `hashsum_request_from_cli`, so a `download: _` arm would fail this.
+    #[tokio::test]
+    async fn hashsum_download_flag_reaches_the_download_path() {
+        let download = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let cli = Cli::try_parse_from([
+                    "aeroftp",
+                    "hashsum",
+                    "--download",
+                    "--algorithm",
+                    "md5",
+                    "sftp://example",
+                    PATH,
+                ])
+                .expect("--download must parse");
+                let (_algo, _url, _path, download) =
+                    hashsum_request_from_cli(&cli).expect("hashsum command");
+                download
+            })
+            .expect("spawn")
+            .join()
+            .expect("parse thread");
+        assert!(download, "dispatcher must forward --download");
+        let mut provider = FakeHashProvider::over_in_memory_cap();
+        let (hash, _) = hashsum_digest(&mut provider, PATH, HashAlgorithm::Md5, download)
+            .await
+            .expect("parsed --download must take the download path");
+        assert_eq!(hash, CONTENT_MD5);
+        assert_eq!(provider.download_calls, 1);
+        assert_eq!(provider.download_to_bytes_calls, 0);
+    }
+
+    #[tokio::test]
+    async fn hashsum_download_propagates_transfer_error_without_a_digest() {
+        let mut provider = FakeHashProvider::with_lying_md5();
+        provider.fail_download = true;
+        let err = hashsum_digest(&mut provider, PATH, HashAlgorithm::Md5, true)
+            .await
+            .expect_err("transfer error");
+        match err {
+            HashsumDigestError::Provider(ProviderError::TransferFailed(msg)) => {
+                assert!(msg.contains("injected"), "{msg}");
+            }
+            other => panic!("expected transfer failure, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn hashsum_download_with_server_only_algo_is_distinct_from_missing_digest() {
+        let mut provider = FakeHashProvider::with_lying_md5();
+        let err = hashsum_digest(&mut provider, PATH, HashAlgorithm::Quickxor, true)
+            .await
+            .expect_err("server-only");
+        match err {
+            HashsumDigestError::ServerOnly {
+                skipped_by_download,
+            } => assert!(skipped_by_download),
+            other => panic!("expected ServerOnly skipped by --download, got {other:?}"),
+        }
+        let err = hashsum_digest(&mut provider, PATH, HashAlgorithm::Dropbox, false)
+            .await
+            .expect_err("server-only without flag");
+        match err {
+            HashsumDigestError::ServerOnly {
+                skipped_by_download,
+            } => assert!(!skipped_by_download),
+            other => panic!("expected ServerOnly without --download, got {other:?}"),
+        }
     }
 }
 
@@ -64319,18 +64525,9 @@ async fn main() {
             };
             cmd_touch(u, p, timestamp.as_deref(), &cli, format).await
         }
-        Commands::Hashsum {
-            algorithm,
-            url,
-            path,
-            download,
-        } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
-            cmd_hashsum(*algorithm, u, p, *download, &cli, format).await
+        Commands::Hashsum { .. } => {
+            let (algorithm, u, p, download) = hashsum_request_from_cli(&cli).expect("Hashsum arm");
+            cmd_hashsum(algorithm, u, p, download, &cli, format).await
         }
         Commands::Check {
             url,
