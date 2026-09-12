@@ -182,22 +182,37 @@ pub async fn scan_used_bytes(
         let mut truncated = fast.truncated;
         let mut hit_cap = fast.truncated;
         // The provider handed us a complete single-shot listing, so there is no
-        // per-directory walk here: nothing can be unreadable and nothing polls
-        // cancellation. Fixed at their empty values rather than tracked.
+        // per-directory walk here and nothing can be unreadable.
         let unreadable_dirs: u64 = 0;
-        let cancelled = false;
         for e in fast.entries {
-            if e.is_dir {
-                dirs += 1;
-                continue;
-            }
-            if files >= max_entries as u64 {
+            // Directories count against the cap alongside files, as they do in
+            // `bfs_used_bytes`, so the two ways of walking the same tree cut at
+            // the same place. Counting files alone let a listing made mostly of
+            // directory markers (which the recursive listing keeps since #796)
+            // run past `max_entries` without ever reaching this check.
+            if (files + dirs) >= max_entries as u64 {
                 truncated = true;
                 hit_cap = true;
                 break;
             }
+            if e.is_dir {
+                dirs += 1;
+                continue;
+            }
             used = used.saturating_add(e.size);
             files += 1;
+        }
+        // One call, but not an instant one: a cancel raised while the listing
+        // ran is a cancel this scan has to honour. The BFS polls the flag
+        // between directories; this path has no walk to poll inside, so it
+        // polls on the way out. The figure keeps what was already summed, as
+        // the BFS does when it breaks out of its queue: `df --scan` and `size`
+        // print this number, so a stopped scan has to answer a lower bound and
+        // not a zero. A cancel is not a cap, so `hit_cap` stays as the
+        // provider left it.
+        let cancelled = cancel.load(Ordering::Relaxed);
+        if cancelled {
+            truncated = true;
         }
         on_progress(files, used);
         return Ok(UsedScan {
@@ -305,4 +320,110 @@ async fn bfs_used_bytes(
         cancelled,
         method: "bfs",
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::providers::types::S3Config;
+
+    /// An S3 provider connected to a fake endpoint that answers every request
+    /// with `body`, so `scan_used_bytes` takes the single-shot fast path. The
+    /// handle returned is the server's: abort it at the end of the test.
+    async fn s3_fast_path(
+        body: &'static str,
+    ) -> (Box<dyn StorageProvider>, tokio::task::JoinHandle<()>) {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |_req: axum::extract::Request| async move {
+                axum::http::Response::new(axum::body::Body::from(body))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = S3Provider::new(S3Config {
+            endpoint: Some(format!("http://{addr}")),
+            region: "us-east-1".to_string(),
+            access_key_id: "key".to_string(),
+            secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
+            bucket: "test-bucket".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+            allow_cleartext_endpoint: true,
+        })
+        .expect("build the S3 provider");
+        provider
+            .connect()
+            .await
+            .expect("connect to the fake endpoint");
+        (Box::new(provider), server)
+    }
+
+    /// Directory markers count against the entry cap, as they do in the BFS,
+    /// so both ways of walking a tree cut at the same place. Counting only
+    /// files against the cap let a listing of markers run past `max_entries`.
+    #[tokio::test]
+    async fn fast_path_counts_directories_against_the_entry_cap() {
+        let (mut provider, server) = s3_fast_path(
+            "<ListBucketResult><Contents><Key>d1/</Key><Size>0</Size></Contents><Contents><Key>d2/</Key><Size>0</Size></Contents><Contents><Key>d3/</Key><Size>0</Size></Contents><Contents><Key>f.txt</Key><Size>7</Size></Contents></ListBucketResult>",
+        )
+        .await;
+        let cancel = AtomicBool::new(false);
+
+        let scan = scan_used_bytes(&mut provider, "/", 100, 2, &cancel, |_, _| {})
+            .await
+            .expect("the scan answers");
+        server.abort();
+
+        assert_eq!(
+            scan.file_count + scan.dir_count,
+            2,
+            "the cap counts files and directories together: {scan:?}"
+        );
+        assert!(scan.truncated, "a cut figure is a lower bound: {scan:?}");
+        assert!(scan.hit_cap, "the cap is what cut it: {scan:?}");
+    }
+
+    /// A cancel raised while the single listing runs is honoured on the way out
+    /// of the await, and the figure keeps what was already summed, as the BFS
+    /// does when it breaks out of its queue. A stopped scan is a partial
+    /// figure, not a zero one: `df --scan` and `size` print it.
+    #[tokio::test]
+    async fn fast_path_honours_a_cancel_and_keeps_the_partial_figure() {
+        let (mut provider, server) = s3_fast_path(
+            "<ListBucketResult><Contents><Key>a.txt</Key><Size>3</Size></Contents><Contents><Key>b.txt</Key><Size>4</Size></Contents></ListBucketResult>",
+        )
+        .await;
+        let cancel = AtomicBool::new(true);
+
+        let scan = scan_used_bytes(&mut provider, "/", 100, 500_000, &cancel, |_, _| {})
+            .await
+            .expect("the scan answers");
+        server.abort();
+
+        assert!(scan.cancelled, "the cancel is reported: {scan:?}");
+        assert!(
+            scan.truncated,
+            "a cancelled figure is a lower bound: {scan:?}"
+        );
+        assert!(!scan.hit_cap, "a cancel is not a cap: {scan:?}");
+        assert_eq!(
+            (scan.file_count, scan.used_bytes),
+            (2, 7),
+            "the sums already in hand are reported, not zeros: {scan:?}"
+        );
+    }
 }
