@@ -45521,7 +45521,7 @@ fn save_bisync_snapshot(
         if let Some(previous) = load_bisync_snapshot(local_dir) {
             for (path, state) in previous.files {
                 let saw =
-                    listed.map_or(true, |listed| listed.contains(&path)) && !bound.covers(&path);
+                    listed.is_none_or(|listed| listed.contains(&path)) && !bound.covers(&path);
                 if !saw {
                     files.entry(path).or_insert(state);
                 }
