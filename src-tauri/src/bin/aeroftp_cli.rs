@@ -74751,6 +74751,50 @@ mod tests {
         );
     }
 
+    /// A scan root the walk cannot read leaves the whole tree unseen, and there
+    /// is nothing above a root to bound with, so the run is refused instead of
+    /// planned. Going on there compares against an empty local side, which reads
+    /// every remote file as missing here: in a reconcile that plan says download
+    /// everything on the strength of a reading that never happened.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_scan_root_is_a_gap_with_no_name() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        let root = dir.path().join("tree");
+        std::fs::create_dir(&root).expect("the tree");
+        std::fs::write(root.join("a.txt"), b"a").expect("a.txt");
+        let _locked = UnreadableDir::lock(root.clone());
+        let root = root.to_str().expect("utf-8 root").to_string();
+
+        let (locals, completeness, boundaries) = scan_local_tree_with_progress(
+            &root,
+            &ftp_client_gui_lib::sync_core::ScanOptions::default(),
+            &None,
+        );
+        assert!(
+            locals.is_empty(),
+            "nothing under it could be read: {locals:?}"
+        );
+        assert!(!completeness.is_complete(), "the walk failed at the root");
+        assert_eq!(
+            boundaries.unbounded,
+            Some("unreadable"),
+            "a root nobody could read is a gap with no name: {boundaries:?}"
+        );
+
+        let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
+            &root,
+            std::iter::empty(),
+            std::iter::empty(),
+            &boundaries,
+            ftp_client_gui_lib::sync_core::ScanBoundaries::default(),
+        );
+        assert!(
+            bound.refusal().is_some(),
+            "the run is refused, not compared against an empty local side"
+        );
+    }
+
     /// Write a reconcile plan with one remote-only file, `b.txt`, and the
     /// given summary.
     fn write_reconcile_plan(fixture: &FilesFromFixture, summary: serde_json::Value) -> String {
