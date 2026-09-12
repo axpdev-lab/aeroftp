@@ -2753,7 +2753,9 @@ impl FtpProvider {
                 // after it, both are empty when the check runs and it lands
                 // some 50 ms later. So the segmentation this covers is the one
                 // that queues the reply in time, and the other one is a named
-                // limit with a test of its own in `tests/ftp_resume_and_421.rs`.
+                // limit stated on the helper below. It has no test of its own:
+                // the one that drove it went through the refusal path, and that
+                // path now discards without asking.
                 //
                 // The first property is still only named: a condition that looks
                 // total has been wrong four times, and each time it was total
@@ -2804,24 +2806,28 @@ impl FtpProvider {
 
     /// Give up the session when the control reader is still holding a reply.
     ///
+    /// One caller now, the open that timed out and then found an answer waiting.
+    /// The two refusal helpers used to share this and no longer do: there the
+    /// question "is another reply queued" had an answer that depended on how the
+    /// server split its writes, so they discard without asking. Here a wait has
+    /// already happened before the check runs, which is what makes the question
+    /// worth asking at all.
+    ///
+    /// What it covers is a reply ALREADY queued when the failure is classified.
     /// A server that refuses and then hangs up sends `550` and `421`, and on one
     /// write they arrive together: the refusal answers the command that asked,
-    /// the goodbye stays in the reader, and the next command reads it as its own
-    /// reply. A peek at the socket cannot see it, because both replies are
-    /// already off the wire and inside the `BufReader`; `buffered_reply_bytes`
-    /// is what reports them. Dropping the session costs a re-dial on a path that
-    /// has already failed, and keeps the next question from taking this one's
-    /// answer.
+    /// the goodbye stays in the reader, and the next command would read it as
+    /// its own reply. A peek at the socket cannot see it, because both replies
+    /// are already off the wire and inside the `BufReader`;
+    /// `buffered_reply_bytes` is what reports them.
     ///
-    /// What this covers is a reply ALREADY queued when the refusal is
-    /// classified. A server that writes the goodbye afterwards, in a write of
-    /// its own, has sent nothing at this point: measured, the reader's buffer
-    /// and a peek at the socket are both empty here, and the goodbye lands some
-    /// 50 ms later. So asking the socket as well changes no outcome on this
-    /// path, and it is not asked. Where a wait has already happened the socket
-    /// is worth asking, and `after_timed_out_open` asks it. The uncovered shape
-    /// has a test of its own; what it points at is a check when the NEXT
-    /// command starts, which is a design change and not this one.
+    /// What it does NOT cover is a goodbye written afterwards, in a write of its
+    /// own: nothing has been sent at this point, so this keeps the session and
+    /// the next command reads the goodbye. That limit is real and is stated here
+    /// rather than in a test, because the test that used to drive it went
+    /// through the refusal path, which no longer reaches this function. What it
+    /// points at is a check when the NEXT command starts, which is a design
+    /// change and not this one.
     fn drop_session_if_a_reply_is_queued(&mut self) {
         let queued = self
             .stream
