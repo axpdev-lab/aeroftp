@@ -7157,6 +7157,7 @@ pub async fn provider_compare_directories(
     // Use the wrap flag pinned at scan start. If the badge flipped mid-scan the
     // listing is mixed ciphertext/plaintext and neither branch is safe: fail
     // closed and ask the user to retry.
+    let mut overlay_keys: Option<crate::crypt_overlay_provider::OverlayKeys> = None;
     if let Some(vault_id) = crypt_vault_id.as_deref() {
         let overlay_wrapped_now = state.overlay_wrapped.load(Ordering::SeqCst);
         if overlay_wrapped_now != overlay_wrapped_at_scan_start {
@@ -7194,35 +7195,19 @@ pub async fn provider_compare_directories(
                 crypt_kind.as_deref().unwrap_or("unknown")
             );
         } else {
-            let keys = resolve_compare_overlay_keys(
-                crypt_kind.as_deref(),
-                vault_id,
-                &state,
-                &rclone_state,
-                &aerocrypt_state,
-            )
-            .await?;
-            let raw_len = remote_files.len();
-            remote_files = normalize_remote_files_for_compare(&keys, remote_files);
-            // The boundaries carry remote paths too, and the bound below
-            // matches them against local rows that are plaintext. Rewriting the
-            // rows and leaving the boundaries in ciphertext is what let a
-            // bounded remote subtree keep its local rows in the compare.
-            normalize_remote_boundaries_for_compare(&keys, &mut remote_boundaries)
-                .map_err(|reason| format!("{}: {}", crate::SCAN_INCOMPLETE_MARKER, reason))?;
-            // rclone-crypt has no config MAC: a wrong overlay password derives
-            // valid-shaped keys that decrypt nothing, so a non-empty remote that
-            // normalizes to zero rows is a wrong-key signal. Fail closed rather
-            // than re-flag the whole tree as missing (the #364 symptom).
-            if crypt_kind.as_deref() == Some("rclone-crypt")
-                && raw_len > 0
-                && remote_files.is_empty()
-            {
-                return Err(
-                    "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote."
-                        .to_string(),
-                );
-            }
+            // The keys are resolved here, where `state` is; what they drive
+            // happens in the seam below, so the decode and the bound sit in one
+            // place and in one order that a test can hold them to.
+            overlay_keys = Some(
+                resolve_compare_overlay_keys(
+                    crypt_kind.as_deref(),
+                    vault_id,
+                    &state,
+                    &rclone_state,
+                    &aerocrypt_state,
+                )
+                .await?,
+            );
         }
     }
 
@@ -7237,12 +7222,14 @@ pub async fn provider_compare_directories(
     // local counterparts in the compare. Those rows then read as present on one
     // side only, and a Mirror preset planned exactly the delete the boundary
     // exists to prevent. Both sides speak plaintext by the time we get here.
-    let bound = bound_compare_rows(
+    let bound = normalize_then_bound_compare_rows(
         &local_path,
         &mut local_files,
         &mut remote_files,
         remote_boundaries,
-    );
+        overlay_keys.as_ref(),
+        crypt_kind.as_deref(),
+    )?;
     // The only refusal `for_sync` builds for this caller comes from the remote
     // `unbounded` verdict, which the check above already answered, so this one
     // cannot fire today. It stays as the guard for a future refusal source: if
@@ -13069,6 +13056,58 @@ async fn walk_compare_remote_serially(
 /// bounded path. A preset copies or deletes a directory row as a whole, so a
 /// directory left present on one side only, its bounded contents withdrawn,
 /// would be planned for a recursive delete that reaches the protected files.
+/// Normalize the remote side through the crypt overlay, then bound the compare.
+///
+/// The order is the point of this function existing. Under an overlay that is
+/// armed but not wrapped, the remote rows and the remote boundaries both arrive
+/// as ciphertext while the local rows are plaintext. A bound built before the
+/// decode matches the boundary against the remote spelling only: it withdraws
+/// the remote rows behind it and leaves their local counterparts in the
+/// compare, where they read as present on one side alone, and a Mirror preset
+/// plans exactly the delete the boundary exists to prevent. That was the defect
+/// this path was fixed for; what was missing was anything holding the two steps
+/// in that order, so an inversion stayed green.
+///
+/// `keys` is `None` when there is nothing to decode: no overlay, or an overlay
+/// whose listing already came back plaintext because the live provider is the
+/// wrapped one. The bound still applies there, which is the other half a
+/// reordering could break.
+fn normalize_then_bound_compare_rows(
+    local_root: &str,
+    local_files: &mut HashMap<String, crate::sync::FileInfo>,
+    remote_files: &mut HashMap<String, crate::sync::FileInfo>,
+    mut remote_boundaries: crate::sync_core::ScanBoundaries,
+    keys: Option<&crate::crypt_overlay_provider::OverlayKeys>,
+    crypt_kind: Option<&str>,
+) -> Result<crate::sync_core::ScanBound, String> {
+    if let Some(keys) = keys {
+        let raw_len = remote_files.len();
+        *remote_files = normalize_remote_files_for_compare(keys, std::mem::take(remote_files));
+        // The boundaries carry remote paths too, and the bound below matches
+        // them against local rows that are plaintext. Rewriting the rows and
+        // leaving the boundaries in ciphertext is what let a bounded remote
+        // subtree keep its local rows in the compare.
+        normalize_remote_boundaries_for_compare(keys, &mut remote_boundaries)
+            .map_err(|reason| format!("{}: {}", crate::SCAN_INCOMPLETE_MARKER, reason))?;
+        // rclone-crypt has no config MAC: a wrong overlay password derives
+        // valid-shaped keys that decrypt nothing, so a non-empty remote that
+        // normalizes to zero rows is a wrong-key signal. Fail closed rather
+        // than re-flag the whole tree as missing (the #364 symptom).
+        if crypt_kind == Some("rclone-crypt") && raw_len > 0 && remote_files.is_empty() {
+            return Err(
+                "Crypt overlay decrypted no remote entries: wrong overlay password or non-crypt remote."
+                    .to_string(),
+            );
+        }
+    }
+    Ok(bound_compare_rows(
+        local_root,
+        local_files,
+        remote_files,
+        remote_boundaries,
+    ))
+}
+
 fn bound_compare_rows(
     local_root: &str,
     local_files: &mut HashMap<String, crate::sync::FileInfo>,
@@ -13114,6 +13153,104 @@ mod tests {
             off_suffix: ".bin".to_string(),
             directory_name_encryption,
         }
+    }
+
+    /// The bound runs AFTER the crypt normalization, and this holds it there.
+    /// With the overlay armed but not wrapped the remote side is ciphertext and
+    /// the local side is plaintext, so a bound built before the decode matches
+    /// the boundary against the remote spelling alone: the remote rows go and
+    /// their local counterparts stay, reading as present on one side only,
+    /// which is the row a Mirror preset deletes. Invert the two steps inside
+    /// the seam and this fails on the local rows.
+    #[test]
+    fn the_compare_bound_runs_after_the_crypt_normalization() {
+        let keys = rclone_keys_in_mode(crate::rclone_crypt::FilenameEncryption::Standard, true);
+        let wire = |name: &str| {
+            crate::rclone_crypt::encrypt_name(&keys.name_key, &keys.name_tweak, name)
+                .expect("encrypt the segment")
+        };
+        let wire_dir = wire("link");
+        let wire_file = format!("{}/{}", wire_dir, wire("x.txt"));
+        let overlay = crate::crypt_overlay_provider::OverlayKeys::Rclone(keys);
+
+        let mut local = HashMap::from([
+            ("link".to_string(), compare_row("link", true)),
+            ("link/x.txt".to_string(), compare_row("link/x.txt", false)),
+            ("keep.txt".to_string(), compare_row("keep.txt", false)),
+        ]);
+        let mut remote = HashMap::from([
+            (wire_dir.clone(), compare_row(&wire_dir, true)),
+            (wire_file.clone(), compare_row(&wire_file, false)),
+        ]);
+
+        normalize_then_bound_compare_rows(
+            "/nonexistent-local-root",
+            &mut local,
+            &mut remote,
+            crate::sync_core::ScanBoundaries {
+                links: vec![crate::sync_core::SkippedLink {
+                    rel_path: wire_dir.clone(),
+                    link_target: None,
+                    is_dir: Some(true),
+                }],
+                ..Default::default()
+            },
+            Some(&overlay),
+            Some("rclone-crypt"),
+        )
+        .expect("the boundary decodes and the compare is bounded");
+
+        let mut left: Vec<_> = local.keys().cloned().collect();
+        left.sort();
+        assert_eq!(
+            left,
+            vec!["keep.txt"],
+            "the local rows behind the boundary go too: bounding before the decode leaves them"
+        );
+        assert!(
+            remote.is_empty(),
+            "and the remote rows behind it are withdrawn as well: {:?}",
+            remote.keys().collect::<Vec<_>>()
+        );
+    }
+
+    /// An overlay that is armed and already wrapped hands the compare a
+    /// plaintext listing, so there is nothing to decode. The bound still has to
+    /// apply: skipping it there would leave the rows behind a boundary in the
+    /// compare, which is the same one-sided row by another route.
+    #[test]
+    fn a_compare_with_nothing_to_normalize_is_still_bounded() {
+        let mut local = HashMap::from([
+            ("link".to_string(), compare_row("link", true)),
+            ("link/x.txt".to_string(), compare_row("link/x.txt", false)),
+            ("keep.txt".to_string(), compare_row("keep.txt", false)),
+        ]);
+        let mut remote = HashMap::new();
+
+        normalize_then_bound_compare_rows(
+            "/nonexistent-local-root",
+            &mut local,
+            &mut remote,
+            crate::sync_core::ScanBoundaries {
+                links: vec![crate::sync_core::SkippedLink {
+                    rel_path: "link".to_string(),
+                    link_target: None,
+                    is_dir: Some(true),
+                }],
+                ..Default::default()
+            },
+            None,
+            None,
+        )
+        .expect("nothing to decode, and the bound still applies");
+
+        let mut left: Vec<_> = local.keys().cloned().collect();
+        left.sort();
+        assert_eq!(
+            left,
+            vec!["keep.txt"],
+            "with nothing to normalize the bound is still what withdraws the rows"
+        );
     }
 
     /// `Off` mode spells a file with the configured suffix and a directory
