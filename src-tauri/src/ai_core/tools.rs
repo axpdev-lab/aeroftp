@@ -2466,6 +2466,30 @@ mod tests {
         }
     }
 
+    /// A tool the CLI offers to the model has to be one the CLI can run.
+    ///
+    /// `app_info` and `hash_file` are advertised in the CLI's own tool list and
+    /// classified as read-only, but the registry declares them `Surfaces::GUI`
+    /// alone. On the CLI surface the dispatcher therefore answers
+    /// `NotOnSurface`, which the caller does not treat as a fallback, so the
+    /// legacy arm that would have answered is never reached and the agent is
+    /// told the tool it was just offered does not exist here.
+    #[tokio::test]
+    async fn the_cli_can_reach_every_tool_it_offers() {
+        for name in ["app_info", "hash_file"] {
+            let outcome = dispatch_tool(
+                &mock_ctx(Surfaces::CLI),
+                name,
+                &json!({ "path": "/nonexistent" }),
+            )
+            .await;
+            assert!(
+                !matches!(outcome, Err(ToolError::NotOnSurface { .. })),
+                "{name} is offered to the model on the CLI, so refusing it for the CLI surface leaves an advertised tool unusable: {outcome:?}"
+            );
+        }
+    }
+
     // NOTE: dispatch_on_wrong_surface / dispatch_missing_required /
     // dispatch_returns_not_migrated are intentionally deferred to
     // Gate 2 because they require at least one populated ToolDef.
