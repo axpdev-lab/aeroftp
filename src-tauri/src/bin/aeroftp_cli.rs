@@ -5533,7 +5533,7 @@ struct CliCheckResult {
     details: Vec<CliCheckEntry>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 struct CliCheckEntry {
     path: String,
     status: String,
@@ -5543,6 +5543,7 @@ struct CliCheckEntry {
 
 /// What `check` or `cryptcheck` found, and how complete the two scans it
 /// compared were.
+#[derive(Debug)]
 struct CliCheckReport {
     /// The remote directory as resolved against the connection's start path.
     remote_path: String,
@@ -5556,6 +5557,13 @@ struct CliCheckReport {
     details: Vec<CliCheckEntry>,
     local_scan: ftp_client_gui_lib::sync_core::ScanCompleteness,
     remote_scan: ftp_client_gui_lib::sync_core::ScanCompleteness,
+    /// What each walk did not see, by name: a directory that did not open, one
+    /// at the depth limit, a link it did not follow. A report that only counted
+    /// them would leave the reader to guess which part of the tree the verdict
+    /// covers, and in a command whose product IS the report that is the answer
+    /// itself, not a detail of it.
+    local_boundaries: ftp_client_gui_lib::sync_core::ScanBoundaries,
+    remote_boundaries: ftp_client_gui_lib::sync_core::ScanBoundaries,
     elapsed_secs: f64,
 }
 
@@ -8479,6 +8487,7 @@ async fn scan_remote_tree_with_progress(
 ) -> (
     Vec<ftp_client_gui_lib::sync_core::scan::RemoteEntry>,
     RemoteScanHealth,
+    ftp_client_gui_lib::sync_core::ScanBoundaries,
     Box<dyn StorageProvider>,
 ) {
     use ftp_client_gui_lib::provider_transfer_executor::resolve_provider_list_session_model;
@@ -8523,7 +8532,7 @@ async fn scan_remote_tree_with_progress(
         .unwrap_or(ftp_client_gui_lib::sync_core::scan::DEFAULT_SCAN_CHECKERS)
         .max(1);
     let list_model = resolve_provider_list_session_model(&holder, checkers).await;
-    let (results, completeness, _) = scan_remote_tree_with_provider_lock_checked(
+    let (results, completeness, boundaries) = scan_remote_tree_with_provider_lock_checked(
         Arc::clone(&holder),
         remote_root,
         opts,
@@ -8548,6 +8557,7 @@ async fn scan_remote_tree_with_progress(
             errors: completeness.list_errors,
             truncated: completeness.truncated,
         },
+        boundaries,
         provider,
     )
 }
@@ -46513,14 +46523,15 @@ async fn cmd_sync(
                         disable_recursive_fastpath: true,
                         ..Default::default()
                     };
-                    let (remotes, health, returned) = scan_remote_tree_with_progress(
-                        provider,
-                        remote,
-                        &pooled_opts,
-                        &None,
-                        Some(Arc::clone(&cancelled)),
-                    )
-                    .await;
+                    let (remotes, health, _remote_boundaries, returned) =
+                        scan_remote_tree_with_progress(
+                            provider,
+                            remote,
+                            &pooled_opts,
+                            &None,
+                            Some(Arc::clone(&cancelled)),
+                        )
+                        .await;
                     provider = returned;
                     if health.truncated && !quiet {
                         eprintln!("Warning: remote scan truncated (depth or entry cap reached)");
@@ -56854,8 +56865,8 @@ async fn check_report(
     // Bound here so the compare compiles against the walker as it is since
     // #796; the commits that follow report them and refuse the gaps that have
     // no name.
-    let (locals, local_scan, _local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
-    let (remotes, remote_health, returned) =
+    let (locals, local_scan, local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
+    let (remotes, remote_health, remote_boundaries, returned) =
         scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &None, None).await;
     let mut remotes = remotes;
     provider = returned;
@@ -56918,6 +56929,8 @@ async fn check_report(
             list_errors: remote_health.errors,
             truncated: remote_health.truncated,
         },
+        local_boundaries,
+        remote_boundaries,
         elapsed_secs: start.elapsed().as_secs_f64(),
     };
     let _ = provider.disconnect().await;
@@ -57169,8 +57182,8 @@ async fn cryptcheck_report(
     // Bound here so the compare compiles against the walker as it is since
     // #796; the commits that follow report them and refuse the gaps that have
     // no name.
-    let (locals, local_scan, _local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
-    let (remotes, remote_health, returned) =
+    let (locals, local_scan, local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
+    let (remotes, remote_health, remote_boundaries, returned) =
         scan_remote_tree_with_progress(provider, &remote_path_resolved, &scan_opts, &None, None)
             .await;
     provider = returned;
@@ -57454,6 +57467,8 @@ async fn cryptcheck_report(
             list_errors: remote_health.errors,
             truncated: remote_health.truncated,
         },
+        local_boundaries,
+        remote_boundaries,
         elapsed_secs: start.elapsed().as_secs_f64(),
     };
     let _ = provider.disconnect().await;
@@ -57536,7 +57551,7 @@ async fn cmd_reconcile(
     }
 
     let remote_spinner = maybe_create_scan_spinner(format, cli, "Scanning remote...");
-    let (mut remotes, remote_health, returned) =
+    let (mut remotes, remote_health, _remote_boundaries, returned) =
         scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &remote_spinner, None)
             .await;
     provider = returned;
@@ -74668,7 +74683,7 @@ mod tests {
         .await;
         let delivered = peak.load(std::sync::atomic::Ordering::SeqCst);
         match outcome {
-            Ok((rows, health, _provider)) => {
+            Ok((rows, health, _boundaries, _provider)) => {
                 assert_eq!(rows.len(), 8, "one file per directory");
                 assert!(!health.is_incomplete());
             }
@@ -75858,6 +75873,83 @@ mod tests {
         .expect_err("a scan with a gap it cannot name has no verdict to give");
 
         assert_eq!(code, 4, "the refusal exits as a partial result");
+    }
+
+    /// A gap that HAS a name is not a refusal: the comparison still runs, and
+    /// the report says which paths the verdict does not cover. A count alone
+    /// leaves the reader to guess which part of the tree was read, and in a
+    /// command whose product is the report that guess is the answer.
+    #[cfg(unix)]
+    #[test]
+    fn check_names_the_local_paths_it_could_not_read() {
+        let (fixture, _locked) = local_tree_behind_an_unreadable_directory();
+
+        let report = run_check(
+            MemTreeProvider::tree(&[("locked/keep.txt", 1)]),
+            &fixture.local(),
+            true,
+        );
+
+        assert_eq!(report.status(), "partial");
+        let named: Vec<&str> = report
+            .local_boundaries
+            .unseen
+            .iter()
+            .map(|path| path.rel_path.as_str())
+            .collect();
+        assert_eq!(
+            named,
+            vec!["locked"],
+            "the directory that did not open is named"
+        );
+
+        // The reason is taken from what the scan recorded rather than spelled
+        // again here: the point of the test is that the JSON carries the same
+        // pair the walk produced, not that a particular word was chosen.
+        let recorded = &report.local_boundaries.unseen[0];
+        let mut doc = serde_json::json!({});
+        report.add_scan_fields(&mut doc);
+        assert_eq!(
+            doc["local_scan_boundaries"],
+            serde_json::json!([{ "path": recorded.rel_path, "reason": recorded.reason }]),
+            "the JSON report carries the paths the local scan did not see"
+        );
+    }
+
+    /// The same on the remote side, and the other half of the rule: a remote
+    /// directory that did not list is a gap with a name, so the run still
+    /// gives a verdict. The refusal is only for a gap that has no name.
+    #[test]
+    fn check_names_the_remote_paths_it_could_not_list() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_check(
+            remote_with_an_unlistable_directory(),
+            &fixture.local(),
+            false,
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+        let named: Vec<&str> = report
+            .remote_boundaries
+            .unseen
+            .iter()
+            .map(|path| path.rel_path.as_str())
+            .collect();
+        assert!(
+            !named.is_empty(),
+            "the directory that did not list is named: {named:?}"
+        );
+
+        let recorded = &report.remote_boundaries.unseen[0];
+        let mut doc = serde_json::json!({});
+        report.add_scan_fields(&mut doc);
+        assert_eq!(
+            doc["remote_scan_boundaries"],
+            serde_json::json!([{ "path": recorded.rel_path, "reason": recorded.reason }]),
+            "the JSON report carries the paths the remote scan did not see"
+        );
     }
 
     /// Complete scans of matching trees still report `ok` and exit 0.
