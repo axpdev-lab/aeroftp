@@ -76049,6 +76049,63 @@ mod tests {
         );
     }
 
+    /// A remote whose `/root` holds a symbolic link to a directory. No walk
+    /// follows one, so the subtree behind it is absent from the scan, and the
+    /// scan records it as a boundary rather than as an error: `list_errors`
+    /// stays 0 and `truncated` stays false.
+    fn remote_with_an_unfollowed_link() -> MemTreeProvider {
+        let mut link = RemoteEntry::directory("link".to_string(), "/root/link".to_string());
+        link.is_symlink = true;
+        MemTreeProvider {
+            dirs: HashMap::from([("/root".to_string(), vec![link])]),
+            delete_attempts: Arc::default(),
+        }
+    }
+
+    /// A named gap is still a gap. `ScanCompleteness` cannot see this one,
+    /// because a link produces no listing error and no truncation, so the
+    /// report answered `ok` and exited 0 while printing the path it had left
+    /// out: the document listed what it does not cover and said in the line
+    /// above that nothing was missing.
+    #[test]
+    fn check_is_partial_when_a_link_left_a_subtree_unread() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_check(remote_with_an_unfollowed_link(), &fixture.local(), false);
+
+        assert!(
+            !CliCheckReport::named_gaps(&report.remote_boundaries).is_empty(),
+            "the fixture must produce a named gap or the test proves nothing"
+        );
+        assert!(
+            report.remote_scan.is_complete(),
+            "and the completeness counters must not see it, which is the defect"
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+
+        let mut doc = serde_json::json!({});
+        report.add_scan_fields(&mut doc);
+        assert_eq!(
+            doc["remote_scan_incomplete"], true,
+            "the document cannot list a boundary and call the scan complete: {doc}"
+        );
+    }
+
+    /// The same on the `cryptcheck` road. The two commands build the same
+    /// report and share these methods, so this is not a duplicate: it is the
+    /// assertion that the pair stays symmetrical the day they stop sharing.
+    #[test]
+    fn cryptcheck_is_partial_when_a_link_left_a_subtree_unread() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_cryptcheck(remote_with_an_unfollowed_link(), &fixture.local(), false);
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+    }
+
     /// Complete scans of matching trees still report `ok` and exit 0.
     #[test]
     fn check_reports_ok_on_matching_complete_trees() {
