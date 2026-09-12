@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>app.aeroftp.AeroFTP</id>
+  <replaces>
+    <id>com.aeroftp.AeroFTP</id>
+  </replaces>
 
   <name>AeroFTP</name>
   <summary>Modern Multi-Protocol File Client with AI, Encryption and Cloud Storage</summary>
