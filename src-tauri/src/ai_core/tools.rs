@@ -2657,6 +2657,45 @@ mod tests {
         }
     }
 
+    /// The two names whose legacy arm in the CLI binary must SURVIVE, pinned at
+    /// the value they answer today, which is a DEFECT and not the behaviour
+    /// anyone wants.
+    ///
+    /// `app_info` and `hash_file` are offered to the model by the CLI and have
+    /// a CLI implementation of their own in that binary's legacy match, which
+    /// is not the GUI one: the CLI `app_info` reports the working directory and
+    /// `"mode": "cli"`, and the CLI `hash_file` computes the digest itself. The
+    /// registry declares both on the CLI surface, so this dispatcher accepts
+    /// them and routes them to the GUI handlers, which need a Tauri app handle
+    /// the CLI does not have and answer `Exec("Requires GUI")`. That is not one
+    /// of the two errors `execute_cli_tool` falls back on, so it returns the
+    /// error and the CLI implementation is never reached. The CLI therefore
+    /// advertises two tools it cannot run.
+    ///
+    /// The defect is pinned on purpose, for two reasons. It is what catches the
+    /// removal of those two legacy arms "for consistency" with the thirty-seven
+    /// that went, which is the edit a future reader is most likely to make. And
+    /// it is expected to CHANGE rather than to hold: the day the separate item
+    /// that makes those two reachable is closed, this assertion is what says
+    /// so, out loud, instead of the fix landing unnoticed.
+    #[tokio::test]
+    async fn the_two_tools_the_cli_cannot_run_are_pinned_at_the_defect() {
+        for name in ["app_info", "hash_file"] {
+            let outcome = dispatch_tool(
+                &mock_ctx(Surfaces::CLI),
+                name,
+                &json!({ "path": "/nonexistent" }),
+            )
+            .await;
+            match outcome {
+                Err(ToolError::Exec(ref message)) if message == "Requires GUI" => {}
+                other => panic!(
+                    "{name} answered something other than the GUI requirement this pins as the current defect: {other:?}"
+                ),
+            }
+        }
+    }
+
     // NOTE: dispatch_on_wrong_surface / dispatch_missing_required /
     // dispatch_returns_not_migrated are intentionally deferred to
     // Gate 2 because they require at least one populated ToolDef.
