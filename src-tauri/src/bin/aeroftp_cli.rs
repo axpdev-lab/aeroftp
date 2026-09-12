@@ -5568,11 +5568,22 @@ struct CliCheckReport {
 }
 
 impl CliCheckReport {
-    /// `partial` when some files could not be compared or either scan did not
-    /// read its whole tree, `ok` when both trees match, `differences_found`
-    /// otherwise.
+    /// `partial` when some files could not be compared, when either scan did
+    /// not read its whole tree, or when either scan left out a path it can
+    /// name; `ok` when both trees match and nothing was left out;
+    /// `differences_found` otherwise.
+    ///
+    /// The third case is not covered by the first two. A link is a gap with a
+    /// name: no walk follows one, so the subtree behind it is absent from the
+    /// scan, and it is recorded as a boundary rather than as an error, which
+    /// leaves `list_errors` at 0 and `truncated` false. `ScanCompleteness`
+    /// cannot see it by construction, so a report that asked only that question
+    /// answered `ok` while printing the path it had not covered.
     fn status(&self) -> &'static str {
-        if self.error_count > 0 || !self.local_scan.is_complete() || !self.remote_scan.is_complete()
+        if self.error_count > 0
+            || !self.local_scan.is_complete()
+            || !self.remote_scan.is_complete()
+            || self.left_a_named_path_out()
         {
             "partial"
         } else if self.differ_count == 0 && self.missing_local == 0 && self.missing_remote == 0 {
@@ -5624,6 +5635,18 @@ impl CliCheckReport {
             .collect()
     }
 
+    /// Whether either side has a path the scan can name but did not read.
+    ///
+    /// Separate from `ScanCompleteness` on purpose: that type counts failures,
+    /// and a boundary is not a failure. It is a part of the tree the walk
+    /// deliberately did not enter, which is exactly what a verdict must not
+    /// cover in silence.
+    fn left_a_named_path_out(&self) -> bool {
+        self.boundaries()
+            .iter()
+            .any(|(_, boundaries)| !Self::named_gaps(boundaries).is_empty())
+    }
+
     /// Add the completeness of both scans to a JSON report, with the field
     /// names `reconcile` uses, and the paths each scan did not see.
     ///
@@ -5648,10 +5671,22 @@ impl CliCheckReport {
                 ),
             );
         }
-        for (side, scan) in self.scans() {
+        // The two arrays are built in the same order, local then remote, and
+        // the assertion says so rather than trusting it: a document that
+        // reported one side's gaps under the other side's key would be worse
+        // than the defect this whole change is about.
+        for ((side, scan), (boundary_side, boundaries)) in
+            self.scans().into_iter().zip(self.boundaries())
+        {
+            debug_assert_eq!(side, boundary_side);
+            let left_out = !Self::named_gaps(boundaries).is_empty();
             fields.insert(
                 format!("{side}_scan_incomplete"),
-                serde_json::json!(!scan.is_complete()),
+                // A boundary makes the scan incomplete for the reader even
+                // though it is not a failure: the key above lists a path this
+                // run did not cover, and the two cannot disagree in the same
+                // document.
+                serde_json::json!(!scan.is_complete() || left_out),
             );
             fields.insert(
                 format!("{side}_scan_errors"),
@@ -24882,10 +24917,7 @@ fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
 /// keys once for all of them.
 ///
 /// The single path for every agent surface that lists saved servers:
-/// `agent-bootstrap` and `agent-info` reach it through `safe_vault_profiles`, and
-/// the agent's `server_list_saved` tool through `safe_vault_profiles_for_agent`.
-/// That last one used to assemble its own eight-field record, so a field added to
-/// the shared shape never reached the tool agents call most.
+/// `agent-bootstrap` and `agent-info` reach it through `safe_vault_profiles`.
 fn safe_profile_records(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     profiles: &[serde_json::Value],
@@ -24935,28 +24967,6 @@ fn safe_profile_record(p: &serde_json::Value, auth_state: &str) -> serde_json::V
         "cryptOverlay": profile_crypt_overlay_kind(p),
         "protocolClass": profile_protocol_class(p),
     })
-}
-
-/// Variant of safe_vault_profiles that works without a Cli reference (for agent tool context).
-/// Uses the cached vault (already opened by the agent startup flow).
-fn safe_vault_profiles_for_agent() -> Result<Vec<serde_json::Value>, String> {
-    let store = ftp_client_gui_lib::credential_store::CredentialStore::from_cache()
-        .ok_or_else(|| "Vault not open. Cannot list server profiles.".to_string())?;
-    let profiles =
-        match ftp_client_gui_lib::user_partitions::cli_list_active_server_profiles(&store) {
-            Ok(p) => p,
-            Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => return Err(e),
-            Err(_) => {
-                // Partition layer unavailable: fall back to legacy blob.
-                match store.get("config_server_profiles") {
-                    Ok(json) => serde_json::from_str(&json)
-                        .map_err(|e| format!("Failed to parse profiles: {}", e))?,
-                    Err(_) => return Ok(vec![]),
-                }
-            }
-        };
-
-    Ok(safe_profile_records(&store, &profiles))
 }
 
 /// Create a provider connection from a server profile name (for agent tool context).
@@ -27896,9 +27906,6 @@ enum ToolExposureKind {
     Execution,
 }
 
-const AGENT_REMOTE_PREVIEW_BYTES: u64 = 5 * 1024;
-const AGENT_REMOTE_FALLBACK_MAX_BYTES: u64 = 1024 * 1024;
-
 fn serve_effective_base_path(path: &str, url_path: &str) -> Result<String, RemotePathError> {
     if path == "/" && url_path != "/" {
         // `url_path` is the connection's initial directory (profile/URL), the
@@ -28202,9 +28209,8 @@ impl std::fmt::Display for RemotePathError {
 /// Rejects paths that must not be silently substituted (null bytes, `..`
 /// traversal segments, including the backslash-separated form) so that
 /// destructive call sites fail closed instead of operating on a substituted base
-/// path. The sibling agent resolver (`resolve_agent_remote_path`) is already
-/// fallible; this brings the CLI surface to parity. [`resolve_cli_remote_path`]
-/// is the infallible wrapper used by the bulk of read paths.
+/// path. [`resolve_cli_remote_path`] is the infallible wrapper used by the bulk
+/// of read paths.
 fn try_resolve_cli_remote_path(
     initial_path: &str,
     user_path: &str,
@@ -28314,52 +28320,6 @@ fn resolve_cli_remote_path_unchecked_with_note(
     }
 
     resolved
-}
-
-fn resolve_agent_remote_path(initial_path: &str, requested_path: &str) -> Result<String, String> {
-    if requested_path.contains('\0') {
-        return Err("Path contains null bytes".to_string());
-    }
-    let relative = sanitize_served_relative_path(requested_path)
-        .map_err(|_| "Path traversal ('..') not allowed".to_string())?;
-    Ok(build_served_remote_path(initial_path, &relative))
-}
-
-async fn read_remote_preview(
-    provider: &mut Box<dyn StorageProvider>,
-    remote_path: &str,
-) -> Result<(Vec<u8>, u64, bool), ProviderError> {
-    let entry = provider.stat(remote_path).await?;
-    if entry.is_dir {
-        return Err(ProviderError::InvalidPath(format!(
-            "'{}' is a directory; expected a file",
-            remote_path
-        )));
-    }
-
-    let size = entry.size;
-    if size == 0 {
-        return Ok((Vec::new(), 0, false));
-    }
-
-    let preview_len = size.min(AGENT_REMOTE_PREVIEW_BYTES);
-    match provider.read_range(remote_path, 0, preview_len).await {
-        Ok(bytes) => Ok((bytes, size, size > preview_len)),
-        Err(_) if size > AGENT_REMOTE_FALLBACK_MAX_BYTES => Err(ProviderError::NotSupported(
-            format!(
-                "Provider does not support ranged reads for '{}', and full fallback is disabled above {} bytes",
-                remote_path, AGENT_REMOTE_FALLBACK_MAX_BYTES
-            ),
-        )),
-        Err(_) => {
-            let mut bytes = provider.download_to_bytes(remote_path).await?;
-            let truncated = bytes.len() as u64 > AGENT_REMOTE_PREVIEW_BYTES;
-            if truncated {
-                bytes.truncate(AGENT_REMOTE_PREVIEW_BYTES as usize);
-            }
-            Ok((bytes, size, truncated))
-        }
-    }
 }
 
 fn encode_request_path(path: &str) -> String {
@@ -61609,707 +61569,31 @@ async fn execute_cli_tool(
     }
 
     match tool_name {
-        "local_list" => {
-            let path = resolve_path(&get_str("path")?);
-            validate_path(&path, "path")?;
-            let entries: Vec<serde_json::Value> = std::fs::read_dir(&path)
-                .map_err(|e| format!("Failed to read directory: {}", e))?
-                .filter_map(|e| e.ok())
-                .take(100)
-                .map(|e| {
-                    let meta = e.metadata().ok();
-                    json!({
-                        "name": e.file_name().to_string_lossy(),
-                        "is_dir": meta.as_ref().map(|m| m.is_dir()).unwrap_or(false),
-                        "size": meta.as_ref().map(|m| m.len()).unwrap_or(0),
-                    })
-                })
-                .collect();
-            Ok(json!({ "entries": entries }))
-        }
-
-        "local_read" => {
-            let path = resolve_path(&get_str("path")?);
-            validate_path(&path, "path")?;
-            let meta =
-                std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
-            if meta.len() > 10_485_760 {
-                return Err(format!(
-                    "File too large: {:.1} MB (max 10 MB)",
-                    meta.len() as f64 / 1_048_576.0
-                ));
-            }
-            let max_bytes: usize = 5120;
-            let file_size = meta.len() as usize;
-            let read_size = std::cmp::min(file_size, max_bytes);
-            let mut file =
-                std::fs::File::open(&path).map_err(|e| format!("Failed to open file: {}", e))?;
-            let mut buf = vec![0u8; read_size];
-            use std::io::Read as _;
-            file.read_exact(&mut buf)
-                .map_err(|e| format!("Failed to read file: {}", e))?;
-            let truncated = file_size > max_bytes;
-            let content = String::from_utf8_lossy(&buf).to_string();
-            Ok(json!({ "content": content, "size": file_size, "truncated": truncated }))
-        }
-
-        "local_search" => {
-            let path = resolve_path(&get_str("path")?);
-            let pattern = get_str("pattern")?;
-            validate_path(&path, "path")?;
-            let pattern_lower = pattern.to_lowercase();
-            let matcher: Box<dyn Fn(&str) -> bool> =
-                if let Some(suffix) = pattern_lower.strip_prefix('*') {
-                    let s = suffix.to_string();
-                    Box::new(move |name: &str| name.ends_with(&s))
-                } else if let Some(prefix) = pattern_lower.strip_suffix('*') {
-                    let p = prefix.to_string();
-                    Box::new(move |name: &str| name.starts_with(&p))
-                } else {
-                    let pat = pattern_lower.clone();
-                    Box::new(move |name: &str| name.contains(&pat))
-                };
-            let results: Vec<serde_json::Value> = std::fs::read_dir(&path)
-                .map_err(|e| format!("Failed to read directory: {}", e))?
-                .filter_map(|e| e.ok())
-                .filter(|e| matcher(&e.file_name().to_string_lossy().to_lowercase()))
-                .take(100)
-                .map(|e| {
-                    let meta = e.metadata().ok();
-                    json!({
-                        "name": e.file_name().to_string_lossy(),
-                        "is_dir": meta.as_ref().map(|m| m.is_dir()).unwrap_or(false),
-                        "size": meta.as_ref().map(|m| m.len()).unwrap_or(0),
-                    })
-                })
-                .collect();
-            let total = results.len();
-            Ok(json!({ "results": results, "total": total }))
-        }
-
-        "local_write" => {
-            let path = resolve_path(&get_str("path")?);
-            let content = get_str("content")?;
-            validate_path(&path, "path")?;
-            std::fs::write(&path, &content).map_err(|e| format!("Failed to write file: {}", e))?;
-            Ok(
-                json!({ "success": true, "message": format!("Written {} bytes to {}", content.len(), path) }),
-            )
-        }
-
-        "local_mkdir" => {
-            let path = resolve_path(&get_str("path")?);
-            validate_path(&path, "path")?;
-            std::fs::create_dir_all(&path)
-                .map_err(|e| format!("Failed to create directory: {}", e))?;
-            Ok(json!({ "success": true, "message": format!("Created directory {}", path) }))
-        }
-
-        "local_delete" => {
-            let path = resolve_path(&get_str("path")?);
-            validate_path(&path, "path")?;
-            let home_dir = std::env::var("HOME").unwrap_or_default();
-            let normalized = path.trim_end_matches('/').trim_end_matches('\\');
-            if normalized.is_empty()
-                || normalized == "/"
-                || normalized == "~"
-                || normalized == "."
-                || normalized == ".."
-                || normalized == home_dir
-            {
-                return Err(format!("Refusing to delete dangerous path: {}", path));
-            }
-            let meta = std::fs::metadata(&path).map_err(|e| format!("Path not found: {}", e))?;
-            if meta.is_dir() {
-                std::fs::remove_dir_all(&path)
-                    .map_err(|e| format!("Failed to delete directory: {}", e))?;
-            } else {
-                std::fs::remove_file(&path).map_err(|e| format!("Failed to delete file: {}", e))?;
-            }
-            Ok(json!({ "success": true, "message": format!("Deleted {}", path) }))
-        }
-
-        "local_rename" => {
-            let from = resolve_path(&get_str("from")?);
-            let to = resolve_path(&get_str("to")?);
-            validate_path(&from, "from")?;
-            validate_path(&to, "to")?;
-            std::fs::rename(&from, &to).map_err(|e| format!("Failed to rename: {}", e))?;
-            Ok(json!({ "success": true, "message": format!("Renamed {} to {}", from, to) }))
-        }
-
-        "local_edit" => {
-            let path = resolve_path(&get_str("path")?);
-            let find = get_str("find")?;
-            let replace = get_str("replace")?;
-            let replace_all = args
-                .get("replace_all")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(true);
-            validate_path(&path, "path")?;
-            if find.is_empty() {
-                return Err("'find' parameter cannot be empty".to_string());
-            }
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("Failed to read file: {}", e))?;
-            let new_content = if replace_all {
-                content.replace(&find, &replace)
-            } else {
-                content.replacen(&find, &replace, 1)
-            };
-            if content == new_content {
-                return Ok(json!({ "success": false, "message": "No matches found" }));
-            }
-            std::fs::write(&path, &new_content)
-                .map_err(|e| format!("Failed to write file: {}", e))?;
-            let count = if replace_all {
-                content.matches(&find).count()
-            } else {
-                1
-            };
-            Ok(
-                json!({ "success": true, "message": format!("Replaced {} occurrence(s) in {}", count, path) }),
-            )
-        }
-
-        "local_move_files" => {
-            let paths: Vec<String> = args
-                .get("paths")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(&resolve_path))
-                        .collect()
-                })
-                .ok_or("Missing 'paths' array parameter")?;
-            let destination = resolve_path(&get_str("destination")?);
-            validate_path(&destination, "destination")?;
-            if paths.is_empty() {
-                return Err("'paths' array is empty".to_string());
-            }
-            std::fs::create_dir_all(&destination)
-                .map_err(|e| format!("Failed to create destination: {}", e))?;
-            let mut moved = 0u32;
-            let mut errors = Vec::new();
-            for source in &paths {
-                if let Err(e) = validate_path(source, "path") {
-                    errors.push(format!("{}: {}", source, e));
-                    continue;
-                }
-                let filename = std::path::Path::new(source)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "file".to_string());
-                let dest_path = format!("{}/{}", destination.trim_end_matches('/'), filename);
-                match std::fs::rename(source, &dest_path) {
-                    Ok(_) => moved += 1,
-                    Err(_) => {
-                        match std::fs::copy(source, &dest_path)
-                            .and_then(|_| std::fs::remove_file(source))
-                        {
-                            Ok(_) => moved += 1,
-                            Err(e) => errors.push(format!("{}: {}", filename, e)),
-                        }
-                    }
-                }
-            }
-            Ok(json!({ "moved": moved, "errors": errors }))
-        }
-
-        "local_copy_files" => {
-            let paths: Vec<String> = args
-                .get("paths")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(&resolve_path))
-                        .collect()
-                })
-                .ok_or("Missing 'paths' array parameter")?;
-            let destination = resolve_path(&get_str("destination")?);
-            validate_path(&destination, "destination")?;
-            std::fs::create_dir_all(&destination)
-                .map_err(|e| format!("Failed to create destination: {}", e))?;
-            let mut copied = 0u32;
-            let mut errors = Vec::new();
-            for source in &paths {
-                if let Err(e) = validate_path(source, "path") {
-                    errors.push(format!("{}: {}", source, e));
-                    continue;
-                }
-                let filename = std::path::Path::new(source)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "file".to_string());
-                let dest_path = format!("{}/{}", destination.trim_end_matches('/'), filename);
-                match std::fs::copy(source, &dest_path) {
-                    Ok(_) => copied += 1,
-                    Err(e) => errors.push(format!("{}: {}", filename, e)),
-                }
-            }
-            Ok(json!({ "copied": copied, "errors": errors }))
-        }
-
-        "local_batch_rename" => {
-            let paths: Vec<String> = args
-                .get("paths")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(&resolve_path))
-                        .collect()
-                })
-                .ok_or("Missing 'paths' array parameter")?;
-            let mode = get_str("mode")?;
-            let mut renamed = 0u32;
-            let mut errors = Vec::new();
-            for (idx, source) in paths.iter().enumerate() {
-                if let Err(e) = validate_path(source, "paths[]") {
-                    errors.push(format!("{}: {}", source, e));
-                    continue;
-                }
-                let p = std::path::Path::new(source);
-                let stem = p
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                let ext = p
-                    .extension()
-                    .map(|e| format!(".{}", e.to_string_lossy()))
-                    .unwrap_or_default();
-                let parent = p
-                    .parent()
-                    .map(|pp| pp.to_string_lossy().to_string())
-                    .unwrap_or_else(|| ".".to_string());
-                let new_name = match mode.as_str() {
-                    "find_replace" => {
-                        let find = get_str("find").unwrap_or_default();
-                        let replace = get_str("replace").unwrap_or_default();
-                        format!("{}{}", stem.replace(&find, &replace), ext)
-                    }
-                    "add_prefix" => {
-                        let prefix = get_str_opt("prefix").unwrap_or_default();
-                        format!("{}{}{}", prefix, stem, ext)
-                    }
-                    "add_suffix" => {
-                        let suffix = get_str_opt("suffix").unwrap_or_default();
-                        format!("{}{}{}", stem, suffix, ext)
-                    }
-                    "sequential" => {
-                        let base = get_str_opt("base_name").unwrap_or_else(|| "file".to_string());
-                        let start = args
-                            .get("start_number")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(1);
-                        format!("{}_{:03}{}", base, start + idx as u64, ext)
-                    }
-                    _ => {
-                        errors.push(format!("Unknown mode: {}", mode));
-                        continue;
-                    }
-                };
-                let dest = format!("{}/{}", parent, new_name);
-                if let Err(e) = validate_path(&dest, "destination") {
-                    errors.push(format!("{} -> {}: {}", source, dest, e));
-                    continue;
-                }
-                match std::fs::rename(source, &dest) {
-                    Ok(_) => renamed += 1,
-                    Err(e) => errors.push(format!("{}: {}", source, e)),
-                }
-            }
-            Ok(json!({ "renamed": renamed, "errors": errors }))
-        }
-
-        "local_trash" => {
-            let paths: Vec<String> = args
-                .get("paths")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(&resolve_path))
-                        .collect()
-                })
-                .ok_or("Missing 'paths' array parameter")?;
-            let mut trashed = 0u32;
-            let mut errors = Vec::new();
-            for source in &paths {
-                if let Err(e) = validate_path(source, "paths[]") {
-                    errors.push(format!("{}: {}", source, e));
-                    continue;
-                }
-                match trash::delete(source) {
-                    Ok(_) => trashed += 1,
-                    Err(e) => errors.push(format!("{}: {}", source, e)),
-                }
-            }
-            Ok(json!({ "trashed": trashed, "errors": errors }))
-        }
-
-        "local_file_info" => {
-            let path = resolve_path(&get_str("path")?);
-            validate_path(&path, "path")?;
-            let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat: {}", e))?;
-            let mut info = json!({
-                "path": path,
-                "size": meta.len(),
-                "is_dir": meta.is_dir(),
-                "is_file": meta.is_file(),
-                "is_symlink": meta.is_symlink(),
-                "readonly": meta.permissions().readonly(),
-            });
-            if let Ok(modified) = meta.modified() {
-                if let Ok(dur) = modified.duration_since(std::time::UNIX_EPOCH) {
-                    info["modified_unix"] = json!(dur.as_secs());
-                }
-            }
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                info["mode"] = json!(format!("{:o}", meta.permissions().mode()));
-            }
-            Ok(info)
-        }
-
-        "local_disk_usage" => {
-            let path = resolve_path(&get_str("path")?);
-            validate_path(&path, "path")?;
-            fn dir_size(p: &std::path::Path) -> (u64, u64, u64) {
-                let mut total_bytes = 0u64;
-                let mut file_count = 0u64;
-                let mut dir_count = 0u64;
-                if let Ok(entries) = std::fs::read_dir(p) {
-                    for entry in entries.filter_map(|e| e.ok()) {
-                        if let Ok(meta) = entry.metadata() {
-                            if meta.is_dir() {
-                                dir_count += 1;
-                                let (b, f, d) = dir_size(&entry.path());
-                                total_bytes += b;
-                                file_count += f;
-                                dir_count += d;
-                            } else {
-                                file_count += 1;
-                                total_bytes += meta.len();
-                            }
-                        }
-                    }
-                }
-                (total_bytes, file_count, dir_count)
-            }
-            let (bytes, files, dirs) = dir_size(std::path::Path::new(&path));
-            Ok(json!({
-                "total_bytes": bytes,
-                "file_count": files,
-                "directory_count": dirs,
-                "human_readable": format!("{:.1} MB", bytes as f64 / 1_048_576.0),
-            }))
-        }
-
-        "local_find_duplicates" => {
-            let path = resolve_path(&get_str("path")?);
-            let min_size = args
-                .get("min_size")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(1024);
-            validate_path(&path, "path")?;
-            use std::collections::HashMap;
-            let mut size_map: HashMap<u64, Vec<String>> = HashMap::new();
-            if let Ok(entries) = std::fs::read_dir(&path) {
-                for entry in entries.filter_map(|e| e.ok()) {
-                    if let Ok(meta) = entry.metadata() {
-                        if meta.is_file() && meta.len() >= min_size {
-                            size_map
-                                .entry(meta.len())
-                                .or_default()
-                                .push(entry.path().to_string_lossy().to_string());
-                        }
-                    }
-                }
-            }
-            // Only hash files with same size
-            let mut duplicates = Vec::new();
-            for paths in size_map.values() {
-                if paths.len() < 2 {
-                    continue;
-                }
-                let mut hash_map: HashMap<String, Vec<String>> = HashMap::new();
-                for p in paths {
-                    if let Ok(data) = std::fs::read(p) {
-                        let digest = {
-                            use md5::Digest;
-                            let mut hasher = md5::Md5::new();
-                            hasher.update(&data);
-                            format!("{:x}", hasher.finalize())
-                        };
-                        hash_map.entry(digest).or_default().push(p.clone());
-                    }
-                }
-                for (hash, files) in hash_map {
-                    if files.len() >= 2 {
-                        duplicates.push(json!({ "hash": hash, "files": files }));
-                    }
-                }
-            }
-            Ok(json!({ "duplicates": duplicates, "groups": duplicates.len() }))
-        }
-
-        "local_grep" => {
-            let path = resolve_path(&get_str("path")?);
-            let pattern = get_str("pattern")?;
-            let max_results = args
-                .get("max_results")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(50) as usize;
-            let context_lines = args
-                .get("context_lines")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(2) as usize;
-            let case_sensitive = args
-                .get("case_sensitive")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(true);
-            let glob_filter = get_str_opt("glob");
-            validate_path(&path, "path")?;
-            let re = if case_sensitive {
-                regex::Regex::new(&pattern).map_err(|e| format!("Invalid regex: {}", e))?
-            } else {
-                regex::RegexBuilder::new(&pattern)
-                    .case_insensitive(true)
-                    .build()
-                    .map_err(|e| format!("Invalid regex: {}", e))?
-            };
-            let mut results = Vec::new();
-            fn walk_grep(
-                dir: &std::path::Path,
-                re: &regex::Regex,
-                glob_filter: &Option<String>,
-                ctx: usize,
-                results: &mut Vec<serde_json::Value>,
-                max: usize,
-            ) {
-                if results.len() >= max {
-                    return;
-                }
-                if let Ok(entries) = std::fs::read_dir(dir) {
-                    for entry in entries.filter_map(|e| e.ok()) {
-                        if results.len() >= max {
-                            return;
-                        }
-                        let p = entry.path();
-                        if p.is_dir() {
-                            walk_grep(&p, re, glob_filter, ctx, results, max);
-                        } else if p.is_file() {
-                            if let Some(ref glob) = glob_filter {
-                                let name = p
-                                    .file_name()
-                                    .unwrap_or_default()
-                                    .to_string_lossy()
-                                    .to_lowercase();
-                                let pattern = glob.trim_start_matches('*').to_lowercase();
-                                if !name.ends_with(&pattern) {
-                                    continue;
-                                }
-                            }
-                            if let Ok(content) = std::fs::read_to_string(&p) {
-                                let lines: Vec<&str> = content.lines().collect();
-                                for (i, line) in lines.iter().enumerate() {
-                                    if results.len() >= max {
-                                        return;
-                                    }
-                                    if re.is_match(line) {
-                                        let start = i.saturating_sub(ctx);
-                                        let end = (i + ctx + 1).min(lines.len());
-                                        let context: Vec<String> = lines[start..end]
-                                            .iter()
-                                            .map(|l| l.to_string())
-                                            .collect();
-                                        results.push(serde_json::json!({
-                                            "file": p.to_string_lossy(),
-                                            "line": i + 1,
-                                            "match": line,
-                                            "context": context,
-                                        }));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            walk_grep(
-                std::path::Path::new(&path),
-                &re,
-                &glob_filter,
-                context_lines,
-                &mut results,
-                max_results,
-            );
-            let total = results.len();
-            Ok(json!({ "results": results, "total": total }))
-        }
-
-        "local_head" => {
-            let path = resolve_path(&get_str("path")?);
-            let lines = args
-                .get("lines")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(20)
-                .min(500) as usize;
-            validate_path(&path, "path")?;
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("Failed to read file: {}", e))?;
-            let result: String = content.lines().take(lines).collect::<Vec<_>>().join("\n");
-            let total_lines = content.lines().count();
-            Ok(
-                json!({ "content": result, "lines_shown": lines.min(total_lines), "total_lines": total_lines }),
-            )
-        }
-
-        "local_tail" => {
-            let path = resolve_path(&get_str("path")?);
-            let lines = args
-                .get("lines")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(20)
-                .min(500) as usize;
-            validate_path(&path, "path")?;
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("Failed to read file: {}", e))?;
-            let all_lines: Vec<&str> = content.lines().collect();
-            let start = all_lines.len().saturating_sub(lines);
-            let result = all_lines[start..].join("\n");
-            Ok(
-                json!({ "content": result, "lines_shown": all_lines.len() - start, "total_lines": all_lines.len() }),
-            )
-        }
-
-        "local_stat_batch" => {
-            let paths: Vec<String> = args
-                .get("paths")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(&resolve_path))
-                        .collect()
-                })
-                .ok_or("Missing 'paths' array parameter")?;
-            if paths.len() > 100 {
-                return Err("Maximum 100 paths allowed".to_string());
-            }
-            let stats: Vec<serde_json::Value> = paths
-                .iter()
-                .map(|p| {
-                    if let Err(error) = validate_path(p, "paths[]") {
-                        return json!({ "path": p, "exists": false, "error": error });
-                    }
-                    match std::fs::metadata(p) {
-                        Ok(meta) => json!({
-                            "path": p,
-                            "exists": true,
-                            "size": meta.len(),
-                            "is_dir": meta.is_dir(),
-                            "is_file": meta.is_file(),
-                            "readonly": meta.permissions().readonly(),
-                        }),
-                        Err(e) => json!({ "path": p, "exists": false, "error": e.to_string() }),
-                    }
-                })
-                .collect();
-            Ok(json!({ "stats": stats }))
-        }
-
-        "local_tree" => {
-            let path = resolve_path(&get_str("path")?);
-            let max_depth = args
-                .get("max_depth")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(3)
-                .min(10) as usize;
-            let show_hidden = args
-                .get("show_hidden")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let glob_filter = get_str_opt("glob");
-            validate_path(&path, "path")?;
-            fn build_tree(
-                dir: &std::path::Path,
-                depth: usize,
-                max_depth: usize,
-                show_hidden: bool,
-                glob_filter: &Option<String>,
-            ) -> Vec<serde_json::Value> {
-                if depth >= max_depth {
-                    return vec![];
-                }
-                let mut items = Vec::new();
-                if let Ok(entries) = std::fs::read_dir(dir) {
-                    let mut sorted: Vec<_> = entries.filter_map(|e| e.ok()).collect();
-                    sorted.sort_by_key(|e| e.file_name());
-                    for entry in sorted {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        if !show_hidden && name.starts_with('.') {
-                            continue;
-                        }
-                        let meta = entry.metadata().ok();
-                        let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
-                        // `file_type()` does not follow the link, unlike
-                        // `metadata()` above: a symlink-to-directory is still
-                        // rendered as a directory, but never descended into,
-                        // or a link to `..` walks its own parent forever.
-                        let is_symlink = entry.file_type().map(|t| t.is_symlink()).unwrap_or(false);
-                        if !is_dir {
-                            if let Some(ref glob) = glob_filter {
-                                let pattern = glob.trim_start_matches('*').to_lowercase();
-                                if !name.to_lowercase().ends_with(&pattern) {
-                                    continue;
-                                }
-                            }
-                        }
-                        let mut node = serde_json::json!({
-                            "name": name,
-                            "is_dir": is_dir,
-                            "size": meta.as_ref().map(|m| m.len()).unwrap_or(0),
-                        });
-                        if is_dir && !is_symlink {
-                            let children = build_tree(
-                                &entry.path(),
-                                depth + 1,
-                                max_depth,
-                                show_hidden,
-                                glob_filter,
-                            );
-                            node["children"] = serde_json::json!(children);
-                        }
-                        items.push(node);
-                    }
-                }
-                items
-            }
-            let tree = build_tree(
-                std::path::Path::new(&path),
-                0,
-                max_depth,
-                show_hidden,
-                &glob_filter,
-            );
-            Ok(json!({ "tree": tree }))
-        }
-
-        "local_diff" => {
-            let path_a = resolve_path(&get_str("path_a")?);
-            let path_b = resolve_path(&get_str("path_b")?);
-            validate_path(&path_a, "path_a")?;
-            validate_path(&path_b, "path_b")?;
-            let content_a = std::fs::read_to_string(&path_a)
-                .map_err(|e| format!("Failed to read {}: {}", path_a, e))?;
-            let content_b = std::fs::read_to_string(&path_b)
-                .map_err(|e| format!("Failed to read {}: {}", path_b, e))?;
-            use similar::TextDiff;
-            let diff = TextDiff::from_lines(&content_a, &content_b);
-            let unified = diff.unified_diff().header(&path_a, &path_b).to_string();
-            Ok(json!({ "diff": unified, "has_changes": !unified.is_empty() }))
-        }
-
+        // KEEP. This is the CLI's own implementation of `hash_file`, and it is
+        // not the GUI one: it reads the file and computes the digest here, over
+        // the algorithms this binary advertises to the model.
+        //
+        // It is unreachable today, and that is a defect rather than a reason to
+        // delete it. The registry declares this tool on the CLI surface, so the
+        // dispatcher accepts it and routes it to the GUI handler, which needs an
+        // app handle the CLI does not have and answers `Exec("Requires GUI")`.
+        // `execute_cli_tool` falls back to this match only on `Unknown` and
+        // `NotMigrated`, so that answer is returned to the caller and this arm
+        // is never entered.
+        //
+        // Do NOT remove it for consistency with the thirty-seven arms removed
+        // alongside it. Those were unreachable because the dispatcher HANDLES
+        // their tools; this one is unreachable because the dispatcher MISROUTES
+        // it, so deleting it would destroy the only implementation the CLI has.
+        // The test `the_two_tools_the_cli_cannot_run_are_pinned_at_the_defect`
+        // pins the dispatcher's answer, and it is worth being exact about what
+        // that buys. It does NOT catch the deletion of this arm: it exercises
+        // the dispatcher, so removing these lines would leave it green. While
+        // this arm is unreachable no behavioural test can notice its removal,
+        // because no path executes it, and that is precisely why the constraint
+        // is carried by this comment instead. What the test does buy is the
+        // other direction: when the change that makes these two reachable
+        // lands, that assertion fails and forces the fix to be noticed.
         "hash_file" => {
             let path = resolve_path(&get_str("path")?);
             let algorithm = get_str_opt("algorithm").unwrap_or_else(|| "sha256".to_string());
@@ -62336,267 +61620,19 @@ async fn execute_cli_tool(
             Ok(json!({ "path": path, "algorithm": algorithm, "hash": hash }))
         }
 
-        "shell_execute" => {
-            let command = get_str("command")?;
-            let working_dir = get_str_opt("working_dir");
-            let timeout_secs = args
-                .get("timeout_secs")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(30)
-                .min(120);
-
-            // Defense-in-depth: reject shell meta-characters that enable denylist bypass
-            // (pipes, subshells, backticks, semicolons, eval chains, etc.)
-            // Mirrors ai_tools.rs shell_execute meta-char filter
-            const SHELL_META: &[char] = &['|', ';', '`', '$', '&', '(', ')', '{', '}', '\n', '\r'];
-            if SHELL_META.iter().any(|c| command.contains(*c)) {
-                return Err(
-                    "Command contains shell meta-characters (|;&`$(){}\\n\\r). Use simple commands only."
-                        .to_string(),
-                );
-            }
-
-            // Denylist (mirrors ai_tools.rs DENIED_COMMAND_PATTERNS)
-            static DENIED: &[&str] = &[
-                "rm -rf /",
-                "rm -rf /*",
-                "mkfs",
-                "dd if=",
-                ":(){",
-                "fork bomb",
-                "chmod -R 777 /",
-                "chmod 777 /",
-                "chown ",
-                "wget|sh",
-                "curl|sh",
-                "curl|bash",
-                "wget|bash",
-                "> /dev/sda",
-                "shutdown",
-                "reboot",
-                "halt",
-                "init 0",
-                "init 6",
-                "kill -9 1",
-                "killall",
-                "pkill -9",
-                "python -c",
-                "python3 -c",
-                "eval ",
-                "base64 -d",
-                "base64 --decode",
-                "truncate",
-                "shred",
-                "crontab",
-                "nohup",
-                "systemctl",
-                "service ",
-                "mount ",
-                "umount ",
-                "fdisk",
-                "parted",
-                "iptables",
-                "useradd",
-                "userdel",
-                "passwd",
-                "sudo ",
-            ];
-            let cmd_lower = command.to_lowercase();
-            for pattern in DENIED {
-                if cmd_lower.contains(pattern) {
-                    return Err(format!("Command denied for safety: contains '{}'", pattern));
-                }
-            }
-
-            // Validate working_dir against deny-list
-            if let Some(ref wd) = working_dir {
-                validate_path(wd, "working_dir")?;
-            }
-
-            let mut cmd = tokio::process::Command::new("sh");
-            cmd.arg("-c")
-                .arg(&command)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped());
-            if let Some(ref wd) = working_dir {
-                cmd.current_dir(wd);
-            }
-            let result =
-                tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), cmd.output())
-                    .await
-                    .map_err(|_| format!("Command timed out after {}s", timeout_secs))?
-                    .map_err(|e| format!("Failed to execute: {}", e))?;
-
-            let stdout = String::from_utf8_lossy(&result.stdout);
-            let stderr = String::from_utf8_lossy(&result.stderr);
-            // Truncate output to 10KB
-            let max_out = 10240;
-            Ok(json!({
-                "exit_code": result.status.code().unwrap_or(-1),
-                "stdout": if stdout.len() > max_out { &stdout[..max_out] } else { &stdout },
-                "stderr": if stderr.len() > max_out { &stderr[..max_out] } else { &stderr },
-            }))
-        }
-
-        "archive_compress" => {
-            // Safe: spawn tools directly with .arg() - no shell interpolation
-            let paths: Vec<String> = args
-                .get("paths")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(&resolve_path))
-                        .collect()
-                })
-                .ok_or("Missing 'paths' array parameter")?;
-            let output_path = resolve_path(&get_str("output_path")?);
-            let format = get_str_opt("format").unwrap_or_else(|| "zip".to_string());
-            validate_path(&output_path, "output_path")?;
-            for p in &paths {
-                validate_path(p, "paths[]")?;
-            }
-            let mut cmd = match format.as_str() {
-                "zip" => {
-                    let mut c = tokio::process::Command::new("zip");
-                    c.arg("-r").arg(&output_path);
-                    for p in &paths {
-                        c.arg(p);
-                    }
-                    c
-                }
-                "tar.gz" => {
-                    let mut c = tokio::process::Command::new("tar");
-                    c.arg("czf").arg(&output_path);
-                    for p in &paths {
-                        c.arg(p);
-                    }
-                    c
-                }
-                "tar.bz2" => {
-                    let mut c = tokio::process::Command::new("tar");
-                    c.arg("cjf").arg(&output_path);
-                    for p in &paths {
-                        c.arg(p);
-                    }
-                    c
-                }
-                "tar.xz" => {
-                    let mut c = tokio::process::Command::new("tar");
-                    c.arg("cJf").arg(&output_path);
-                    for p in &paths {
-                        c.arg(p);
-                    }
-                    c
-                }
-                "tar" => {
-                    let mut c = tokio::process::Command::new("tar");
-                    c.arg("cf").arg(&output_path);
-                    for p in &paths {
-                        c.arg(p);
-                    }
-                    c
-                }
-                "7z" => {
-                    let mut c = tokio::process::Command::new("7z");
-                    c.arg("a").arg(&output_path);
-                    for p in &paths {
-                        c.arg(p);
-                    }
-                    c
-                }
-                _ => return Err(format!("Unsupported format: {}", format)),
-            };
-            let output = cmd.output().await.map_err(|e| format!("Failed: {}", e))?;
-            if output.status.success() {
-                Ok(json!({ "success": true, "output": output_path, "format": format }))
-            } else {
-                Err(String::from_utf8_lossy(&output.stderr).to_string())
-            }
-        }
-
-        "archive_decompress" => {
-            let archive_path = resolve_path(&get_str("archive_path")?);
-            let output_dir = resolve_path(&get_str("output_dir")?);
-            validate_path(&archive_path, "archive_path")?;
-            validate_path(&output_dir, "output_dir")?;
-            std::fs::create_dir_all(&output_dir).ok();
-            let ext = archive_path.to_lowercase();
-            let mut cmd = if ext.ends_with(".zip") {
-                let mut c = tokio::process::Command::new("unzip");
-                c.arg("-o").arg(&archive_path).arg("-d").arg(&output_dir);
-                c
-            } else if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
-                let mut c = tokio::process::Command::new("tar");
-                c.arg("xzf").arg(&archive_path).arg("-C").arg(&output_dir);
-                c
-            } else if ext.ends_with(".tar.bz2") {
-                let mut c = tokio::process::Command::new("tar");
-                c.arg("xjf").arg(&archive_path).arg("-C").arg(&output_dir);
-                c
-            } else if ext.ends_with(".tar.xz") {
-                let mut c = tokio::process::Command::new("tar");
-                c.arg("xJf").arg(&archive_path).arg("-C").arg(&output_dir);
-                c
-            } else if ext.ends_with(".tar") {
-                let mut c = tokio::process::Command::new("tar");
-                c.arg("xf").arg(&archive_path).arg("-C").arg(&output_dir);
-                c
-            } else if ext.ends_with(".7z") {
-                let mut c = tokio::process::Command::new("7z");
-                c.arg("x")
-                    .arg(&archive_path)
-                    .arg(format!("-o{}", output_dir));
-                c
-            } else {
-                return Err(format!("Unsupported archive format: {}", archive_path));
-            };
-            let output = cmd.output().await.map_err(|e| format!("Failed: {}", e))?;
-            if output.status.success() {
-                Ok(json!({ "success": true, "output_dir": output_dir }))
-            } else {
-                Err(String::from_utf8_lossy(&output.stderr).to_string())
-            }
-        }
-
-        "clipboard_write" => {
-            let content = get_str("content")?;
-            // Use xclip/xsel on Linux
-            let mut child = tokio::process::Command::new("xclip")
-                .args(["-selection", "clipboard"])
-                .stdin(std::process::Stdio::piped())
-                .spawn()
-                .map_err(|_| "xclip not found. Install: sudo apt install xclip".to_string())?;
-            if let Some(ref mut stdin) = child.stdin {
-                use tokio::io::AsyncWriteExt;
-                stdin
-                    .write_all(content.as_bytes())
-                    .await
-                    .map_err(|e| format!("Failed to write to clipboard: {}", e))?;
-            }
-            child
-                .wait()
-                .await
-                .map_err(|e| format!("xclip failed: {}", e))?;
-            Ok(
-                json!({ "success": true, "message": format!("Copied {} chars to clipboard", content.len()) }),
-            )
-        }
-
-        "agent_memory_write" => {
-            let entry = get_str("entry")?;
-            let category = get_str_opt("category").unwrap_or_else(|| "general".to_string());
-            let project_path = std::env::current_dir()
-                .map(|cwd| cwd.to_string_lossy().to_string())
-                .unwrap_or_else(|_| ".".to_string());
-            let stored = ftp_client_gui_lib::agent_memory_db::store_memory_entry_cli(
-                &project_path,
-                &category,
-                &entry,
-                None,
-            )?;
-            Ok(json!({ "success": true, "message": format!("Saved memory entry {}", stored.id) }))
-        }
-
+        // KEEP, for the same reason as `hash_file` above, and this one is the
+        // plainer case: the CLI `app_info` reports the working directory and
+        // `"mode": "cli"`, while the GUI one reports connection state and the
+        // GUI's own current path. They answer different questions under one
+        // name, so the GUI handler is not a substitute for this arm.
+        //
+        // Unreachable today: the tool is declared on the CLI surface, the
+        // dispatcher routes it to the GUI handler, and that handler answers
+        // `Exec("Requires GUI")`, which is not one of the two errors
+        // `execute_cli_tool` falls back on.
+        //
+        // Do NOT remove it for consistency with the thirty-seven arms removed
+        // alongside it, for the reason spelled out above `hash_file`.
         "app_info" => {
             let cwd = std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
@@ -62608,400 +61644,6 @@ async fn execute_cli_tool(
                 "working_directory": cwd,
                 "mode": "cli",
             }))
-        }
-
-        "server_list_saved" => {
-            let profiles = safe_vault_profiles_for_agent()?;
-            Ok(json!({
-                "servers": profiles,
-                "count": profiles.len(),
-            }))
-        }
-
-        "remote_list" => {
-            let server_query = get_str("server")?;
-            let path = get_str_opt("path").unwrap_or_else(|| "/".to_string());
-            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
-            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
-            let entries = provider
-                .list(&effective_path)
-                .await
-                .map_err(|e| e.to_string());
-            let _ = provider.disconnect().await;
-            let entries = entries?;
-            let items: Vec<serde_json::Value> = entries
-                .iter()
-                .take(200)
-                .map(|e| {
-                    json!({
-                        "name": e.name,
-                        "path": e.path,
-                        "is_dir": e.is_dir,
-                        "size": e.size,
-                        "modified": e.modified,
-                    })
-                })
-                .collect();
-            Ok(json!({
-                "server": server_query,
-                "path": effective_path,
-                "entries": items,
-                "total": entries.len(),
-                "truncated": entries.len() > 200,
-            }))
-        }
-
-        "remote_read" => {
-            let server_query = get_str("server")?;
-            let path = get_str("path")?;
-            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
-            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
-            let preview = read_remote_preview(&mut provider, &effective_path)
-                .await
-                .map_err(|e| e.to_string());
-            let _ = provider.disconnect().await;
-            let (preview, size, truncated) = preview?;
-            let content = String::from_utf8_lossy(&preview).to_string();
-            Ok(json!({
-                "server": server_query,
-                "path": effective_path,
-                "content": content,
-                "size": size,
-                "truncated": truncated,
-            }))
-        }
-
-        "remote_info" => {
-            let server_query = get_str("server")?;
-            let path = get_str("path")?;
-            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
-            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
-            let entry = provider
-                .stat(&effective_path)
-                .await
-                .map_err(|e| e.to_string());
-            let _ = provider.disconnect().await;
-            let entry = entry?;
-            Ok(json!({
-                "server": server_query,
-                "path": effective_path,
-                "name": entry.name,
-                "is_dir": entry.is_dir,
-                "size": entry.size,
-                "modified": entry.modified,
-                "permissions": entry.permissions,
-                "owner": entry.owner,
-            }))
-        }
-
-        "remote_search" => {
-            let server_query = get_str("server")?;
-            let path = get_str_opt("path").unwrap_or_else(|| "/".to_string());
-            let pattern = get_str_opt("pattern").unwrap_or_else(|| "*".to_string());
-            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
-            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
-            let entries = provider
-                .find(&effective_path, &pattern)
-                .await
-                .map_err(|e| e.to_string());
-            let _ = provider.disconnect().await;
-            let entries = entries?;
-            let items: Vec<serde_json::Value> = entries
-                .iter()
-                .take(100)
-                .map(|e| {
-                    json!({
-                        "name": e.name,
-                        "path": e.path,
-                        "is_dir": e.is_dir,
-                        "size": e.size,
-                    })
-                })
-                .collect();
-            Ok(json!({
-                "server": server_query,
-                "path": effective_path,
-                "pattern": pattern,
-                "results": items,
-                "total": entries.len(),
-                "truncated": entries.len() > 100,
-            }))
-        }
-
-        "remote_upload" => {
-            let server_query = get_str("server")?;
-            let remote_path = get_str("remote_path")?;
-            if remote_path.contains('\0') {
-                return Err("remote_path contains null bytes".to_string());
-            }
-            let local_path = get_str_opt("local_path");
-            let content = get_str_opt("content");
-            if local_path.is_none() && content.is_none() {
-                return Err("Provide either 'local_path' or 'content'".to_string());
-            }
-
-            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
-            let effective_remote_path = resolve_agent_remote_path(&initial_path, &remote_path)?;
-            let upload_source = if let Some(local_path) = local_path {
-                let resolved = resolve_path(&local_path);
-                validate_path(&resolved, "local_path")?;
-                resolved
-            } else {
-                let mut temp = NamedTempFile::new()
-                    .map_err(|e| format!("Cannot create temp upload file: {}", e))?;
-                temp.write_all(content.as_deref().unwrap_or_default().as_bytes())
-                    .map_err(|e| format!("Cannot write temp upload file: {}", e))?;
-                temp.flush()
-                    .map_err(|e| format!("Cannot flush temp upload file: {}", e))?;
-                let temp_path = temp.path().to_string_lossy().to_string();
-                match provider
-                    .upload(&temp_path, &effective_remote_path, None)
-                    .await
-                {
-                    Ok(()) => {
-                        let _ = provider.disconnect().await;
-                        return Ok(json!({
-                            "server": server_query,
-                            "remote_path": effective_remote_path,
-                            "uploaded": true,
-                            "bytes": content.as_deref().unwrap_or_default().len(),
-                        }));
-                    }
-                    Err(e) => {
-                        let _ = provider.disconnect().await;
-                        return Err(e.to_string());
-                    }
-                }
-            };
-
-            let bytes = std::fs::metadata(&upload_source)
-                .map(|m| m.len())
-                .unwrap_or(0);
-            let result = provider
-                .upload(&upload_source, &effective_remote_path, None)
-                .await;
-            let _ = provider.disconnect().await;
-            result.map_err(|e| e.to_string())?;
-            Ok(json!({
-                "server": server_query,
-                "remote_path": effective_remote_path,
-                "uploaded": true,
-                "bytes": bytes,
-            }))
-        }
-
-        "remote_download" => {
-            let server_query = get_str("server")?;
-            let remote_path = get_str("remote_path")?;
-            let local_path = resolve_path(&get_str("local_path")?);
-            validate_path(&local_path, "local_path")?;
-            if let Some(parent) = Path::new(&local_path).parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("Cannot create local parent directory: {}", e))?;
-            }
-            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
-            let effective_remote_path = resolve_agent_remote_path(&initial_path, &remote_path)?;
-            let result = provider
-                .download(&effective_remote_path, &local_path, None)
-                .await
-                .map_err(|e| e.to_string());
-            let _ = provider.disconnect().await;
-            result?;
-            Ok(json!({
-                "server": server_query,
-                "remote_path": effective_remote_path,
-                "local_path": local_path,
-                "downloaded": true,
-            }))
-        }
-
-        "remote_mkdir" => {
-            let server_query = get_str("server")?;
-            let path = get_str("path")?;
-            if path.contains('\0') {
-                return Err("path contains null bytes".to_string());
-            }
-            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
-            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
-            let result = provider
-                .mkdir(&effective_path)
-                .await
-                .map_err(|e| e.to_string());
-            let _ = provider.disconnect().await;
-            result?;
-            Ok(json!({ "server": server_query, "path": effective_path, "created": true }))
-        }
-
-        "remote_delete" => {
-            let server_query = get_str("server")?;
-            let path = get_str("path")?;
-            if path.contains('\0') {
-                return Err("path contains null bytes".to_string());
-            }
-            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
-            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
-            let result = provider
-                .delete(&effective_path)
-                .await
-                .map_err(|e| e.to_string());
-            let _ = provider.disconnect().await;
-            result?;
-            Ok(json!({ "server": server_query, "path": effective_path, "deleted": true }))
-        }
-
-        "remote_rename" => {
-            let server_query = get_str("server")?;
-            let from = get_str("from")?;
-            let to = get_str("to")?;
-            if from.contains('\0') || to.contains('\0') {
-                return Err("remote path contains null bytes".to_string());
-            }
-            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
-            let effective_from = resolve_agent_remote_path(&initial_path, &from)?;
-            let effective_to = resolve_agent_remote_path(&initial_path, &to)?;
-            let result = provider
-                .rename(&effective_from, &effective_to)
-                .await
-                .map_err(|e| e.to_string());
-            let _ = provider.disconnect().await;
-            result?;
-            Ok(
-                json!({ "server": server_query, "from": effective_from, "to": effective_to, "renamed": true }),
-            )
-        }
-
-        "server_exec" => {
-            let server_query = get_str("server")?;
-            let operation = get_str("operation")?;
-            let path = get_str_opt("path").unwrap_or_else(|| "/".to_string());
-            let pattern = get_str_opt("pattern");
-
-            let valid_ops = ["ls", "cat", "stat", "find", "df"];
-            if !valid_ops.contains(&operation.as_str()) {
-                return Err(format!(
-                    "Invalid operation '{}'. CLI agent supports: {}. Mutative operations (put, rm, mv, mkdir) require explicit CLI commands.",
-                    operation, valid_ops.join(", ")
-                ));
-            }
-
-            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
-            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
-
-            let result = match operation.as_str() {
-                "ls" => {
-                    let entries = provider
-                        .list(&effective_path)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    let items: Vec<serde_json::Value> = entries
-                        .iter()
-                        .take(200)
-                        .map(|e| {
-                            json!({
-                                "name": e.name,
-                                "path": e.path,
-                                "is_dir": e.is_dir,
-                                "size": e.size,
-                                "modified": e.modified,
-                            })
-                        })
-                        .collect();
-                    json!({
-                        "operation": "ls",
-                        "server": server_query,
-                        "path": effective_path,
-                        "entries": items,
-                        "total": entries.len(),
-                        "truncated": entries.len() > 200,
-                    })
-                }
-                "cat" => {
-                    let (preview, size, truncated) =
-                        read_remote_preview(&mut provider, &effective_path)
-                            .await
-                            .map_err(|e| e.to_string())?;
-                    if truncated {
-                        let preview = String::from_utf8_lossy(&preview);
-                        json!({
-                            "operation": "cat",
-                            "server": server_query,
-                            "path": effective_path,
-                            "content": preview,
-                            "size": size,
-                            "truncated": true,
-                        })
-                    } else {
-                        let content = String::from_utf8_lossy(&preview);
-                        json!({
-                            "operation": "cat",
-                            "server": server_query,
-                            "path": effective_path,
-                            "content": content,
-                            "size": size,
-                            "truncated": false,
-                        })
-                    }
-                }
-                "stat" => {
-                    let entry = provider
-                        .stat(&effective_path)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    json!({
-                        "operation": "stat",
-                        "server": server_query,
-                        "path": effective_path,
-                        "name": entry.name,
-                        "is_dir": entry.is_dir,
-                        "size": entry.size,
-                        "modified": entry.modified,
-                        "permissions": entry.permissions,
-                    })
-                }
-                "find" => {
-                    let pat = pattern.unwrap_or_else(|| "*".to_string());
-                    let entries = provider
-                        .find(&effective_path, &pat)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    let items: Vec<serde_json::Value> = entries
-                        .iter()
-                        .take(100)
-                        .map(|e| {
-                            json!({
-                                "name": e.name,
-                                "path": e.path,
-                                "is_dir": e.is_dir,
-                                "size": e.size,
-                            })
-                        })
-                        .collect();
-                    json!({
-                        "operation": "find",
-                        "server": server_query,
-                        "path": effective_path,
-                        "pattern": pat,
-                        "results": items,
-                        "total": entries.len(),
-                        "truncated": entries.len() > 100,
-                    })
-                }
-                "df" => {
-                    let info = provider.storage_info().await.map_err(|e| e.to_string())?;
-                    json!({
-                        "operation": "df",
-                        "server": server_query,
-                        "path": effective_path,
-                        "used_bytes": info.used,
-                        "total_bytes": info.total,
-                        "free_bytes": info.free,
-                    })
-                }
-                _ => unreachable!(),
-            };
-
-            let _ = provider.disconnect().await;
-            Ok(result)
         }
 
         _ => Err(format!("Tool '{}' is not available in CLI mode", tool_name)),
@@ -72223,19 +70865,6 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_agent_remote_path_confines_to_initial_path() {
-        assert_eq!(
-            resolve_agent_remote_path("/projects/demo", "/").unwrap(),
-            "/projects/demo"
-        );
-        assert_eq!(
-            resolve_agent_remote_path("/projects/demo", "notes/todo.txt").unwrap(),
-            "/projects/demo/notes/todo.txt"
-        );
-        assert!(resolve_agent_remote_path("/projects/demo", "../escape.txt").is_err());
-    }
-
-    #[test]
     fn test_serve_effective_base_path() {
         assert_eq!(
             serve_effective_base_path("/", "/home/user").unwrap(),
@@ -76137,6 +74766,63 @@ mod tests {
             serde_json::json!([{ "path": recorded.rel_path, "reason": recorded.reason }]),
             "the JSON report carries the paths the remote scan did not see"
         );
+    }
+
+    /// A remote whose `/root` holds a symbolic link to a directory. No walk
+    /// follows one, so the subtree behind it is absent from the scan, and the
+    /// scan records it as a boundary rather than as an error: `list_errors`
+    /// stays 0 and `truncated` stays false.
+    fn remote_with_an_unfollowed_link() -> MemTreeProvider {
+        let mut link = RemoteEntry::directory("link".to_string(), "/root/link".to_string());
+        link.is_symlink = true;
+        MemTreeProvider {
+            dirs: HashMap::from([("/root".to_string(), vec![link])]),
+            delete_attempts: Arc::default(),
+        }
+    }
+
+    /// A named gap is still a gap. `ScanCompleteness` cannot see this one,
+    /// because a link produces no listing error and no truncation, so the
+    /// report answered `ok` and exited 0 while printing the path it had left
+    /// out: the document listed what it does not cover and said in the line
+    /// above that nothing was missing.
+    #[test]
+    fn check_is_partial_when_a_link_left_a_subtree_unread() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_check(remote_with_an_unfollowed_link(), &fixture.local(), false);
+
+        assert!(
+            !CliCheckReport::named_gaps(&report.remote_boundaries).is_empty(),
+            "the fixture must produce a named gap or the test proves nothing"
+        );
+        assert!(
+            report.remote_scan.is_complete(),
+            "and the completeness counters must not see it, which is the defect"
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+
+        let mut doc = serde_json::json!({});
+        report.add_scan_fields(&mut doc);
+        assert_eq!(
+            doc["remote_scan_incomplete"], true,
+            "the document cannot list a boundary and call the scan complete: {doc}"
+        );
+    }
+
+    /// The same on the `cryptcheck` road. The two commands build the same
+    /// report and share these methods, so this is not a duplicate: it is the
+    /// assertion that the pair stays symmetrical the day they stop sharing.
+    #[test]
+    fn cryptcheck_is_partial_when_a_link_left_a_subtree_unread() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_cryptcheck(remote_with_an_unfollowed_link(), &fixture.local(), false);
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
     }
 
     /// Complete scans of matching trees still report `ok` and exit 0.
