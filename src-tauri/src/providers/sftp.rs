@@ -99,6 +99,51 @@ fn classify_russh_err(
     }
 }
 
+/// Map `SftpSession::try_exists` onto [`StorageProvider::exists`].
+///
+/// russh-sftp converts `SSH_FX_NO_SUCH_FILE` into `Ok(false)` and returns
+/// every other failure as `Err`. Absence stays `Ok(false)`; permission,
+/// session and I/O failures stay `Err`, so a root under an unreadable
+/// parent is a gap rather than a missing source.
+fn map_sftp_try_exists(
+    result: Result<bool, russh_sftp::client::error::Error>,
+) -> Result<bool, ProviderError> {
+    match result {
+        Ok(exists) => Ok(exists),
+        Err(russh_sftp::client::error::Error::Status(status))
+            if status.status_code == russh_sftp::protocol::StatusCode::NoSuchFile =>
+        {
+            Ok(false)
+        }
+        Err(e) => Err(classify_sftp_exists_err(e)),
+    }
+}
+
+fn classify_sftp_exists_err(e: russh_sftp::client::error::Error) -> ProviderError {
+    if let russh_sftp::client::error::Error::Status(status) = &e {
+        match status.status_code {
+            russh_sftp::protocol::StatusCode::PermissionDenied => {
+                let message = if status.error_message.is_empty() {
+                    status.status_code.to_string()
+                } else {
+                    status.error_message.clone()
+                };
+                return ProviderError::PermissionDenied(message);
+            }
+            russh_sftp::protocol::StatusCode::ConnectionLost => {
+                return ProviderError::ConnectionLost(status.error_message.clone());
+            }
+            russh_sftp::protocol::StatusCode::NoConnection => {
+                return ProviderError::NotConnected;
+            }
+            _ => {}
+        }
+    }
+    classify_russh_err(e, |s| {
+        ProviderError::ServerError(format!("Failed to check existence: {s}"))
+    })
+}
+
 /// Shared, lock-protected handle to the underlying russh SSH session.
 /// Used by sibling modules (e.g. rsync-over-SSH) to open additional channels
 /// (exec, direct-tcpip) without re-authenticating.
@@ -2494,11 +2539,7 @@ impl StorageProvider for SftpProvider {
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
-
-        match sftp.try_exists(&full_path).await {
-            Ok(exists) => Ok(exists),
-            Err(_) => Ok(false),
-        }
+        map_sftp_try_exists(sftp.try_exists(&full_path).await)
     }
 
     fn supports_checksum(&self) -> bool {
@@ -4490,6 +4531,60 @@ mod tests {
         assert_eq!(
             plan_resume_upload(120, 120, 100),
             ResumeUploadPlan::AlreadyComplete
+        );
+    }
+
+    fn sftp_status(
+        code: russh_sftp::protocol::StatusCode,
+        message: &str,
+    ) -> russh_sftp::client::error::Error {
+        russh_sftp::client::error::Error::Status(russh_sftp::protocol::Status {
+            id: 1,
+            status_code: code,
+            error_message: message.to_string(),
+            language_tag: "en".into(),
+        })
+    }
+
+    #[test]
+    fn exists_maps_a_present_path_to_true() {
+        assert!(map_sftp_try_exists(Ok(true)).unwrap());
+    }
+
+    #[test]
+    fn exists_maps_a_missing_path_to_false() {
+        // russh-sftp::try_exists converts SSH_FX_NO_SUCH_FILE into Ok(false).
+        assert!(!map_sftp_try_exists(Ok(false)).unwrap());
+        // Defensive: if a future russh-sftp leaves that status as Err, absence
+        // must still be Ok(false) so a sync into a directory not yet created
+        // keeps scanning it as an empty tree.
+        let err = sftp_status(russh_sftp::protocol::StatusCode::NoSuchFile, "No such file");
+        assert!(!map_sftp_try_exists(Err(err)).unwrap());
+    }
+
+    #[test]
+    fn exists_maps_permission_denied_to_err_not_absent() {
+        let err = sftp_status(
+            russh_sftp::protocol::StatusCode::PermissionDenied,
+            "Permission denied",
+        );
+        match map_sftp_try_exists(Err(err)) {
+            Err(ProviderError::PermissionDenied(message)) => {
+                assert!(
+                    message.to_ascii_lowercase().contains("permission"),
+                    "got {message:?}"
+                );
+            }
+            other => panic!("permission denied must stay an error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn exists_maps_an_io_failure_to_err_not_absent() {
+        let err = russh_sftp::client::error::Error::IO("broken pipe".into());
+        assert!(
+            map_sftp_try_exists(Err(err)).is_err(),
+            "an I/O failure must stay an error, not Ok(false)"
         );
     }
 }
