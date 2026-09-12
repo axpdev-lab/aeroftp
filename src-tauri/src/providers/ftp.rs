@@ -2668,8 +2668,13 @@ impl FtpProvider {
                 // segment the `421` is already in the buffer and the socket
                 // shows nothing. The reader's own buffer is what can, and
                 // `buffered_reply_bytes` reports it, so the session is given up
-                // below whenever a reply is still queued, whatever the
-                // segmentation was.
+                // below whenever a reply is ALREADY queued. Measured on the
+                // fake server: written together with the refusal, the goodbye
+                // is 55 bytes in the reader and nothing on the socket; written
+                // after it, both are empty when the check runs and it lands
+                // some 50 ms later. So the segmentation this covers is the one
+                // that queues the reply in time, and the other one is a named
+                // limit with a test of its own in `tests/ftp_resume_and_421.rs`.
                 //
                 // The first property is still only named: a condition that looks
                 // total has been wrong four times, and each time it was total
@@ -2728,6 +2733,16 @@ impl FtpProvider {
     /// is what reports them. Dropping the session costs a re-dial on a path that
     /// has already failed, and keeps the next question from taking this one's
     /// answer.
+    ///
+    /// What this covers is a reply ALREADY queued when the refusal is
+    /// classified. A server that writes the goodbye afterwards, in a write of
+    /// its own, has sent nothing at this point: measured, the reader's buffer
+    /// and a peek at the socket are both empty here, and the goodbye lands some
+    /// 50 ms later. So asking the socket as well changes no outcome on this
+    /// path, and it is not asked. Where a wait has already happened the socket
+    /// is worth asking, and `after_timed_out_open` asks it. The uncovered shape
+    /// has a test of its own; what it points at is a check when the NEXT
+    /// command starts, which is a design change and not this one.
     fn drop_session_if_a_reply_is_queued(&mut self) {
         let queued = self
             .stream

@@ -17,7 +17,7 @@ use std::io::Write as _;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use ftp_client_gui_lib::providers::types::{FtpConfig, FtpTlsMode};
+use ftp_client_gui_lib::providers::types::{FtpConfig, FtpTlsMode, ProviderError};
 use ftp_client_gui_lib::providers::{FtpProvider, StorageProvider};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
@@ -31,6 +31,11 @@ enum Script {
     /// Answer `RETR` with a refusal and a goodbye in ONE write, so both replies
     /// reach the client in the same segment.
     RefuseThenHangUp,
+    /// The same two replies in TWO writes, with a deliberate pause between them:
+    /// the goodbye goes out after the client has already taken the refusal, so
+    /// at the moment the refusal is classified it has not been sent at all. The
+    /// pause is what makes that deterministic instead of a race.
+    RefuseThenHangUpLater,
 }
 
 /// Every control command the fake server received, in order.
@@ -103,7 +108,9 @@ async fn session(stream: tokio::net::TcpStream, script: Script, commands: Comman
                     // reason.
                     continue;
                 }
-                Script::RefuseThenHangUp => reply(&mut write, b"550 Not allowed\r\n").await,
+                Script::RefuseThenHangUp | Script::RefuseThenHangUpLater => {
+                    reply(&mut write, b"550 Not allowed\r\n").await
+                }
             },
             "RETR" => match script {
                 Script::RefuseThenHangUp => {
@@ -114,6 +121,19 @@ async fn session(stream: tokio::net::TcpStream, script: Script, commands: Comman
                     reply(
                         &mut write,
                         b"550 Failed to open file\r\n421 Service not available, closing control connection\r\n",
+                    )
+                    .await;
+                }
+                Script::RefuseThenHangUpLater => {
+                    // Two writes with a pause between them: the client takes the
+                    // refusal and classifies it, and only then does the goodbye
+                    // go out, so at the moment of the check there is nothing to
+                    // find, in the reader's buffer or on the socket.
+                    reply(&mut write, b"550 Failed to open file\r\n").await;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    reply(
+                        &mut write,
+                        b"421 Service not available, closing control connection\r\n",
                     )
                     .await;
                 }
@@ -247,5 +267,69 @@ async fn a_refusal_followed_by_a_goodbye_does_not_answer_the_next_command() {
         !text.contains("421") && !text.to_lowercase().contains("service not available"),
         "the next command was answered with the goodbye owed to the refused one: {:?}",
         next
+    );
+    // On the wire, not on a guess: the command under test really was sent, and
+    // what came back is the refusal of a path, not a transport failure.
+    let commands = server.commands.lock().unwrap().clone();
+    assert!(
+        commands
+            .iter()
+            .any(|line| line.to_uppercase().starts_with("RETR")),
+        "the test drove the path it is about: {commands:?}"
+    );
+    assert!(
+        matches!(refused, Err(ProviderError::InvalidPath(_))),
+        "a 550 about the file is a refusal of the path: {refused:?}"
+    );
+}
+
+/// What the queued-reply check does NOT cover, written down as a test.
+///
+/// The server refuses, waits, and only then says goodbye, so when the refusal is
+/// classified the `421` has not been sent yet. Measured on this fixture: the
+/// reader's buffer holds nothing there and a peek at the socket returns nothing,
+/// and the goodbye lands about 50 ms later. No check made at that moment can see
+/// a reply that has not arrived, whatever it looks at, so the session is kept and
+/// the next command reads the goodbye as its own reply, as it did before the
+/// check existed. That is why the check asks the reader's buffer and not the
+/// socket as well: on this path the socket has nothing to add.
+///
+/// The boundary is pinned here rather than left to a sentence in a comment,
+/// because the property it bounds ("a queued reply gives up the session") reads
+/// as total and is not. What it points at is a check when the NEXT command
+/// starts, which is a design change and not this one: whoever makes it should
+/// flip this test, not delete it, since the shape it drives has to keep working.
+#[tokio::test]
+async fn a_goodbye_written_after_the_refusal_is_not_caught_by_this_check() {
+    let server = start_fake_ftp(Script::RefuseThenHangUpLater).await;
+    let mut provider = connected(server.port).await;
+
+    let local = std::env::temp_dir().join(format!("aeroftp-421-late-{}.bin", std::process::id()));
+    let refused = provider
+        .download("/missing.bin", local.to_str().unwrap(), None)
+        .await;
+    let _ = std::fs::remove_file(&local);
+    assert!(
+        matches!(refused, Err(ProviderError::InvalidPath(_))),
+        "a 550 about the file is a refusal of the path: {refused:?}"
+    );
+    let commands = server.commands.lock().unwrap().clone();
+    assert!(
+        commands
+            .iter()
+            .any(|line| line.to_uppercase().starts_with("RETR")),
+        "the test drove the path it is about: {commands:?}"
+    );
+
+    let next = provider.pwd().await;
+    let text = match &next {
+        Ok(dir) => dir.clone(),
+        Err(err) => err.to_string(),
+    };
+    assert!(
+        text.contains("421"),
+        "the boundary moved: a goodbye written after the refusal no longer reaches the next \
+         command, so the session is given up in a case this test says it is not. Flip it \
+         instead of deleting it: {next:?}"
     );
 }
