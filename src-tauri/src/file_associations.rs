@@ -149,6 +149,11 @@ pub fn entry_for_key(key: &str) -> Option<&'static AssocCatalogEntry> {
 /// Linux desktop file ids we try (order: preferred first).
 /// The panel prefers the full reverse-DNS id; postinst and some packages may install as "AeroFTP.desktop".
 const LINUX_DESKTOP_IDS: &[&str] = &[
+    // The id after the rename comes first. The pre-rename id below it is NOT
+    // legacy clutter: this list is a detection list, and a machine installed
+    // before the rename still has that file on disk. Removing it would make
+    // the panel fall through and reintroduce the defect fixed in 59d020e60.
+    "app.aeroftp.AeroFTP.desktop",
     "com.aeroftp.AeroFTP.desktop",
     "AeroFTP.desktop",
     "aeroftp.desktop",
@@ -754,6 +759,31 @@ mod tests {
     #[test]
     fn desktop_id_resolution_honours_candidate_priority() {
         let (_tmp, apps) = desktop_dir_with(&["AeroFTP.desktop", "com.aeroftp.AeroFTP.desktop"]);
+        assert_eq!(
+            pick_installed_desktop_id(LINUX_DESKTOP_IDS, &[apps]),
+            Some("com.aeroftp.AeroFTP.desktop")
+        );
+    }
+
+    #[test]
+    fn desktop_id_resolution_prefers_the_renamed_id_when_it_is_installed() {
+        let (_tmp, apps) = desktop_dir_with(&[
+            "app.aeroftp.AeroFTP.desktop",
+            "com.aeroftp.AeroFTP.desktop",
+            "AeroFTP.desktop",
+        ]);
+        assert_eq!(
+            pick_installed_desktop_id(LINUX_DESKTOP_IDS, &[apps]),
+            Some("app.aeroftp.AeroFTP.desktop")
+        );
+    }
+
+    /// The guard on the pre-rename id, which must NOT be dropped from the list.
+    /// A machine installed before the rename has only that file, and the panel
+    /// has to keep finding it.
+    #[test]
+    fn desktop_id_resolution_still_finds_a_pre_rename_install() {
+        let (_tmp, apps) = desktop_dir_with(&["com.aeroftp.AeroFTP.desktop"]);
         assert_eq!(
             pick_installed_desktop_id(LINUX_DESKTOP_IDS, &[apps]),
             Some("com.aeroftp.AeroFTP.desktop")

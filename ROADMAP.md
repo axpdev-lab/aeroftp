@@ -180,7 +180,7 @@ _Nothing actively in flight right now; the next items are queued under Up Next b
 - **Mobile companion app**
   Android with Capacitor 6 and React. FTP, SFTP, and WebDAV protocols, plus AeroVault import/export.
 - **Flathub publish**
-  Flatpak manifest (`com.aeroftp.AeroFTP.yml`) done and maintained in-repo, awaiting acceptance into the Flathub remote.
+  Flatpak manifest (`app.aeroftp.AeroFTP.yml`) done and maintained in-repo, awaiting acceptance into the Flathub remote.
 - **IPFS / Web3 Storage**
   Decentralized storage integration.
 - **Tor Support**
