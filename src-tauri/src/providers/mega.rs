@@ -1225,8 +1225,16 @@ pub type MegaProvider = MegaCmdProvider;
 fn map_mega_exists(result: Result<String, ProviderError>) -> Result<bool, ProviderError> {
     match result {
         Ok(_) => Ok(true),
+        // The one failure that IS an answer. `ProviderError` documents the
+        // contract on the variant: a genuinely missing path arrives here as
+        // `NotFound`.
         Err(ProviderError::NotFound(_)) => Ok(false),
-        Err(_) => Ok(false),
+        // Everything else is not an answer. A refusal, a dropped session or a
+        // server error told us nothing about whether the path is there, and
+        // reporting `false` would tell the caller it is not: a present but
+        // unreadable root would read as missing, which is how a run decides
+        // there is nothing to keep.
+        Err(e) => Err(e),
     }
 }
 
