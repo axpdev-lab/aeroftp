@@ -76186,6 +76186,40 @@ mod tests {
         .unwrap_or_else(|code| panic!("sync-doctor failed with exit code {code}"))
     }
 
+    /// The entry cap has to be read where the walk grows, not at the top of the
+    /// loop. Checked only on entry, a single listing inserts past the ceiling,
+    /// and if the queue empties straight after, the walk ends normally and
+    /// reports a complete scan of a tree it had already cut: over its own limit
+    /// and calling itself whole. The caps are parameters so the case can be
+    /// reached at all, since the real one is 500_000 entries.
+    #[tokio::test]
+    async fn the_doctor_remote_walk_reports_the_entry_cap_it_hits() {
+        let mut provider = MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1), ("c.txt", 1)]);
+
+        let (entries, scan) = scan_doctor_remote_tree(&mut provider, "/root", &[], 100, 2).await;
+
+        assert!(
+            entries.len() <= 2,
+            "the walk kept more entries than its cap allows: {entries:?}"
+        );
+        assert!(
+            scan.truncated,
+            "a walk that stopped at its cap did not read the whole tree: {scan:?}"
+        );
+    }
+
+    /// The other side of the same boundary, so the test above is known to
+    /// separate two outcomes: under the cap the walk reports a complete scan.
+    #[tokio::test]
+    async fn the_doctor_remote_walk_is_complete_under_its_cap() {
+        let mut provider = MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1)]);
+
+        let (entries, scan) = scan_doctor_remote_tree(&mut provider, "/root", &[], 100, 10).await;
+
+        assert_eq!(entries.len(), 2);
+        assert!(scan.is_complete(), "nothing was cut here: {scan:?}");
+    }
+
     /// `sync-doctor` previews the run `sync` would make. A local directory it
     /// cannot read hides files the run will not see either, so the report
     /// must not read `ok`: it is `attention`, and the summary names the
