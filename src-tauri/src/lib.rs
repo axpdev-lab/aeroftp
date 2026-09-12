@@ -11597,7 +11597,17 @@ pub async fn get_local_files_recursive_checked(
 
             // H22: Use symlink_metadata to avoid following symlinks outside sync root.
             // This returns metadata about the symlink itself, not its target.
-            let metadata = tokio::fs::symlink_metadata(&path).await.ok();
+            let metadata = match tokio::fs::symlink_metadata(&path).await {
+                Ok(metadata) => Some(metadata),
+                Err(_) => {
+                    // Listed but not stat'ed: an entry inside a directory that can
+                    // be read and not traversed (0400). Its type, size and mtime are
+                    // unknown, so the walk did not see it: count it, and the compare
+                    // gate refuses to plan from this scan.
+                    completeness.list_errors += 1;
+                    None
+                }
+            };
 
             // Skip symlinks entirely to prevent data exfiltration via malicious symlinks
             if metadata
@@ -21660,6 +21670,37 @@ mod scan_completeness_gate_tests {
         let err = ensure_scan_complete("left", "/mnt/backup", &truncated).unwrap_err();
         assert!(err.contains(SCAN_INCOMPLETE_MARKER));
         assert!(err.contains("stopped before the end"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_entry_whose_metadata_cannot_be_read_is_incomplete() {
+        // A directory that is readable but not traversable (0400) lists its
+        // names while every lstat inside it fails. The walker took such an entry
+        // for a 0 byte file and reported a complete scan, so a link inside it
+        // read as a local file and the remote files under its path as remote only.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("real")).expect("mkdir real");
+        let locked = dir.path().join("locked");
+        std::fs::create_dir(&locked).expect("mkdir locked");
+        std::os::unix::fs::symlink("../real", locked.join("link")).expect("link");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o400))
+            .expect("chmod 0400");
+        let blocked = std::fs::symlink_metadata(locked.join("link")).is_err();
+
+        let (_files, scan) = scan(dir.path().to_str().unwrap()).await;
+
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700))
+            .expect("restore the mode");
+        if crate::sync_core::scan::tests::mode_did_not_block(blocked, dir.path()) {
+            return;
+        }
+        assert!(
+            !scan.is_complete(),
+            "an entry whose metadata could not be read is not a complete scan"
+        );
+        assert!(ensure_scan_complete("local", dir.path().to_str().unwrap(), &scan).is_err());
     }
 
     #[tokio::test]

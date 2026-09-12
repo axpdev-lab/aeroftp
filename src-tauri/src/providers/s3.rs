@@ -1771,9 +1771,16 @@ impl S3Provider {
     }
 
     /// Parse S3 ListObjectsV2 XML response using quick-xml (M-11/M-12)
+    /// `keep_markers` decides what happens to a key that ends in `/`. A
+    /// delimited listing has no use for one: the same directory already arrives
+    /// as a common prefix. A flat recursive listing has no common prefixes at
+    /// all, so a directory that exists only as a marker would vanish, and a walk
+    /// that stops at it under a depth limit would name a directory the flat
+    /// listing cannot.
     fn parse_list_response(
         &self,
         xml_str: &str,
+        keep_markers: bool,
     ) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
         let mut entries = Vec::new();
 
@@ -1974,7 +1981,9 @@ impl S3Provider {
                                 };
                                 let key = repair_double_utf8_key(key, repair_mojibake);
                                 let key = key.as_str();
-                                // Skip directory markers
+                                // A key that ends in `/` is a directory
+                                // marker, not a file; `keep_markers` says
+                                // whether this listing has a use for it.
                                 if !key.ends_with('/') {
                                     // Skip if key equals current prefix
                                     let dominated = key == self.current_prefix
@@ -2029,6 +2038,36 @@ impl S3Provider {
                                                 metadata,
                                             });
                                         }
+                                    }
+                                } else if keep_markers {
+                                    // Kept without its trailing slash, which is
+                                    // the shape a walked directory has, so a
+                                    // consumer counts the same components the
+                                    // walk would.
+                                    let trimmed = key.trim_end_matches('/');
+                                    let prefix = self.current_prefix.trim_end_matches('/');
+                                    let dominated = trimmed == prefix
+                                        || trimmed.trim_start_matches('/')
+                                            == prefix.trim_start_matches('/');
+                                    let name =
+                                        trimmed.rsplit('/').next().unwrap_or(trimmed).to_string();
+                                    if !dominated && !name.is_empty() {
+                                        entries.push(RemoteEntry {
+                                            name,
+                                            path: format!("/{}", trimmed),
+                                            is_dir: true,
+                                            size: 0,
+                                            modified: c_modified
+                                                .as_ref()
+                                                .map(|m| m.trim().to_string()),
+                                            permissions: None,
+                                            owner: None,
+                                            group: None,
+                                            is_symlink: false,
+                                            link_target: None,
+                                            mime_type: None,
+                                            metadata: HashMap::new(),
+                                        });
                                     }
                                 }
                             }
@@ -3938,7 +3977,7 @@ impl StorageProvider for S3Provider {
                         return Err(error);
                     }
 
-                    let (entries, next_token) = self.parse_list_response(&xml)?;
+                    let (entries, next_token) = self.parse_list_response(&xml, false)?;
                     info!("S3 LIST parsed {} entries from response", entries.len());
                     all_entries.extend(entries);
 
@@ -6567,7 +6606,27 @@ impl S3Provider {
     /// Uses ListObjectsV2 WITHOUT Delimiter, returning a flat list of all files.
     /// Much faster than BFS directory-by-directory listing for large datasets
     /// (reduces API calls from O(dirs) to O(files/1000)).
-    pub async fn list_recursive(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+    pub async fn list_recursive(
+        &mut self,
+        path: &str,
+    ) -> Result<(Vec<RemoteEntry>, bool), ProviderError> {
+        self.list_recursive_capped(path, S3_LIST_RECURSIVE_MAX_ENTRIES)
+            .await
+    }
+
+    /// [`S3Provider::list_recursive`] with the entry cap given, so a test can
+    /// reach the cut without materializing half a million objects.
+    ///
+    /// The second element is true when the listing stopped at the cap with pages
+    /// still to come. What was never listed has no key to name, so a caller that
+    /// bounds a run around what a scan saw has to refuse the run rather than
+    /// treat the answer as a whole tree. Stopping exactly at the last page is not
+    /// a cut: nothing was left behind, and the flag stays false.
+    pub(crate) async fn list_recursive_capped(
+        &mut self,
+        path: &str,
+        cap: usize,
+    ) -> Result<(Vec<RemoteEntry>, bool), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -6585,6 +6644,7 @@ impl S3Provider {
         };
 
         let mut all_entries = Vec::new();
+        let mut truncated = false;
         let mut continuation_token: Option<String> = None;
 
         loop {
@@ -6616,15 +6676,22 @@ impl S3Provider {
                         return Err(error);
                     }
 
-                    let (entries, next_token) = self.parse_list_response(&xml)?;
-                    all_entries.extend(entries);
+                    let (entries, next_token) = self.parse_list_response(&xml, true)?;
 
-                    // Bound memory on a huge or hostile bucket: stop
-                    // paginating once the project-wide scan cap is reached.
-                    // Consumers (used_scan / provider_scan_used) treat a
-                    // capped result as a lower bound (truncated), so this
-                    // never produces a silently-wrong larger figure.
-                    if all_entries.len() >= S3_LIST_RECURSIVE_MAX_ENTRIES {
+                    // Bound memory on a huge or hostile bucket: keep at most the
+                    // cap and stop paginating once it is reached. A page can
+                    // carry more than the room the cap leaves, so it is cut here
+                    // rather than counted after the fact: a caller that asked for
+                    // `cap` entries must not receive a whole page of them. What
+                    // is left behind is reported, the rest of this page as much
+                    // as the pages after it, so a consumer treats the result as
+                    // the lower bound it is instead of a whole tree.
+                    let room = cap.saturating_sub(all_entries.len());
+                    let page_was_cut = entries.len() > room;
+                    all_entries.extend(entries.into_iter().take(room));
+
+                    if all_entries.len() >= cap {
+                        truncated = page_was_cut || next_token.is_some();
                         break;
                     }
                     if let Some(token) = next_token {
@@ -6644,7 +6711,7 @@ impl S3Provider {
             }
         }
 
-        Ok(all_entries)
+        Ok((all_entries, truncated))
     }
 }
 
@@ -7694,7 +7761,7 @@ mod tests {
     <StorageClass>STANDARD</StorageClass>
   </Contents>
 </ListBucketResult>"#;
-        let (entries, next_token) = provider.parse_list_response(xml).expect("parse");
+        let (entries, next_token) = provider.parse_list_response(xml, false).expect("parse");
         assert_eq!(next_token, None);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].name, "a& &b.txt");
@@ -8136,6 +8203,109 @@ mod tests {
             allow_cleartext_endpoint: false,
         })
         .expect("Failed to create S3Provider")
+    }
+
+    /// The cap that bounds memory must not pass for the end of the bucket: a
+    /// listing that stopped with a continuation token in hand says so, and one
+    /// that stopped because the last page was the last page does not.
+    #[tokio::test]
+    async fn list_recursive_reports_a_listing_it_cut_at_the_cap() {
+        for (more_pages, expected) in [(true, true), (false, false)] {
+            let body = if more_pages {
+                "<ListBucketResult><Contents><Key>a.txt</Key><Size>1</Size></Contents><NextContinuationToken>t</NextContinuationToken></ListBucketResult>"
+            } else {
+                "<ListBucketResult><Contents><Key>a.txt</Key><Size>1</Size></Contents></ListBucketResult>"
+            };
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |_req: axum::extract::Request| async move {
+                    axum::http::Response::new(axum::body::Body::from(body))
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.connected = true;
+            let (entries, truncated) = provider
+                .list_recursive_capped("/", 1)
+                .await
+                .expect("the listing answers");
+            server.abort();
+            assert_eq!(entries.len(), 1);
+            assert_eq!(
+                truncated, expected,
+                "more_pages={more_pages}: a cut is a cap reached with pages still to come"
+            );
+        }
+    }
+
+    /// A page can carry more entries than the room the cap leaves, and a caller
+    /// that asked for `cap` must not receive the whole page. The page is cut, and
+    /// the cut is reported even when no continuation token follows it: the
+    /// entries left behind have no key to name, which is what a scan bounding a
+    /// run around what it saw needs to know.
+    #[tokio::test]
+    async fn list_recursive_cuts_a_page_that_overruns_the_cap() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_req: axum::extract::Request| async move {
+                axum::http::Response::new(axum::body::Body::from(
+                    "<ListBucketResult><Contents><Key>a.txt</Key><Size>1</Size></Contents><Contents><Key>b.txt</Key><Size>1</Size></Contents></ListBucketResult>",
+                ))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let (entries, truncated) = provider
+            .list_recursive_capped("/", 1)
+            .await
+            .expect("the listing answers");
+        server.abort();
+        assert_eq!(entries.len(), 1, "the cap is one entry: {entries:?}");
+        assert!(
+            truncated,
+            "an entry of the page was left behind, so the listing was cut"
+        );
+    }
+
+    /// A directory that exists only as a marker key has to survive the recursive
+    /// listing. The BFS sees such a directory as a common prefix and stops at it
+    /// under a depth limit; a flat listing that drops the marker cannot answer
+    /// the same tree, and a scan built on it reports itself complete while the
+    /// walk would have named the directory it stopped at.
+    #[tokio::test]
+    async fn list_recursive_keeps_a_directory_marker() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_req: axum::extract::Request| async move {
+                axum::http::Response::new(axum::body::Body::from(
+                    "<ListBucketResult><Contents><Key>d1/d2/</Key><Size>0</Size></Contents></ListBucketResult>",
+                ))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let (entries, _) = provider
+            .list_recursive("/")
+            .await
+            .expect("the listing answers");
+        server.abort();
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.is_dir && entry.path.contains("d1/d2")),
+            "the only thing this bucket holds is the marker, and the listing dropped it: {entries:?}"
+        );
     }
 
     #[tokio::test]
@@ -8794,7 +8964,7 @@ mod tests {
   </Contents>
 </ListBucketResult>"#;
 
-        let (entries, _) = provider.parse_list_response(xml).expect("parse");
+        let (entries, _) = provider.parse_list_response(xml, false).expect("parse");
         let dir = entries.iter().find(|e| e.is_dir).expect("dir entry");
         assert_eq!(dir.name, "my folder", "Filen dir name must be decoded");
         assert_eq!(dir.path, "/my folder");
@@ -8923,7 +9093,7 @@ mod tests {
     <ETag>"x"</ETag>
   </Contents>
 </ListBucketResult>"#;
-        let (entries, _) = provider.parse_list_response(xml).expect("parse");
+        let (entries, _) = provider.parse_list_response(xml, false).expect("parse");
         let file = entries.iter().find(|e| !e.is_dir).expect("file entry");
         assert_eq!(file.name, "report%20final.pdf");
         assert_eq!(file.path, "/report%20final.pdf");
@@ -9931,7 +10101,7 @@ mod tests {
         ] {
             let mut provider = make_provider(None);
             provider.config.sse_mode = sse_mode.map(String::from);
-            let (entries, _) = provider.parse_list_response(xml).expect("parse");
+            let (entries, _) = provider.parse_list_response(xml, false).expect("parse");
             let file = entries.iter().find(|e| !e.is_dir).expect("file entry");
             assert_eq!(
                 file.metadata.contains_key("md5"),

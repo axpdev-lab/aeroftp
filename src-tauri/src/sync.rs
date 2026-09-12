@@ -281,6 +281,27 @@ pub(crate) fn scan_options_for_sync(opts: &SyncOptions) -> ScanOptions {
     scan
 }
 
+/// Refuse a run that reads from a root that does not exist. A missing root is an
+/// empty tree on the side a run writes to, so a sync into a new directory runs.
+/// On the side it reads from (the local side of an upload, the remote side of a
+/// download, both sides of a two-way run) an empty tree turns every file on the
+/// other side into an orphan, so the scan of that side is marked unbounded
+/// (`source_root_missing`) and the bound refuses the run before anything is
+/// planned.
+pub(crate) fn refuse_missing_source_roots(
+    direction: SyncDirection,
+    local: &mut crate::sync_core::ScanBoundaries,
+    remote: &mut crate::sync_core::ScanBoundaries,
+) {
+    let reads_local = matches!(direction, SyncDirection::Upload | SyncDirection::Both);
+    let reads_remote = matches!(direction, SyncDirection::Download | SyncDirection::Both);
+    for (reads, scan) in [(reads_local, local), (reads_remote, remote)] {
+        if reads && scan.root_missing {
+            scan.unbounded.get_or_insert("source_root_missing");
+        }
+    }
+}
+
 /// Direction of synchronization
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -584,6 +605,14 @@ pub struct SyncReport {
     /// core path; populated by `execute_sync_dag`. Additive: `SyncReport` is not
     /// serialized directly, and every existing constructor uses `..default()`.
     pub engine_stats: Option<crate::transfer_dag::EngineTransferStats>,
+    /// Symbolic links the run left alone, with everything under them, on both
+    /// sides: the remote links the scan did not follow and the local links above
+    /// a path only the remote holds. Empty when the tree has none.
+    pub skipped_links: Vec<crate::sync_core::SkippedLink>,
+    /// Paths the run left alone, with everything under them, because a scan
+    /// could not see them: a directory at the depth limit or one that failed to
+    /// list, a local entry whose metadata could not be read.
+    pub unseen_paths: Vec<crate::sync_core::UnseenPath>,
 }
 
 impl SyncReport {
@@ -1315,7 +1344,7 @@ pub async fn sync_tree_core(
     let start = std::time::Instant::now();
     sink.on_phase(SyncPhase::Scanning);
     let scan = scan_options_for_sync(opts);
-    let (locals, local_scan) = scan_local_tree_checked(local_root, &scan);
+    let (mut locals, local_scan, mut local_boundaries) = scan_local_tree_checked(local_root, &scan);
 
     if !opts.dry_run
         && !locals.is_empty()
@@ -1324,15 +1353,46 @@ pub async fn sync_tree_core(
         ensure_remote_dir(provider, remote_root).await;
     }
 
-    let (remotes, remote_scan) = scan_remote_tree_checked(provider, remote_root, &scan).await;
+    let (mut remotes, remote_scan, mut remote_boundaries) =
+        scan_remote_tree_checked(provider, remote_root, &scan).await;
+    refuse_missing_source_roots(
+        opts.direction,
+        &mut local_boundaries,
+        &mut remote_boundaries,
+    );
+    // What the scans did not see stays out of the run on both sides, so no pass
+    // below reads it as deleted, as missing or as safe to copy over (see
+    // `ScanBound`).
+    let bound = crate::sync_core::ScanBound::apply(
+        local_root,
+        &mut locals,
+        &mut remotes,
+        &local_boundaries,
+        remote_boundaries,
+    );
 
     sink.on_phase(SyncPhase::Planning);
     let mut report = SyncReport {
         dry_run: opts.dry_run,
         direction: Some(opts.direction),
         delta_policy: Some(opts.delta_policy),
+        skipped_links: bound.reported_links(&local_boundaries),
+        unseen_paths: bound.unseen().to_vec(),
         ..SyncReport::default()
     };
+    // A scan that missed a part of the tree it cannot name leaves nothing to
+    // bound the run around: plan nothing rather than a partial run.
+    if let Some(reason) = bound.refusal() {
+        report.errors.push(SyncError {
+            rel_path: String::new(),
+            operation: "scan",
+            message: format!("sync refused, nothing was planned: {reason}"),
+            decision_policy: opts.delta_policy,
+        });
+        report.elapsed_secs = start.elapsed().as_secs_f64();
+        sink.on_phase(SyncPhase::Done);
+        return report;
+    }
 
     use std::collections::{HashMap as Map, HashSet};
     let mut seen_local: HashSet<String> = HashSet::new();

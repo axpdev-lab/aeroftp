@@ -74,6 +74,11 @@ pub struct FastPathListing {
     /// are read) but unusable for a structured per-file compare — a
     /// `false` here tells `sync_core::scan` to fall back to the BFS.
     pub structured_paths: bool,
+    /// True when the provider stopped its own listing before the end of the
+    /// tree (S3 stops paginating at its entry cap even with a continuation
+    /// token). What it never listed has no path to name, so a consumer that
+    /// bounds a run has to refuse it rather than treat the answer as whole.
+    pub truncated: bool,
 }
 
 /// Try a provider-native single-shot recursive listing.
@@ -96,10 +101,11 @@ pub async fn provider_list_recursive_fastpath(
     // --- S3 flat recursive listing -------------------------------------
     if let Some(s3) = provider.as_any_mut().downcast_mut::<S3Provider>() {
         return match s3.list_recursive(root).await {
-            Ok(entries) => Some(FastPathListing {
+            Ok((entries, truncated)) => Some(FastPathListing {
                 entries,
                 method: "s3-list-recursive",
                 structured_paths: true,
+                truncated,
             }),
             Err(e) => {
                 tracing::info!(
@@ -125,6 +131,9 @@ pub async fn provider_list_recursive_fastpath(
                         entries,
                         method: "webdav-infinity",
                         structured_paths: false,
+                        // PROPFIND infinity is answered whole or not at all:
+                        // this provider sets no cap of its own.
+                        truncated: false,
                     })
                 } else {
                     tracing::info!(
@@ -168,8 +177,10 @@ pub async fn scan_used_bytes(
         let mut used = 0u64;
         let mut files = 0u64;
         let mut dirs = 0u64;
-        let mut truncated = false;
-        let mut hit_cap = false;
+        // A provider that stopped its own listing early makes this figure a
+        // lower bound, exactly as the entry cap below does.
+        let mut truncated = fast.truncated;
+        let mut hit_cap = fast.truncated;
         // The provider handed us a complete single-shot listing, so there is no
         // per-directory walk here: nothing can be unreadable and nothing polls
         // cancellation. Fixed at their empty values rather than tracked.

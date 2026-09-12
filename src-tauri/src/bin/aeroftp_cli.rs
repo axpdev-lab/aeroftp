@@ -7398,7 +7398,11 @@ fn remote_entry_to_cli(e: &RemoteEntry) -> CliFileEntry {
 }
 
 /// Maximum BFS scan depth for recursive operations (find, get -r, tree).
-const MAX_SCAN_DEPTH: usize = 100;
+/// The scanner's own default depth. The local walk and the remote walk of one
+/// command have to stop at the same level: an entry below one side's limit has
+/// no counterpart on the other and reads as missing there, which a later
+/// `sync --from-reconcile --delete` turns into a delete.
+const MAX_SCAN_DEPTH: usize = ftp_client_gui_lib::sync_core::scan::DEFAULT_SCAN_DEPTH;
 /// Maximum entries to collect during BFS scan to prevent OOM.
 const MAX_SCAN_ENTRIES: usize = 500_000;
 /// Default base path for `find` when the positional is omitted. Shared with
@@ -8432,7 +8436,7 @@ async fn scan_remote_tree_with_progress(
         .unwrap_or(ftp_client_gui_lib::sync_core::scan::DEFAULT_SCAN_CHECKERS)
         .max(1);
     let list_model = resolve_provider_list_session_model(&holder, checkers).await;
-    let (results, completeness) = scan_remote_tree_with_provider_lock_checked(
+    let (results, completeness, _) = scan_remote_tree_with_provider_lock_checked(
         Arc::clone(&holder),
         remote_root,
         opts,
@@ -46338,7 +46342,15 @@ async fn cmd_sync(
                             eprintln!("Using --fast-list (S3 recursive listing)...");
                         }
                         match s3.list_recursive(remote).await {
-                            Ok(entries) => {
+                            Ok((entries, listing_truncated)) => {
+                                if listing_truncated {
+                                    if !quiet {
+                                        eprintln!(
+                                            "Warning: --fast-list stopped at the provider's entry cap; the listing is partial"
+                                        );
+                                    }
+                                    remote_scan_truncated = true;
+                                }
                                 let max_depth = cli.max_depth.map(|d| d as usize);
                                 for e in entries {
                                     if e.is_dir {

@@ -1625,7 +1625,7 @@ pub async fn execute_tool(
                     // run there is no meaningful `plan`/`planned` block. This
                     // removes the old ambiguity where both fields coexisted
                     // with contradicting counters.
-                    let payload = if dry_run {
+                    let mut payload = if dry_run {
                         // Fold the sink plan into action counters. `reason ==
                         // "dry-run"` means the core would have acted on the
                         // file; anything else (e.g. `"identical size"`) is a
@@ -1775,6 +1775,16 @@ pub async fn execute_tool(
                             "errors_truncated": total_errors > 50,
                         })
                     };
+                    // Additive: present only when the run left paths alone on
+                    // both sides (a symbolic link it did not follow, a path its
+                    // scans could not see, and everything under them), so a tree
+                    // without either answers exactly as before. Under
+                    // `summary_only` only the counters go out: that mode exists
+                    // to keep a response inside the MCP size limit, and two
+                    // lists of a thousand paths each would defeat it.
+                    if let Value::Object(map) = &mut payload {
+                        map.extend(sync_boundaries_json(&report, summary_only));
+                    }
                     // Release the provider lock and pool Arc BEFORE invalidate
                     // so the pool sees `strong_count == 1` and actually closes
                     // the underlying socket on the detached disconnect.
@@ -1804,6 +1814,62 @@ pub async fn execute_tool(
             start,
         ),
     }
+}
+
+/// Most entries of each boundary list a `sync_tree` result carries.
+const SYNC_BOUNDARIES_JSON_CAP: usize = 1000;
+
+/// The additive keys a `sync_tree` result gains when the run left paths alone:
+/// the symbolic links it did not follow and the paths its scans could not see.
+/// Each list is capped, with its total and a truncation flag, and absent
+/// entirely when empty, so a tree without either answers exactly as before.
+///
+/// With `counters_only` the lists themselves stay out and only the totals and
+/// the truncation flags go out. `summary_only` passes it: that mode exists to
+/// keep a response inside the MCP size limit by dropping the per-entry arrays,
+/// and two boundary lists of `SYNC_BOUNDARIES_JSON_CAP` entries each would
+/// defeat it. The flag still says what a full response would have cut.
+fn sync_boundaries_json(
+    report: &crate::sync_core::SyncReport,
+    counters_only: bool,
+) -> serde_json::Map<String, Value> {
+    let mut keys = serde_json::Map::new();
+    insert_capped_list(
+        &mut keys,
+        "skipped_links",
+        &report.skipped_links,
+        counters_only,
+    );
+    insert_capped_list(
+        &mut keys,
+        "unseen_paths",
+        &report.unseen_paths,
+        counters_only,
+    );
+    keys
+}
+
+fn insert_capped_list<T: serde::Serialize>(
+    keys: &mut serde_json::Map<String, Value>,
+    name: &str,
+    items: &[T],
+    counters_only: bool,
+) {
+    if items.is_empty() {
+        return;
+    }
+    if !counters_only {
+        let shown = &items[..items.len().min(SYNC_BOUNDARIES_JSON_CAP)];
+        keys.insert(
+            name.to_string(),
+            serde_json::to_value(shown).unwrap_or(Value::Null),
+        );
+    }
+    keys.insert(format!("{name}_total"), items.len().into());
+    keys.insert(
+        format!("{name}_truncated"),
+        (items.len() > SYNC_BOUNDARIES_JSON_CAP).into(),
+    );
 }
 
 /// A single entry in the dry-run plan returned by `aeroftp_sync_tree`.
@@ -2008,6 +2074,106 @@ mod tests {
         parse_benchmark_skipped, tool_definitions, validate_read_preview_target,
         MAX_READ_PREVIEW_BYTES,
     };
+
+    /// A tree with many symbolic links must not turn the `sync_tree` result into
+    /// an unbounded array: each boundary list is capped, with its total and a
+    /// truncation flag, and a tree without links adds no keys at all.
+    #[test]
+    fn sync_tree_result_caps_the_skipped_links_it_lists() {
+        let cap = super::SYNC_BOUNDARIES_JSON_CAP;
+        let report = crate::sync_core::SyncReport {
+            skipped_links: (0..cap + 500)
+                .map(|i| crate::sync_core::SkippedLink {
+                    rel_path: format!("link{i}"),
+                    link_target: None,
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let keys = super::sync_boundaries_json(&report, false);
+        assert_eq!(
+            keys.get("skipped_links")
+                .and_then(|v| v.as_array())
+                .map(Vec::len),
+            Some(cap)
+        );
+        assert_eq!(
+            keys.get("skipped_links_total"),
+            Some(&serde_json::json!(cap + 500))
+        );
+        assert_eq!(
+            keys.get("skipped_links_truncated"),
+            Some(&serde_json::json!(true))
+        );
+        let empty = super::sync_boundaries_json(&crate::sync_core::SyncReport::default(), false);
+        assert!(empty.is_empty(), "a tree without links adds no keys");
+    }
+
+    /// `summary_only` exists to keep a response inside the MCP size limit by
+    /// dropping the per-entry arrays, so the boundary lists go with them: two
+    /// lists of `SYNC_BOUNDARIES_JSON_CAP` paths would defeat the mode that was
+    /// asked for. The counters stay, because they are what tells the caller the
+    /// run left paths alone, and they cost two numbers and a flag.
+    #[test]
+    fn sync_tree_result_keeps_only_the_boundary_counters_under_summary_only() {
+        let report = crate::sync_core::SyncReport {
+            skipped_links: (0..3)
+                .map(|i| crate::sync_core::SkippedLink {
+                    rel_path: format!("link{i}"),
+                    link_target: None,
+                })
+                .collect(),
+            unseen_paths: vec![crate::sync_core::UnseenPath {
+                rel_path: "d1".to_string(),
+                reason: "list_error",
+            }],
+            ..Default::default()
+        };
+        let keys = super::sync_boundaries_json(&report, true);
+        assert!(
+            !keys.contains_key("skipped_links") && !keys.contains_key("unseen_paths"),
+            "summary_only must not carry the arrays: {keys:?}"
+        );
+        assert_eq!(keys.get("skipped_links_total"), Some(&serde_json::json!(3)));
+        assert_eq!(
+            keys.get("skipped_links_truncated"),
+            Some(&serde_json::json!(false))
+        );
+        assert_eq!(keys.get("unseen_paths_total"), Some(&serde_json::json!(1)));
+        assert_eq!(
+            keys.get("unseen_paths_truncated"),
+            Some(&serde_json::json!(false))
+        );
+        let empty = super::sync_boundaries_json(&crate::sync_core::SyncReport::default(), true);
+        assert!(empty.is_empty(), "a tree without either adds no keys");
+    }
+
+    /// The paths a run's scans could not see reach the `sync_tree` result as a
+    /// list of their own, each named with the reason it was not seen.
+    #[test]
+    fn sync_tree_result_lists_the_unseen_paths() {
+        let report = crate::sync_core::SyncReport {
+            unseen_paths: vec![crate::sync_core::UnseenPath {
+                rel_path: "d1".to_string(),
+                reason: "list_error",
+            }],
+            ..Default::default()
+        };
+        let keys = super::sync_boundaries_json(&report, false);
+        assert_eq!(
+            keys.get("unseen_paths"),
+            Some(&serde_json::json!([{ "rel_path": "d1", "reason": "list_error" }]))
+        );
+        assert_eq!(keys.get("unseen_paths_total"), Some(&serde_json::json!(1)));
+        assert_eq!(
+            keys.get("unseen_paths_truncated"),
+            Some(&serde_json::json!(false))
+        );
+        assert!(
+            !keys.contains_key("skipped_links"),
+            "no links, no link keys"
+        );
+    }
 
     #[test]
     fn read_preview_rejects_directories() {
