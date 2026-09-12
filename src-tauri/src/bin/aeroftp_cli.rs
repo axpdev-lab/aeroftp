@@ -8450,6 +8450,7 @@ fn scan_local_tree_with_progress(
 ) -> (
     Vec<ftp_client_gui_lib::sync_core::scan::LocalEntry>,
     ftp_client_gui_lib::sync_core::ScanCompleteness,
+    ftp_client_gui_lib::sync_core::ScanBoundaries,
 ) {
     let matchers: Vec<globset::GlobMatcher> = opts
         .exclude_patterns
@@ -8467,6 +8468,7 @@ fn scan_local_tree_with_progress(
         .unwrap_or_else(Instant::now);
     let mut entries = Vec::new();
     let mut completeness = ftp_client_gui_lib::sync_core::ScanCompleteness::default();
+    let mut boundaries = ftp_client_gui_lib::sync_core::ScanBoundaries::default();
 
     for result in walkdir::WalkDir::new(root)
         .follow_links(false)
@@ -8474,11 +8476,47 @@ fn scan_local_tree_with_progress(
     {
         let walk_entry = match result {
             Ok(entry) => entry,
-            Err(_) => {
-                // A directory the walk could not read hides the files below
-                // it: counted, so `reconcile` reports a partial result instead
-                // of listing those files as missing locally.
+            Err(error) => {
+                // A directory the walk could not read hides the files below it.
+                // Counting it was not enough: the comparison never learned the
+                // name of the gap, so the remote entries under that directory
+                // still read as missing here, which is a plan to download files
+                // on the strength of a reading nobody performed. The path is
+                // named as well, and the bound keeps what sits under it out.
                 completeness.list_errors += 1;
+                match error.path() {
+                    // The root itself: there is no path under it to bound
+                    // around, and a local side left empty would read every
+                    // remote file as missing. That is the same defect one level
+                    // up, so the run is refused instead.
+                    Some(path) if path == std::path::Path::new(root) => {
+                        boundaries.unbounded.get_or_insert("unreadable");
+                    }
+                    Some(path) => {
+                        let rel = path
+                            .strip_prefix(root)
+                            .unwrap_or(path)
+                            .to_string_lossy()
+                            .replace('\\', "/");
+                        if rel.is_empty() {
+                            boundaries.unbounded.get_or_insert("unreadable");
+                        } else {
+                            boundaries
+                                .unseen
+                                .push(ftp_client_gui_lib::sync_core::UnseenPath {
+                                    rel_path: rel,
+                                    reason: "unreadable",
+                                    // Raised both by a directory that would not
+                                    // open and by an entry that would not stat,
+                                    // and nothing here tells which.
+                                    is_dir: None,
+                                });
+                        }
+                    }
+                    // An error the walk cannot attribute to a path leaves
+                    // nothing to name, and stays a count, as it was.
+                    None => {}
+                }
                 continue;
             }
         };
@@ -8519,6 +8557,17 @@ fn scan_local_tree_with_progress(
             Ok(meta) => Some(meta),
             Err(_) => {
                 completeness.list_errors += 1;
+                // Its size and mtime were never read, so nothing may be copied
+                // over it on the strength of a size it never had.
+                boundaries
+                    .unseen
+                    .push(ftp_client_gui_lib::sync_core::UnseenPath {
+                        rel_path: relative.clone(),
+                        reason: "unreadable",
+                        // Past the guard that skips everything which is not a
+                        // file: the type is known, the metadata is not.
+                        is_dir: Some(false),
+                    });
                 None
             }
         };
@@ -8552,7 +8601,7 @@ fn scan_local_tree_with_progress(
         pb.set_message(format!("Scanning local... {} files", entries.len()));
     }
 
-    (entries, completeness)
+    (entries, completeness, boundaries)
 }
 
 /// Health of a remote BFS scan: how many `list()` calls failed and whether the
@@ -57878,7 +57927,7 @@ async fn cmd_reconcile(
         ..Default::default()
     };
     let local_spinner = maybe_create_scan_spinner(format, cli, "Scanning local...");
-    let (mut locals, local_health) =
+    let (mut locals, local_health, local_boundaries) =
         scan_local_tree_with_progress(local_path, &scan_opts, &local_spinner);
     if let Some(pb) = local_spinner {
         pb.finish_and_clear();
@@ -57928,14 +57977,15 @@ async fn cmd_reconcile(
     // plan fed to `sync --from-reconcile` cannot copy through a link or read an
     // unlisted subtree as missing. A scan that missed a part of the tree it
     // cannot name leaves nothing to bound around, so the comparison is refused.
-    // The local walk here reports no boundaries of its own; the bound still
-    // checks on disk the ancestors of every path only the remote holds, which is
-    // where a local link would be misread.
+    // The local walk names the paths it could not read, so the remote entries
+    // under them stay out of the comparison; what it still does not name are the
+    // links it skips, and there the bound's on-disk check of the ancestors of
+    // every path only the remote holds is what catches a local link.
     let bound = ftp_client_gui_lib::sync_core::ScanBound::apply(
         local_path,
         &mut locals,
         &mut remotes,
-        &ftp_client_gui_lib::sync_core::ScanBoundaries::default(),
+        &local_boundaries,
         remote_boundaries,
     );
     if let Some(reason) = bound.refusal() {
@@ -74553,7 +74603,7 @@ mod tests {
         std::fs::write(dir.path().join("locked").join("keep.txt"), b"k").expect("keep.txt");
         let _locked = UnreadableDir::lock(dir.path().join("locked"));
 
-        let (_, completeness) = scan_local_tree_with_progress(
+        let (_, completeness, _) = scan_local_tree_with_progress(
             dir.path().to_str().expect("utf-8 root"),
             &ftp_client_gui_lib::sync_core::ScanOptions::default(),
             &None,
@@ -74562,6 +74612,142 @@ mod tests {
         assert!(
             !completeness.is_complete(),
             "the unreadable directory must count as a listing error"
+        );
+    }
+
+    /// The remote children of a local directory the walk could not read must not
+    /// enter `missing_local`.
+    ///
+    /// Measured: this one holds with or without the walk naming the directory,
+    /// because the path is remote-only, so the bound walks its prefixes on disk
+    /// and finds the unreadable one itself. It is kept for that mechanism, not
+    /// for the walk's boundaries: remove the on-disk check and it goes red. The
+    /// case the walk's own naming is the only guard for is the one below, a file
+    /// the walk listed and could not stat, which sits on both sides and so never
+    /// reaches that prefix loop.
+    #[cfg(unix)]
+    #[test]
+    fn remote_children_of_an_unreadable_local_dir_stay_out_of_missing_local() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        std::fs::write(dir.path().join("a.txt"), b"a").expect("a.txt");
+        std::fs::create_dir(dir.path().join("locked")).expect("locked directory");
+        std::fs::write(dir.path().join("locked").join("keep.txt"), b"k").expect("keep.txt");
+        let _locked = UnreadableDir::lock(dir.path().join("locked"));
+
+        let root = dir.path().to_str().expect("utf-8 root").to_string();
+        let (mut locals, completeness, local_boundaries) = scan_local_tree_with_progress(
+            &root,
+            &ftp_client_gui_lib::sync_core::ScanOptions::default(),
+            &None,
+        );
+        assert!(
+            !completeness.is_complete(),
+            "the walk could not read the directory"
+        );
+        assert!(
+            !local_boundaries.unseen.is_empty(),
+            "the walk names the path it could not read: {local_boundaries:?}"
+        );
+
+        let mut remotes = vec![
+            ftp_client_gui_lib::sync_core::scan::RemoteEntry {
+                rel_path: "a.txt".to_string(),
+                size: 1,
+                mtime: None,
+                checksum_alg: None,
+                checksum_hex: None,
+            },
+            ftp_client_gui_lib::sync_core::scan::RemoteEntry {
+                rel_path: "locked/keep.txt".to_string(),
+                size: 1,
+                mtime: None,
+                checksum_alg: None,
+                checksum_hex: None,
+            },
+        ];
+        let bound = ftp_client_gui_lib::sync_core::ScanBound::apply(
+            &root,
+            &mut locals,
+            &mut remotes,
+            &local_boundaries,
+            ftp_client_gui_lib::sync_core::ScanBoundaries::default(),
+        );
+        assert!(
+            bound.refusal().is_none(),
+            "the gap has a name, so the run is bounded and not refused"
+        );
+        let diff = ftp_client_gui_lib::sync_core::compare_trees(&locals, &remotes, false);
+        assert_eq!(
+            diff.missing_local_count(),
+            0,
+            "a file nobody could read is not a file that is missing"
+        );
+    }
+
+    /// A file the walk listed but could not stat must leave the comparison.
+    ///
+    /// Its size and mtime were never read, so it reaches the planner as zero
+    /// bytes with no timestamp: compared against a remote copy of any other
+    /// size it lands in `differ`, which is a transfer decided on a number
+    /// nobody measured. The bound's on-disk walk cannot save this one, because
+    /// the path IS on both sides and that walk only visits paths the remote
+    /// alone holds. What keeps it out is the walk naming what it could not
+    /// read, which is what this covers.
+    #[cfg(unix)]
+    #[test]
+    fn a_file_the_walk_could_not_stat_leaves_the_comparison() {
+        let dir = tempfile::tempdir().expect("scratch directory");
+        std::fs::write(dir.path().join("a.txt"), b"a").expect("a.txt");
+        std::fs::create_dir(dir.path().join("sealed")).expect("sealed directory");
+        std::fs::write(dir.path().join("sealed").join("keep.txt"), b"k").expect("keep.txt");
+        let _sealed = UnreadableDir::seal(dir.path().join("sealed"));
+
+        let root = dir.path().to_str().expect("utf-8 root").to_string();
+        let (mut locals, _completeness, local_boundaries) = scan_local_tree_with_progress(
+            &root,
+            &ftp_client_gui_lib::sync_core::ScanOptions::default(),
+            &None,
+        );
+        assert!(
+            locals
+                .iter()
+                .any(|entry| entry.rel_path == "sealed/keep.txt" && entry.size == 0),
+            "the walk keeps the file it could not stat, with no size: {locals:?}"
+        );
+
+        let mut remotes = vec![
+            ftp_client_gui_lib::sync_core::scan::RemoteEntry {
+                rel_path: "a.txt".to_string(),
+                size: 1,
+                mtime: None,
+                checksum_alg: None,
+                checksum_hex: None,
+            },
+            ftp_client_gui_lib::sync_core::scan::RemoteEntry {
+                rel_path: "sealed/keep.txt".to_string(),
+                size: 1,
+                mtime: None,
+                checksum_alg: None,
+                checksum_hex: None,
+            },
+        ];
+        let bound = ftp_client_gui_lib::sync_core::ScanBound::apply(
+            &root,
+            &mut locals,
+            &mut remotes,
+            &local_boundaries,
+            ftp_client_gui_lib::sync_core::ScanBoundaries::default(),
+        );
+        assert!(bound.refusal().is_none(), "the gap has a name");
+        assert!(
+            !locals.iter().any(|e| e.rel_path == "sealed/keep.txt"),
+            "the unread file leaves the local side"
+        );
+        let diff = ftp_client_gui_lib::sync_core::compare_trees(&locals, &remotes, false);
+        assert_eq!(
+            diff.differ_count(),
+            0,
+            "a size nobody read is not a difference"
         );
     }
 
@@ -74806,7 +74992,7 @@ mod tests {
         fixture.local_file("sealed/keep.txt", 1);
         let _sealed = UnreadableDir::seal(Path::new(&local).join("sealed"));
 
-        let (locals, local_health) = scan_local_tree_with_progress(
+        let (locals, local_health, _) = scan_local_tree_with_progress(
             &local,
             &ftp_client_gui_lib::sync_core::ScanOptions::default(),
             &None,
