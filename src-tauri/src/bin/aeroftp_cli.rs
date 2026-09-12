@@ -39465,7 +39465,11 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
         });
 
         let spinner = create_spinner(&format!("Scanning {} for used storage...", root));
-        let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
+        // None = no depth asked, the parachute applies on the BFS only.
+        // Flattening this to MAX_SCAN_DEPTH used to make a requested depth
+        // indistinguishable from the safety net, so `size --max-depth 2`
+        // was persisted as a truncation.
+        let scan_depth = cli.max_depth.map(|d| d as usize);
         let mut last_tick = Instant::now()
             .checked_sub(std::time::Duration::from_millis(400))
             .unwrap_or_else(Instant::now);
@@ -39502,6 +39506,10 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
                 // figure. A cancelled, capped or partly-unreadable scan is a
                 // lower bound, and persisting it would leave the GUI showing it
                 // as an authoritative total for the rest of the profile's life.
+                // A requested depth that was respected (`depth_limited`) is
+                // a complete answer to the question asked, so it is not
+                // partial and may be persisted. It is still a lower bound
+                // of the full tree; that is declared by `depth_limited`.
                 let partial = s.cancelled || s.truncated || s.hit_cap || s.unreadable_dirs > 0;
                 if cli.profile.is_some() {
                     if partial {
@@ -39521,7 +39529,13 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
                             format_size(used),
                             s.file_count,
                             s.method,
-                            if s.truncated { ", TRUNCATED" } else { "" }
+                            if s.cancelled {
+                                ", CANCELLED"
+                            } else if s.truncated {
+                                ", TRUNCATED"
+                            } else {
+                                ""
+                            }
                         );
                         if eff_total > 0 {
                             let label = if total_source == Some("manual") {
@@ -39545,6 +39559,11 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
                             );
                         }
                         eprintln!("  Scope: {} ({})", scope, root);
+                        if s.depth_limited {
+                            eprintln!(
+                                "  Note: --max-depth excluded deeper branches; figure is a lower bound of the full tree"
+                            );
+                        }
                     }
                     OutputFormat::Json => {
                         print_json(&serde_json::json!({
@@ -39558,6 +39577,8 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
                             "scan_files": s.file_count,
                             "scan_dirs": s.dir_count,
                             "scan_truncated": s.truncated,
+                            "scan_cancelled": s.cancelled,
+                            "scan_depth_limited": s.depth_limited,
                             "scan_scope": scope,
                             "scan_root": root,
                         }));
@@ -39692,7 +39713,8 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
     });
 
     let spinner = create_spinner(&format!("Scanning {} ...", root));
-    let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
+    // None = no depth asked; Some is a complete answer to that depth, not a cap.
+    let scan_depth = cli.max_depth.map(|d| d as usize);
     let mut last_tick = Instant::now()
         .checked_sub(std::time::Duration::from_millis(400))
         .unwrap_or_else(Instant::now);
@@ -39730,7 +39752,7 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                         s.file_count + s.dir_count,
                         s.file_count,
                         s.dir_count,
-                        if s.truncated { " (TRUNCATED)" } else { "" }
+                        ftp_client_gui_lib::used_scan::size_bound_marker(&s),
                     );
                     println!(
                         "Total size: {} ({} Byte)",
@@ -39754,11 +39776,16 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                         if s.hit_cap {
                             eprintln!(
                                 "Warning: scan capped (depth {} / {} entries); figure is a lower bound",
-                                scan_depth, MAX_SCAN_ENTRIES
+                                scan_depth.unwrap_or(MAX_SCAN_DEPTH), MAX_SCAN_ENTRIES
                             );
                         }
                         if s.cancelled {
                             eprintln!("Warning: scan cancelled; figure is a lower bound");
+                        }
+                        if s.depth_limited {
+                            eprintln!(
+                                "Note: --max-depth excluded deeper branches; figure is a lower bound of the full tree"
+                            );
                         }
                     }
                 }
@@ -39775,6 +39802,7 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                         "unreadable_dirs": s.unreadable_dirs,
                         "hit_cap": s.hit_cap,
                         "cancelled": s.cancelled,
+                        "depth_limited": s.depth_limited,
                         "scan_method": s.method,
                     }));
                 }

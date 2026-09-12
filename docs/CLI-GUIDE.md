@@ -625,7 +625,7 @@ aeroftp-cli size --profile "My S3" /
 aeroftp-cli --json size --profile "My S3" /backups
 ```
 
-Reports the recursive object count and total bytes under a path. It reuses the same scan engine as `df --scan`: S3 flat list-recursive, WebDAV `Depth:infinity` with a BFS fallback, generic BFS elsewhere, and the same depth/entry caps. Files and directories are reported separately because SFTP/FTP/WebDAV model real directories that object stores do not. A capped scan sets `truncated: true` (JSON) or prints a `TRUNCATED` marker, so the figure is a clear lower bound. Never issues a per-file `stat()`.
+Reports the recursive object count and total bytes under a path. It reuses the same scan engine as `df --scan`: S3 flat list-recursive, WebDAV `Depth:infinity` with a BFS fallback, generic BFS elsewhere, and the same depth/entry caps. Files and directories are reported separately because SFTP/FTP/WebDAV model real directories that object stores do not. A capped scan sets `truncated: true` (JSON) or prints a `TRUNCATED` marker. A scan stopped by the user prints `CANCELLED` and, in `size --json`, sets both `cancelled: true` and `truncated: true` together (the field is `cancelled`, not `scan_cancelled`). A `--max-depth` that was respected is not a truncation: `depth_limited: true` records that the figure is a lower bound of the full tree and a complete answer to the depth that was asked. Never issues a per-file `stat()`. The first Ctrl+C (or SIGTERM, or Ctrl+Break on Windows) is a cooperative cancel: the lower bound is printed and the command exits 0. Exit 130 is only a second Ctrl+C, when the process-wide handler force-exits.
 
 ### head - First N Lines
 
