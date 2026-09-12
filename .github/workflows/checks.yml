@@ -150,5 +150,11 @@ jobs:
         # Non-blocking on PRs: a newly published advisory on a transitive
         # dependency must not red-wall an unrelated PR. On push to main and on
         # the weekly schedule the step is authoritative and fails the job.
+        # `--deny warnings`: without it a yanked crate, and a registry timeout
+        # that leaves the yank check unrun, both end as a printed warning with
+        # exit 0, indistinguishable from a pass (#661 declared that gap; the
+        # v4.1.9 audit measured it still open). The dependency tree is
+        # warning-clean today, so an unavailable check now fails red here
+        # instead of being read as clean.
         continue-on-error: ${{ github.event_name == 'pull_request' }}
-        run: cargo audit
+        run: cargo audit --deny warnings
