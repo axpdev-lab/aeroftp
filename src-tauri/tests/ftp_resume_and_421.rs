@@ -70,7 +70,9 @@ async fn session(stream: tokio::net::TcpStream, script: Script, commands: Comman
     // A PASV listener lives until the next data command consumes it. It is kept
     // alive deliberately in `SwallowAppe`: the client's connect succeeds and the
     // wait that follows is the one the test is about.
-    let mut pasv: Option<TcpListener> = None;
+    // The binding is never read: holding it is the whole point, so the name
+    // carries an underscore to say so to the unused-variable lints.
+    let mut _pasv: Option<TcpListener> = None;
     while let Ok(Some(line)) = lines.next_line().await {
         commands.lock().unwrap().push(line.clone());
         let verb = line.split_whitespace().next().unwrap_or("").to_uppercase();
@@ -89,7 +91,7 @@ async fn session(stream: tokio::net::TcpStream, script: Script, commands: Comman
                     }
                 };
                 let port = listener.local_addr().unwrap().port();
-                pasv = Some(listener);
+                _pasv = Some(listener);
                 let msg = format!(
                     "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
                     port / 256,
