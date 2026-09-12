@@ -863,11 +863,7 @@ impl StorageProvider for MegaCmdProvider {
 
     async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
         let p = self.resolve_path(p);
-        match self.run_mega_cmd_with_reauth("mega-ls", &[&p]).await {
-            Ok(_) => Ok(true),
-            Err(ProviderError::NotFound(_)) => Ok(false),
-            Err(_) => Ok(false),
-        }
+        map_mega_exists(self.run_mega_cmd_with_reauth("mega-ls", &[&p]).await)
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -1218,10 +1214,81 @@ impl MegaCmdProvider {
 
 pub type MegaProvider = MegaCmdProvider;
 
+/// Turn a `mega-ls` probe into an existence answer.
+///
+/// Extracted so the decision can be exercised without MEGAcmd installed, the
+/// way the SFTP side is through `map_sftp_try_exists`. It has three arms and no
+/// classifier, which is where this provider differs from that one: MEGAcmd is a
+/// shellout, and `run_mega_cmd` has already turned its stderr into a typed
+/// `ProviderError` by the time the answer gets here. There is nothing left to
+/// classify, only something to keep and something to pass on.
+fn map_mega_exists(result: Result<String, ProviderError>) -> Result<bool, ProviderError> {
+    match result {
+        Ok(_) => Ok(true),
+        // The one failure that IS an answer. `ProviderError` documents the
+        // contract on the variant: a genuinely missing path arrives here as
+        // `NotFound`.
+        Err(ProviderError::NotFound(_)) => Ok(false),
+        // Everything else is not an answer. A refusal, a dropped session or a
+        // server error told us nothing about whether the path is there, and
+        // reporting `false` would tell the caller it is not: a present but
+        // unreadable root would read as missing, which is how a run decides
+        // there is nothing to keep.
+        Err(e) => Err(e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::providers::MegaConnectionMode;
+
+    /// A listing that answered means the path is there.
+    #[test]
+    fn map_mega_exists_reports_a_listed_path_as_present() {
+        assert!(map_mega_exists(Ok("----  1  0  15Jan2026  14:30  a.txt".to_string())).unwrap());
+    }
+
+    /// And a path the command reported as missing is absent. `ProviderError`
+    /// documents this contract on its own variant: a genuinely missing path
+    /// arrives as `NotFound`, which is why this arm is kept rather than folded
+    /// into the one below.
+    #[test]
+    fn map_mega_exists_reports_a_missing_path_as_absent() {
+        assert!(!map_mega_exists(Err(ProviderError::NotFound("/gone".to_string()))).unwrap());
+    }
+
+    /// A refusal is not an absence. Answering `false` here tells a caller that
+    /// the path is not there, when what happened is that nobody was allowed to
+    /// look, and a preflight that reads a present-but-unreadable root as missing
+    /// is how a run decides there is nothing to keep.
+    ///
+    /// The error is passed on unchanged rather than reclassified: by the time it
+    /// reaches this function, `run_mega_cmd` has already read the command's
+    /// stderr and given it a type.
+    #[test]
+    fn map_mega_exists_does_not_turn_a_refusal_into_an_absence() {
+        let out = map_mega_exists(Err(ProviderError::PermissionDenied("denied".to_string())));
+        assert!(
+            matches!(out, Err(ProviderError::PermissionDenied(_))),
+            "a refusal must reach the caller as a refusal: {out:?}"
+        );
+    }
+
+    /// The same for a session that is gone: the answer is unknown, not "no".
+    #[test]
+    fn map_mega_exists_does_not_turn_a_lost_session_into_an_absence() {
+        let lost = map_mega_exists(Err(ProviderError::ConnectionLost("dropped".to_string())));
+        assert!(
+            matches!(lost, Err(ProviderError::ConnectionLost(_))),
+            "a dropped session must not read as absent: {lost:?}"
+        );
+        let never = map_mega_exists(Err(ProviderError::NotConnected));
+        assert!(
+            matches!(never, Err(ProviderError::NotConnected)),
+            "nor must a session that was never opened: {never:?}"
+        );
+    }
 
     fn test_provider() -> MegaCmdProvider {
         let config = MegaConfig {

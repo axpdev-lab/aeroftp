@@ -5568,11 +5568,22 @@ struct CliCheckReport {
 }
 
 impl CliCheckReport {
-    /// `partial` when some files could not be compared or either scan did not
-    /// read its whole tree, `ok` when both trees match, `differences_found`
-    /// otherwise.
+    /// `partial` when some files could not be compared, when either scan did
+    /// not read its whole tree, or when either scan left out a path it can
+    /// name; `ok` when both trees match and nothing was left out;
+    /// `differences_found` otherwise.
+    ///
+    /// The third case is not covered by the first two. A link is a gap with a
+    /// name: no walk follows one, so the subtree behind it is absent from the
+    /// scan, and it is recorded as a boundary rather than as an error, which
+    /// leaves `list_errors` at 0 and `truncated` false. `ScanCompleteness`
+    /// cannot see it by construction, so a report that asked only that question
+    /// answered `ok` while printing the path it had not covered.
     fn status(&self) -> &'static str {
-        if self.error_count > 0 || !self.local_scan.is_complete() || !self.remote_scan.is_complete()
+        if self.error_count > 0
+            || !self.local_scan.is_complete()
+            || !self.remote_scan.is_complete()
+            || self.left_a_named_path_out()
         {
             "partial"
         } else if self.differ_count == 0 && self.missing_local == 0 && self.missing_remote == 0 {
@@ -5624,6 +5635,18 @@ impl CliCheckReport {
             .collect()
     }
 
+    /// Whether either side has a path the scan can name but did not read.
+    ///
+    /// Separate from `ScanCompleteness` on purpose: that type counts failures,
+    /// and a boundary is not a failure. It is a part of the tree the walk
+    /// deliberately did not enter, which is exactly what a verdict must not
+    /// cover in silence.
+    fn left_a_named_path_out(&self) -> bool {
+        self.boundaries()
+            .iter()
+            .any(|(_, boundaries)| !Self::named_gaps(boundaries).is_empty())
+    }
+
     /// Add the completeness of both scans to a JSON report, with the field
     /// names `reconcile` uses, and the paths each scan did not see.
     ///
@@ -5648,10 +5671,22 @@ impl CliCheckReport {
                 ),
             );
         }
-        for (side, scan) in self.scans() {
+        // The two arrays are built in the same order, local then remote, and
+        // the assertion says so rather than trusting it: a document that
+        // reported one side's gaps under the other side's key would be worse
+        // than the defect this whole change is about.
+        for ((side, scan), (boundary_side, boundaries)) in
+            self.scans().into_iter().zip(self.boundaries())
+        {
+            debug_assert_eq!(side, boundary_side);
+            let left_out = !Self::named_gaps(boundaries).is_empty();
             fields.insert(
                 format!("{side}_scan_incomplete"),
-                serde_json::json!(!scan.is_complete()),
+                // A boundary makes the scan incomplete for the reader even
+                // though it is not a failure: the key above lists a path this
+                // run did not cover, and the two cannot disagree in the same
+                // document.
+                serde_json::json!(!scan.is_complete() || left_out),
             );
             fields.insert(
                 format!("{side}_scan_errors"),
@@ -74703,6 +74738,63 @@ mod tests {
             serde_json::json!([{ "path": recorded.rel_path, "reason": recorded.reason }]),
             "the JSON report carries the paths the remote scan did not see"
         );
+    }
+
+    /// A remote whose `/root` holds a symbolic link to a directory. No walk
+    /// follows one, so the subtree behind it is absent from the scan, and the
+    /// scan records it as a boundary rather than as an error: `list_errors`
+    /// stays 0 and `truncated` stays false.
+    fn remote_with_an_unfollowed_link() -> MemTreeProvider {
+        let mut link = RemoteEntry::directory("link".to_string(), "/root/link".to_string());
+        link.is_symlink = true;
+        MemTreeProvider {
+            dirs: HashMap::from([("/root".to_string(), vec![link])]),
+            delete_attempts: Arc::default(),
+        }
+    }
+
+    /// A named gap is still a gap. `ScanCompleteness` cannot see this one,
+    /// because a link produces no listing error and no truncation, so the
+    /// report answered `ok` and exited 0 while printing the path it had left
+    /// out: the document listed what it does not cover and said in the line
+    /// above that nothing was missing.
+    #[test]
+    fn check_is_partial_when_a_link_left_a_subtree_unread() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_check(remote_with_an_unfollowed_link(), &fixture.local(), false);
+
+        assert!(
+            !CliCheckReport::named_gaps(&report.remote_boundaries).is_empty(),
+            "the fixture must produce a named gap or the test proves nothing"
+        );
+        assert!(
+            report.remote_scan.is_complete(),
+            "and the completeness counters must not see it, which is the defect"
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+
+        let mut doc = serde_json::json!({});
+        report.add_scan_fields(&mut doc);
+        assert_eq!(
+            doc["remote_scan_incomplete"], true,
+            "the document cannot list a boundary and call the scan complete: {doc}"
+        );
+    }
+
+    /// The same on the `cryptcheck` road. The two commands build the same
+    /// report and share these methods, so this is not a duplicate: it is the
+    /// assertion that the pair stays symmetrical the day they stop sharing.
+    #[test]
+    fn cryptcheck_is_partial_when_a_link_left_a_subtree_unread() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_cryptcheck(remote_with_an_unfollowed_link(), &fixture.local(), false);
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
     }
 
     /// Complete scans of matching trees still report `ok` and exit 0.
