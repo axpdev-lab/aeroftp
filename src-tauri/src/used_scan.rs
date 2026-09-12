@@ -423,6 +423,15 @@ async fn bfs_used_bytes(
         }
     }
 
+    // A cancel raised while the last directory was listed never sees
+    // another turn of this loop: the queue is empty and we would leave
+    // cancelled=false. The fast path already polls on the way out (#801);
+    // this walk has to do the same, keeping the sums already in hand.
+    let cancelled = cancelled || cancel.load(Ordering::Relaxed);
+    if cancelled {
+        truncated = true;
+    }
+
     Ok(UsedScan {
         used_bytes: used,
         file_count: files,
@@ -606,12 +615,26 @@ mod tests {
             "/dir/sub".to_string(),
             vec![file("c.txt", "/dir/sub/c.txt", 4)],
         );
-        Box::new(TreeProvider { dirs })
+        Box::new(tree_provider(dirs))
+    }
+
+    fn tree_provider(
+        dirs: std::collections::HashMap<String, Vec<crate::providers::RemoteEntry>>,
+    ) -> TreeProvider {
+        TreeProvider {
+            dirs,
+            cancel: None,
+            raise_cancel_on: None,
+        }
     }
 
     /// In-memory tree for the BFS: `list` answers from a map.
+    /// `raise_cancel_on` stores `cancel` when that path is listed, so a test
+    /// can raise the flag while the last directory is in flight.
     struct TreeProvider {
         dirs: std::collections::HashMap<String, Vec<crate::providers::RemoteEntry>>,
+        cancel: Option<std::sync::Arc<AtomicBool>>,
+        raise_cancel_on: Option<String>,
     }
 
     #[async_trait::async_trait]
@@ -638,6 +661,11 @@ mod tests {
             &mut self,
             path: &str,
         ) -> Result<Vec<crate::providers::RemoteEntry>, ProviderError> {
+            if self.raise_cancel_on.as_deref() == Some(path) {
+                if let Some(flag) = &self.cancel {
+                    flag.store(true, Ordering::Relaxed);
+                }
+            }
             self.dirs
                 .get(path)
                 .cloned()
@@ -791,6 +819,57 @@ mod tests {
         assert_eq!(bfs.method, "bfs");
     }
 
+    /// A cancel raised while the last directory is listed never sees another
+    /// turn of the queue: the loop ends normally and only the exit poll
+    /// reports it. Raising the flag before the scan would be answered by the
+    /// head-of-loop check, which already worked. The sums already in hand
+    /// are kept. These flags are what `shouldPersistUsedScan` refuses.
+    #[tokio::test]
+    async fn a_cancel_raised_while_listing_the_last_directory_is_reported() {
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let mut dirs = std::collections::HashMap::new();
+        dirs.insert(
+            "/".to_string(),
+            vec![file("a.txt", "/a.txt", 3), file("b.txt", "/b.txt", 4)],
+        );
+        let mut provider: Box<dyn StorageProvider> = Box::new(TreeProvider {
+            dirs,
+            cancel: Some(cancel.clone()),
+            raise_cancel_on: Some("/".to_string()),
+        });
+        let scan = scan_used_bytes(
+            &mut provider,
+            "/",
+            None,
+            500_000,
+            cancel.as_ref(),
+            |_, _| {},
+        )
+        .await
+        .expect("the scan answers");
+
+        assert!(
+            scan.cancelled,
+            "the exit poll must see a cancel that arrived on the last list: {scan:?}"
+        );
+        assert!(
+            scan.truncated,
+            "a cancelled figure is a lower bound: {scan:?}"
+        );
+        assert_eq!(
+            (scan.file_count, scan.used_bytes),
+            (2, 7),
+            "the sums already in hand are kept: {scan:?}"
+        );
+        assert!(!scan.hit_cap, "a cancel is not a cap: {scan:?}");
+        // shouldPersistUsedScan is !truncated && !cancelled. Either flag
+        // false would have written this incomplete figure onto the profile.
+        assert!(
+            scan.truncated && scan.cancelled,
+            "the persist gate must refuse this scan: {scan:?}"
+        );
+    }
+
     /// Hitting the parachute on the BFS is a truncation. The flat listing
     /// under the same parachute is not filtered, so a deep file is counted.
     #[tokio::test]
@@ -819,7 +898,7 @@ mod tests {
             path.clone(),
             vec![file("deep.txt", &format!("{path}/deep.txt"), 9)],
         );
-        let mut provider: Box<dyn StorageProvider> = Box::new(TreeProvider { dirs });
+        let mut provider: Box<dyn StorageProvider> = Box::new(tree_provider(dirs));
         let bfs = scan_used_bytes(&mut provider, "/", None, 500_000, &cancel, |_, _| {})
             .await
             .expect("the BFS answers");

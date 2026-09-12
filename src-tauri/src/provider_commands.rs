@@ -10090,6 +10090,13 @@ pub async fn provider_scan_used(
         }
     }
 
+    // Same exit poll as `bfs_used_bytes`: a cancel raised while the last
+    // directory was listed never sees another turn of this loop.
+    let cancelled = cancelled || USED_SCAN_CANCEL.load(Ordering::Relaxed);
+    if cancelled {
+        truncated = true;
+    }
+
     emit_progress(file_count, used, false);
     Ok(UsedScanResult {
         used,

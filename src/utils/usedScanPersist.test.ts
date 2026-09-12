@@ -17,6 +17,15 @@ describe('shouldPersistUsedScan', () => {
         expect(shouldPersistUsedScan({ truncated: true, cancelled: true })).toBe(false);
     });
 
+    it('refuses a cancel that arrived on the last directory, with no further queue turn', () => {
+        // Mirrors used_scan::a_cancel_raised_while_listing_the_last_directory_is_reported:
+        // the BFS lists the only directory, the flag goes up during that list,
+        // the queue is empty, and only the exit poll sets cancelled. Before
+        // that poll, both flags were false and this figure would have been
+        // written onto the profile.
+        expect(shouldPersistUsedScan({ truncated: true, cancelled: true })).toBe(false);
+    });
+
     it('persists a complete scan', () => {
         expect(shouldPersistUsedScan({ truncated: false, cancelled: false })).toBe(true);
     });
