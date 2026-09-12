@@ -6677,14 +6677,21 @@ impl S3Provider {
                     }
 
                     let (entries, next_token) = self.parse_list_response(&xml, true)?;
-                    all_entries.extend(entries);
 
-                    // Bound memory on a huge or hostile bucket: stop paginating
-                    // once the cap is reached. What is left behind is reported,
-                    // so a consumer treats the result as the lower bound it is
-                    // instead of a whole tree.
+                    // Bound memory on a huge or hostile bucket: keep at most the
+                    // cap and stop paginating once it is reached. A page can
+                    // carry more than the room the cap leaves, so it is cut here
+                    // rather than counted after the fact: a caller that asked for
+                    // `cap` entries must not receive a whole page of them. What
+                    // is left behind is reported, the rest of this page as much
+                    // as the pages after it, so a consumer treats the result as
+                    // the lower bound it is instead of a whole tree.
+                    let room = cap.saturating_sub(all_entries.len());
+                    let page_was_cut = entries.len() > room;
+                    all_entries.extend(entries.into_iter().take(room));
+
                     if all_entries.len() >= cap {
-                        truncated = next_token.is_some();
+                        truncated = page_was_cut || next_token.is_some();
                         break;
                     }
                     if let Some(token) = next_token {
@@ -8232,6 +8239,39 @@ mod tests {
                 "more_pages={more_pages}: a cut is a cap reached with pages still to come"
             );
         }
+    }
+
+    /// A page can carry more entries than the room the cap leaves, and a caller
+    /// that asked for `cap` must not receive the whole page. The page is cut, and
+    /// the cut is reported even when no continuation token follows it: the
+    /// entries left behind have no key to name, which is what a scan bounding a
+    /// run around what it saw needs to know.
+    #[tokio::test]
+    async fn list_recursive_cuts_a_page_that_overruns_the_cap() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_req: axum::extract::Request| async move {
+                axum::http::Response::new(axum::body::Body::from(
+                    "<ListBucketResult><Contents><Key>a.txt</Key><Size>1</Size></Contents><Contents><Key>b.txt</Key><Size>1</Size></Contents></ListBucketResult>",
+                ))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let (entries, truncated) = provider
+            .list_recursive_capped("/", 1)
+            .await
+            .expect("the listing answers");
+        server.abort();
+        assert_eq!(entries.len(), 1, "the cap is one entry: {entries:?}");
+        assert!(
+            truncated,
+            "an entry of the page was left behind, so the listing was cut"
+        );
     }
 
     /// A directory that exists only as a marker key has to survive the recursive
