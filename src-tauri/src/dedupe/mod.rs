@@ -303,7 +303,21 @@ pub fn find_similar_local(
     distance: Option<u32>,
     min_size: Option<u64>,
 ) -> Vec<DuplicateGroup> {
-    find_similar_local_with_progress(paths, mode, distance, min_size, &mut |_| {})
+    find_similar_local_checked(paths, mode, distance, min_size, &mut |_| {}).0
+}
+
+/// What a duplicate scan could not read, alongside the groups it found.
+///
+/// A group list is the input to a delete: what it leaves out therefore matters
+/// as much as what it holds. `unreadable` counts the files whose size or
+/// content the pass could not read, so they were never compared with anything;
+/// `truncated` says the pass stopped before the end (the walk's file cap, or
+/// the read budget of the signature pass). Neither is a failure of the scan,
+/// and both make its answer a lower bound.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DedupeHealth {
+    pub unreadable: u64,
+    pub truncated: bool,
 }
 
 /// `find_similar_local` with a progress callback, called once per file whose
@@ -317,22 +331,44 @@ pub fn find_similar_local_with_progress(
     min_size: Option<u64>,
     on_progress: &mut dyn FnMut(DedupeProgress),
 ) -> Vec<DuplicateGroup> {
+    find_similar_local_checked(paths, mode, distance, min_size, on_progress).0
+}
+
+/// `find_similar_local_with_progress` and the health of the pass that produced
+/// the groups. The two functions above are the same call with the health
+/// dropped, kept because their callers do not report it yet: the GUI dedupe
+/// panel, which needs translated strings to say it, and two callers that scan
+/// files they have just written themselves.
+pub fn find_similar_local_checked(
+    paths: &[PathBuf],
+    mode: SimilarityMode,
+    distance: Option<u32>,
+    min_size: Option<u64>,
+    on_progress: &mut dyn FnMut(DedupeProgress),
+) -> (Vec<DuplicateGroup>, DedupeHealth) {
     let min = min_size.unwrap_or(1);
     let files_total = paths.len() as u64;
     let mut files_processed: u64 = 0;
     let mut bytes_processed: u64 = 0;
     let mut files_skipped: u64 = 0;
+    let mut health = DedupeHealth::default();
 
-    match mode {
+    let result = match mode {
         SimilarityMode::Exact => {
             // Size prefilter + blake3 (matches GUI current shape)
             let mut size_groups: HashMap<u64, Vec<PathBuf>> = HashMap::new();
             for p in paths {
-                if let Ok(meta) = std::fs::metadata(p) {
-                    let sz = meta.len();
-                    if sz >= min {
-                        size_groups.entry(sz).or_default().push(p.clone());
+                // A file below `min` was read and left out on purpose. One whose
+                // size cannot be read was not left out, it was never seen, and
+                // only the second is a gap in the answer.
+                match std::fs::metadata(p) {
+                    Ok(meta) => {
+                        let sz = meta.len();
+                        if sz >= min {
+                            size_groups.entry(sz).or_default().push(p.clone());
+                        }
                     }
+                    Err(_) => health.unreadable += 1,
                 }
             }
             let mut hash_groups: HashMap<String, (u64, Vec<String>)> = HashMap::new();
@@ -341,12 +377,16 @@ pub fn find_similar_local_with_progress(
                     continue;
                 }
                 for f in files {
-                    if let Ok(h) = compute_blake3(&f) {
-                        hash_groups
+                    // A file that cannot be hashed cannot be grouped, so it is
+                    // absent from every group: the same absence as a file that
+                    // has no duplicate, and not the same fact.
+                    match compute_blake3(&f) {
+                        Ok(h) => hash_groups
                             .entry(h)
                             .or_insert_with(|| (sz, Vec::new()))
                             .1
-                            .push(f.to_string_lossy().to_string());
+                            .push(f.to_string_lossy().to_string()),
+                        Err(_) => health.unreadable += 1,
                     }
                     files_processed += 1;
                     bytes_processed += sz;
@@ -412,7 +452,20 @@ pub fn find_similar_local_with_progress(
             for p in paths {
                 let sz = match std::fs::metadata(p) {
                     Ok(meta) if meta.len() >= min => meta.len(),
-                    _ => {
+                    // Same distinction as the exact pass: below `min` is a
+                    // choice, a size that cannot be read is a gap.
+                    Ok(_) => {
+                        files_processed += 1;
+                        on_progress(DedupeProgress {
+                            files_processed,
+                            bytes_processed,
+                            files_total,
+                            files_skipped,
+                        });
+                        continue;
+                    }
+                    Err(_) => {
+                        health.unreadable += 1;
                         files_processed += 1;
                         on_progress(DedupeProgress {
                             files_processed,
@@ -442,6 +495,7 @@ pub fn find_similar_local_with_progress(
                 let bytes = match std::fs::read(p) {
                     Ok(b) => b,
                     Err(_) => {
+                        health.unreadable += 1;
                         // Counted whether or not the read succeeded: the tick
                         // tracks how far through the list we are, not how many
                         // files worked.
@@ -711,17 +765,18 @@ pub fn find_similar_local_with_progress(
 
             result
         }
-    }
+    };
+    (result, health)
 }
 
 /// Convenience: scan a directory (local) and find duplicates. Mirrors the 2-phase
 /// shape of existing find_duplicate_files but adds non-identical path.
-pub fn find_similar_in_dir(
+pub fn find_similar_in_dir_checked(
     root: &Path,
     mode: SimilarityMode,
     distance: Option<u32>,
     min_size: Option<u64>,
-) -> Result<Vec<DuplicateGroup>, String> {
+) -> Result<(Vec<DuplicateGroup>, DedupeHealth), String> {
     if !root.is_dir() {
         return Err("Path is not a directory".to_string());
     }
@@ -729,24 +784,40 @@ pub fn find_similar_in_dir(
     const MAX_FILES: u64 = 100_000;
     let mut collected: Vec<PathBuf> = Vec::new();
     let mut count = 0u64;
+    let mut walk_unreadable: u64 = 0;
+    let mut truncated = false;
 
     for entry in walkdir::WalkDir::new(root)
         .follow_links(false)
         .max_depth(100)
         .into_iter()
-        .filter_map(|e| e.ok())
     {
+        // A directory the walk cannot open, or a file it cannot stat, never
+        // reaches the comparison: it is not a file without duplicates, it is a
+        // file nothing was compared against.
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => {
+                walk_unreadable += 1;
+                continue;
+            }
+        };
         if !entry.file_type().is_file() {
             continue;
         }
         count += 1;
         if count > MAX_FILES {
+            truncated = true;
             break;
         }
         collected.push(entry.into_path());
     }
 
-    Ok(find_similar_local(&collected, mode, distance, min_size))
+    let (groups, mut health) =
+        find_similar_local_checked(&collected, mode, distance, min_size, &mut |_| {});
+    health.unreadable += walk_unreadable;
+    health.truncated = health.truncated || truncated;
+    Ok((groups, health))
 }
 
 #[cfg(test)]

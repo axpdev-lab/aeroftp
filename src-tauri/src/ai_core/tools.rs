@@ -2454,6 +2454,160 @@ mod tests {
         }
     }
 
+    /// A scratch tree for the read-error tests: `a.txt`, a directory the
+    /// current user cannot read at all (`locked/`, mode 000) and one it can
+    /// list but not enter (`sealed/`, mode 0400, where every stat fails), each
+    /// holding `keep.txt`. Permissions are restored on drop so the tree can be
+    /// removed.
+    #[cfg(unix)]
+    struct ReadErrorTree {
+        dir: tempfile::TempDir,
+    }
+
+    #[cfg(unix)]
+    impl ReadErrorTree {
+        fn new() -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = tempfile::tempdir().expect("scratch directory");
+            std::fs::write(dir.path().join("a.txt"), vec![b'a'; 2048]).expect("a.txt");
+            for (name, mode) in [("locked", 0o000), ("sealed", 0o400)] {
+                let sub = dir.path().join(name);
+                std::fs::create_dir(&sub).expect("subdirectory");
+                std::fs::write(sub.join("keep.txt"), vec![b'k'; 2048]).expect("keep.txt");
+                std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(mode))
+                    .expect("set permissions");
+            }
+            let tree = Self { dir };
+            assert!(
+                std::fs::read_dir(tree.dir.path().join("locked")).is_err()
+                    && std::fs::symlink_metadata(tree.dir.path().join("sealed").join("keep.txt"))
+                        .is_err(),
+                "these tests need a user that cannot read a 000 directory or enter a 0400 one, and root does both"
+            );
+            tree
+        }
+
+        fn path(&self) -> String {
+            self.dir.path().to_string_lossy().into_owned()
+        }
+
+        fn sealed(&self) -> String {
+            self.dir
+                .path()
+                .join("sealed")
+                .to_string_lossy()
+                .into_owned()
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for ReadErrorTree {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            for name in ["locked", "sealed"] {
+                let _ = std::fs::set_permissions(
+                    self.dir.path().join(name),
+                    std::fs::Permissions::from_mode(0o755),
+                );
+            }
+        }
+    }
+
+    /// Run a tool the way an agent on the CLI does, and return its output.
+    async fn run_cli_tool(name: &str, args: Value) -> Value {
+        dispatch_tool(&mock_ctx(Surfaces::CLI), name, &args)
+            .await
+            .unwrap_or_else(|e| panic!("{name} failed: {e}"))
+    }
+
+    /// `local_list` over a directory whose entries cannot be statted must say
+    /// so: an entry it could not read is not a zero-byte file. The listing
+    /// counts it and marks the entry.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn local_list_reports_entries_it_cannot_stat() {
+        let tree = ReadErrorTree::new();
+
+        let out = run_cli_tool("local_list", json!({ "path": tree.sealed() })).await;
+
+        assert_eq!(out["unreadable"], 1, "output: {out}");
+        let entry = &out["entries"][0];
+        assert_eq!(entry["name"], "keep.txt");
+        assert!(
+            entry["error"].is_string(),
+            "the entry carries its error: {out}"
+        );
+    }
+
+    /// `local_search` has the same listing and must report the same way.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn local_search_reports_matches_it_cannot_stat() {
+        let tree = ReadErrorTree::new();
+
+        let out = run_cli_tool(
+            "local_search",
+            json!({ "path": tree.sealed(), "pattern": "keep" }),
+        )
+        .await;
+
+        assert_eq!(out["unreadable"], 1, "output: {out}");
+        assert!(out["results"][0]["error"].is_string(), "output: {out}");
+    }
+
+    /// `local_disk_usage` must not present a total that silently leaves out a
+    /// directory it could not read and a file it could not stat.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn local_disk_usage_reports_what_it_could_not_read() {
+        let tree = ReadErrorTree::new();
+
+        let out = run_cli_tool("local_disk_usage", json!({ "path": tree.path() })).await;
+
+        assert_eq!(out["unreadable"], 2, "output: {out}");
+        assert_eq!(out["truncated"], false, "output: {out}");
+    }
+
+    /// `local_grep` must not present "no match" for files it never read.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn local_grep_reports_files_it_could_not_read() {
+        let tree = ReadErrorTree::new();
+
+        let out = run_cli_tool("local_grep", json!({ "path": tree.path(), "pattern": "k" })).await;
+
+        assert_eq!(out["unreadable"], 2, "output: {out}");
+    }
+
+    /// `local_tree` must not draw a directory it could not read as empty, nor
+    /// drop an entry it could not stat, without saying so.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn local_tree_reports_what_it_could_not_read() {
+        let tree = ReadErrorTree::new();
+
+        let out = run_cli_tool("local_tree", json!({ "path": tree.path() })).await;
+
+        assert_eq!(out["unreadable"], 2, "output: {out}");
+    }
+
+    /// `local_find_duplicates` is the list an agent may delete from: it must
+    /// say when files were left out because they could not be read.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn local_find_duplicates_reports_files_it_could_not_read() {
+        let tree = ReadErrorTree::new();
+
+        let out = run_cli_tool(
+            "local_find_duplicates",
+            json!({ "path": tree.path(), "min_size": 1 }),
+        )
+        .await;
+
+        assert_eq!(out["unreadable"], 2, "output: {out}");
+        assert_eq!(out["truncated"], false, "output: {out}");
+    }
+
     #[tokio::test]
     async fn dispatch_unknown_tool_returns_unknown_error() {
         let ctx = mock_ctx(Surfaces::GUI);
