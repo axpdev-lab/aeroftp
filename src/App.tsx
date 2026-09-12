@@ -205,6 +205,7 @@ import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
+import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
@@ -3545,18 +3546,15 @@ const App: React.FC = () => {
             fileCount: res.file_count,
           });
         }
-        // A cancelled scan carries `truncated` too, because the backend marks a
-        // stopped walk as a lower bound. So the cancel is named first, in the
-        // same order as `size_bound_marker` on the Rust side, which exists to
-        // keep the two states from sharing a word.
+        // Which word a lower bound carries is decided in one tested place that
+        // mirrors `size_bound_marker` on the Rust side: a cancelled scan is
+        // marked truncated as well, so naming the cancel second would report a
+        // scan the user stopped as a listing the provider cut short.
+        const boundKey = usedScanBoundKey(res);
         const doneDetail = t('statusBar.usedScanDoneDetail', {
           used: formatBytes(res.used),
           files: String(res.file_count),
-        }) + (res.cancelled
-          ? ` (${t('transfer.cancelled')})`
-          : res.truncated
-            ? ` (${t('statusBar.usedScanTruncated')})`
-            : '');
+        }) + (boundKey ? ` (${t(boundKey)})` : '');
         notify.success(t('statusBar.usedScanDone'), doneDetail);
         activityLog.updateEntry(scanLogId, {
           status: 'success',
