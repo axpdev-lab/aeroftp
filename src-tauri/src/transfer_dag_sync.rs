@@ -2675,7 +2675,7 @@ mod tests {
             vec![crate::sync_core::SkippedLink {
                 rel_path: "link".to_string(),
                 link_target: Some("real".to_string()),
-                is_dir: true,
+                is_dir: Some(true),
             }],
             "the report names the remote link it left alone"
         );
@@ -2750,7 +2750,7 @@ mod tests {
             vec![crate::sync_core::SkippedLink {
                 rel_path: "link".to_string(),
                 link_target: Some("real".to_string()),
-                is_dir: true,
+                is_dir: Some(true),
             }],
             "the report names the local link it left alone"
         );
@@ -2793,7 +2793,7 @@ mod tests {
             vec![crate::sync_core::SkippedLink {
                 rel_path: "link".to_string(),
                 link_target: Some("real".to_string()),
-                is_dir: true,
+                is_dir: Some(true),
             }]
         );
     }

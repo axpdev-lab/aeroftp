@@ -2086,7 +2086,7 @@ mod tests {
                 .map(|i| crate::sync_core::SkippedLink {
                     rel_path: format!("link{i}"),
                     link_target: None,
-                    is_dir: true,
+                    is_dir: Some(true),
                 })
                 .collect(),
             ..Default::default()
@@ -2122,7 +2122,7 @@ mod tests {
                 .map(|i| crate::sync_core::SkippedLink {
                     rel_path: format!("link{i}"),
                     link_target: None,
-                    is_dir: true,
+                    is_dir: Some(true),
                 })
                 .collect(),
             unseen_paths: vec![crate::sync_core::UnseenPath {

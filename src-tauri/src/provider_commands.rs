@@ -6816,7 +6816,10 @@ fn normalize_remote_boundaries_for_compare(
     let paths = boundaries
         .links
         .iter_mut()
-        .map(|link| (&mut link.rel_path, Some(link.is_dir)))
+        // A link now carries the same `Option` as an unseen path: the walk knows
+        // the type only when the target resolved, and this decoder refuses the
+        // run when it did not, below, rather than guessing.
+        .map(|link| (&mut link.rel_path, link.is_dir))
         .chain(
             boundaries
                 .unseen
@@ -12962,8 +12965,9 @@ async fn walk_compare_remote_serially(
                 skipped_links.push(crate::sync_core::SkippedLink {
                     rel_path: relative_path,
                     link_target: entry.link_target.clone(),
-                    // The arm above matched on `entry.is_dir && is_symlink`.
-                    is_dir: true,
+                    // The arm above matched on `entry.is_dir && is_symlink`, so
+                    // the listing typed this one and there is nothing to guess.
+                    is_dir: Some(true),
                 });
                 continue;
             }
@@ -13111,7 +13115,7 @@ mod tests {
             links: vec![crate::sync_core::SkippedLink {
                 rel_path: "parent/link".to_string(),
                 link_target: None,
-                is_dir: true,
+                is_dir: Some(true),
             }],
             ..Default::default()
         };
@@ -13167,7 +13171,7 @@ mod tests {
             links: vec![crate::sync_core::SkippedLink {
                 rel_path: wire_link,
                 link_target: None,
-                is_dir: false,
+                is_dir: Some(false),
             }],
             unseen: vec![crate::sync_core::scan::UnseenPath {
                 rel_path: "parent/blocked".to_string(),
@@ -13286,7 +13290,7 @@ mod tests {
             links: vec![crate::sync_core::SkippedLink {
                 rel_path: format!("{}/{}", encrypt("parent"), encrypt("link")),
                 link_target: None,
-                is_dir: true,
+                is_dir: Some(true),
             }],
             unseen: vec![crate::sync_core::scan::UnseenPath {
                 rel_path: encrypt("blocked"),
@@ -13314,7 +13318,7 @@ mod tests {
             links: vec![crate::sync_core::SkippedLink {
                 rel_path: "not-base32-!!!".to_string(),
                 link_target: None,
-                is_dir: true,
+                is_dir: Some(true),
             }],
             ..Default::default()
         };
@@ -13371,7 +13375,7 @@ mod tests {
                 links: vec![crate::sync_core::SkippedLink {
                     rel_path: "parent/link".to_string(),
                     link_target: Some("target".to_string()),
-                    is_dir: true,
+                    is_dir: Some(true),
                 }],
                 ..Default::default()
             },
@@ -13515,7 +13519,7 @@ mod tests {
             vec![crate::sync_core::SkippedLink {
                 rel_path: "link".to_string(),
                 link_target: Some("/root/real".to_string()),
-                is_dir: true,
+                is_dir: Some(true),
             }]
         );
     }
