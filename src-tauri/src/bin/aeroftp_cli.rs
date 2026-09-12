@@ -55607,6 +55607,67 @@ async fn cmd_sync_doctor(
     }
 }
 
+/// Walk the remote tree the way `sync-doctor` previews it, and report what the
+/// walk could not read.
+///
+/// The two caps are parameters rather than the module constants they are called
+/// with. At 500_000 entries the entry cap is not reachable from a test, and a
+/// cap no test can reach is a cap nobody has checked.
+async fn scan_doctor_remote_tree(
+    provider: &mut dyn StorageProvider,
+    remote: &str,
+    exclude_matchers: &[globset::GlobMatcher],
+    max_depth: usize,
+    max_entries: usize,
+) -> (
+    HashMap<String, (u64, Option<String>)>,
+    ftp_client_gui_lib::sync_core::ScanCompleteness,
+) {
+    let mut entries_found: HashMap<String, (u64, Option<String>)> = HashMap::new();
+    let mut scan = ftp_client_gui_lib::sync_core::ScanCompleteness::default();
+    let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
+    while let Some((dir, depth)) = queue.pop() {
+        if depth >= max_depth || entries_found.len() >= max_entries {
+            // The walk stops here, so whatever is still queued is unseen.
+            scan.truncated = true;
+            break;
+        }
+        let listed = match provider.list(&dir).await {
+            Ok(listed) => listed,
+            Err(_) => {
+                // A directory that did not list hides its files.
+                scan.list_errors += 1;
+                continue;
+            }
+        };
+        for e in listed {
+            if e.is_dir {
+                if e.is_walkable_dir() {
+                    queue.push((e.path.clone(), depth + 1));
+                }
+            } else {
+                let relative = e
+                    .path
+                    .strip_prefix(remote)
+                    .unwrap_or(&e.path)
+                    .trim_start_matches('/')
+                    .to_string();
+                if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+                    continue;
+                }
+                if exclude_matchers
+                    .iter()
+                    .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+                {
+                    continue;
+                }
+                entries_found.insert(relative, (e.size, e.modified));
+            }
+        }
+    }
+    (entries_found, scan)
+}
+
 /// Scan both sides and assess the sync they describe: the report
 /// `sync-doctor` prints. `Err` carries the exit code of a failure that has
 /// already been reported.
@@ -55692,50 +55753,21 @@ async fn sync_doctor_report(
     let files_from_set = load_files_from(cli);
 
     let remote_root_ok = provider.list(&remote).await.is_ok();
-    let mut remote_entries: HashMap<String, (u64, Option<String>)> = HashMap::new();
-    let mut remote_scan = ftp_client_gui_lib::sync_core::ScanCompleteness::default();
-    if remote_root_ok {
-        let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
-        while let Some((dir, depth)) = queue.pop() {
-            if depth >= MAX_SCAN_DEPTH || remote_entries.len() >= MAX_SCAN_ENTRIES {
-                // The walk stops here, so whatever is still queued is unseen.
-                remote_scan.truncated = true;
-                break;
-            }
-            let entries = match provider.list(&dir).await {
-                Ok(entries) => entries,
-                Err(_) => {
-                    // A directory that did not list hides its files.
-                    remote_scan.list_errors += 1;
-                    continue;
-                }
-            };
-            for e in entries {
-                if e.is_dir {
-                    if e.is_walkable_dir() {
-                        queue.push((e.path.clone(), depth + 1));
-                    }
-                } else {
-                    let relative = e
-                        .path
-                        .strip_prefix(&remote)
-                        .unwrap_or(&e.path)
-                        .trim_start_matches('/')
-                        .to_string();
-                    if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                        continue;
-                    }
-                    if exclude_matchers
-                        .iter()
-                        .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                    {
-                        continue;
-                    }
-                    remote_entries.insert(relative, (e.size, e.modified));
-                }
-            }
-        }
-    }
+    let (mut remote_entries, remote_scan) = if remote_root_ok {
+        scan_doctor_remote_tree(
+            provider.as_mut(),
+            &remote,
+            &exclude_matchers,
+            MAX_SCAN_DEPTH,
+            MAX_SCAN_ENTRIES,
+        )
+        .await
+    } else {
+        (
+            HashMap::new(),
+            ftp_client_gui_lib::sync_core::ScanCompleteness::default(),
+        )
+    };
     if let Some(listed) = files_from_set.as_ref() {
         local_entries.retain(|path, _| listed.contains(path));
         remote_entries.retain(|path, _| listed.contains(path));
