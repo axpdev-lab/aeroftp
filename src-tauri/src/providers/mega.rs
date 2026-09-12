@@ -1235,6 +1235,53 @@ mod tests {
     use super::*;
     use crate::providers::MegaConnectionMode;
 
+    /// A listing that answered means the path is there.
+    #[test]
+    fn map_mega_exists_reports_a_listed_path_as_present() {
+        assert!(map_mega_exists(Ok("----  1  0  15Jan2026  14:30  a.txt".to_string())).unwrap());
+    }
+
+    /// And a path the command reported as missing is absent. `ProviderError`
+    /// documents this contract on its own variant: a genuinely missing path
+    /// arrives as `NotFound`, which is why this arm is kept rather than folded
+    /// into the one below.
+    #[test]
+    fn map_mega_exists_reports_a_missing_path_as_absent() {
+        assert!(!map_mega_exists(Err(ProviderError::NotFound("/gone".to_string()))).unwrap());
+    }
+
+    /// A refusal is not an absence. Answering `false` here tells a caller that
+    /// the path is not there, when what happened is that nobody was allowed to
+    /// look, and a preflight that reads a present-but-unreadable root as missing
+    /// is how a run decides there is nothing to keep.
+    ///
+    /// The error is passed on unchanged rather than reclassified: by the time it
+    /// reaches this function, `run_mega_cmd` has already read the command's
+    /// stderr and given it a type.
+    #[test]
+    fn map_mega_exists_does_not_turn_a_refusal_into_an_absence() {
+        let out = map_mega_exists(Err(ProviderError::PermissionDenied("denied".to_string())));
+        assert!(
+            matches!(out, Err(ProviderError::PermissionDenied(_))),
+            "a refusal must reach the caller as a refusal: {out:?}"
+        );
+    }
+
+    /// The same for a session that is gone: the answer is unknown, not "no".
+    #[test]
+    fn map_mega_exists_does_not_turn_a_lost_session_into_an_absence() {
+        let lost = map_mega_exists(Err(ProviderError::ConnectionLost("dropped".to_string())));
+        assert!(
+            matches!(lost, Err(ProviderError::ConnectionLost(_))),
+            "a dropped session must not read as absent: {lost:?}"
+        );
+        let never = map_mega_exists(Err(ProviderError::NotConnected));
+        assert!(
+            matches!(never, Err(ProviderError::NotConnected)),
+            "nor must a session that was never opened: {never:?}"
+        );
+    }
+
     fn test_provider() -> MegaCmdProvider {
         let config = MegaConfig {
             email: "u@example.com".to_string(),
