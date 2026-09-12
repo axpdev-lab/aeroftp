@@ -75827,6 +75827,39 @@ mod tests {
         );
     }
 
+    /// A gap the scan cannot name leaves no verdict to pronounce. Here the
+    /// local root itself cannot be read, so the walk has nothing to bound the
+    /// comparison around: `check` has to refuse, with the code the table gives
+    /// a partial result (4), instead of comparing the part of the tree it
+    /// happened to see and calling that an answer.
+    #[cfg(unix)]
+    #[test]
+    fn check_refuses_a_local_gap_it_cannot_name() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        fixture.local_file("a.txt", 1);
+        let _locked = UnreadableDir::lock(Path::new(&local).to_path_buf());
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+
+        let code = run_against_remote(MemTreeProvider::root_files(&[("a.txt", 1)]), || {
+            check_report(
+                "memory://",
+                &local,
+                "/root",
+                false,
+                false,
+                &cli,
+                OutputFormat::Json,
+            )
+        })
+        .expect_err("a scan with a gap it cannot name has no verdict to give");
+
+        assert_eq!(code, 4, "the refusal exits as a partial result");
+    }
+
     /// Complete scans of matching trees still report `ok` and exit 0.
     #[test]
     fn check_reports_ok_on_matching_complete_trees() {
