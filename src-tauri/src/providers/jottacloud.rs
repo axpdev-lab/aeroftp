@@ -1599,7 +1599,7 @@ impl StorageProvider for JottacloudProvider {
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         // Soft-delete into Jottacloud Trash (recoverable via View Trash).
         // Hard delete used to fire `?rm=true` / `?rmDir=true` which skipped the
-        // recycle bin entirely — unlike OpenDrive/Google Drive — so folders
+        // recycle bin entirely, unlike OpenDrive/Google Drive, so folders
         // disappeared permanently from AeroFTP. Permanent purge stays on
         // `permanent_delete_from_trash` / `delete_permanent` only (#397).
         self.move_to_trash(path).await
@@ -1915,7 +1915,7 @@ impl JottacloudProvider {
         // or the agent must resolve against the working directory, otherwise it
         // silently targets a same-named entry in the account root (#397).
         let resolved = self.resolve_path(path);
-        // Ask what it is first — see `delete_param`.
+        // Ask what it is first (see `delete_param`).
         let is_dir = self.stat(&resolved).await?.is_dir;
         let url = format!(
             "{}?{}=true",
@@ -1986,7 +1986,7 @@ impl JottacloudProvider {
     }
 
     /// POST `?cphash=true` on the original mountpoint object with the
-    /// TOMBSTONE's size/md5/timestamps — rclone's restore of a trashed file.
+    /// TOMBSTONE's size/md5/timestamps: rclone's restore of a trashed file.
     /// Callers must source the revision from the tombstone, never from a live
     /// object at the same path (F-652-3). A 2xx answer carries the revived
     /// `<file>` (no `deleted` attribute), so success here is server-confirmed.
@@ -2179,7 +2179,7 @@ impl JottacloudProvider {
     /// Parse a folder listing (live or tombstoned) into tombstone-aware
     /// children. Unlike `parse_folder_xml` nothing is filtered out: the
     /// restore walk needs the tombstoned entries, each with its own
-    /// `currentRevision` — reading size/md5 from here is what keeps cphash
+    /// `currentRevision`: reading size/md5 from here is what keeps cphash
     /// away from a live object at the same path (F-652-3).
     fn parse_folder_tombstone_children(xml: &str) -> Vec<TombstoneChild> {
         use quick_xml::events::Event;
@@ -2363,14 +2363,14 @@ impl JottacloudProvider {
         }
     }
 
-    /// Composed folder restore (#397): no JFS verb restores a directory —
+    /// Composed folder restore (#397): no JFS verb restores a directory:
     /// `?restore=true` 500s on both the Trash view and the original path, and
     /// `?mv=`/`?mvDir=` out of Trash 404 because the view is virtual. What
     /// works is reviving each descendant with the primitives that already
     /// carry file restore: walk the original-path tombstone (JFS still serves
     /// the deleted tree, children `deleted`-stamped, revisions intact),
-    /// cphash every tombstoned file — JFS revives the ancestor chain along
-    /// with it — and mkDir only the directories that stay tombstoned because
+    /// cphash every tombstoned file (JFS revives the ancestor chain along
+    /// with it) and mkDir only the directories that stay tombstoned because
     /// no file lives beneath them.
     ///
     /// Partial failure is reported, never hidden: every entry is attempted,
@@ -2581,7 +2581,7 @@ impl JottacloudProvider {
     /// destination. `?restore=true` 500s on both the Trash view and the
     /// original path; `?mv=` against `/Trash/name` 404s.
     /// Folders: no JFS verb restores a directory (same probes, #397), so the
-    /// restore is composed — see `restore_folder_from_trash`.
+    /// restore is composed (see `restore_folder_from_trash`).
     ///
     /// The report counts only server-confirmed work; an incomplete folder
     /// restore is an `Err` carrying the confirmed counts, never a quiet

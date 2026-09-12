@@ -1131,7 +1131,7 @@ mod tests {
 
         let seen = calls.lock().unwrap().clone();
 
-        // Exactly three progress calls — no Summary or Warning extras.
+        // Exactly three progress calls: no Summary or Warning extras.
         assert_eq!(seen.len(), 3, "expected 3 sink calls, got: {:?}", seen);
 
         // 50 %: bytes=5_242_880, total = 5_242_880 * 100 / 50 = 10_485_760

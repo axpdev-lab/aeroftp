@@ -876,6 +876,21 @@ impl FtpProvider {
         ProviderError::TransferFailed(Self::doing(operation, path, err))
     }
 
+    /// The CR/LF refusal on the command paths that never open a data
+    /// connection (delete, rmdir). Same rule as `classify_data_failure`: the
+    /// library reports the unwritable command line as `ConnectionError` with
+    /// kind `InvalidInput`, and that is a property of the NAME, not of the
+    /// session. Everything else keeps the generic server-error typing these
+    /// paths always had.
+    fn classify_command_refusal(operation: &str, path: &str, err: FtpError) -> ProviderError {
+        if let FtpError::ConnectionError(ref io) = err {
+            if io.kind() == std::io::ErrorKind::InvalidInput {
+                return ProviderError::InvalidPath(Self::doing(operation, path, io));
+            }
+        }
+        ProviderError::ServerError(err.to_string())
+    }
+
     /// Turn a permanent upload refusal into one the user can act on.
     ///
     /// The CLI used to check the parent BEFORE every upload and say "Parent
@@ -1533,7 +1548,7 @@ impl StorageProvider for FtpProvider {
         stream
             .rm(path)
             .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+            .map_err(|e| Self::classify_command_refusal("delete", path, e))?;
         Ok(())
     }
 
@@ -1542,7 +1557,7 @@ impl StorageProvider for FtpProvider {
         stream
             .rmdir(path)
             .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+            .map_err(|e| Self::classify_command_refusal("rmdir", path, e))?;
         Ok(())
     }
 

@@ -47,5 +47,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
 (
     cd src-tauri
-    cargo audit
+    # Same strictness as checks.yml: a yanked crate or an unrun yank check is
+    # a warning with exit 0 by default, which reads as a pass. Deny them.
+    cargo audit --deny warnings
 )
