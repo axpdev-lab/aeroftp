@@ -6807,21 +6807,31 @@ fn normalize_remote_boundaries_for_compare(
     keys: &crate::crypt_overlay_provider::OverlayKeys,
     boundaries: &mut crate::sync_core::ScanBoundaries,
 ) -> Result<(), String> {
-    let decrypt = |rel: &str| -> Option<String> {
-        match keys {
-            crate::crypt_overlay_provider::OverlayKeys::Rclone(k) => decrypt_rel_rclone(k, rel),
-            crate::crypt_overlay_provider::OverlayKeys::AeroCrypt { master_key, .. } => {
-                decrypt_rel_aerocrypt(master_key, rel)
-            }
-        }
-    };
+    // Most boundaries are directories, and an overlay spells a directory
+    // differently from a file: rclone leaves it without the `Off` suffix and,
+    // with `directory_name_encryption` off, in the clear. The walk recorded
+    // which it is, so the decode is told; reading the type back out of the path
+    // would be a guess, and a wrong guess anchors the bound to a path that does
+    // not exist, which no one sees.
     let paths = boundaries
         .links
         .iter_mut()
-        .map(|link| &mut link.rel_path)
-        .chain(boundaries.unseen.iter_mut().map(|path| &mut path.rel_path));
-    for rel_path in paths {
-        let Some(plain_rel_path) = decrypt(rel_path.as_str()) else {
+        .map(|link| (&mut link.rel_path, Some(link.is_dir)))
+        .chain(
+            boundaries
+                .unseen
+                .iter_mut()
+                .map(|path| (&mut path.rel_path, path.is_dir)),
+        );
+    for (rel_path, is_dir) in paths {
+        let Some(is_dir) = is_dir else {
+            return Err(format!(
+                "the scan left out the remote path {rel_path} without recording whether it is a \
+                 directory, and a crypt overlay spells a directory and a file differently, so the \
+                 run cannot be bounded around it"
+            ));
+        };
+        let Some(plain_rel_path) = keys.decode_rel_path(rel_path.as_str(), is_dir) else {
             return Err(
                 "a remote path the scan left out could not be read through the crypt overlay, \
                  so the run cannot be bounded around it: check the overlay password"
