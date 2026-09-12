@@ -1958,8 +1958,9 @@ pub async fn find_duplicate_files(
 
     // Phase 0: one walk for both modes, so the progress the user sees is the
     // same shape whichever mode they picked. Non-identical used to let the
-    // engine do its own walk (find_similar_in_dir); it now gets the file list
-    // from here and reports its own analysis pass through the callback below.
+    // engine do its own walk (`find_similar_in_dir_checked`, which the agent
+    // tool still uses); it now gets the file list from here and reports its own
+    // analysis pass through the callback below.
     let walk_started = std::time::Instant::now();
     let mut last_emit = walk_started;
     let mut walked: Vec<(PathBuf, u64)> = Vec::new();

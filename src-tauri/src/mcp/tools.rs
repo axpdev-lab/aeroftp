@@ -2086,6 +2086,7 @@ mod tests {
                 .map(|i| crate::sync_core::SkippedLink {
                     rel_path: format!("link{i}"),
                     link_target: None,
+                    is_dir: true,
                 })
                 .collect(),
             ..Default::default()
@@ -2121,11 +2122,13 @@ mod tests {
                 .map(|i| crate::sync_core::SkippedLink {
                     rel_path: format!("link{i}"),
                     link_target: None,
+                    is_dir: true,
                 })
                 .collect(),
             unseen_paths: vec![crate::sync_core::UnseenPath {
                 rel_path: "d1".to_string(),
                 reason: "list_error",
+                is_dir: Some(true),
             }],
             ..Default::default()
         };
@@ -2156,6 +2159,7 @@ mod tests {
             unseen_paths: vec![crate::sync_core::UnseenPath {
                 rel_path: "d1".to_string(),
                 reason: "list_error",
+                is_dir: Some(true),
             }],
             ..Default::default()
         };

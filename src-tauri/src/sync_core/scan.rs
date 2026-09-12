@@ -155,6 +155,9 @@ fn adapt_fastpath_entries(
                     unseen.push(UnseenPath {
                         rel_path: stop,
                         reason: "depth_limit",
+                        // The walk stops AT a directory: what it did not see
+                        // sits under it.
+                        is_dir: Some(true),
                     });
                     if results.len() + skipped_links.len() + unseen.len() >= cap {
                         break;
@@ -175,6 +178,9 @@ fn adapt_fastpath_entries(
                 skipped_links.push(SkippedLink {
                     rel_path: rel,
                     link_target: entry.link_target.clone(),
+                    // A flat listing reports links to files as well as to
+                    // directories, so the type comes from the entry.
+                    is_dir: entry.is_dir,
                 });
                 if results.len() + skipped_links.len() + unseen.len() >= cap {
                     break;
@@ -277,7 +283,7 @@ fn fastpath_scan(
     for path in unseen {
         // A limit that stops at the root leaves the whole tree unseen, which
         // `unseen` turns into a gap with no name.
-        boundaries.unseen(&path.rel_path, path.reason);
+        boundaries.unseen(&path.rel_path, path.reason, path.is_dir);
         completeness.truncated = true;
     }
     if raw_truncated {
@@ -333,6 +339,18 @@ pub struct SkippedLink {
     pub rel_path: String,
     /// What the link points to, when it could be read.
     pub link_target: Option<String>,
+    /// Whether the link stands where a directory does. Recorded by the walk,
+    /// which knows: a crypt overlay spells a directory name differently from a
+    /// file name (rclone leaves directories without the `Off` suffix), so a
+    /// consumer that has to decrypt this path cannot tell from the path itself
+    /// without guessing, and guessing is how a bound ends up anchored to a path
+    /// that does not exist.
+    ///
+    /// Not serialized: it helps the decoding inside this process, and the
+    /// boundary lists that reach an agent through the MCP `sync_tree` result
+    /// should not grow a key for that.
+    #[serde(skip)]
+    pub is_dir: bool,
 }
 
 /// A path a scan could not see, so what sits at or under it is unknown.
@@ -342,6 +360,16 @@ pub struct UnseenPath {
     pub rel_path: String,
     /// Why it was not seen: `depth_limit`, `list_error` or `unreadable`.
     pub reason: &'static str,
+    /// Whether the path stands where a directory does, for the same reason
+    /// [`SkippedLink::is_dir`] carries it: only the walk knows, and a consumer
+    /// that decrypts the name needs the type to spell it right.
+    ///
+    /// `None` where the walk genuinely could not tell, as for a link whose
+    /// target did not resolve. A consumer that needs the type must refuse such
+    /// a path rather than assume one: assuming "file" is what strips a suffix a
+    /// directory never carried. Not serialized, like the field above.
+    #[serde(skip)]
+    pub is_dir: Option<bool>,
 }
 
 /// What a tree scan skipped or could not see, beyond the entries it returned.
@@ -372,7 +400,7 @@ impl ScanBoundaries {
     /// Record a path the scan did not see. The scan root has no path to bound a
     /// run around: a root the scan did not see leaves the whole tree unseen, a
     /// gap with no name.
-    fn unseen(&mut self, rel_path: &str, reason: &'static str) {
+    fn unseen(&mut self, rel_path: &str, reason: &'static str, is_dir: Option<bool>) {
         if rel_path.is_empty() {
             tracing::warn!("[scan] not seen: the scan root ({})", reason);
             self.unbounded.get_or_insert(reason);
@@ -381,6 +409,7 @@ impl ScanBoundaries {
             self.unseen.push(UnseenPath {
                 rel_path: rel_path.to_string(),
                 reason,
+                is_dir,
             });
         }
     }
@@ -415,6 +444,18 @@ enum LocalPrefix {
     Unreadable,
 }
 
+/// The refusal a run gets when a scan missed a part of the tree it cannot
+/// name, so nothing can be bounded around it.
+///
+/// Phrased in one place because it has two callers: [`ScanBound::for_sync`]
+/// below, and the compare command, which answers this verdict before it
+/// decrypts the remote paths (the verdict does not depend on how they are
+/// spelled) and would otherwise keep a second copy of the sentence, free to
+/// drift from this one.
+pub fn unbounded_refusal(side: &str, reason: &str) -> String {
+    format!("the {side} scan did not see the whole tree ({reason})")
+}
+
 impl ScanBound {
     /// Bound a sync by what its two scans did not see: the remote links and
     /// unseen paths, the local unseen paths, and the local links above any path
@@ -435,13 +476,9 @@ impl ScanBound {
     ) -> Self {
         let mut bound = Self::default();
         if let Some(reason) = remote.unbounded {
-            bound.refusal = Some(format!(
-                "the remote scan did not see the whole tree ({reason})"
-            ));
+            bound.refusal = Some(unbounded_refusal("remote", reason));
         } else if let Some(reason) = local.unbounded {
-            bound.refusal = Some(format!(
-                "the local scan did not see the whole tree ({reason})"
-            ));
+            bound.refusal = Some(unbounded_refusal("local", reason));
         }
         for link in remote.links {
             bound.add_link(link);
@@ -483,6 +520,14 @@ impl ScanBound {
                                 bound.add_link(SkippedLink {
                                     rel_path: prefix.to_string(),
                                     link_target,
+                                    // A path prefix stands where a directory
+                                    // does: something on the remote sits under
+                                    // it. The loop also offers the whole path,
+                                    // where that would not hold, but a local
+                                    // link to a FILE is listed as a file, so it
+                                    // is in `local_set` and the loop skipped it
+                                    // before reaching here.
+                                    is_dir: true,
                                 });
                                 LocalPrefix::Link
                             }
@@ -505,6 +550,11 @@ impl ScanBound {
                                 bound.add_unseen(UnseenPath {
                                     rel_path: prefix.to_string(),
                                     reason: "unreadable",
+                                    // Same as the link above: a prefix with
+                                    // remote entries under it is a directory
+                                    // position, and the leaf case cannot reach
+                                    // here for the same reason.
+                                    is_dir: Some(true),
                                 });
                                 LocalPrefix::Unreadable
                             }
@@ -682,6 +732,9 @@ pub fn scan_local_tree_checked(
                             &mut completeness,
                             &relative_of(path),
                             "unreadable",
+                            // The walk names a path here when it could not open
+                            // a directory to read it.
+                            Some(true),
                             cap.saturating_sub(entries.len()),
                         ),
                         None => {
@@ -714,6 +767,9 @@ pub fn scan_local_tree_checked(
                     boundaries.links.push(SkippedLink {
                         rel_path,
                         link_target,
+                        // Only a link to a directory is recorded here: the arm
+                        // above matched on the target being one.
+                        is_dir: true,
                     });
                 }
                 Ok(_) => {}
@@ -728,6 +784,11 @@ pub fn scan_local_tree_checked(
                         &mut completeness,
                         &relative_of(walk_entry.path()),
                         "unreadable",
+                        // The link did not resolve, so the walk does not know
+                        // what it stands for. Not "a file": a consumer that
+                        // needs the type has to refuse this path rather than
+                        // assume one.
+                        None,
                         cap.saturating_sub(entries.len()),
                     );
                 }
@@ -743,6 +804,8 @@ pub fn scan_local_tree_checked(
                 &mut completeness,
                 &relative_of(walk_entry.path()),
                 "depth_limit",
+                // The arm above matched on the entry being a directory.
+                Some(true),
                 cap.saturating_sub(entries.len()),
             );
             continue;
@@ -782,6 +845,9 @@ pub fn scan_local_tree_checked(
                     &mut completeness,
                     &relative,
                     "unreadable",
+                    // Every stat failed, and the directory entry still reports
+                    // the type, which is the whole point of the case above.
+                    Some(walk_entry.file_type().is_dir()),
                     cap.saturating_sub(entries.len()),
                 );
                 None
@@ -973,6 +1039,8 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                     &mut completeness,
                     &dir.rel_prefix,
                     "depth_limit",
+                    // A queued walk entry is a directory the walk meant to list.
+                    Some(true),
                     cap.saturating_sub(results.len()),
                 );
                 continue;
@@ -1042,6 +1110,9 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                         &mut completeness,
                         &failure.rel_prefix,
                         "list_error",
+                        // Only a directory is listed, so only a directory can
+                        // fail to list.
+                        Some(true),
                         cap.saturating_sub(results.len()),
                     );
                 }
@@ -1136,6 +1207,8 @@ async fn scan_remote_tree_locked(
                 &mut completeness,
                 &dir.rel_prefix,
                 "depth_limit",
+                // A queued entry is a directory the walk meant to list.
+                Some(true),
                 cap.saturating_sub(results.len()),
             );
             continue;
@@ -1213,6 +1286,9 @@ async fn scan_remote_tree_locked(
                         &mut completeness,
                         &failure.rel_prefix,
                         "list_error",
+                        // Only a directory is listed, so only a directory can
+                        // fail to list.
+                        Some(true),
                         cap.saturating_sub(results.len()),
                     );
                 }
@@ -1273,13 +1349,14 @@ fn record_unseen(
     completeness: &mut ScanCompleteness,
     rel_path: &str,
     reason: &'static str,
+    is_dir: Option<bool>,
     room: usize,
 ) {
     if !rel_path.is_empty() && boundaries.len() >= room {
         completeness.truncated = true;
         boundaries.unbounded.get_or_insert("entry_cap");
     } else {
-        boundaries.unseen(rel_path, reason);
+        boundaries.unseen(rel_path, reason, is_dir);
     }
 }
 
@@ -1499,6 +1576,9 @@ async fn scan_remote_dir(
                 skipped_links.push(SkippedLink {
                     rel_path: entry_rel,
                     link_target: entry.link_target.clone(),
+                    // This arm sits inside `entry.is_dir`: the link stands
+                    // where a directory does.
+                    is_dir: true,
                 });
             } else {
                 // Past the budget the walk's cap leaves: counted, not kept.
@@ -1691,6 +1771,30 @@ pub(crate) mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    /// The compare command answers the unbounded verdict on its own, before it
+    /// decrypts the remote paths, so it never reaches `for_sync` for that case.
+    /// Both say it with `unbounded_refusal`, and this pins them to one
+    /// sentence: a second copy of the format string would drift from the one
+    /// the compare shows, and the two surfaces would disagree on what stopped
+    /// the run.
+    #[test]
+    fn the_unbounded_refusal_is_phrased_in_one_place() {
+        let expected = unbounded_refusal("remote", "the scan was cancelled");
+
+        let bound = ScanBound::for_sync(
+            "/nonexistent-local-root",
+            Vec::<&str>::new(),
+            Vec::<&str>::new(),
+            &ScanBoundaries::default(),
+            ScanBoundaries {
+                unbounded: Some("the scan was cancelled"),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(bound.refusal(), Some(expected.as_str()));
+    }
+
     /// CLAUDE-AV-B3-13: the provider-backed remote walk must report that it did
     /// not see the whole tree. Every abort below used to leave a stderr warning
     /// and return a plain `Vec`, which downstream cannot tell apart from a
@@ -1872,6 +1976,7 @@ pub(crate) mod tests {
             vec![SkippedLink {
                 rel_path: "link".to_string(),
                 link_target: Some("real".to_string()),
+                is_dir: true,
             }]
         );
     }
@@ -2054,6 +2159,8 @@ pub(crate) mod tests {
             vec![SkippedLink {
                 rel_path: "link.txt".to_string(),
                 link_target: Some("target.txt".to_string()),
+                // The listing said file, and the fast path repeats what it said.
+                is_dir: false,
             }]
         );
     }
@@ -2205,6 +2312,7 @@ pub(crate) mod tests {
             vec![SkippedLink {
                 rel_path: "loop".to_string(),
                 link_target: None,
+                is_dir: true,
             }]
         );
     }
@@ -2213,6 +2321,9 @@ pub(crate) mod tests {
         SkippedLink {
             rel_path: rel.to_string(),
             link_target: None,
+            // These tests are about what a bound covers, which is a subtree, so
+            // the link stands where a directory does.
+            is_dir: true,
         }
     }
 
@@ -2261,6 +2372,7 @@ pub(crate) mod tests {
             &[SkippedLink {
                 rel_path: "link".to_string(),
                 link_target: Some("real".to_string()),
+                is_dir: true,
             }]
         );
         assert!(bound.covers("link/x.txt"));
@@ -2341,6 +2453,7 @@ pub(crate) mod tests {
             &[UnseenPath {
                 rel_path: "locked/link".to_string(),
                 reason: "unreadable",
+                is_dir: Some(true),
             }]
         );
     }
@@ -2452,6 +2565,7 @@ pub(crate) mod tests {
             vec![UnseenPath {
                 rel_path: "d1".to_string(),
                 reason: "depth_limit",
+                is_dir: Some(true),
             }]
         );
         assert_eq!(
@@ -3069,6 +3183,7 @@ pub(crate) mod tests {
             vec![UnseenPath {
                 rel_path: "d1/d2".to_string(),
                 reason: "depth_limit",
+                is_dir: Some(true),
             }],
             "what the walk stops at"
         );

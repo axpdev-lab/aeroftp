@@ -182,8 +182,35 @@ impl OverlayKeys {
         }
     }
 
-    /// Decrypt one on-wire path component back to plaintext, or `None` when it is
-    /// not a valid name for this overlay (foreign entry, wrong key, sentinel).
+    /// Decrypt a whole relative path back to plaintext, telling the overlay
+    /// what the last segment is.
+    ///
+    /// Every segment above the last one names a directory, whatever sits at the
+    /// end, so only the leaf needs `is_dir`. That distinction is the contract:
+    /// rclone spells a directory name without the `Off` suffix and, with
+    /// `directory_name_encryption` off, leaves it in the clear, so decoding a
+    /// directory as if it were a file strips a suffix that was never added, and
+    /// decoding a cleartext directory name as ciphertext fails outright. A
+    /// caller that knows only the path cannot tell the two apart without
+    /// guessing from the spelling, which is circular.
+    pub(crate) fn decode_rel_path(&self, rel_path: &str, is_dir: bool) -> Option<String> {
+        let segments: Vec<&str> = rel_path.split('/').collect();
+        let last = segments.len().saturating_sub(1);
+        let mut out = Vec::with_capacity(segments.len());
+        for (index, segment) in segments.iter().enumerate() {
+            if segment.is_empty() {
+                out.push(String::new());
+                continue;
+            }
+            let segment_is_dir = index < last || is_dir;
+            out.push(self.decode_name(segment, segment_is_dir)?);
+        }
+        Some(out.join("/"))
+    }
+
+    /// Decrypt one on-wire path component back to plaintext, or `None` when it
+    /// is not a valid name for this overlay (foreign entry, wrong key,
+    /// sentinel).
     fn decode_name(&self, encoded: &str, is_dir: bool) -> Option<String> {
         match self {
             Self::AeroCrypt { master_key, .. } => names::decrypt_filename(master_key, encoded),
