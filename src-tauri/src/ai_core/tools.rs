@@ -1906,7 +1906,11 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             description: "Get application version, OS, and connection status.",
             input_schema: json!({ "type": "object" }),
             danger: DangerLevel::Safe,
-            surfaces: Surfaces::GUI,
+            // The CLI offers this one to the model as well, so the CLI surface
+            // has to reach it: the dispatcher refuses a surface it does not
+            // declare, and that refusal is not a fallback, so the answer never
+            // arrives.
+            surfaces: local_surfaces,
         },
         ToolDef {
             name: "sync_control",
@@ -1941,7 +1945,9 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             description: "Compute the hash of a local file.",
             input_schema: json!({ "type": "object" }),
             danger: DangerLevel::Safe,
-            surfaces: Surfaces::GUI,
+            // Offered by the CLI too, over a file `local_read` can already
+            // open. Same reason as `app_info` above.
+            surfaces: local_surfaces,
         },
         ToolDef {
             name: "generate_transfer_plan",
@@ -2617,6 +2623,37 @@ mod tests {
         match err {
             ToolError::Unknown(name) => assert_eq!(name, "nope_nope"),
             other => panic!("expected Unknown, got {other:?}"),
+        }
+    }
+
+    /// A tool the CLI offers to the model has to be one the CLI can run.
+    ///
+    /// `app_info` and `hash_file` are advertised in the CLI's own tool list and
+    /// classified as read-only, but the registry declares them `Surfaces::GUI`
+    /// alone. On the CLI surface the dispatcher therefore answers
+    /// `NotOnSurface`, which the caller does not treat as a fallback, so the
+    /// legacy arm that would have answered is never reached and the agent is
+    /// told the tool it was just offered does not exist here.
+    ///
+    /// The assertion is deliberately the negative one, "not `NotOnSurface`",
+    /// and it must stay that way. Asserting success would be wrong twice: on a
+    /// mock context `hash_file` fails on a path that does not exist, and the
+    /// day these two are migrated into the dispatcher for real the answer stops
+    /// being the legacy handler's and the test would break for a change that is
+    /// an improvement. What is pinned here is reachability, not the reply.
+    #[tokio::test]
+    async fn the_cli_can_reach_every_tool_it_offers() {
+        for name in ["app_info", "hash_file"] {
+            let outcome = dispatch_tool(
+                &mock_ctx(Surfaces::CLI),
+                name,
+                &json!({ "path": "/nonexistent" }),
+            )
+            .await;
+            assert!(
+                !matches!(outcome, Err(ToolError::NotOnSurface { .. })),
+                "{name} is offered to the model on the CLI, so refusing it for the CLI surface leaves an advertised tool unusable: {outcome:?}"
+            );
         }
     }
 
