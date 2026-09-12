@@ -2480,6 +2480,13 @@ mod tests {
     /// `NotOnSurface`, which the caller does not treat as a fallback, so the
     /// legacy arm that would have answered is never reached and the agent is
     /// told the tool it was just offered does not exist here.
+    ///
+    /// The assertion is deliberately the negative one, "not `NotOnSurface`",
+    /// and it must stay that way. Asserting success would be wrong twice: on a
+    /// mock context `hash_file` fails on a path that does not exist, and the
+    /// day these two are migrated into the dispatcher for real the answer stops
+    /// being the legacy handler's and the test would break for a change that is
+    /// an improvement. What is pinned here is reachability, not the reply.
     #[tokio::test]
     async fn the_cli_can_reach_every_tool_it_offers() {
         for name in ["app_info", "hash_file"] {
