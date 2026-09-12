@@ -243,12 +243,14 @@ async fn try_recursive_fastpath(
     provider: &mut Box<dyn StorageProvider>,
     remote_root: &str,
     opts: &ScanOptions,
-) -> Option<(Vec<RemoteEntry>, Vec<SkippedLink>, Vec<UnseenPath>)> {
+) -> Option<(Vec<RemoteEntry>, Vec<SkippedLink>, Vec<UnseenPath>, bool)> {
     let listing = crate::used_scan::provider_list_recursive_fastpath(provider, remote_root).await?;
     if !listing.structured_paths {
         return None;
     }
-    adapt_fastpath_entries(listing.entries, remote_root, opts)
+    let truncated = listing.truncated;
+    let (results, links, unseen) = adapt_fastpath_entries(listing.entries, remote_root, opts)?;
+    Some((results, links, unseen, truncated))
 }
 
 /// A flat recursive listing as a scan result. `Some` from the fast path means
@@ -263,6 +265,7 @@ fn fastpath_scan(
     results: Vec<RemoteEntry>,
     links: Vec<SkippedLink>,
     unseen: Vec<UnseenPath>,
+    raw_truncated: bool,
     opts: &ScanOptions,
     cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
 ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
@@ -277,9 +280,17 @@ fn fastpath_scan(
         boundaries.unseen(&path.rel_path, path.reason);
         completeness.truncated = true;
     }
+    if raw_truncated {
+        // The provider stopped its own listing before the end of the tree. What
+        // it never listed has no path to name, and the depth filter above can
+        // reduce everything that did arrive to a single named boundary, so
+        // counting boundaries would not see this at all.
+        completeness.truncated = true;
+        boundaries.unbounded.get_or_insert("entry_cap");
+    }
     if results.len() + boundaries.len() >= opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES) {
         completeness.truncated = true;
-        boundaries.unbounded = Some("entry_cap");
+        boundaries.unbounded.get_or_insert("entry_cap");
     }
     if scan_cancelled(cancel) {
         record_cancelled(&mut completeness, &mut boundaries);
@@ -894,11 +905,11 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                 None => None,
             }
         };
-        if let Some((results, links, unseen)) = fast {
+        if let Some((results, links, unseen, raw_truncated)) = fast {
             if let Some(obs) = observer {
                 obs.on_scan_progress(results.len(), 0);
             }
-            return fastpath_scan(results, links, unseen, opts, &cancel);
+            return fastpath_scan(results, links, unseen, raw_truncated, opts, &cancel);
         }
     }
 
@@ -1393,13 +1404,19 @@ fn scan_worker_is_reusable(listed_ok: bool, opted_in: bool) -> bool {
 }
 
 /// Whether a walk tries the provider's flat recursive listing before the BFS.
-/// A depth limit is no reason to skip it: the listing stops where the walk
-/// would and names the directories it stops at, so both answer the same tree.
+/// A depth limit is no reason to skip it: the listing stops where the walk would
+/// and names the directories it stops at, so both answer the same tree. A limit
+/// of zero is the exception, and it is decided before the provider is asked: the
+/// walk lists nothing at all there, so the listing has no directory it may name
+/// in its place, and the whole tree is left unseen.
 fn uses_recursive_fastpath(
     opts: &ScanOptions,
     cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
 ) -> bool {
-    !opts.compute_remote_checksum && !opts.disable_recursive_fastpath && !scan_cancelled(cancel)
+    !opts.compute_remote_checksum
+        && !opts.disable_recursive_fastpath
+        && opts.max_depth != Some(0)
+        && !scan_cancelled(cancel)
 }
 
 /// Returns true when an optional cancel flag has been raised by the UI.
@@ -2910,6 +2927,55 @@ pub(crate) mod tests {
         );
     }
 
+    /// A flat listing the provider cut short is not a whole tree, whatever the
+    /// depth filter did with it afterwards. The cut is invisible in the entries
+    /// that did arrive: S3 stops paginating at its own entry cap even with a
+    /// continuation token in hand, and the filter can reduce everything that
+    /// arrived to a single named boundary, so counting boundaries cannot see it
+    /// either. What was never listed has no path to name, so the run is refused.
+    #[test]
+    fn a_truncated_flat_listing_refuses_the_run() {
+        let row = RemoteEntry {
+            rel_path: "a.txt".to_string(),
+            size: 1,
+            mtime: None,
+            checksum_alg: None,
+            checksum_hex: None,
+        };
+        let (_, completeness, boundaries) = fastpath_scan(
+            vec![row],
+            Vec::new(),
+            Vec::new(),
+            true,
+            &ScanOptions::default(),
+            &None,
+        );
+        assert!(
+            !completeness.is_complete(),
+            "a listing the provider cut short is not a complete tree"
+        );
+        assert_eq!(
+            boundaries.unbounded,
+            Some("entry_cap"),
+            "what the provider never listed has no name to bound a run around"
+        );
+    }
+
+    /// At depth zero the walk lists nothing at all, and the flat listing has no
+    /// directory it may name in its place: the BFS leaves the whole tree unseen,
+    /// so the decision is taken before the provider is asked.
+    #[test]
+    fn the_recursive_fast_path_is_not_used_at_depth_zero() {
+        let stopped_at_the_root = ScanOptions {
+            max_depth: Some(0),
+            ..ScanOptions::default()
+        };
+        assert!(
+            !uses_recursive_fastpath(&stopped_at_the_root, &None),
+            "a limit that stops at the root leaves nothing for a flat listing to answer"
+        );
+    }
+
     /// Under a depth limit the flat listing must answer exactly as the walk
     /// does: the same entries, and the same directories named as unseen. They
     /// used to disagree, so a scan that took the fast path returned entries
@@ -2994,6 +3060,7 @@ pub(crate) mod tests {
             vec![row()],
             Vec::new(),
             Vec::new(),
+            false,
             &ScanOptions::default(),
             &raised,
         );
@@ -3003,6 +3070,7 @@ pub(crate) mod tests {
             vec![row()],
             Vec::new(),
             Vec::new(),
+            false,
             &ScanOptions::default(),
             &None,
         );

@@ -46332,7 +46332,15 @@ async fn cmd_sync(
                             eprintln!("Using --fast-list (S3 recursive listing)...");
                         }
                         match s3.list_recursive(remote).await {
-                            Ok(entries) => {
+                            Ok((entries, listing_truncated)) => {
+                                if listing_truncated {
+                                    if !quiet {
+                                        eprintln!(
+                                            "Warning: --fast-list stopped at the provider's entry cap; the listing is partial"
+                                        );
+                                    }
+                                    remote_scan_truncated = true;
+                                }
                                 let max_depth = cli.max_depth.map(|d| d as usize);
                                 for e in entries {
                                     if e.is_dir {
