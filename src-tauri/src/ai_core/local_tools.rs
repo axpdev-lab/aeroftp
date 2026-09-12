@@ -238,27 +238,42 @@ pub async fn local_list(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
     // is told the real total and whether the 100-entry listing was capped,
     // mirroring remote list_files. Metadata is only read for the kept entries.
     const LIST_CAP: usize = 100;
-    let all: Vec<std::fs::DirEntry> = std::fs::read_dir(&path)
-        .map_err(|e| {
-            ToolError::Exec(format!(
-                "Failed to read directory '{}' (resolved from '{}'): {}",
-                path, raw, e
-            ))
-        })?
-        .filter_map(|e| e.ok())
-        .collect();
+    // An entry the listing could not read is not a zero-byte file. A dirent the
+    // directory refuses to yield, and one whose metadata cannot be read, are
+    // counted in `unreadable`, and the row carries the error instead of a size
+    // and a type that were never learned: `is_dir: false, size: 0` reads as a
+    // fact about the file, and it was a fact about the failure.
+    let mut unreadable: u64 = 0;
+    let mut all: Vec<std::fs::DirEntry> = Vec::new();
+    for entry in std::fs::read_dir(&path).map_err(|e| {
+        ToolError::Exec(format!(
+            "Failed to read directory '{}' (resolved from '{}'): {}",
+            path, raw, e
+        ))
+    })? {
+        match entry {
+            Ok(entry) => all.push(entry),
+            Err(_) => unreadable += 1,
+        }
+    }
     let total = all.len();
     let truncated = total > LIST_CAP;
     let entries: Vec<Value> = all
         .into_iter()
         .take(LIST_CAP)
         .map(|e| {
-            let meta = e.metadata().ok();
-            json!({
-                "name": e.file_name().to_string_lossy(),
-                "is_dir": meta.as_ref().map(|m| m.is_dir()).unwrap_or(false),
-                "size": meta.as_ref().map(|m| m.len()).unwrap_or(0),
-            })
+            let mut row = json!({ "name": e.file_name().to_string_lossy() });
+            match e.metadata() {
+                Ok(meta) => {
+                    row["is_dir"] = json!(meta.is_dir());
+                    row["size"] = json!(meta.len());
+                }
+                Err(error) => {
+                    unreadable += 1;
+                    row["error"] = json!(error.to_string());
+                }
+            }
+            row
         })
         .collect();
 
@@ -266,6 +281,7 @@ pub async fn local_list(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
         "entries": entries,
         "total": total,
         "truncated": truncated,
+        "unreadable": unreadable,
     }))
 }
 
@@ -295,28 +311,44 @@ pub async fn local_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
     // count, and `truncated` must flag when the 100-result cap was hit, so the
     // agent never reasons over a partial listing as if it were complete.
     const SEARCH_CAP: usize = 100;
-    let all_matches: Vec<std::fs::DirEntry> = std::fs::read_dir(&path)
-        .map_err(|e| {
-            ToolError::Exec(format!(
-                "Failed to read directory '{}' (resolved from '{}'): {}",
-                path, raw, e
-            ))
-        })?
-        .filter_map(|e| e.ok())
-        .filter(|e| matcher(&e.file_name().to_string_lossy().to_lowercase()))
-        .collect();
+    // Same reading as `local_list`: a name that could not be read is reported,
+    // not rendered as an empty file. A dirent the directory refuses to yield
+    // cannot be matched against the pattern either, so it is counted even
+    // though nothing can say whether it would have matched.
+    let mut unreadable: u64 = 0;
+    let mut all_matches: Vec<std::fs::DirEntry> = Vec::new();
+    for entry in std::fs::read_dir(&path).map_err(|e| {
+        ToolError::Exec(format!(
+            "Failed to read directory '{}' (resolved from '{}'): {}",
+            path, raw, e
+        ))
+    })? {
+        match entry {
+            Ok(entry) if matcher(&entry.file_name().to_string_lossy().to_lowercase()) => {
+                all_matches.push(entry)
+            }
+            Ok(_) => {}
+            Err(_) => unreadable += 1,
+        }
+    }
     let total = all_matches.len();
     let truncated = total > SEARCH_CAP;
     let results: Vec<Value> = all_matches
         .into_iter()
         .take(SEARCH_CAP)
         .map(|e| {
-            let meta = e.metadata().ok();
-            json!({
-                "name": e.file_name().to_string_lossy(),
-                "is_dir": meta.as_ref().map(|m| m.is_dir()).unwrap_or(false),
-                "size": meta.as_ref().map(|m| m.len()).unwrap_or(0),
-            })
+            let mut row = json!({ "name": e.file_name().to_string_lossy() });
+            match e.metadata() {
+                Ok(meta) => {
+                    row["is_dir"] = json!(meta.is_dir());
+                    row["size"] = json!(meta.len());
+                }
+                Err(error) => {
+                    unreadable += 1;
+                    row["error"] = json!(error.to_string());
+                }
+            }
+            row
         })
         .collect();
 
@@ -324,6 +356,7 @@ pub async fn local_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
         "results": results,
         "total": total,
         "truncated": truncated,
+        "unreadable": unreadable,
     }))
 }
 
@@ -882,18 +915,35 @@ pub async fn local_disk_usage(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
         let mut entry_count: u64 = 0;
         let base = std::path::Path::new(&path_for_walk);
 
+        // A total that leaves out a directory the walk could not open, or a file
+        // whose size it could not read, is smaller than the tree and says
+        // nothing about it. Both are counted, and the cap is reported, so the
+        // number is readable as a lower bound rather than as the answer.
+        let mut unreadable: u64 = 0;
+        let mut truncated = false;
+
         for entry in walkdir::WalkDir::new(&path_for_walk)
             .follow_links(false)
             .max_depth(100)
             .into_iter()
-            .filter_map(|e| e.ok())
         {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => {
+                    unreadable += 1;
+                    continue;
+                }
+            };
             entry_count += 1;
             if entry_count > MAX_ENTRIES {
+                truncated = true;
                 break;
             }
             if entry.file_type().is_file() {
-                total_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                match entry.metadata() {
+                    Ok(meta) => total_bytes += meta.len(),
+                    Err(_) => unreadable += 1,
+                }
                 file_count += 1;
             } else if entry.file_type().is_dir() && entry.path() != base {
                 dir_count += 1;
@@ -906,6 +956,8 @@ pub async fn local_disk_usage(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
             "total_human": format!("{:.1} MB", total_bytes as f64 / 1_048_576.0),
             "file_count": file_count,
             "dir_count": dir_count,
+            "unreadable": unreadable,
+            "truncated": truncated,
         })
     })
     .await
@@ -940,7 +992,7 @@ pub async fn local_find_duplicates(ctx: &dyn ToolCtx, args: &Value) -> Result<Va
 
     let path_for_scan = path.clone();
     tokio::task::spawn_blocking(move || -> Result<Value, ToolError> {
-        let engine_groups = crate::dedupe::find_similar_in_dir(
+        let (engine_groups, health) = crate::dedupe::find_similar_in_dir_checked(
             std::path::Path::new(&path_for_scan),
             sim_mode,
             distance,
@@ -984,12 +1036,18 @@ pub async fn local_find_duplicates(ctx: &dyn ToolCtx, args: &Value) -> Result<Va
             .map(|d| d["wasted_bytes"].as_u64().unwrap_or(0))
             .sum();
 
+        // This list is the one an agent deletes from, so an empty answer has to
+        // be readable as "nothing matched" and never as "nothing was left out".
+        // The two counters are always present, zero included: a caller that has
+        // to check for a missing key will not check.
         let mut resp = json!({
             "groups": duplicates.len(),
             "total_wasted_bytes": total_wasted,
             "total_wasted_human": format!("{:.1} MB", total_wasted as f64 / 1_048_576.0),
             "duplicates": duplicates,
             "similarity": sim_mode.as_str(),
+            "unreadable": health.unreadable,
+            "truncated": health.truncated,
         });
         if let Some(d) = distance {
             resp["distance"] = json!(d);
@@ -1095,18 +1153,34 @@ pub async fn local_grep(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
         let mut files_searched: u32 = 0;
         const MAX_FILE_SIZE: u64 = 10_485_760;
 
+        // "No match" has to mean the file was read and did not match. A file the
+        // walk could not reach, could not stat or could not open was never
+        // searched, and is counted instead of being folded into the same answer.
+        // A binary file or one that is not UTF-8 is not an error: it was read,
+        // and this tool does not search it.
+        let mut unreadable: u64 = 0;
+
         for entry in walkdir::WalkDir::new(&path_for_grep)
             .follow_links(false)
             .into_iter()
-            .filter_map(|e| e.ok())
         {
             if matches.len() >= max_results {
                 break;
             }
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => {
+                    unreadable += 1;
+                    continue;
+                }
+            };
             let entry_path = entry.path();
             let meta = match entry.metadata() {
                 Ok(m) => m,
-                Err(_) => continue,
+                Err(_) => {
+                    unreadable += 1;
+                    continue;
+                }
             };
             if !meta.is_file() || meta.len() > MAX_FILE_SIZE {
                 continue;
@@ -1122,7 +1196,10 @@ pub async fn local_grep(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
 
             let bytes = match std::fs::read(entry_path) {
                 Ok(b) => b,
-                Err(_) => continue,
+                Err(_) => {
+                    unreadable += 1;
+                    continue;
+                }
             };
             let check_len = bytes.len().min(8192);
             if bytes[..check_len].contains(&0) {
@@ -1166,6 +1243,7 @@ pub async fn local_grep(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
             "pattern": pattern_for_result,
             "total_matches": matches.len(),
             "files_searched": files_searched,
+            "unreadable": unreadable,
             "matches": matches,
         }))
     })
@@ -1484,15 +1562,31 @@ pub async fn local_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
         file_count: &mut u32,
         dir_count: &mut u32,
         total_size: &mut u64,
+        unreadable: &mut u64,
         max_entries: usize,
     ) {
         if depth >= max_depth || lines.len() >= max_entries {
             return;
         }
-        let mut entries: Vec<_> = match std::fs::read_dir(dir) {
-            Ok(e) => e.filter_map(|e| e.ok()).collect(),
-            Err(_) => return,
-        };
+        // A directory that cannot be opened is drawn as if it were empty, which
+        // is the one thing the tree must not say about it. Count it, and the
+        // entries inside a directory that lists but cannot be entered, so the
+        // shape the agent reads is not quietly smaller than the tree.
+        let mut entries: Vec<_> = Vec::new();
+        match std::fs::read_dir(dir) {
+            Ok(read) => {
+                for entry in read {
+                    match entry {
+                        Ok(entry) => entries.push(entry),
+                        Err(_) => *unreadable += 1,
+                    }
+                }
+            }
+            Err(_) => {
+                *unreadable += 1;
+                return;
+            }
+        }
         entries.sort_by_key(|e| {
             let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
             (!is_dir, e.file_name().to_string_lossy().to_lowercase())
@@ -1525,7 +1619,10 @@ pub async fn local_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
 
             let meta = match entry.metadata() {
                 Ok(m) => m,
-                Err(_) => continue,
+                Err(_) => {
+                    *unreadable += 1;
+                    continue;
+                }
             };
 
             if meta.is_dir() {
@@ -1542,6 +1639,7 @@ pub async fn local_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
                     file_count,
                     dir_count,
                     total_size,
+                    unreadable,
                     max_entries,
                 );
             } else if meta.is_file() {
@@ -1564,6 +1662,7 @@ pub async fn local_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
         }
     }
 
+    let mut unreadable: u64 = 0;
     build_tree(
         base_path,
         "",
@@ -1575,6 +1674,7 @@ pub async fn local_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
         &mut file_count,
         &mut dir_count,
         &mut total_size,
+        &mut unreadable,
         MAX_ENTRIES,
     );
 
@@ -1590,6 +1690,7 @@ pub async fn local_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
             "total_size_human": total_human,
         },
         "truncated": tree_lines.len() >= MAX_ENTRIES,
+        "unreadable": unreadable,
     }))
 }
 
