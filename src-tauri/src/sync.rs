@@ -316,7 +316,11 @@ impl SyncDirection {
 /// Conflict resolution when both sides disagree on the same relative path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictMode {
-    /// Keep the larger file (default, matches the CLI).
+    /// Keep the larger file (default). Consulted only when modification times
+    /// cannot decide (equal, or missing on either side) or when the policy
+    /// compares sizes only. Under the default mtime policy the newer file wins
+    /// first, as with the CLI's `--conflict-mode newer`, which also falls back
+    /// to the larger file on equal times.
     Larger,
     /// Keep the newer file.
     Newer,
@@ -1294,13 +1298,9 @@ pub async fn sync_tree_core(
     opts: &SyncOptions,
     sink: &mut dyn SyncProgressSink,
 ) -> SyncReport {
-    // DAG-ENGINE phase 2 (F2-T07b): with the sync flag on, route a real
-    // (non-dry-run) sync through the shared graph engine instead of this
-    // hand-rolled interleaved decide/perform loop. Dry-run always stays on
-    // the legacy path below: it must never build or execute a DAG, so the
+    // Non-dry-run sync routes through the shared graph engine. Dry-run always
+    // stays on the path below: it must never build or execute a DAG, so the
     // dry-run plan is structurally guaranteed free of any mutating graph.
-    // Default OFF, so the legacy path is the default and a rollback is a
-    // runtime toggle, never a revert.
     if crate::transfer_dag_sync::should_route_sync_to_dag(opts.dry_run) {
         return crate::transfer_dag_sync::execute_sync_dag(
             provider,
