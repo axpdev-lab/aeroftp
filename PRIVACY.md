@@ -21,8 +21,8 @@ AeroFTP stores the following data **exclusively on your local machine**:
 - **Sync journals**: Transfer logs for the AeroSync feature. You can clear them at any time, or remove entries older than 30 days, from the journal history dialog.
 - **File tags**: Color labels assigned to local files. Stored in a local SQLite database.
 
-All local data can be deleted by removing the AeroFTP application data directory:
-- **Linux**: `~/.config/aeroftp/` and `~/.local/share/com.aeroftp.AeroFTP/`
+All local data can be deleted by removing the AeroFTP application data directories. After an update more than one of these can exist at the same time, because a directory named after the previous application identifier is left in place rather than moved or removed. Remove every one of them that exists, rather than choosing between them:
+- **Linux**: `~/.config/aeroftp/`, `~/.local/share/app.aeroftp.AeroFTP/`, and `~/.local/share/com.aeroftp.AeroFTP/` (installations made before the identifier changed)
 - **macOS**: `~/Library/Application Support/aeroftp/`
 - **Windows**: `%APPDATA%\aeroftp\`
 
