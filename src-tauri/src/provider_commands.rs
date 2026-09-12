@@ -9928,7 +9928,25 @@ pub struct UsedScanResult {
     pub file_count: u64,
     pub dir_count: u64,
     pub truncated: bool,
+    /// True when the GUI cancel button fired. Additive; older frontends
+    /// that only read `truncated` still see a lower bound, because a
+    /// cancel also sets `truncated`.
+    #[serde(default)]
+    pub cancelled: bool,
     pub method: String,
+}
+
+impl From<&crate::used_scan::UsedScan> for UsedScanResult {
+    fn from(s: &crate::used_scan::UsedScan) -> Self {
+        Self {
+            used: s.used_bytes,
+            file_count: s.file_count,
+            dir_count: s.dir_count,
+            truncated: s.truncated,
+            cancelled: s.cancelled,
+            method: s.method.to_string(),
+        }
+    }
 }
 
 /// Progress payload emitted on `used-scan-progress` while the scan runs.
@@ -9940,12 +9958,13 @@ pub struct UsedScanProgress {
 }
 
 /// Explicit recursive "used storage" scan for the connected provider
-/// (item 4b). Shares the S3/WebDAV fast-path fallback semantics with
-/// `used_scan`, but keeps the GUI BFS inline so it can re-lock the
-/// provider per directory. NEVER called automatically: the GUI "Calculate
-/// used storage" action invokes it. Persisting the figure into the
-/// profile's lastQuota is done frontend-side (same path as the cached API
-/// quota).
+/// (item 4b). The fast path uses `used_scan::reduce_fastpath_listing` so
+/// it cannot drift from `scan_used_bytes` on the cap, the cancel flag, or
+/// a listing the provider itself cut. The GUI BFS stays inline so it can
+/// re-lock the provider per directory. NEVER called automatically: the GUI
+/// "Calculate used storage" action invokes it. Persisting the figure into
+/// the profile's lastQuota is done frontend-side, and only when the scan
+/// is complete (`truncated` and `cancelled` both false).
 #[tauri::command]
 pub async fn provider_scan_used(
     state: State<'_, ProviderState>,
@@ -9986,30 +10005,20 @@ pub async fn provider_scan_used(
         if let Some(fast) =
             crate::used_scan::provider_list_recursive_fastpath(provider, &root).await
         {
-            let mut used = 0u64;
-            let mut files = 0u64;
-            let mut dirs = 0u64;
-            let mut truncated = false;
-            for e in fast.entries {
-                if e.is_dir {
-                    dirs += 1;
-                    continue;
-                }
-                if files >= MAX_ENTRIES {
-                    truncated = true;
-                    break;
-                }
-                used = used.saturating_add(e.size);
-                files += 1;
-            }
-            emit_progress(files, used, false);
-            return Ok(UsedScanResult {
-                used,
-                file_count: files,
-                dir_count: dirs,
-                truncated,
-                method: fast.method.to_string(),
-            });
+            // Same reduction as `scan_used_bytes`: read `fast.truncated`,
+            // count directories against the cap, honour USED_SCAN_CANCEL
+            // on the way out. The GUI does not request a depth, so the
+            // parachute is left to the BFS below; filtering the list the
+            // provider already delivered would throw away bytes.
+            let scan = crate::used_scan::reduce_fastpath_listing(
+                fast,
+                &root,
+                None,
+                MAX_ENTRIES as usize,
+                &USED_SCAN_CANCEL,
+            );
+            emit_progress(scan.file_count, scan.used_bytes, false);
+            return Ok(UsedScanResult::from(&scan));
         }
     }
 
@@ -10021,6 +10030,7 @@ pub async fn provider_scan_used(
     let mut file_count = 0u64;
     let mut dir_count = 0u64;
     let mut truncated = false;
+    let mut cancelled = false;
     let mut queue: Vec<(String, usize)> = vec![(root.clone(), 0)];
     let mut last_emit = std::time::Instant::now()
         .checked_sub(std::time::Duration::from_millis(400))
@@ -10029,6 +10039,7 @@ pub async fn provider_scan_used(
     while let Some((dir, depth)) = queue.pop() {
         if USED_SCAN_CANCEL.load(Ordering::Relaxed) {
             truncated = true;
+            cancelled = true;
             break;
         }
         if depth >= MAX_DEPTH || (file_count + dir_count) >= MAX_ENTRIES {
@@ -10085,6 +10096,7 @@ pub async fn provider_scan_used(
         file_count,
         dir_count,
         truncated,
+        cancelled,
         method: "bfs".to_string(),
     })
 }

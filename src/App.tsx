@@ -204,6 +204,7 @@ import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
+import { shouldPersistUsedScan } from './utils/usedScanPersist';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
@@ -3498,7 +3499,7 @@ const App: React.FC = () => {
     try {
       const res = await invoke<{
         used: number; file_count: number; dir_count: number;
-        truncated: boolean; method: string;
+        truncated: boolean; cancelled?: boolean; method: string;
       }>('provider_scan_used', { path: scanRoot });
       if (res.used === 0 && res.file_count === 0 && res.dir_count > 0) {
         // Directories were listed but zero files were counted. On some old
@@ -3530,10 +3531,12 @@ const App: React.FC = () => {
             files: res.file_count,
           });
         }
-        // A truncated walk is a lower bound, not a total. Persisting it would
-        // pin that figure to the profile card as an authoritative "used" across
-        // sessions, so it is shown for this run and deliberately not saved.
-        if (!res.truncated) {
+        // A truncated or cancelled walk is a lower bound, not a total.
+        // Persisting it would pin that figure to the profile card as an
+        // authoritative "used" across sessions (an S3 listing cut at the
+        // provider cap used to land here because the GUI fast path never
+        // read `fast.truncated`). Shown for this run, deliberately not saved.
+        if (shouldPersistUsedScan(res)) {
           await persistQuotaToProfile(profileId, {
             used: res.used,
             total: 0,
