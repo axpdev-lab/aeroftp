@@ -56849,7 +56849,12 @@ async fn check_report(
     // Both scans report what they could not read: a directory the local walk
     // could not open or a remote directory that did not list hides its files,
     // and the report has to say so instead of reading as a clean match.
-    let (locals, local_scan) = scan_local_tree_checked(local_path, &scan_opts);
+    // The boundaries name what the walk did not see (a directory that did not
+    // open, one at the depth limit, an entry whose metadata could not be read).
+    // Bound here so the compare compiles against the walker as it is since
+    // #796; the commits that follow report them and refuse the gaps that have
+    // no name.
+    let (locals, local_scan, _local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
     let (remotes, remote_health, returned) =
         scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &None, None).await;
     let mut remotes = remotes;
@@ -57159,7 +57164,12 @@ async fn cryptcheck_report(
     // Both scans report what they could not read: a directory the local walk
     // could not open or a remote directory that did not list hides its files,
     // and the report has to say so instead of reading as a clean match.
-    let (locals, local_scan) = scan_local_tree_checked(local_path, &scan_opts);
+    // The boundaries name what the walk did not see (a directory that did not
+    // open, one at the depth limit, an entry whose metadata could not be read).
+    // Bound here so the compare compiles against the walker as it is since
+    // #796; the commits that follow report them and refuse the gaps that have
+    // no name.
+    let (locals, local_scan, _local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
     let (remotes, remote_health, returned) =
         scan_remote_tree_with_progress(provider, &remote_path_resolved, &scan_opts, &None, None)
             .await;
