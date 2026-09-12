@@ -1395,9 +1395,10 @@ impl StorageProvider for FtpProvider {
         // (the same invariant upload_single relies on).
 
         // Download using retr_as_stream
-        let opened = Self::open_with_cap(stream.retr_as_stream(remote_path))
-            .await
-            .map_err(|e| Self::classify_data_failure("reading", remote_path, e))?;
+        let opened = match Self::open_with_cap(stream.retr_as_stream(remote_path)).await {
+            Ok(opened) => opened,
+            Err(err) => return Err(self.refused_data_open("reading", remote_path, err)),
+        };
         let data_stream = match opened {
             Some(data_stream) => data_stream,
             None => return Err(self.after_timed_out_open("reading", remote_path).await),
@@ -1734,9 +1735,10 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
 
         // Retrieve from offset
-        let opened = Self::open_with_cap(stream.retr_as_stream(remote_path))
-            .await
-            .map_err(|e| Self::classify_data_failure("resuming", remote_path, e))?;
+        let opened = match Self::open_with_cap(stream.retr_as_stream(remote_path)).await {
+            Ok(opened) => opened,
+            Err(err) => return Err(self.refused_data_open("resuming", remote_path, err)),
+        };
         let data_stream = match opened {
             Some(data_stream) => data_stream,
             None => return Err(self.after_timed_out_open("resuming", remote_path).await),
@@ -1804,7 +1806,7 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        use tokio::io::AsyncSeekExt;
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
         let total_size = tokio::fs::metadata(local_path)
             .await
@@ -1828,8 +1830,66 @@ impl StorageProvider for FtpProvider {
         // No TYPE I here: connect() already put the session in binary mode
         // (the same invariant upload_single relies on).
 
+        // Open the data channel under the cap every other open on this provider
+        // already had. `append_file` did the open AND the whole transfer in one
+        // call, so there was nowhere for the cap to sit, and an `APPE` the
+        // server takes without answering waited for as long as the process
+        // lived: the one transfer entry point still unbounded. Same shape as
+        // `upload_single`, one verb apart.
+        let opened = match Self::open_with_cap(stream.append_with_stream(remote_path)).await {
+            Ok(opened) => opened,
+            Err(err) => return Err(self.refused_store(remote_path, err)),
+        };
+        let mut data_stream = match opened {
+            Some(data_stream) => data_stream,
+            None => {
+                return Err(self
+                    .after_timed_out_open("resuming the upload of", remote_path)
+                    .await)
+            }
+        };
+
+        let mut chunk = [0u8; 65536];
+        let mut sent = offset;
+        loop {
+            let n = file
+                .read(&mut chunk)
+                .await
+                .map_err(ProviderError::IoError)?;
+            if n == 0 {
+                break;
+            }
+            crate::transfer_dag::throttle::charge(
+                crate::transfer_dag::governor::TransferDirection::Upload,
+                n as u64,
+            )
+            .await;
+            data_stream
+                .write_all(&chunk[..n])
+                .await
+                .map_err(|e| ProviderError::TransferFailed(format!("Data write error: {}", e)))?;
+            sent += n as u64;
+            if let Some(ref progress) = on_progress {
+                progress(sent, total_size);
+            }
+        }
+
+        data_stream
+            .flush()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
+        // The same end-of-data signal as `upload_single`: our close, then the
+        // server's, bounded so a server that never closes cannot hang the resume
+        // where it can no longer hang the upload.
+        data_stream
+            .shutdown()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Data close error: {}", e)))?;
+        let _ = tokio::time::timeout(DATA_DRAIN_BUDGET, drain_to_eof(&mut data_stream)).await;
+
+        let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
         stream
-            .append_file(remote_path, &mut file)
+            .finalize_put_stream(AlreadyShutDown(data_stream))
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
@@ -2033,9 +2093,10 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
 
-        let opened = Self::open_with_cap(stream.retr_as_stream(path))
-            .await
-            .map_err(|e| Self::classify_data_failure("reading a range of", path, e))?;
+        let opened = match Self::open_with_cap(stream.retr_as_stream(path)).await {
+            Ok(opened) => opened,
+            Err(err) => return Err(self.refused_data_open("reading a range of", path, err)),
+        };
         let data_stream = match opened {
             Some(data_stream) => data_stream,
             None => return Err(self.after_timed_out_open("reading a range of", path).await),
@@ -2607,55 +2668,43 @@ impl FtpProvider {
                 // owed. FTP carries no identifier, so nothing distinguishes
                 // them.
                 //
-                // AND ON A SECOND ONE, mute for a different reason: whether
-                // ANOTHER reply follows the one just read. `read_response_in`
-                // consumes exactly one, and a server that refuses and then hangs
-                // up sends `550` and then `421`, in that order, because the
-                // refusal answers the command and the goodbye comes after. Read
-                // the `550` and this arm keeps the session with the `421` still
-                // queued.
-                // It is named rather than fixed because the fix that suggests
-                // itself does not work: a second peek looks at `get_ref()`,
-                // which is the bare socket UNDER the `BufReader`, so when both
-                // replies arrive in one segment the `421` is already in the
-                // buffer and the socket shows nothing. The peek would report
-                // "aligned" in exactly the case it was added to catch, and a
-                // fixture sending the two in separate writes would make that
-                // green. Segmentation is not ours to control.
-                // What the reader holds is no longer invisible:
-                // `buffered_reply_bytes` exists now and the data-channel watch
-                // uses it. Whether a second reply is queued could be answered
-                // here with it; the decision that answer feeds, keep or drop
-                // the session, is still tracked separately and is not part of
-                // the change that added the accessor.
-                // THE COST IS NOT BOUNDED, and an earlier version of this
-                // comment said it was. Measured, not reasoned: a server
-                // answering `RETR` with `550` and `421` in ONE write leaves
-                // nothing on the socket, and the next command, a `PWD`, receives
-                // "421 Service not available" as ITS OWN reply. An operation
-                // fails citing an answer caused by the command before it, which
-                // IS the phantom-files class, the one this whole line of work
-                // exists to remove.
-                // The first version of that claim checked the VALUE (an error,
-                // not data) and not the ATTRIBUTION (the error of the wrong
-                // command), which is the same mistake in prose that the code is
-                // here to prevent on the wire.
-                // Tracked separately rather than patched here: the fix is not a
-                // comment, and it does not belong in a change about bounding the
-                // open.
+                // AND ON A SECOND ONE, now answered: whether ANOTHER reply
+                // follows the one just read. `read_response_in` consumes exactly
+                // one, and a server that refuses and then hangs up sends `550`
+                // and then `421`, in that order, because the refusal answers the
+                // command and the goodbye comes after. Read the `550` and this
+                // arm used to keep the session with the `421` still queued,
+                // which the next command then took as ITS OWN reply: measured, a
+                // `PWD` after a refused `RETR` came back "421 Service not
+                // available". That is the phantom-files class entering through
+                // the branch that exists to prevent it.
+                // A second peek cannot see it: `get_ref()` is the bare socket
+                // UNDER the `BufReader`, so when both replies arrive in one
+                // segment the `421` is already in the buffer and the socket
+                // shows nothing. The reader's own buffer is what can, and
+                // `buffered_reply_bytes` reports it, so the session is given up
+                // below whenever a reply is ALREADY queued. Measured on the
+                // fake server: written together with the refusal, the goodbye
+                // is 55 bytes in the reader and nothing on the socket; written
+                // after it, both are empty when the check runs and it lands
+                // some 50 ms later. So the segmentation this covers is the one
+                // that queues the reply in time, and the other one is a named
+                // limit with a test of its own in `tests/ftp_resume_and_421.rs`.
                 //
-                // Both are named rather than claimed closed: a condition that
-                // looks total has been wrong four times, and each time it was
-                // total with respect to one property.
+                // The first property is still only named: a condition that looks
+                // total has been wrong four times, and each time it was total
+                // with respect to one property.
                 Ok(FtpError::UnexpectedResponse(reply))
                     if (400..600).contains(&reply.status.code())
                         && reply.status != Status::NotAvailable =>
                 {
-                    return Self::classify_data_failure(
+                    let classified = Self::classify_data_failure(
                         operation,
                         path,
                         FtpError::UnexpectedResponse(reply),
-                    )
+                    );
+                    self.drop_session_if_a_reply_is_queued();
+                    return classified;
                 }
                 // EVERYTHING else, and the catch-all is the point rather than a
                 // shorthand. It now holds two kinds of case. Some say nothing
@@ -2687,6 +2736,57 @@ impl FtpProvider {
             path,
             OPEN_BUDGET.as_secs()
         ))
+    }
+
+    /// Give up the session when the control reader is still holding a reply.
+    ///
+    /// A server that refuses and then hangs up sends `550` and `421`, and on one
+    /// write they arrive together: the refusal answers the command that asked,
+    /// the goodbye stays in the reader, and the next command reads it as its own
+    /// reply. A peek at the socket cannot see it, because both replies are
+    /// already off the wire and inside the `BufReader`; `buffered_reply_bytes`
+    /// is what reports them. Dropping the session costs a re-dial on a path that
+    /// has already failed, and keeps the next question from taking this one's
+    /// answer.
+    ///
+    /// What this covers is a reply ALREADY queued when the refusal is
+    /// classified. A server that writes the goodbye afterwards, in a write of
+    /// its own, has sent nothing at this point: measured, the reader's buffer
+    /// and a peek at the socket are both empty here, and the goodbye lands some
+    /// 50 ms later. So asking the socket as well changes no outcome on this
+    /// path, and it is not asked. Where a wait has already happened the socket
+    /// is worth asking, and `after_timed_out_open` asks it. The uncovered shape
+    /// has a test of its own; what it points at is a check when the NEXT
+    /// command starts, which is a design change and not this one.
+    fn drop_session_if_a_reply_is_queued(&mut self) {
+        let queued = self
+            .stream
+            .as_ref()
+            .map(|stream| !stream.buffered_reply_bytes().is_empty())
+            .unwrap_or(false);
+        if queued {
+            self.stream = None;
+        }
+    }
+
+    /// A refused data open, classified, with the session given up when the
+    /// server queued another reply behind the refusal.
+    fn refused_data_open(
+        &mut self,
+        operation: &'static str,
+        path: &str,
+        err: FtpError,
+    ) -> ProviderError {
+        let classified = Self::classify_data_failure(operation, path, err);
+        self.drop_session_if_a_reply_is_queued();
+        classified
+    }
+
+    /// The same for a refused `STOR` or `APPE`, which keeps its own mapping.
+    fn refused_store(&mut self, path: &str, err: FtpError) -> ProviderError {
+        let classified = Self::map_store_error(path, err);
+        self.drop_session_if_a_reply_is_queued();
+        classified
     }
 
     /// Read the refusal the server has queued, without waiting for one that
@@ -2917,9 +3017,10 @@ impl FtpProvider {
         let stream = self.stream_mut()?;
 
         // Download using retr_as_stream: stream directly to disk (no full-file RAM buffer)
-        let opened = Self::open_with_cap(stream.retr_as_stream(remote_path))
-            .await
-            .map_err(|e| Self::classify_data_failure("downloading", remote_path, e))?;
+        let opened = match Self::open_with_cap(stream.retr_as_stream(remote_path)).await {
+            Ok(opened) => opened,
+            Err(err) => return Err(self.refused_data_open("downloading", remote_path, err)),
+        };
         let data_stream = match opened {
             Some(data_stream) => data_stream,
             None => return Err(self.after_timed_out_open("downloading", remote_path).await),
@@ -2999,9 +3100,10 @@ impl FtpProvider {
         // Open streaming upload channel (PASV + STOR), under the same cap as the
         // reads: the two unbounded awaits live in `data_command`, which every
         // verb goes through.
-        let opened = Self::open_with_cap(stream.put_with_stream(remote_path))
-            .await
-            .map_err(|e| Self::map_store_error(remote_path, e))?;
+        let opened = match Self::open_with_cap(stream.put_with_stream(remote_path)).await {
+            Ok(opened) => opened,
+            Err(err) => return Err(self.refused_store(remote_path, err)),
+        };
         let mut data_stream = match opened {
             Some(data_stream) => data_stream,
             None => return Err(self.after_timed_out_open("uploading", remote_path).await),
@@ -3197,11 +3299,13 @@ async fn ftp_download_one_range(
 
     let opened = {
         let stream = worker.stream_mut()?;
-        FtpProvider::open_with_cap(stream.retr_as_stream(&remote_path))
-            .await
-            .map_err(|e| {
-                FtpProvider::classify_data_failure("downloading a range of", &remote_path, e)
-            })?
+        FtpProvider::open_with_cap(stream.retr_as_stream(&remote_path)).await
+    };
+    let opened = match opened {
+        Ok(opened) => opened,
+        Err(err) => {
+            return Err(worker.refused_data_open("downloading a range of", &remote_path, err))
+        }
     };
     let mut data_stream = match opened {
         Some(data_stream) => data_stream,
