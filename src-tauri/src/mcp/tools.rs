@@ -93,7 +93,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         },
         McpToolDef {
             name: "aeroftp_check_tree",
-            description: "Compare a local directory against a remote directory and report differences...",
+            description: "Compare a local directory against a remote directory and report differences. The result also says how much of each tree the comparison actually covers: `local_scan_incomplete` and `remote_scan_incomplete`, with `{side}_scan_errors` (directory listings that failed) and `{side}_scan_truncated` (the walk stopped at its depth or entry cap). A side is reported incomplete when its counters are non-zero OR when the walk left out a path it can name, because a symbolic link is a gap without being a failure: no walk follows one, so the subtree behind it was never compared. Those paths are listed in `{side}_skipped_links` and `{side}_unseen_paths`, each capped at 1000 entries with `_total` and `_truncated` alongside, and OMITTED entirely when empty. The six counter keys are always present, zero included, so an agent can branch on them without first checking whether they exist. Under summary_only=true only the counters and flags are returned, not the path lists. A file reported as missing on one side by an incomplete scan may simply be unread rather than absent: do not turn it into a delete.",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "local_dir": { "type": "string", "description": "Local directory to compare" },
@@ -1118,7 +1118,9 @@ pub async fn execute_tool(
             finish(tool_name, Some(&server), None, result, start)
         }
         "aeroftp_check_tree" => {
-            use crate::sync_core::{compare_trees, scan_local_tree, scan_remote_tree, ScanOptions};
+            use crate::sync_core::{
+                compare_trees, scan_local_tree_checked, scan_remote_tree_checked, ScanOptions,
+            };
 
             let server = match get_str(args, "server") {
                 Ok(s) => s,
@@ -1272,8 +1274,17 @@ pub async fn execute_tool(
                         Some(_) => None,
                         None => None,
                     };
-                    let locals = scan_local_tree(&local_dir, &opts);
-                    let mut remotes = scan_remote_tree(&mut p, &remote_dir, &opts).await;
+                    // The checked variants. This tool used the wrappers that
+                    // drop the health of both walks, so it compared whatever it
+                    // had managed to read and the agent had no way to tell:
+                    // a directory that did not list, or one behind a link the
+                    // walk does not follow, came back indistinguishable from a
+                    // directory that is genuinely absent on the other side.
+                    let (locals, local_scan, local_boundaries) =
+                        scan_local_tree_checked(&local_dir, &opts);
+                    let (remote_rows, remote_scan, remote_boundaries) =
+                        scan_remote_tree_checked(&mut p, &remote_dir, &opts).await;
+                    let mut remotes = remote_rows;
                     if let Some(keys) = &crypt_keys {
                         let raw_len = remotes.len();
                         remotes = crate::crypt_compare::normalize_remote_entries(remotes, keys);
@@ -1309,7 +1320,7 @@ pub async fn execute_tool(
                                 );
                             }
                         }
-                        ok(json!({
+                        let mut payload = json!({
                             "server": server,
                             "local_dir": local_dir,
                             "remote_dir": remote_dir,
@@ -1318,7 +1329,20 @@ pub async fn execute_tool(
                             "summary_only": true,
                             "summary": summary,
                             "has_differences": diff.has_differences(),
-                        }))
+                        });
+                        // Counters only here, as `sync_tree` does: this mode
+                        // exists to keep the response inside the MCP size
+                        // limit, and the path lists would defeat it. The
+                        // counters stay because they are what tells the agent
+                        // the comparison does not cover the whole tree.
+                        if let Value::Object(map) = &mut payload {
+                            map.extend(check_boundaries_json(
+                                (&local_scan, &local_boundaries),
+                                (&remote_scan, &remote_boundaries),
+                                true,
+                            ));
+                        }
+                        ok(payload)
                     } else {
                         let entries_to_json = |entries: &[crate::sync_core::DiffEntry],
                                                group_cap: usize|
@@ -1368,7 +1392,7 @@ pub async fn execute_tool(
                             || diff.differ_count() > cap_differ
                             || diff.missing_local_count() > cap_missing_local
                             || diff.missing_remote_count() > cap_missing_remote;
-                        ok(json!({
+                        let mut payload = json!({
                             "server": server,
                             "local_dir": local_dir,
                             "remote_dir": remote_dir,
@@ -1384,7 +1408,15 @@ pub async fn execute_tool(
                             "has_differences": diff.has_differences(),
                             "truncated": truncated,
                             "omit_match": omit_match,
-                        }))
+                        });
+                        if let Value::Object(map) = &mut payload {
+                            map.extend(check_boundaries_json(
+                                (&local_scan, &local_boundaries),
+                                (&remote_scan, &remote_boundaries),
+                                false,
+                            ));
+                        }
+                        ok(payload)
                     }
                 }
             };
@@ -1829,6 +1861,54 @@ const SYNC_BOUNDARIES_JSON_CAP: usize = 1000;
 /// keep a response inside the MCP size limit by dropping the per-entry arrays,
 /// and two boundary lists of `SYNC_BOUNDARIES_JSON_CAP` entries each would
 /// defeat it. The flag still says what a full response would have cut.
+/// The additive keys a `check_tree` result gains when a scan did not read its
+/// whole tree: per side, whether it is incomplete, the failure counters, and
+/// the paths it did not see. Each list is capped like `sync_tree`'s, carries
+/// its total and a truncation flag, and is absent entirely when empty, so a
+/// clean comparison answers exactly as it did before.
+///
+/// `{side}_scan_incomplete` is NOT `ScanCompleteness::is_complete()` alone. A
+/// link is a gap with a name: no walk follows one, so the subtree behind it is
+/// absent from the comparison, and it is recorded as a boundary rather than as
+/// an error, which leaves the failure counters at zero. A field that asked only
+/// the counters would report a complete scan in the same object that lists the
+/// path it did not cover.
+fn check_boundaries_json(
+    local: (
+        &crate::sync_core::ScanCompleteness,
+        &crate::sync_core::ScanBoundaries,
+    ),
+    remote: (
+        &crate::sync_core::ScanCompleteness,
+        &crate::sync_core::ScanBoundaries,
+    ),
+    counters_only: bool,
+) -> serde_json::Map<String, Value> {
+    let mut keys = serde_json::Map::new();
+    for (side, (scan, boundaries)) in [("local", local), ("remote", remote)] {
+        let left_out = !boundaries.links.is_empty() || !boundaries.unseen.is_empty();
+        keys.insert(
+            format!("{side}_scan_incomplete"),
+            (!scan.is_complete() || left_out).into(),
+        );
+        keys.insert(format!("{side}_scan_errors"), scan.list_errors.into());
+        keys.insert(format!("{side}_scan_truncated"), scan.truncated.into());
+        insert_capped_list(
+            &mut keys,
+            &format!("{side}_skipped_links"),
+            &boundaries.links,
+            counters_only,
+        );
+        insert_capped_list(
+            &mut keys,
+            &format!("{side}_unseen_paths"),
+            &boundaries.unseen,
+            counters_only,
+        );
+    }
+    keys
+}
+
 fn sync_boundaries_json(
     report: &crate::sync_core::SyncReport,
     counters_only: bool,
@@ -2074,6 +2154,121 @@ mod tests {
         parse_benchmark_skipped, tool_definitions, validate_read_preview_target,
         MAX_READ_PREVIEW_BYTES,
     };
+
+    /// A link is a gap without being a failure: no walk follows one, so the
+    /// subtree behind it was never compared, while `list_errors` stays 0 and
+    /// `truncated` stays false. `{side}_scan_incomplete` has to see it, or the
+    /// result would report a complete scan in the same object that lists the
+    /// path it did not cover.
+    ///
+    /// A guard rather than a red-then-green test: these keys are new, so there
+    /// was nothing to be red. What it pins is the term that would be dropped
+    /// first by anyone simplifying the helper into `is_complete()`.
+    #[test]
+    fn check_tree_result_counts_a_link_as_an_incomplete_scan() {
+        let clean = crate::sync_core::ScanCompleteness::default();
+        let no_gaps = crate::sync_core::ScanBoundaries::default();
+        let with_link = crate::sync_core::ScanBoundaries {
+            links: vec![crate::sync_core::SkippedLink {
+                rel_path: "link".to_string(),
+                link_target: None,
+                is_dir: Some(true),
+            }],
+            ..Default::default()
+        };
+
+        let keys = super::check_boundaries_json((&clean, &no_gaps), (&clean, &with_link), false);
+
+        assert_eq!(
+            keys.get("remote_scan_incomplete"),
+            Some(&serde_json::json!(true))
+        );
+        assert_eq!(keys.get("remote_scan_errors"), Some(&serde_json::json!(0)));
+        assert_eq!(
+            keys.get("remote_scan_truncated"),
+            Some(&serde_json::json!(false)),
+            "the link is not a truncation and must not be reported as one"
+        );
+        assert_eq!(
+            keys.get("remote_skipped_links_total"),
+            Some(&serde_json::json!(1))
+        );
+        assert_eq!(
+            keys.get("local_scan_incomplete"),
+            Some(&serde_json::json!(false)),
+            "the other side saw everything and must not be tarred with it"
+        );
+    }
+
+    /// The counters are always there, zero included, and only the path lists
+    /// come and go. A caller that has to check whether a key exists before
+    /// reading it will not check.
+    #[test]
+    fn check_tree_result_always_carries_the_counters_and_drops_the_lists() {
+        let clean = crate::sync_core::ScanCompleteness::default();
+        let no_gaps = crate::sync_core::ScanBoundaries::default();
+
+        let keys = super::check_boundaries_json((&clean, &no_gaps), (&clean, &no_gaps), false);
+
+        for side in ["local", "remote"] {
+            assert_eq!(
+                keys.get(&format!("{side}_scan_incomplete")),
+                Some(&serde_json::json!(false))
+            );
+            assert_eq!(
+                keys.get(&format!("{side}_scan_errors")),
+                Some(&serde_json::json!(0))
+            );
+            assert!(
+                !keys.contains_key(&format!("{side}_skipped_links")),
+                "an empty list adds no key: {keys:?}"
+            );
+        }
+
+        let with_link = crate::sync_core::ScanBoundaries {
+            links: vec![crate::sync_core::SkippedLink {
+                rel_path: "link".to_string(),
+                link_target: None,
+                is_dir: Some(true),
+            }],
+            ..Default::default()
+        };
+        let summary = super::check_boundaries_json((&clean, &no_gaps), (&clean, &with_link), true);
+        assert!(
+            !summary.contains_key("remote_skipped_links"),
+            "summary_only drops the list and keeps the counters: {summary:?}"
+        );
+        assert_eq!(
+            summary.get("remote_skipped_links_total"),
+            Some(&serde_json::json!(1))
+        );
+        assert_eq!(
+            summary.get("remote_scan_incomplete"),
+            Some(&serde_json::json!(true))
+        );
+    }
+
+    /// The tool description is the contract an agent reads before calling, so
+    /// the coverage keys have to be named there, not only in the payload.
+    #[test]
+    fn check_tree_description_documents_the_scan_coverage_keys() {
+        let t = tool_definitions()
+            .into_iter()
+            .find(|t| t.name == "aeroftp_check_tree")
+            .expect("aeroftp_check_tree registered");
+        let desc = t.description;
+        for needle in [
+            "remote_scan_incomplete",
+            "_skipped_links",
+            "_unseen_paths",
+            "summary_only",
+        ] {
+            assert!(
+                desc.contains(needle),
+                "description must name `{needle}`; was: {desc}"
+            );
+        }
+    }
 
     /// A tree with many symbolic links must not turn the `sync_tree` result into
     /// an unbounded array: each boundary list is capped, with its total and a

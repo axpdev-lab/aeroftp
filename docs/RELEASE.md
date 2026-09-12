@@ -36,7 +36,7 @@ That's it! GitHub Actions handles everything else automatically.
 
 | # | File | What to update |
 |---|------|----------------|
-| 7 | `com.aeroftp.AeroFTP.metainfo.xml` | Add new `<release version="X.Y.Z" date="YYYY-MM-DD">` with `<description>` (Ubuntu Store / GNOME Software) |
+| 7 | `app.aeroftp.AeroFTP.metainfo.xml` | Add new `<release version="X.Y.Z" date="YYYY-MM-DD">` with `<description>` (Ubuntu Store / GNOME Software) |
 | 8 | `CHANGELOG.md` | New `## [X.Y.Z] - YYYY-MM-DD` section at top (CI extracts this for GitHub Release body) |
 
 ### Documentation (2 files)
@@ -46,7 +46,7 @@ That's it! GitHub Actions handles everything else automatically.
 | 9 | `SECURITY.md` | Supported Versions table when a new minor line opens (the footer uses the series form `*AeroFTP v4.0.x*` and needs no per-release bump) |
 | 10 | `AGENTS.md` | Footer stamp `*AeroFTP CLI vX.Y.Z - ...*` when the CLI surface changed |
 
-Also sweep `docs/PROTOCOL-FEATURES.md` and the relevant feature guide (`docs/CLI-GUIDE.md`, `docs/PROVIDERS.md`, etc.) when the release adds or changes user-visible behavior, and confirm `CHANGELOG.md` and `com.aeroftp.AeroFTP.metainfo.xml` describe the same set of changes.
+Also sweep `docs/PROTOCOL-FEATURES.md` and the relevant feature guide (`docs/CLI-GUIDE.md`, `docs/PROVIDERS.md`, etc.) when the release adds or changes user-visible behavior, and confirm `CHANGELOG.md` and `app.aeroftp.AeroFTP.metainfo.xml` describe the same set of changes.
 
 ### Pre-push Validation
 

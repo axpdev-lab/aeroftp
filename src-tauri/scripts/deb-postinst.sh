@@ -89,7 +89,7 @@ done
 # Tauri 2 does not propagate fileAssociations to the .desktop file
 for DESKTOP_FILE in \
     "$(root_path /usr/share/applications/AeroFTP.desktop)" \
-    "$(root_path /usr/share/applications/com.aeroftp.AeroFTP.desktop)" \
+    "$(root_path /usr/share/applications/app.aeroftp.AeroFTP.desktop)" \
     "$(root_path /usr/share/applications/aeroftp.desktop)"
 do
     [ -f "$DESKTOP_FILE" ] || continue
