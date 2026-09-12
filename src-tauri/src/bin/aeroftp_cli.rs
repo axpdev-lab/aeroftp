@@ -55635,6 +55635,78 @@ async fn cmd_sync_doctor(
     }
 }
 
+/// Walk the remote tree the way `sync-doctor` previews it, and report what the
+/// walk could not read.
+///
+/// The two caps are parameters rather than the module constants they are called
+/// with. At 500_000 entries the entry cap is not reachable from a test, and a
+/// cap no test can reach is a cap nobody has checked.
+async fn scan_doctor_remote_tree(
+    provider: &mut dyn StorageProvider,
+    remote: &str,
+    exclude_matchers: &[globset::GlobMatcher],
+    max_depth: usize,
+    max_entries: usize,
+) -> (
+    HashMap<String, (u64, Option<String>)>,
+    ftp_client_gui_lib::sync_core::ScanCompleteness,
+) {
+    let mut entries_found: HashMap<String, (u64, Option<String>)> = HashMap::new();
+    let mut scan = ftp_client_gui_lib::sync_core::ScanCompleteness::default();
+    let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
+    'walk: while let Some((dir, depth)) = queue.pop() {
+        if depth >= max_depth {
+            // The walk stops here, so whatever is still queued is unseen.
+            scan.truncated = true;
+            break;
+        }
+        let listed = match provider.list(&dir).await {
+            Ok(listed) => listed,
+            Err(_) => {
+                // A directory that did not list hides its files.
+                scan.list_errors += 1;
+                continue;
+            }
+        };
+        for e in listed {
+            if e.is_dir {
+                if e.is_walkable_dir() {
+                    queue.push((e.path.clone(), depth + 1));
+                }
+            } else {
+                let relative = e
+                    .path
+                    .strip_prefix(remote)
+                    .unwrap_or(&e.path)
+                    .trim_start_matches('/')
+                    .to_string();
+                if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+                    continue;
+                }
+                if exclude_matchers
+                    .iter()
+                    .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+                {
+                    continue;
+                }
+                if entries_found.len() >= max_entries {
+                    // The cap is read where the walk grows, not where it starts
+                    // a directory. One listing can hold more entries than the
+                    // ceiling: checked only on entry, they all go in, the queue
+                    // empties, and the walk ends normally reporting a complete
+                    // scan of a tree it had already cut. A cap that is wrong is
+                    // almost never wrong in the number, it is wrong in the
+                    // moment it is read.
+                    scan.truncated = true;
+                    break 'walk;
+                }
+                entries_found.insert(relative, (e.size, e.modified));
+            }
+        }
+    }
+    (entries_found, scan)
+}
+
 /// Scan both sides and assess the sync they describe: the report
 /// `sync-doctor` prints. `Err` carries the exit code of a failure that has
 /// already been reported.
@@ -55700,82 +55772,41 @@ async fn sync_doctor_report(
         .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
         .collect();
 
-    let mut local_entries: HashMap<String, (u64, Option<String>)> = HashMap::new();
-    for entry in walkdir::WalkDir::new(local)
-        .follow_links(false)
-        .max_depth(100)
-    {
-        let Ok(entry) = entry else { continue };
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let relative = entry
-            .path()
-            .strip_prefix(local)
-            .unwrap_or(entry.path())
-            .to_string_lossy()
-            .replace('\\', "/");
-        if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-            continue;
-        }
-        let fname = entry.file_name().to_string_lossy();
-        let fname_ref: &str = fname.as_ref();
-        if exclude_matchers
-            .iter()
-            .any(|m| m.is_match(&relative) || m.is_match(fname_ref))
-        {
-            continue;
-        }
-        let meta = entry.metadata().ok();
-        let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-        let mtime = meta.and_then(|m| {
-            m.modified().ok().map(|t| {
-                let dt: chrono::DateTime<chrono::Utc> = t.into();
-                dt.format("%Y-%m-%dT%H:%M:%S").to_string()
-            })
-        });
-        local_entries.insert(relative, (size, mtime));
-    }
+    // The walk `sync` itself runs, so the report counts what it could not
+    // read (a directory it cannot open, a file it cannot stat, the entry cap)
+    // instead of previewing a smaller tree as if it were the whole one.
+    let local_scan = scan_sync_local(
+        local,
+        &SyncLocalFilter {
+            max_depth: 100,
+            exclude: &exclude_matchers,
+        },
+    );
+    let mut local_entries: HashMap<String, (u64, Option<String>)> = local_scan
+        .entries
+        .iter()
+        .map(|(path, size, mtime)| (path.clone(), (*size, mtime.clone())))
+        .collect();
     // The bound `sync` applies to the run this report previews: counted over
     // the whole tree, the doctor would assess a different file set.
     let files_from_set = load_files_from(cli);
 
     let remote_root_ok = provider.list(&remote).await.is_ok();
-    let mut remote_entries: HashMap<String, (u64, Option<String>)> = HashMap::new();
-    if remote_root_ok {
-        let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
-        while let Some((dir, depth)) = queue.pop() {
-            if depth >= MAX_SCAN_DEPTH || remote_entries.len() >= MAX_SCAN_ENTRIES {
-                break;
-            }
-            if let Ok(entries) = provider.list(&dir).await {
-                for e in entries {
-                    if e.is_dir {
-                        if e.is_walkable_dir() {
-                            queue.push((e.path.clone(), depth + 1));
-                        }
-                    } else {
-                        let relative = e
-                            .path
-                            .strip_prefix(&remote)
-                            .unwrap_or(&e.path)
-                            .trim_start_matches('/')
-                            .to_string();
-                        if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                            continue;
-                        }
-                        if exclude_matchers
-                            .iter()
-                            .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                        {
-                            continue;
-                        }
-                        remote_entries.insert(relative, (e.size, e.modified));
-                    }
-                }
-            }
-        }
-    }
+    let (mut remote_entries, remote_scan) = if remote_root_ok {
+        scan_doctor_remote_tree(
+            provider.as_mut(),
+            &remote,
+            &exclude_matchers,
+            MAX_SCAN_DEPTH,
+            MAX_SCAN_ENTRIES,
+        )
+        .await
+    } else {
+        (
+            HashMap::new(),
+            ftp_client_gui_lib::sync_core::ScanCompleteness::default(),
+        )
+    };
     if let Some(listed) = files_from_set.as_ref() {
         local_entries.retain(|path, _| listed.contains(path));
         remote_entries.retain(|path, _| listed.contains(path));
@@ -55821,6 +55852,18 @@ async fn sync_doctor_report(
         serde_json::json!({"name": "local_path_exists", "ok": true, "path": local}),
         serde_json::json!({"name": "remote_path_reachable", "ok": remote_root_ok, "path": remote}),
     ];
+    let scans = [
+        ("local", &local_scan.completeness),
+        ("remote", &remote_scan),
+    ];
+    for (side, scan) in scans {
+        checks.push(serde_json::json!({
+            "name": format!("{side}_scan_complete"),
+            "ok": scan.is_complete(),
+            "errors": scan.list_errors,
+            "truncated": scan.truncated,
+        }));
+    }
     if !effective_exclude.is_empty() {
         checks.push(
             serde_json::json!({"name": "exclude_patterns", "ok": true, "count": effective_exclude.len()}),
@@ -55891,6 +55934,15 @@ async fn sync_doctor_report(
     if !remote_root_ok {
         risks.push("remote path could not be listed".to_string());
     }
+    for (side, scan) in scans {
+        if !scan.is_complete() {
+            risks.push(format!(
+                "the {side} scan did not read the whole tree ({} error(s){}); the file counts above are partial",
+                scan.list_errors,
+                if scan.truncated { ", truncated" } else { "" }
+            ));
+        }
+    }
 
     let suggested_next_command =
         format!(
@@ -55923,7 +55975,11 @@ async fn sync_doctor_report(
     );
 
     let result = CliDoctorResult {
-        status: if remote_root_ok { "ok" } else { "attention" },
+        status: if remote_root_ok && scans.iter().all(|(_, scan)| scan.is_complete()) {
+            "ok"
+        } else {
+            "attention"
+        },
         doctor: "sync".to_string(),
         summary: serde_json::json!({
             "direction": direction,
@@ -55935,6 +55991,12 @@ async fn sync_doctor_report(
             "track_renames": track_renames,
             "conflict_mode": conflict_mode,
             "resync": resync,
+            "local_scan_incomplete": !local_scan.completeness.is_complete(),
+            "local_scan_errors": local_scan.completeness.list_errors,
+            "local_scan_truncated": local_scan.completeness.truncated,
+            "remote_scan_incomplete": !remote_scan.is_complete(),
+            "remote_scan_errors": remote_scan.list_errors,
+            "remote_scan_truncated": remote_scan.truncated,
         }),
         checks,
         risks,
@@ -76134,6 +76196,162 @@ mod tests {
             !report.remote_scan.is_complete(),
             "the unlisted directory is a remote scan error"
         );
+    }
+
+    /// The `sync-doctor` report for an upload with `--delete` against `remote`.
+    fn doctor_report_against(remote: MemTreeProvider, local: &str) -> CliDoctorResult {
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        run_against_remote(remote, || {
+            sync_doctor_report(
+                "memory://",
+                local,
+                "/root",
+                "upload",
+                true,
+                &[],
+                None,
+                0,
+                false,
+                "newer",
+                false,
+                false,
+                &cli,
+                OutputFormat::Json,
+            )
+        })
+        .unwrap_or_else(|code| panic!("sync-doctor failed with exit code {code}"))
+    }
+
+    /// The entry cap has to be read where the walk grows, not at the top of the
+    /// loop. Checked only on entry, a single listing inserts past the ceiling,
+    /// and if the queue empties straight after, the walk ends normally and
+    /// reports a complete scan of a tree it had already cut: over its own limit
+    /// and calling itself whole. The caps are parameters so the case can be
+    /// reached at all, since the real one is 500_000 entries.
+    #[tokio::test]
+    async fn the_doctor_remote_walk_reports_the_entry_cap_it_hits() {
+        let mut provider = MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1), ("c.txt", 1)]);
+
+        let (entries, scan) = scan_doctor_remote_tree(&mut provider, "/root", &[], 100, 2).await;
+
+        assert!(
+            entries.len() <= 2,
+            "the walk kept more entries than its cap allows: {entries:?}"
+        );
+        assert!(
+            scan.truncated,
+            "a walk that stopped at its cap did not read the whole tree: {scan:?}"
+        );
+    }
+
+    /// The other side of the same boundary, so the test above is known to
+    /// separate two outcomes: under the cap the walk reports a complete scan.
+    #[tokio::test]
+    async fn the_doctor_remote_walk_is_complete_under_its_cap() {
+        let mut provider = MemTreeProvider::root_files(&[("a.txt", 1), ("b.txt", 1)]);
+
+        let (entries, scan) = scan_doctor_remote_tree(&mut provider, "/root", &[], 100, 10).await;
+
+        assert_eq!(entries.len(), 2);
+        assert!(scan.is_complete(), "nothing was cut here: {scan:?}");
+    }
+
+    /// An honest walk is worth nothing if the report ignores what it says, so
+    /// this drives the whole command and asserts the verdict, not the walk.
+    ///
+    /// It reaches truncation through the depth limit rather than the entry cap,
+    /// because 100 nested directories can be built and 500_000 entries cannot.
+    /// That makes it a guard rather than a red-then-green test: it passes
+    /// before the cap fix as well as after it. What it pins is the step the cap
+    /// fix would otherwise leave unchecked, a scan that reports `truncated` and
+    /// a report that still answers `ok`.
+    #[test]
+    fn a_truncated_remote_scan_reaches_the_doctor_verdict() {
+        let fixture = FilesFromFixture::new();
+        let deep: String = (0..=MAX_SCAN_DEPTH)
+            .map(|i| format!("d{i}"))
+            .collect::<Vec<_>>()
+            .join("/");
+        let deep_file = format!("{deep}/f.txt");
+
+        let report = doctor_report_against(
+            MemTreeProvider::tree(&[(deep_file.as_str(), 1)]),
+            &fixture.local(),
+        );
+
+        assert_eq!(
+            report.summary["remote_scan_truncated"], true,
+            "the walk stopped at the depth limit: {}",
+            report.summary
+        );
+        assert_eq!(
+            report.status, "attention",
+            "a report over a tree the walk cut short is not ok: {}",
+            report.summary
+        );
+    }
+
+    /// `sync-doctor` previews the run `sync` would make. A local directory it
+    /// cannot read hides files the run will not see either, so the report
+    /// must not read `ok`: it is `attention`, and the summary names the
+    /// incomplete local scan.
+    #[cfg(unix)]
+    #[test]
+    fn sync_doctor_reports_a_local_directory_it_cannot_read() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        fixture.local_file("a.txt", 1);
+        std::fs::create_dir(Path::new(&local).join("locked")).expect("locked directory");
+        fixture.local_file("locked/keep.txt", 1);
+        let _locked = UnreadableDir::lock(Path::new(&local).join("locked"));
+
+        let report = doctor_report_against(MemTreeProvider::root_files(&[("a.txt", 1)]), &local);
+
+        assert_eq!(report.status, "attention");
+        assert_eq!(report.summary["local_scan_incomplete"], true);
+    }
+
+    /// A local file the walk can list but not stat (its directory is 0400) is
+    /// a read error too: the report is `attention`.
+    #[cfg(unix)]
+    #[test]
+    fn sync_doctor_reports_a_local_file_it_cannot_stat() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir(Path::new(&local).join("sealed")).expect("sealed directory");
+        fixture.local_file("sealed/keep.txt", 1);
+        let _sealed = UnreadableDir::seal(Path::new(&local).join("sealed"));
+
+        let report = doctor_report_against(MemTreeProvider::root_files(&[]), &local);
+
+        assert_eq!(report.status, "attention");
+        assert_eq!(report.summary["local_scan_incomplete"], true);
+    }
+
+    /// A remote directory that cannot be listed hides its files: the remote
+    /// root still lists, so the report used to read `ok`. It must be
+    /// `attention`, with the incomplete remote scan named in the summary.
+    #[test]
+    fn sync_doctor_reports_a_remote_directory_that_cannot_be_listed() {
+        let fixture = FilesFromFixture::new();
+        let remote = MemTreeProvider {
+            dirs: HashMap::from([(
+                "/root".to_string(),
+                vec![RemoteEntry::directory(
+                    "unlisted".to_string(),
+                    "/root/unlisted".to_string(),
+                )],
+            )]),
+            delete_attempts: Arc::default(),
+        };
+
+        let report = doctor_report_against(remote, &fixture.local());
+
+        assert_eq!(report.status, "attention");
+        assert_eq!(report.summary["remote_scan_incomplete"], true);
     }
 
     struct CliEditFakeProvider {
