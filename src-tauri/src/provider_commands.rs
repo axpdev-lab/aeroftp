@@ -6793,6 +6793,46 @@ fn normalize_aerocrypt_remote_files_for_compare(
     out
 }
 
+/// Rewrite the remote boundary paths the way the remote rows are rewritten, so
+/// a bound built from them can reach the plaintext local rows.
+///
+/// Unlike the row normalizers above, a path that fails to decrypt is NOT
+/// dropped and the run is refused instead. A boundary is what keeps a plan off
+/// a part of the tree: dropping one widens the plan silently, which is the
+/// opposite of what it is for. Refusing is also honest about which of the two
+/// things went wrong, where reusing the scan's `unbounded` verdict would report
+/// a tree the scan did not see when the scan saw it and the name could not be
+/// read.
+fn normalize_remote_boundaries_for_compare(
+    keys: &crate::crypt_overlay_provider::OverlayKeys,
+    boundaries: &mut crate::sync_core::ScanBoundaries,
+) -> Result<(), String> {
+    let decrypt = |rel: &str| -> Option<String> {
+        match keys {
+            crate::crypt_overlay_provider::OverlayKeys::Rclone(k) => decrypt_rel_rclone(k, rel),
+            crate::crypt_overlay_provider::OverlayKeys::AeroCrypt { master_key, .. } => {
+                decrypt_rel_aerocrypt(master_key, rel)
+            }
+        }
+    };
+    let paths = boundaries
+        .links
+        .iter_mut()
+        .map(|link| &mut link.rel_path)
+        .chain(boundaries.unseen.iter_mut().map(|path| &mut path.rel_path));
+    for rel_path in paths {
+        let Some(plain_rel_path) = decrypt(rel_path.as_str()) else {
+            return Err(
+                "a remote path the scan left out could not be read through the crypt overlay, \
+                 so the run cannot be bounded around it: check the overlay password"
+                    .to_string(),
+            );
+        };
+        *rel_path = plain_rel_path;
+    }
+    Ok(())
+}
+
 // Single source of truth for the crypt-compare crypto lives in
 // `crate::crypt_compare`; the GUI's FileInfo-map normalizers above reuse the
 // pure rel-path decrypt and size mapping so the CLI / MCP `RemoteEntry` path and
@@ -7078,19 +7118,17 @@ pub async fn provider_compare_directories(
         }
     }
 
-    // What the scans did not see stays out of the compare on both sides: the
-    // bounded paths and, because a preset copies or deletes a directory row as a
-    // whole, every directory row above them (see `bound_compare_rows`). Under an
-    // unwrapped crypt overlay the remote link paths are still ciphertext here and
-    // cannot match plaintext rows.
-    let bound = bound_compare_rows(
-        &local_path,
-        &mut local_files,
-        &mut remote_files,
-        remote_boundaries,
-    );
-    if let Some(reason) = bound.refusal() {
-        return Err(format!("{}: {}", crate::SCAN_INCOMPLETE_MARKER, reason));
+    // A scan that missed a part of the tree it cannot name refuses the run, and
+    // that verdict does not depend on how the paths are spelled: it stays here,
+    // ahead of the crypt work below, so the cheap hard failure keeps happening
+    // first. The path-dependent half, withdrawing the rows behind each
+    // boundary, runs after the paths have been decrypted.
+    if let Some(reason) = remote_boundaries.unbounded {
+        return Err(format!(
+            "{}: {}",
+            crate::SCAN_INCOMPLETE_MARKER,
+            crate::sync_core::scan::unbounded_refusal("remote", reason)
+        ));
     }
 
     // The remote scan above ran through `state.provider`, which IS the crypt
@@ -7153,6 +7191,12 @@ pub async fn provider_compare_directories(
             .await?;
             let raw_len = remote_files.len();
             remote_files = normalize_remote_files_for_compare(&keys, remote_files);
+            // The boundaries carry remote paths too, and the bound below
+            // matches them against local rows that are plaintext. Rewriting the
+            // rows and leaving the boundaries in ciphertext is what let a
+            // bounded remote subtree keep its local rows in the compare.
+            normalize_remote_boundaries_for_compare(&keys, &mut remote_boundaries)
+                .map_err(|reason| format!("{}: {}", crate::SCAN_INCOMPLETE_MARKER, reason))?;
             // rclone-crypt has no config MAC: a wrong overlay password derives
             // valid-shaped keys that decrypt nothing, so a non-empty remote that
             // normalizes to zero rows is a wrong-key signal. Fail closed rather
@@ -7167,6 +7211,32 @@ pub async fn provider_compare_directories(
                 );
             }
         }
+    }
+
+    // What the scans did not see stays out of the compare on both sides: the
+    // bounded paths and, because a preset copies or deletes a directory row as
+    // a whole, every directory row above them (see `bound_compare_rows`).
+    //
+    // This runs AFTER the crypt normalization above, not before it. Under an
+    // unwrapped overlay the remote rows and the remote boundaries both arrive
+    // as ciphertext while the local rows are plaintext, so a bound built at
+    // that point withdrew the remote rows behind a boundary and left their
+    // local counterparts in the compare. Those rows then read as present on one
+    // side only, and a Mirror preset planned exactly the delete the boundary
+    // exists to prevent. Both sides speak plaintext by the time we get here.
+    let bound = bound_compare_rows(
+        &local_path,
+        &mut local_files,
+        &mut remote_files,
+        remote_boundaries,
+    );
+    // The only refusal `for_sync` builds for this caller comes from the remote
+    // `unbounded` verdict, which the check above already answered, so this one
+    // cannot fire today. It stays as the guard for a future refusal source: if
+    // one is added and nothing reads it here, a compare would run on a bound
+    // that had already refused itself.
+    if let Some(reason) = bound.refusal() {
+        return Err(format!("{}: {}", crate::SCAN_INCOMPLETE_MARKER, reason));
     }
 
     let _ = app.emit(
@@ -12990,6 +13060,76 @@ fn bound_compare_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn rclone_keys_for_test() -> crate::rclone_crypt::RcloneCryptKeys {
+        let (name_key, data_key, name_tweak) =
+            crate::rclone_crypt::derive_keys_with_tweak("compare-pass", "compare-salt")
+                .expect("derive the test keys");
+        crate::rclone_crypt::RcloneCryptKeys {
+            name_key,
+            data_key,
+            name_tweak,
+            filename_encryption: crate::rclone_crypt::FilenameEncryption::Standard,
+            off_suffix: ".bin".to_string(),
+            directory_name_encryption: true,
+        }
+    }
+
+    /// Under an overlay that is not unwrapped, the remote boundaries arrive as
+    /// ciphertext exactly like the remote rows. They are rewritten with the
+    /// same keys, so the bound built from them can reach the plaintext local
+    /// rows; left in ciphertext, the bound withdrew the remote rows and left
+    /// the local ones in the compare, where a Mirror preset read them as
+    /// present on one side only.
+    #[test]
+    fn remote_boundaries_are_decrypted_with_the_remote_rows() {
+        let keys = rclone_keys_for_test();
+        let encrypt = |segment: &str| {
+            crate::rclone_crypt::encrypt_name(&keys.name_key, &keys.name_tweak, segment)
+                .expect("encrypt the segment")
+        };
+        let mut boundaries = crate::sync_core::ScanBoundaries {
+            links: vec![crate::sync_core::SkippedLink {
+                rel_path: format!("{}/{}", encrypt("parent"), encrypt("link")),
+                link_target: None,
+            }],
+            unseen: vec![crate::sync_core::scan::UnseenPath {
+                rel_path: encrypt("blocked"),
+                reason: "list_error",
+            }],
+            ..Default::default()
+        };
+        let overlay = crate::crypt_overlay_provider::OverlayKeys::Rclone(rclone_keys_for_test());
+
+        normalize_remote_boundaries_for_compare(&overlay, &mut boundaries)
+            .expect("the boundary paths decrypt");
+
+        assert_eq!(boundaries.links[0].rel_path, "parent/link");
+        assert_eq!(boundaries.unseen[0].rel_path, "blocked");
+    }
+
+    /// A boundary path that does not decrypt refuses the run instead of being
+    /// dropped: a lost boundary widens the plan in silence, which is the
+    /// opposite of what the boundary is for.
+    #[test]
+    fn a_remote_boundary_that_does_not_decrypt_refuses_the_run() {
+        let overlay = crate::crypt_overlay_provider::OverlayKeys::Rclone(rclone_keys_for_test());
+        let mut boundaries = crate::sync_core::ScanBoundaries {
+            links: vec![crate::sync_core::SkippedLink {
+                rel_path: "not-base32-!!!".to_string(),
+                link_target: None,
+            }],
+            ..Default::default()
+        };
+
+        let err = normalize_remote_boundaries_for_compare(&overlay, &mut boundaries)
+            .expect_err("a path that cannot be read refuses the run");
+
+        assert!(
+            err.contains("could not be read through the crypt overlay"),
+            "got: {err}"
+        );
+    }
 
     fn compare_row(rel: &str, is_dir: bool) -> crate::sync::FileInfo {
         crate::sync::FileInfo {

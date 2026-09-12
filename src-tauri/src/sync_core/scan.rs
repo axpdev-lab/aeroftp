@@ -415,6 +415,18 @@ enum LocalPrefix {
     Unreadable,
 }
 
+/// The refusal a run gets when a scan missed a part of the tree it cannot
+/// name, so nothing can be bounded around it.
+///
+/// Phrased in one place because it has two callers: [`ScanBound::for_sync`]
+/// below, and the compare command, which answers this verdict before it
+/// decrypts the remote paths (the verdict does not depend on how they are
+/// spelled) and would otherwise keep a second copy of the sentence, free to
+/// drift from this one.
+pub fn unbounded_refusal(side: &str, reason: &str) -> String {
+    format!("the {side} scan did not see the whole tree ({reason})")
+}
+
 impl ScanBound {
     /// Bound a sync by what its two scans did not see: the remote links and
     /// unseen paths, the local unseen paths, and the local links above any path
@@ -435,13 +447,9 @@ impl ScanBound {
     ) -> Self {
         let mut bound = Self::default();
         if let Some(reason) = remote.unbounded {
-            bound.refusal = Some(format!(
-                "the remote scan did not see the whole tree ({reason})"
-            ));
+            bound.refusal = Some(unbounded_refusal("remote", reason));
         } else if let Some(reason) = local.unbounded {
-            bound.refusal = Some(format!(
-                "the local scan did not see the whole tree ({reason})"
-            ));
+            bound.refusal = Some(unbounded_refusal("local", reason));
         }
         for link in remote.links {
             bound.add_link(link);
@@ -1690,6 +1698,30 @@ pub(crate) mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    /// The compare command answers the unbounded verdict on its own, before it
+    /// decrypts the remote paths, so it never reaches `for_sync` for that case.
+    /// Both say it with `unbounded_refusal`, and this pins them to one
+    /// sentence: a second copy of the format string would drift from the one
+    /// the compare shows, and the two surfaces would disagree on what stopped
+    /// the run.
+    #[test]
+    fn the_unbounded_refusal_is_phrased_in_one_place() {
+        let expected = unbounded_refusal("remote", "the scan was cancelled");
+
+        let bound = ScanBound::for_sync(
+            "/nonexistent-local-root",
+            Vec::<&str>::new(),
+            Vec::<&str>::new(),
+            &ScanBoundaries::default(),
+            ScanBoundaries {
+                unbounded: Some("the scan was cancelled"),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(bound.refusal(), Some(expected.as_str()));
+    }
 
     /// CLAUDE-AV-B3-13: the provider-backed remote walk must report that it did
     /// not see the whole tree. Every abort below used to leave a stderr warning
