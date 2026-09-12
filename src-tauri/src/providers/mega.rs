@@ -863,11 +863,7 @@ impl StorageProvider for MegaCmdProvider {
 
     async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
         let p = self.resolve_path(p);
-        match self.run_mega_cmd_with_reauth("mega-ls", &[&p]).await {
-            Ok(_) => Ok(true),
-            Err(ProviderError::NotFound(_)) => Ok(false),
-            Err(_) => Ok(false),
-        }
+        map_mega_exists(self.run_mega_cmd_with_reauth("mega-ls", &[&p]).await)
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -1217,6 +1213,22 @@ impl MegaCmdProvider {
 }
 
 pub type MegaProvider = MegaCmdProvider;
+
+/// Turn a `mega-ls` probe into an existence answer.
+///
+/// Extracted so the decision can be exercised without MEGAcmd installed, the
+/// way the SFTP side is through `map_sftp_try_exists`. It has three arms and no
+/// classifier, which is where this provider differs from that one: MEGAcmd is a
+/// shellout, and `run_mega_cmd` has already turned its stderr into a typed
+/// `ProviderError` by the time the answer gets here. There is nothing left to
+/// classify, only something to keep and something to pass on.
+fn map_mega_exists(result: Result<String, ProviderError>) -> Result<bool, ProviderError> {
+    match result {
+        Ok(_) => Ok(true),
+        Err(ProviderError::NotFound(_)) => Ok(false),
+        Err(_) => Ok(false),
+    }
+}
 
 #[cfg(test)]
 mod tests {
