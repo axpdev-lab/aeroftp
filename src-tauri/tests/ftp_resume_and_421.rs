@@ -1,4 +1,4 @@
-//! Two FTP defects that need a server to show, against a scripted fake one.
+//! Three FTP defects that need a server to show, against a scripted fake one.
 //!
 //! 1. `resume_upload` opens its data channel with `append_file`, which is the
 //!    one transfer entry point never brought under the deadline that bounds
@@ -9,9 +9,13 @@
 //!    command; the `421` stays in the control reader, and the NEXT command
 //!    reads it as its own reply, so an operation fails citing an answer caused
 //!    by the command before it.
+//! 3. The same stale reply reached through a transfer rather than a refusal: a
+//!    server that answers `APPE` and then cuts the data connection owes a
+//!    closing reply, and every exit after the open used to leave the session
+//!    holding it.
 //!
-//! Neither needs the Docker fixture: the server below is a scripted fake on
-//! loopback, enough FTP for connect plus the one command each test drives.
+//! None of them needs the Docker fixture: the server below is a scripted fake
+//! on loopback, enough FTP for connect plus the one command each test drives.
 
 use std::io::Write as _;
 use std::sync::{Arc, Mutex};
@@ -36,6 +40,12 @@ enum Script {
     /// at the moment the refusal is classified it has not been sent at all. The
     /// pause is what makes that deterministic instead of a race.
     RefuseThenHangUpLater,
+    /// Answer `APPE` with a `150`, take the data connection and drop it, then
+    /// write the `426` the aborted transfer owes. The open SUCCEEDS here, which
+    /// is what separates this from `SwallowAppe`: the failure arrives after the
+    /// point where the server considers the channel open, and the reply left on
+    /// the control connection is the one the next command would read as its own.
+    AcceptAppeThenKillData,
 }
 
 /// Every control command the fake server received, in order.
@@ -113,6 +123,20 @@ async fn session(stream: tokio::net::TcpStream, script: Script, commands: Comman
                 Script::RefuseThenHangUp | Script::RefuseThenHangUpLater => {
                     reply(&mut write, b"550 Not allowed\r\n").await
                 }
+                Script::AcceptAppeThenKillData => {
+                    reply(&mut write, b"150 Opening data connection\r\n").await;
+                    // Take the data connection and drop it at once. The client
+                    // is then writing into a socket whose peer is gone, which
+                    // fails partway through rather than at the open.
+                    if let Some(listener) = _pasv.take() {
+                        if let Ok((data, _)) = listener.accept().await {
+                            drop(data);
+                        }
+                    }
+                    // The reply the aborted transfer owes. A session kept in
+                    // this state hands it to whatever command comes next.
+                    reply(&mut write, b"426 Transfer aborted\r\n").await;
+                }
             },
             "RETR" => match script {
                 Script::RefuseThenHangUp => {
@@ -139,7 +163,9 @@ async fn session(stream: tokio::net::TcpStream, script: Script, commands: Comman
                     )
                     .await;
                 }
-                Script::SwallowAppe => reply(&mut write, b"550 Not found\r\n").await,
+                Script::SwallowAppe | Script::AcceptAppeThenKillData => {
+                    reply(&mut write, b"550 Not found\r\n").await
+                }
             },
             "QUIT" => {
                 reply(&mut write, b"221 Goodbye\r\n").await;
@@ -285,24 +311,27 @@ async fn a_refusal_followed_by_a_goodbye_does_not_answer_the_next_command() {
     );
 }
 
-/// What the queued-reply check does NOT cover, written down as a test.
+/// The case the queued-reply check could not cover, now covered by not asking.
 ///
-/// The server refuses, waits, and only then says goodbye, so when the refusal is
-/// classified the `421` has not been sent yet. Measured on this fixture: the
-/// reader's buffer holds nothing there and a peek at the socket returns nothing,
-/// and the goodbye lands about 50 ms later. No check made at that moment can see
-/// a reply that has not arrived, whatever it looks at, so the session is kept and
-/// the next command reads the goodbye as its own reply, as it did before the
-/// check existed. That is why the check asks the reader's buffer and not the
-/// socket as well: on this path the socket has nothing to add.
+/// This test used to assert the opposite, and it is flipped rather than deleted
+/// because the shape it drives has to keep working. What it recorded was a real
+/// boundary: the server refuses, waits, and only then says goodbye, so when the
+/// refusal is classified the `421` has not been sent at all. Measured on this
+/// fixture, the reader's buffer holds nothing there and a peek at the socket
+/// returns nothing, and the goodbye lands about 50 ms later. That is still true,
+/// and no check made at that moment can see a reply that has not arrived.
 ///
-/// The boundary is pinned here rather than left to a sentence in a comment,
-/// because the property it bounds ("a queued reply gives up the session") reads
-/// as total and is not. What it points at is a check when the NEXT command
-/// starts, which is a design change and not this one: whoever makes it should
-/// flip this test, not delete it, since the shape it drives has to keep working.
+/// What changed is that the refusal path no longer asks. Giving up the session
+/// on every refused open costs one reconnection in the case that used to be
+/// reused, and in exchange the outcome stops depending on whether the server's
+/// second write happened to arrive before the classification. The timing that
+/// used to decide this no longer decides anything.
+///
+/// So the assertion is the same property the two tests above pin, reached
+/// through the path that timing previously excluded: the next command is not
+/// answered from a session carrying a reply it did not earn.
 #[tokio::test]
-async fn a_goodbye_written_after_the_refusal_is_not_caught_by_this_check() {
+async fn a_goodbye_written_after_the_refusal_no_longer_reaches_the_next_command() {
     let server = start_fake_ftp(Script::RefuseThenHangUpLater).await;
     let mut provider = connected(server.port).await;
 
@@ -329,9 +358,82 @@ async fn a_goodbye_written_after_the_refusal_is_not_caught_by_this_check() {
         Err(err) => err.to_string(),
     };
     assert!(
-        text.contains("421"),
-        "the boundary moved: a goodbye written after the refusal no longer reaches the next \
-         command, so the session is given up in a case this test says it is not. Flip it \
-         instead of deleting it: {next:?}"
+        !text.contains("421") && !text.to_lowercase().contains("service not available"),
+        "the next command was answered with the goodbye owed to the refused one: {next:?}"
+    );
+    assert!(
+        matches!(next, Err(ProviderError::NotConnected)),
+        "a session given up reports no connection, and anything else means it was kept: {next:?}"
+    );
+}
+
+/// A resumed upload that fails AFTER the data channel is open gives up the session.
+///
+/// Every exit before the open is already covered: the refusal and the timeout
+/// each end with the session in a state the next command can trust. The exits
+/// after it were not. Once the server has answered `APPE` with a `150` it
+/// considers the channel open and owes a closing reply, so a failure partway
+/// through leaves that reply on the control connection. A session kept in that
+/// state hands it to whatever command comes next, which is the same defect the
+/// `421` tests above describe, reached through the transfer instead of through
+/// a refusal.
+///
+/// The observable property is the session, not the error: after this the
+/// provider must report that it has no connection rather than answer from one
+/// carrying somebody else's reply. `NotConnected` is what a discarded session
+/// produces, since nothing here reconnects on its own.
+///
+/// The payload is deliberately larger than a socket buffer. The first writes
+/// into a socket whose peer has gone land in the send buffer and succeed; the
+/// failure arrives on a later one, which is the shape being pinned. Should the
+/// whole payload be swallowed without an error, the finalise reads the `426`
+/// and fails there instead, and the property under test is the same: both exits
+/// kept the session before this change and give it up after it.
+#[tokio::test]
+async fn a_resume_that_fails_after_the_open_gives_up_the_session() {
+    let server = start_fake_ftp(Script::AcceptAppeThenKillData).await;
+    let mut provider = connected(server.port).await;
+
+    let local = std::env::temp_dir().join(format!("aeroftp-resume-cut-{}.bin", std::process::id()));
+    std::fs::File::create(&local)
+        .unwrap()
+        .write_all(&vec![b'x'; 4 * 1024 * 1024])
+        .unwrap();
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(90),
+        provider.resume_upload(local.to_str().unwrap(), "/resume-cut.bin", 1024, None),
+    )
+    .await;
+    let _ = std::fs::remove_file(&local);
+
+    let ended = outcome
+        .expect("the resume never came back: a data channel cut mid transfer must end the call");
+    assert!(
+        ended.is_err(),
+        "a transfer the server cut must fail, not report success: {ended:?}"
+    );
+
+    // On the wire, not on a guess: the test drove the path it is about.
+    let commands = server.commands.lock().unwrap().clone();
+    assert!(
+        commands
+            .iter()
+            .any(|line| line.to_uppercase().starts_with("APPE")),
+        "the test drove the path it is about: {commands:?}"
+    );
+
+    let next = provider.pwd().await;
+    let text = match &next {
+        Ok(dir) => dir.clone(),
+        Err(err) => err.to_string(),
+    };
+    assert!(
+        !text.contains("426") && !text.to_lowercase().contains("transfer aborted"),
+        "the next command was answered with the reply owed to the cut transfer: {next:?}"
+    );
+    assert!(
+        matches!(next, Err(ProviderError::NotConnected)),
+        "a session given up reports no connection, and anything else means it was kept: {next:?}"
     );
 }

@@ -1840,7 +1840,7 @@ impl StorageProvider for FtpProvider {
             Ok(opened) => opened,
             Err(err) => return Err(self.refused_store(remote_path, err)),
         };
-        let mut data_stream = match opened {
+        let data_stream = match opened {
             Some(data_stream) => data_stream,
             None => {
                 return Err(self
@@ -1848,6 +1848,15 @@ impl StorageProvider for FtpProvider {
                     .await)
             }
         };
+        // From here the server considers the data channel open, and every exit
+        // below has to leave the session in a state the next command can trust.
+        // The guard owns the channel: an error propagated with `?` drops it, and
+        // `Drop` takes the session rather than handing on one whose data channel
+        // was never closed. That covers the exit this type never sees as well,
+        // the failure reading the LOCAL file below, which is not a channel
+        // operation and still leaves the channel open behind it.
+        let mut channel =
+            DataChannel::new(self, data_stream, "resuming the upload of", remote_path);
 
         let mut chunk = [0u8; 65536];
         let mut sent = offset;
@@ -1864,34 +1873,33 @@ impl StorageProvider for FtpProvider {
                 n as u64,
             )
             .await;
-            data_stream
-                .write_all(&chunk[..n])
-                .await
-                .map_err(|e| ProviderError::TransferFailed(format!("Data write error: {}", e)))?;
+            channel.write_all(&chunk[..n]).await?;
             sent += n as u64;
             if let Some(ref progress) = on_progress {
                 progress(sent, total_size);
             }
         }
 
-        data_stream
-            .flush()
-            .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
+        channel.flush().await?;
         // The same end-of-data signal as `upload_single`: our close, then the
         // server's, bounded so a server that never closes cannot hang the resume
         // where it can no longer hang the upload.
-        data_stream
-            .shutdown()
-            .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Data close error: {}", e)))?;
+        channel.shutdown().await?;
+
+        let mut data_stream = channel.finish()?;
         let _ = tokio::time::timeout(DATA_DRAIN_BUDGET, drain_to_eof(&mut data_stream)).await;
 
         let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
-        stream
+        if let Err(e) = stream
             .finalize_put_stream(AlreadyShutDown(data_stream))
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        {
+            // The finalise is the last word on the transfer. A failure here
+            // leaves the control channel mid-sentence, and the guard is already
+            // settled, so nothing else would discard it: do it here.
+            self.stream = None;
+            return Err(ProviderError::TransferFailed(e.to_string()));
+        }
 
         if let Some(progress) = on_progress {
             progress(total_size, total_size);
@@ -2516,6 +2524,62 @@ where
     }
 }
 
+/// The write half of the same channel, for the one transfer that sends instead
+/// of receiving.
+///
+/// `read` above closes the channel on every failure, so a caller that
+/// propagates with `?` has already had its session dealt with. These do the
+/// same for the upload path, which until now had five exits that returned
+/// while the server still considered the data channel open.
+///
+/// The bound adds `AsyncWrite` to the one `read` already needs, and the upload
+/// stream satisfies both: the resume path reads from it too, to drain the tail
+/// after its own shutdown. That is why this half could always have existed.
+impl<'p, S> DataChannel<'p, S>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + 'static,
+{
+    async fn write_all(&mut self, buf: &[u8]) -> Result<(), ProviderError> {
+        let outcome = match self.data.as_mut() {
+            Some(data) => data.write_all(buf).await,
+            None => return Err(ProviderError::NotConnected),
+        };
+        self.settle_write(outcome, "Data write error").await
+    }
+
+    async fn flush(&mut self) -> Result<(), ProviderError> {
+        let outcome = match self.data.as_mut() {
+            Some(data) => data.flush().await,
+            None => return Err(ProviderError::NotConnected),
+        };
+        self.settle_write(outcome, "Flush error").await
+    }
+
+    async fn shutdown(&mut self) -> Result<(), ProviderError> {
+        let outcome = match self.data.as_mut() {
+            Some(data) => data.shutdown().await,
+            None => return Err(ProviderError::NotConnected),
+        };
+        self.settle_write(outcome, "Data close error").await
+    }
+
+    /// One place decides what a write failure does, so the three above cannot
+    /// drift apart: give the channel away, then report.
+    async fn settle_write(
+        &mut self,
+        outcome: std::io::Result<()>,
+        what: &'static str,
+    ) -> Result<(), ProviderError> {
+        match outcome {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                self.abandon().await;
+                Err(ProviderError::TransferFailed(format!("{}: {}", what, e)))
+            }
+        }
+    }
+}
+
 impl<'p, S> Drop for DataChannel<'p, S> {
     fn drop(&mut self) {
         if !self.settled {
@@ -2689,7 +2753,9 @@ impl FtpProvider {
                 // after it, both are empty when the check runs and it lands
                 // some 50 ms later. So the segmentation this covers is the one
                 // that queues the reply in time, and the other one is a named
-                // limit with a test of its own in `tests/ftp_resume_and_421.rs`.
+                // limit stated on the helper below. It has no test of its own:
+                // the one that drove it went through the refusal path, and that
+                // path now discards without asking.
                 //
                 // The first property is still only named: a condition that looks
                 // total has been wrong four times, and each time it was total
@@ -2740,24 +2806,28 @@ impl FtpProvider {
 
     /// Give up the session when the control reader is still holding a reply.
     ///
+    /// One caller now, the open that timed out and then found an answer waiting.
+    /// The two refusal helpers used to share this and no longer do: there the
+    /// question "is another reply queued" had an answer that depended on how the
+    /// server split its writes, so they discard without asking. Here a wait has
+    /// already happened before the check runs, which is what makes the question
+    /// worth asking at all.
+    ///
+    /// What it covers is a reply ALREADY queued when the failure is classified.
     /// A server that refuses and then hangs up sends `550` and `421`, and on one
     /// write they arrive together: the refusal answers the command that asked,
-    /// the goodbye stays in the reader, and the next command reads it as its own
-    /// reply. A peek at the socket cannot see it, because both replies are
-    /// already off the wire and inside the `BufReader`; `buffered_reply_bytes`
-    /// is what reports them. Dropping the session costs a re-dial on a path that
-    /// has already failed, and keeps the next question from taking this one's
-    /// answer.
+    /// the goodbye stays in the reader, and the next command would read it as
+    /// its own reply. A peek at the socket cannot see it, because both replies
+    /// are already off the wire and inside the `BufReader`;
+    /// `buffered_reply_bytes` is what reports them.
     ///
-    /// What this covers is a reply ALREADY queued when the refusal is
-    /// classified. A server that writes the goodbye afterwards, in a write of
-    /// its own, has sent nothing at this point: measured, the reader's buffer
-    /// and a peek at the socket are both empty here, and the goodbye lands some
-    /// 50 ms later. So asking the socket as well changes no outcome on this
-    /// path, and it is not asked. Where a wait has already happened the socket
-    /// is worth asking, and `after_timed_out_open` asks it. The uncovered shape
-    /// has a test of its own; what it points at is a check when the NEXT
-    /// command starts, which is a design change and not this one.
+    /// What it does NOT cover is a goodbye written afterwards, in a write of its
+    /// own: nothing has been sent at this point, so this keeps the session and
+    /// the next command reads the goodbye. That limit is real and is stated here
+    /// rather than in a test, because the test that used to drive it went
+    /// through the refusal path, which no longer reaches this function. What it
+    /// points at is a check when the NEXT command starts, which is a design
+    /// change and not this one.
     fn drop_session_if_a_reply_is_queued(&mut self) {
         let queued = self
             .stream
@@ -2769,8 +2839,14 @@ impl FtpProvider {
         }
     }
 
-    /// A refused data open, classified, with the session given up when the
-    /// server queued another reply behind the refusal.
+    /// A refused data open, classified, with the session given up.
+    ///
+    /// Unconditionally, and that is the fix rather than an excess. A server can
+    /// send the refusal and a goodbye in two writes, and at the moment the
+    /// refusal is classified the second one may not have been sent at all: a
+    /// check for a queued reply is then looking for something that arrives
+    /// later, and the NEXT command reads it as its own answer. Discarding costs
+    /// one reconnect; keeping costs an answer attributed to the wrong command.
     fn refused_data_open(
         &mut self,
         operation: &'static str,
@@ -2778,14 +2854,14 @@ impl FtpProvider {
         err: FtpError,
     ) -> ProviderError {
         let classified = Self::classify_data_failure(operation, path, err);
-        self.drop_session_if_a_reply_is_queued();
+        self.stream = None;
         classified
     }
 
     /// The same for a refused `STOR` or `APPE`, which keeps its own mapping.
     fn refused_store(&mut self, path: &str, err: FtpError) -> ProviderError {
         let classified = Self::map_store_error(path, err);
-        self.drop_session_if_a_reply_is_queued();
+        self.stream = None;
         classified
     }
 
