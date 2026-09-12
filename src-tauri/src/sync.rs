@@ -1743,6 +1743,10 @@ pub(crate) fn decide_download(
     }
 }
 
+fn newer_without_timestamp_skip(winner: &str) -> String {
+    format!("timestamp missing or unreadable, size decides: {winner}")
+}
+
 fn decide_upload_by_size(
     local_size: u64,
     remote_size: u64,
@@ -1752,9 +1756,13 @@ fn decide_upload_by_size(
         SyncTreeAction::Skip("identical size".to_string())
     } else {
         match mode {
-            ConflictMode::Larger if local_size > remote_size => SyncTreeAction::Copy,
+            ConflictMode::Larger | ConflictMode::Newer if local_size > remote_size => {
+                SyncTreeAction::Copy
+            }
             ConflictMode::Larger => SyncTreeAction::Skip("remote is larger".to_string()),
-            ConflictMode::Newer => SyncTreeAction::Copy,
+            ConflictMode::Newer => {
+                SyncTreeAction::Skip(newer_without_timestamp_skip("remote is larger"))
+            }
             ConflictMode::Skip => SyncTreeAction::Skip("conflict skip".to_string()),
         }
     };
@@ -1773,10 +1781,12 @@ fn decide_download_by_size(
         SyncTreeAction::Skip("identical size".to_string())
     } else {
         match mode {
-            ConflictMode::Larger if remote_size > local_size => SyncTreeAction::Copy,
+            ConflictMode::Larger | ConflictMode::Newer if remote_size > local_size => {
+                SyncTreeAction::Copy
+            }
             ConflictMode::Larger => SyncTreeAction::Skip("local is larger".to_string()),
             ConflictMode::Newer => {
-                SyncTreeAction::Skip("newer mode prefers existing local".to_string())
+                SyncTreeAction::Skip(newer_without_timestamp_skip("local is larger"))
             }
             ConflictMode::Skip => SyncTreeAction::Skip("conflict skip".to_string()),
         }
@@ -6965,6 +6975,206 @@ mod tests {
             .action,
             SyncTreeAction::Skip(_)
         ));
+    }
+
+    fn skip_reason(action: &SyncTreeAction) -> &str {
+        match action {
+            SyncTreeAction::Skip(reason) => reason,
+            SyncTreeAction::Copy => panic!("expected skip, got copy"),
+        }
+    }
+
+    /// G44 / D28: with no usable timestamp, Newer must pick the larger file
+    /// in both directions. Before the fix, upload copied and download skipped,
+    /// so a two-way run silently preferred the local side.
+    #[test]
+    fn newer_without_timestamp_picks_the_larger_file_in_both_directions() {
+        let larger_local = local_entry(20, None, None);
+        let smaller_local = local_entry(5, None, None);
+        let remote = remote_entry(10, None, None);
+
+        for policy in [DeltaPolicy::SizeOnly, DeltaPolicy::Mtime] {
+            let upload_when_local_larger =
+                decide_upload(&larger_local, Some(&remote), policy, ConflictMode::Newer);
+            let download_when_local_larger = decide_download(
+                &remote,
+                Some(&larger_local),
+                policy,
+                ConflictMode::Newer,
+                false,
+            );
+            assert!(
+                matches!(upload_when_local_larger.action, SyncTreeAction::Copy),
+                "{policy:?}"
+            );
+            assert_eq!(
+                skip_reason(&download_when_local_larger.action),
+                "timestamp missing or unreadable, size decides: local is larger",
+                "{policy:?}"
+            );
+
+            let upload_when_remote_larger =
+                decide_upload(&smaller_local, Some(&remote), policy, ConflictMode::Newer);
+            let download_when_remote_larger = decide_download(
+                &remote,
+                Some(&smaller_local),
+                policy,
+                ConflictMode::Newer,
+                false,
+            );
+            assert_eq!(
+                skip_reason(&upload_when_remote_larger.action),
+                "timestamp missing or unreadable, size decides: remote is larger",
+                "{policy:?}"
+            );
+            assert!(
+                matches!(download_when_remote_larger.action, SyncTreeAction::Copy),
+                "{policy:?}"
+            );
+        }
+    }
+
+    /// Same pair on a two-way run: the upload skip must not suppress the
+    /// download that should win, and the upload copy must still suppress
+    /// the download of the smaller remote.
+    #[test]
+    fn newer_without_timestamp_two_way_legs_do_not_contradict() {
+        let local_larger = local_entry(20, None, None);
+        let local_smaller = local_entry(5, None, None);
+        let remote = remote_entry(10, None, None);
+
+        let upload = decide_upload(
+            &local_larger,
+            Some(&remote),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+        );
+        assert!(matches!(upload.action, SyncTreeAction::Copy));
+        let download_after_upload = decide_download(
+            &remote,
+            Some(&local_larger),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+            true,
+        );
+        assert!(matches!(
+            download_after_upload.action,
+            SyncTreeAction::Skip(_)
+        ));
+
+        let upload = decide_upload(
+            &local_smaller,
+            Some(&remote),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+        );
+        assert!(matches!(upload.action, SyncTreeAction::Skip(_)));
+        let download_after_skip = decide_download(
+            &remote,
+            Some(&local_smaller),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+            false,
+        );
+        assert!(matches!(download_after_skip.action, SyncTreeAction::Copy));
+    }
+
+    /// With timestamps present, Newer still decides by mtime. Larger and Skip
+    /// on a pair with no timestamps stay as they were.
+    #[test]
+    fn newer_with_timestamps_still_decides_by_mtime_and_other_modes_stay() {
+        let local = local_entry(5, Some("2026-04-22T10:00:00Z"), None);
+        let remote = remote_entry(20, Some("2026-04-21T10:00:00Z"), None);
+
+        let upload = decide_upload(
+            &local,
+            Some(&remote),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+        );
+        let download = decide_download(
+            &remote,
+            Some(&local),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+            false,
+        );
+        assert!(matches!(upload.action, SyncTreeAction::Copy));
+        assert_eq!(skip_reason(&download.action), "local is newer");
+
+        let local = local_entry(5, None, None);
+        let remote = remote_entry(20, None, None);
+        assert!(matches!(
+            decide_upload(
+                &local,
+                Some(&remote),
+                DeltaPolicy::SizeOnly,
+                ConflictMode::Larger
+            )
+            .action,
+            SyncTreeAction::Skip(_)
+        ));
+        assert!(matches!(
+            decide_download(
+                &remote,
+                Some(&local),
+                DeltaPolicy::SizeOnly,
+                ConflictMode::Larger,
+                false
+            )
+            .action,
+            SyncTreeAction::Copy
+        ));
+        assert_eq!(
+            skip_reason(
+                &decide_upload(
+                    &local,
+                    Some(&remote),
+                    DeltaPolicy::SizeOnly,
+                    ConflictMode::Skip
+                )
+                .action
+            ),
+            "conflict skip"
+        );
+        assert_eq!(
+            skip_reason(
+                &decide_download(
+                    &remote,
+                    Some(&local),
+                    DeltaPolicy::SizeOnly,
+                    ConflictMode::Skip,
+                    false
+                )
+                .action
+            ),
+            "conflict skip"
+        );
+    }
+
+    /// Limit: without a timestamp and without a size difference there is
+    /// nothing to decide, so the pair stays a skip.
+    #[test]
+    fn newer_without_timestamp_or_size_difference_stays_a_skip() {
+        let local = local_entry(10, None, None);
+        let remote = remote_entry(10, None, None);
+        for policy in [DeltaPolicy::SizeOnly, DeltaPolicy::Mtime] {
+            assert_eq!(
+                skip_reason(
+                    &decide_upload(&local, Some(&remote), policy, ConflictMode::Newer).action
+                ),
+                "identical size",
+                "{policy:?}"
+            );
+            assert_eq!(
+                skip_reason(
+                    &decide_download(&remote, Some(&local), policy, ConflictMode::Newer, false)
+                        .action
+                ),
+                "identical size",
+                "{policy:?}"
+            );
+        }
     }
 
     #[test]
