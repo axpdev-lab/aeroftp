@@ -2571,6 +2571,11 @@ pub(crate) mod tests {
         /// which is how SFTP reports any listing failure it does not classify,
         /// while `stat` finds them.
         pub(crate) unlistable: std::collections::HashSet<String>,
+        /// Directories whose `exists` check itself fails (permission, I/O).
+        /// Distinct from `unlistable`: that path answers `Ok(true)`, this one
+        /// answers `Err`, which is how SFTP must report a root under a parent
+        /// the account cannot traverse.
+        pub(crate) exists_denied: std::collections::HashSet<String>,
         /// The directory whose listing raises `cancel`, the way a user's cancel
         /// lands in the middle of a listing.
         pub(crate) cancel_on: Option<String>,
@@ -2588,6 +2593,7 @@ pub(crate) mod tests {
             Self {
                 dirs,
                 unlistable: std::collections::HashSet::new(),
+                exists_denied: std::collections::HashSet::new(),
                 cancel_on: None,
                 cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 writes: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
@@ -2630,6 +2636,7 @@ pub(crate) mod tests {
             Ok(Box::new(Self {
                 dirs: self.dirs.clone(),
                 unlistable: self.unlistable.clone(),
+                exists_denied: self.exists_denied.clone(),
                 cancel_on: self.cancel_on.clone(),
                 cancel: Arc::clone(&self.cancel),
                 writes: Arc::clone(&self.writes),
@@ -2726,6 +2733,9 @@ pub(crate) mod tests {
             Ok(0)
         }
         async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            if self.exists_denied.contains(path) {
+                return Err(ProviderError::PermissionDenied(path.to_string()));
+            }
             Ok(self.dirs.contains_key(path) || self.unlistable.contains(path))
         }
         async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -2851,6 +2861,31 @@ pub(crate) mod tests {
                 boundaries.unbounded,
                 Some("list_error"),
                 "an unlisted root is a gap with no name (pool={pool})"
+            );
+        }
+    }
+
+    /// G51: a root whose `exists` check fails (permission on a parent the
+    /// account cannot traverse) must not be read as missing. `root_is_absent`
+    /// takes only `Ok(false)` as absence; any other answer leaves the root a
+    /// gap, so a run that reads from it is refused as an incomplete scan
+    /// rather than as `source_root_missing`.
+    #[tokio::test]
+    async fn a_root_whose_exists_check_fails_is_a_gap_not_a_missing_source() {
+        for pool in [false, true] {
+            let mut tree = WalkTreeProvider::new(std::collections::HashMap::new(), pool);
+            tree.exists_denied.insert("/root".to_string());
+            let (rows, completeness, boundaries) = walk_tree(tree, None).await;
+            assert!(rows.is_empty(), "(pool={pool})");
+            assert!(!completeness.is_complete(), "(pool={pool})");
+            assert!(
+                !boundaries.root_missing,
+                "a permission failure is not a missing source (pool={pool})"
+            );
+            assert_eq!(
+                boundaries.unbounded,
+                Some("list_error"),
+                "the root stays a gap with no name (pool={pool})"
             );
         }
     }

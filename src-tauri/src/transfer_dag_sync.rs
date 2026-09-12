@@ -1895,9 +1895,9 @@ mod tests {
 
     #[test]
     fn plan_both_direction_resolves_conflict_via_upload_then_skips_download() {
-        // A file on both sides with different sizes: the upload pass resolves
-        // it (ConflictMode::Newer always copies), and the download pass must
-        // then skip it as already handled.
+        // A file on both sides with different sizes and no timestamp: the
+        // upload pass copies because the local file is larger, and the
+        // download pass then skips it as already handled.
         let locals = vec![local("conflict.txt", 100)];
         let remotes = vec![remote("conflict.txt", 50)];
         let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Both));
@@ -1908,6 +1908,27 @@ mod tests {
         assert_eq!(plan.skips.len(), 1);
         assert_eq!(plan.skips[0].apply_op, "download");
         assert_eq!(plan.skips[0].rel, "conflict.txt");
+    }
+
+    #[test]
+    fn plan_both_direction_downloads_when_the_remote_is_larger_without_timestamp() {
+        // The other half of the pair: Newer with no timestamp used to copy
+        // on upload and skip on download even when the remote was larger.
+        let locals = vec![local("conflict.txt", 50)];
+        let remotes = vec![remote("conflict.txt", 100)];
+        let plan = plan_sync_dag(&locals, &remotes, &opts(SyncDirection::Both));
+
+        assert_eq!(plan.transfers.len(), 1);
+        assert_eq!(plan.transfers[0].op, "download");
+        assert_eq!(plan.transfers[0].rel, "conflict.txt");
+        assert_eq!(plan.skips.len(), 1);
+        assert_eq!(plan.skips[0].apply_op, "upload");
+        assert_eq!(plan.skips[0].rel, "conflict.txt");
+        assert!(
+            plan.skips[0].reason.contains("timestamp"),
+            "{}",
+            plan.skips[0].reason
+        );
     }
 
     #[test]

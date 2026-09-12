@@ -5533,12 +5533,169 @@ struct CliCheckResult {
     details: Vec<CliCheckEntry>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 struct CliCheckEntry {
     path: String,
     status: String,
     local_size: Option<u64>,
     remote_size: Option<u64>,
+}
+
+/// What `check` or `cryptcheck` found, and how complete the two scans it
+/// compared were.
+#[derive(Debug)]
+struct CliCheckReport {
+    /// The remote directory as resolved against the connection's start path.
+    remote_path: String,
+    match_count: u32,
+    differ_count: u32,
+    /// Files that could not be compared (cryptcheck: an unreadable local file,
+    /// a failed connect, download or decrypt). Always 0 for `check`.
+    error_count: u32,
+    missing_local: u32,
+    missing_remote: u32,
+    details: Vec<CliCheckEntry>,
+    local_scan: ftp_client_gui_lib::sync_core::ScanCompleteness,
+    remote_scan: ftp_client_gui_lib::sync_core::ScanCompleteness,
+    /// What each walk did not see, by name: a directory that did not open, one
+    /// at the depth limit, a link it did not follow. A report that only counted
+    /// them would leave the reader to guess which part of the tree the verdict
+    /// covers, and in a command whose product IS the report that is the answer
+    /// itself, not a detail of it.
+    local_boundaries: ftp_client_gui_lib::sync_core::ScanBoundaries,
+    remote_boundaries: ftp_client_gui_lib::sync_core::ScanBoundaries,
+    elapsed_secs: f64,
+}
+
+impl CliCheckReport {
+    /// `partial` when some files could not be compared or either scan did not
+    /// read its whole tree, `ok` when both trees match, `differences_found`
+    /// otherwise.
+    fn status(&self) -> &'static str {
+        if self.error_count > 0 || !self.local_scan.is_complete() || !self.remote_scan.is_complete()
+        {
+            "partial"
+        } else if self.differ_count == 0 && self.missing_local == 0 && self.missing_remote == 0 {
+            "ok"
+        } else {
+            "differences_found"
+        }
+    }
+
+    /// 0 for a clean `ok`; 4 ("partial") for anything else, as `reconcile` does.
+    fn exit_code(&self) -> i32 {
+        if self.status() == "ok" {
+            0
+        } else {
+            4
+        }
+    }
+
+    fn scans(
+        &self,
+    ) -> [(
+        &'static str,
+        &ftp_client_gui_lib::sync_core::ScanCompleteness,
+    ); 2] {
+        [("local", &self.local_scan), ("remote", &self.remote_scan)]
+    }
+
+    fn boundaries(&self) -> [(&'static str, &ftp_client_gui_lib::sync_core::ScanBoundaries); 2] {
+        [
+            ("local", &self.local_boundaries),
+            ("remote", &self.remote_boundaries),
+        ]
+    }
+
+    /// Every path one scan did not see, as `(path, reason)`. A link is in the
+    /// list because a walk does not follow one, so what sits behind it was not
+    /// read either, and the verdict does not cover it.
+    fn named_gaps(boundaries: &ftp_client_gui_lib::sync_core::ScanBoundaries) -> Vec<(&str, &str)> {
+        boundaries
+            .unseen
+            .iter()
+            .map(|path| (path.rel_path.as_str(), path.reason))
+            .chain(
+                boundaries
+                    .links
+                    .iter()
+                    .map(|link| (link.rel_path.as_str(), "link_not_followed")),
+            )
+            .collect()
+    }
+
+    /// Add the completeness of both scans to a JSON report, with the field
+    /// names `reconcile` uses, and the paths each scan did not see.
+    ///
+    /// The boundary key is absent when a scan saw everything, so the document
+    /// of a clean run is the one it always was.
+    fn add_scan_fields(&self, doc: &mut serde_json::Value) {
+        let Some(fields) = doc.as_object_mut() else {
+            return;
+        };
+        for (side, boundaries) in self.boundaries() {
+            let named = Self::named_gaps(boundaries);
+            if named.is_empty() {
+                continue;
+            }
+            fields.insert(
+                format!("{side}_scan_boundaries"),
+                serde_json::Value::Array(
+                    named
+                        .into_iter()
+                        .map(|(path, reason)| serde_json::json!({ "path": path, "reason": reason }))
+                        .collect(),
+                ),
+            );
+        }
+        for (side, scan) in self.scans() {
+            fields.insert(
+                format!("{side}_scan_incomplete"),
+                serde_json::json!(!scan.is_complete()),
+            );
+            fields.insert(
+                format!("{side}_scan_errors"),
+                serde_json::json!(scan.list_errors),
+            );
+            fields.insert(
+                format!("{side}_scan_truncated"),
+                serde_json::json!(scan.truncated),
+            );
+        }
+    }
+
+    /// Say on stderr which scan did not read its whole tree, and name the
+    /// paths it did not see. A count alone leaves the reader to work out which
+    /// part of the tree the verdict covers, and that part is the answer.
+    fn warn_incomplete_scans(&self) {
+        for (side, scan) in self.scans() {
+            if !scan.is_complete() {
+                eprintln!(
+                    "Warning: {side} scan incomplete ({} error(s){}); the result is partial.",
+                    scan.list_errors,
+                    if scan.truncated { ", truncated" } else { "" }
+                );
+            }
+        }
+        // A skipped link makes no scan error, so this is its own pass: a tree
+        // can be read whole and still have paths the walk did not go into.
+        for (side, boundaries) in self.boundaries() {
+            let named = Self::named_gaps(boundaries);
+            if named.is_empty() {
+                continue;
+            }
+            eprintln!(
+                "The {side} scan did not see {} path(s); the result does not cover them:",
+                named.len()
+            );
+            for (path, reason) in named.iter().take(CHECK_BOUNDARY_LINES) {
+                eprintln!("  {path} ({reason})");
+            }
+            if named.len() > CHECK_BOUNDARY_LINES {
+                eprintln!("  and {} more", named.len() - CHECK_BOUNDARY_LINES);
+            }
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -8392,6 +8549,7 @@ async fn scan_remote_tree_with_progress(
 ) -> (
     Vec<ftp_client_gui_lib::sync_core::scan::RemoteEntry>,
     RemoteScanHealth,
+    ftp_client_gui_lib::sync_core::ScanBoundaries,
     Box<dyn StorageProvider>,
 ) {
     use ftp_client_gui_lib::provider_transfer_executor::resolve_provider_list_session_model;
@@ -8436,7 +8594,7 @@ async fn scan_remote_tree_with_progress(
         .unwrap_or(ftp_client_gui_lib::sync_core::scan::DEFAULT_SCAN_CHECKERS)
         .max(1);
     let list_model = resolve_provider_list_session_model(&holder, checkers).await;
-    let (results, completeness, _) = scan_remote_tree_with_provider_lock_checked(
+    let (results, completeness, boundaries) = scan_remote_tree_with_provider_lock_checked(
         Arc::clone(&holder),
         remote_root,
         opts,
@@ -8461,6 +8619,7 @@ async fn scan_remote_tree_with_progress(
             errors: completeness.list_errors,
             truncated: completeness.truncated,
         },
+        boundaries,
         provider,
     )
 }
@@ -46426,14 +46585,15 @@ async fn cmd_sync(
                         disable_recursive_fastpath: true,
                         ..Default::default()
                     };
-                    let (remotes, health, returned) = scan_remote_tree_with_progress(
-                        provider,
-                        remote,
-                        &pooled_opts,
-                        &None,
-                        Some(Arc::clone(&cancelled)),
-                    )
-                    .await;
+                    let (remotes, health, _remote_boundaries, returned) =
+                        scan_remote_tree_with_progress(
+                            provider,
+                            remote,
+                            &pooled_opts,
+                            &None,
+                            Some(Arc::clone(&cancelled)),
+                        )
+                        .await;
                     provider = returned;
                     if health.truncated && !quiet {
                         eprintln!("Warning: remote scan truncated (depth or entry cap reached)");
@@ -56713,10 +56873,57 @@ async fn cmd_check(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    match check_report(url, local_path, remote_path, checksum, one_way, cli, format).await {
+        Ok(report) => {
+            print_check_report(&report, local_path, cli, format);
+            report.exit_code()
+        }
+        Err(code) => code,
+    }
+}
+
+/// Scan both sides and compare them: the report `check` prints. `Err` carries
+/// the exit code of a failure that has already been reported.
+/// How many boundary paths `check` and `cryptcheck` print before summarising
+/// the rest. The walker caps its own lists, but a capped list is still long
+/// enough to bury the summary line above it.
+const CHECK_BOUNDARY_LINES: usize = 20;
+
+/// The side whose scan missed a part of the tree it cannot name, and why.
+///
+/// A gap with a name is a result: the report says which paths the verdict
+/// leaves out, and the reader can act on the rest. A gap with no name (the scan
+/// root itself did not open, the scan was cancelled, it stopped at the entry
+/// cap) leaves nothing to say how much of the tree was read, so a comparison
+/// over what happened to arrive is not a partial answer, it is an unknown one.
+fn scan_gap_with_no_name(
+    local: &ftp_client_gui_lib::sync_core::ScanBoundaries,
+    remote: &ftp_client_gui_lib::sync_core::ScanBoundaries,
+) -> Option<(&'static str, &'static str)> {
+    [("local", local), ("remote", remote)]
+        .into_iter()
+        .find_map(|(side, boundaries)| boundaries.unbounded.map(|reason| (side, reason)))
+}
+
+fn gap_with_no_name_message(side: &str, reason: &str) -> String {
+    format!(
+        "The {side} scan did not see the whole tree ({reason}) and cannot name what it missed, so there is nothing to say which part of the tree a verdict would cover."
+    )
+}
+
+async fn check_report(
+    url: &str,
+    local_path: &str,
+    remote_path: &str,
+    checksum: bool,
+    one_way: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<CliCheckReport, i32> {
     let start = Instant::now();
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
-        Err(code) => return code,
+        Err(code) => return Err(code),
     };
     let remote_path = &resolve_cli_remote_path(&initial_path, remote_path);
 
@@ -56728,12 +56935,12 @@ async fn cmd_check(
             5,
         );
         let _ = provider.disconnect().await;
-        return 5;
+        return Err(5);
     }
 
     // Delegate scan + comparison to sync_core. Both CLI and MCP now share
     // the same implementation, so a fix in one propagates to the other.
-    use ftp_client_gui_lib::sync_core::{compare_trees, scan_local_tree, ScanOptions};
+    use ftp_client_gui_lib::sync_core::{compare_trees, scan_local_tree_checked, ScanOptions};
     // When the profile carries a crypt overlay, unlock the compare keys before
     // the scan so the remote tree is decrypted (names + rclone sizes) to match
     // the plaintext local tree. Fail closed if the overlay cannot be unlocked.
@@ -56746,7 +56953,7 @@ async fn cmd_check(
             Ok(keys) => keys,
             Err(code) => {
                 let _ = provider.disconnect().await;
-                return code;
+                return Err(code);
             }
         }
     };
@@ -56758,11 +56965,23 @@ async fn cmd_check(
         max_depth: Some(MAX_SCAN_DEPTH),
         ..Default::default()
     };
-    let locals = scan_local_tree(local_path, &scan_opts);
-    let (remotes, _remote_health, returned) =
+    // Both scans report what they could not read: a directory the local walk
+    // could not open or a remote directory that did not list hides its files,
+    // and the report has to say so instead of reading as a clean match.
+    // The boundaries name what the walk did not see (a directory that did not
+    // open, one at the depth limit, an entry whose metadata could not be read).
+    // They are reported with the verdict, and a gap that has no name is refused
+    // below instead of being answered.
+    let (locals, local_scan, local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
+    let (remotes, remote_health, remote_boundaries, returned) =
         scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &None, None).await;
     let mut remotes = remotes;
     provider = returned;
+    if let Some((side, reason)) = scan_gap_with_no_name(&local_boundaries, &remote_boundaries) {
+        print_error(format, &gap_with_no_name_message(side, reason), 4);
+        let _ = provider.disconnect().await;
+        return Err(4);
+    }
     if let Some(keys) = &crypt_keys {
         let raw_len = remotes.len();
         remotes = ftp_client_gui_lib::crypt_compare::normalize_remote_entries(remotes, keys);
@@ -56773,7 +56992,7 @@ async fn cmd_check(
                 6,
             );
             let _ = provider.disconnect().await;
-            return 6;
+            return Err(6);
         }
     }
     let diff = compare_trees(&locals, &remotes, one_way);
@@ -56809,40 +57028,64 @@ async fn cmd_check(
         });
     }
 
-    let elapsed = start.elapsed().as_secs_f64();
+    let report = CliCheckReport {
+        remote_path: remote_path.to_string(),
+        match_count,
+        differ_count,
+        error_count: 0,
+        missing_local,
+        missing_remote,
+        details,
+        local_scan,
+        remote_scan: ftp_client_gui_lib::sync_core::ScanCompleteness {
+            list_errors: remote_health.errors,
+            truncated: remote_health.truncated,
+        },
+        local_boundaries,
+        remote_boundaries,
+        elapsed_secs: start.elapsed().as_secs_f64(),
+    };
+    let _ = provider.disconnect().await;
+    Ok(report)
+}
 
+/// Print a `check` report: the JSON document, or its text summary.
+fn print_check_report(report: &CliCheckReport, local_path: &str, cli: &Cli, format: OutputFormat) {
     if matches!(format, OutputFormat::Json) {
-        print_json(&serde_json::json!({
-            "status": if differ_count == 0 && missing_local == 0 && missing_remote == 0 {
-                "ok"
-            } else {
-                "differences_found"
-            },
-            "match_count": match_count,
-            "differ_count": differ_count,
-            "missing_local": missing_local,
-            "missing_remote": missing_remote,
-            "elapsed_secs": elapsed,
-            "details": details,
+        let mut doc = serde_json::json!({
+            "status": report.status(),
+            "match_count": report.match_count,
+            "differ_count": report.differ_count,
+            "missing_local": report.missing_local,
+            "missing_remote": report.missing_remote,
+            "elapsed_secs": report.elapsed_secs,
+            "details": report.details,
             "suggested_next_command": format!(
                 "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json",
                 profile_or_placeholder(cli),
                 shell_double_quote(local_path),
-                shell_double_quote(remote_path)
+                shell_double_quote(&report.remote_path)
             ),
-        }));
+        });
+        report.add_scan_fields(&mut doc);
+        print_json(&doc);
     } else {
         eprintln!(
             "\n  Match: {}  Differ: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
-            match_count, differ_count, missing_local, missing_remote, elapsed
+            report.match_count,
+            report.differ_count,
+            report.missing_local,
+            report.missing_remote,
+            report.elapsed_secs
         );
+        report.warn_incomplete_scans();
         eprintln!(
             "Next: aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json",
             profile_or_placeholder(cli),
             shell_double_quote(local_path),
-            shell_double_quote(remote_path)
+            shell_double_quote(&report.remote_path)
         );
-        for d in &details {
+        for d in &report.details {
             let icon = match d.status.as_str() {
                 "differ" => "~",
                 "missing_local" => "-",
@@ -56851,13 +57094,6 @@ async fn cmd_check(
             };
             eprintln!("  {} {}", icon, d.path);
         }
-    }
-
-    let _ = provider.disconnect().await;
-    if differ_count > 0 || missing_local > 0 || missing_remote > 0 {
-        4
-    } else {
-        0
     }
 }
 
@@ -56912,11 +57148,83 @@ async fn cmd_cryptcheck(
     filename_encryption: &str,
     suffix: Option<&str>,
     one_way: bool,
-    _checkfile: Option<String>,
+    checkfile: Option<String>,
     algorithm: &str,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    match cryptcheck_report(
+        url,
+        local_path,
+        remote_path,
+        password,
+        password2,
+        filename_encryption,
+        suffix,
+        one_way,
+        checkfile,
+        algorithm,
+        cli,
+        format,
+    )
+    .await
+    {
+        Ok(report) => {
+            print_cryptcheck_report(&report, algorithm, format);
+            report.exit_code()
+        }
+        Err(code) => code,
+    }
+}
+
+/// Print a `cryptcheck` report: the JSON document, or its text summary (the
+/// per-file lines are printed while the files are compared).
+fn print_cryptcheck_report(report: &CliCheckReport, algorithm: &str, format: OutputFormat) {
+    if matches!(format, OutputFormat::Json) {
+        let mut doc = serde_json::json!({
+            "status": report.status(),
+            "match_count": report.match_count,
+            "differ_count": report.differ_count,
+            "error_count": report.error_count,
+            "missing_local": report.missing_local,
+            "missing_remote": report.missing_remote,
+            "elapsed_secs": report.elapsed_secs,
+            "algorithm": algorithm,
+            "details": report.details,
+        });
+        report.add_scan_fields(&mut doc);
+        print_json(&doc);
+    } else {
+        eprintln!(
+            "\n  Match: {}  Differ: {}  Errors: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
+            report.match_count,
+            report.differ_count,
+            report.error_count,
+            report.missing_local,
+            report.missing_remote,
+            report.elapsed_secs
+        );
+        report.warn_incomplete_scans();
+    }
+}
+
+/// Decrypt and compare every file: the report `cryptcheck` prints. `Err`
+/// carries the exit code of a failure that has already been reported.
+#[allow(clippy::too_many_arguments)]
+async fn cryptcheck_report(
+    url: &str,
+    local_path: &str,
+    remote_path: &str,
+    password: Option<String>,
+    password2: Option<String>,
+    filename_encryption: &str,
+    suffix: Option<&str>,
+    one_way: bool,
+    _checkfile: Option<String>,
+    algorithm: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<CliCheckReport, i32> {
     let start = Instant::now();
     // With name encryption off, AeroFTP/rclone tag objects with a suffix
     // (default ".bin"); strip it from the leaf before comparing to local.
@@ -56928,7 +57236,7 @@ async fn cmd_cryptcheck(
             &format!("unsupported filename_encryption={}", filename_encryption),
             5,
         );
-        return 5;
+        return Err(5);
     }
 
     let pwd = password
@@ -56939,7 +57247,7 @@ async fn cmd_cryptcheck(
             "wrong password or non-crypt remote (missing password)",
             5,
         );
-        return 5;
+        return Err(5);
     }
     let salt = password2
         .unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD2").unwrap_or_default());
@@ -56949,13 +57257,13 @@ async fn cmd_cryptcheck(
             Ok(keys) => keys,
             Err(e) => {
                 print_error(format, &format!("Key derivation failed: {}", e), 5);
-                return 5;
+                return Err(5);
             }
         };
 
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
-        Err(code) => return code,
+        Err(code) => return Err(code),
     };
     let remote_path_resolved = resolve_cli_remote_path(&initial_path, remote_path);
 
@@ -56967,10 +57275,10 @@ async fn cmd_cryptcheck(
             5,
         );
         let _ = provider.disconnect().await;
-        return 5;
+        return Err(5);
     }
 
-    use ftp_client_gui_lib::sync_core::{scan_local_tree, ScanOptions};
+    use ftp_client_gui_lib::sync_core::{scan_local_tree_checked, ScanOptions};
     let scan_opts = ScanOptions {
         checkers: Some(effective_checkers(cli)),
         compute_checksum: false,
@@ -56978,11 +57286,23 @@ async fn cmd_cryptcheck(
         ..Default::default()
     };
 
-    let locals = scan_local_tree(local_path, &scan_opts);
-    let (remotes, _remote_health, returned) =
+    // Both scans report what they could not read: a directory the local walk
+    // could not open or a remote directory that did not list hides its files,
+    // and the report has to say so instead of reading as a clean match.
+    // The boundaries name what the walk did not see (a directory that did not
+    // open, one at the depth limit, an entry whose metadata could not be read).
+    // They are reported with the verdict, and a gap that has no name is refused
+    // below instead of being answered.
+    let (locals, local_scan, local_boundaries) = scan_local_tree_checked(local_path, &scan_opts);
+    let (remotes, remote_health, remote_boundaries, returned) =
         scan_remote_tree_with_progress(provider, &remote_path_resolved, &scan_opts, &None, None)
             .await;
     provider = returned;
+    if let Some((side, reason)) = scan_gap_with_no_name(&local_boundaries, &remote_boundaries) {
+        print_error(format, &gap_with_no_name_message(side, reason), 4);
+        let _ = provider.disconnect().await;
+        return Err(4);
+    }
 
     let mut decrypted_remotes = std::collections::HashMap::new();
     for r in &remotes {
@@ -57052,7 +57372,7 @@ async fn cmd_cryptcheck(
 
     let cfg = match resolve_url_or_profile(url, cli, format) {
         Ok(v) => v.0,
-        Err(code) => return code,
+        Err(code) => return Err(code),
     };
 
     let semaphore = Arc::new(Semaphore::new(concurrency));
@@ -57247,41 +57567,28 @@ async fn cmd_cryptcheck(
         }
     }
 
-    let elapsed = start.elapsed().as_secs_f64();
-
-    if matches!(format, OutputFormat::Json) {
-        print_json(&serde_json::json!({
-            "status": if error_count > 0 {
-                "partial"
-            } else if differ_count == 0 && missing_local == 0 && missing_remote == 0 {
-                "ok"
-            } else {
-                "differences_found"
-            },
-            "match_count": match_count,
-            "differ_count": differ_count,
-            "error_count": error_count,
-            "missing_local": missing_local,
-            "missing_remote": missing_remote,
-            "elapsed_secs": elapsed,
-            "algorithm": algorithm,
-            "details": details,
-        }));
-    } else {
-        eprintln!(
-            "\n  Match: {}  Differ: {}  Errors: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
-            match_count, differ_count, error_count, missing_local, missing_remote, elapsed
-        );
-    }
-
+    // CRYPT-01: an operational error makes the report `partial` (exit 4,
+    // incomplete check), distinct from a clean run; differences and missing
+    // files also exit 4. Only a fully clean run is 0.
+    let report = CliCheckReport {
+        remote_path: remote_path_resolved,
+        match_count,
+        differ_count,
+        error_count,
+        missing_local,
+        missing_remote,
+        details,
+        local_scan,
+        remote_scan: ftp_client_gui_lib::sync_core::ScanCompleteness {
+            list_errors: remote_health.errors,
+            truncated: remote_health.truncated,
+        },
+        local_boundaries,
+        remote_boundaries,
+        elapsed_secs: start.elapsed().as_secs_f64(),
+    };
     let _ = provider.disconnect().await;
-    // CRYPT-01: an operational error is exit 4 (incomplete check), distinct from a
-    // clean run; differences/missing also exit 4. Only a fully clean run is 0.
-    if differ_count > 0 || missing_local > 0 || missing_remote > 0 || error_count > 0 {
-        4
-    } else {
-        0
-    }
+    Ok(report)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -57360,7 +57667,7 @@ async fn cmd_reconcile(
     }
 
     let remote_spinner = maybe_create_scan_spinner(format, cli, "Scanning remote...");
-    let (mut remotes, remote_health, returned) =
+    let (mut remotes, remote_health, _remote_boundaries, returned) =
         scan_remote_tree_with_progress(provider, remote_path, &scan_opts, &remote_spinner, None)
             .await;
     provider = returned;
@@ -74492,7 +74799,7 @@ mod tests {
         .await;
         let delivered = peak.load(std::sync::atomic::Ordering::SeqCst);
         match outcome {
-            Ok((rows, health, _provider)) => {
+            Ok((rows, health, _boundaries, _provider)) => {
                 assert_eq!(rows.len(), 8, "one file per directory");
                 assert!(!health.is_incomplete());
             }
@@ -75532,6 +75839,292 @@ mod tests {
             "no remote delete from a reconcile whose local scan could not stat a file"
         );
         assert_eq!(stats.exit_code, 4, "the refusal shows in the exit code");
+    }
+
+    /// A remote whose `/root` lists a directory, `broken/`, that cannot itself
+    /// be listed: the scan counts a listing error there.
+    fn remote_with_an_unlistable_directory() -> MemTreeProvider {
+        MemTreeProvider {
+            dirs: HashMap::from([(
+                "/root".to_string(),
+                vec![RemoteEntry::directory(
+                    "broken".to_string(),
+                    "/root/broken".to_string(),
+                )],
+            )]),
+            delete_attempts: Arc::default(),
+        }
+    }
+
+    /// The report of `check` (by size) against `remote`.
+    fn run_check(remote: MemTreeProvider, local: &str, one_way: bool) -> CliCheckReport {
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        run_against_remote(remote, || {
+            check_report(
+                "memory://",
+                local,
+                "/root",
+                false,
+                one_way,
+                &cli,
+                OutputFormat::Json,
+            )
+        })
+        .unwrap_or_else(|code| panic!("check failed with exit code {code}"))
+    }
+
+    /// The report of `cryptcheck` against `remote`, with names not encrypted
+    /// and the default `.bin` suffix. The URL only has to resolve: the
+    /// connection itself comes from the test seam.
+    fn run_cryptcheck(remote: MemTreeProvider, local: &str, one_way: bool) -> CliCheckReport {
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        run_against_remote(remote, || {
+            cryptcheck_report(
+                "sftp://tester:secret@127.0.0.1/",
+                local,
+                "/root",
+                Some("crypt password".to_string()),
+                Some(String::new()),
+                "off",
+                None,
+                one_way,
+                None,
+                "sha256",
+                &cli,
+                OutputFormat::Json,
+            )
+        })
+        .unwrap_or_else(|code| panic!("cryptcheck failed with exit code {code}"))
+    }
+
+    /// A local tree whose only file, `locked/keep.txt`, sits behind a
+    /// directory the current user cannot read.
+    #[cfg(unix)]
+    fn local_tree_behind_an_unreadable_directory() -> (FilesFromFixture, UnreadableDir) {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir(Path::new(&local).join("locked")).expect("locked directory");
+        fixture.local_file("locked/keep.txt", 1);
+        let locked = UnreadableDir::lock(Path::new(&local).join("locked"));
+        (fixture, locked)
+    }
+
+    /// `check` must not report `ok` over a local directory it could not read.
+    /// With `--one-way` the remote copy of the file behind it is not even
+    /// counted as missing, so the run read as a clean match: it must be
+    /// `partial` and exit 4.
+    #[cfg(unix)]
+    #[test]
+    fn check_reports_partial_when_a_local_directory_cannot_be_read() {
+        let (fixture, _locked) = local_tree_behind_an_unreadable_directory();
+
+        let report = run_check(
+            MemTreeProvider::tree(&[("locked/keep.txt", 1)]),
+            &fixture.local(),
+            true,
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+        assert!(
+            !report.local_scan.is_complete(),
+            "the unreadable directory is a local scan error"
+        );
+    }
+
+    /// `check` must not report `ok` when a remote directory could not be
+    /// listed: the files in it are unseen, not absent.
+    #[test]
+    fn check_reports_partial_when_a_remote_directory_cannot_be_listed() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_check(
+            remote_with_an_unlistable_directory(),
+            &fixture.local(),
+            false,
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+        assert!(
+            !report.remote_scan.is_complete(),
+            "the unlisted directory is a remote scan error"
+        );
+    }
+
+    /// A gap the scan cannot name leaves no verdict to pronounce. Here the
+    /// local root itself cannot be read, so the walk has nothing to bound the
+    /// comparison around: `check` has to refuse, with the code the table gives
+    /// a partial result (4), instead of comparing the part of the tree it
+    /// happened to see and calling that an answer.
+    #[cfg(unix)]
+    #[test]
+    fn check_refuses_a_local_gap_it_cannot_name() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        fixture.local_file("a.txt", 1);
+        let _locked = UnreadableDir::lock(Path::new(&local).to_path_buf());
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+
+        let code = run_against_remote(MemTreeProvider::root_files(&[("a.txt", 1)]), || {
+            check_report(
+                "memory://",
+                &local,
+                "/root",
+                false,
+                false,
+                &cli,
+                OutputFormat::Json,
+            )
+        })
+        .expect_err("a scan with a gap it cannot name has no verdict to give");
+
+        assert_eq!(code, 4, "the refusal exits as a partial result");
+    }
+
+    /// A gap that HAS a name is not a refusal: the comparison still runs, and
+    /// the report says which paths the verdict does not cover. A count alone
+    /// leaves the reader to guess which part of the tree was read, and in a
+    /// command whose product is the report that guess is the answer.
+    #[cfg(unix)]
+    #[test]
+    fn check_names_the_local_paths_it_could_not_read() {
+        let (fixture, _locked) = local_tree_behind_an_unreadable_directory();
+
+        let report = run_check(
+            MemTreeProvider::tree(&[("locked/keep.txt", 1)]),
+            &fixture.local(),
+            true,
+        );
+
+        assert_eq!(report.status(), "partial");
+        let named: Vec<&str> = report
+            .local_boundaries
+            .unseen
+            .iter()
+            .map(|path| path.rel_path.as_str())
+            .collect();
+        assert_eq!(
+            named,
+            vec!["locked"],
+            "the directory that did not open is named"
+        );
+
+        // The reason is taken from what the scan recorded rather than spelled
+        // again here: the point of the test is that the JSON carries the same
+        // pair the walk produced, not that a particular word was chosen.
+        let recorded = &report.local_boundaries.unseen[0];
+        let mut doc = serde_json::json!({});
+        report.add_scan_fields(&mut doc);
+        assert_eq!(
+            doc["local_scan_boundaries"],
+            serde_json::json!([{ "path": recorded.rel_path, "reason": recorded.reason }]),
+            "the JSON report carries the paths the local scan did not see"
+        );
+    }
+
+    /// The same on the remote side, and the other half of the rule: a remote
+    /// directory that did not list is a gap with a name, so the run still
+    /// gives a verdict. The refusal is only for a gap that has no name.
+    #[test]
+    fn check_names_the_remote_paths_it_could_not_list() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_check(
+            remote_with_an_unlistable_directory(),
+            &fixture.local(),
+            false,
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+        let named: Vec<&str> = report
+            .remote_boundaries
+            .unseen
+            .iter()
+            .map(|path| path.rel_path.as_str())
+            .collect();
+        assert!(
+            !named.is_empty(),
+            "the directory that did not list is named: {named:?}"
+        );
+
+        let recorded = &report.remote_boundaries.unseen[0];
+        let mut doc = serde_json::json!({});
+        report.add_scan_fields(&mut doc);
+        assert_eq!(
+            doc["remote_scan_boundaries"],
+            serde_json::json!([{ "path": recorded.rel_path, "reason": recorded.reason }]),
+            "the JSON report carries the paths the remote scan did not see"
+        );
+    }
+
+    /// Complete scans of matching trees still report `ok` and exit 0.
+    #[test]
+    fn check_reports_ok_on_matching_complete_trees() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("a.txt", 1);
+
+        let report = run_check(
+            MemTreeProvider::root_files(&[("a.txt", 1)]),
+            &fixture.local(),
+            false,
+        );
+
+        assert!(report.local_scan.is_complete() && report.remote_scan.is_complete());
+        assert_eq!(report.status(), "ok");
+        assert_eq!(report.exit_code(), 0);
+    }
+
+    /// `cryptcheck` over a local directory it could not read: as for
+    /// `check`, `--one-way` hid the remote file behind it and the run read as
+    /// clean. It must be `partial` and exit 4.
+    #[cfg(unix)]
+    #[test]
+    fn cryptcheck_reports_partial_when_a_local_directory_cannot_be_read() {
+        let (fixture, _locked) = local_tree_behind_an_unreadable_directory();
+
+        let report = run_cryptcheck(
+            MemTreeProvider::tree(&[("locked/keep.txt.bin", 1)]),
+            &fixture.local(),
+            true,
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+        assert!(
+            !report.local_scan.is_complete(),
+            "the unreadable directory is a local scan error"
+        );
+    }
+
+    /// `cryptcheck` when a remote directory could not be listed: `partial`,
+    /// exit 4, not `ok`.
+    #[test]
+    fn cryptcheck_reports_partial_when_a_remote_directory_cannot_be_listed() {
+        let fixture = FilesFromFixture::new();
+
+        let report = run_cryptcheck(
+            remote_with_an_unlistable_directory(),
+            &fixture.local(),
+            false,
+        );
+
+        assert_eq!(report.status(), "partial");
+        assert_eq!(report.exit_code(), 4);
+        assert!(
+            !report.remote_scan.is_complete(),
+            "the unlisted directory is a remote scan error"
+        );
     }
 
     /// The `sync-doctor` report for an upload with `--delete` against `remote`.
