@@ -27,15 +27,46 @@ import { existsSync, readFileSync } from 'node:fs';
 const inCI = Boolean(process.env.GITHUB_ACTIONS);
 const err = (m) => console.error(`${inCI ? '::error::' : ''}${m}`);
 
-// A finding is accepted only when the line it points at carries one of these
-// shapes, each with the reason it is not a link. Anything else of the same
-// rule is still a failure, so a real https:// link added to a future release
-// note is caught.
+// A finding is accepted only when EVERY URI-looking token on the line it points
+// at is one of these shapes, each with the reason it is not a link. Anything
+// else of the same rule is still a failure, so a real https:// link added to a
+// future release note is caught, including one sitting beside an allowed scheme.
+//
+// Each shape is matched against the PARSED url, not by string prefix, and a
+// token that will not parse is never accepted: an exception that cannot say
+// what it is looking at is a hole, not an exception.
+// Matched against the parsed token, not by prefix: `startsWith('http://127.0.0.1')`
+// also accepts http://127.0.0.1.example.invalid/, which is a domain that merely
+// begins with those digits and is not loopback at all. Reproduced before fixing.
 const PLAINTEXT_URL_ACCEPTED = [
-  ['aeroftp://', 'the app own URI scheme, named as a resource identifier and not offered as a link'],
-  ['tauri://', 'the Tauri asset scheme, quoted while explaining a webview origin'],
-  ['http://127.0.0.1', 'a loopback address quoted as the value that a CVE fix reclassified'],
+  {
+    label: 'aeroftp://',
+    reason: 'the app own URI scheme, named as a resource identifier and not offered as a link',
+    match: (t) => t.protocol === 'aeroftp:',
+  },
+  {
+    label: 'tauri://',
+    reason: 'the Tauri asset scheme, quoted while explaining a webview origin',
+    match: (t) => t.protocol === 'tauri:',
+  },
+  {
+    label: 'http://127.0.0.1',
+    reason: 'a loopback address quoted as the value that a CVE fix reclassified',
+    match: (t) => t.protocol === 'http:' && t.hostname === '127.0.0.1',
+  },
 ];
+
+// A token that cannot be parsed as a URL is never accepted: an exception that
+// cannot say what it is looking at is not an exception, it is a hole.
+function acceptedShape(raw) {
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  return PLAINTEXT_URL_ACCEPTED.find((s) => s.match(u)) ?? null;
+}
 
 const METAINFO = 'app.aeroftp.AeroFTP.metainfo.xml';
 // Desktop entries the stores and menus read. snap/gui/aeroftp.desktop is
@@ -87,6 +118,24 @@ for (const raw of res.out.split('\n')) {
 }
 if (cur) findings.push(cur);
 
+// A report with findings the parser cannot see is the dangerous case, so it is
+// named rather than left to the generic path. appstreamcli has been observed
+// emitting flow-style records (`{ tag: ..., severity: ... }`) in other versions,
+// which this block-style parser would skip. Measured here: 1.0.2 emits
+// block style for this file, for validate-tree, and for a numeric component id,
+// which is the shape that produced flow style in a reported Debian case. So the
+// case is not reproducible on this version, and the script refuses to guess
+// rather than silently reporting zero findings.
+const flowRecords = (res.out.match(/^\s*[-{]?\s*\{\s*tag:/gm) ?? []).length;
+if (flowRecords && flowRecords > findings.length) {
+  err(
+    `appstreamcli emitted ${flowRecords} flow-style record(s) that this parser does not read ` +
+      `(it found ${findings.length}). The report format changed: fix the parser, do not skip the gate.`,
+  );
+  console.error(res.out.split('\n').slice(0, 20).join('\n'));
+  process.exit(1);
+}
+
 if (!findings.length && !/Passed:\s*yes/.test(res.out)) {
   err('appstreamcli produced a report this script could not read, so nothing was checked');
   console.error(res.out.split('\n').slice(0, 20).join('\n'));
@@ -105,16 +154,13 @@ for (const f of findings) {
     // one of them. Checking "does the line contain an accepted shape" lets a
     // real link ride along beside a scheme that is allowed: measured, an
     // injected https://example.com/docs next to aeroftp:// passed the gate.
-    const tokens = text.match(/[a-z][a-z0-9+.-]*:\/\/[^\s<)`"]*/gi) ?? [];
-    const unexplained = tokens.filter(
-      (t) => !PLAINTEXT_URL_ACCEPTED.some(([needle]) => t.startsWith(needle)),
+    const tokens = (text.match(/[a-z][a-z0-9+.-]*:\/\/[^\s<)`"]*/gi) ?? []).map((t) =>
+      // Trailing punctuation belongs to the prose, not to the URL.
+      t.replace(/[.,;:)\]}'"`]+$/, ''),
     );
+    const unexplained = tokens.filter((t) => !acceptedShape(t));
     if (tokens.length && !unexplained.length) {
-      const shapes = [
-        ...new Set(
-          tokens.map((t) => PLAINTEXT_URL_ACCEPTED.find(([n]) => t.startsWith(n))[0]),
-        ),
-      ];
+      const shapes = [...new Set(tokens.map((t) => acceptedShape(t).label))];
       accepted.push(`${METAINFO}:${f.line} ${f.tag} (${shapes.join(', ')})`);
       continue;
     }
