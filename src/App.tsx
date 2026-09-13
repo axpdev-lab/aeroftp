@@ -3221,7 +3221,12 @@ const App: React.FC = () => {
   // request, and it refuses on every other provider, which is why the call is
   // gated by protocol rather than by catching the refusal.
   const fetchBucketEncryption = async (protocol?: string, freshSessionParams?: ConnectionParams) => {
-    if (protocol !== 'b2') return;
+    // Typed against the union on purpose. `protocol` arrives as a bare string,
+    // so a wrong literal here compiles and the guard simply never opens, which
+    // is how this shipped reading `'b2'`, a value no profile ever carries. As a
+    // ProviderType the compiler answers instead of the runtime staying silent.
+    const B2: ProviderType = 'backblaze';
+    if (protocol !== B2) return;
     try {
       const read = await invoke<{
         state: 'on' | 'off' | 'unknown';

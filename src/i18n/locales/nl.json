@@ -4789,7 +4789,7 @@
                 "onTitle": "Nieuwe objecten in deze bucket worden standaard versleuteld ({mode}). Dit zegt niets over objecten die al zijn opgeslagen, en niets over SSE-C of versleuteling aan de clientzijde.",
                 "offTitle": "Deze bucket heeft geen standaardversleuteling. Dat is niet hetzelfde als onversleuteld: SSE-C en versleuteling aan de clientzijde worden door deze instelling niet gerapporteerd.",
                 "unknownKeyTitle": "We konden de versleutelingsinstelling van deze bucket niet lezen, omdat de applicatiesleutel niet over de mogelijkheid readBucketEncryption beschikt. Een waarde die we niet mogen zien, betekent niet dat versleuteling uit staat.",
-                "unknownShapeTitle": "We konden de versleutelingsinstelling van deze bucket niet lezen, omdat het antwoord geen gedocumenteerde vorm had. De sleutel mocht hem wel lezen, dus dit gaat over het antwoord en niet over rechten."
+                "unknownShapeTitle": "We konden de versleutelingsinstelling van deze bucket niet lezen, omdat het antwoord geen gedocumenteerde vorm had. De sleutel mocht de instelling wel lezen, dus dit gaat over het antwoord en niet over rechten."
             }
         },
         "gitlab": {
