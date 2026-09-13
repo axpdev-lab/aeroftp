@@ -184,6 +184,76 @@ const ACCEPTED = new Map([
     'regenerated from the binary, and its staleness is already guarded by `aeroftp-cli inventory --check` in cli-smoke.yml',
   ],
 ]);
+
+// Second sweep, and it exists because the first one asked a leading question.
+// The discovery below matches the CANONICAL version, so a file that declares a
+// STALE one is not found at all: the case that matters most, a manifest left a
+// version behind, was the one case invisible to it. Reviewed and confirmed by
+// injecting `version: "4.1.8"` into a tracked file, where the script passed.
+//
+// The obvious repair, matching declaration shapes with any version, was measured
+// before being chosen and rejected: it matches 16 files and 2300 lines, because
+// every dependency in `Cargo.lock` (1189), `peer-l0/Cargo.lock` (506) and
+// `package-lock.json` (350) declares a version, as do the rsync protocol string
+// in `delta_sync_rsync.rs` and the MCP server version in `mcp/server.rs`. An
+// accept list for other software's version numbers is noise with no safety in it.
+//
+// So the sweep is bounded by PURPOSE instead of by value: a file whose NAME says
+// it declares a version. Measured on this tree that is seven files, five of them
+// already compared above and two that legitimately carry their own lifecycle.
+// A manifest left at the previous version is now found because it is a manifest,
+// not because it happens to hold the value we expected.
+const MANIFEST_RE = /(^|\/)(Cargo\.toml|package\.json|tauri\.conf\.json|snapcraft\.yaml|[^/]*\.metainfo\.xml)$/;
+const MANIFEST_ACCEPTED = new Map([
+  ['src-tauri/peer-l0/Cargo.toml', 'a spike sub-crate with its own version lifecycle, not shipped as the app'],
+  ['tests/portal-chooser/fake-portal/Cargo.toml', 'a test fixture, never shipped'],
+]);
+const manifestVersion = (rel) => {
+  const text = read(rel);
+  if (rel.endsWith('Cargo.toml')) {
+    const section = text.split(/^\[/m).find((s) => s.startsWith('package]'));
+    return section?.match(/^\s*version\s*=\s*"([^"]+)"/m)?.[1] ?? null;
+  }
+  if (rel.endsWith('snapcraft.yaml')) return text.match(/^version:\s*['"]?([^'"\s]+)/m)?.[1] ?? null;
+  if (rel.endsWith('.metainfo.xml')) return text.match(/<release version="([^"]+)"/)?.[1] ?? null;
+  try {
+    return JSON.parse(text).version ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const manifestDrift = [];
+let manifestsChecked = 0;
+try {
+  const { execFileSync } = await import('node:child_process');
+  const manifests = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
+    .split('\n')
+    .filter((f) => f && MANIFEST_RE.test(f));
+  if (manifests.length < 5) {
+    throw new Error(`only ${manifests.length} manifest-shaped files found, the pattern or the root is wrong`);
+  }
+  for (const rel of manifests) {
+    if (MANIFEST_ACCEPTED.has(rel)) continue;
+    manifestsChecked += 1;
+    const declared = manifestVersion(rel);
+    if (declared === null) {
+      manifestDrift.push(`${rel}: declares a version this script cannot read`);
+    } else if (declared !== canonical) {
+      manifestDrift.push(`${rel}: declares ${declared}`);
+    }
+  }
+} catch (e) {
+  console.error(`${inCI ? '::error::' : ''}check-version-sites: could not sweep the manifests (${e.message.split('\n')[0]})`);
+  process.exit(1);
+}
+if (manifestDrift.length) {
+  console.error(`${inCI ? '::error::' : ''}a file whose name says it declares a version does not say ${canonical}:`);
+  for (const d of manifestDrift) console.error(`  ${d}`);
+  console.error('Bump it, or add it to MANIFEST_ACCEPTED with the reason it keeps its own version.');
+  process.exit(1);
+}
+console.log(`${'manifests'.padEnd(width)}  ${manifestsChecked} checked, all on ${canonical}`);
 let discovered;
 try {
   const { execFileSync } = await import('node:child_process');
