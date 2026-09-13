@@ -2832,14 +2832,13 @@ impl StorageProvider for FilenProvider {
             let mut next_dirs = Vec::new();
 
             for dir in &dirs_to_scan {
-                if let Ok(entries) = self.list(dir).await {
-                    for entry in entries {
-                        if crate::providers::matches_find_pattern(&entry.name, pattern) {
-                            results.push(entry.clone());
-                        }
-                        if entry.is_walkable_dir() && results.len() < 500 {
-                            next_dirs.push(entry.path.clone());
-                        }
+                let entries = self.list(dir).await?;
+                for entry in entries {
+                    if crate::providers::matches_find_pattern(&entry.name, pattern) {
+                        results.push(entry.clone());
+                    }
+                    if entry.is_walkable_dir() && results.len() < 500 {
+                        next_dirs.push(entry.path.clone());
                     }
                 }
                 if results.len() >= 500 {
@@ -3402,6 +3401,28 @@ async fn download_filen_chunk(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn find_propagates_listing_failure() {
+        use axum::{routing::post, Router};
+
+        let app = Router::new().route(
+            "/v3/dir/content",
+            post(|| async { r#"{"status":false,"message":"folder access denied"}"# }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = FilenProvider::new(demo_cfg());
+        provider.gateway_base_override = Some(format!("http://{addr}"));
+        let outcome = provider.find(".", "*").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref message))
+            if message == "folder access denied"),
+            "{outcome:?}"
+        );
+    }
 
     /// Verify the chunk-count math used by `upload()`. Mirrors the boundary
     /// cases that the Filen ingest is sensitive to: a one-byte file must be
