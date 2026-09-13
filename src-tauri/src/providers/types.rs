@@ -2660,16 +2660,36 @@ mod tests {
                     let Some(payload) = rest.strip_prefix('"') else {
                         continue;
                     };
-                    let head: String = payload.chars().take(40).collect::<String>().to_lowercase();
-                    let after_first_word = head.split_once(' ').map(|(_, r)| r).unwrap_or("");
-                    if head.starts_with(&format!("{tail}:"))
-                        || after_first_word.starts_with(&format!("{tail}:"))
-                    {
+                    let literal: String = payload
+                        .chars()
+                        .take_while(|c| *c != '"')
+                        .collect::<String>()
+                        .to_lowercase();
+                    // The phrase can sit at any word position, not only the first
+                    // two. "ocs json parse error: {}" renders as "Parse error: ocs
+                    // json parse error: ...", and a guard that only looked at the
+                    // first two words passed it: three such payloads survived the
+                    // sweep that was supposed to close this class.
+                    //
+                    // What separates a duplication from a sentence that happens to
+                    // use the same words is the colon. A heading restates what the
+                    // variant prints; "asset '{}' not found in release '{}'" names
+                    // the missing object and is correct English. Matching on the
+                    // colon alone leaves the twenty payloads of that second kind
+                    // untouched and needs no list of exceptions, which matters
+                    // because a guard that flags correct code gets deleted.
+                    //
+                    // Declared limit: a duplication written as a sentence with no
+                    // colon is not caught, on purpose. The whole literal is read
+                    // rather than a fixed window, because a long qualifier would
+                    // otherwise push the phrase out of view.
+                    if let Some(idx) = literal.find(&format!("{tail}:")) {
                         let line = src[..offset].lines().count();
+                        let upto = (idx + tail.len() + 1).min(literal.len());
                         found.push(format!(
-                            "{}:{line}: {variant} payload starts with \"{}\"",
+                            "{}:{line}: {variant} payload repeats \"{tail}\" in \"{}\"",
                             path.display(),
-                            head.split(':').next().unwrap_or(&head)
+                            &literal[..upto]
                         ));
                     }
                 }

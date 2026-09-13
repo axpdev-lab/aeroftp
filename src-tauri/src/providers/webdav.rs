@@ -1633,7 +1633,7 @@ impl WebDavProvider {
             }
 
             let json: serde_json::Value = serde_json::from_str(&text2)
-                .map_err(|e| ProviderError::ParseError(format!("OCS JSON parse error: {}", e)))?;
+                .map_err(|e| ProviderError::ParseError(format!("ocs json: {}", e)))?;
 
             let share_url = json
                 .pointer("/ocs/data/url")
@@ -1657,7 +1657,7 @@ impl WebDavProvider {
             )));
         }
         let json: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|e| ProviderError::ParseError(format!("OCS JSON parse error: {}", e)))?;
+            .map_err(|e| ProviderError::ParseError(format!("ocs json: {}", e)))?;
 
         let share_url = json
             .pointer("/ocs/data/url")

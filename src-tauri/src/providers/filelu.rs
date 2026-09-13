@@ -2118,10 +2118,7 @@ impl StorageProvider for FileLuProvider {
         let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_with_retry(&clone_url).await?;
         let body: serde_json::Value = resp.json().await.map_err(|e| {
-            ProviderError::ParseError(format!(
-                "Clone response parse error: {}",
-                redact_key(&e.to_string())
-            ))
+            ProviderError::ParseError(format!("clone response: {}", redact_key(&e.to_string())))
         })?;
 
         // Step 2: Move the clone to the destination folder if needed

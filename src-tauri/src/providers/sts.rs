@@ -521,11 +521,7 @@ fn parse_assume_role_response(xml: &str) -> Result<TempCredentials, ProviderErro
                 _ => {}
             },
             Ok(Event::Eof) => break,
-            Err(e) => {
-                return Err(ProviderError::ParseError(format!(
-                    "STS response XML parse error: {e}"
-                )))
-            }
+            Err(e) => return Err(ProviderError::ParseError(format!("sts response xml: {e}"))),
             _ => {}
         }
         buf.clear();
