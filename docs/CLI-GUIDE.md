@@ -1937,7 +1937,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--no-check-dest` | Skip remote directory listing during sync (assume destination is empty) |
 | `--max-depth <n>` | Maximum recursion depth for ls -R, find, sync, get -r, put -r |
 | `--default-time <ts>` | Fallback mtime when backend returns None. Accepts ISO 8601, RFC 3339, or `now` |
-| `--fast-list` | S3 only: recursive listing in a single API call (fewer API calls for large buckets) |
+| `--fast-list` | S3 only: recursive listing (fewer API calls for large buckets). Sync leaves depth-limited subtrees alone on both sides and refuses a listing cut at the entry cap, even without `--delete`. |
 | `--inplace` | Write downloads directly to final path (no .aerotmp temp file) |
 | `--chunk-size <size>` | Override upload chunk size (e.g., `64M`). Min 5M for S3 multipart |
 | `--buffer-size <size>` | Override download buffer size (e.g., `256K`, `1M`) |
