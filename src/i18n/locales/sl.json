@@ -4784,7 +4784,13 @@
                 "moveRight": "Premakni vrstico desno"
             },
             "deviceAttached": "Naprava priključena",
-            "deviceNotAttached": "Naprava ni priključena"
+            "deviceNotAttached": "Naprava ni priključena",
+            "bucketEncryption": {
+                "onTitle": "Novi predmeti v tem vedru so privzeto šifrirani ({mode}). To ne pove ničesar o že shranjenih predmetih in ničesar o SSE-C ali šifriranju na strani odjemalca.",
+                "offTitle": "To vedro nima privzetega šifriranja. To ni isto kot nešifrirano: SSE-C in šifriranja na strani odjemalca ta nastavitev ne prikazuje.",
+                "unknownKeyTitle": "Nastavitve šifriranja tega vedra nismo mogli prebrati, ker aplikacijski ključ nima zmožnosti readBucketEncryption. Vrednost, ki je ne smemo videti, ne pomeni, da je šifriranje izklopljeno.",
+                "unknownShapeTitle": "Nastavitve šifriranja tega vedra nismo mogli prebrati, ker odgovor ni imel dokumentirane oblike. Ključ jo je smel prebrati, zato gre za odgovor in ne za dovoljenja."
+            }
         },
         "gitlab": {
             "projectPath": "Pot projekta",

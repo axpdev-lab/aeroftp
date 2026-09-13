@@ -4784,7 +4784,13 @@
                 "moveRight": "Oldalsáv jobbra"
             },
             "deviceAttached": "Eszköz csatlakoztatva",
-            "deviceNotAttached": "Eszköz nincs csatlakoztatva"
+            "deviceNotAttached": "Eszköz nincs csatlakoztatva",
+            "bucketEncryption": {
+                "onTitle": "A tárolóba kerülő új objektumok alapértelmezés szerint titkosítva vannak ({mode}). Ez semmit nem mond a már tárolt objektumokról, és semmit az SSE-C vagy az ügyféloldali titkosítás felől.",
+                "offTitle": "Ennek a tárolónak nincs alapértelmezett titkosítása. Ez nem ugyanaz, mint a titkosítatlan: az SSE-C és az ügyféloldali titkosítás nem jelenik meg ebben a beállításban.",
+                "unknownKeyTitle": "Nem tudtuk beolvasni ennek a tárolónak a titkosítási beállítását, mert az alkalmazáskulcs nem rendelkezik a readBucketEncryption képességgel. Az az érték, amelyet nem láthatunk, nem jelenti azt, hogy a titkosítás ki van kapcsolva.",
+                "unknownShapeTitle": "Nem tudtuk beolvasni ennek a tárolónak a titkosítási beállítását, mert a válasznak nem volt dokumentált formája. A kulcs olvashatta volna, tehát a válaszról van szó, nem a jogosultságokról."
+            }
         },
         "gitlab": {
             "projectPath": "Projekt útvonal",

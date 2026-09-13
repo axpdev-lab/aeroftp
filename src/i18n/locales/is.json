@@ -4803,7 +4803,13 @@
                 "moveRight": "Færa til hægri"
             },
             "deviceAttached": "Tæki tengt",
-            "deviceNotAttached": "Tæki ekki tengt"
+            "deviceNotAttached": "Tæki ekki tengt",
+            "bucketEncryption": {
+                "onTitle": "Nýir hlutir í þessari fötu eru dulkóðaðir sjálfgefið ({mode}). Þetta segir ekkert um hluti sem þegar eru geymdir, og ekkert um SSE-C eða dulkóðun viðskiptavinarmegin.",
+                "offTitle": "Þessi fata hefur enga sjálfgefna dulkóðun. Það er ekki það sama og ódulkóðuð: SSE-C og dulkóðun viðskiptavinarmegin koma ekki fram í þessari stillingu.",
+                "unknownKeyTitle": "Við gátum ekki lesið dulkóðunarstillingu þessarar fötu, því forritslykillinn hefur ekki heimildina readBucketEncryption. Gildi sem við megum ekki sjá þýðir ekki að dulkóðun sé slökkt.",
+                "unknownShapeTitle": "Við gátum ekki lesið dulkóðunarstillingu þessarar fötu, því svarið hafði ekki skjalfest form. Lykillinn mátti lesa hana, svo þetta snýst um svarið en ekki um heimildir."
+            }
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",

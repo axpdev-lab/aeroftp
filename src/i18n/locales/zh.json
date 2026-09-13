@@ -4784,7 +4784,13 @@
                 "moveRight": "向右移动"
             },
             "deviceAttached": "设备已接入",
-            "deviceNotAttached": "设备未接入"
+            "deviceNotAttached": "设备未接入",
+            "bucketEncryption": {
+                "onTitle": "此存储桶中的新对象默认会被加密 ({mode})。这并不说明已存储对象的情况，也不说明 SSE-C 或客户端加密的情况。",
+                "offTitle": "此存储桶没有默认加密。这与未加密并不相同：此设置不会报告 SSE-C 和客户端加密。",
+                "unknownKeyTitle": "我们无法读取此存储桶的加密设置，因为应用程序密钥不具备 readBucketEncryption 权限。我们无权查看的值并不意味着加密已关闭。",
+                "unknownShapeTitle": "我们无法读取此存储桶的加密设置，因为响应没有已记录的格式。密钥本身有读取权限，所以这与响应有关，而与权限无关。"
+            }
         },
         "gitlab": {
             "projectPath": "项目路径",

@@ -4784,7 +4784,13 @@
                 "moveRight": "Liiguta paremale"
             },
             "deviceAttached": "Seade ühendatud",
-            "deviceNotAttached": "Seade pole ühendatud"
+            "deviceNotAttached": "Seade pole ühendatud",
+            "bucketEncryption": {
+                "onTitle": "Selle kopa uued objektid krüpteeritakse vaikimisi ({mode}). See ei ütle midagi juba salvestatud objektide kohta ega midagi SSE-C või kliendipoolse krüpteeringu kohta.",
+                "offTitle": "Sellel kopal puudub vaikimisi krüpteering. See ei ole sama mis krüpteerimata: SSE-C ja kliendipoolset krüpteeringut see säte ei kajasta.",
+                "unknownKeyTitle": "Me ei saanud selle kopa krüpteeringu sätet lugeda, sest rakenduse võtmel puudub õigus readBucketEncryption. Väärtus, mida meil ei ole lubatud näha, ei tähenda, et krüpteering oleks välja lülitatud.",
+                "unknownShapeTitle": "Me ei saanud selle kopa krüpteeringu sätet lugeda, sest vastusel ei olnud dokumenteeritud kuju. Võtmel oli lubatud seda lugeda, seega on asi vastuses, mitte õigustes."
+            }
         },
         "gitlab": {
             "projectPath": "Projekti tee",

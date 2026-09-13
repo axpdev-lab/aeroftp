@@ -4803,7 +4803,13 @@
                 "moveRight": "Mou la barra a la dreta"
             },
             "deviceAttached": "Dispositiu connectat",
-            "deviceNotAttached": "Dispositiu no connectat"
+            "deviceNotAttached": "Dispositiu no connectat",
+            "bucketEncryption": {
+                "onTitle": "Els objectes nous d'aquest bucket es xifren de manera predeterminada ({mode}). Això no diu res dels objectes ja emmagatzemats, ni de SSE-C ni del xifratge del costat del client.",
+                "offTitle": "Aquest bucket no té xifratge predeterminat. Això no és el mateix que no xifrat: aquesta configuració no informa ni de SSE-C ni del xifratge del costat del client.",
+                "unknownKeyTitle": "No hem pogut llegir la configuració de xifratge d'aquest bucket, perquè la clau d'aplicació no té la capacitat readBucketEncryption. Un valor que no tenim permís per veure no vol dir que el xifratge estigui desactivat.",
+                "unknownShapeTitle": "No hem pogut llegir la configuració de xifratge d'aquest bucket, perquè la resposta no tenia una forma documentada. La clau sí que tenia permís per llegir-la, així que es tracta de la resposta i no dels permisos."
+            }
         },
         "gitlab": {
             "projectPath": "Ruta del projecte",

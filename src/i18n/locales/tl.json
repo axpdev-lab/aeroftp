@@ -4803,7 +4803,13 @@
                 "moveRight": "Ilipat sa kanan"
             },
             "deviceAttached": "Nakakabit ang device",
-            "deviceNotAttached": "Hindi nakakabit ang device"
+            "deviceNotAttached": "Hindi nakakabit ang device",
+            "bucketEncryption": {
+                "onTitle": "Ang mga bagong object sa bucket na ito ay naka-encrypt bilang default ({mode}). Wala itong sinasabi tungkol sa mga object na nakaimbak na, at wala rin tungkol sa SSE-C o sa pag-encrypt sa panig ng kliyente.",
+                "offTitle": "Walang default na pag-encrypt ang bucket na ito. Hindi ito pareho sa hindi naka-encrypt: hindi iniuulat ng setting na ito ang SSE-C at ang pag-encrypt sa panig ng kliyente.",
+                "unknownKeyTitle": "Hindi namin nabasa ang setting ng pag-encrypt ng bucket na ito, dahil walang kakayahang readBucketEncryption ang application key. Ang halagang hindi kami pinapayagang makita ay hindi nangangahulugang naka-off ang pag-encrypt.",
+                "unknownShapeTitle": "Hindi namin nabasa ang setting ng pag-encrypt ng bucket na ito, dahil walang dokumentadong anyo ang sagot. Pinayagan ang key na basahin ito, kaya tungkol ito sa sagot at hindi sa mga pahintulot."
+            }
         },
         "gitlab": {
             "projectPath": "Path ng Project",

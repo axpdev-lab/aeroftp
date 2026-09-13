@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Edit2, Trash2, Copy, Loader2, Star, Heart, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle, Users, RefreshCw, Wifi, Smartphone } from 'lucide-react';
 import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap, getServerCryptOverlay } from '../../types';
+import { bucketEncryptionBadge } from '../../utils/bucketEncryptionBadge';
 import type { PeerDriveState } from '../../hooks/usePeerDriveStates';
 import { shortAfid } from '../../utils/aeroShare';
 import { ProtocolIcon } from '../ProtocolSelector';
@@ -230,6 +231,14 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
     const protocolClass = getProtocolClass(proto as ProviderType);
     const e2eBits = protocolClass === 'E2E' ? getE2EBits(proto as ProviderType) : null;
     const protocolClassLabel = e2eBits ? `E2E ${e2eBits}-bit` : protocolClass;
+    // What the bucket said about its own default encryption, cached at connect.
+    // The three-from-four mapping lives in `bucketEncryptionBadge`, where it is
+    // tested: an unknown must never render like a No, and which tooltip a
+    // unknown gets depends on whether the key or the payload was the reason.
+    const bucketEncBadge = bucketEncryptionBadge(server.lastBucketEncryption);
+    const bucketEncTitle = bucketEncBadge.titleKey
+        ? t(bucketEncBadge.titleKey, { mode: server.lastBucketEncryption?.mode || '' })
+        : undefined;
     // Skip class badge when it duplicates the brand badge (FTP/FTPS/SFTP show protocol uppercase already)
     const showClassBadge = !['FTP', 'FTPS', 'SFTP'].includes(protocolClass);
     const classBadgeColor: Record<string, string> = {
@@ -337,9 +346,21 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
                 </span>
             ) : null}
             {showClassBadge && !isOcsBranded && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 ${classBadgeColor[protocolClass] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 ${classBadgeColor[protocolClass] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                    title={bucketEncBadge.label ? undefined : bucketEncTitle}
+                >
                     {e2eBits && <Lock size={10} />}
                     {protocolClassLabel}
+                </span>
+            )}
+            {bucketEncBadge.label && (
+                <span
+                    className="text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 whitespace-nowrap bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300"
+                    title={bucketEncTitle}
+                >
+                    <Lock size={10} />
+                    {bucketEncBadge.label}
                 </span>
             )}
             {certVerified && (

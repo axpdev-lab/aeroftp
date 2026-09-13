@@ -4784,7 +4784,13 @@
                 "moveRight": "Pindahkan ke kanan"
             },
             "deviceAttached": "Perangkat terpasang",
-            "deviceNotAttached": "Perangkat tidak terpasang"
+            "deviceNotAttached": "Perangkat tidak terpasang",
+            "bucketEncryption": {
+                "onTitle": "Objek baru di bucket ini dienkripsi secara default ({mode}). Ini tidak mengatakan apa pun tentang objek yang sudah tersimpan, dan tidak pula tentang SSE-C atau enkripsi sisi klien.",
+                "offTitle": "Bucket ini tidak memiliki enkripsi default. Itu tidak sama dengan tidak terenkripsi: SSE-C dan enkripsi sisi klien tidak dilaporkan oleh pengaturan ini.",
+                "unknownKeyTitle": "Kami tidak dapat membaca pengaturan enkripsi bucket ini, karena kunci aplikasi tidak memiliki kemampuan readBucketEncryption. Nilai yang tidak boleh kami lihat tidak berarti enkripsi dimatikan.",
+                "unknownShapeTitle": "Kami tidak dapat membaca pengaturan enkripsi bucket ini, karena jawabannya tidak memiliki bentuk yang terdokumentasi. Kunci tersebut diizinkan membacanya, jadi ini tentang jawabannya dan bukan tentang izin."
+            }
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",

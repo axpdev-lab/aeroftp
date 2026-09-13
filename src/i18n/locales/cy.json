@@ -4803,7 +4803,13 @@
                 "moveRight": "Symud i'r dde"
             },
             "deviceAttached": "Dyfais wedi'i chysylltu",
-            "deviceNotAttached": "Dyfais heb ei chysylltu"
+            "deviceNotAttached": "Dyfais heb ei chysylltu",
+            "bucketEncryption": {
+                "onTitle": "Mae gwrthrychau newydd yn y bwced hwn yn cael eu hamgryptio yn ddiofyn ({mode}). Nid yw hyn yn dweud dim am wrthrychau sydd eisoes wedi eu storio, na dim am SSE-C nac am amgryptio ar ochr y cleient.",
+                "offTitle": "Nid oes gan y bwced hwn amgryptio diofyn. Nid yw hynny'r un peth â bod heb ei amgryptio: nid yw'r gosodiad hwn yn adrodd am SSE-C nac am amgryptio ar ochr y cleient.",
+                "unknownKeyTitle": "Ni allem ddarllen gosodiad amgryptio'r bwced hwn, oherwydd nad oes gan yr allwedd rhaglen y gallu readBucketEncryption. Nid yw gwerth nad oes hawl gennym i'w weld yn golygu bod amgryptio wedi ei ddiffodd.",
+                "unknownShapeTitle": "Ni allem ddarllen gosodiad amgryptio'r bwced hwn, oherwydd nad oedd gan yr ateb siâp wedi ei ddogfennu. Roedd gan yr allwedd hawl i'w ddarllen, felly mae hyn yn ymwneud â'r ateb ac nid â chaniatâd."
+            }
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",

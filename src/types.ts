@@ -643,6 +643,28 @@ export interface ServerProfile {
     // (#270 c.17207733). Undefined when unknown/unsupported.
     versioningBytes?: number;
   };
+  // What the bucket said about its own default server-side encryption, cached
+  // after a successful connection so the card can draw without a live
+  // connection, exactly as `lastQuota` is. Native B2 only: it is the one road
+  // that can tell the three answers apart, because Backblaze's S3-compatible
+  // endpoint replies `AES256` for every bucket, configured or not.
+  //
+  // `state` is never a boolean. Two of the four states B2 can produce mean "we
+  // do not know" (the key may not read the setting, or the payload is not a
+  // documented shape), and a boolean would spell both as "not encrypted", which
+  // Backblaze explicitly warns against. `reason` keeps them apart so a tooltip
+  // can name a missing capability only when that is actually why.
+  lastBucketEncryption?: {
+    state: "on" | "off" | "unknown";
+    reason?: "missing_capability" | "unrecognised_shape";
+    // The type B2 named (e.g. `SSE-B2`) and the algorithm it named (e.g.
+    // `AES256`). Present only with `state: "on"`, and absent when B2 named
+    // none: a strength nobody told us is not a strength to display.
+    mode?: string;
+    algorithm?: string;
+    source: "api";
+    fetched_at: string;
+  };
   // Aggregate compression telemetry from the last AeroVault op run against
   // this profile (Ehud #162). Feeds the optional, default-hidden "Saved"
   // and "Saved%" columns in My Servers and `aeroftp-cli profiles`.

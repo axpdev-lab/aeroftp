@@ -4784,7 +4784,13 @@
                 "moveRight": "Perkelti į dešinę"
             },
             "deviceAttached": "Įrenginys prijungtas",
-            "deviceNotAttached": "Įrenginys neprijungtas"
+            "deviceNotAttached": "Įrenginys neprijungtas",
+            "bucketEncryption": {
+                "onTitle": "Nauji objektai šiame kibire pagal numatytuosius nustatymus yra šifruojami ({mode}). Tai nieko nepasako apie jau saugomus objektus ir nieko apie SSE-C ar šifravimą kliento pusėje.",
+                "offTitle": "Šis kibiras neturi numatytojo šifravimo. Tai nėra tas pat, kas nešifruotas: SSE-C ir šifravimo kliento pusėje šis nustatymas nerodo.",
+                "unknownKeyTitle": "Nepavyko nuskaityti šio kibiro šifravimo nustatymo, nes programos raktas neturi readBucketEncryption galimybės. Reikšmė, kurios mums neleidžiama matyti, nereiškia, kad šifravimas išjungtas.",
+                "unknownShapeTitle": "Nepavyko nuskaityti šio kibiro šifravimo nustatymo, nes atsakymas neturėjo dokumentuotos formos. Raktui buvo leista jį skaityti, todėl tai susiję su atsakymu, o ne su teisėmis."
+            }
         },
         "gitlab": {
             "projectPath": "Projekto kelias",

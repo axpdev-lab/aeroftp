@@ -4784,7 +4784,13 @@
                 "moveRight": "Alih ke kanan"
             },
             "deviceAttached": "Peranti dipasang",
-            "deviceNotAttached": "Peranti tidak dipasang"
+            "deviceNotAttached": "Peranti tidak dipasang",
+            "bucketEncryption": {
+                "onTitle": "Objek baharu dalam bucket ini disulitkan secara lalai ({mode}). Ini tidak menyatakan apa-apa tentang objek yang sudah disimpan, dan tiada apa-apa tentang SSE-C atau penyulitan sebelah klien.",
+                "offTitle": "Bucket ini tiada penyulitan lalai. Itu bukan bermakna tidak disulitkan: SSE-C dan penyulitan sebelah klien tidak dilaporkan oleh tetapan ini.",
+                "unknownKeyTitle": "Kami tidak dapat membaca tetapan penyulitan bucket ini, kerana kunci aplikasi tidak mempunyai keupayaan readBucketEncryption. Nilai yang tidak dibenarkan kami lihat tidak bermakna penyulitan dimatikan.",
+                "unknownShapeTitle": "Kami tidak dapat membaca tetapan penyulitan bucket ini, kerana jawapannya tidak mempunyai bentuk yang didokumenkan. Kunci itu dibenarkan membacanya, jadi ini tentang jawapan dan bukan tentang kebenaran."
+            }
         },
         "gitlab": {
             "projectPath": "Laluan Projek",

@@ -4784,7 +4784,13 @@
                 "moveRight": "Seitenleiste nach rechts"
             },
             "deviceAttached": "Gerät angeschlossen",
-            "deviceNotAttached": "Gerät nicht angeschlossen"
+            "deviceNotAttached": "Gerät nicht angeschlossen",
+            "bucketEncryption": {
+                "onTitle": "Neue Objekte in diesem Bucket werden standardmäßig verschlüsselt ({mode}). Das sagt nichts über bereits gespeicherte Objekte aus und nichts über SSE-C oder clientseitige Verschlüsselung.",
+                "offTitle": "Dieser Bucket hat keine Standardverschlüsselung. Das ist nicht dasselbe wie unverschlüsselt: SSE-C und clientseitige Verschlüsselung werden von dieser Einstellung nicht gemeldet.",
+                "unknownKeyTitle": "Wir konnten die Verschlüsselungseinstellung dieses Buckets nicht lesen, weil der Anwendungsschlüssel nicht über die Berechtigung readBucketEncryption verfügt. Ein Wert, den wir nicht sehen dürfen, bedeutet nicht, dass die Verschlüsselung deaktiviert ist.",
+                "unknownShapeTitle": "Wir konnten die Verschlüsselungseinstellung dieses Buckets nicht lesen, weil die Antwort keine dokumentierte Form hatte. Der Schlüssel durfte sie lesen, es geht also um die Antwort und nicht um Berechtigungen."
+            }
         },
         "gitlab": {
             "projectPath": "Projektpfad",

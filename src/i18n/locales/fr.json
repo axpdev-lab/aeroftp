@@ -4784,7 +4784,13 @@
                 "moveRight": "Déplacer la barre à droite"
             },
             "deviceAttached": "Appareil connecté",
-            "deviceNotAttached": "Appareil non connecté"
+            "deviceNotAttached": "Appareil non connecté",
+            "bucketEncryption": {
+                "onTitle": "Les nouveaux objets de ce bucket sont chiffrés par défaut ({mode}). Cela ne dit rien des objets déjà stockés, ni de SSE-C, ni du chiffrement côté client.",
+                "offTitle": "Ce bucket n'a pas de chiffrement par défaut. Ce n'est pas la même chose que non chiffré : SSE-C et le chiffrement côté client ne sont pas signalés par ce paramètre.",
+                "unknownKeyTitle": "Nous n'avons pas pu lire le paramètre de chiffrement de ce bucket, car la clé d'application ne dispose pas de la capacité readBucketEncryption. Une valeur que nous n'avons pas le droit de voir ne signifie pas que le chiffrement est désactivé.",
+                "unknownShapeTitle": "Nous n'avons pas pu lire le paramètre de chiffrement de ce bucket, car la réponse n'avait pas de forme documentée. La clé avait le droit de le lire, il s'agit donc de la réponse et non des permissions."
+            }
         },
         "gitlab": {
             "projectPath": "Chemin du projet",
