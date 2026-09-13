@@ -1579,7 +1579,7 @@ impl StorageProvider for SftpProvider {
         let metadata = sftp
             .metadata(&full_path)
             .await
-            .map_err(|e| classify_russh_err(e, |s| ProviderError::NotFound(s)))?;
+            .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
 
         if let Some(perms) = metadata.permissions {
             if (perms & 0o40000) == 0 {
@@ -1644,7 +1644,7 @@ impl StorageProvider for SftpProvider {
                 if let Some(Ok(file)) = preopened {
                     let _ = file.close().await;
                 }
-                return Err(classify_russh_err(error, |s| ProviderError::NotFound(s)));
+                return Err(classify_russh_err(error, ProviderError::NotFound));
             }
         };
         let total_size = metadata.size.unwrap_or(0);
@@ -2495,7 +2495,7 @@ impl StorageProvider for SftpProvider {
         let metadata = sftp
             .metadata(&full_path)
             .await
-            .map_err(|e| classify_russh_err(e, |s| ProviderError::NotFound(s)))?;
+            .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
 
         let name = Path::new(&full_path)
             .file_name()
@@ -2526,7 +2526,7 @@ impl StorageProvider for SftpProvider {
         let metadata = sftp
             .metadata(&full_path)
             .await
-            .map_err(|e| classify_russh_err(e, |s| ProviderError::NotFound(s)))?;
+            .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
 
         Ok(metadata.size.unwrap_or(0))
     }
