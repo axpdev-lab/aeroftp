@@ -126,6 +126,12 @@ run-clean.sh
 # Exception: re-emits the aerorsync module as a standalone crate, so the CI can
 # prove with the compiler that it does not depend on the application
 !/scripts/aerorsync-emit.sh
+# Exception: the single list of the files that declare the application version.
+# Three callers reference it (checks.yml on every pull request, build.yml's R10
+# step, and the local pre-push gate), so if this line is missing the script is
+# absent from the repository while three workflows invoke it: red everywhere, and
+# invisible in `git status`, because an ignored file looks exactly like a clean tree.
+!/scripts/check-version-sites.mjs
 # Exception: regenerates the providers table from the GUI SSOT (#270 17104681)
 !/scripts/gen-providers-table.ts
 # Exception: derives every published provider/preset/protocol figure into
