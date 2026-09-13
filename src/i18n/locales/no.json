@@ -4803,7 +4803,13 @@
                 "moveRight": "Flytt til høyre"
             },
             "deviceAttached": "Enhet tilkoblet",
-            "deviceNotAttached": "Enhet ikke tilkoblet"
+            "deviceNotAttached": "Enhet ikke tilkoblet",
+            "bucketEncryption": {
+                "onTitle": "Nye objekter i denne bøtta krypteres som standard ({mode}). Dette sier ingenting om objekter som allerede er lagret, og ingenting om SSE-C eller kryptering på klientsiden.",
+                "offTitle": "Denne bøtta har ingen standardkryptering. Det er ikke det samme som ukryptert: SSE-C og kryptering på klientsiden rapporteres ikke av denne innstillingen.",
+                "unknownKeyTitle": "Vi kunne ikke lese krypteringsinnstillingen til denne bøtta, fordi applikasjonsnøkkelen ikke har rettigheten readBucketEncryption. En verdi vi ikke har lov til å se, betyr ikke at krypteringen er av.",
+                "unknownShapeTitle": "Vi kunne ikke lese krypteringsinnstillingen til denne bøtta, fordi svaret ikke hadde en dokumentert form. Nøkkelen hadde lov til å lese den, så dette handler om svaret og ikke om rettigheter."
+            }
         },
         "gitlab": {
             "projectPath": "Prosjektsti",

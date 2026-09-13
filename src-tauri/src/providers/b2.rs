@@ -11,7 +11,7 @@ use reqwest::header::{
     HeaderName, HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, RANGE,
 };
 use secrecy::{ExposeSecret, SecretString};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
@@ -324,6 +324,102 @@ impl BucketBudget {
     }
 }
 
+/// What the bucket said about its default server-side encryption, for a
+/// surface outside this file.
+///
+/// `state` is the same four-state answer the budget uses; `mode` and
+/// `algorithm` are the two values B2 returns when there is a default, and they
+/// are what a label can name. Both are `None` whenever `state` is not
+/// `Reduces`, because there is nothing to name: a bucket without a default and
+/// a bucket we may not read must not be spelled the same way.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BucketEncryption {
+    state: Setting,
+    mode: Option<String>,
+    algorithm: Option<String>,
+}
+
+/// What a surface outside this module may say about the bucket's default
+/// encryption, with the reason when there is nothing to say.
+///
+/// Three visible outcomes, four states behind them. `Unauthorized` and
+/// `Unrecognised` both mean "we do not know" and must reach the interface as
+/// that, never as "no": Backblaze documents that a filtered null value does not
+/// indicate encryption is disabled. They are kept apart only in `reason`,
+/// because naming a missing capability is defensible for the first and false
+/// for the second, where the key was allowed to look.
+#[derive(Debug, Clone, Serialize)]
+pub struct BucketEncryptionInfo {
+    /// `"on"`, `"off"` or `"unknown"`. Never a boolean: two of the four states
+    /// are an absence of knowledge, and a boolean would spell them as a No.
+    pub state: &'static str,
+    /// Why it is unknown: `"missing_capability"` or `"unrecognised_shape"`.
+    /// `None` whenever the state is not unknown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<&'static str>,
+    /// The type B2 named, for example `SSE-B2`. Only present when the state is
+    /// `"on"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    /// The algorithm B2 named, for example `AES256`. Absent when B2 did not
+    /// name one: a strength we were not told is not a strength to display.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub algorithm: Option<String>,
+}
+
+impl BucketEncryption {
+    /// The same reading, in the shape a command may hand to the interface.
+    fn to_info(&self) -> BucketEncryptionInfo {
+        let (state, reason) = match self.state {
+            Setting::Reduces => ("on", None),
+            Setting::DoesNot => ("off", None),
+            Setting::Unauthorized => ("unknown", Some("missing_capability")),
+            Setting::Unrecognised => ("unknown", Some("unrecognised_shape")),
+        };
+        BucketEncryptionInfo {
+            state,
+            reason,
+            mode: self.mode.clone(),
+            algorithm: self.algorithm.clone(),
+        }
+    }
+}
+
+/// Read the encryption setting of a bucket entry, keeping what the budget
+/// discards. The budget logic is untouched: it asks the same wrapper for the
+/// same `mode` and is not routed through here.
+fn bucket_encryption(bucket: &B2Bucket) -> BucketEncryption {
+    let nothing_to_name = |state| BucketEncryption {
+        state,
+        mode: None,
+        algorithm: None,
+    };
+    match read_wrapper(bucket.default_server_side_encryption.as_ref()) {
+        Wrapper::Value(value) => match value.get("mode") {
+            // Documented when disabled: "algorithm and mode will both be
+            // returned as null". Nothing to name, and naming nothing is the
+            // point: no default is not the same claim as not encrypted.
+            Some(serde_json::Value::Null) => nothing_to_name(Setting::DoesNot),
+            Some(serde_json::Value::String(mode)) if !mode.is_empty() => BucketEncryption {
+                state: Setting::Reduces,
+                mode: Some(mode.clone()),
+                // Documented beside the mode as "AES256". Absent, or of another
+                // shape, leaves the strength unnamed: inventing a number here
+                // is how a label comes to say 256 about a bucket that never
+                // said it.
+                algorithm: value
+                    .get("algorithm")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string),
+            },
+            // Authorised, so the key is not the problem: the payload is.
+            _ => nothing_to_name(Setting::Unrecognised),
+        },
+        Wrapper::Unusable => nothing_to_name(Setting::Unrecognised),
+        Wrapper::Denied => nothing_to_name(Setting::Unauthorized),
+    }
+}
+
 /// What one of B2's capability-gated wrappers actually told us.
 ///
 /// Both settings arrive as `{ "isClientAuthorizedToRead": bool, "value": ... }`.
@@ -564,6 +660,10 @@ pub struct B2Provider {
     /// Drives the header budget. Unread until `resolve_bucket_id` has run, and
     /// it stays unread for a key that may not see the settings.
     bucket_budget: BucketBudget,
+    /// The same listing read for a different purpose: what the interface may
+    /// say about this bucket's default encryption. Read once at connect from
+    /// the bucket listing we already fetch, so naming it costs no request.
+    bucket_encryption: BucketEncryption,
 
     current_path: String,
     connected: bool,
@@ -593,6 +693,11 @@ impl B2Provider {
             auth_token: SecretString::new(String::new().into()),
             bucket_id: String::new(),
             bucket_budget: BucketBudget::UNREAD,
+            bucket_encryption: BucketEncryption {
+                state: Setting::Unauthorized,
+                mode: None,
+                algorithm: None,
+            },
             current_path: "/".to_string(),
             connected: false,
             multi_thread_streams: 1,
@@ -709,6 +814,7 @@ impl B2Provider {
                 ))
             })?;
         self.bucket_budget = bucket_budget(&target);
+        self.bucket_encryption = bucket_encryption(&target);
         self.bucket_id = target.bucket_id;
         Ok(())
     }
@@ -717,6 +823,13 @@ impl B2Provider {
     /// access. Bucket-restricted keys naturally return their one allowed
     /// bucket; the manual field remains available when the key lacks the
     /// `listBuckets` capability altogether (#369).
+    /// What this bucket says about default server-side encryption, as read at
+    /// connect. Before a successful connect it reads as unknown, which is the
+    /// honest answer for a listing nobody has fetched yet.
+    pub fn bucket_encryption_info(&self) -> BucketEncryptionInfo {
+        self.bucket_encryption.to_info()
+    }
+
     pub async fn discover_buckets(&mut self) -> Result<Vec<String>, ProviderError> {
         self.authorize().await?;
         let mut names: Vec<String> = self
@@ -3667,6 +3780,100 @@ mod tests {
     }
 
     // ── Encryption, gated by readBucketEncryption ──────────────────────────
+
+    /// Default encryption on: the card may name the type and the bits, and both
+    /// come from the response we already parse. `mode` carries the type,
+    /// `algorithm` the strength, and today the reader keeps only the first.
+    /// The four states reach a surface as three answers, and the two unknowns
+    /// keep their reason. An unknown spelled as "off" would be the one lie this
+    /// whole path exists to avoid.
+    #[test]
+    fn the_four_states_reach_the_interface_as_three_answers() {
+        let info = |state| {
+            BucketEncryption {
+                state,
+                mode: None,
+                algorithm: None,
+            }
+            .to_info()
+        };
+        assert_eq!(info(Setting::Reduces).state, "on");
+        assert_eq!(info(Setting::DoesNot).state, "off");
+        assert_eq!(info(Setting::Unauthorized).state, "unknown");
+        assert_eq!(info(Setting::Unrecognised).state, "unknown");
+        assert_eq!(
+            info(Setting::Unauthorized).reason,
+            Some("missing_capability")
+        );
+        assert_eq!(
+            info(Setting::Unrecognised).reason,
+            Some("unrecognised_shape"),
+            "the key was allowed to look, so blaming a capability would contradict the response"
+        );
+        assert_eq!(info(Setting::Reduces).reason, None);
+        assert_eq!(info(Setting::DoesNot).reason, None);
+    }
+
+    #[test]
+    fn an_encrypting_bucket_reports_its_type_and_algorithm() {
+        let bucket = bucket_with(
+            "defaultServerSideEncryption",
+            authorized(serde_json::json!({ "algorithm": "AES256", "mode": "SSE-B2" })),
+        );
+        let read = bucket_encryption(&bucket);
+        assert_eq!(read.state, Setting::Reduces);
+        assert_eq!(read.mode.as_deref(), Some("SSE-B2"));
+        assert_eq!(read.algorithm.as_deref(), Some("AES256"));
+    }
+
+    /// No default encryption. The card says nothing, and says it without a
+    /// crossed-out lock: SSE-C and client-side encryption live outside this
+    /// field, so "no default" is not "not encrypted".
+    #[test]
+    fn a_plain_bucket_reports_no_type_and_no_algorithm() {
+        let bucket = bucket_with(
+            "defaultServerSideEncryption",
+            authorized(serde_json::json!({ "algorithm": null, "mode": null })),
+        );
+        let read = bucket_encryption(&bucket);
+        assert_eq!(read.state, Setting::DoesNot);
+        assert_eq!(read.mode, None);
+        assert_eq!(read.algorithm, None);
+    }
+
+    /// The frequent one: a key restricted to a bucket is the norm, so B2 tells
+    /// us nothing. This must reach the card as "we do not know" and never as
+    /// "no", and the reason is about our key, so naming the capability is a
+    /// statement we can defend.
+    #[test]
+    fn an_unauthorized_key_reports_unknown_and_never_no() {
+        let bucket = bucket_with(
+            "defaultServerSideEncryption",
+            serde_json::json!({ "isClientAuthorizedToRead": false, "value": null }),
+        );
+        let read = bucket_encryption(&bucket);
+        assert_eq!(read.state, Setting::Unauthorized);
+        assert!(read.state.is_unknown(), "unknown, not a No");
+        assert_ne!(read.state, Setting::DoesNot);
+        assert_eq!(read.mode, None);
+        assert_eq!(read.algorithm, None);
+    }
+
+    /// Authorised, and the payload is not a documented shape. Also "we do not
+    /// know", but blaming a missing capability here would contradict the
+    /// response itself, so the two unknowns stay apart.
+    #[test]
+    fn an_unrecognised_payload_reports_unknown_without_blaming_the_key() {
+        let bucket = bucket_with(
+            "defaultServerSideEncryption",
+            authorized(serde_json::json!({ "mode": 7 })),
+        );
+        let read = bucket_encryption(&bucket);
+        assert_eq!(read.state, Setting::Unrecognised);
+        assert!(read.state.is_unknown());
+        assert_eq!(read.mode, None);
+        assert_eq!(read.algorithm, None);
+    }
 
     #[test]
     fn an_encrypting_bucket_reduces_the_budget() {

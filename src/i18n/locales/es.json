@@ -4784,7 +4784,13 @@
                 "moveRight": "Mover barra a la derecha"
             },
             "deviceAttached": "Dispositivo conectado",
-            "deviceNotAttached": "Dispositivo no conectado"
+            "deviceNotAttached": "Dispositivo no conectado",
+            "bucketEncryption": {
+                "onTitle": "Los objetos nuevos de este bucket se cifran de forma predeterminada ({mode}). Esto no dice nada sobre los objetos ya almacenados, ni sobre SSE-C ni sobre el cifrado del lado del cliente.",
+                "offTitle": "Este bucket no tiene cifrado predeterminado. Eso no es lo mismo que sin cifrar: SSE-C y el cifrado del lado del cliente no se reflejan en esta configuración.",
+                "unknownKeyTitle": "No hemos podido leer la configuración de cifrado de este bucket, porque la clave de aplicación no tiene la capacidad readBucketEncryption. Un valor que no se nos permite ver no significa que el cifrado esté desactivado.",
+                "unknownShapeTitle": "No hemos podido leer la configuración de cifrado de este bucket, porque la respuesta no tenía una forma documentada. La clave sí tenía permiso para leerla, así que se trata de la respuesta y no de los permisos."
+            }
         },
         "gitlab": {
             "projectPath": "Ruta del proyecto",

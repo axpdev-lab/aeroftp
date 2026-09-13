@@ -4960,6 +4960,12 @@
                 "aerocryptTitle": "AeroCrypt encrypted overlay (native): names and contents are encrypted on this server.",
                 "rcloneTitle": "rclone crypt overlay (interop): names and contents are encrypted on this server."
             },
+            "bucketEncryption": {
+                "onTitle": "New objects in this bucket are encrypted by default ({mode}). This says nothing about objects already stored, and nothing about SSE-C or client-side encryption.",
+                "offTitle": "This bucket has no default encryption. That is not the same as unencrypted: SSE-C and client-side encryption are not reported by this setting.",
+                "unknownKeyTitle": "We could not read the encryption setting of this bucket, because the application key does not have the readBucketEncryption capability. A value we are not allowed to see does not mean encryption is off.",
+                "unknownShapeTitle": "We could not read the encryption setting of this bucket, because the answer did not have a documented shape. The key was allowed to read it, so this is about the answer and not about permissions."
+            },
             "confirmDeleteServer": "Delete server \"{name}\"? This removes saved credentials and cannot be undone.",
             "noServers": "No saved servers",
             "noServersHint": "Start with a quick connection or explore the service catalog.",

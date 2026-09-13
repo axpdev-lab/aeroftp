@@ -5102,7 +5102,13 @@
                 "moveRight": "Sposta barra a destra"
             },
             "deviceAttached": "Dispositivo collegato",
-            "deviceNotAttached": "Dispositivo non collegato"
+            "deviceNotAttached": "Dispositivo non collegato",
+            "bucketEncryption": {
+                "onTitle": "I nuovi oggetti in questo bucket sono crittografati per impostazione predefinita ({mode}). Questo non dice nulla sugli oggetti già archiviati, né su SSE-C o sulla crittografia lato client.",
+                "offTitle": "Questo bucket non ha una crittografia predefinita. Non è la stessa cosa di non crittografato: SSE-C e la crittografia lato client non vengono segnalate da questa impostazione.",
+                "unknownKeyTitle": "Non siamo riusciti a leggere l'impostazione di crittografia di questo bucket, perché la chiave dell'applicazione non dispone della capacità readBucketEncryption. Un valore che non ci è consentito vedere non significa che la crittografia sia disattivata.",
+                "unknownShapeTitle": "Non siamo riusciti a leggere l'impostazione di crittografia di questo bucket, perché la risposta non aveva una forma documentata. La chiave era autorizzata a leggerla, quindi il problema riguarda la risposta e non i permessi."
+            }
         },
         "gitlab": {
             "projectPath": "Percorso progetto",

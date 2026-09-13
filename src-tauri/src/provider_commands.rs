@@ -6238,6 +6238,37 @@ pub async fn provider_import_link(
     Ok(())
 }
 
+/// What the connected B2 bucket says about default server-side encryption.
+///
+/// Read at connect from the bucket listing B2 already returns, so this costs no
+/// request. Three answers, `on` / `off` / `unknown`, and the reason travels with
+/// the unknown: a key without `readBucketEncryption` is told nothing, which is a
+/// fact about our key and never about the bucket, and Backblaze documents that a
+/// filtered null value does not mean encryption is disabled. Spelling that as
+/// `off` would be the one lie this path exists to avoid.
+///
+/// Not the S3 road: Backblaze's S3-compatible `GET /?encryption` answers
+/// `AES256` for every bucket, including those with no configuration stored, so a
+/// lock derived from it would be a constant wearing the clothes of a measurement.
+/// The native listing is the only source that can tell the three apart.
+#[tauri::command]
+pub async fn provider_bucket_encryption(
+    state: State<'_, ProviderState>,
+) -> Result<crate::providers::b2::BucketEncryptionInfo, String> {
+    let mut provider_lock = state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    // The live provider is the crypt decorator whenever an overlay is armed, so
+    // the concrete one has to be reached through it: a direct downcast would
+    // fail on exactly the profiles that carry both kinds of encryption.
+    crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+        .as_any_mut()
+        .downcast_mut::<crate::providers::B2Provider>()
+        .map(|b2| b2.bucket_encryption_info())
+        .ok_or_else(|| "Bucket encryption is only reported by the native B2 provider".to_string())
+}
+
 /// Get storage quota information (used/total/free bytes)
 #[tauri::command]
 pub async fn provider_storage_info(state: State<'_, ProviderState>) -> Result<StorageInfo, String> {

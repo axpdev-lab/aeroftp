@@ -4803,7 +4803,13 @@
                 "moveRight": "Eraman eskuinera"
             },
             "deviceAttached": "Gailua konektatuta",
-            "deviceNotAttached": "Gailua ez dago konektatuta"
+            "deviceNotAttached": "Gailua ez dago konektatuta",
+            "bucketEncryption": {
+                "onTitle": "Bucket honetako objektu berriak lehenespenez enkriptatzen dira ({mode}). Horrek ez du ezer esaten dagoeneko gordeta dauden objektuei buruz, ezta SSE-C edo bezero aldeko enkriptatzeari buruz ere.",
+                "offTitle": "Bucket honek ez du enkriptatze lehenetsirik. Hori ez da enkriptatu gabe egotearen gauza bera: ezarpen honek ez du SSE-C ez bezero aldeko enkriptatzearen berri ematen.",
+                "unknownKeyTitle": "Ezin izan dugu bucket honen enkriptatze ezarpena irakurri, aplikazioaren gakoak ez baitu readBucketEncryption gaitasuna. Ikusteko baimenik ez dugun balio batek ez du esan nahi enkriptatzea itzalita dagoenik.",
+                "unknownShapeTitle": "Ezin izan dugu bucket honen enkriptatze ezarpena irakurri, erantzunak ez baitzuen dokumentatutako formarik. Gakoak irakurtzeko baimena zuen, beraz, kontua erantzuna da eta ez baimenak."
+            }
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",

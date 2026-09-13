@@ -4784,7 +4784,13 @@
                 "moveRight": "Siirrä oikealle"
             },
             "deviceAttached": "Laite liitetty",
-            "deviceNotAttached": "Laitetta ei liitetty"
+            "deviceNotAttached": "Laitetta ei liitetty",
+            "bucketEncryption": {
+                "onTitle": "Tämän säilön uudet objektit salataan oletusarvoisesti ({mode}). Tämä ei kerro mitään jo tallennetuista objekteista eikä mitään SSE-C:stä tai asiakaspään salauksesta.",
+                "offTitle": "Tällä säilöllä ei ole oletussalausta. Se ei ole sama asia kuin salaamaton: SSE-C ja asiakaspään salaus eivät näy tässä asetuksessa.",
+                "unknownKeyTitle": "Emme voineet lukea tämän säilön salausasetusta, koska sovellusavaimella ei ole readBucketEncryption-oikeutta. Arvo, jota emme saa nähdä, ei tarkoita, että salaus olisi pois käytöstä.",
+                "unknownShapeTitle": "Emme voineet lukea tämän säilön salausasetusta, koska vastauksella ei ollut dokumentoitua muotoa. Avaimella oli oikeus lukea se, joten kyse on vastauksesta eikä käyttöoikeuksista."
+            }
         },
         "gitlab": {
             "projectPath": "Projektipolku",

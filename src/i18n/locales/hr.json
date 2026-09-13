@@ -4784,7 +4784,13 @@
                 "moveRight": "Pomakni traku udesno"
             },
             "deviceAttached": "Uređaj priključen",
-            "deviceNotAttached": "Uređaj nije priključen"
+            "deviceNotAttached": "Uređaj nije priključen",
+            "bucketEncryption": {
+                "onTitle": "Novi objekti u ovom bucketu šifriraju se prema zadanim postavkama ({mode}). To ne govori ništa o već pohranjenim objektima, ni o SSE-C ni o šifriranju na strani klijenta.",
+                "offTitle": "Ovaj bucket nema zadano šifriranje. To nije isto što i nešifriran: SSE-C i šifriranje na strani klijenta ova postavka ne prijavljuje.",
+                "unknownKeyTitle": "Nismo mogli pročitati postavku šifriranja ovog bucketa jer aplikacijski ključ nema mogućnost readBucketEncryption. Vrijednost koju nam nije dopušteno vidjeti ne znači da je šifriranje isključeno.",
+                "unknownShapeTitle": "Nismo mogli pročitati postavku šifriranja ovog bucketa jer odgovor nije imao dokumentirani oblik. Ključ ju je smio pročitati, pa je riječ o odgovoru, a ne o dopuštenjima."
+            }
         },
         "gitlab": {
             "projectPath": "Putanja projekta",

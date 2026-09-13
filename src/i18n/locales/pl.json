@@ -4784,7 +4784,13 @@
                 "moveRight": "Przesuń panel w prawo"
             },
             "deviceAttached": "Urządzenie podłączone",
-            "deviceNotAttached": "Urządzenie niepodłączone"
+            "deviceNotAttached": "Urządzenie niepodłączone",
+            "bucketEncryption": {
+                "onTitle": "Nowe obiekty w tym zasobniku są domyślnie szyfrowane ({mode}). Nie mówi to nic o obiektach już zapisanych ani nic o SSE-C czy szyfrowaniu po stronie klienta.",
+                "offTitle": "Ten zasobnik nie ma domyślnego szyfrowania. To nie to samo co niezaszyfrowany: SSE-C i szyfrowanie po stronie klienta nie są raportowane przez to ustawienie.",
+                "unknownKeyTitle": "Nie udało się odczytać ustawienia szyfrowania tego zasobnika, ponieważ klucz aplikacji nie ma uprawnienia readBucketEncryption. Wartość, której nie wolno nam zobaczyć, nie oznacza, że szyfrowanie jest wyłączone.",
+                "unknownShapeTitle": "Nie udało się odczytać ustawienia szyfrowania tego zasobnika, ponieważ odpowiedź nie miała udokumentowanej postaci. Klucz miał prawo ją odczytać, więc rzecz dotyczy odpowiedzi, a nie uprawnień."
+            }
         },
         "gitlab": {
             "projectPath": "Ścieżka projektu",

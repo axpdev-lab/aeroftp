@@ -4784,7 +4784,13 @@
                 "moveRight": "Mover barra para a direita"
             },
             "deviceAttached": "Dispositivo ligado",
-            "deviceNotAttached": "Dispositivo não ligado"
+            "deviceNotAttached": "Dispositivo não ligado",
+            "bucketEncryption": {
+                "onTitle": "Os novos objetos neste bucket são criptografados por padrão ({mode}). Isto não diz nada sobre os objetos já armazenados, nem sobre SSE-C ou criptografia do lado do cliente.",
+                "offTitle": "Este bucket não tem criptografia padrão. Isso não é o mesmo que não criptografado: SSE-C e a criptografia do lado do cliente não são reportadas por esta configuração.",
+                "unknownKeyTitle": "Não foi possível ler a configuração de criptografia deste bucket, porque a chave de aplicação não tem a capacidade readBucketEncryption. Um valor que não temos permissão para ver não significa que a criptografia esteja desativada.",
+                "unknownShapeTitle": "Não foi possível ler a configuração de criptografia deste bucket, porque a resposta não tinha um formato documentado. A chave tinha permissão para lê-la, portanto isto é sobre a resposta e não sobre permissões."
+            }
         },
         "gitlab": {
             "projectPath": "Caminho do projeto",

@@ -19585,6 +19585,7 @@ pub fn run() {
             provider_commands::provider_import_link,
             provider_commands::provider_compare_directories,
             provider_commands::provider_storage_info,
+            provider_commands::provider_bucket_encryption,
             provider_commands::mega_df_query,
             provider_commands::mega_webdav_url,
             provider_commands::provider_disk_usage,

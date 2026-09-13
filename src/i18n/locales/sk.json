@@ -4784,7 +4784,13 @@
                 "moveRight": "Presunúť panel doprava"
             },
             "deviceAttached": "Zariadenie pripojené",
-            "deviceNotAttached": "Zariadenie nepripojené"
+            "deviceNotAttached": "Zariadenie nepripojené",
+            "bucketEncryption": {
+                "onTitle": "Nové objekty v tomto buckete sú predvolene šifrované ({mode}). Nehovorí to nič o už uložených objektoch ani nič o SSE-C či o šifrovaní na strane klienta.",
+                "offTitle": "Tento bucket nemá predvolené šifrovanie. Nie je to to isté ako nešifrovaný: SSE-C ani šifrovanie na strane klienta toto nastavenie nehlási.",
+                "unknownKeyTitle": "Nepodarilo sa nám prečítať nastavenie šifrovania tohto bucketu, pretože aplikačný kľúč nemá oprávnenie readBucketEncryption. Hodnota, ktorú nesmieme vidieť, neznamená, že je šifrovanie vypnuté.",
+                "unknownShapeTitle": "Nepodarilo sa nám prečítať nastavenie šifrovania tohto bucketu, pretože odpoveď nemala dokumentovaný tvar. Kľúč ju čítať smel, takže ide o odpoveď, nie o oprávnenia."
+            }
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",

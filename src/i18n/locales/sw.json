@@ -4784,7 +4784,13 @@
                 "moveRight": "Sogeza kulia"
             },
             "deviceAttached": "Kifaa kimeunganishwa",
-            "deviceNotAttached": "Kifaa hakijaunganishwa"
+            "deviceNotAttached": "Kifaa hakijaunganishwa",
+            "bucketEncryption": {
+                "onTitle": "Vitu vipya katika ndoo hii husimbwa kwa njia fiche kwa chaguo-msingi ({mode}). Hii haisemi chochote kuhusu vitu vilivyohifadhiwa tayari, wala chochote kuhusu SSE-C au usimbaji upande wa mteja.",
+                "offTitle": "Ndoo hii haina usimbaji wa chaguo-msingi. Hiyo si sawa na kutokusimbwa: SSE-C na usimbaji upande wa mteja haviripotiwi na mpangilio huu.",
+                "unknownKeyTitle": "Hatukuweza kusoma mpangilio wa usimbaji wa ndoo hii, kwa sababu ufunguo wa programu hauna uwezo wa readBucketEncryption. Thamani ambayo haturuhusiwi kuiona haimaanishi kuwa usimbaji umezimwa.",
+                "unknownShapeTitle": "Hatukuweza kusoma mpangilio wa usimbaji wa ndoo hii, kwa sababu jibu halikuwa na muundo ulioandikwa kwenye nyaraka. Ufunguo uliruhusiwa kuusoma, kwa hivyo hili linahusu jibu na si ruhusa."
+            }
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",

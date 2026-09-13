@@ -4784,7 +4784,13 @@
                 "moveRight": "Sağa taşı"
             },
             "deviceAttached": "Cihaz bağlı",
-            "deviceNotAttached": "Cihaz bağlı değil"
+            "deviceNotAttached": "Cihaz bağlı değil",
+            "bucketEncryption": {
+                "onTitle": "Bu depodaki yeni nesneler varsayılan olarak şifrelenir ({mode}). Bu, halihazırda saklanan nesneler hakkında hiçbir şey söylemez, SSE-C veya istemci tarafı şifreleme hakkında da bir şey söylemez.",
+                "offTitle": "Bu deponun varsayılan şifrelemesi yok. Bu, şifrelenmemiş olmakla aynı şey değildir: SSE-C ve istemci tarafı şifreleme bu ayarda bildirilmez.",
+                "unknownKeyTitle": "Bu deponun şifreleme ayarını okuyamadık, çünkü uygulama anahtarında readBucketEncryption yetkisi yok. Görmemize izin verilmeyen bir değer, şifrelemenin kapalı olduğu anlamına gelmez.",
+                "unknownShapeTitle": "Bu deponun şifreleme ayarını okuyamadık, çünkü yanıtın belgelenmiş bir biçimi yoktu. Anahtarın bunu okuma izni vardı, dolayısıyla konu yanıtla ilgilidir, izinlerle değil."
+            }
         },
         "gitlab": {
             "projectPath": "Proje Yolu",

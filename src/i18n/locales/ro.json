@@ -4784,7 +4784,13 @@
                 "moveRight": "Mută bara la dreapta"
             },
             "deviceAttached": "Dispozitiv atașat",
-            "deviceNotAttached": "Dispozitiv neatașat"
+            "deviceNotAttached": "Dispozitiv neatașat",
+            "bucketEncryption": {
+                "onTitle": "Obiectele noi din acest bucket sunt criptate implicit ({mode}). Acest lucru nu spune nimic despre obiectele deja stocate și nimic despre SSE-C sau criptarea de partea clientului.",
+                "offTitle": "Acest bucket nu are criptare implicită. Acest lucru nu este același lucru cu necriptat: SSE-C și criptarea de partea clientului nu sunt raportate de această setare.",
+                "unknownKeyTitle": "Nu am putut citi setarea de criptare a acestui bucket, deoarece cheia de aplicație nu are capacitatea readBucketEncryption. O valoare pe care nu avem voie să o vedem nu înseamnă că criptarea este dezactivată.",
+                "unknownShapeTitle": "Nu am putut citi setarea de criptare a acestui bucket, deoarece răspunsul nu a avut o formă documentată. Cheia avea dreptul să o citească, așadar este vorba despre răspuns și nu despre permisiuni."
+            }
         },
         "gitlab": {
             "projectPath": "Calea proiectului",

@@ -4784,7 +4784,13 @@
                 "moveRight": "Di chuyển sang phải"
             },
             "deviceAttached": "Đã gắn thiết bị",
-            "deviceNotAttached": "Chưa gắn thiết bị"
+            "deviceNotAttached": "Chưa gắn thiết bị",
+            "bucketEncryption": {
+                "onTitle": "Các đối tượng mới trong bucket này được mã hóa theo mặc định ({mode}). Điều này không nói gì về các đối tượng đã được lưu trữ, và cũng không nói gì về SSE-C hay mã hóa phía máy khách.",
+                "offTitle": "Bucket này không có mã hóa mặc định. Điều đó không giống với việc không được mã hóa: SSE-C và mã hóa phía máy khách không được báo cáo bởi thiết lập này.",
+                "unknownKeyTitle": "Chúng tôi không thể đọc thiết lập mã hóa của bucket này, vì khóa ứng dụng không có khả năng readBucketEncryption. Một giá trị mà chúng tôi không được phép xem không có nghĩa là mã hóa đã bị tắt.",
+                "unknownShapeTitle": "Chúng tôi không thể đọc thiết lập mã hóa của bucket này, vì câu trả lời không có cấu trúc được ghi trong tài liệu. Khóa được phép đọc nó, nên đây là vấn đề của câu trả lời chứ không phải của quyền hạn."
+            }
         },
         "gitlab": {
             "projectPath": "Đường dẫn dự án",

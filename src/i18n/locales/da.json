@@ -4784,7 +4784,13 @@
                 "moveRight": "Flyt til højre"
             },
             "deviceAttached": "Enhed tilsluttet",
-            "deviceNotAttached": "Enhed ikke tilsluttet"
+            "deviceNotAttached": "Enhed ikke tilsluttet",
+            "bucketEncryption": {
+                "onTitle": "Nye objekter i denne bucket krypteres som standard ({mode}). Det siger intet om objekter, der allerede er gemt, og intet om SSE-C eller kryptering på klientsiden.",
+                "offTitle": "Denne bucket har ingen standardkryptering. Det er ikke det samme som ukrypteret: SSE-C og kryptering på klientsiden rapporteres ikke af denne indstilling.",
+                "unknownKeyTitle": "Vi kunne ikke læse krypteringsindstillingen for denne bucket, fordi applikationsnøglen ikke har rettigheden readBucketEncryption. En værdi, vi ikke har lov til at se, betyder ikke, at kryptering er slået fra.",
+                "unknownShapeTitle": "Vi kunne ikke læse krypteringsindstillingen for denne bucket, fordi svaret ikke havde en dokumenteret form. Nøglen havde lov til at læse den, så det handler om svaret og ikke om rettigheder."
+            }
         },
         "gitlab": {
             "projectPath": "Projektsti",

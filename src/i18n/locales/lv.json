@@ -4784,7 +4784,13 @@
                 "moveRight": "Pārvietot pa labi"
             },
             "deviceAttached": "Ierīce pievienota",
-            "deviceNotAttached": "Ierīce nav pievienota"
+            "deviceNotAttached": "Ierīce nav pievienota",
+            "bucketEncryption": {
+                "onTitle": "Jaunie objekti šajā spainītī pēc noklusējuma tiek šifrēti ({mode}). Tas neko nepasaka par jau saglabātajiem objektiem un neko par SSE-C vai šifrēšanu klienta pusē.",
+                "offTitle": "Šim spainītim nav noklusējuma šifrēšanas. Tas nav tas pats, kas nešifrēts: SSE-C un šifrēšanu klienta pusē šis iestatījums neatspoguļo.",
+                "unknownKeyTitle": "Mēs nevarējām nolasīt šī spainīša šifrēšanas iestatījumu, jo lietojumprogrammas atslēgai nav readBucketEncryption iespējas. Vērtība, kuru mums nav atļauts redzēt, nenozīmē, ka šifrēšana ir izslēgta.",
+                "unknownShapeTitle": "Mēs nevarējām nolasīt šī spainīša šifrēšanas iestatījumu, jo atbildei nebija dokumentētas formas. Atslēgai bija atļauts to lasīt, tāpēc runa ir par atbildi, nevis par atļaujām."
+            }
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",

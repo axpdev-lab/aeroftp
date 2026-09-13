@@ -3026,6 +3026,47 @@ const App: React.FC = () => {
     isConnected, showRemotePanel, cardLayout, toggleCardLayout, toggleDualLocalPanel, showDualLocalPanel]);
 
 
+  // Persist what the bucket says about its default encryption, so the card can
+  // draw the label without a live connection. Same shape as the quota below:
+  // value, source, timestamp.
+  //
+  // An "unknown" never overwrites a known answer. A key restricted to one
+  // bucket cannot read the setting, and that is the common case, so a later
+  // connection with a narrower key would otherwise erase a `SSE-B2 256` that a
+  // wider key had read. Losing that is losing information without gaining
+  // honesty: the honest thing is to keep what we were told, with the timestamp
+  // that says when.
+  const persistBucketEncryptionToProfile = async (
+    profileId: string | undefined,
+    read: {
+      state: 'on' | 'off' | 'unknown';
+      reason?: 'missing_capability' | 'unrecognised_shape';
+      mode?: string;
+      algorithm?: string;
+    },
+  ) => {
+    if (!profileId) return;
+    try {
+      await mergeSavedServerProfile(profileId, server => {
+        const prev = server.lastBucketEncryption;
+        if (read.state === 'unknown' && prev && prev.state !== 'unknown') return server;
+        return {
+          ...server,
+          lastBucketEncryption: {
+            state: read.state,
+            reason: read.reason,
+            mode: read.mode,
+            algorithm: read.algorithm,
+            source: 'api' as const,
+            fetched_at: new Date().toISOString(),
+          },
+        };
+      });
+    } catch (e) {
+      console.warn('[BucketEncryption] persist failed:', e);
+    }
+  };
+
   // Persist last known quota to the saved server profile (best-effort) so the
   // detailed My Servers card layout can render a usage bar without a fresh
   // round-trip on every render.
@@ -3175,7 +3216,33 @@ const App: React.FC = () => {
   };
 
   // Fetch storage quota for a given protocol (call after successful connection/reconnection)
+  // Ask the connected B2 bucket what it says about default encryption. The
+  // command answers from the bucket listing read at connect, so this costs no
+  // request, and it refuses on every other provider, which is why the call is
+  // gated by protocol rather than by catching the refusal.
+  const fetchBucketEncryption = async (protocol?: string, freshSessionParams?: ConnectionParams) => {
+    if (protocol !== 'b2') return;
+    try {
+      const read = await invoke<{
+        state: 'on' | 'off' | 'unknown';
+        reason?: 'missing_capability' | 'unrecognised_shape';
+        mode?: string;
+        algorithm?: string;
+      }>('provider_bucket_encryption');
+      const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
+      // Resolved here, as the quota read does it: the session is state on the
+      // component, not something this scope inherits.
+      const activeSession = sessions.find(s => s.id === activeSessionId);
+      const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
+      const profileId = resolveLiveProfile(all, liveCp, activeSession, freshSessionParams?.savedServerId)?.id;
+      void persistBucketEncryptionToProfile(profileId, read);
+    } catch (e) {
+      console.warn('[BucketEncryption] read failed:', e);
+    }
+  };
+
   const fetchStorageQuota = async (protocol?: string, freshSessionParams?: ConnectionParams) => {
+    void fetchBucketEncryption(protocol, freshSessionParams);
     const version = ++quotaVersionRef.current;
 
     // InfiniCloud: use REST API for quota (more accurate than WebDAV PROPFIND)
