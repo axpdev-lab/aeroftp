@@ -132,6 +132,7 @@ run-clean.sh
 # absent from the repository while three workflows invoke it: red everywhere, and
 # invisible in `git status`, because an ignored file looks exactly like a clean tree.
 !/scripts/check-version-sites.mjs
+!/scripts/check-appstream.mjs
 # Exception: regenerates the providers table from the GUI SSOT (#270 17104681)
 !/scripts/gen-providers-table.ts
 # Exception: derives every published provider/preset/protocol figure into

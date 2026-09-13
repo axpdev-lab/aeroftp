@@ -104,6 +104,25 @@ jobs:
       - name: Version sites agree
         run: npm run check:version-sites
 
+      # The metainfo and the desktop entry are what Ubuntu App Center and GNOME
+      # Software read, the release procedure adds a <release> block to the
+      # metainfo on every version, and until now nothing validated either one.
+      #
+      # The two tools are installed rather than assumed present: whether the
+      # runner image already carries them was not measured, and installing a
+      # package that is already there is cheap while assuming one that is not
+      # would fail the job. --no-install-recommends matches every other apt
+      # step in this repository. If this turns out to cost real time, the fix
+      # is to cache it, not to drop the gate: the script exits 1 when a tool
+      # is missing, on purpose, because a gate that cannot run is not a pass.
+      - name: Install AppStream and desktop validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends appstream desktop-file-utils
+
+      - name: AppStream metadata validates
+        run: npm run check:appstream
+
       # `cargo install cargo-audit --locked` compiled the tool from source on
       # every run: measured at 2m58s, for an audit that then takes about five
       # seconds, on the workflow that runs more often than any other here (42
