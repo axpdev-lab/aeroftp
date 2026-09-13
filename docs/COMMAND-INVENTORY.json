@@ -554,7 +554,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 851
+    "tauri_commands": 852
   },
   "mcp": {
     "count": 77,
@@ -570,7 +570,7 @@
         "namespace": "aeroftp_"
       },
       {
-        "description": "Compare a local directory against a remote directory and report differences...",
+        "description": "Compare a local directory against a remote directory and report differences. The result also says how much of each tree the comparison actually covers: `local_scan_incomplete` and `remote_scan_incomplete`, with `{side}_scan_errors` (directory listings that failed) and `{side}_scan_truncated` (the walk stopped at its depth or entry cap). A side is reported incomplete when its counters are non-zero OR when the walk left out a path it can name, because a symbolic link is a gap without being a failure: no walk follows one, so the subtree behind it was never compared. Those paths are listed in `{side}_skipped_links` and `{side}_unseen_paths`, each capped at 1000 entries with `_total` and `_truncated` alongside, and OMITTED entirely when empty. The six counter keys are always present, zero included, so an agent can branch on them without first checking whether they exist. Under summary_only=true only the counters and flags are returned, not the path lists. A file reported as missing on one side by an incomplete scan may simply be unread rather than absent: do not turn it into a delete.",
         "name": "aeroftp_check_tree",
         "namespace": "aeroftp_"
       },
@@ -1187,6 +1187,7 @@
       "box_lock_folder",
       "box_unlock_folder",
       "provider_compare_directories",
+      "provider_bucket_encryption",
       "mega_webdav_url",
       "provider_scan_used",
       "provider_cancel_used_scan",
@@ -1321,7 +1322,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 371,
+    "name_unmatched_count": 372,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1911,6 +1912,7 @@
       "provider_import_link",
       "provider_compare_directories",
       "provider_storage_info",
+      "provider_bucket_encryption",
       "mega_df_query",
       "mega_webdav_url",
       "provider_disk_usage",
@@ -2179,6 +2181,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 851
+    "count": 852
   }
 }
