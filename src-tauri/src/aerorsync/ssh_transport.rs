@@ -972,6 +972,40 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
+    /// The libssh2 leg asks for its host-key algorithms with `method_pref`, and
+    /// libssh2 silently drops the names its crypto backend cannot negotiate. A
+    /// backend missing one of them therefore fails nowhere at configuration: it
+    /// negotiates a different host key than the one the russh leg pinned, and the
+    /// delta is rejected at handshake as a fingerprint mismatch.
+    ///
+    /// That is what happens on Windows when libssh2-sys builds WinCNG, which has
+    /// no Ed25519: the pin is Ed25519, libssh2 takes the server's RSA key, and
+    /// every key-authenticated delta falls back to a full transfer that still
+    /// exits 0. Asking the compiled backend directly needs no network and no
+    /// server.
+    ///
+    /// CI runs Rust tests on Linux only, where libssh2 always uses OpenSSL, so
+    /// there this passes with or without the Windows fix. It proves something
+    /// only when run on Windows.
+    #[test]
+    fn libssh2_backend_negotiates_every_preferred_host_key_alg() {
+        let session = ssh2::Session::new().expect("libssh2 session");
+        let supported = session
+            .supported_algs(ssh2::MethodType::HostKey)
+            .expect("libssh2 lists its host-key algorithms");
+        let missing: Vec<&str> = super::AERORSYNC_HOST_KEY_ALGS
+            .split(',')
+            .filter(|alg| !supported.contains(alg))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "the compiled libssh2 backend cannot negotiate {missing:?} from \
+             AERORSYNC_HOST_KEY_ALGS; method_pref drops them silently, so the \
+             libssh2 leg would negotiate a different host key than the one pinned \
+             (backend offers {supported:?})"
+        );
+    }
+
     #[test]
     fn parses_probe_banner_single_line() {
         let protocol = parse_probe_protocol("rsync  version 3.2.7  protocol version 31").unwrap();

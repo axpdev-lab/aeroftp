@@ -191,7 +191,7 @@ mime_guess = "2"
 # SFTP channel writes: see sftp-upload-0byte-bug.md in memory
 russh = { version = "0.63.1", features = ["ring"] }
 russh-sftp = "2.1"
-ssh2 = { version = "0.9.5", features = ["vendored-openssl"] }
+ssh2 = { version = "0.9.5", features = ["vendored-openssl", "openssl-on-win32"] }
 
 # Archive Support with Encryption (v1.3.0+)
 sevenz-rust2 = { version = "0.22", features = ["aes256", "compress", "util"] }  # 7z with AES-256 + encrypted header (-mhe)
