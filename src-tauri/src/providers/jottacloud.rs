@@ -1244,7 +1244,7 @@ impl StorageProvider for JottacloudProvider {
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ConnectionFailed(format!(
-                "Jottacloud connection failed: {}",
+                "jottacloud: {}",
                 sanitize_api_error(&body)
             )));
         }
@@ -1331,10 +1331,7 @@ impl StorageProvider for JottacloudProvider {
         let url = self.jfs_url(&new_path);
         let resp = self.get_with_retry(&url).await?;
         if !resp.status().is_success() {
-            return Err(ProviderError::NotFound(format!(
-                "Directory not found: {}",
-                new_path
-            )));
+            return Err(ProviderError::NotFound(new_path.to_string()));
         }
 
         self.current_path = new_path;

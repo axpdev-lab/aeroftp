@@ -490,7 +490,7 @@ impl FileLuProvider {
 
         let api_resp: ApiResponse<T> = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!(
-                "JSON parse error: {}. Body: {}",
+                "json: {}. Body: {}",
                 e,
                 &text[..text.len().min(200)]
             ))
@@ -552,7 +552,7 @@ impl FileLuProvider {
 
         let parsed: StatusOnlyResponse = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!(
-                "JSON parse error: {}. Body: {}",
+                "json: {}. Body: {}",
                 e,
                 &text[..text.len().min(200)]
             ))
@@ -1080,7 +1080,7 @@ impl FileLuProvider {
 
         let value: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
             ProviderError::ParseError(format!(
-                "clone_file parse error: {}. Body: {}",
+                "clone_file: {}. Body: {}",
                 e,
                 &body[..body.len().min(200)]
             ))

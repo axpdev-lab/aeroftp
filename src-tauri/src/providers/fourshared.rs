@@ -482,12 +482,7 @@ impl FourSharedProvider {
                     Self::enforce_cache_limit(&mut self.folder_cache);
                     self.folder_cache.insert(built_path.clone(), fid);
                 }
-                None => {
-                    return Err(ProviderError::NotFound(format!(
-                        "Folder not found: {}",
-                        part
-                    )))
-                }
+                None => return Err(ProviderError::NotFound(part.to_string())),
             }
         }
 

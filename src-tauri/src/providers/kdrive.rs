@@ -727,7 +727,11 @@ impl StorageProvider for KDriveProvider {
         kdrive_log(&format!("Connect URL: {}", url));
         let resp = self.get_with_retry(&url).await.map_err(|e| {
             kdrive_log(&format!("Connection error: {}", e));
-            ProviderError::ConnectionFailed(e.to_string())
+            // Returned unchanged on purpose. get_with_retry propagates
+            // AuthenticationFailed from auth_header, and rewrapping it as
+            // ConnectionFailed would not just repeat the prefix, it would
+            // change the class of the error the caller sees.
+            e
         })?;
 
         let status = resp.status();

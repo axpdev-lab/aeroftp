@@ -2650,9 +2650,16 @@ mod tests {
         for path in &files {
             let src = std::fs::read_to_string(path).expect("readable source file");
             for (variant, tail) in &prefixes {
-                let opener = format!("{variant}(format!(\"");
+                // `format!(` and the literal are not always adjacent: provider
+                // sources wrap long calls, so the string starts on the next line
+                // after whitespace. Requiring `format!("` misses those, and four
+                // repeated prefixes lived in exactly that shape.
+                let opener = format!("{variant}(format!(");
                 for (offset, _) in src.match_indices(&opener) {
-                    let payload = &src[offset + opener.len()..];
+                    let rest = src[offset + opener.len()..].trim_start();
+                    let Some(payload) = rest.strip_prefix('"') else {
+                        continue;
+                    };
                     let head: String = payload.chars().take(40).collect::<String>().to_lowercase();
                     let after_first_word = head.split_once(' ').map(|(_, r)| r).unwrap_or("");
                     if head.starts_with(&format!("{tail}:"))

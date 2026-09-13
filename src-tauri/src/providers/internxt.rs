@@ -720,10 +720,7 @@ impl InternxtProvider {
                     current_path = check_path;
                 }
                 None => {
-                    return Err(ProviderError::NotFound(format!(
-                        "Folder not found: {}",
-                        path
-                    )));
+                    return Err(ProviderError::NotFound(path.to_string()));
                 }
             }
         }
@@ -2161,12 +2158,7 @@ impl StorageProvider for InternxtProvider {
         // Try as folder: resolve UUID (may not be cached)
         let folder_uuid = match self.resolve_folder_uuid(&from_resolved).await {
             Ok(uuid) => uuid,
-            Err(_) => {
-                return Err(ProviderError::NotFound(format!(
-                    "Not found: {}",
-                    from_resolved
-                )))
-            }
+            Err(_) => return Err(ProviderError::NotFound(from_resolved.to_string())),
         };
 
         // Move folder to different parent if needed

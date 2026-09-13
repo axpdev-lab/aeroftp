@@ -521,12 +521,7 @@ impl BoxProvider {
                     current_id = folder.id.clone();
                     self.id_cache.insert(built_path.clone(), current_id.clone());
                 }
-                None => {
-                    return Err(ProviderError::NotFound(format!(
-                        "Folder not found: {}",
-                        part
-                    )))
-                }
+                None => return Err(ProviderError::NotFound(part.to_string())),
             }
         }
 

@@ -1106,10 +1106,7 @@ impl FilenProvider {
             }
 
             if !found {
-                return Err(ProviderError::NotFound(format!(
-                    "Folder not found: {}",
-                    part
-                )));
+                return Err(ProviderError::NotFound(part.to_string()));
             }
         }
 
