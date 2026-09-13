@@ -26,7 +26,8 @@
     "gen:cli-catalog": "npx tsx scripts/gen-cli-catalog.ts",
     "gen:providers-table": "npx tsx scripts/gen-providers-table.ts",
     "gen:provider-inventory": "npx tsx scripts/gen-provider-inventory.ts",
-    "check:provider-inventory": "npx tsx scripts/gen-provider-inventory.ts --check"
+    "check:provider-inventory": "npx tsx scripts/gen-provider-inventory.ts --check",
+    "check:version-sites": "node scripts/check-version-sites.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

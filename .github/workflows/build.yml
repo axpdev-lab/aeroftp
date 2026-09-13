@@ -95,40 +95,29 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      # R10 (APPENDIX-CLI-DISPATCH): the three sources of truth for the
-      # AeroFTP version must stay in lockstep. If they drift, an update
-      # ships a CLI that claims one version while the GUI manifest claims
-      # another, the AUR pkgver bump targets the wrong tag, and the
-      # in-app update check compares against the wrong baseline. Cheap
-      # to run (no build, just text parsing). Moved off the packaging
-      # Linux leg so it no longer blocks the Tauri bundle.
-      - name: R10 manifest version match (Cargo.toml, package.json, tauri.conf.json, snapcraft.yaml, and the tag on tag builds)
+      # R10 (APPENDIX-CLI-DISPATCH): every file that declares the AeroFTP version
+      # must stay in lockstep. If they drift, an update ships a CLI that claims
+      # one version while the GUI manifest claims another, the AUR pkgver bump
+      # targets the wrong tag, and the in-app update check compares against the
+      # wrong baseline. Cheap to run (no build, just text parsing). Moved off the
+      # packaging Linux leg so it no longer blocks the Tauri bundle.
+      #
+      # This step used to inline a comparison of FOUR manifests while the local
+      # pre-push gate inlined EIGHT, and this was the only one of the two that ran
+      # by itself. That is how v4.1.9 was tagged with `package-lock.json` a version
+      # behind in BOTH of its fields: main was green with the drift on it, and 148
+      # of 166 tags carry the same drift, so it was never a one-off. The list now
+      # lives in scripts/check-version-sites.mjs and has three callers: this step,
+      # the `Version sites agree` step in checks.yml, and the pre-push gate. A list
+      # that exists twice will diverge again, and the narrower copy is always the
+      # one that runs.
+      - name: R10 version sites agree (and match the tag on tag builds)
         shell: bash
         run: |
-          CARGO=$(grep -m1 '^version' src-tauri/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
-          PKG=$(node -p "require('./package.json').version")
-          TAURI=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          SNAP=$(grep -m1 '^version:' snap/snapcraft.yaml | sed "s/.*['\"]\(.*\)['\"].*/\1/")
-          echo "Cargo.toml:        $CARGO"
-          echo "package.json:      $PKG"
-          echo "tauri.conf.json:   $TAURI"
-          echo "snapcraft.yaml:    $SNAP"
-          if [ "$CARGO" != "$PKG" ] || [ "$CARGO" != "$TAURI" ] || [ "$CARGO" != "$SNAP" ]; then
-            echo "::error::R10 version drift: cargo=$CARGO package.json=$PKG tauri.conf.json=$TAURI snapcraft.yaml=$SNAP"
-            exit 1
-          fi
-          # On a tag build the four manifests must also equal the tag itself. R10
-          # previously compared them only to each other, so a release tagged vX.Y.Z
-          # with every manifest left at the prior version passed in silence and
-          # shipped artifacts labelled with the wrong version. The manifests are
-          # already proven equal above, so comparing one of them to the tag suffices.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            TAG="${GITHUB_REF_NAME#v}"
-            echo "tag:               $TAG"
-            if [ "$CARGO" != "$TAG" ]; then
-              echo "::error::R10 tag drift: manifests=$CARGO but tag=$TAG"
-              exit 1
-            fi
+            node scripts/check-version-sites.mjs --tag "$GITHUB_REF_NAME"
+          else
+            node scripts/check-version-sites.mjs
           fi
 
       - name: TypeScript type check

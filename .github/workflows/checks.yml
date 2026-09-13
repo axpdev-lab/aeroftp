@@ -94,6 +94,16 @@ jobs:
       - name: Provider inventory is not stale
         run: npm run check:provider-inventory
 
+      # Eight files declare the application version. The list used to exist twice,
+      # here in the local pre-push gate with all eight and in build.yml's R10 step
+      # with four, and the four-file one was the only one that ran by itself. That
+      # is how v4.1.9 was tagged with package-lock.json a version behind in both of
+      # its fields: main was green with the drift on it, and 148 of 166 tags carry
+      # the same drift. The list now lives in the script and this step is the cheap
+      # caller that runs on every pull request, before any build exists.
+      - name: Version sites agree
+        run: npm run check:version-sites
+
       # `cargo install cargo-audit --locked` compiled the tool from source on
       # every run: measured at 2m58s, for an audit that then takes about five
       # seconds, on the workflow that runs more often than any other here (42
