@@ -948,7 +948,7 @@ impl StorageProvider for DrimeCloudProvider {
                     e.is_timeout(),
                     e.is_connect()
                 ));
-                ProviderError::ConnectionFailed(format!("Connection failed: {}", e))
+                ProviderError::ConnectionFailed(e.to_string())
             })?;
 
         let status = resp.status();

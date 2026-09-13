@@ -477,11 +477,11 @@ async fn get_release_by_tag(
             releases
                 .into_iter()
                 .find(|r| r.tag_name == tag)
-                .ok_or_else(|| ProviderError::NotFound(format!("Release not found: {tag}")))
+                .ok_or_else(|| ProviderError::NotFound(tag.to_string()))
         }
         Err(e) => {
             if matches!(e, GitHubError::RepoNotFound) {
-                Err(ProviderError::NotFound(format!("Release not found: {tag}")))
+                Err(ProviderError::NotFound(tag.to_string()))
             } else {
                 Err(ProviderError::ServerError(e.to_string()))
             }

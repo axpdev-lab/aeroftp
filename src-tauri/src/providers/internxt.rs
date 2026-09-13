@@ -720,10 +720,7 @@ impl InternxtProvider {
                     current_path = check_path;
                 }
                 None => {
-                    return Err(ProviderError::NotFound(format!(
-                        "Folder not found: {}",
-                        path
-                    )));
+                    return Err(ProviderError::NotFound(path.to_string()));
                 }
             }
         }
@@ -1491,7 +1488,7 @@ impl StorageProvider for InternxtProvider {
         let file_info = self
             .find_file_in_folder(&parent_uuid, &filename)
             .await?
-            .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", resolved)))?;
+            .ok_or_else(|| ProviderError::NotFound(resolved.to_string()))?;
         let (file_uuid, file_id, file_bucket) = file_info;
 
         internxt_log(&format!(
@@ -1957,7 +1954,7 @@ impl StorageProvider for InternxtProvider {
         let file_info = self
             .find_file_in_folder(&parent_uuid, &filename)
             .await?
-            .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", resolved)))?;
+            .ok_or_else(|| ProviderError::NotFound(resolved.to_string()))?;
 
         let resp = self
             .send_with_reauth(|this| {
@@ -2161,12 +2158,7 @@ impl StorageProvider for InternxtProvider {
         // Try as folder: resolve UUID (may not be cached)
         let folder_uuid = match self.resolve_folder_uuid(&from_resolved).await {
             Ok(uuid) => uuid,
-            Err(_) => {
-                return Err(ProviderError::NotFound(format!(
-                    "Not found: {}",
-                    from_resolved
-                )))
-            }
+            Err(_) => return Err(ProviderError::NotFound(from_resolved.to_string())),
         };
 
         // Move folder to different parent if needed
@@ -2262,7 +2254,7 @@ impl StorageProvider for InternxtProvider {
             });
         }
 
-        Err(ProviderError::NotFound(format!("Not found: {}", resolved)))
+        Err(ProviderError::NotFound(resolved.to_string()))
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {

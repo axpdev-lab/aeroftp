@@ -1106,10 +1106,7 @@ impl FilenProvider {
             }
 
             if !found {
-                return Err(ProviderError::NotFound(format!(
-                    "Folder not found: {}",
-                    part
-                )));
+                return Err(ProviderError::NotFound(part.to_string()));
             }
         }
 
@@ -1136,7 +1133,7 @@ impl FilenProvider {
         let file_entry = entries
             .iter()
             .find(|e| !e.is_dir && e.name == file_name)
-            .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", file_name)))?;
+            .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))?;
         file_entry
             .metadata
             .get("uuid")
@@ -1489,9 +1486,8 @@ impl StorageProvider for FilenProvider {
             preview
         ));
 
-        let content: DirContentResponse = serde_json::from_str(&resp_text).map_err(|e| {
-            ProviderError::ParseError(format!("JSON parse error: {} - response: {}", e, preview))
-        })?;
+        let content: DirContentResponse = serde_json::from_str(&resp_text)
+            .map_err(|e| ProviderError::ParseError(format!("json: {e} - response: {preview}")))?;
 
         if !content.status {
             return Err(ProviderError::ServerError(
@@ -1673,7 +1669,7 @@ impl StorageProvider for FilenProvider {
         let file_entry = entries
             .iter()
             .find(|e| !e.is_dir && e.name == file_name)
-            .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", file_name)))?;
+            .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))?;
 
         let uuid = file_entry
             .metadata
@@ -1778,7 +1774,7 @@ impl StorageProvider for FilenProvider {
         let file_entry = entries
             .iter()
             .find(|e| !e.is_dir && e.name == file_name)
-            .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", file_name)))?;
+            .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))?;
 
         let uuid = file_entry
             .metadata
@@ -2738,7 +2734,7 @@ impl StorageProvider for FilenProvider {
             .await?
             .into_iter()
             .find(|v| v.uuid == version_id)
-            .ok_or_else(|| ProviderError::NotFound(format!("Version not found: {}", version_id)))?;
+            .ok_or_else(|| ProviderError::NotFound(version_id.to_string()))?;
 
         // The version's per-file key lives inside its own encrypted metadata.
         let meta_str = self.decrypt_metadata(&version.metadata).ok_or_else(|| {

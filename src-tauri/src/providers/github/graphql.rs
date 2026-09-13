@@ -220,7 +220,7 @@ fn classify_unprocessable(message: &str) -> GitHubError {
     if lower.contains("empty commit") || lower.contains("no file changes") {
         GitHubError::InvalidInput("No effective file changes in commit".into())
     } else if lower.contains("branch does not exist") || lower.contains("could not resolve") {
-        GitHubError::NotFound(format!("Branch not found: {message}"))
+        GitHubError::NotFound(message.to_string())
     } else if lower.contains("too large") || lower.contains("exceeds") {
         GitHubError::PayloadTooLarge(message.to_string())
     } else {

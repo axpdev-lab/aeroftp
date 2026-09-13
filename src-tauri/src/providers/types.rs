@@ -2566,6 +2566,121 @@ mod tests {
         let mega_config = MegaConfig::from_provider_config(&config).unwrap();
         assert_eq!(mega_config.connection_mode, MegaConnectionMode::Native);
     }
+    /// No error payload repeats what its own variant already prints.
+    ///
+    /// `ProviderError` renders through `thiserror`, so `NotFound(String)` is
+    /// shown as `Path not found: {0}`. A payload that says it again gives the
+    /// user `Path not found: File not found: /x`. #791 fixed the sites that
+    /// repeated the prefix verbatim and declared the rest as a follow-up: the
+    /// rest were thirteen sites saying `File not found:` or `Directory not
+    /// found:` inside `NotFound`, plus two saying `Connection failed:` inside
+    /// `ConnectionFailed`.
+    ///
+    /// Two properties of this guard are deliberate, and both come from how
+    /// that follow-up was missed for a month.
+    ///
+    /// The prefixes are read from the `#[error(...)]` attributes in this file
+    /// instead of being typed here, for the reason the corpus above already
+    /// gives: a hand-typed list goes stale the moment an error string is
+    /// reworded, and then the guard passes while the defect returns.
+    ///
+    /// The match is on the last two words of each prefix rather than on the
+    /// whole of it, because the thirteen did not repeat the prefix literally,
+    /// they repeated its meaning with a different first word. A guard that
+    /// looked for `Path not found:` alone would have found two sites out of
+    /// fifteen and reported a clean tree.
+    ///
+    /// The walk recurses. A flat `read_dir` misses `filen/mod.rs`, `github/`,
+    /// `gitlab/` and `mtp/`, and three of the fifteen lived in `filen/mod.rs`:
+    /// the first sweep that looked for this class used `providers/*.rs` and
+    /// undercounted for exactly that reason.
+    #[test]
+    fn no_error_payload_repeats_its_own_prefix() {
+        // (variant, last two words of the text it prints before the payload)
+        let mut prefixes: Vec<(String, String)> = Vec::new();
+        let mut pending: Option<String> = None;
+        for line in include_str!("types.rs").lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("#[error(\"") {
+                pending = rest
+                    .split_once('"')
+                    .and_then(|(msg, _)| msg.split_once(": {"))
+                    .map(|(prefix, _)| prefix.to_ascii_lowercase());
+                continue;
+            }
+            if let Some(prefix) = pending.take() {
+                let variant: String = trimmed
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                let words: Vec<&str> = prefix.split_whitespace().collect();
+                if variant.starts_with(char::is_uppercase) && words.len() >= 2 {
+                    prefixes.push((variant, words[words.len() - 2..].join(" ")));
+                }
+            }
+        }
+        assert!(
+            prefixes.len() >= 10,
+            "the prefix corpus came out with {} entries, so this guard would pass without looking",
+            prefixes.len()
+        );
+
+        fn rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("providers directory must be readable") {
+                let path = entry.expect("readable dir entry").path();
+                if path.is_dir() {
+                    rs_files(&path, out);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        rs_files(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers"),
+            &mut files,
+        );
+        assert!(
+            files.len() > 50,
+            "only {} provider sources were walked, the recursion or the root is wrong",
+            files.len()
+        );
+
+        let mut found: Vec<String> = Vec::new();
+        for path in &files {
+            let src = std::fs::read_to_string(path).expect("readable source file");
+            for (variant, tail) in &prefixes {
+                // `format!(` and the literal are not always adjacent: provider
+                // sources wrap long calls, so the string starts on the next line
+                // after whitespace. Requiring `format!("` misses those, and four
+                // repeated prefixes lived in exactly that shape.
+                let opener = format!("{variant}(format!(");
+                for (offset, _) in src.match_indices(&opener) {
+                    let rest = src[offset + opener.len()..].trim_start();
+                    let Some(payload) = rest.strip_prefix('"') else {
+                        continue;
+                    };
+                    let head: String = payload.chars().take(40).collect::<String>().to_lowercase();
+                    let after_first_word = head.split_once(' ').map(|(_, r)| r).unwrap_or("");
+                    if head.starts_with(&format!("{tail}:"))
+                        || after_first_word.starts_with(&format!("{tail}:"))
+                    {
+                        let line = src[..offset].lines().count();
+                        found.push(format!(
+                            "{}:{line}: {variant} payload starts with \"{}\"",
+                            path.display(),
+                            head.split(':').next().unwrap_or(&head)
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            found.is_empty(),
+            "an error payload repeats what its variant already prints, so the user reads it twice:\n{}",
+            found.join("\n")
+        );
+    }
 }
 
 #[cfg(test)]
