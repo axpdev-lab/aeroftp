@@ -567,7 +567,7 @@ impl BoxProvider {
             .iter()
             .find(|item| item.name == encoded_name)
             .map(|item| item.id.clone())
-            .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", file_name)))
+            .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))
     }
 
     fn normalize_path(path: &str) -> String {
@@ -620,7 +620,7 @@ impl BoxProvider {
             .iter()
             .find(|item| item.name == encoded_name)
             .map(|item| (item.id.clone(), item.item_type.clone()))
-            .ok_or_else(|| ProviderError::NotFound(format!("Item not found: {}", item_name)))
+            .ok_or_else(|| ProviderError::NotFound(item_name.to_string()))
     }
 
     // ── Box-Specific Features ───────────────────────────────────────

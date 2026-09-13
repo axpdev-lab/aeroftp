@@ -556,7 +556,7 @@ impl GooglePhotosProvider {
         self.album_cache
             .get(title)
             .cloned()
-            .ok_or_else(|| ProviderError::NotFound(format!("Album not found: {}", title)))
+            .ok_or_else(|| ProviderError::NotFound(title.to_string()))
     }
 
     /// Find a media item by filename inside an album / virtual folder.

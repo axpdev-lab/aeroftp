@@ -1452,7 +1452,7 @@ impl StorageProvider for MegaNativeProvider {
             .nodes
             .get(&handle)
             .cloned()
-            .ok_or_else(|| ProviderError::NotFound(format!("Not found: {remote_path}")))?;
+            .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
         if !node.is_file() {
             return Err(ProviderError::InvalidPath(format!(
@@ -1750,7 +1750,7 @@ impl StorageProvider for MegaNativeProvider {
             .nodes
             .get(&from_handle)
             .cloned()
-            .ok_or_else(|| ProviderError::NotFound(format!("Source not found: {from}")))?;
+            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
 
         let (to_parent_handle, to_name) = self.resolve_parent_and_name(to)?;
 
@@ -1792,7 +1792,7 @@ impl StorageProvider for MegaNativeProvider {
         let node = self
             .nodes
             .get(&handle)
-            .ok_or_else(|| ProviderError::NotFound(format!("Not found: {path}")))?;
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
         Ok(self.node_to_remote_entry(node))
     }
 
@@ -1852,7 +1852,7 @@ impl StorageProvider for MegaNativeProvider {
         let node = self
             .nodes
             .get(&handle)
-            .ok_or_else(|| ProviderError::NotFound(format!("Not found: {path}")))?;
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
         if node.key.is_empty() {
             return Err(ProviderError::ParseError(
@@ -2372,7 +2372,7 @@ impl MegaNativeProvider {
             .nodes
             .get(&handle)
             .cloned()
-            .ok_or_else(|| ProviderError::NotFound(format!("Not found: {remote_path}")))?;
+            .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
         if !node.is_file() {
             return Err(ProviderError::InvalidPath(format!(

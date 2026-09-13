@@ -727,7 +727,7 @@ impl StorageProvider for KDriveProvider {
         kdrive_log(&format!("Connect URL: {}", url));
         let resp = self.get_with_retry(&url).await.map_err(|e| {
             kdrive_log(&format!("Connection error: {}", e));
-            ProviderError::ConnectionFailed(format!("Connection failed: {}", e))
+            ProviderError::ConnectionFailed(e.to_string())
         })?;
 
         let status = resp.status();

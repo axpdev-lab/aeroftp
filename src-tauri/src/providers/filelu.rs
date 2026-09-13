@@ -945,7 +945,7 @@ impl FileLuProvider {
         self.path_cache
             .get(&norm)
             .cloned()
-            .ok_or_else(|| ProviderError::NotFound(format!("Directory not found: {}", norm)))
+            .ok_or_else(|| ProviderError::NotFound(norm.to_string()))
     }
 
     async fn resolve_fld_id(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -1271,9 +1271,8 @@ impl FileLuProvider {
         struct RemoteUploadEntry {
             file_code: Option<String>,
         }
-        let entries: Vec<RemoteUploadEntry> = serde_json::from_str(&text).map_err(|e| {
-            ProviderError::ParseError(format!("remote_url_upload parse error: {}", e))
-        })?;
+        let entries: Vec<RemoteUploadEntry> = serde_json::from_str(&text)
+            .map_err(|e| ProviderError::ParseError(format!("remote_url_upload: {e}")))?;
         let code = entries
             .into_iter()
             .next()

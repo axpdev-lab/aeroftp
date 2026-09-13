@@ -516,7 +516,7 @@ impl FourSharedProvider {
                 status,
                 &body[..body.len().min(200)]
             );
-            return Err(ProviderError::NotFound(format!("File not found: {}", path)));
+            return Err(ProviderError::NotFound(path.to_string()));
         }
 
         let body = resp
@@ -540,7 +540,7 @@ impl FourSharedProvider {
         self.file_cache
             .get(&normalized)
             .cloned()
-            .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", file_name)))
+            .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))
     }
 
     /// Set file visibility using FourShared file metadata endpoint.
@@ -1459,7 +1459,7 @@ impl StorageProvider for FourSharedProvider {
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::NotFound(format!("Not found: {}", path)));
+            return Err(ProviderError::NotFound(path.to_string()));
         }
 
         let body = resp

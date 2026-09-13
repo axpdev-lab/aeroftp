@@ -2082,7 +2082,7 @@ impl S3Provider {
                 }
                 Ok(Event::Eof) => break,
                 Err(e) => {
-                    return Err(ProviderError::ParseError(format!("XML parse error: {}", e)));
+                    return Err(ProviderError::ParseError(format!("xml: {e}")));
                 }
                 _ => {}
             }
@@ -3649,7 +3649,7 @@ impl S3Provider {
                     }
                     Ok(Event::Eof) => break,
                     Err(e) => {
-                        return Err(ProviderError::ParseError(format!("XML parse error: {}", e)));
+                        return Err(ProviderError::ParseError(format!("xml: {e}")));
                     }
                     _ => {}
                 }
@@ -5264,7 +5264,7 @@ impl StorageProvider for S3Provider {
                     }
                     Ok(Event::Eof) => break,
                     Err(e) => {
-                        return Err(ProviderError::ParseError(format!("XML parse error: {}", e)));
+                        return Err(ProviderError::ParseError(format!("xml: {e}")));
                     }
                     _ => {}
                 }
@@ -5845,7 +5845,7 @@ impl StorageProvider for S3Provider {
                     }
                     Ok(Event::Eof) => break,
                     Err(e) => {
-                        return Err(ProviderError::ParseError(format!("XML parse error: {}", e)));
+                        return Err(ProviderError::ParseError(format!("xml: {e}")));
                     }
                     _ => {}
                 }
@@ -6481,7 +6481,7 @@ impl S3Provider {
                     _ => {}
                 },
                 Ok(Event::Eof) => break,
-                Err(e) => return Err(ProviderError::ParseError(format!("XML parse error: {}", e))),
+                Err(e) => return Err(ProviderError::ParseError(format!("xml: {e}"))),
                 _ => {}
             }
             buf.clear();
@@ -7146,7 +7146,7 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
             }
             Ok(Event::Eof) => break,
             Err(e) => {
-                return Err(ProviderError::ParseError(format!("XML parse error: {}", e)));
+                return Err(ProviderError::ParseError(format!("xml: {e}")));
             }
             _ => {}
         }

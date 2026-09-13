@@ -194,7 +194,7 @@ impl GitHubHttpClient {
         let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<T>()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("JSON parse error: {}", e)))
+            .map_err(|e| GitHubError::ParseError(format!("json: {e}")))
     }
 
     /// `GET` a paginated JSON array endpoint by following `Link: ... rel="next"`.
@@ -227,7 +227,7 @@ impl GitHubHttpClient {
             let mut page_items = resp
                 .json::<Vec<T>>()
                 .await
-                .map_err(|e| GitHubError::ParseError(format!("JSON parse error: {}", e)))?;
+                .map_err(|e| GitHubError::ParseError(format!("json: {e}")))?;
 
             all_items.append(&mut page_items);
             next_url = next_link;
@@ -248,7 +248,7 @@ impl GitHubHttpClient {
         let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<serde_json::Value>()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("JSON parse error: {}", e)))
+            .map_err(|e| GitHubError::ParseError(format!("json: {e}")))
     }
 
     /// `POST` with a JSON body; returns the response JSON.
@@ -262,7 +262,7 @@ impl GitHubHttpClient {
         let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<T>()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("JSON parse error: {}", e)))
+            .map_err(|e| GitHubError::ParseError(format!("json: {e}")))
     }
 
     /// `POST` with empty body. Returns `()` on 2xx.
@@ -285,7 +285,7 @@ impl GitHubHttpClient {
         let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<serde_json::Value>()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("JSON parse error: {}", e)))
+            .map_err(|e| GitHubError::ParseError(format!("json: {e}")))
     }
 
     /// `DELETE` with a JSON body. Returns `()` on success.
@@ -323,7 +323,7 @@ impl GitHubHttpClient {
         let json: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("GraphQL parse error: {}", e)))?;
+            .map_err(|e| GitHubError::ParseError(format!("graphql: {e}")))?;
 
         // Check for GraphQL-level errors.
         if let Some(errors) = json.get("errors") {
@@ -354,7 +354,7 @@ impl GitHubHttpClient {
         let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<serde_json::Value>()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("GraphQL parse error: {}", e)))
+            .map_err(|e| GitHubError::ParseError(format!("graphql: {e}")))
     }
 
     /// Download raw file content (sets `Accept: application/octet-stream`).

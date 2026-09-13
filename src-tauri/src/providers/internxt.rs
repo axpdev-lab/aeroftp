@@ -1491,7 +1491,7 @@ impl StorageProvider for InternxtProvider {
         let file_info = self
             .find_file_in_folder(&parent_uuid, &filename)
             .await?
-            .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", resolved)))?;
+            .ok_or_else(|| ProviderError::NotFound(resolved.to_string()))?;
         let (file_uuid, file_id, file_bucket) = file_info;
 
         internxt_log(&format!(
@@ -1957,7 +1957,7 @@ impl StorageProvider for InternxtProvider {
         let file_info = self
             .find_file_in_folder(&parent_uuid, &filename)
             .await?
-            .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", resolved)))?;
+            .ok_or_else(|| ProviderError::NotFound(resolved.to_string()))?;
 
         let resp = self
             .send_with_reauth(|this| {
@@ -2262,7 +2262,7 @@ impl StorageProvider for InternxtProvider {
             });
         }
 
-        Err(ProviderError::NotFound(format!("Not found: {}", resolved)))
+        Err(ProviderError::NotFound(resolved.to_string()))
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {

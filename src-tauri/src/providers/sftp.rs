@@ -1267,7 +1267,7 @@ impl StorageProvider for SftpProvider {
             ),
         )
         .await
-        .map_err(|e| ProviderError::ConnectionFailed(format!("SSH connection failed: {}", e)))?;
+        .map_err(|e| ProviderError::ConnectionFailed(format!("ssh: {e}")))?;
 
         tracing::info!("SFTP: SSH connection established, authenticating...");
 
@@ -1576,11 +1576,10 @@ impl StorageProvider for SftpProvider {
         // idle reaper, broken pipe) are routed to ConnectionLost so the
         // command layer can reconnect+replay instead of misclassifying
         // them as a missing path.
-        let metadata = sftp.metadata(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::NotFound(format!("Directory not found: {}", s))
-            })
-        })?;
+        let metadata = sftp
+            .metadata(&full_path)
+            .await
+            .map_err(|e| classify_russh_err(e, |s| ProviderError::NotFound(s)))?;
 
         if let Some(perms) = metadata.permissions {
             if (perms & 0o40000) == 0 {
@@ -1645,9 +1644,7 @@ impl StorageProvider for SftpProvider {
                 if let Some(Ok(file)) = preopened {
                     let _ = file.close().await;
                 }
-                return Err(classify_russh_err(error, |s| {
-                    ProviderError::NotFound(format!("File not found: {}", s))
-                }));
+                return Err(classify_russh_err(error, |s| ProviderError::NotFound(s)));
             }
         };
         let total_size = metadata.size.unwrap_or(0);
@@ -2495,11 +2492,10 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = sftp.metadata(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::NotFound(format!("File not found: {}", s))
-            })
-        })?;
+        let metadata = sftp
+            .metadata(&full_path)
+            .await
+            .map_err(|e| classify_russh_err(e, |s| ProviderError::NotFound(s)))?;
 
         let name = Path::new(&full_path)
             .file_name()
@@ -2527,11 +2523,10 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = sftp.metadata(&full_path).await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::NotFound(format!("File not found: {}", s))
-            })
-        })?;
+        let metadata = sftp
+            .metadata(&full_path)
+            .await
+            .map_err(|e| classify_russh_err(e, |s| ProviderError::NotFound(s)))?;
 
         Ok(metadata.size.unwrap_or(0))
     }

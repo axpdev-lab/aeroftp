@@ -317,7 +317,7 @@ impl ImmichProvider {
         self.album_cache
             .get(title)
             .cloned()
-            .ok_or_else(|| ProviderError::NotFound(format!("Album not found: {}", title)))
+            .ok_or_else(|| ProviderError::NotFound(title.to_string()))
     }
 
     /// Find an asset by filename inside an album or virtual folder.
