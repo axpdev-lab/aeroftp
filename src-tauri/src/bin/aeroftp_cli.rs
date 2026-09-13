@@ -55852,6 +55852,12 @@ async fn cmd_sync_doctor(
 /// Walk the remote tree the way `sync-doctor` previews it, and report what the
 /// walk could not read.
 ///
+/// This preflight reports completeness counts, not the per-path boundaries of
+/// `check` and `cryptcheck`: an incomplete walk makes the doctor answer
+/// `attention` (exit 4), label its counts partial in `risks`, and suggest a dry
+/// run. It does not certify a compared subset or prescribe per-file actions.
+/// A caller that needs that scope must use the comparison scanners instead.
+///
 /// The two caps are parameters rather than the module constants they are called
 /// with. At 500_000 entries the entry cap is not reachable from a test, and a
 /// cap no test can reach is a cap nobody has checked.

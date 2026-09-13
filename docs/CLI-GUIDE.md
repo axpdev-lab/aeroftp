@@ -916,6 +916,8 @@ aeroftp-cli sync --profile "server" ./local /remote --from-reconcile diff.json -
 
 ### sync-doctor - Pre-Sync Preflight Checks
 
+Scan completeness here describes whether the preflight's counts cover the whole tree. An `attention` result with a scan risk does not certify a subset of files; use the suggested dry run to inspect actions, or `check` / `cryptcheck` for a comparison that names unseen paths. The preflight therefore reports completeness counts and risks, while those comparison commands report per-path boundaries.
+
 ```bash
 # Preflight: risks + suggested next command
 aeroftp-cli sync-doctor --profile "server" ./local /remote --json
