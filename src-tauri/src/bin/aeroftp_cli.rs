@@ -46205,11 +46205,6 @@ fn scan_sync_s3_listing(
     }
     let mut stopped_at = std::collections::HashSet::new();
     for e in entries {
-        if !e.is_dir && scan.entries.len() >= max_entries {
-            scan.completeness.truncated = true;
-            scan.boundaries.unbounded.get_or_insert("entry_cap");
-            break;
-        }
         let relative = e
             .path
             .strip_prefix(remote)
@@ -46255,6 +46250,11 @@ fn scan_sync_s3_listing(
         }
         if files_from.is_some_and(|set| !set.contains(relative.as_str())) {
             continue;
+        }
+        if scan.entries.len() >= max_entries {
+            scan.completeness.truncated = true;
+            scan.boundaries.unbounded.get_or_insert("entry_cap");
+            break;
         }
         scan.entries.push((relative, e.size, e.modified));
     }
@@ -67431,6 +67431,46 @@ mod tests {
         }
     }
 
+    fn assert_s3_sync_filtered_tail_does_not_refuse(
+        excludes: &[globset::GlobMatcher],
+        files_from: Option<&std::collections::HashSet<String>>,
+    ) {
+        let entries = ["keep.txt", "ignored.tmp"]
+            .into_iter()
+            .map(|name| RemoteEntry::file(name.to_string(), format!("/root/{name}"), 1))
+            .collect();
+        let scan = scan_sync_s3_listing((entries, false), "/root", None, 1, excludes, files_from);
+        assert_eq!(scan.entries, vec![("keep.txt".to_string(), 1, None)]);
+        assert_eq!(
+            scan.boundaries.unbounded, None,
+            "a rejected tail entry must not turn a full retained-entry budget into entry_cap"
+        );
+        let bound = ftp_client_gui_lib::sync_core::ScanBound::for_sync(
+            "/unused",
+            ["keep.txt"],
+            ["keep.txt"],
+            &Default::default(),
+            scan.boundaries,
+        );
+        assert!(
+            bound.refusal().is_none(),
+            "the filtered scan must remain usable"
+        );
+        assert!(scan.completeness.is_complete());
+    }
+
+    #[test]
+    fn s3_sync_boundaries_ignore_excluded_tail_at_full_cap() {
+        let excludes = [globset::Glob::new("*.tmp").unwrap().compile_matcher()];
+        assert_s3_sync_filtered_tail_does_not_refuse(&excludes, None);
+    }
+
+    #[test]
+    fn s3_sync_boundaries_ignore_unlisted_tail_at_full_cap() {
+        let listed = std::collections::HashSet::from(["keep.txt".to_string()]);
+        assert_s3_sync_filtered_tail_does_not_refuse(&[], Some(&listed));
+    }
+
     #[test]
     fn s3_sync_boundaries_name_depth_cuts_and_bound_both_sides() {
         let entries = vec![
@@ -67439,7 +67479,8 @@ mod tests {
             RemoteEntry::file("one.txt".into(), "/root/deep/one.txt".into(), 2),
             RemoteEntry::file("two.txt".into(), "/root/deep/two.txt".into(), 3),
         ];
-        let scan = scan_sync_s3_listing((entries, false), "/root", Some(1), 10, &[], None);
+        // A full retained-entry budget must still let depth cuts name their boundary.
+        let scan = scan_sync_s3_listing((entries, false), "/root", Some(1), 1, &[], None);
         assert_eq!(scan.entries.len(), 1);
         assert_eq!(
             scan.boundaries.unseen.len(),
