@@ -293,6 +293,8 @@ pub struct CloudinaryProvider {
     /// Set to `Some(true)` after a successful `by_asset_folder` call,
     /// `Some(false)` after we fall back to prefix-based listing.
     dynamic_folder_mode: Mutex<Option<bool>>,
+    #[cfg(test)]
+    api_base_override: Option<String>,
 }
 
 impl CloudinaryProvider {
@@ -310,10 +312,16 @@ impl CloudinaryProvider {
             current_path,
             resource_types: Mutex::new(HashMap::new()),
             dynamic_folder_mode: Mutex::new(None),
+            #[cfg(test)]
+            api_base_override: None,
         }
     }
 
     fn api_base(&self) -> String {
+        #[cfg(test)]
+        if let Some(base) = &self.api_base_override {
+            return base.clone();
+        }
         format!("{}/v1_1/{}", API_HOST, self.config.cloud_name)
     }
 
@@ -678,7 +686,7 @@ impl StorageProvider for CloudinaryProvider {
         let folder = self.resolve_path(path);
         let folder_norm = folder.trim_matches('/').to_string();
 
-        let subfolders = self.list_subfolders(&folder_norm).await.unwrap_or_default();
+        let subfolders = self.list_subfolders(&folder_norm).await?;
         let files = self.list_files(&folder_norm).await?;
 
         // Cache resource_types from this listing for subsequent deletes.
@@ -1055,7 +1063,7 @@ impl StorageProvider for CloudinaryProvider {
         let mut dirs = Vec::new();
 
         while let Some(dir) = stack.pop() {
-            let subfolders = self.list_subfolders(&dir).await.unwrap_or_default();
+            let subfolders = self.list_subfolders(&dir).await?;
             for sf in subfolders {
                 let subpath = if sf.path.is_empty() {
                     if dir.is_empty() {
@@ -1171,10 +1179,9 @@ impl StorageProvider for CloudinaryProvider {
         // Try as folder: list its parent and look for it in subfolders.
         let parent = parent_segments(&resolved);
         let name = basename(&resolved).to_string();
-        if let Ok(folders) = self.list_subfolders(&parent).await {
-            if let Some(folder) = folders.into_iter().find(|f| f.name == name) {
-                return Ok(folder_to_entry(&folder, &parent));
-            }
+        let folders = self.list_subfolders(&parent).await?;
+        if let Some(folder) = folders.into_iter().find(|f| f.name == name) {
+            return Ok(folder_to_entry(&folder, &parent));
         }
 
         // Treat as file: list parent files and look for it.
@@ -1276,7 +1283,7 @@ impl StorageProvider for CloudinaryProvider {
         let mut stack = vec![root.trim_matches('/').to_string()];
         let mut matches = Vec::new();
         while let Some(dir) = stack.pop() {
-            let subfolders = self.list_subfolders(&dir).await.unwrap_or_default();
+            let subfolders = self.list_subfolders(&dir).await?;
             for sf in &subfolders {
                 let subpath = if sf.path.is_empty() {
                     if dir.is_empty() {
@@ -1681,6 +1688,50 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn folder_listing_failure_is_not_an_empty_or_missing_path() {
+        use axum::{http::StatusCode, routing::get, Router};
+
+        let app = Router::new()
+            .route(
+                "/folders/{*path}",
+                get(|| async {
+                    (
+                        StatusCode::FORBIDDEN,
+                        r#"{"error":{"message":"folder access denied"}}"#,
+                    )
+                }),
+            )
+            .fallback(|| async { r#"{"resources":[]}"# });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = CloudinaryProvider::new(CloudinaryConfig {
+            cloud_name: "test".to_string(),
+            api_key: "test".to_string(),
+            api_secret: SecretString::from("test".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        let outcomes = [
+            provider.list("/parent").await.map(|_| ()),
+            provider.stat("/parent/child").await.map(|_| ()),
+            provider.find("/parent", "*").await.map(|_| ()),
+            provider.rmdir_recursive("/parent").await,
+            provider.exists("/parent/child").await.map(|_| ()),
+        ];
+        server.abort();
+        for outcome in outcomes {
+            assert!(
+                matches!(outcome, Err(ProviderError::AuthenticationFailed(ref message))
+                if message == "folder access denied"),
+                "{outcome:?}"
+            );
+        }
+    }
 
     // Row 4 (#347): the JSON `error.message` becomes the human text and the HTTP
     // status selects the variant; auth folds 401 and 403 together.
