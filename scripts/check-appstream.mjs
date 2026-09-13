@@ -126,11 +126,18 @@ if (cur) findings.push(cur);
 // which is the shape that produced flow style in a reported Debian case. So the
 // case is not reproducible on this version, and the script refuses to guess
 // rather than silently reporting zero findings.
+// ANY flow-style record fails, not a majority of them. The first version of
+// this guard compared the two counts (`flowRecords > findings.length`), which
+// is a comparison between two populations where the question is simply "is
+// there even one record I cannot read". One block record next to one flow
+// record made that false, and an unapproved AppStream error inside the flow one
+// would have passed the gate: a guard written against silent failure, failing
+// silently.
 const flowRecords = (res.out.match(/^\s*[-{]?\s*\{\s*tag:/gm) ?? []).length;
-if (flowRecords && flowRecords > findings.length) {
+if (flowRecords > 0) {
   err(
     `appstreamcli emitted ${flowRecords} flow-style record(s) that this parser does not read ` +
-      `(it found ${findings.length}). The report format changed: fix the parser, do not skip the gate.`,
+      `(it read ${findings.length} block-style). The report format changed: fix the parser, do not skip the gate.`,
   );
   console.error(res.out.split('\n').slice(0, 20).join('\n'));
   process.exit(1);
