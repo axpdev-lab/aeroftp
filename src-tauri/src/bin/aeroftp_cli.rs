@@ -57191,8 +57191,12 @@ fn scan_gap_with_no_name(
 }
 
 fn gap_with_no_name_message(side: &str, reason: &str) -> String {
+    let mut refusal = ftp_client_gui_lib::sync_core::scan::unbounded_refusal(side, reason);
+    if let Some(initial) = refusal.get_mut(..1) {
+        initial.make_ascii_uppercase();
+    }
     format!(
-        "The {side} scan did not see the whole tree ({reason}) and cannot name what it missed, so there is nothing to say which part of the tree a verdict would cover."
+        "{refusal} and cannot name what it missed, so there is nothing to say which part of the tree a verdict would cover."
     )
 }
 
