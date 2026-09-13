@@ -25,10 +25,13 @@
  * What this cannot see, stated so nobody reads more into a green than it means:
  *  - It compares declared version strings. It does not verify that the built
  *    artifacts carry them; `cli-smoke.yml` does that for the CLI binary.
- *  - A site that does not exist in this list is not checked. Adding a new file
- *    that hardcodes the version means adding it HERE, and the list is deliberately
- *    explicit rather than discovered by pattern, because a pattern would silently
- *    stop matching when a file is reformatted.
+ *  - A site that does not exist in the list is not COMPARED, but it can no longer
+ *    pass unnoticed: the discovery pass at the end asks the tree which files
+ *    declare this version and fails on any that is neither compared nor accepted
+ *    with a reason. Stopping at an explicit list would have reproduced, one level
+ *    up, the very defect this script exists to fix, since a list cannot report the
+ *    member nobody added to it. That pass is what found two such files the first
+ *    version of this list did not have.
  *  - `npm ci` does NOT fail on a lock whose version field disagrees. That claim
  *    was in the gate's own comment and does not reproduce: on the v4.1.9 tag it
  *    exits 0 and installs 306 packages, because npm validates the dependency tree
@@ -150,4 +153,77 @@ if (tag && tag !== canonical) {
   process.exit(1);
 }
 
-console.log(`check-version-sites: ${readings.length} sites agree on ${canonical}${tag ? ` and match the tag` : ''}`);
+// The metainfo is a version site with a different rule: it holds the history of
+// releases, so it must CONTAIN an entry for the current version rather than
+// equal it. Ubuntu App Center and GNOME Software read this file, so a bump that
+// forgets it ships a release the store cannot describe. The release procedure
+// has always said to add the entry by hand; this is the same instruction as a
+// checked property.
+const metainfo = 'app.aeroftp.AeroFTP.metainfo.xml';
+const entry = `<release version="${canonical}"`;
+if (!read(metainfo).includes(entry)) {
+  console.error(`${inCI ? '::error::' : ''}${metainfo} has no ${entry}...> entry for the current version`);
+  process.exit(1);
+}
+console.log(`${metainfo.padEnd(width)}  contains a <release> entry for ${canonical}`);
+
+// Discovery. Everything above compares a list, and a list cannot report the
+// member nobody added to it: that is the defect this whole script exists to fix,
+// and it would be reproduced one level up by stopping here. So the tree is asked
+// which files declare this version, and anything unaccounted for is a failure.
+//
+// The match is deliberately on DECLARATION shapes (a JSON or TOML or YAML value,
+// an XML attribute, the splash badge) and not on the bare version string. Prose
+// mentions a version constantly, in comments and in the changelog: a guard that
+// flagged those would need an exception for every sentence someone writes, and a
+// guard that cries wolf gets deleted. Measured on this tree: the bare string is
+// in 18 tracked files, the declaration shapes in 9.
+const ACCEPTED = new Map([
+  [
+    'docs/COMMAND-INVENTORY.json',
+    'regenerated from the binary, and its staleness is already guarded by `aeroftp-cli inventory --check` in cli-smoke.yml',
+  ],
+]);
+let discovered;
+try {
+  const { execFileSync } = await import('node:child_process');
+  const v = canonical.replace(/\./g, '\\.');
+  const pattern = `("(app_)?version"[[:space:]]*:[[:space:]]*"${v}"|^[[:space:]]*version[[:space:]]*=[[:space:]]*"${v}"|^[[:space:]]*version:[[:space:]]*['"]?${v}|version="${v}"|class="version">v${v})`;
+  discovered = execFileSync('git', ['grep', '-lE', pattern, '--', '.'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean);
+} catch (e) {
+  // A failure to ask is not an answer. `git grep` exits 1 when it matches
+  // nothing, and matching nothing here is impossible (package.json declares the
+  // version), so an empty result means the probe did not run.
+  console.error(`${inCI ? '::error::' : ''}check-version-sites: could not enumerate declaring files (${e.message.split('\n')[0]})`);
+  process.exit(1);
+}
+const known = new Set([
+  'src-tauri/Cargo.toml',
+  'package.json',
+  'src-tauri/tauri.conf.json',
+  'snap/snapcraft.yaml',
+  'package-lock.json',
+  'src-tauri/Cargo.lock',
+  'public/splash.html',
+  metainfo,
+]);
+const unaccounted = discovered.filter((f) => !known.has(f) && !ACCEPTED.has(f));
+if (!discovered.some((f) => f === 'package.json')) {
+  console.error(`${inCI ? '::error::' : ''}check-version-sites: the discovery pattern did not even match package.json, so it is broken`);
+  process.exit(1);
+}
+if (unaccounted.length) {
+  console.error(`${inCI ? '::error::' : ''}these files declare version ${canonical} and are not compared by this script:`);
+  for (const f of unaccounted) console.error(`  ${f}`);
+  console.error('Add each one to SITES if it must stay in lockstep, or to ACCEPTED with the reason it must not.');
+  process.exit(1);
+}
+console.log(
+  `check-version-sites: ${readings.length} sites agree on ${canonical}${tag ? ' and match the tag' : ''}, ` +
+    `${discovered.length} files declare it and all are accounted for`,
+);
