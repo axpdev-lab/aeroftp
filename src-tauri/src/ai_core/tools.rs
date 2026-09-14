@@ -2176,14 +2176,23 @@ pub async fn dispatch_tool(
         "rag_index" => agent_tools::rag_index(ctx, args).await,
         "rag_search" => agent_tools::rag_search(ctx, args).await,
         "agent_memory_write" => agent_tools::agent_memory_write(ctx, args).await,
+        // `app_info` answers different questions on each surface. The GUI
+        // handler needs a Tauri app handle; the CLI one does not.
+        "app_info" => {
+            if ctx.tauri_app_handle().is_some() {
+                crate::ai_core::gui_tools::dispatch_gui_tool(ctx, tool_name, args).await
+            } else {
+                local_tools::app_info_cli(ctx, args).await
+            }
+        }
+        // Local digest: no GUI handle required on either surface.
+        "hash_file" => local_tools::hash_file(ctx, args).await,
         // GUI-specific legacy tools
         "set_theme"
-        | "app_info"
         | "sync_control"
         | "vault_peek"
         | "cross_profile_transfer"
         | "preview_edit"
-        | "hash_file"
         | "generate_transfer_plan"
         | "upload_files"
         | "download_files"
@@ -2627,20 +2636,8 @@ mod tests {
     }
 
     /// A tool the CLI offers to the model has to be one the CLI can run.
-    ///
-    /// `app_info` and `hash_file` are advertised in the CLI's own tool list and
-    /// classified as read-only, but the registry declares them `Surfaces::GUI`
-    /// alone. On the CLI surface the dispatcher therefore answers
-    /// `NotOnSurface`, which the caller does not treat as a fallback, so the
-    /// legacy arm that would have answered is never reached and the agent is
-    /// told the tool it was just offered does not exist here.
-    ///
-    /// The assertion is deliberately the negative one, "not `NotOnSurface`",
-    /// and it must stay that way. Asserting success would be wrong twice: on a
-    /// mock context `hash_file` fails on a path that does not exist, and the
-    /// day these two are migrated into the dispatcher for real the answer stops
-    /// being the legacy handler's and the test would break for a change that is
-    /// an improvement. What is pinned here is reachability, not the reply.
+    /// Surface refusal is not a fallback, so `NotOnSurface` here would
+    /// still leave an advertised tool unusable.
     #[tokio::test]
     async fn the_cli_can_reach_every_tool_it_offers() {
         for name in ["app_info", "hash_file"] {
@@ -2657,42 +2654,79 @@ mod tests {
         }
     }
 
-    /// The two names whose legacy arm in the CLI binary must SURVIVE, pinned at
-    /// the value they answer today, which is a DEFECT and not the behaviour
-    /// anyone wants.
-    ///
-    /// `app_info` and `hash_file` are offered to the model by the CLI and have
-    /// a CLI implementation of their own in that binary's legacy match, which
-    /// is not the GUI one: the CLI `app_info` reports the working directory and
-    /// `"mode": "cli"`, and the CLI `hash_file` computes the digest itself. The
-    /// registry declares both on the CLI surface, so this dispatcher accepts
-    /// them and routes them to the GUI handlers, which need a Tauri app handle
-    /// the CLI does not have and answer `Exec("Requires GUI")`. That is not one
-    /// of the two errors `execute_cli_tool` falls back on, so it returns the
-    /// error and the CLI implementation is never reached. The CLI therefore
-    /// advertises two tools it cannot run.
-    ///
-    /// The defect is pinned on purpose, for two reasons. It is what catches the
-    /// removal of those two legacy arms "for consistency" with the thirty-seven
-    /// that went, which is the edit a future reader is most likely to make. And
-    /// it is expected to CHANGE rather than to hold: the day the separate item
-    /// that makes those two reachable is closed, this assertion is what says
-    /// so, out loud, instead of the fix landing unnoticed.
+    /// The CLI `app_info` answers with `mode: "cli"` and the working
+    /// directory. Routing it through the GUI handler answers
+    /// `Requires GUI` instead, which is the defect this test must catch.
     #[tokio::test]
-    async fn the_two_tools_the_cli_cannot_run_are_pinned_at_the_defect() {
-        for name in ["app_info", "hash_file"] {
-            let outcome = dispatch_tool(
-                &mock_ctx(Surfaces::CLI),
-                name,
-                &json!({ "path": "/nonexistent" }),
-            )
-            .await;
-            match outcome {
-                Err(ToolError::Exec(ref message)) if message == "Requires GUI" => {}
-                other => panic!(
-                    "{name} answered something other than the GUI requirement this pins as the current defect: {other:?}"
-                ),
+    async fn cli_app_info_reports_cli_mode() {
+        let out = dispatch_tool(&mock_ctx(Surfaces::CLI), "app_info", &json!({}))
+            .await
+            .expect("app_info must run on the CLI surface");
+        assert_eq!(out["mode"], "cli", "output: {out}");
+        assert_eq!(out["version"], env!("CARGO_PKG_VERSION"), "output: {out}");
+        assert!(out.get("working_directory").is_some(), "output: {out}");
+    }
+
+    /// `hash_file` is a local read. It must not demand a GUI app handle.
+    #[tokio::test]
+    async fn cli_hash_file_hashes_a_real_file() {
+        let dir = tempfile::tempdir().expect("scratch");
+        let path = dir.path().join("hello.bin");
+        std::fs::write(&path, b"hello").expect("write");
+        let out = dispatch_tool(
+            &mock_ctx(Surfaces::CLI),
+            "hash_file",
+            &json!({
+                "path": path.to_string_lossy(),
+                "algorithm": "sha256"
+            }),
+        )
+        .await
+        .expect("hash_file must run on the CLI surface");
+        assert_eq!(
+            out["hash"], "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+            "output: {out}"
+        );
+    }
+
+    /// `hash_file` is routed through `local_tools` on the GUI surface too,
+    /// so a GUI context without a Tauri app handle must still hash.
+    #[tokio::test]
+    async fn gui_hash_file_hashes_without_a_handle() {
+        let dir = tempfile::tempdir().expect("scratch");
+        let path = dir.path().join("hello.bin");
+        std::fs::write(&path, b"hello").expect("write");
+        let out = dispatch_tool(
+            &mock_ctx(Surfaces::GUI),
+            "hash_file",
+            &json!({
+                "path": path.to_string_lossy(),
+                "algorithm": "sha256"
+            }),
+        )
+        .await
+        .expect("hash_file must run on the GUI surface without an app handle");
+        assert_eq!(
+            out["hash"], "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+            "output: {out}"
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_hash_file_does_not_demand_a_gui() {
+        let outcome = dispatch_tool(
+            &mock_ctx(Surfaces::CLI),
+            "hash_file",
+            &json!({ "path": "/nonexistent" }),
+        )
+        .await;
+        match outcome {
+            Err(ToolError::Exec(ref message)) if message == "Requires GUI" => {
+                panic!("hash_file still routes to the GUI handler: {message}");
             }
+            Err(ToolError::Exec(_)) => {}
+            Ok(_) => panic!("a missing path must not hash"),
+            other => panic!("unexpected: {other:?}"),
         }
     }
 
