@@ -95,6 +95,8 @@ run-clean.sh
 # can re-include specific tracked scripts; git cannot re-include a file when its
 # parent directory is excluded outright.
 /scripts/*
+# Exception: read-only Linux idle performance diagnostics
+!/scripts/sample-webkit-idle.py
 # Exception: CI-required scripts
 !/scripts/apply-i18n-batch.py
 !/scripts/i18n-validate.ts
