@@ -1694,6 +1694,41 @@ pub async fn local_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
     }))
 }
 
+/// CLI `app_info`: version, platform, cwd, `mode: "cli"`. The GUI
+/// handler answers a different question (connection state) and needs
+/// a Tauri app handle, so it is not a substitute.
+pub async fn app_info_cli(_ctx: &dyn ToolCtx, _args: &Value) -> Result<Value, ToolError> {
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "?".to_string());
+    Ok(json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "platform": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "working_directory": cwd,
+        "mode": "cli",
+    }))
+}
+
+/// Local file digest. Does not need a GUI app handle.
+pub async fn hash_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let path = resolve_local_path(&get_str(args, "path")?, ctx.context_local_path());
+    validate_path(&path, "path").map_err(map_str_err)?;
+    let algorithm = get_str_opt(args, "algorithm").unwrap_or_else(|| "sha256".to_string());
+    let p = std::path::Path::new(&path);
+    if !p.is_file() {
+        return Err(ToolError::Exec(format!("Path is not a file: {path}")));
+    }
+    let hash = crate::cyber_tools::hash_file(path.clone(), algorithm.clone(), None)
+        .await
+        .map_err(map_str_err)?;
+    Ok(json!({
+        "path": path,
+        "algorithm": algorithm,
+        "hash": hash,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::resolve_local_path;

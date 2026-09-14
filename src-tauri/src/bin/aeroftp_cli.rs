@@ -61902,31 +61902,10 @@ async fn execute_cli_tool(
     }
 
     match tool_name {
-        // KEEP. This is the CLI's own implementation of `hash_file`, and it is
-        // not the GUI one: it reads the file and computes the digest here, over
-        // the algorithms this binary advertises to the model.
-        //
-        // It is unreachable today, and that is a defect rather than a reason to
-        // delete it. The registry declares this tool on the CLI surface, so the
-        // dispatcher accepts it and routes it to the GUI handler, which needs an
-        // app handle the CLI does not have and answers `Exec("Requires GUI")`.
-        // `execute_cli_tool` falls back to this match only on `Unknown` and
-        // `NotMigrated`, so that answer is returned to the caller and this arm
-        // is never entered.
-        //
-        // Do NOT remove it for consistency with the thirty-seven arms removed
-        // alongside it. Those were unreachable because the dispatcher HANDLES
-        // their tools; this one is unreachable because the dispatcher MISROUTES
-        // it, so deleting it would destroy the only implementation the CLI has.
-        // The test `the_two_tools_the_cli_cannot_run_are_pinned_at_the_defect`
-        // pins the dispatcher's answer, and it is worth being exact about what
-        // that buys. It does NOT catch the deletion of this arm: it exercises
-        // the dispatcher, so removing these lines would leave it green. While
-        // this arm is unreachable no behavioural test can notice its removal,
-        // because no path executes it, and that is precisely why the constraint
-        // is carried by this comment instead. What the test does buy is the
-        // other direction: when the change that makes these two reachable
-        // lands, that assertion fails and forces the fix to be noticed.
+        // KEEP. Fallback if dispatch_tool answers Unknown or NotMigrated.
+        // The dispatcher now owns `hash_file` on the CLI surface; this arm
+        // remains the CLI-shaped implementation if that routing is ever
+        // withdrawn.
         "hash_file" => {
             let path = resolve_path(&get_str("path")?);
             let algorithm = get_str_opt("algorithm").unwrap_or_else(|| "sha256".to_string());
@@ -61953,19 +61932,9 @@ async fn execute_cli_tool(
             Ok(json!({ "path": path, "algorithm": algorithm, "hash": hash }))
         }
 
-        // KEEP, for the same reason as `hash_file` above, and this one is the
-        // plainer case: the CLI `app_info` reports the working directory and
-        // `"mode": "cli"`, while the GUI one reports connection state and the
-        // GUI's own current path. They answer different questions under one
-        // name, so the GUI handler is not a substitute for this arm.
-        //
-        // Unreachable today: the tool is declared on the CLI surface, the
-        // dispatcher routes it to the GUI handler, and that handler answers
-        // `Exec("Requires GUI")`, which is not one of the two errors
-        // `execute_cli_tool` falls back on.
-        //
-        // Do NOT remove it for consistency with the thirty-seven arms removed
-        // alongside it, for the reason spelled out above `hash_file`.
+        // KEEP. Fallback if dispatch_tool answers Unknown or NotMigrated.
+        // The dispatcher now owns `app_info` on the CLI surface (`mode: "cli"`).
+        // This arm remains if that routing is ever withdrawn.
         "app_info" => {
             let cwd = std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
