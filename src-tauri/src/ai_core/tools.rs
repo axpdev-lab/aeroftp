@@ -2689,6 +2689,29 @@ mod tests {
         );
     }
 
+    /// `hash_file` is routed through `local_tools` on the GUI surface too,
+    /// so a GUI context without a Tauri app handle must still hash.
+    #[tokio::test]
+    async fn gui_hash_file_hashes_without_a_handle() {
+        let dir = tempfile::tempdir().expect("scratch");
+        let path = dir.path().join("hello.bin");
+        std::fs::write(&path, b"hello").expect("write");
+        let out = dispatch_tool(
+            &mock_ctx(Surfaces::GUI),
+            "hash_file",
+            &json!({
+                "path": path.to_string_lossy(),
+                "algorithm": "sha256"
+            }),
+        )
+        .await
+        .expect("hash_file must run on the GUI surface without an app handle");
+        assert_eq!(
+            out["hash"], "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+            "output: {out}"
+        );
+    }
+
     #[tokio::test]
     async fn cli_hash_file_does_not_demand_a_gui() {
         let outcome = dispatch_tool(
