@@ -128,7 +128,12 @@ pub fn random_content_key() -> [u8; 32] {
 
 /// Load a 64-byte identity secret file (as written by `identity-new`).
 pub fn load_identity(path: &str) -> Result<Identity> {
-    let bytes = std::fs::read(path).with_context(|| format!("read identity file {path}"))?;
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    let path_ref = Path::new(path);
+    if path_ref.components().any(|c| c == std::path::Component::ParentDir) {
+        anyhow::bail!("Invalid input: {}", path_ref.display());
+    }
+    let bytes = std::fs::read(path_ref).with_context(|| format!("read identity file {path}"))?;
     let arr: [u8; 64] = bytes
         .as_slice()
         .try_into()
@@ -150,8 +155,13 @@ pub fn write_identity(path: &str, id: &Identity) -> Result<()> {
 
 /// Resolve a `--capability` argument: a literal `aeroftp-drive://` token OR a path to a file holding one.
 pub fn load_capability_token(s: &str) -> Result<String> {
-    if std::path::Path::new(s).is_file() {
-        Ok(std::fs::read_to_string(s)
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    let path_ref = std::path::Path::new(s);
+    if path_ref.components().any(|c| c == std::path::Component::ParentDir) {
+        anyhow::bail!("Invalid input: {}", path_ref.display());
+    }
+    if path_ref.is_file() {
+        Ok(std::fs::read_to_string(path_ref)
             .with_context(|| format!("read capability token file {s}"))?
             .trim()
             .to_string())
@@ -215,7 +225,12 @@ pub(crate) fn issue_capabilities(
                 .take(16)
                 .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
                 .collect();
-            let path = std::path::Path::new(dir).join(format!("{short}.token"));
+            // Prevent path traversal attacks by rejecting paths containing '..'.
+            let dir_path = std::path::Path::new(dir);
+            if dir_path.components().any(|c| c == std::path::Component::ParentDir) {
+                anyhow::bail!("Invalid input: {}", dir_path.display());
+            }
+            let path = dir_path.join(format!("{short}.token"));
             std::fs::write(&path, &token)
                 .with_context(|| format!("write cap token to {}", path.display()))?;
             println!("  (written to {})", path.display());
@@ -431,7 +446,11 @@ pub async fn run_docs_publish(
     if let Some(store_dir) = store.as_deref() {
         // === PERSISTENT MODE (Stage 8) ===
         use std::path::Path;
+        // Prevent path traversal attacks by rejecting paths containing '..'.
         let store_path = Path::new(store_dir);
+        if store_path.components().any(|c| c == std::path::Component::ParentDir) {
+            anyhow::bail!("Invalid input: {}", store_path.display());
+        }
         std::fs::create_dir_all(store_path)?;
         let blobs_path = store_path.join("blobs");
         let docs_path = store_path.join("docs");
@@ -487,7 +506,11 @@ pub async fn run_docs_publish(
 
         if let Some(dir_path) = dir.as_deref() {
             // publish (or diff on reopen) the dir into the persistent doc
+            // Prevent path traversal attacks by rejecting paths containing '..'.
             let src = Path::new(dir_path);
+            if src.components().any(|c| c == std::path::Component::ParentDir) {
+                anyhow::bail!("Invalid input: {}", src.display());
+            }
             let (s1, state1) =
                 publish_drive_version(&doc, author, &drive_key, src, 1, None).await?;
             println!(
@@ -529,7 +552,11 @@ pub async fn run_docs_publish(
         if let Some(dir_path) = dir.as_deref() {
             // === DRIVE MODE (Stage 6 differential): publish v1 (prev=None -> all added); share ticket immediately
             // so watcher can join during v1. v2 republish (after sleep) passes prev state for diff + del.
+            // Prevent path traversal attacks by rejecting paths containing '..'.
             let src = Path::new(dir_path);
+            if src.components().any(|c| c == std::path::Component::ParentDir) {
+                anyhow::bail!("Invalid input: {}", src.display());
+            }
             let (s1, state1) =
                 publish_drive_version(&doc, author, &drive_key, src, 1, None).await?;
             println!(
@@ -599,7 +626,11 @@ pub async fn run_docs_publish(
     // harness mutates between), chains prev state for diff+del, prints per-version stats.
     if republish_after > 0 {
         if let Some(dir_path) = dir.as_deref() {
+            // Prevent path traversal attacks by rejecting paths containing '..'.
             let src = Path::new(dir_path);
+            if src.components().any(|c| c == std::path::Component::ParentDir) {
+                anyhow::bail!("Invalid input: {}", src.display());
+            }
             let mut prev_file_count = v1_file_count;
             for v in 2..=(1 + republish_count) {
                 println!(
@@ -891,7 +922,11 @@ pub async fn run_docs_replicate(
 
     if let Some(out_dir) = out {
         // === DRIVE MODE ===
+        // Prevent path traversal attacks by rejecting paths containing '..'.
         let out_path = Path::new(&out_dir);
+        if out_path.components().any(|c| c == std::path::Component::ParentDir) {
+            anyhow::bail!("Invalid input: {}", out_path.display());
+        }
         std::fs::create_dir_all(out_path)?;
 
         // 1. Wait for + fetch + decrypt manifest (reuse the async-blob retry pattern)
