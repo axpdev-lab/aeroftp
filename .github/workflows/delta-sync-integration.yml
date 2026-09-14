@@ -96,7 +96,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          toolchain: stable
+          toolchain: 1.97.1
 
       - name: Rust cache
         timeout-minutes: 15
@@ -348,7 +348,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          toolchain: stable
+          toolchain: 1.97.1
 
       - name: Rust cache
         timeout-minutes: 15
@@ -566,7 +566,7 @@ jobs:
       - name: Install Rust (stable, msvc)
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          toolchain: stable
+          toolchain: 1.97.1
           targets: x86_64-pc-windows-msvc
 
       - name: Rust cache
