@@ -13,6 +13,11 @@
  */
 
 import React, { useState, useCallback, createContext, useContext, useMemo, ReactNode } from 'react';
+import { createDateTimeFormatter } from '../utils/dateTimeFormat';
+
+const formatLogTime = createDateTimeFormatter({
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+});
 
 // ============================================================================
 // Types
@@ -247,11 +252,7 @@ export function getStatusColorClass(status: OperationStatus): string {
  * Format timestamp for display
  */
 export function formatTimestamp(date: Date): string {
-    return date.toLocaleTimeString('it-IT', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    });
+    return Number.isNaN(date.getTime()) ? 'Invalid Date' : formatLogTime(date, 'it-IT');
 }
 
 export default useActivityLog;

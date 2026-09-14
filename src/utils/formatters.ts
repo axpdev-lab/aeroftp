@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { createDateTimeFormatter } from './dateTimeFormat';
+
+const formatLocalizedDate = createDateTimeFormatter({
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+});
+
 /**
  * Utility formatting functions
  */
@@ -191,14 +198,7 @@ export const formatDate = (dateStr: string | Date | null): string => {
         return `${M}/${D}/${Y} ${h}:${mi}:${s}`; // mdy
     }
 
-    return new Intl.DateTimeFormat(getUiLocale(), {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-    }).format(date);
+    return formatLocalizedDate(date, getUiLocale());
 };
 
 /**
