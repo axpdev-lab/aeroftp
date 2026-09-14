@@ -747,14 +747,15 @@ impl B2Provider {
             let body = resp.text().await.unwrap_or_default();
             return Err(map_b2_status(status, &body, "b2_authorize_account"));
         }
-        let body_bytes = resp.bytes().await.map_err(|e| {
-            ProviderError::AuthenticationFailed(format!("authorize read body: {}", e))
-        })?;
+        let body_bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("authorize read body: {}", e)))?;
         let parsed: AuthorizeResponse = serde_json::from_slice(&body_bytes).map_err(|e| {
             let preview = String::from_utf8_lossy(&body_bytes);
             let masked = mask_authorize_secrets(&preview);
             let truncated: String = masked.chars().take(800).collect();
-            ProviderError::AuthenticationFailed(format!(
+            ProviderError::ServerError(format!(
                 "authorize parse: {} | body[{}B]: {}",
                 e,
                 body_bytes.len(),
@@ -1038,12 +1039,11 @@ impl B2Provider {
             .map_err(|e| ProviderError::ServerError(format!("list_file_names parse: {}", e)))
     }
 
-    /// Re-authorize on AuthenticationFailed once, then retry caller.
+    /// Re-authorize on a token failure once, then retry the caller.
     ///
-    /// Filters strictly to errors raised by `map_b2_status` 401 (token expired
-    /// or `bad_auth_token`) and the local "invalid auth token" guard. Callers
-    /// retry once after this returns `true`; if it returns `false` the original
-    /// error is surfaced unchanged.
+    /// `is_b2_token_failure` reads the `AuthenticationFailed` variant.
+    /// Callers retry once after this returns `true`; if it returns `false`
+    /// the original error is surfaced unchanged.
     async fn maybe_reauth(&mut self, err: &ProviderError) -> bool {
         if !is_b2_token_failure(err) {
             return false;
@@ -3588,16 +3588,16 @@ pub(crate) fn encode_path_segments(key: &str) -> String {
 
 /// True when an error indicates the master auth token must be refreshed.
 ///
-/// Recognises the exact message produced by `map_b2_status` for 401
-/// `expired_auth_token` / `bad_auth_token` (which contains
-/// "token expired/invalid") plus the local "invalid auth token" guard from
-/// `auth_header`. Anything else is left for the caller to surface verbatim.
+/// `map_b2_status` already classifies 401 `expired_auth_token` /
+/// `bad_auth_token` as `AuthenticationFailed`. This filter reads that
+/// variant. It does not search the message: a wording change at the
+/// producer must not silently disable reauth.
+///
+/// In this file `AuthenticationFailed` is only a token condition.
+/// Authorize body-read and parse failures used to borrow the variant
+/// after a 2xx; they are `ConnectionFailed` and `ServerError`.
 fn is_b2_token_failure(err: &ProviderError) -> bool {
-    matches!(
-        err,
-        ProviderError::AuthenticationFailed(msg)
-            if msg.contains("token expired") || msg.contains("invalid")
-    )
+    matches!(err, ProviderError::AuthenticationFailed(_))
 }
 
 fn map_b2_status(status: reqwest::StatusCode, body: &str, op: &str) -> ProviderError {
@@ -4418,11 +4418,38 @@ mod tests {
         assert!(is_b2_token_failure(&err));
     }
 
+    /// A real token failure whose prose does not contain "token expired" or
+    /// "invalid". The old filter searched those substrings and missed this
+    /// case: the variant is the structured fact, the wording is not.
     #[test]
-    fn reauth_filter_rejects_other_auth_messages() {
-        // Generic auth failures (e.g. parse errors) must not trigger reauth -
-        // re-running authorize() would not help and would burn an HTTP round-trip.
-        let err = ProviderError::AuthenticationFailed("authorize parse: oops".into());
+    fn reauth_filter_ignores_the_wording() {
+        for msg in [
+            "b2_list_file_names: expired_auth_token",
+            "anything at all",
+            "",
+        ] {
+            assert!(
+                is_b2_token_failure(&ProviderError::AuthenticationFailed(msg.into())),
+                "the variant decides, not the words: {msg:?}"
+            );
+        }
+    }
+
+    /// Non-token 401s are kept out at the producer, which is where the
+    /// evidence is. `map_b2_status` reads B2's `code`, so a 401 that is
+    /// not a token condition never becomes `AuthenticationFailed`.
+    #[test]
+    fn non_token_401_never_becomes_an_auth_failure() {
+        let body = r#"{"status":401,"code":"cap_exceeded","message":"cap exceeded"}"#;
+        let err = map_b2_status(
+            reqwest::StatusCode::UNAUTHORIZED,
+            body,
+            "b2_list_file_names",
+        );
+        assert!(
+            matches!(err, ProviderError::PermissionDenied(_)),
+            "a 401 whose code is not a token condition must not be an auth failure: {err:?}"
+        );
         assert!(!is_b2_token_failure(&err));
     }
 
@@ -4456,7 +4483,12 @@ mod tests {
         });
         let err = ProviderError::NotFound("test".into());
         assert!(!p.maybe_reauth(&err).await);
-        let err = ProviderError::AuthenticationFailed("authorize parse: bad".into());
+        // A non-token 401 is PermissionDenied, which is what actually
+        // reaches this call site. The previous second case used an
+        // AuthenticationFailed("authorize parse: ..."), a value the code
+        // can no longer produce; under the type-based filter that value
+        // would have been let through and made a real HTTP call.
+        let err = ProviderError::PermissionDenied("b2_list_file_names: cap exceeded".into());
         assert!(!p.maybe_reauth(&err).await);
     }
 
