@@ -269,7 +269,13 @@ pub async fn send_on_endpoint_with_progress(
     let recipient_node = NodeId::from_bytes(&recipient.ed_bytes())
         .context("recipient AFID does not yield a valid node id")?;
 
-    let data = std::fs::read(file_path).with_context(|| format!("cannot read {file_path}"))?;
+    // Prevent path traversal attacks by rejecting paths containing '..'.
+    let path = Path::new(file_path);
+    if path.components().any(|c| c == std::path::Component::ParentDir) {
+        bail!("Invalid input: {}", path.display());
+    }
+
+    let data = std::fs::read(path).with_context(|| format!("cannot read {file_path}"))?;
     if data.len() as u64 > MAX_SEND_BYTES {
         bail!(
             "file is {} bytes; the one-shot send cap is {} bytes",
@@ -277,7 +283,7 @@ pub async fn send_on_endpoint_with_progress(
             MAX_SEND_BYTES
         );
     }
-    let name = Path::new(file_path)
+    let name = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "file".to_string());
