@@ -1,10 +1,12 @@
 # Pin the Rust toolchain so the local pre-push gate uses the SAME clippy/rustfmt
-# as CI. Workflows request `toolchain: 1.97.0` (not floating `stable`) via the
+# as CI. Workflows request `toolchain: 1.97.1` (not floating `stable`) via the
 # SHA-pinned dtolnay/rust-toolchain action. Without this pin the local gate
 # silently ran an older stable (1.96.0) and was blind to version-sensitive
-# lints (e.g. clippy::question_mark landed in 1.97 and turned pre-existing
-# code red only in CI). Bump this file and every workflow `toolchain:` key
+# lints. clippy::question_mark predates 1.97; 1.97 expanded its coverage and
+# fixed false positives and suggestions, so it diagnosed pre-existing code
+# that 1.96 did not. Bump this file and every workflow `toolchain:` key
 # together when moving the whole project to a newer stable.
 [toolchain]
-channel = "1.97.0"
+channel = "1.97.1"
 components = ["clippy", "rustfmt"]
+
