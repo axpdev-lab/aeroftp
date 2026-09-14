@@ -181,6 +181,16 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
                 Err(e) => return Err(e.error),
             }
         } else {
+            // Prevent path traversal attacks by rejecting paths containing '..'.
+            if dst
+                .components()
+                .any(|c| c == std::path::Component::ParentDir)
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Invalid input: {}", dst.display()),
+                ));
+            }
             let _ = std::fs::copy(src, dst)?;
         }
         #[cfg(unix)]
