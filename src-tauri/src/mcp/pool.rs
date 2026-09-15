@@ -524,6 +524,50 @@ fn resolve_profile_id(server_query: &str) -> Result<String, String> {
 ///
 /// Returns the provider, the profile name and the profile's protocol label
 /// (upper-case) so the pool can surface it via `aeroftp://connections`.
+/// Map a saved profile's protocol string to its provider type. Extracted from
+/// `create_provider_from_vault` so the mapping is testable: the resources
+/// surface announces capabilities per provider, and an arm missing here makes
+/// an announced provider unbuildable (MI-02: Immich, ImageKit, Uploadcare,
+/// Cloudinary and native B2 were announced and unreachable). Spellings mirror
+/// the CLI's profile mapping, lowercase-insensitive.
+fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
+    Some(match protocol.to_uppercase().as_str() {
+        "FTP" => ProviderType::Ftp,
+        "FTPS" => ProviderType::Ftps,
+        "SFTP" => ProviderType::Sftp,
+        "WEBDAV" | "WEBDAVS" => ProviderType::WebDav,
+        "S3" => ProviderType::S3,
+        "GITHUB" => ProviderType::GitHub,
+        "GITLAB" => ProviderType::GitLab,
+        "MEGA" => ProviderType::Mega,
+        "AZURE" => ProviderType::Azure,
+        "FILEN" => ProviderType::Filen,
+        "INTERNXT" => ProviderType::Internxt,
+        "KDRIVE" => ProviderType::KDrive,
+        "JOTTACLOUD" => ProviderType::Jottacloud,
+        "DRIMECLOUD" | "DRIME" => ProviderType::DrimeCloud,
+        "FILELU" => ProviderType::FileLu,
+        "KOOFR" => ProviderType::Koofr,
+        "OPENDRIVE" => ProviderType::OpenDrive,
+        "YANDEXDISK" | "YANDEX" => ProviderType::YandexDisk,
+        "SWIFT" => ProviderType::Swift,
+        "IMMICH" => ProviderType::Immich,
+        "IMAGEKIT" | "IMAGE_KIT" => ProviderType::ImageKit,
+        "UPLOADCARE" | "UPLOAD_CARE" => ProviderType::Uploadcare,
+        "CLOUDINARY" => ProviderType::Cloudinary,
+        "B2" | "BACKBLAZE" | "BACKBLAZEB2" => ProviderType::Backblaze,
+        // OAuth2 providers: only if token is present
+        "GOOGLEDRIVE" | "GOOGLE_DRIVE" => ProviderType::GoogleDrive,
+        "DROPBOX" => ProviderType::Dropbox,
+        "ONEDRIVE" => ProviderType::OneDrive,
+        "BOX" => ProviderType::Box,
+        "PCLOUD" => ProviderType::PCloud,
+        "ZOHOWORKDRIVE" | "ZOHO" => ProviderType::ZohoWorkdrive,
+        "FOURSHARED" | "4SHARED" => ProviderType::FourShared,
+        _ => return None,
+    })
+}
+
 fn create_provider_from_vault(
     server_query: &str,
 ) -> Result<(Box<dyn StorageProvider>, String, String), String> {
@@ -622,42 +666,17 @@ fn create_provider_from_vault(
     let mut extra: HashMap<String, String> = HashMap::new();
     apply_profile_options(&mut extra, matched);
 
-    let provider_type = match protocol.to_uppercase().as_str() {
-        "FTP" => ProviderType::Ftp,
-        "FTPS" => ProviderType::Ftps,
-        "SFTP" => ProviderType::Sftp,
-        "WEBDAV" | "WEBDAVS" => ProviderType::WebDav,
-        "S3" => ProviderType::S3,
-        "GITHUB" => ProviderType::GitHub,
-        "GITLAB" => ProviderType::GitLab,
-        "MEGA" => ProviderType::Mega,
-        "AZURE" => ProviderType::Azure,
-        "FILEN" => ProviderType::Filen,
-        "INTERNXT" => ProviderType::Internxt,
-        "KDRIVE" => ProviderType::KDrive,
-        "JOTTACLOUD" => ProviderType::Jottacloud,
-        "DRIMECLOUD" | "DRIME" => ProviderType::DrimeCloud,
-        "FILELU" => ProviderType::FileLu,
-        "KOOFR" => ProviderType::Koofr,
-        "OPENDRIVE" => ProviderType::OpenDrive,
-        "YANDEXDISK" | "YANDEX" => ProviderType::YandexDisk,
-        "SWIFT" => ProviderType::Swift,
-        // OAuth2 providers: only if token is present
-        "GOOGLEDRIVE" | "GOOGLE_DRIVE" => ProviderType::GoogleDrive,
-        "DROPBOX" => ProviderType::Dropbox,
-        "ONEDRIVE" => ProviderType::OneDrive,
-        "BOX" => ProviderType::Box,
-        "PCLOUD" => ProviderType::PCloud,
-        "ZOHOWORKDRIVE" | "ZOHO" => ProviderType::ZohoWorkdrive,
-        "FOURSHARED" | "4SHARED" => ProviderType::FourShared,
-        other => {
+    let provider_type = match protocol_to_provider_type(protocol) {
+        Some(pt) => pt,
+        None => {
             return Err(format!(
                 "Protocol '{}' on server '{}' is not yet supported via MCP. \
                  Supported: FTP, FTPS, SFTP, WebDAV, S3, GitHub, GitLab, MEGA, Azure, \
                  Filen, Internxt, kDrive, Jottacloud, DrimeCloud, FileLu, Koofr, \
-                 OpenDrive, YandexDisk, Swift. OAuth2 providers (Google Drive, Dropbox, \
+                 OpenDrive, YandexDisk, Swift, Immich, ImageKit, Uploadcare, \
+                 Cloudinary, Backblaze B2. OAuth2 providers (Google Drive, Dropbox, \
                  OneDrive, Box, pCloud, Zoho) require valid tokens in vault.",
-                other, profile_name
+                protocol, profile_name
             ));
         }
     };
@@ -725,4 +744,55 @@ fn create_provider_from_vault(
         .map_err(|e| format!("Failed to create provider for '{}': {}", profile_name, e))?;
 
     Ok((provider, profile_name.to_string(), protocol.to_uppercase()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// MI-02 regression pin: the five providers the resources surface
+    /// announced but the pool could not build must map, in every spelling the
+    /// CLI accepts.
+    #[test]
+    fn announced_providers_are_buildable_by_the_pool() {
+        let cases = [
+            ("immich", ProviderType::Immich),
+            ("imagekit", ProviderType::ImageKit),
+            ("image_kit", ProviderType::ImageKit),
+            ("uploadcare", ProviderType::Uploadcare),
+            ("upload_care", ProviderType::Uploadcare),
+            ("cloudinary", ProviderType::Cloudinary),
+            ("b2", ProviderType::Backblaze),
+            ("backblaze", ProviderType::Backblaze),
+            ("backblazeb2", ProviderType::Backblaze),
+        ];
+        for (protocol, expected) in cases {
+            assert_eq!(
+                protocol_to_provider_type(protocol),
+                Some(expected),
+                "profile protocol '{protocol}' must build its announced provider"
+            );
+        }
+    }
+
+    /// The mapping is case-insensitive and keeps the pre-existing arms.
+    #[test]
+    fn existing_arms_survive_the_extraction() {
+        assert_eq!(protocol_to_provider_type("sftp"), Some(ProviderType::Sftp));
+        assert_eq!(
+            protocol_to_provider_type("WebDAV"),
+            Some(ProviderType::WebDav)
+        );
+        assert_eq!(protocol_to_provider_type("S3"), Some(ProviderType::S3));
+        assert_eq!(
+            protocol_to_provider_type("swift"),
+            Some(ProviderType::Swift)
+        );
+        assert_eq!(protocol_to_provider_type("box"), Some(ProviderType::Box));
+        assert_eq!(
+            protocol_to_provider_type("4shared"),
+            Some(ProviderType::FourShared)
+        );
+        assert_eq!(protocol_to_provider_type("definitely-not-a-protocol"), None);
+    }
 }
