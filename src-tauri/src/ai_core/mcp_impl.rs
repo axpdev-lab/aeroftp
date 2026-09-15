@@ -239,13 +239,11 @@ impl RemoteBackend for McpRemoteBackend {
     }
 
     async fn provider_type(&self) -> Option<ProviderType> {
-        // A warm pool entry makes this free; a cold one connects, which the
-        // write that needs the type was about to do anyway. No vault-retry
-        // here: reading the type is not a network call once the provider
-        // exists, so a stale token cannot poison it.
-        let arc = self.pool.get_provider(&self.server).await.ok()?;
-        let guard = arc.lock().await;
-        Some(guard.provider_type())
+        // Cold acquisition can fail with stale credentials before the type is
+        // available. Use the same vault reload and retry as the write itself.
+        self.with_provider(|p| Box::pin(async move { Ok(p.provider_type()) }))
+            .await
+            .ok()
     }
 
     async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {

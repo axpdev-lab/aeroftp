@@ -74,17 +74,14 @@ fn validate_remote_path(path: &str, label: &str) -> Result<(), ToolError> {
 /// in the same order the GUI uses (`provider_rename`). The two checks do not
 /// overlap: `validate_remote_path` judges the whole path string as an
 /// argument and is provider-agnostic; this one judges the leaf as a name
-/// against the target backend. A backend that cannot name its provider right
-/// now (disconnected) skips the check: the write then fails closed on the
-/// missing connection anyway. Note `validate_remote_path` deliberately lets
-/// a TAB through (`c != '\t'`); the provider rule does not, and on FTP the
-/// leaf lands in the argument of a CRLF-terminated command.
+/// against the target backend. If its type cannot be resolved, fail closed:
+/// a later write could reconnect, so skipping this check is unsafe.
 async fn reject_restricted_leaf(backend: &dyn RemoteBackend, path: &str) -> Result<(), ToolError> {
-    if let Some(provider) = backend.provider_type().await {
-        crate::restricted_chars::validate_path(provider, path)
-            .map_err(|e| ToolError::Exec(e.to_string()))?;
-    }
-    Ok(())
+    let provider = backend.provider_type().await.ok_or_else(|| {
+        ToolError::Exec("Cannot validate destination name: remote provider unavailable".to_string())
+    })?;
+    crate::restricted_chars::validate_path(provider, path)
+        .map_err(|e| ToolError::Exec(e.to_string()))
 }
 
 fn validate_local_path(path: &str, label: &str) -> Result<(), ToolError> {
@@ -3531,7 +3528,7 @@ mod tests {
         /// The provider this fake answers as. FTP by default (a provider
         /// that refuses control characters), switchable so a test can stand
         /// on the encoding side of the rule (Box/Dropbox/Jottacloud/OpenDrive).
-        provider_type: ProviderType,
+        provider_type: Option<ProviderType>,
     }
 
     impl FakeBackend {
@@ -3573,12 +3570,12 @@ mod tests {
                 stat_fails_with: None,
                 mkdir_fails_with: None,
                 symlinks: std::collections::HashSet::new(),
-                provider_type: ProviderType::Ftp,
+                provider_type: Some(ProviderType::Ftp),
             }
         }
 
         fn with_provider_type(mut self, provider_type: ProviderType) -> Self {
-            self.provider_type = provider_type;
+            self.provider_type = Some(provider_type);
             self
         }
 
@@ -3594,7 +3591,7 @@ mod tests {
             true
         }
         async fn provider_type(&self) -> Option<ProviderType> {
-            Some(self.provider_type)
+            self.provider_type
         }
         async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
             self.tree
@@ -3788,6 +3785,24 @@ mod tests {
             sink: NoopSink,
             creds: NoopCreds,
         }
+    }
+
+    /// A transient lookup failure must not let a later successful write
+    /// bypass destination-name validation.
+    #[tokio::test]
+    async fn upload_without_provider_type_is_refused_before_the_wire() {
+        let mut fake = FakeBackend::sample();
+        fake.provider_type = None;
+        let fake = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&fake));
+        let err = upload_file(
+            &ctx,
+            &json!({"server": "s", "remote_path": "/root/bad\tname", "content": "x"}),
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{err:?}").contains("remote provider unavailable"));
+        assert!(fake.remote_files.lock().unwrap().is_empty());
     }
 
     /// G24: a write tool must refuse a leaf the target backend forbids BEFORE

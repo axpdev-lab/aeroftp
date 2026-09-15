@@ -25,9 +25,8 @@ pub trait RemoteBackend: Send + Sync {
     async fn is_connected(&self) -> bool;
 
     /// The provider this backend talks to, when one is connected or known.
-    /// `None` means no provider is available to ask: a caller validating a
-    /// name against provider-specific rules must skip that check, because the
-    /// write itself already fails closed on the missing connection.
+    /// `None` means no provider is available to ask. Callers validating a
+    /// new name must fail closed: a later write may reconnect successfully.
     async fn provider_type(&self) -> Option<ProviderType>;
 
     /// List entries at a remote path.
