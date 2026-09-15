@@ -1235,6 +1235,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         match self.list_inner(path).await {
             Ok(entries) => Ok(entries),
             Err(err) if Self::is_stale_data_connection_error(&err) => {
@@ -1246,6 +1247,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
         let path = stream
             .pwd()
@@ -1257,6 +1259,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
         stream
             .cwd(path)
@@ -1273,6 +1276,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
         stream
             .cdup()
@@ -1294,6 +1298,7 @@ impl StorageProvider for FtpProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         // No-op when the provider is already connected (CLI path); connects
         // a `clone_for_transfer()` worker on its first transfer (generic
         // clone-pool path), mirroring SFTP.
@@ -1371,6 +1376,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         let limit = super::MAX_DOWNLOAD_TO_BYTES;
 
         // PD-FTP-1: dial the connection so an in-memory read works on a
@@ -1445,6 +1451,7 @@ impl StorageProvider for FtpProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         // PD-FTP-1: a `clone_for_transfer()` pool worker starts unconnected
         // and carries only the spec; it must dial its own control+data
         // connection on the first transfer. `download()` and `read_range()`
@@ -1472,6 +1479,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         let attempt = {
             let stream = self.stream_mut()?;
             stream.mkdir(path).await
@@ -1544,6 +1552,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
         stream
             .rm(path)
@@ -1553,6 +1562,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
         stream
             .rmdir(path)
@@ -1562,6 +1572,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         // Include hidden dotfiles so the final RMD does not fail with 550 on a
         // directory that still holds an invisible `.aeroftp-crypt.json` / `.env`
         // etc. (see list_inner_opts). SFTP/WebDAV already return dotfiles; FTP is
@@ -1583,6 +1594,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
         stream
             .rename(from, to)
@@ -1592,6 +1604,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         match self.stat_inner(path).await {
             Ok(entry) => Ok(entry),
             Err(err) if Self::is_stale_data_connection_error(&err) => {
@@ -1603,6 +1616,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         match self.size_inner(path).await {
             Ok(size) => Ok(size),
             Err(err) if Self::is_stale_data_connection_error(&err) => {
@@ -1622,6 +1636,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
         stream
             .noop()
@@ -1631,6 +1646,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         // FTP doesn't have a standard server info command
         // Return basic connection info
         Ok(format!(
@@ -1701,6 +1717,7 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         use tokio::io::{AsyncSeekExt, AsyncWriteExt as _};
 
         // PD-FTP-1: the transfer executor calls `resume_download()` instead of
@@ -1806,6 +1823,7 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
         let total_size = tokio::fs::metadata(local_path)
@@ -1913,6 +1931,7 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
 
         // SITE CHMOD command
@@ -1965,6 +1984,7 @@ impl StorageProvider for FtpProvider {
         &mut self,
         path: &str,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         self.remote_checksum(path).await
     }
 
@@ -2077,6 +2097,7 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         len: u64,
     ) -> Result<Vec<u8>, ProviderError> {
+        self.redial_if_a_reply_is_pending().await?;
         const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
         if len > MAX_READ_RANGE {
             return Err(ProviderError::Other(format!(
@@ -2821,13 +2842,11 @@ impl FtpProvider {
     /// are already off the wire and inside the `BufReader`;
     /// `buffered_reply_bytes` is what reports them.
     ///
-    /// What it does NOT cover is a goodbye written afterwards, in a write of its
-    /// own: nothing has been sent at this point, so this keeps the session and
-    /// the next command reads the goodbye. That limit is real and is stated here
-    /// rather than in a test, because the test that used to drive it went
-    /// through the refusal path, which no longer reaches this function. What it
-    /// points at is a check when the NEXT command starts, which is a design
-    /// change and not this one.
+    /// What it does NOT cover on its own is a goodbye written afterwards, in
+    /// a write of its own: nothing has been sent at this point, so this keeps
+    /// the session. That case is covered where it can be seen: by
+    /// [`Self::redial_if_a_reply_is_pending`], which runs when the NEXT
+    /// command starts.
     fn drop_session_if_a_reply_is_queued(&mut self) {
         let queued = self
             .stream
@@ -2837,6 +2856,67 @@ impl FtpProvider {
         if queued {
             self.stream = None;
         }
+    }
+
+    /// G54: never start a command on a session that still holds a reply
+    /// nobody has read.
+    ///
+    /// Between two commands nothing may be owed: suppaftp reads each
+    /// command's reply before returning, so a reply pending at the start of
+    /// the next one is always a leftover. The case that produces one is a
+    /// server that refuses and then hangs up (`550` then `421`): when the
+    /// two arrive in separate writes, the failure-path checks run while the
+    /// goodbye is still on its way, and keep the session. By the time the
+    /// next command starts the goodbye has landed - in the reader's buffer
+    /// or on the socket - and without this guard it is read as the new
+    /// command's own answer (measured: a `PWD` after a refused `RETR` came
+    /// back "421 Service not available").
+    ///
+    /// The check runs at the entry of every public command method, so the
+    /// leftover is caught by whoever comes next rather than by the path that
+    /// happened to produce it. What it finds, it cannot repair: FTP replies
+    /// carry no command identifier, so the session is dropped and redialed
+    /// from the stored spec, which costs one reconnect exactly when the
+    /// alternative is an answer attributed to the wrong command. A clean
+    /// session pays one buffer check and one non-blocking peek, no round
+    /// trip.
+    async fn redial_if_a_reply_is_pending(&mut self) -> Result<(), ProviderError> {
+        let pending = match self.stream.as_ref() {
+            Some(stream) => {
+                if !stream.buffered_reply_bytes().is_empty() {
+                    true
+                } else {
+                    // The reader's buffer is empty; the socket may still hold
+                    // a reply the reader never pulled. One non-blocking peek,
+                    // the same probe `after_timed_out_open` uses.
+                    let control = stream.get_ref();
+                    let mut probe = [0u8; 1];
+                    let mut got = tokio::io::ReadBuf::new(&mut probe);
+                    std::future::poll_fn(|cx| {
+                        std::task::Poll::Ready(match control.poll_peek(cx, &mut got) {
+                            std::task::Poll::Ready(Ok(bytes)) => bytes,
+                            _ => 0,
+                        })
+                    })
+                    .await
+                        > 0
+                }
+            }
+            None => return Ok(()),
+        };
+        if !pending {
+            return Ok(());
+        }
+        tracing::warn!(
+            "FTP session held an unread reply at the start of a new command; redialing instead of misattributing it"
+        );
+        self.stream = None;
+        let spec = self
+            .connection_spec
+            .clone()
+            .ok_or(ProviderError::NotConnected)?;
+        self.config = spec;
+        self.connect().await
     }
 
     /// A refused data open, classified, with the session given up.
@@ -4845,5 +4925,119 @@ mod data_drain_tests {
         assert_eq!(&buf, b"data");
         // The inner stream is still writable: the wrapper did not close it.
         wrapped.write_all(b"more").await.unwrap();
+    }
+}
+
+#[cfg(test)]
+mod late_reply_guard_tests {
+    use super::*;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::{TcpListener, TcpStream};
+
+    /// One scripted control connection. Answers the login handshake and any
+    /// command generically, except PWD, which gets a real 257. When
+    /// `late_goodbye` is set, 150 ms after answering the first PWD the server
+    /// writes a `421` in a segment of its own: the shape of G54, where every
+    /// failure-path check ran while this reply was still on its way and the
+    /// session was kept.
+    async fn serve_connection(stream: TcpStream, late_goodbye: bool) {
+        let (read, mut write) = stream.into_split();
+        let mut lines = BufReader::new(read).lines();
+        if write.write_all(b"220 ready\r\n").await.is_err() {
+            return;
+        }
+        let mut pwd_seen = 0u32;
+        loop {
+            let line = match lines.next_line().await {
+                Ok(Some(line)) => line,
+                _ => return,
+            };
+            let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
+            let reply: &[u8] = match cmd.as_str() {
+                "USER" => b"331 password please\r\n",
+                "PASS" => b"230 logged in\r\n",
+                "PWD" => b"257 \"/\" is current\r\n",
+                _ => b"200 ok\r\n",
+            };
+            if write.write_all(reply).await.is_err() {
+                return;
+            }
+            if cmd == "PWD" {
+                pwd_seen += 1;
+                // The first PWD on the wire belongs to connect() itself; the
+                // second is the caller's first command. The goodbye leaves in
+                // its own write after THAT answer, when every check the
+                // failure paths own has already run.
+                if late_goodbye && pwd_seen == 2 {
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    if write
+                        .write_all(b"421 Service not available, closing\r\n")
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    /// A reply that arrives AFTER the failure-path checks used to be read as
+    /// the next command's own answer. The guard at the start of the next
+    /// command must see it, drop the session and redial, so the second PWD
+    /// gets the answer to PWD and not the late goodbye.
+    #[tokio::test]
+    async fn a_late_reply_is_caught_by_the_next_command_not_attributed_to_it() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            if let Ok((first, _)) = listener.accept().await {
+                serve_connection(first, true).await;
+            }
+            if let Ok((second, _)) = listener.accept().await {
+                serve_connection(second, false).await;
+            }
+        });
+
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port: addr.port(),
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        });
+        provider
+            .connect()
+            .await
+            .expect("the first dial must succeed");
+        let first = provider
+            .pwd()
+            .await
+            .expect("the first PWD answers on the fresh session");
+        assert_eq!(first, "/");
+
+        // Let the late 421 land: in the reader's buffer or on the socket,
+        // the guard accepts either.
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+
+        let second = provider.pwd().await;
+        assert_eq!(
+            second.as_deref().ok(),
+            Some("/"),
+            "the second PWD must get its own answer, not the late 421: {second:?}"
+        );
+
+        // The guard redialed, so the second scripted connection was used. The
+        // wait is bounded: a guard that never fires must fail the test, not
+        // hang the lane. Disconnect first: the scripted server answers a
+        // connection until the client hangs up, and the provider staying in
+        // scope would hold it open.
+        let _ = provider.disconnect().await;
+        tokio::time::timeout(std::time::Duration::from_secs(5), server)
+            .await
+            .expect("the second connection must be dialed: a hanging wait here means the guard kept the old session")
+            .unwrap();
     }
 }
