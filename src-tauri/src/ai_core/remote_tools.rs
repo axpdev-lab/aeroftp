@@ -370,16 +370,10 @@ async fn ensure_remote_parents(
     };
     let backend = ctx.remote_backend(server).await.map_err(backend_error)?;
 
-    // Ask the precise question once before doing any work. The walk below
-    // issues one MKD per level and, when the tree is already there, which is
-    // the ordinary case, every one of them fails and is then forgiven. A
-    // single stat answers "is the parent already a directory" in one round
-    // trip instead of that. A guard that asks the exact question can be
-    // faster than a vague one, because a vague answer leaves you having to
-    // attempt the work anyway.
-    //
-    // If the backend cannot stat a directory, this falls through to the walk,
-    // which is exactly the behaviour before this check existed.
+    // A known parent directory needs no walk. Otherwise inspect each level
+    // before creating it, validating only names that are not already present.
+    // If stat is unsupported, the mkdir response still supplies the fallback
+    // existence evidence below.
     if let Ok(entry) = backend.stat(&parent).await {
         if descend_evidence(&entry) == DescendEvidence::ProvenDirectory {
             return Ok(());
@@ -398,6 +392,16 @@ async fn ensure_remote_parents(
             acc.push('/');
         }
         acc.push_str(part);
+        // Existing names remain usable, including symlinks whose stat does
+        // not prove they are directories. Only a new component needs the
+        // provider's name rules before mkdir can send it to the server.
+        if let Ok(entry) = backend.stat(&acc).await {
+            if descend_evidence(&entry) == DescendEvidence::Unknown && blocked_at.is_none() {
+                blocked_at = Some(acc.clone());
+            }
+            continue;
+        }
+        reject_restricted_leaf(backend.as_ref(), &acc).await?;
         match backend.mkdir(&acc).await {
             Ok(()) => {}
             Err(e) => {
@@ -1199,7 +1203,14 @@ fn reject_oversize_edit_download(data_len: usize) -> Result<(), ToolError> {
 }
 
 fn edit_temp_path(path: &str) -> String {
-    format!("{path}.aeroedit-{}.tmp", uuid::Uuid::new_v4())
+    // Keep the staging file beside the target without copying its leaf:
+    // an existing name may contain characters forbidden for new objects.
+    let parent = path.rsplit_once('/').map(|(parent, _)| parent);
+    let leaf = format!(".aeroedit-{}.tmp", uuid::Uuid::new_v4());
+    match parent {
+        Some(parent) => format!("{parent}/{leaf}"),
+        None => leaf,
+    }
 }
 
 /// Find-and-replace on a remote UTF-8 text file (MCP/CLI surface).
@@ -1275,6 +1286,7 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     }
 
     let temp_path = edit_temp_path(&path);
+    reject_restricted_leaf(backend.as_ref(), &temp_path).await?;
     if let Err(e) = backend
         .upload_from_bytes(new_text.as_bytes(), &temp_path)
         .await
@@ -3522,6 +3534,7 @@ mod tests {
         /// "unused", so a test can hand the walk the wording a real server
         /// uses when the path is already taken.
         mkdir_fails_with: Option<String>,
+        mkdir_calls: Mutex<Vec<String>>,
         /// Paths a listing would mark with a leading `l`. `is_dir` stays
         /// false for these, exactly as the real parser reports them.
         symlinks: std::collections::HashSet<String>,
@@ -3569,6 +3582,7 @@ mod tests {
                 rename_fails_with: None,
                 stat_fails_with: None,
                 mkdir_fails_with: None,
+                mkdir_calls: Mutex::new(Vec::new()),
                 symlinks: std::collections::HashSet::new(),
                 provider_type: Some(ProviderType::Ftp),
             }
@@ -3682,7 +3696,8 @@ mod tests {
                 .push(path.to_string());
             Ok(())
         }
-        async fn mkdir(&self, _path: &str) -> Result<(), String> {
+        async fn mkdir(&self, path: &str) -> Result<(), String> {
+            self.mkdir_calls.lock().unwrap().push(path.to_string());
             Err(self
                 .mkdir_fails_with
                 .clone()
@@ -3803,6 +3818,63 @@ mod tests {
         .unwrap_err();
         assert!(format!("{err:?}").contains("remote provider unavailable"));
         assert!(fake.remote_files.lock().unwrap().is_empty());
+    }
+
+    /// Parent creation must reject a new restricted component before mkdir.
+    #[tokio::test]
+    async fn missing_restricted_parent_is_not_sent_to_mkdir() {
+        let fake = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&fake));
+        let err = ensure_remote_parents(&ctx, "s", "/root/bad\tparent/file")
+            .await
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("Restricted character"));
+        assert!(fake.mkdir_calls.lock().unwrap().is_empty());
+    }
+
+    /// Existing restricted parents remain traversable while new children
+    /// still pass through validation.
+    #[tokio::test]
+    async fn existing_restricted_parent_remains_usable() {
+        let mut fake = FakeBackend::sample();
+        fake.stats.insert("/root/bad\tparent".into(), (true, 0));
+        fake.mkdir_fails_with = Some("File exists".into());
+        let fake = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&fake));
+        ensure_remote_parents(&ctx, "s", "/root/bad\tparent/child/file")
+            .await
+            .unwrap();
+        assert_eq!(
+            fake.mkdir_calls.lock().unwrap().as_slice(),
+            &["/root/bad\tparent/child".to_string()]
+        );
+    }
+
+    /// Editing an old restricted name must stage under a safe sibling leaf
+    /// and publish back to the unchanged existing target.
+    #[tokio::test]
+    async fn edit_restricted_target_uses_safe_staging_leaf() {
+        let path = "/root/bad\tname.txt";
+        let mut fake = FakeBackend::sample();
+        fake.stats.insert(path.into(), (false, 3));
+        fake.downloads.insert(path.into(), b"old".to_vec());
+        let fake = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&fake));
+        edit(
+            &ctx,
+            &json!({"server": "s", "path": path, "find": "old", "replace": "new"}),
+        )
+        .await
+        .unwrap();
+        let uploads = fake.uploads.lock().unwrap();
+        assert_eq!(uploads.len(), 1);
+        let staged = &uploads[0].0;
+        assert!(staged.starts_with("/root/.aeroedit-"));
+        crate::restricted_chars::validate_path(ProviderType::Ftp, staged).unwrap();
+        assert_eq!(
+            fake.renames.lock().unwrap().as_slice(),
+            &[(staged.clone(), path.into())]
+        );
     }
 
     /// G24: a write tool must refuse a leaf the target backend forbids BEFORE
@@ -4218,7 +4290,7 @@ mod tests {
         assert_eq!(uploads.len(), 1, "one staged upload expected: {uploads:?}");
         let temp_path = uploads[0].0.clone();
         assert!(
-            temp_path.starts_with("/root/a.txt.aeroedit-") && temp_path.ends_with(".tmp"),
+            temp_path.starts_with("/root/.aeroedit-") && temp_path.ends_with(".tmp"),
             "unexpected edit temp path: {temp_path}"
         );
         assert_ne!(
