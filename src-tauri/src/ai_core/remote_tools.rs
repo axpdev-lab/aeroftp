@@ -2619,6 +2619,8 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
 
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
 
+    reject_restricted_leaf(backend.as_ref(), &remote_path).await?;
+
     // Overwrite guard: the test uploads to remote_path and then deletes it,
     // so a path that already exists is a real user file about to be destroyed.
     // Refuse instead of clobbering (no overwrite flag exists by design).
@@ -3875,6 +3877,23 @@ mod tests {
             fake.renames.lock().unwrap().as_slice(),
             &[(staged.clone(), path.into())]
         );
+    }
+
+    /// Speed-test uploads create a new object and must obey its provider's
+    /// name rules before uploading or deleting anything.
+    #[tokio::test]
+    async fn speed_rejects_restricted_destination_before_upload() {
+        let fake = Arc::new(FakeBackend::sample().with_provider_type(ProviderType::S3));
+        let ctx = test_ctx(Arc::clone(&fake));
+        let err = speed(
+            &ctx,
+            &json!({"server": "s", "remote_path": "/root/bad\tname", "size_mb": 1}),
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{err:?}").contains("Restricted character"));
+        assert!(fake.uploads.lock().unwrap().is_empty());
+        assert!(fake.deleted.lock().unwrap().is_empty());
     }
 
     /// G24: a write tool must refuse a leaf the target backend forbids BEFORE
