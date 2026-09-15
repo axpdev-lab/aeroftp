@@ -519,19 +519,20 @@ fn resolve_profile_id(server_query: &str) -> Result<String, String> {
         .to_string())
 }
 
-/// Create a StorageProvider from vault credentials. Supports all non-OAuth2 protocols
-/// plus OAuth2 providers when valid tokens exist in the vault.
-///
-/// Returns the provider, the profile name and the profile's protocol label
-/// (upper-case) so the pool can surface it via `aeroftp://connections`.
 /// Map a saved profile's protocol string to its provider type. Extracted from
 /// `create_provider_from_vault` so the mapping is testable: the resources
 /// surface announces capabilities per provider, and an arm missing here makes
 /// an announced provider unbuildable (MI-02: Immich, ImageKit, Uploadcare,
-/// Cloudinary and native B2 were announced and unreachable). Spellings mirror
-/// the CLI's profile mapping, lowercase-insensitive.
+/// Cloudinary and native B2 were announced and unreachable). Matching ignores
+/// case and common separators used in manually entered profile protocols.
 fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
-    Some(match protocol.to_uppercase().as_str() {
+    let normalized: String = protocol
+        .trim()
+        .chars()
+        .filter(|ch| !matches!(ch, ' ' | '-' | '_'))
+        .flat_map(|ch| ch.to_uppercase())
+        .collect();
+    Some(match normalized.as_str() {
         "FTP" => ProviderType::Ftp,
         "FTPS" => ProviderType::Ftps,
         "SFTP" => ProviderType::Sftp,
@@ -552,12 +553,12 @@ fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
         "YANDEXDISK" | "YANDEX" => ProviderType::YandexDisk,
         "SWIFT" => ProviderType::Swift,
         "IMMICH" => ProviderType::Immich,
-        "IMAGEKIT" | "IMAGE_KIT" => ProviderType::ImageKit,
-        "UPLOADCARE" | "UPLOAD_CARE" => ProviderType::Uploadcare,
+        "IMAGEKIT" => ProviderType::ImageKit,
+        "UPLOADCARE" => ProviderType::Uploadcare,
         "CLOUDINARY" => ProviderType::Cloudinary,
         "B2" | "BACKBLAZE" | "BACKBLAZEB2" => ProviderType::Backblaze,
         // OAuth2 providers: only if token is present
-        "GOOGLEDRIVE" | "GOOGLE_DRIVE" => ProviderType::GoogleDrive,
+        "GOOGLEDRIVE" => ProviderType::GoogleDrive,
         "DROPBOX" => ProviderType::Dropbox,
         "ONEDRIVE" => ProviderType::OneDrive,
         "BOX" => ProviderType::Box,
@@ -568,6 +569,11 @@ fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
     })
 }
 
+/// Create a StorageProvider from vault credentials. Supports all non-OAuth2 protocols
+/// plus OAuth2 providers when valid tokens exist in the vault.
+///
+/// Returns the provider, the profile name and the profile's protocol label
+/// (upper-case) so the pool can surface it via `aeroftp://connections`.
 fn create_provider_from_vault(
     server_query: &str,
 ) -> Result<(Box<dyn StorageProvider>, String, String), String> {
@@ -759,12 +765,18 @@ mod tests {
             ("immich", ProviderType::Immich),
             ("imagekit", ProviderType::ImageKit),
             ("image_kit", ProviderType::ImageKit),
+            (" image-kit ", ProviderType::ImageKit),
             ("uploadcare", ProviderType::Uploadcare),
             ("upload_care", ProviderType::Uploadcare),
+            ("Upload-Care", ProviderType::Uploadcare),
             ("cloudinary", ProviderType::Cloudinary),
             ("b2", ProviderType::Backblaze),
             ("backblaze", ProviderType::Backblaze),
             ("backblazeb2", ProviderType::Backblaze),
+            ("backblaze_b2", ProviderType::Backblaze),
+            ("Backblaze B2", ProviderType::Backblaze),
+            ("google_drive", ProviderType::GoogleDrive),
+            ("Google-Drive", ProviderType::GoogleDrive),
         ];
         for (protocol, expected) in cases {
             assert_eq!(
