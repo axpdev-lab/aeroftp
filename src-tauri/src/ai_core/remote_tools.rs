@@ -3105,12 +3105,69 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     Ok(out)
 }
 
+/// One equal-size pair checked by content for the `checksum` reconcile path.
+enum PairChecksum {
+    /// Both sides hashed to the same blake3 digest (carries the digest).
+    Equal(String),
+    /// Same size, different content: the case a size-only compare cannot see.
+    Different { local: String, remote: String },
+    /// Over the per-file memory cap; the pair is reported by size, flagged.
+    SkippedTooLarge,
+    /// A side could not be read or hashed; the pair is reported by size,
+    /// flagged, and counted. Never silently called a match by content.
+    Failed(String),
+}
+
+/// Hash one equal-size local/remote pair. Both digests are computed here with
+/// blake3: the local side from disk, the remote side from a capped download
+/// (the same ceiling `hashsum` uses to protect the agent process). Unlike the
+/// CLI, which prefers server-side checksums where the provider offers them,
+/// this route always reads the remote bytes, so it is provider-independent
+/// and its cost is the download itself.
+async fn checksum_pair(
+    backend: &dyn RemoteBackend,
+    local_root: &std::path::Path,
+    remote_root: &str,
+    rel: &str,
+    size: u64,
+) -> PairChecksum {
+    if size > MAX_HASHSUM_BYTES {
+        return PairChecksum::SkippedTooLarge;
+    }
+    let mut local_file = local_root.to_path_buf();
+    for component in rel.split('/') {
+        local_file.push(component);
+    }
+    let local_hash = match std::fs::read(&local_file) {
+        Ok(data) => blake3::hash(&data).to_hex().to_string(),
+        Err(e) => return PairChecksum::Failed(format!("local read failed: {e}")),
+    };
+    let remote_path = format!("{}/{}", remote_root.trim_end_matches('/'), rel);
+    match backend
+        .download_to_bytes_capped(&remote_path, MAX_HASHSUM_BYTES)
+        .await
+    {
+        Ok(data) => {
+            let remote_hash = blake3::hash(&data).to_hex().to_string();
+            if remote_hash == local_hash {
+                PairChecksum::Equal(local_hash)
+            } else {
+                PairChecksum::Different {
+                    local: local_hash,
+                    remote: remote_hash,
+                }
+            }
+        }
+        Err(e) => PairChecksum::Failed(format!("remote read failed: {e}")),
+    }
+}
+
 async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let server = normalize_server(args)?;
     let local_dir = get_str(args, "local_dir")?;
     let remote_dir = get_str(args, "remote_dir")?;
     validate_remote_path(&remote_dir, "remote_dir")?;
-    let _checksum = get_bool_opt(args, "checksum").unwrap_or(false);
+    let checksum = get_bool_opt(args, "checksum").unwrap_or(false);
     let one_way = get_bool_opt(args, "one_way").unwrap_or(false);
     let summary_only = get_bool_opt(args, "summary_only").unwrap_or(false);
     let exclude: Vec<String> = args
@@ -3221,17 +3278,73 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     let mut differ_g: Vec<Value> = Vec::new();
     let mut missing_remote_g: Vec<Value> = Vec::new();
     let mut missing_local_g: Vec<Value> = Vec::new();
+    let mut checksum_hashed: u64 = 0;
+    let mut checksum_skipped_large: u64 = 0;
+    let mut checksum_errors: u64 = 0;
 
     for (rel, (lsize, _lmtime)) in &local_map {
         match remote_map.get(rel) {
             Some((rsize, _rmtime)) => {
                 if lsize == rsize {
-                    matches_g.push(json!({
-                        "path": rel,
-                        "local_size": lsize,
-                        "remote_size": rsize,
-                        "compare_method": "size",
-                    }));
+                    // With `checksum` the size verdict is not enough: equal
+                    // length says nothing about equal content. Each pair is
+                    // hashed; pairs that cannot be hashed keep their size
+                    // verdict but say so on the entry and in the summary.
+                    if checksum {
+                        match checksum_pair(backend.as_ref(), local_path, &remote_dir, rel, *lsize)
+                            .await
+                        {
+                            PairChecksum::Equal(hash) => {
+                                checksum_hashed += 1;
+                                matches_g.push(json!({
+                                    "path": rel,
+                                    "local_size": lsize,
+                                    "remote_size": rsize,
+                                    "compare_method": "blake3",
+                                    "checksum": hash,
+                                }));
+                            }
+                            PairChecksum::Different { local, remote } => {
+                                checksum_hashed += 1;
+                                differ_g.push(json!({
+                                    "path": rel,
+                                    "local_size": lsize,
+                                    "remote_size": rsize,
+                                    "compare_method": "blake3",
+                                    "local_checksum": local,
+                                    "remote_checksum": remote,
+                                }));
+                            }
+                            PairChecksum::SkippedTooLarge => {
+                                checksum_skipped_large += 1;
+                                matches_g.push(json!({
+                                    "path": rel,
+                                    "local_size": lsize,
+                                    "remote_size": rsize,
+                                    "compare_method": "size",
+                                    "checksum": "skipped_too_large",
+                                }));
+                            }
+                            PairChecksum::Failed(reason) => {
+                                checksum_errors += 1;
+                                matches_g.push(json!({
+                                    "path": rel,
+                                    "local_size": lsize,
+                                    "remote_size": rsize,
+                                    "compare_method": "size",
+                                    "checksum": "error",
+                                    "checksum_error": reason,
+                                }));
+                            }
+                        }
+                    } else {
+                        matches_g.push(json!({
+                            "path": rel,
+                            "local_size": lsize,
+                            "remote_size": rsize,
+                            "compare_method": "size",
+                        }));
+                    }
                 } else {
                     differ_g.push(json!({
                         "path": rel,
@@ -3280,7 +3393,13 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         "missing_remote_count": missing_remote_g.len(),
         "missing_local_count": missing_local_g.len(),
         "elapsed_secs": elapsed,
+        "checksum": checksum,
+        "checksum_hashed": checksum_hashed,
+        "checksum_skipped_large": checksum_skipped_large,
+        "checksum_errors": checksum_errors,
     });
+
+    let compare_method = if checksum { "blake3" } else { "size" };
 
     if summary_only {
         return Ok(json!({
@@ -3291,7 +3410,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
             "summary": summary,
             "summary_only": true,
             "suggested_next_command": suggested_next_command,
-            "compare_method": "size",
+            "compare_method": compare_method,
         }));
     }
 
@@ -3307,7 +3426,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
             "missing_remote": missing_remote_g,
             "missing_local": missing_local_g,
         },
-        "compare_method": "size",
+        "compare_method": compare_method,
         "suggested_next_command": suggested_next_command,
     }))
 }
@@ -3731,6 +3850,103 @@ mod tests {
             sink: NoopSink,
             creds: NoopCreds,
         }
+    }
+
+    /// G26 fixture: a local dir and a fake remote that agree on names and
+    /// sizes. `same.txt` has identical bytes on both sides; `diff.txt` has
+    /// the same length but different content - the case a size-only compare
+    /// cannot see. The fake serves downloads from `downloads`.
+    fn checksum_fixture() -> (tempfile::TempDir, Arc<FakeBackend>) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("same.txt"), b"aaa").unwrap();
+        std::fs::write(dir.path().join("diff.txt"), b"xxx").unwrap();
+
+        let mut fake = FakeBackend::sample();
+        fake.tree.insert(
+            "/remote".to_string(),
+            vec![
+                entry("/remote/same.txt", false, 3),
+                entry("/remote/diff.txt", false, 3),
+            ],
+        );
+        fake.downloads
+            .insert("/remote/same.txt".to_string(), b"aaa".to_vec());
+        fake.downloads
+            .insert("/remote/diff.txt".to_string(), b"yyy".to_vec());
+        (dir, Arc::new(fake))
+    }
+
+    /// G26: with `checksum: true` a same-size pair with different content
+    /// must land in `differ`, not `match`. Before the fix the flag was read
+    /// into `_checksum` and dropped, and this pair reported a match.
+    #[tokio::test]
+    async fn reconcile_checksum_catches_same_size_different_content() {
+        let (dir, fake) = checksum_fixture();
+        let ctx = test_ctx(fake);
+
+        let out = reconcile(
+            &ctx,
+            &json!({
+                "server": "s",
+                "local_dir": dir.path().to_string_lossy(),
+                "remote_dir": "/remote",
+                "checksum": true,
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(out["status"], "differences_found");
+        let differ = out["groups"]["differ"].as_array().unwrap();
+        assert_eq!(differ.len(), 1, "exactly diff.txt may differ: {differ:?}");
+        assert_eq!(differ[0]["path"], "diff.txt");
+        assert_eq!(differ[0]["compare_method"], "blake3");
+        assert!(
+            differ[0]["local_checksum"] != differ[0]["remote_checksum"],
+            "the two digests must differ"
+        );
+
+        let matched = out["groups"]["match"].as_array().unwrap();
+        assert_eq!(matched.len(), 1, "same.txt matches by content: {matched:?}");
+        assert_eq!(matched[0]["path"], "same.txt");
+        assert_eq!(matched[0]["compare_method"], "blake3");
+
+        assert_eq!(out["summary"]["checksum_hashed"], 2);
+        assert_eq!(out["summary"]["checksum_errors"], 0);
+    }
+
+    /// Without the flag the compare stays size-only: same length means match,
+    /// whatever the content. That is the documented default, and the fix must
+    /// not change it.
+    #[tokio::test]
+    async fn reconcile_without_checksum_keeps_size_only_compare() {
+        let (dir, fake) = checksum_fixture();
+        let ctx = test_ctx(fake);
+
+        let out = reconcile(
+            &ctx,
+            &json!({
+                "server": "s",
+                "local_dir": dir.path().to_string_lossy(),
+                "remote_dir": "/remote",
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(out["status"], "ok");
+        let matched = out["groups"]["match"].as_array().unwrap();
+        assert_eq!(
+            matched.len(),
+            2,
+            "size-only sees both as equal: {matched:?}"
+        );
+        assert!(
+            matched.iter().all(|e| e["compare_method"] == "size"),
+            "compare_method stays size: {matched:?}"
+        );
+        assert_eq!(out["summary"]["checksum"], false);
+        assert_eq!(out["summary"]["checksum_hashed"], 0);
     }
 
     /// A plain file where a parent directory belongs must be reported at the
