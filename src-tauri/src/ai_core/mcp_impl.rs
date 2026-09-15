@@ -16,7 +16,7 @@ use super::tools::{Surfaces, ToolCtx};
 use crate::ai_stream::StreamChunk;
 use crate::mcp::notifier::McpNotifier;
 use crate::mcp::pool::ConnectionPool;
-use crate::providers::RemoteEntry;
+use crate::providers::{ProviderType, RemoteEntry};
 
 pub struct McpEventSink {
     pub notifier: Option<McpNotifier>,
@@ -236,6 +236,16 @@ impl McpRemoteBackend {
 impl RemoteBackend for McpRemoteBackend {
     async fn is_connected(&self) -> bool {
         self.pool.get_provider(&self.server).await.is_ok()
+    }
+
+    async fn provider_type(&self) -> Option<ProviderType> {
+        // A warm pool entry makes this free; a cold one connects, which the
+        // write that needs the type was about to do anyway. No vault-retry
+        // here: reading the type is not a network call once the provider
+        // exists, so a stale token cannot poison it.
+        let arc = self.pool.get_provider(&self.server).await.ok()?;
+        let guard = arc.lock().await;
+        Some(guard.provider_type())
     }
 
     async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {

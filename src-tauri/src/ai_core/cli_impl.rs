@@ -16,7 +16,7 @@ use super::credential_provider::{
 use super::event_sink::{EventSink, ToolProgress};
 use super::remote_backend::{RemoteBackend, StorageQuota};
 use crate::ai_stream::StreamChunk;
-use crate::providers::{RemoteEntry, StorageProvider};
+use crate::providers::{ProviderType, RemoteEntry, StorageProvider};
 
 /// MUV-3: read a `server_<id>` secret for the active user (per-user partition
 /// with fallback to the legacy vault). The CLI AI-core RemoteBackend has no
@@ -279,6 +279,9 @@ impl RemoteBackend for NullRemoteBackend {
     async fn is_connected(&self) -> bool {
         false
     }
+    async fn provider_type(&self) -> Option<ProviderType> {
+        None
+    }
     async fn list(&self, _path: &str) -> Result<Vec<RemoteEntry>, String> {
         Err("Not connected to any server".into())
     }
@@ -352,6 +355,14 @@ const MAX_AI_DOWNLOAD_SIZE: u64 = 50 * 1024 * 1024;
 impl RemoteBackend for CliRemoteBackend {
     async fn is_connected(&self) -> bool {
         self.provider.lock().await.is_some()
+    }
+
+    async fn provider_type(&self) -> Option<ProviderType> {
+        self.provider
+            .lock()
+            .await
+            .as_ref()
+            .map(|p| p.provider_type())
     }
 
     async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {

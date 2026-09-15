@@ -5309,6 +5309,12 @@ pub async fn provider_server_copy(
         return Err("Not connected to any provider".to_string());
     }
 
+    // The copy sets a new remote name: apply the same leaf check
+    // `provider_rename` applies, so a character this backend forbids is
+    // refused here instead of on the wire.
+    crate::restricted_chars::validate_path(provider_lock.as_ref().unwrap().provider_type(), &to)
+        .map_err(|e| e.to_string())?;
+
     info!("Server copy: {} -> {}", from, to);
 
     let provider = Arc::clone(&state.provider);

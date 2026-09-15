@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use crate::providers::{FileVersion, RemoteEntry, TrashEntry};
+use crate::providers::{FileVersion, ProviderType, RemoteEntry, TrashEntry};
 use crate::transfer_dag::TransferCapabilities;
 use async_trait::async_trait;
 
@@ -23,6 +23,12 @@ pub struct StorageQuota {
 pub trait RemoteBackend: Send + Sync {
     /// Whether any remote provider is connected.
     async fn is_connected(&self) -> bool;
+
+    /// The provider this backend talks to, when one is connected or known.
+    /// `None` means no provider is available to ask: a caller validating a
+    /// name against provider-specific rules must skip that check, because the
+    /// write itself already fails closed on the missing connection.
+    async fn provider_type(&self) -> Option<ProviderType>;
 
     /// List entries at a remote path.
     async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String>;
