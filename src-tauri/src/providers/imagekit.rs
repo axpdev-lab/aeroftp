@@ -946,7 +946,8 @@ impl StorageProvider for ImageKitProvider {
         let target = self.resolve_path(to);
         let entry = self.stat(&source).await?;
         if entry.is_dir {
-            self.start_folder_job("copyFolder", &source, &parent_path(&target), false)
+            let destination_parent = folder_copy_destination(&source, &target)?;
+            self.start_folder_job("copyFolder", &source, &destination_parent, false)
                 .await
         } else {
             self.copy_file(&source, &target).await
@@ -1092,6 +1093,17 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
+/// copyFolder preserves the source leaf; reject requests it cannot honor
+/// before starting a job that would write to a different destination.
+fn folder_copy_destination(source: &str, target: &str) -> Result<String, ProviderError> {
+    if basename(source) != basename(target) {
+        return Err(ProviderError::NotSupported(
+            "ImageKit folder copy preserves the source folder name; copying to a different folder name is not supported".to_string(),
+        ));
+    }
+    Ok(parent_path(target))
+}
+
 fn basename(path: &str) -> &str {
     path.trim_end_matches('/')
         .rsplit('/')
@@ -1133,6 +1145,18 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_copy_rejects_a_different_destination_leaf() {
+        assert!(matches!(
+            folder_copy_destination("/src/photos", "/dst/renamed"),
+            Err(ProviderError::NotSupported(_))
+        ));
+        assert_eq!(
+            folder_copy_destination("/src/photos", "/dst/photos").unwrap(),
+            "/dst"
+        );
+    }
 
     fn empty_provider() -> ImageKitProvider {
         ImageKitProvider::new(ImageKitConfig {

@@ -69,6 +69,21 @@ fn validate_remote_path(path: &str, label: &str) -> Result<(), ToolError> {
     Ok(())
 }
 
+/// Restricted-character check on the leaf a write tool is about to create or
+/// set. Runs after `validate_remote_path` and after the backend is resolved,
+/// in the same order the GUI uses (`provider_rename`). The two checks do not
+/// overlap: `validate_remote_path` judges the whole path string as an
+/// argument and is provider-agnostic; this one judges the leaf as a name
+/// against the target backend. If its type cannot be resolved, fail closed:
+/// a later write could reconnect, so skipping this check is unsafe.
+async fn reject_restricted_leaf(backend: &dyn RemoteBackend, path: &str) -> Result<(), ToolError> {
+    let provider = backend.provider_type().await.ok_or_else(|| {
+        ToolError::Exec("Cannot validate destination name: remote provider unavailable".to_string())
+    })?;
+    crate::restricted_chars::validate_path(provider, path)
+        .map_err(|e| ToolError::Exec(e.to_string()))
+}
+
 fn validate_local_path(path: &str, label: &str) -> Result<(), ToolError> {
     crate::ai_core::local_tools::validate_path(path, label).map_err(|reason| {
         ToolError::InvalidArgs {
@@ -355,16 +370,10 @@ async fn ensure_remote_parents(
     };
     let backend = ctx.remote_backend(server).await.map_err(backend_error)?;
 
-    // Ask the precise question once before doing any work. The walk below
-    // issues one MKD per level and, when the tree is already there, which is
-    // the ordinary case, every one of them fails and is then forgiven. A
-    // single stat answers "is the parent already a directory" in one round
-    // trip instead of that. A guard that asks the exact question can be
-    // faster than a vague one, because a vague answer leaves you having to
-    // attempt the work anyway.
-    //
-    // If the backend cannot stat a directory, this falls through to the walk,
-    // which is exactly the behaviour before this check existed.
+    // A known parent directory needs no walk. Otherwise inspect each level
+    // before creating it, validating only names that are not already present.
+    // If stat is unsupported, the mkdir response still supplies the fallback
+    // existence evidence below.
     if let Ok(entry) = backend.stat(&parent).await {
         if descend_evidence(&entry) == DescendEvidence::ProvenDirectory {
             return Ok(());
@@ -383,6 +392,16 @@ async fn ensure_remote_parents(
             acc.push('/');
         }
         acc.push_str(part);
+        // Existing names remain usable, including symlinks whose stat does
+        // not prove they are directories. Only a new component needs the
+        // provider's name rules before mkdir can send it to the server.
+        if let Ok(entry) = backend.stat(&acc).await {
+            if descend_evidence(&entry) == DescendEvidence::Unknown && blocked_at.is_none() {
+                blocked_at = Some(acc.clone());
+            }
+            continue;
+        }
+        reject_restricted_leaf(backend.as_ref(), &acc).await?;
         match backend.mkdir(&acc).await {
             Ok(()) => {}
             Err(e) => {
@@ -718,6 +737,7 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     let create_parents = get_bool_opt(args, "create_parents").unwrap_or(false);
     let no_clobber = get_bool_opt(args, "no_clobber").unwrap_or(false);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    reject_restricted_leaf(backend.as_ref(), &remote_path).await?;
     if no_clobber && backend.stat(&remote_path).await.is_ok() {
         return Ok(json!({
             "server": server,
@@ -853,6 +873,7 @@ async fn create_directory(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
     let path = get_str(args, "path")?;
     validate_remote_path(&path, "path")?;
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    reject_restricted_leaf(backend.as_ref(), &path).await?;
     backend.mkdir(&path).await.map_err(ToolError::Exec)?;
     Ok(json!({ "server": server, "path": path, "created": true }))
 }
@@ -1148,6 +1169,10 @@ async fn rename(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     validate_remote_path(&from, "from")?;
     validate_remote_path(&to, "to")?;
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    // Only `to` sets a new name; `from` addresses an object that already
+    // exists, and refusing a character there would block acting on something
+    // the user already has (same exclusion class as delete).
+    reject_restricted_leaf(backend.as_ref(), &to).await?;
     backend.rename(&from, &to).await.map_err(ToolError::Exec)?;
     Ok(json!({ "server": server, "from": from, "to": to, "renamed": true }))
 }
@@ -1178,7 +1203,14 @@ fn reject_oversize_edit_download(data_len: usize) -> Result<(), ToolError> {
 }
 
 fn edit_temp_path(path: &str) -> String {
-    format!("{path}.aeroedit-{}.tmp", uuid::Uuid::new_v4())
+    // Keep the staging file beside the target without copying its leaf:
+    // an existing name may contain characters forbidden for new objects.
+    let parent = path.rsplit_once('/').map(|(parent, _)| parent);
+    let leaf = format!(".aeroedit-{}.tmp", uuid::Uuid::new_v4());
+    match parent {
+        Some(parent) => format!("{parent}/{leaf}"),
+        None => leaf,
+    }
 }
 
 /// Find-and-replace on a remote UTF-8 text file (MCP/CLI surface).
@@ -1254,6 +1286,7 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     }
 
     let temp_path = edit_temp_path(&path);
+    reject_restricted_leaf(backend.as_ref(), &temp_path).await?;
     if let Err(e) = backend
         .upload_from_bytes(new_text.as_bytes(), &temp_path)
         .await
@@ -2064,6 +2097,13 @@ async fn transfer_one(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         .map_err(|e| ToolError::Exec(format!("destination connect failed: {e}")))?;
     let mut dst_provider = dst_box;
 
+    // The destination leaf is a new name on the destination backend: apply
+    // the same restricted-character rule the CLI `transfer` applies, before
+    // the name reaches the wire. Applies to dry runs too, so a preview
+    // predicts the refusal instead of reporting a plan that cannot run.
+    crate::restricted_chars::validate_path(dst_provider.provider_type(), &dst_path)
+        .map_err(|e| ToolError::Exec(e.to_string()))?;
+
     let entry = crate::cross_profile_transfer::CrossProfileTransferEntry {
         source_path: src_path.clone(),
         dest_path: dst_path.clone(),
@@ -2229,6 +2269,15 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
                 plan.total_files, max_files
             ),
         });
+    }
+
+    // Every destination leaf the plan would create is a new name on the
+    // destination backend. Refuse a leaf its rules forbid up front, before
+    // any byte moves and before the dry-run report, so a preview cannot
+    // promise a tree the destination would reject halfway through.
+    for entry in &plan.entries {
+        crate::restricted_chars::validate_path(dst_provider.provider_type(), &entry.dest_path)
+            .map_err(|e| ToolError::Exec(format!("{}: {}", entry.dest_path, e)))?;
     }
 
     if dry_run {
@@ -2428,6 +2477,9 @@ async fn touch(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
             "created": false,
         }));
     }
+    // Only the create branch sets a new name, so only it is checked: an
+    // existing file named with a forbidden character must stay touchable.
+    reject_restricted_leaf(backend.as_ref(), &path).await?;
     backend
         .upload_from_bytes(b"", &path)
         .await
@@ -2566,6 +2618,8 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let mut upload_sha = String::new();
 
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+
+    reject_restricted_leaf(backend.as_ref(), &remote_path).await?;
 
     // Overwrite guard: the test uploads to remote_path and then deletes it,
     // so a path that already exists is a real user file about to be destroyed.
@@ -3315,6 +3369,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::ProviderType;
 
     fn server(id: &str, name: &str) -> crate::ai_tools::SavedServerInfo {
         crate::ai_tools::SavedServerInfo {
@@ -3481,9 +3536,14 @@ mod tests {
         /// "unused", so a test can hand the walk the wording a real server
         /// uses when the path is already taken.
         mkdir_fails_with: Option<String>,
+        mkdir_calls: Mutex<Vec<String>>,
         /// Paths a listing would mark with a leading `l`. `is_dir` stays
         /// false for these, exactly as the real parser reports them.
         symlinks: std::collections::HashSet<String>,
+        /// The provider this fake answers as. FTP by default (a provider
+        /// that refuses control characters), switchable so a test can stand
+        /// on the encoding side of the rule (Box/Dropbox/Jottacloud/OpenDrive).
+        provider_type: Option<ProviderType>,
     }
 
     impl FakeBackend {
@@ -3524,8 +3584,15 @@ mod tests {
                 rename_fails_with: None,
                 stat_fails_with: None,
                 mkdir_fails_with: None,
+                mkdir_calls: Mutex::new(Vec::new()),
                 symlinks: std::collections::HashSet::new(),
+                provider_type: Some(ProviderType::Ftp),
             }
+        }
+
+        fn with_provider_type(mut self, provider_type: ProviderType) -> Self {
+            self.provider_type = Some(provider_type);
+            self
         }
 
         fn touched_anything(&self) -> bool {
@@ -3538,6 +3605,9 @@ mod tests {
     impl RemoteBackend for FakeBackend {
         async fn is_connected(&self) -> bool {
             true
+        }
+        async fn provider_type(&self) -> Option<ProviderType> {
+            self.provider_type
         }
         async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
             self.tree
@@ -3628,7 +3698,8 @@ mod tests {
                 .push(path.to_string());
             Ok(())
         }
-        async fn mkdir(&self, _path: &str) -> Result<(), String> {
+        async fn mkdir(&self, path: &str) -> Result<(), String> {
+            self.mkdir_calls.lock().unwrap().push(path.to_string());
             Err(self
                 .mkdir_fails_with
                 .clone()
@@ -3731,6 +3802,233 @@ mod tests {
             sink: NoopSink,
             creds: NoopCreds,
         }
+    }
+
+    /// A transient lookup failure must not let a later successful write
+    /// bypass destination-name validation.
+    #[tokio::test]
+    async fn upload_without_provider_type_is_refused_before_the_wire() {
+        let mut fake = FakeBackend::sample();
+        fake.provider_type = None;
+        let fake = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&fake));
+        let err = upload_file(
+            &ctx,
+            &json!({"server": "s", "remote_path": "/root/bad\tname", "content": "x"}),
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{err:?}").contains("remote provider unavailable"));
+        assert!(fake.remote_files.lock().unwrap().is_empty());
+    }
+
+    /// Parent creation must reject a new restricted component before mkdir.
+    #[tokio::test]
+    async fn missing_restricted_parent_is_not_sent_to_mkdir() {
+        let fake = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&fake));
+        let err = ensure_remote_parents(&ctx, "s", "/root/bad\tparent/file")
+            .await
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("Restricted character"));
+        assert!(fake.mkdir_calls.lock().unwrap().is_empty());
+    }
+
+    /// Existing restricted parents remain traversable while new children
+    /// still pass through validation.
+    #[tokio::test]
+    async fn existing_restricted_parent_remains_usable() {
+        let mut fake = FakeBackend::sample();
+        fake.stats.insert("/root/bad\tparent".into(), (true, 0));
+        fake.mkdir_fails_with = Some("File exists".into());
+        let fake = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&fake));
+        ensure_remote_parents(&ctx, "s", "/root/bad\tparent/child/file")
+            .await
+            .unwrap();
+        assert_eq!(
+            fake.mkdir_calls.lock().unwrap().as_slice(),
+            &["/root/bad\tparent/child".to_string()]
+        );
+    }
+
+    /// Editing an old restricted name must stage under a safe sibling leaf
+    /// and publish back to the unchanged existing target.
+    #[tokio::test]
+    async fn edit_restricted_target_uses_safe_staging_leaf() {
+        let path = "/root/bad\tname.txt";
+        let mut fake = FakeBackend::sample();
+        fake.stats.insert(path.into(), (false, 3));
+        fake.downloads.insert(path.into(), b"old".to_vec());
+        let fake = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&fake));
+        edit(
+            &ctx,
+            &json!({"server": "s", "path": path, "find": "old", "replace": "new"}),
+        )
+        .await
+        .unwrap();
+        let uploads = fake.uploads.lock().unwrap();
+        assert_eq!(uploads.len(), 1);
+        let staged = &uploads[0].0;
+        assert!(staged.starts_with("/root/.aeroedit-"));
+        crate::restricted_chars::validate_path(ProviderType::Ftp, staged).unwrap();
+        assert_eq!(
+            fake.renames.lock().unwrap().as_slice(),
+            &[(staged.clone(), path.into())]
+        );
+    }
+
+    /// Speed-test uploads create a new object and must obey its provider's
+    /// name rules before uploading or deleting anything.
+    #[tokio::test]
+    async fn speed_rejects_restricted_destination_before_upload() {
+        let fake = Arc::new(FakeBackend::sample().with_provider_type(ProviderType::S3));
+        let ctx = test_ctx(Arc::clone(&fake));
+        let err = speed(
+            &ctx,
+            &json!({"server": "s", "remote_path": "/root/bad\tname", "size_mb": 1}),
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{err:?}").contains("Restricted character"));
+        assert!(fake.uploads.lock().unwrap().is_empty());
+        assert!(fake.deleted.lock().unwrap().is_empty());
+    }
+
+    /// G24: a write tool must refuse a leaf the target backend forbids BEFORE
+    /// anything reaches the wire. `validate_remote_path` deliberately lets a
+    /// TAB through (`c != '\t'`), so this is the check that catches it: the
+    /// fake stands in for FTP, where the leaf lands in the argument of a
+    /// CRLF-terminated command.
+    #[tokio::test]
+    async fn upload_with_a_tab_in_the_leaf_is_refused_before_the_wire() {
+        let fake = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let err = upload_file(
+            &ctx,
+            &json!({
+                "server": "s",
+                "remote_path": "/root/bad\tname.txt",
+                "content": "x",
+            }),
+        )
+        .await
+        .unwrap_err();
+        let text = format!("{err:?}");
+        assert!(
+            text.contains("Restricted character") && text.contains("U+0009"),
+            "the refusal must name the offending character: {text}"
+        );
+        assert!(
+            fake.remote_files.lock().unwrap().is_empty(),
+            "a refused name must not reach the backend"
+        );
+    }
+
+    /// The control case: Box, Dropbox, Jottacloud and OpenDrive ENCODE the
+    /// character reversibly instead of refusing it. A patch that rejects
+    /// unconditionally breaks those four providers; this test is what keeps
+    /// the rule provider-aware rather than absolute.
+    #[tokio::test]
+    async fn upload_with_a_tab_in_the_leaf_is_encoded_not_refused_on_box() {
+        let fake = Arc::new(FakeBackend::sample().with_provider_type(ProviderType::Box));
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let out = upload_file(
+            &ctx,
+            &json!({
+                "server": "s",
+                "remote_path": "/root/bad\tname.txt",
+                "content": "x",
+            }),
+        )
+        .await;
+        assert!(out.is_ok(), "an encoding provider must not refuse: {out:?}");
+        assert!(
+            fake.remote_files
+                .lock()
+                .unwrap()
+                .contains_key("/root/bad\tname.txt"),
+            "the upload should have landed"
+        );
+    }
+
+    /// Rename sets one new name: the destination. The source names an object
+    /// that already exists, and refusing a character there would block
+    /// renaming AWAY from a bad name, the same exclusion class as delete.
+    #[tokio::test]
+    async fn rename_checks_the_destination_leaf_only() {
+        let fake = Arc::new(FakeBackend::sample());
+        // A file already stored under a TAB name, as an older client could
+        // have written it. The fake's rename reads `remote_files`.
+        fake.remote_files
+            .lock()
+            .unwrap()
+            .insert("/root/bad\told.txt".to_string(), b"old".to_vec());
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let err = rename(
+            &ctx,
+            &json!({"server": "s", "from": "/root/a.txt", "to": "/root/bad\tnew.txt"}),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("Restricted character"),
+            "destination with a forbidden character must be refused: {err:?}"
+        );
+
+        let out = rename(
+            &ctx,
+            &json!({"server": "s", "from": "/root/bad\told.txt", "to": "/root/fixed.txt"}),
+        )
+        .await;
+        assert!(
+            out.is_ok(),
+            "renaming away from a bad existing name must stay possible: {out:?}"
+        );
+    }
+
+    /// Touch creates only when the path does not exist, so the leaf check
+    /// belongs on the create branch alone: an existing badly-named file stays
+    /// touchable (a no-op), a new one is refused.
+    #[tokio::test]
+    async fn touch_checks_the_leaf_only_when_creating() {
+        let mut fake = FakeBackend::sample();
+        fake.stats
+            .insert("/root/bad\told.txt".to_string(), (false, 10));
+        let fake = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let out = touch(&ctx, &json!({"server": "s", "path": "/root/bad\told.txt"})).await;
+        assert!(
+            out.is_ok(),
+            "touching an existing file is a no-op and must not be refused: {out:?}"
+        );
+
+        let err = touch(&ctx, &json!({"server": "s", "path": "/root/bad\tnew.txt"}))
+            .await
+            .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("Restricted character"),
+            "creating a file with a forbidden character must be refused: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn mkdir_with_a_tab_in_the_leaf_is_refused() {
+        let fake = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let err = create_directory(&ctx, &json!({"server": "s", "path": "/root/bad\tdir"}))
+            .await
+            .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("Restricted character"),
+            "mkdir with a forbidden character must be refused: {err:?}"
+        );
     }
 
     /// A plain file where a parent directory belongs must be reported at the
@@ -4011,7 +4309,7 @@ mod tests {
         assert_eq!(uploads.len(), 1, "one staged upload expected: {uploads:?}");
         let temp_path = uploads[0].0.clone();
         assert!(
-            temp_path.starts_with("/root/a.txt.aeroedit-") && temp_path.ends_with(".tmp"),
+            temp_path.starts_with("/root/.aeroedit-") && temp_path.ends_with(".tmp"),
             "unexpected edit temp path: {temp_path}"
         );
         assert_ne!(

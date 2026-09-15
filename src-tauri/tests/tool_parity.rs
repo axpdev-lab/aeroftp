@@ -113,6 +113,10 @@ impl RemoteBackend for FakeRemoteBackend {
         true
     }
 
+    async fn provider_type(&self) -> Option<ftp_client_gui_lib::providers::ProviderType> {
+        Some(ftp_client_gui_lib::providers::ProviderType::Ftp)
+    }
+
     async fn list(
         &self,
         path: &str,

@@ -16,7 +16,7 @@ use super::credential_provider::{
 use super::event_sink::{EventSink, ToolProgress};
 use super::remote_backend::{RemoteBackend, StorageQuota};
 use crate::ai_stream::StreamChunk;
-use crate::providers::{RemoteEntry, StorageProvider};
+use crate::providers::{ProviderType, RemoteEntry, StorageProvider};
 use crate::AppState;
 
 // ─── TauriEventSink ────────────────────────────────────────────────────
@@ -322,6 +322,21 @@ impl RemoteBackend for TauriRemoteBackend {
                     .is_connected()
             }
             TauriRemoteBackend::Temp { .. } => true,
+        }
+    }
+
+    async fn provider_type(&self) -> Option<ProviderType> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref p) = *Self::active_provider(app).lock().await {
+                    return Some(p.provider_type());
+                }
+                // The legacy `ftp_manager` fallback has no provider_type() of
+                // its own and is FTP by construction, so name it here as a
+                // deliberate line, not as a default.
+                Some(ProviderType::Ftp)
+            }
+            TauriRemoteBackend::Temp { provider } => Some(provider.lock().await.provider_type()),
         }
     }
 
