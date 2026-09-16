@@ -28,6 +28,7 @@ const PROVIDER_ID_TO_SLUG: Record<string, string> = {
     'cloudflare-r2': 'cloudflare-r2',
     storj: 'storj',
     'idrive-e2': 'idrive-e2',
+    filebase: 'filebase',
     minio: 'minio',
     'oracle-cloud': 'oracle-cloud',
     'google-cloud-storage': 'google-cloud-storage',

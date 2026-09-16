@@ -83,6 +83,9 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
         if (host.includes('storjshare') || host.includes('gateway.storj')) return 'storj';
         if (host.includes('digitaloceanspaces')) return 'digitalocean-spaces';
         if (host.includes('idrivee2') || host.includes('idrivecloud')) return 'idrive-e2';
+        // Domain-boundary match: exact s3.filebase.io (+ optional port) or bucket subdomains; reject lookalikes
+        const s3Host = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
+        if (s3Host === 's3.filebase.io' || s3Host.endsWith('.s3.filebase.io')) return 'filebase';
         if (host.includes('aliyuncs') || host.includes('oss')) return 'alibaba-oss';
         if (host.includes('myqcloud') || host.includes('cos.')) return 'tencent-cos';
         if (host.includes('oraclecloud')) return 'oracle-cloud';

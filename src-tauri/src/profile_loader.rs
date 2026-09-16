@@ -215,6 +215,7 @@ fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
         "cloudflare-r2" => Some("auto"),
         "google-cloud-storage" => Some("auto"),
         "idrive-e2" => Some("auto"),
+        "filebase" => Some("auto"),
         "storj" => Some("global"),
         "filelu-s3" => Some("global"),
         "yandex-storage" => Some("ru-central1"),
@@ -233,6 +234,7 @@ fn s3_profile_default_path_style(provider_id: &str) -> Option<bool> {
         "cloudflare-r2" => Some(true),
         "google-cloud-storage" => Some(true),
         "idrive-e2" => Some(true),
+        "filebase" => Some(true),
         "wasabi" => Some(false),
         "storj" => Some(true),
         "alibaba-oss" => Some(false),
@@ -250,6 +252,7 @@ fn s3_profile_default_path_style(provider_id: &str) -> Option<bool> {
 fn s3_profile_static_endpoint(provider_id: &str) -> Option<&'static str> {
     match provider_id {
         "filelu-s3" => Some("s5lu.com"),
+        "filebase" => Some("https://s3.filebase.io"),
         "yandex-storage" => Some("https://storage.yandexcloud.net"),
         "quotaless-s3" => Some("https://io.quotaless.cloud:8000"),
         _ => None,

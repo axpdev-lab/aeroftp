@@ -248,6 +248,10 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Google Cloud Storage', parentCompany: 'Google', logoId: 'google-cloud-storage', countryCode: 'US', freeStorageGb: 5,
       freeNote: 'always-free, card req.', freeRequiresCard: true, healthCheckUrl: 'https://storage.googleapis.com',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'google-cloud-storage', category: 'object-storage', paid: true }] },
+    { company: 'Filebase', logoId: 'filebase', countryCode: 'US', freeStorageGb: 5,
+      healthCheckUrl: 'https://s3.filebase.io',
+      searchAliases: ['filebase', 's3.filebase.io'],
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'filebase', category: 'object-storage' }] },
     { company: 'CloudMe', logoId: 'cloudme', countryCode: 'SE', freeStorageGb: 3,
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'cloudme', category: 'webdav' }] },
     { company: 'Uploadcare', logoId: 'uploadcare', countryCode: 'US', freeStorageGb: 1,
@@ -415,6 +419,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'oracle-cloud', icon: 'oracle_cloud.png', docsPath: 'providers/oracle-cloud' },
     { logoId: 'storj', icon: 'storj.png', docsPath: 'providers/storj' },
     { logoId: 'idrive-e2', icon: 'idrive_e2.png', docsPath: 'providers/idrive-e2' },
+    { logoId: 'filebase', icon: 'filebase.png', docsPath: 'providers/filebase' },
     { logoId: 'minio', icon: 'minio.png', docsPath: 'providers/minio' },
     { logoId: 'yandex-storage', icon: 'yandexcloud.png', docsPath: 'providers/yandex-object-storage' },
     { logoId: 's3drive', icon: 's3drive.png', docsPath: 'providers/s3drive' },
@@ -634,6 +639,7 @@ const REGIONS_BY_LOGO: Record<string, string[]> = {
     // footprint is already covered by MEGA's 'EU','CA' above, so no separate entry.
     // S3Drive rides Storj's decentralized network (automatic global placement).
     's3drive': ['global'],
+    'filebase': ['global'],
     'yandex-storage': ['RU'],
 };
 

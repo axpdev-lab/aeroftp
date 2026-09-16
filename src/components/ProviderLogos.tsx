@@ -133,6 +133,17 @@ export const OpenDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// Filebase: PNG brand mark (orange), rendered as img like Koofr
+export const FilebaseLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/filebase.png"
+        alt="Filebase"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // Yandex Cloud: blue arrows logo (for S3 Object Storage preset)
 export const YandexCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -545,6 +556,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'digitalocean-spaces': DigitalOceanLogo,
     'oracle-cloud': OracleCloudLogo,
     'idrive-e2': IDriveLogo,
+    'filebase': FilebaseLogo,
     'nextcloud': NextcloudLogo,
     'koofr': KoofrLogo,
     'opendrive': OpenDriveLogo,

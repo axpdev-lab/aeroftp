@@ -1929,7 +1929,8 @@
             "devicesInfoLine1": "Speichere ein tragbares USB-Gerät (Telefon, Kamera, Tablet) als Profil in Meine Server. Erkenne das Gerät über MTP, lege Standardordner fest und verbinde dich mit einem Klick erneut, wenn es angeschlossen ist.",
             "devicesInfoLine2": "MTP ist exklusiv und bei Bedarf: Verbinden beansprucht das Gerät für die Sitzung; Trennen gibt es zurück. Übertragungen erfolgen nur als ganze Datei (kein Fortsetzen, kein Laufwerksbuchstabe).",
             "discoverMtpPortable": "Telefon, Kamera oder Tablet über USB MTP",
-            "s3AllowCleartextEndpoint": "Dieser Endpunkt stellt S3 über unverschlüsseltes HTTP im Netzwerk bereit. Für dieses Profil akzeptieren: Die signierten Zugangsdaten und jede Datei durchqueren das Netzwerk unverschlüsselt."
+            "s3AllowCleartextEndpoint": "Dieser Endpunkt stellt S3 über unverschlüsseltes HTTP im Netzwerk bereit. Für dieses Profil akzeptieren: Die signierten Zugangsdaten und jede Datei durchqueren das Netzwerk unverschlüsselt.",
+            "discoverFilebase": "Filebase: S3-kompatibler Objektspeicher (5 GB kostenlos)"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

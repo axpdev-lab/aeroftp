@@ -1218,6 +1218,38 @@ impl S3Provider {
             .unwrap_or(false)
     }
 
+    /// Detect Filebase endpoints.
+    /// Filebase deviates from standard S3: no object versioning
+    /// (`GetBucketVersioning` only, never `?versions`), no `UploadPartCopy`
+    /// (answers `501 NotImplemented`), so multipart copies must stay on the
+    /// single-PUT `CopyObject` path, and no object tagging.
+    /// The host is parsed (not substring-matched) so lookalike hosts such as
+    /// `s3.filebase.io.example` are rejected, while the exact endpoint and
+    /// virtual-hosted bucket subdomains (`<bucket>.s3.filebase.io`) match.
+    fn is_filebase_endpoint(&self) -> bool {
+        self.config
+            .endpoint
+            .as_deref()
+            .map(|ep| {
+                url::Url::parse(ep)
+                    .ok()
+                    .or_else(|| url::Url::parse(&format!("https://{}", ep)).ok())
+                    .and_then(|url| url.host_str().map(|host| host.to_ascii_lowercase()))
+                    .is_some_and(|host| {
+                        host == "s3.filebase.io" || host.ends_with(".s3.filebase.io")
+                    })
+            })
+            .unwrap_or(false)
+    }
+
+    /// Whether a server-side copy of `source_size` bytes is composed as a
+    /// multipart `UploadPartCopy` sequence instead of a single-PUT
+    /// `CopyObject`. Filebase is the exception: it rejects `UploadPartCopy`
+    /// with 501, so every copy stays on the plain `CopyObject` path.
+    fn copy_via_multipart(&self, source_size: u64) -> bool {
+        source_size > Self::COPY_OBJECT_MAX && !self.is_filebase_endpoint()
+    }
+
     fn bucket_addressing_error(xml: &str) -> Option<ProviderError> {
         if xml.contains("<ListAllMyBucketsResult") {
             Some(ProviderError::InvalidConfig(
@@ -5316,14 +5348,15 @@ impl StorageProvider for S3Provider {
 
         // HEAD source up front so we know whether to take the single-PUT
         // CopyObject path or compose the copy as a multipart sequence of
-        // UploadPartCopy operations. The HEAD is one cheap round trip per
-        // copy and surfaces a `NotFound` immediately instead of waiting
-        // for the PUT to fail downstream. Network egress is unchanged:
-        // headers only.
+        // UploadPartCopy operations (`copy_via_multipart` also keeps Filebase
+        // on the single-PUT path: it answers 501 to UploadPartCopy). The HEAD
+        // is one cheap round trip per copy and surfaces a `NotFound`
+        // immediately instead of waiting for the PUT to fail downstream.
+        // Network egress is unchanged: headers only.
         let source_meta = self.stat(from).await?;
         let source_size = source_meta.size;
 
-        if source_size <= Self::COPY_OBJECT_MAX {
+        if !self.copy_via_multipart(source_size) {
             return self.server_side_copy_single(from_key, to_key).await;
         }
 
@@ -5623,8 +5656,8 @@ impl StorageProvider for S3Provider {
     }
 
     fn supports_versions(&self) -> bool {
-        // MEGA S4 does not support object versioning
-        !self.is_mega_s4_endpoint()
+        // MEGA S4 and Filebase do not support object versioning
+        !self.is_mega_s4_endpoint() && !self.is_filebase_endpoint()
     }
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
@@ -6395,6 +6428,11 @@ impl S3Provider {
                 "MEGA S4 does not support object tagging".to_string(),
             ));
         }
+        if self.is_filebase_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "Filebase does not support object tagging".to_string(),
+            ));
+        }
         let key = path.trim_start_matches('/');
         let response = self
             .s3_request(Method::GET, key, Some(&[("tagging", "")]), None)
@@ -6505,6 +6543,11 @@ impl S3Provider {
                 "MEGA S4 does not support object tagging".to_string(),
             ));
         }
+        if self.is_filebase_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "Filebase does not support object tagging".to_string(),
+            ));
+        }
         let key = path.trim_start_matches('/');
 
         let tag_elements: String = tags
@@ -6572,6 +6615,11 @@ impl S3Provider {
         if self.is_mega_s4_endpoint() {
             return Err(ProviderError::NotSupported(
                 "MEGA S4 does not support object tagging".to_string(),
+            ));
+        }
+        if self.is_filebase_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "Filebase does not support object tagging".to_string(),
             ));
         }
         let key = path.trim_start_matches('/');
@@ -9226,6 +9274,123 @@ mod tests {
             Some("1725600000.123456789"),
             "initiation must carry the source's raw x-amz-meta-mtime"
         );
+    }
+
+    // ---- Filebase (APPENDIX-FILEBASE FB1/FB-05) ---------------------------
+    //
+    // Filebase speaks S3 except for two corners: `UploadPartCopy` answers
+    // `501 NotImplemented`, and versioning is read-only (`GetBucketVersioning`
+    // works, `?versions` listing must never be attempted). The gates live on
+    // `is_filebase_endpoint` / `copy_via_multipart` / `supports_versions`;
+    // these tests pin all three.
+
+    #[test]
+    fn filebase_endpoint_detection_is_case_insensitive_and_host_specific() {
+        assert!(make_provider(Some("https://s3.filebase.io")).is_filebase_endpoint());
+        assert!(make_provider(Some("HTTPS://S3.FILEBASE.IO")).is_filebase_endpoint());
+        // Explicit port and virtual-hosted bucket subdomains are valid.
+        assert!(make_provider(Some("https://s3.filebase.io:443")).is_filebase_endpoint());
+        assert!(make_provider(Some("https://my-bucket.s3.filebase.io")).is_filebase_endpoint());
+        // Lookalike hosts must NOT match (domain-boundary check, not substring).
+        assert!(!make_provider(Some("https://s3.filebase.io.example")).is_filebase_endpoint());
+        assert!(!make_provider(Some("https://my-filebase-proxy.example")).is_filebase_endpoint());
+        assert!(!make_provider(Some("https://s3.us-east-1.amazonaws.com")).is_filebase_endpoint());
+        assert!(!make_provider(Some("https://eu-central-1.s4.mega.io")).is_filebase_endpoint());
+        assert!(!make_provider(Some("https://minio.example.com")).is_filebase_endpoint());
+        assert!(!make_provider(None).is_filebase_endpoint());
+    }
+
+    #[test]
+    fn filebase_disables_versioning_like_mega_s4() {
+        assert!(!make_provider(Some("https://s3.filebase.io")).supports_versions());
+        assert!(!make_provider(Some("https://eu-central-1.s4.mega.io")).supports_versions());
+        assert!(make_provider(Some("https://s3.us-east-1.amazonaws.com")).supports_versions());
+        assert!(make_provider(None).supports_versions());
+    }
+
+    #[test]
+    fn filebase_copy_never_plans_upload_part_copy() {
+        let filebase = make_provider(Some("https://s3.filebase.io"));
+        let generic = make_provider(Some("https://minio.example.com"));
+        let below = S3Provider::COPY_OBJECT_MAX;
+        let above = S3Provider::COPY_OBJECT_MAX + 1;
+        // Above the cap a copy would otherwise fan out into dozens of
+        // UploadPartCopy parts: prove the planner really would plan them,
+        // then prove the Filebase gate suppresses the whole path.
+        assert!(plan_copy_parts(above, S3Provider::COPY_MULTIPART_PART_SIZE).len() > 1);
+        assert!(!filebase.copy_via_multipart(below));
+        assert!(!filebase.copy_via_multipart(above));
+        // The generic endpoint keeps the historical behavior.
+        assert!(!generic.copy_via_multipart(below));
+        assert!(generic.copy_via_multipart(above));
+    }
+
+    #[tokio::test]
+    async fn filebase_sized_copy_on_a_mock_emits_plain_copy_object_only() {
+        // Wire-level twin of the gate above: the mock cannot BE s3.filebase.io
+        // (it binds loopback), so the routing decision is exercised by driving
+        // the single-PUT path the gate selects and asserting the wire shape
+        // Filebase will always see: one PUT with x-amz-copy-source, no
+        // `?uploads` initiation, no partNumber query (i.e. no UploadPartCopy).
+        use std::sync::{Arc, Mutex};
+        #[derive(Default)]
+        struct Seen {
+            initiations: usize,
+            part_copies: usize,
+            plain_copies: usize,
+        }
+        let seen = Arc::new(Mutex::new(Seen::default()));
+        let state = Arc::clone(&seen);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let state = Arc::clone(&state);
+                async move {
+                    let method = req.method().clone();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let headers = req.headers().clone();
+                    if method == axum::http::Method::HEAD {
+                        return axum::response::Response::builder()
+                            .header("content-length", "1024")
+                            .header("last-modified", "Sun, 06 Sep 2026 20:11:32 GMT")
+                            .header("etag", "\"src\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    if method == axum::http::Method::POST && query.starts_with("uploads") {
+                        state.lock().unwrap().initiations += 1;
+                    }
+                    if method == axum::http::Method::PUT
+                        && headers.contains_key("x-amz-copy-source")
+                    {
+                        if query.contains("partNumber=") {
+                            state.lock().unwrap().part_copies += 1;
+                        } else {
+                            state.lock().unwrap().plain_copies += 1;
+                        }
+                        return axum::response::Response::new(axum::body::Body::from(
+                            "<CopyObjectResult><ETag>\"dst\"</ETag></CopyObjectResult>",
+                        ));
+                    }
+                    axum::response::Response::new(axum::body::Body::empty())
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider
+            .server_side_copy("/a.bin", "/b.bin")
+            .await
+            .expect("plain CopyObject");
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.plain_copies, 1, "exactly one plain CopyObject PUT");
+        assert_eq!(seen.initiations, 0, "no CreateMultipartUpload");
+        assert_eq!(seen.part_copies, 0, "no UploadPartCopy");
     }
 
     // ---- delta multipart executor (T3 of APPENDIX-S3-DELTA-UPLOAD) --------

@@ -1929,7 +1929,8 @@
             "devicesInfoLine1": "Enregistrez un appareil USB portable (téléphone, appareil photo, tablette) comme profil dans Mes serveurs. Détectez l'appareil via MTP, définissez les dossiers par défaut et reconnectez-vous en un clic lorsqu'il est branché.",
             "devicesInfoLine2": "MTP est exclusif et à la demande : Connecter réclame l'appareil pour la session ; déconnecter le rend. Les transferts se font par fichier entier (pas de reprise, pas de lettre de lecteur).",
             "discoverMtpPortable": "Téléphone, appareil photo ou tablette via USB MTP",
-            "s3AllowCleartextEndpoint": "Ce point de terminaison sert S3 en HTTP non chiffré sur un réseau. Acceptez-le pour ce profil : les identifiants signés et chaque fichier traversent le réseau sans chiffrement."
+            "s3AllowCleartextEndpoint": "Ce point de terminaison sert S3 en HTTP non chiffré sur un réseau. Acceptez-le pour ce profil : les identifiants signés et chaque fichier traversent le réseau sans chiffrement.",
+            "discoverFilebase": "Filebase: stockage d'objets compatible S3 (5 Go gratuits)"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",

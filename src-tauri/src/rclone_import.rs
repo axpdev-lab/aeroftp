@@ -417,6 +417,14 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             let provider_id = crate::bridge_shared::map_s3_provider(s3_provider);
             let region = get_str("region").unwrap_or("us-east-1").to_string();
             let endpoint = get_str("endpoint").unwrap_or("").to_string();
+            // rclone's `provider = Other` carries no vendor signal; refine via the
+            // endpoint host so known presets (Filebase, IDrive e2, ...) land on
+            // their provider id instead of the generic `custom-s3` bucket.
+            let provider_id = if provider_id == "custom-s3" && !endpoint.is_empty() {
+                crate::bridge_shared::map_s3_provider_from_endpoint(&endpoint)
+            } else {
+                provider_id
+            };
 
             // Build S3 endpoint host
             let host = if !endpoint.is_empty() {
@@ -1840,6 +1848,9 @@ pub fn export_rclone(
                     "tencent-cos" => "TencentCOS",
                     "qiniu-kodo" => "Qiniu",
                     "google-cloud-storage" => "GCS",
+                    // Filebase has no native rclone S3 provider token; the
+                    // generic "Other" signature path works with its endpoint.
+                    "filebase" => "Other",
                     _ => "Other",
                 };
                 body.push_str(&format!("provider = {}\n", rclone_provider));
@@ -3052,6 +3063,55 @@ type = fichier
 
         // Verify skipped
         assert_eq!(result.skipped[0].rclone_type, "fichier");
+    }
+
+    #[test]
+    fn test_import_s3_other_provider_refines_via_endpoint() {
+        use std::io::Write;
+        let conf = r#"
+[filebase]
+type = s3
+provider = Other
+access_key_id = AK
+secret_access_key = SK
+endpoint = https://s3.filebase.io
+region = auto
+bucket = aero-base
+
+[plain-custom]
+type = s3
+provider = Other
+access_key_id = AK
+secret_access_key = SK
+endpoint = https://s3.example-unknown.com
+"#;
+        let tmp = std::env::temp_dir().join("aeroftp-test-rclone-s3-refine.conf");
+        {
+            let mut f = std::fs::File::create(&tmp).unwrap();
+            f.write_all(conf.as_bytes()).unwrap();
+        }
+        let result = import_rclone(&tmp).expect("should parse");
+        std::fs::remove_file(&tmp).ok();
+
+        let fb = result
+            .servers
+            .iter()
+            .find(|s| s.name == "filebase")
+            .expect("filebase remote");
+        assert_eq!(fb.provider_id.as_deref(), Some("filebase"));
+        let opts = fb.options.as_ref().expect("options");
+        assert_eq!(
+            opts.get("bucket").and_then(|v| v.as_str()),
+            Some("aero-base")
+        );
+
+        // Unknown endpoints must stay generic.
+        let plain = result
+            .servers
+            .iter()
+            .find(|s| s.name == "plain-custom")
+            .expect("plain-custom remote");
+        assert_eq!(plain.provider_id.as_deref(), Some("custom-s3"));
     }
 
     #[test]

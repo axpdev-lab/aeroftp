@@ -28,7 +28,7 @@ const POPULARITY_PRIORITY: Record<string, number> = {
     // Object storage
     'custom-s3': 0, 'amazon-s3': 1, 'google-cloud-storage': 2, 'cloudflare-r2': 3,
     'minio': 4, 'storj': 5, 'backblaze': 6, 'wasabi': 7, 'idrive-e2': 8,
-    'mega-s4': 9, 'digitalocean-spaces': 10,
+    'mega-s4': 9, 'digitalocean-spaces': 10, 'filebase': 11,
     // WebDAV
     'custom-webdav': 0, 'nextcloud': 1, 'koofr-webdav': 2, 'felicloud': 3, 'tabdigital': 4, 'seafile': 5,
     // Cloud
