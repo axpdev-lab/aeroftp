@@ -16,7 +16,7 @@ use super::tools::{Surfaces, ToolCtx};
 use crate::ai_stream::StreamChunk;
 use crate::mcp::notifier::McpNotifier;
 use crate::mcp::pool::ConnectionPool;
-use crate::providers::RemoteEntry;
+use crate::providers::{ProviderType, RemoteEntry};
 
 pub struct McpEventSink {
     pub notifier: Option<McpNotifier>,
@@ -236,6 +236,14 @@ impl McpRemoteBackend {
 impl RemoteBackend for McpRemoteBackend {
     async fn is_connected(&self) -> bool {
         self.pool.get_provider(&self.server).await.is_ok()
+    }
+
+    async fn provider_type(&self) -> Option<ProviderType> {
+        // Cold acquisition can fail with stale credentials before the type is
+        // available. Use the same vault reload and retry as the write itself.
+        self.with_provider(|p| Box::pin(async move { Ok(p.provider_type()) }))
+            .await
+            .ok()
     }
 
     async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
