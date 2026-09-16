@@ -346,8 +346,10 @@ impl FtpProvider {
             path,
             err
         );
+        let previous_path = self.current_path.clone();
         let _ = self.disconnect().await;
-        self.connect().await
+        self.connect().await?;
+        self.restore_working_directory(&previous_path).await
     }
 
     async fn list_inner(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
@@ -2790,7 +2792,17 @@ impl FtpProvider {
                         path,
                         FtpError::UnexpectedResponse(reply),
                     );
-                    self.drop_session_if_a_reply_is_queued();
+                    // Discarded unconditionally, like the two refusal
+                    // helpers. Asking "is another reply queued" has an answer
+                    // that depends on how the server split its writes: the
+                    // goodbye written after the refusal is not there yet when
+                    // the check runs, and the guard at the next command is one
+                    // non-blocking peek, so a `421` in flight can still land
+                    // between that peek and the reply the next command reads.
+                    // Keeping the session buys one saved reconnect on a path
+                    // that has already spent the whole open budget; it costs a
+                    // reply attributed to the wrong command.
+                    self.stream = None;
                     return classified;
                 }
                 // EVERYTHING else, and the catch-all is the point rather than a
@@ -2823,39 +2835,6 @@ impl FtpProvider {
             path,
             OPEN_BUDGET.as_secs()
         ))
-    }
-
-    /// Give up the session when the control reader is still holding a reply.
-    ///
-    /// One caller now, the open that timed out and then found an answer waiting.
-    /// The two refusal helpers used to share this and no longer do: there the
-    /// question "is another reply queued" had an answer that depended on how the
-    /// server split its writes, so they discard without asking. Here a wait has
-    /// already happened before the check runs, which is what makes the question
-    /// worth asking at all.
-    ///
-    /// What it covers is a reply ALREADY queued when the failure is classified.
-    /// A server that refuses and then hangs up sends `550` and `421`, and on one
-    /// write they arrive together: the refusal answers the command that asked,
-    /// the goodbye stays in the reader, and the next command would read it as
-    /// its own reply. A peek at the socket cannot see it, because both replies
-    /// are already off the wire and inside the `BufReader`;
-    /// `buffered_reply_bytes` is what reports them.
-    ///
-    /// What it does NOT cover on its own is a goodbye written afterwards, in
-    /// a write of its own: nothing has been sent at this point, so this keeps
-    /// the session. That case is covered where it can be seen: by
-    /// [`Self::redial_if_a_reply_is_pending`], which runs when the NEXT
-    /// command starts.
-    fn drop_session_if_a_reply_is_queued(&mut self) {
-        let queued = self
-            .stream
-            .as_ref()
-            .map(|stream| !stream.buffered_reply_bytes().is_empty())
-            .unwrap_or(false);
-        if queued {
-            self.stream = None;
-        }
     }
 
     /// G54: never start a command on a session that still holds a reply
@@ -2910,13 +2889,46 @@ impl FtpProvider {
         tracing::warn!(
             "FTP session held an unread reply at the start of a new command; redialing instead of misattributing it"
         );
+        let previous_path = self.current_path.clone();
         self.stream = None;
         let spec = self
             .connection_spec
             .clone()
             .ok_or(ProviderError::NotConnected)?;
         self.config = spec;
-        self.connect().await
+        self.connect().await?;
+        self.restore_working_directory(&previous_path).await
+    }
+
+    /// Put the redialed session back in the directory the caller left it in.
+    ///
+    /// `connect()` lands where login (and `initial_path`) puts it, and it
+    /// overwrites `current_path` with that directory. Every relative path used
+    /// afterwards - `upload("x")`, `delete("x")`, `mkdir("x")` - is resolved by
+    /// the SERVER against its own working directory, so a reconnect between two
+    /// commands moves all of them without saying so: a caller that did
+    /// `cd("/project")` would write into the login directory instead. A
+    /// reconnect is meant to be invisible to the caller, and the working
+    /// directory is part of what has to survive it.
+    ///
+    /// A `CWD` that fails is reported rather than swallowed: the alternative is
+    /// a session whose directory is not the one the caller believes, which is
+    /// the class this exists to close.
+    async fn restore_working_directory(&mut self, previous: &str) -> Result<(), ProviderError> {
+        if previous == self.current_path {
+            return Ok(());
+        }
+        let stream = self.stream_mut()?;
+        stream
+            .cwd(previous)
+            .await
+            .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+        self.current_path = stream
+            .pwd()
+            .await
+            .unwrap_or_else(|_| previous.to_string())
+            .replace('\\', "/");
+        Ok(())
     }
 
     /// A refused data open, classified, with the session given up.
@@ -4947,19 +4959,29 @@ mod late_reply_guard_tests {
             return;
         }
         let mut pwd_seen = 0u32;
+        // The server keeps a working directory, so a test can tell a session
+        // that was put back where it was from one that answers from the login
+        // directory.
+        let mut cwd = "/".to_string();
         loop {
             let line = match lines.next_line().await {
                 Ok(Some(line)) => line,
                 _ => return,
             };
-            let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
-            let reply: &[u8] = match cmd.as_str() {
-                "USER" => b"331 password please\r\n",
-                "PASS" => b"230 logged in\r\n",
-                "PWD" => b"257 \"/\" is current\r\n",
-                _ => b"200 ok\r\n",
+            let mut parts = line.split_whitespace();
+            let cmd = parts.next().unwrap_or("").to_uppercase();
+            let argument = parts.next().unwrap_or("").to_string();
+            let reply = match cmd.as_str() {
+                "USER" => "331 password please\r\n".to_string(),
+                "PASS" => "230 logged in\r\n".to_string(),
+                "CWD" => {
+                    cwd = argument;
+                    "250 directory changed\r\n".to_string()
+                }
+                "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                _ => "200 ok\r\n".to_string(),
             };
-            if write.write_all(reply).await.is_err() {
+            if write.write_all(reply.as_bytes()).await.is_err() {
                 return;
             }
             if cmd == "PWD" {
@@ -5038,6 +5060,59 @@ mod late_reply_guard_tests {
         tokio::time::timeout(std::time::Duration::from_secs(5), server)
             .await
             .expect("the second connection must be dialed: a hanging wait here means the guard kept the old session")
+            .unwrap();
+    }
+
+    /// The redial must be invisible to the caller, and the working directory
+    /// is part of that: relative paths are resolved by the SERVER against its
+    /// own directory, so a session that comes back in the login directory
+    /// would upload, delete and mkdir somewhere else than the caller asked.
+    #[tokio::test]
+    async fn a_redial_puts_the_session_back_in_the_directory_the_caller_left() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            if let Ok((first, _)) = listener.accept().await {
+                serve_connection(first, true).await;
+            }
+            if let Ok((second, _)) = listener.accept().await {
+                serve_connection(second, false).await;
+            }
+        });
+
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port: addr.port(),
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+        });
+        provider
+            .connect()
+            .await
+            .expect("the first dial must succeed");
+        // The CWD's own PWD is the second one on this connection, which is
+        // what arms the late goodbye in the scripted server.
+        provider
+            .cd("/project")
+            .await
+            .expect("the session starts in the directory the caller chose");
+
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+
+        let after_redial = provider.pwd().await;
+        assert_eq!(
+            after_redial.as_deref().ok(),
+            Some("/project"),
+            "the redialed session must be back in /project, not in the login directory: {after_redial:?}"
+        );
+
+        let _ = provider.disconnect().await;
+        tokio::time::timeout(std::time::Duration::from_secs(5), server)
+            .await
+            .expect("the second connection must be dialed")
             .unwrap();
     }
 }
