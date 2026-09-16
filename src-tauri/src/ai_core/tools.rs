@@ -1778,7 +1778,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "server": {"type": "string", "description": "Server name or ID"},
                     "local_dir": {"type": "string", "description": "Local directory"},
                     "remote_dir": {"type": "string", "description": "Remote directory"},
-                    "checksum": {"type": "boolean", "description": "Compute hashes on both sides where supported (default: false)"},
+                    "checksum": {"type": "boolean", "description": "Hash both sides of each equal-size pair with blake3 (default: false). The remote side is read through a capped download (256 MB per file, the hashsum ceiling): provider-independent, but the cost is the download. Larger files keep their size verdict, flagged on the entry and counted in the summary."},
                     "one_way": {"type": "boolean", "description": "Skip remote-only entries (default: false)"},
                     "exclude": {"type": "array", "items": {"type": "string"}, "description": "Glob patterns to exclude"},
                     "summary_only": {"type": "boolean", "description": "Drop the `groups` arrays: only counters + elapsed + suggested_next_command (default: false)"}
