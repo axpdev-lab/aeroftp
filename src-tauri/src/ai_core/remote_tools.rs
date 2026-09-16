@@ -1637,8 +1637,12 @@ async fn hashsum(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
             "hint": "Use the CLI 'aeroftp hashsum' for files larger than 256 MB; MCP keeps a memory cap to protect the agent process."
         }));
     }
+    // Capped, not the general 500 MB download: the size above comes from the
+    // server's own listing, and a server that under-reports it would otherwise
+    // walk this tool up to the general ceiling. The cap is the same one the
+    // size check just applied, so nothing legitimate changes.
     let data = backend
-        .download_to_bytes(&path)
+        .download_to_bytes_capped(&path, MAX_HASHSUM_BYTES)
         .await
         .map_err(ToolError::Exec)?;
     let hash = match algorithm.as_str() {
@@ -3178,6 +3182,17 @@ enum PairChecksum {
 /// CLI, which prefers server-side checksums where the provider offers them,
 /// this route always reads the remote bytes, so it is provider-independent
 /// and its cost is the download itself.
+///
+/// WHERE THE CAP IS ENFORCED, and it is not the same everywhere. Providers that
+/// override `download_to_bytes_capped` (SFTP, MTP) stop reading as soon as the
+/// accumulated bytes would pass the cap, so an oversized body is never held.
+/// The others inherit the default in `providers::StorageProvider`, which reads
+/// first and refuses after; their read is still bounded, by the streaming guard
+/// in `response_bytes_with_limit` at `MAX_DOWNLOAD_TO_BYTES`, so a server that
+/// under-reports the size in its listing can make this path materialize up to
+/// that larger ceiling before the refusal. Narrowing it for every provider is a
+/// change in the provider layer, not here: this call already asks for the
+/// tighter cap and gets it wherever a provider can honor it.
 async fn checksum_pair(
     backend: &dyn RemoteBackend,
     local_root: &std::path::Path,
