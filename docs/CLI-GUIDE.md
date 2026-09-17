@@ -1928,7 +1928,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--max-size <size>` | Maximum file size filter (e.g., `1G`) |
 | `--min-age <duration>` | Skip files newer than duration (e.g., `7d`, `24h`) |
 | `--max-age <duration>` | Skip files older than duration (e.g., `30d`) |
-| `--max-transfer <size>` | Abort session after transferring N bytes (e.g., `10G`). Exit code 8 |
+| `--max-transfer <size>` | Abort session after transferring N bytes (e.g., `10G`). Exit code 8, which this CLI also uses for a timeout: the two are told apart with `--json`, where a reached budget reports `"status": "partial"` and an `over_budget` count of the files it left behind, and a timeout reports neither |
 | `--retries <n>` | Retry failed transfers N times (default: 3). Auth/usage errors not retried |
 | `--retries-sleep <dur>` | Delay between retries (e.g., `5s`, `1m`, `500ms`). Default: 1s |
 | `--max-backlog <n>` | Max queued transfer tasks for parallel operations (default: 10000) |
