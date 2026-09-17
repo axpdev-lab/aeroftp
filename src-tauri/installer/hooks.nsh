@@ -413,13 +413,31 @@ Var AeroFTPAppDataNewPresentPre
     ; POSTUNINSTALL compares pre-state vs current state to know which
     ; cleanup branch to take, instead of triple-prompting the user for
     ; consent they already gave up front (issue #178 follow-up).
+    ; G82: each directory is probed twice, `\*.*` first and then the bare
+    ; path. The wildcard form is what this file has always used and it is the
+    ; form NSIS documents for directories, but it asks "does this directory
+    ; hold anything", and an existing-but-empty directory answers no. That
+    ; matters on both ends of the comparison: read as absent BEFORE, an empty
+    ; shell left behind AFTER reads as deleted, and a leftover shell would be
+    ; taken for consent. The bare path answers "does this name exist at all",
+    ; so the pair covers a directory that exists with nothing in it.
+    ;
+    ; Whether the wildcard form alone already reports an empty directory as
+    ; present (NTFS keeps `.` and `..` entries, which `*.*` may well match)
+    ; is not something this tree can settle: there is no NSIS toolchain on
+    ; the machine where this was written. Asking both is correct under either
+    ; answer, and costs one instruction.
     StrCpy $AeroFTPAppDataPresentPre "no"
-    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" 0 _aeroftp_pre_appdata_done
+    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" _aeroftp_pre_legacy_present 0
+    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}" 0 _aeroftp_pre_appdata_done
+    _aeroftp_pre_legacy_present:
         StrCpy $AeroFTPAppDataPresentPre "yes"
     _aeroftp_pre_appdata_done:
 
     StrCpy $AeroFTPAppDataNewPresentPre "no"
-    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}\*.*" 0 _aeroftp_pre_appdata_new_done
+    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}\*.*" _aeroftp_pre_current_present 0
+    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}" 0 _aeroftp_pre_appdata_new_done
+    _aeroftp_pre_current_present:
         StrCpy $AeroFTPAppDataNewPresentPre "yes"
     _aeroftp_pre_appdata_new_done:
 
@@ -637,13 +655,18 @@ Var AeroFTPAppDataNewPresentPre
     ; keep the defect: on an upgraded machine the CURRENT id disappears while
     ; the LEGACY one stays, so the aggregate would still route to the
     ; granular branch.
+    ; The POST side asks the same question as the PRE side, with the same pair
+    ; of probes: a directory reduced to an empty shell has NOT been deleted,
+    ; and must not be read as the user's consent.
     StrCmp $AeroFTPAppDataNewPresentPre "yes" 0 _aeroftp_check_legacy_optin
     IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}\*.*" _aeroftp_check_legacy_optin 0
+    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}" _aeroftp_check_legacy_optin 0
     Goto _aeroftp_post_full_wipe
 
     _aeroftp_check_legacy_optin:
     StrCmp $AeroFTPAppDataPresentPre "yes" 0 _aeroftp_post_granular
     IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" _aeroftp_post_granular 0
+    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}" _aeroftp_post_granular 0
 
     ; Branch A: the caches go, the vault still asks.
     ;
@@ -700,7 +723,9 @@ Select 'No' to keep them for a future reinstall." \
     ; its own section: the directory is gone and the RMDir below is a
     ; no-op, but we suppress the prompt to avoid confusing the user.)
     IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}\*.*" _aeroftp_ai_prompt 0
-    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" 0 _skip_ai_prompt
+    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}" _aeroftp_ai_prompt 0
+    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" _aeroftp_ai_prompt 0
+    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}" 0 _skip_ai_prompt
     _aeroftp_ai_prompt:
     MessageBox MB_YESNO|MB_ICONQUESTION \
         "Remove AI chat history and agent memory?$\n$\n\
