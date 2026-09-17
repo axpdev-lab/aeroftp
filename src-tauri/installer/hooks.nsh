@@ -26,13 +26,34 @@ Var AeroFTPWasInstalled
 ; manual reinstall) should not silently recreate it. See issue #123.
 Var AeroFTPHadDesktopShortcut
 ; Captured at the very start of NSIS_HOOK_PREUNINSTALL, consumed at the
-; end of NSIS_HOOK_POSTUNINSTALL. "yes" means `$APPDATA\com.aeroftp.AeroFTP`
+; end of NSIS_HOOK_POSTUNINSTALL. "yes" means the LEGACY `$APPDATA` directory
 ; existed before the uninstaller sections ran. Combined with a post-state
 ; check of the same path, it tells us whether the Tauri "Remove
 ; application data" optional section actually deleted it -- the canonical
 ; signal that the user selected "delete all data" on the components page.
 ; See APPENDIX-O Auto-Update System addendum 2026-05-11.
 Var AeroFTPAppDataPresentPre
+
+; G82: the same snapshot for the CURRENT application id.
+;
+; The application id changed to `app.aeroftp.AeroFTP` (#814) and this file
+; kept naming the old one, so the opt-in signal above was watching a
+; directory Tauri no longer touches: its section deletes
+; `$APPDATA\<current id>`, and the check looked at `$APPDATA\<legacy id>`.
+; On a machine that only ever knew the new id the legacy folder never
+; exists, so the signal never fired; on an upgraded machine the legacy
+; folder is still there afterwards, so it did not fire either. Both ids are
+; watched now, and compared ONE BY ONE: "one of them is still around" is not
+; the same question as "the one Tauri deletes is gone", and answering the
+; first would leave the defect in place with the code changed.
+;
+; The two ids are written out rather than taken from `${IDENTIFIER}`: that
+; macro appears in this file only inside comments, so there is no evidence
+; it is defined for hook code, and a rebuild would fail on a missing symbol
+; in a way that reads like a syntax error.
+Var AeroFTPAppDataNewPresentPre
+!define AEROFTP_APPID_CURRENT "app.aeroftp.AeroFTP"
+!define AEROFTP_APPID_LEGACY "com.aeroftp.AeroFTP"
 
 ; CRITICAL: Tauri's bundled installer.nsi invokes the four hooks below by
 ; the names NSIS_HOOK_{PRE,POST}{INSTALL,UNINSTALL}, gated by an
@@ -393,9 +414,14 @@ Var AeroFTPAppDataPresentPre
     ; cleanup branch to take, instead of triple-prompting the user for
     ; consent they already gave up front (issue #178 follow-up).
     StrCpy $AeroFTPAppDataPresentPre "no"
-    IfFileExists "$APPDATA\com.aeroftp.AeroFTP\*.*" 0 _aeroftp_pre_appdata_done
+    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" 0 _aeroftp_pre_appdata_done
         StrCpy $AeroFTPAppDataPresentPre "yes"
     _aeroftp_pre_appdata_done:
+
+    StrCpy $AeroFTPAppDataNewPresentPre "no"
+    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}\*.*" 0 _aeroftp_pre_appdata_new_done
+        StrCpy $AeroFTPAppDataNewPresentPre "yes"
+    _aeroftp_pre_appdata_new_done:
 
     ; --- Remove install dir from user PATH (HKCU) ---
     ; Mirror of the install-side EnVar::AddValue. EnVar::DeleteValue
@@ -601,17 +627,46 @@ Var AeroFTPAppDataPresentPre
     ; "delete all"   => silently wipe the two extra paths the Tauri
     ;                   section does not know about ($APPDATA\aeroftp,
     ;                   the legacy vault location from pre-v3.7.6, and
-    ;                   $LOCALAPPDATA\com.aeroftp.AeroFTP, the WebView
+    ;                   both `$LOCALAPPDATA` application-id directories, the WebView
     ;                   cache + Cloud Filter state). No further prompts.
     ; "kept"         => fall back to the granular 3-prompt flow so the
     ;                   user can still cherry-pick what to remove.
-    StrCmp $AeroFTPAppDataPresentPre "yes" 0 _aeroftp_post_granular
-    IfFileExists "$APPDATA\com.aeroftp.AeroFTP\*.*" _aeroftp_post_granular 0
+    ; G82: the opt-in is "a directory Tauri deletes was here before and is
+    ; gone now", asked once per application id. Aggregating the two ids into
+    ; "at least one is still present" would answer a different question and
+    ; keep the defect: on an upgraded machine the CURRENT id disappears while
+    ; the LEGACY one stays, so the aggregate would still route to the
+    ; granular branch.
+    StrCmp $AeroFTPAppDataNewPresentPre "yes" 0 _aeroftp_check_legacy_optin
+    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}\*.*" _aeroftp_check_legacy_optin 0
+    Goto _aeroftp_post_full_wipe
 
-    ; Branch A: coherent full wipe
-    DetailPrint "AeroFTP: Remove application data confirmed; wiping legacy vault and WebView caches."
-    RMDir /r "$APPDATA\aeroftp"
-    RMDir /r "$LOCALAPPDATA\com.aeroftp.AeroFTP"
+    _aeroftp_check_legacy_optin:
+    StrCmp $AeroFTPAppDataPresentPre "yes" 0 _aeroftp_post_granular
+    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" _aeroftp_post_granular 0
+
+    ; Branch A: the caches go, the vault still asks.
+    ;
+    ; Owner decision, 2026-09-17: making this branch reachable again must not
+    ; widen what the uninstaller destroys without asking. The caches are
+    ; disposable and go silently, as they always did here. `$APPDATA\aeroftp`
+    ; holds the vault, the saved credentials and the AeroVault containers, and
+    ; it keeps its own prompt: until today this branch never ran, so that
+    ; wipe has never actually been silent, and repairing the detection is not
+    ; a reason to start. The user who ticked the box still gets asked once
+    ; about the one thing that cannot be rebuilt.
+    _aeroftp_post_full_wipe:
+    DetailPrint "AeroFTP: Remove application data confirmed; wiping WebView caches."
+    RMDir /r "$LOCALAPPDATA\${AEROFTP_APPID_CURRENT}"
+    RMDir /r "$LOCALAPPDATA\${AEROFTP_APPID_LEGACY}"
+    MessageBox MB_YESNO|MB_ICONQUESTION \
+        "Remove saved servers, credentials, and vaults?$\n$\n\
+This deletes all connection profiles, stored passwords,$\n\
+and AeroVault containers.$\n$\n\
+Select 'No' to keep them for a future reinstall." \
+        IDYES _rm_servers_full IDNO _aeroftp_post_data_cleanup_done
+    _rm_servers_full:
+        RMDir /r "$APPDATA\aeroftp"
     Goto _aeroftp_post_data_cleanup_done
 
     ; Branch B: granular per-area prompts
@@ -629,17 +684,20 @@ Select 'No' to keep them for a future reinstall." \
     _skip_servers:
 
     ; 2) AI chat history and agent memory
-    ; (Skipped when Tauri already removed $APPDATA\com.aeroftp.AeroFTP via
+    ; (Skipped when Tauri already removed the current-id $APPDATA directory via
     ; its own section: the directory is gone and the RMDir below is a
     ; no-op, but we suppress the prompt to avoid confusing the user.)
-    IfFileExists "$APPDATA\com.aeroftp.AeroFTP\*.*" 0 _skip_ai_prompt
+    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}\*.*" _aeroftp_ai_prompt 0
+    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" 0 _skip_ai_prompt
+    _aeroftp_ai_prompt:
     MessageBox MB_YESNO|MB_ICONQUESTION \
         "Remove AI chat history and agent memory?$\n$\n\
 This deletes AeroAgent conversations, tool history,$\n\
 and learned context." \
         IDYES _rm_ai IDNO _skip_ai
     _rm_ai:
-        RMDir /r "$APPDATA\com.aeroftp.AeroFTP"
+        RMDir /r "$APPDATA\${AEROFTP_APPID_CURRENT}"
+        RMDir /r "$APPDATA\${AEROFTP_APPID_LEGACY}"
     _skip_ai:
     _skip_ai_prompt:
 
@@ -650,7 +708,8 @@ This deletes WebView cache, logs, and temp data.$\n\
 Safe to remove, frees disk space." \
         IDYES _rm_cache IDNO _skip_cache
     _rm_cache:
-        RMDir /r "$LOCALAPPDATA\com.aeroftp.AeroFTP"
+        RMDir /r "$LOCALAPPDATA\${AEROFTP_APPID_CURRENT}"
+        RMDir /r "$LOCALAPPDATA\${AEROFTP_APPID_LEGACY}"
     _skip_cache:
     _aeroftp_post_data_cleanup_done:
 !macroend
