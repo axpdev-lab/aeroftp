@@ -47947,13 +47947,14 @@ async fn cmd_sync(
                     }
                     let mut pending: Vec<(String, String, String, u64)> = Vec::new();
                     let max_transfer_limit = resolve_max_transfer(cli);
-                    // Drained into an iterator rather than walked in place, so
-                    // the budget branch below can hand the whole remainder back
-                    // in one move instead of testing the cap once per file.
-                    let mut queued = leftover_download_jobs
-                        .drain(..)
-                        .collect::<Vec<_>>()
-                        .into_iter();
+                    // Taken by value rather than iterated in place, so the
+                    // budget branch below can hand the whole remainder back in
+                    // one move instead of testing the cap once per file. A
+                    // `drain` would keep the Vec borrowed until the end of the
+                    // loop and the reassignment underneath would not compile
+                    // (E0506); `take` leaves an empty Vec behind and allocates
+                    // nothing.
+                    let mut queued = std::mem::take(&mut leftover_download_jobs).into_iter();
                     while let Some((rel, local_path_s, remote_path, size)) = queued.next() {
                         if cancelled.load(Ordering::Relaxed) {
                             errors.push(format!("download {}: cancelled", rel));
