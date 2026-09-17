@@ -1362,9 +1362,10 @@ enum Commands {
         /// Z.4.5 R1: route the download through `AerorsyncDeltaTransport`
         /// when the provider exposes one (SFTP today). Auto-falls back to
         /// the classic transfer when the transport is not delta-eligible
-        /// (file too small, missing host-key pin, password auth without
-        /// dispatch wire-up, etc.). No-op for non-SFTP providers and for
-        /// recursive / glob downloads.
+        /// (file too small, or no host key fingerprint pinned from this
+        /// session). Password authentication is not a reason: a delta batch
+        /// opens over a password-only server too, measured 2026-09-17. No-op
+        /// for non-SFTP providers and for recursive / glob downloads.
         #[arg(long)]
         delta: bool,
     },
@@ -1401,9 +1402,10 @@ enum Commands {
         /// Z.4.5 R1: route the upload through `AerorsyncDeltaTransport`
         /// when the provider exposes one (SFTP today). Auto-falls back to
         /// the classic transfer when the transport is not delta-eligible
-        /// (file too small, missing host-key pin, password auth without
-        /// dispatch wire-up, etc.). No-op for non-SFTP providers and for
-        /// recursive / glob uploads.
+        /// (file too small, or no host key fingerprint pinned from this
+        /// session). Password authentication is not a reason: a delta batch
+        /// opens over a password-only server too, measured 2026-09-17. No-op
+        /// for non-SFTP providers and for recursive / glob uploads.
         #[arg(long)]
         delta: bool,
         /// Issue #252: privacy level to apply to the uploaded file on
@@ -2238,7 +2240,8 @@ enum Commands {
         /// session-reuse path (1 SSH handshake + N channel-execs across the
         /// whole batch). Auto-falls back to classic SFTP per-file when the
         /// transport reports `TooSmall` or the SFTP provider does not expose
-        /// a delta transport (e.g. password auth, missing host-key pin). On
+        /// a delta transport (no host key fingerprint pinned from this
+        /// session; password authentication is not a reason). On
         /// transient SSH channel drops the batch transparently reconnects
         /// once (Z.1.2). No-op for non-SFTP backends and for local-to-local
         /// sync (which uses LocalDeltaTransport via --no-local-delta).
@@ -47711,9 +47714,20 @@ async fn cmd_sync(
             None => {
                 if !quiet {
                     eprintln!(
+                        // The reasons are the ones `open_delta_batch` really
+                        // checks: the provider must downcast to SFTP, the
+                        // parent handshake must have captured a host key
+                        // fingerprint to pin (U-02), and the transport must
+                        // not return a NoopBatch. Password authentication is
+                        // NOT one of them: `rsync_config_for_delta` builds an
+                        // AuthMethod::Password config just as happily as a key
+                        // one, and W2 measured a delta batch opening over a
+                        // password-only server on 2026-09-17. Naming it here
+                        // sent the reader to look in the wrong place.
                         "--delta requested but the provider/transport is not delta-eligible \
-                         (non-SFTP, password auth, or missing host-key pin); falling back to \
-                         classic SFTP for this batch"
+                         (not SFTP, no host key fingerprint pinned from this session, or the \
+                         transport declined session reuse); falling back to classic SFTP for \
+                         this batch"
                     );
                 }
             }
@@ -48038,8 +48052,9 @@ async fn cmd_sync(
                     if !quiet {
                         eprintln!(
                             "--delta requested but the provider/transport is not delta-eligible \
-                             (non-SFTP, password auth, or missing host-key pin); falling back to \
-                             classic download for this batch"
+                             (not SFTP, no host key fingerprint pinned from this session, or \
+                             the transport declined session reuse); falling back to classic \
+                             download for this batch"
                         );
                     }
                 }

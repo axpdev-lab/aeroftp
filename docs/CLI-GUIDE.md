@@ -415,7 +415,7 @@ aeroftp-cli get sftp://user@host /var/www/index.html ./local-copy.html --delta
 
 > **Glob patterns**: Quote the remote path to prevent shell expansion. The CLI expands `*` and `?` patterns server-side.
 
-> **`--delta`**: routes the transfer through `AerorsyncDeltaTransport` (native rsync wire protocol 31 over SSH). Falls back to the classic transfer when the provider does not expose a delta transport (everything except SFTP today), the file is too small (< 1 MiB), or the SFTP session is not delta-eligible (no host-key pin, password auth without dispatch wire-up). No-op for recursive / glob downloads (use `aeroftp sync --delta` for those). See [AeroRsync section](#aerorsync---delta-sync-engine) for the full surface.
+> **`--delta`**: routes the transfer through `AerorsyncDeltaTransport` (native rsync wire protocol 31 over SSH). Falls back to the classic transfer when the provider does not expose a delta transport (everything except SFTP today), the file is too small (< 1 MiB), or the SFTP session is not delta-eligible (no host key fingerprint pinned from this session; password authentication is not a reason, a delta batch opens over a password-only server too). No-op for recursive / glob downloads (use `aeroftp sync --delta` for those). See [AeroRsync section](#aerorsync---delta-sync-engine) for the full surface.
 
 ### pget - Segmented Parallel Download
 
