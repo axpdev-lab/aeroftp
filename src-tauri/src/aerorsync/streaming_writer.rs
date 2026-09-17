@@ -1130,7 +1130,22 @@ mod tests {
         }
         let bytes = tokio::fs::read(&target).await.expect("read target");
         assert_eq!(bytes, b"OLD BYTES");
+        // G107: assert the STATE, not one name. `!temp.exists()` only covers
+        // the temporary this test knows about, so a leftover written under any
+        // other name stays invisible and the tempdir takes it away at drop.
+        // The contract being pinned is "the directory holds the target and
+        // nothing else", and that is what is checked.
         assert!(!temp.exists(), "temp must be cleaned up on ACL failure");
+        let leftovers: Vec<String> = std::fs::read_dir(dir.path())
+            .expect("read tempdir")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|name| name != "doc.txt")
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "ACL failure must leave the target alone and nothing else behind, found {leftovers:?}"
+        );
     }
 
     #[tokio::test]
