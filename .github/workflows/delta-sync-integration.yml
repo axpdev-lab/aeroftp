@@ -675,6 +675,15 @@ jobs:
       # than one per red run.
       - name: "Unit tests: cross-platform assertions under MSVC"
         working-directory: src-tauri
+        env:
+          # Without this the test executable links and then dies with
+          # 0xC0000139 before `main`, reporting the target as failed with no
+          # test output at all. build.rs embeds the Common-Controls 6.0
+          # manifest only when this is set, because the flags it uses reach
+          # every linked target and the packaged application already has a
+          # manifest of its own. Here the only thing being linked is the test
+          # binary, which is what makes the scope safe.
+          AEROFTP_EMBED_TEST_MANIFEST: "1"
         # Its own budget, like the expensive steps in the Linux jobs above:
         # if this step dies it has to die naming itself.
         timeout-minutes: 30

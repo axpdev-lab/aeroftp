@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Activation context for the Rust test binaries on Windows.
+
+  Without it the lib test executable links and then fails to start with
+  0xC0000139 (STATUS_ENTRYPOINT_NOT_FOUND) before main, because an import in
+  the dependency tree resolves against comctl32 version 5, which does not
+  export it. Declaring the Common-Controls 6.0 dependency binds the process to
+  the side-by-side assembly that does.
+
+  It is embedded by build.rs through rustc-link-arg-tests, so it applies to
+  test targets only: the application gets its manifest from Tauri and the CLI
+  has never needed one.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>

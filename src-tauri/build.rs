@@ -200,6 +200,42 @@ fn main() {
     #[cfg(target_os = "windows")]
     println!("cargo:rustc-link-arg-bin=aeroftp-cli=/STACK:8388608");
 
+    // The lib test executable links cleanly under MSVC and then fails to start
+    // with 0xC0000139 (STATUS_ENTRYPOINT_NOT_FOUND) before `main`, so
+    // `cargo test` reports the target as failed with no test output at all: a
+    // run that never happened and a red assertion look identical in a CI
+    // summary. Without an activation context an import in the dependency tree
+    // resolves against comctl32 version 5, which does not export it, and the
+    // manifest has to live INSIDE the binary as resource #1, because the
+    // side-by-side loader does not read one sitting next to the file. W0
+    // measured both halves on Windows 10 and W2 confirmed them on Windows 11;
+    // the windows-2022 runner reproduced the exit code the first time this
+    // repository executed Rust tests on Windows rather than only compiling
+    // them.
+    //
+    // The flags go through `rustc-link-arg`, which reaches every linked
+    // target, and are gated behind an opt-in variable rather than behind a
+    // target kind. That is not a preference: `rustc-link-arg-tests` covers the
+    // `tests/` directory and NOT the unit-test binary built from the library,
+    // measured by emitting one of each and reading the rustc command line, and
+    // the packaged application already carries a manifest of its own that a
+    // second one would collide with. So the scope is the invocation: the CI
+    // lane and the Windows stations set AEROFTP_EMBED_TEST_MANIFEST=1 for a
+    // `cargo test` run, where the only artifact being linked is the test
+    // binary, and nothing else in the tree ever sets it.
+    //
+    // For the stations this replaces embedding the manifest by hand with
+    // `mt.exe` before every suite run.
+    println!("cargo:rerun-if-env-changed=AEROFTP_EMBED_TEST_MANIFEST");
+    let link_target = std::env::var("TARGET").unwrap_or_default();
+    if link_target.contains("windows-msvc") && std::env::var("AEROFTP_EMBED_TEST_MANIFEST").is_ok()
+    {
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("windows/test-runner.manifest");
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+    }
+
     // Detect Rust compiler version at build time: "rustc 1.84.0 (...)" → "1.84.0"
     if let Ok(output) = std::process::Command::new("rustc")
         .arg("--version")
