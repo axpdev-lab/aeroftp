@@ -189,9 +189,36 @@ impl GitHubHttpClient {
     /// `url` can be either a full URL or a path (e.g. `/repos/o/r/releases`).
     /// If it starts with `/`, the API base is prepended automatically.
     pub async fn get_json<T: DeserializeOwned>(&mut self, url: &str) -> Result<T, GitHubError> {
+        self.get_json_inner(url, None).await
+    }
+
+    /// `GET` a JSON endpoint that is about a path inside the repository.
+    ///
+    /// G103: `classify_api_error` decides between `PathNotFound` and
+    /// `RepoNotFound` by whether it was given the path the caller was asking
+    /// for, and `get_json` passed `None`. A 404 on a file that does not exist
+    /// inside a repository that does therefore came back as
+    /// "Repository not found", which sends the user to check the owner and the
+    /// repo name, the one thing that is right. Callers that are asking about a
+    /// path use this variant so the classification has what it needs; callers
+    /// asking about a workflow run, a pull request or the repository itself
+    /// keep using `get_json`, because for them there is no path to name.
+    pub async fn get_json_at<T: DeserializeOwned>(
+        &mut self,
+        url: &str,
+        path_hint: &str,
+    ) -> Result<T, GitHubError> {
+        self.get_json_inner(url, Some(path_hint)).await
+    }
+
+    async fn get_json_inner<T: DeserializeOwned>(
+        &mut self,
+        url: &str,
+        path_hint: Option<&str>,
+    ) -> Result<T, GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::GET, &full_url);
-        let resp = self.execute_with_retry(builder, None).await?;
+        let resp = self.execute_with_retry(builder, path_hint).await?;
         resp.json::<T>()
             .await
             .map_err(|e| GitHubError::ParseError(format!("json: {e}")))
