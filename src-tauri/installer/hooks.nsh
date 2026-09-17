@@ -25,33 +25,23 @@ Var AeroFTPWasInstalled
 ; desktop shortcut, an upgrade (any source — in-app updater, WinGet,
 ; manual reinstall) should not silently recreate it. See issue #123.
 Var AeroFTPHadDesktopShortcut
-; Captured at the very start of NSIS_HOOK_PREUNINSTALL, consumed at the
-; end of NSIS_HOOK_POSTUNINSTALL. "yes" means the LEGACY `$APPDATA` directory
-; existed before the uninstaller sections ran. Combined with a post-state
-; check of the same path, it tells us whether the Tauri "Remove
-; application data" optional section actually deleted it -- the canonical
-; signal that the user selected "delete all data" on the components page.
-; See APPENDIX-O Auto-Update System addendum 2026-05-11.
-Var AeroFTPAppDataPresentPre
-
-; G82: the same snapshot for the CURRENT application id.
+; G82: the two application ids this file has to know about. The id changed to
+; `app.aeroftp.AeroFTP` in #814 while these hooks kept naming the old one, so
+; everything here watched a directory Tauri no longer touches; on an upgraded
+; machine the legacy directory also holds real data (the AI chat history and
+; the agent memory), which Tauri's own section never removes.
 ;
-; The application id changed to `app.aeroftp.AeroFTP` (#814) and this file
-; kept naming the old one, so the opt-in signal above was watching a
-; directory Tauri no longer touches: its section deletes
-; `$APPDATA\<current id>`, and the check looked at `$APPDATA\<legacy id>`.
-; On a machine that only ever knew the new id the legacy folder never
-; exists, so the signal never fired; on an upgraded machine the legacy
-; folder is still there afterwards, so it did not fire either. Both ids are
-; watched now, and compared ONE BY ONE: "one of them is still around" is not
-; the same question as "the one Tauri deletes is gone", and answering the
-; first would leave the defect in place with the code changed.
+; They are written out rather than taken from `${IDENTIFIER}`: that macro
+; appears in this file only inside comments, so there is no evidence it is
+; defined for hook code, and a rebuild would fail on a missing symbol in a way
+; that reads like a syntax error.
 ;
-; The two ids are written out rather than taken from `${IDENTIFIER}`: that
-; macro appears in this file only inside comments, so there is no evidence
-; it is defined for hook code, and a rebuild would fail on a missing symbol
-; in a way that reads like a syntax error.
-Var AeroFTPAppDataNewPresentPre
+; There used to be two snapshot variables here as well, recording whether each
+; `$APPDATA` directory existed before the uninstaller sections ran, so that
+; POSTUNINSTALL could infer the user's choice from whether one of them had
+; disappeared. They are gone: the choice is read directly now, see the decision
+; in NSIS_HOOK_POSTUNINSTALL. An inference that only works when there is
+; something to observe is worth less than the value itself.
 !define AEROFTP_APPID_CURRENT "app.aeroftp.AeroFTP"
 !define AEROFTP_APPID_LEGACY "com.aeroftp.AeroFTP"
 
@@ -405,50 +395,6 @@ Var AeroFTPAppDataNewPresentPre
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-    ; --- Snapshot pre-state for "delete all data" detection ---
-    ; Recorded BEFORE Tauri's bundled uninstaller sections execute. If the
-    ; user ticked the optional "Remove application data" component on the
-    ; uninstaller's components page, Tauri's section will `RMDir /r` the
-    ; `$APPDATA\${IDENTIFIER}` directory between this hook and POSTUNINSTALL.
-    ; POSTUNINSTALL compares pre-state vs current state to know which
-    ; cleanup branch to take, instead of triple-prompting the user for
-    ; consent they already gave up front (issue #178 follow-up).
-    ; G82: each directory is probed twice, `\*.*` first and then the bare
-    ; path. The wildcard form is what this file has always used and it is the
-    ; form NSIS documents for directories, but it asks "does this directory
-    ; hold anything", and an existing-but-empty directory answers no. That
-    ; matters on both ends of the comparison: read as absent BEFORE, an empty
-    ; shell left behind AFTER reads as deleted, and a leftover shell would be
-    ; taken for consent. The bare path answers "does this name exist at all",
-    ; so the pair covers a directory that exists with nothing in it.
-    ;
-    ; Measured on Windows 10, 2026-09-17, and the answer is that the wildcard
-    ; form DOES report an empty directory as present: `FindFirstFile`, which
-    ; `IfFileExists` uses for a wildcard path, finds the `.` entry that NTFS
-    ; keeps in every directory. Probed through P/Invoke with a negative
-    ; control, so the probe is known to be able to say no: empty dir FOUND,
-    ; dir with a file FOUND, missing dir NOT FOUND with GetLastError 3.
-    ; One step is still inferred rather than executed, because there was no
-    ; NSIS toolchain on either machine: the measurement covers the Win32
-    ; primitive, not `IfFileExists` itself.
-    ;
-    ; The second probe therefore stays as deliberate redundancy rather than
-    ; as a hedge against something unknown: it costs one instruction and it
-    ; protects the one step nobody has executed directly.
-    StrCpy $AeroFTPAppDataPresentPre "no"
-    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" _aeroftp_pre_legacy_present 0
-    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}" 0 _aeroftp_pre_appdata_done
-    _aeroftp_pre_legacy_present:
-        StrCpy $AeroFTPAppDataPresentPre "yes"
-    _aeroftp_pre_appdata_done:
-
-    StrCpy $AeroFTPAppDataNewPresentPre "no"
-    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}\*.*" _aeroftp_pre_current_present 0
-    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}" 0 _aeroftp_pre_appdata_new_done
-    _aeroftp_pre_current_present:
-        StrCpy $AeroFTPAppDataNewPresentPre "yes"
-    _aeroftp_pre_appdata_new_done:
-
     ; --- Remove install dir from user PATH (HKCU) ---
     ; Mirror of the install-side EnVar::AddValue. EnVar::DeleteValue
     ; removes every occurrence of "$INSTDIR" from HKCU\Environment\Path,
@@ -657,24 +603,35 @@ Var AeroFTPAppDataNewPresentPre
     ;                   cache + Cloud Filter state). No further prompts.
     ; "kept"         => fall back to the granular 3-prompt flow so the
     ;                   user can still cherry-pick what to remove.
-    ; G82: the opt-in is "a directory Tauri deletes was here before and is
-    ; gone now", asked once per application id. Aggregating the two ids into
-    ; "at least one is still present" would answer a different question and
-    ; keep the defect: on an upgraded machine the CURRENT id disappears while
-    ; the LEGACY one stays, so the aggregate would still route to the
-    ; granular branch.
-    ; The POST side asks the same question as the PRE side, with the same pair
-    ; of probes: a directory reduced to an empty shell has NOT been deleted,
-    ; and must not be read as the user's consent.
-    StrCmp $AeroFTPAppDataNewPresentPre "yes" 0 _aeroftp_check_legacy_optin
-    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}\*.*" _aeroftp_check_legacy_optin 0
-    IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}" _aeroftp_check_legacy_optin 0
-    Goto _aeroftp_post_full_wipe
-
-    _aeroftp_check_legacy_optin:
-    StrCmp $AeroFTPAppDataPresentPre "yes" 0 _aeroftp_post_granular
-    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" _aeroftp_post_granular 0
-    IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}" _aeroftp_post_granular 0
+    ; G82: the answer is READ, not inferred. Tauri's generated `installer.nsi`
+    ; declares `$DeleteAppDataCheckboxState` and fills it from the checkbox when
+    ; the user leaves the confirm page, which happens before `Section Uninstall`
+    ; begins; both hooks are expanded inside that section, so the value is
+    ; already there when this runs. Found by W2 on 2026-09-18 by opening the
+    ; script a build on her machine had generated, instead of reasoning about
+    ; what the section does.
+    ;
+    ; What this replaces, and why the replacement is not a refinement. The old
+    ; signal was "a directory Tauri deletes was here before and is gone now",
+    ; which cannot be asked AT ALL when that directory does not exist. Raised by
+    ; CodeRabbit on the pull request that repaired the application id: on a
+    ; machine that upgraded from a build carrying the legacy id and is
+    ; uninstalled before the new one ever runs, only the legacy directory
+    ; exists, Tauri's section deletes nothing, and a ticked box still routed to
+    ; the granular prompts. Reading the answer removes the whole class of state
+    ; the inference could not cover, rather than covering one more state.
+    ;
+    ; Fragility, declared rather than left to be discovered: this is an internal
+    ; detail of the bundler template and a Tauri upgrade can rename it. The
+    ; failure mode is the loud one: the Windows bundle stops compiling on an
+    ; unknown variable and the build job says so before anything ships. The
+    ; design it replaces depended on an internal detail at least as fragile,
+    ; that the same section does `RmDir /r` on that exact path, and that one
+    ; fails in silence.
+    ;
+    ; Plain `StrCmp` rather than LogicLib's `${If}`: this file has never
+    ; depended on LogicLib being included by whatever wraps it.
+    StrCmp $DeleteAppDataCheckboxState "1" _aeroftp_post_full_wipe _aeroftp_post_granular
 
     ; Branch A: the caches go, the vault still asks.
     ;
@@ -690,12 +647,20 @@ Var AeroFTPAppDataNewPresentPre
     DetailPrint "AeroFTP: Remove application data confirmed; wiping caches and agent data."
     RMDir /r "$LOCALAPPDATA\${AEROFTP_APPID_CURRENT}"
     RMDir /r "$LOCALAPPDATA\${AEROFTP_APPID_LEGACY}"
-    ; Tauri's own section removes `$APPDATA\<current id>` and nothing else, so
-    ; on an upgraded machine the LEGACY `$APPDATA` directory, which holds the
-    ; AI chat history and the agent memory, used to survive a ticked "Remove
-    ; application data" with no one naming it. Both are named here: the one
-    ; Tauri already removed is a no-op, the other one is the hole. The granular
-    ; branch covers the same pair through its own prompt.
+    ; Tauri's own section removes both roots for the CURRENT id, `$APPDATA` and
+    ; `$LOCALAPPDATA`, and nothing for the legacy one. Read in the generated
+    ; `installer.nsi` by W2 on 2026-09-18, which corrects what this comment used
+    ; to say: it claimed the section touched `$APPDATA` alone, and the two
+    ; current-id lines here were described as one no-op and one real deletion
+    ; when in fact both are no-ops.
+    ;
+    ; What that does NOT change is why the legacy lines exist: on an upgraded
+    ; machine the legacy `$APPDATA` directory holds the AI chat history and the
+    ; agent memory, and it used to survive a ticked "Remove application data"
+    ; with no one naming it. The current-id lines stay because a no-op costs
+    ; nothing and a future template that stops removing one of them would
+    ; otherwise reopen the same hole in silence. The granular branch covers the
+    ; same pair through its own prompt.
     ;
     ; Owner decision, 2026-09-17: this goes silently here, like the caches.
     ; The tick is the consent, and only the vault, which is the thing that
@@ -730,6 +695,23 @@ Select 'No' to keep them for a future reinstall." \
     ; (Skipped when Tauri already removed the current-id $APPDATA directory via
     ; its own section: the directory is gone and the RMDir below is a
     ; no-op, but we suppress the prompt to avoid confusing the user.)
+    ;
+    ; G82: each directory is probed twice, `\*.*` first and then the bare path.
+    ; The wildcard form is the one this file has always used and the one NSIS
+    ; documents for directories, but it asks "does this directory hold
+    ; anything", so an existing but empty shell answers no and the prompt would
+    ; be skipped for a directory that is still there.
+    ;
+    ; W0 measured the wildcard form on Windows 10 on 2026-09-17 and it DOES
+    ; report an empty directory as present: `FindFirstFile`, which
+    ; `IfFileExists` uses for a wildcard path, finds the `.` entry NTFS keeps in
+    ; every directory. Probed through P/Invoke with a negative control, so the
+    ; probe is known to be able to say no: empty dir FOUND, dir with a file
+    ; FOUND, missing dir NOT FOUND with GetLastError 3. One step stays inferred
+    ; rather than executed, because neither machine had an NSIS toolchain: the
+    ; measurement covers the Win32 primitive and not `IfFileExists` itself. The
+    ; second probe therefore stays as deliberate redundancy for that one step,
+    ; and not as a hedge against something unknown.
     IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}\*.*" _aeroftp_ai_prompt 0
     IfFileExists "$APPDATA\${AEROFTP_APPID_CURRENT}" _aeroftp_ai_prompt 0
     IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" _aeroftp_ai_prompt 0
