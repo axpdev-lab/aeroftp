@@ -1362,9 +1362,10 @@ enum Commands {
         /// Z.4.5 R1: route the download through `AerorsyncDeltaTransport`
         /// when the provider exposes one (SFTP today). Auto-falls back to
         /// the classic transfer when the transport is not delta-eligible
-        /// (file too small, missing host-key pin, password auth without
-        /// dispatch wire-up, etc.). No-op for non-SFTP providers and for
-        /// recursive / glob downloads.
+        /// (file too small, or no host key fingerprint pinned from this
+        /// session). Password authentication is not a reason: a delta batch
+        /// opens over a password-only server too, measured 2026-09-17. No-op
+        /// for non-SFTP providers and for recursive / glob downloads.
         #[arg(long)]
         delta: bool,
     },
@@ -1401,9 +1402,10 @@ enum Commands {
         /// Z.4.5 R1: route the upload through `AerorsyncDeltaTransport`
         /// when the provider exposes one (SFTP today). Auto-falls back to
         /// the classic transfer when the transport is not delta-eligible
-        /// (file too small, missing host-key pin, password auth without
-        /// dispatch wire-up, etc.). No-op for non-SFTP providers and for
-        /// recursive / glob uploads.
+        /// (file too small, or no host key fingerprint pinned from this
+        /// session). Password authentication is not a reason: a delta batch
+        /// opens over a password-only server too, measured 2026-09-17. No-op
+        /// for non-SFTP providers and for recursive / glob uploads.
         #[arg(long)]
         delta: bool,
         /// Issue #252: privacy level to apply to the uploaded file on
@@ -1769,7 +1771,9 @@ enum Commands {
         #[arg(long, requires = "scan")]
         full: bool,
     },
-    /// Show total size and object count under a path (recursive scan)
+    /// Show total size and object count under a path (recursive scan).
+    /// A scan cancelled with Ctrl-C still prints the figure it reached and
+    /// exits 4 (partial), so a script can tell it from a complete measurement.
     Size {
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
@@ -2236,7 +2240,8 @@ enum Commands {
         /// session-reuse path (1 SSH handshake + N channel-execs across the
         /// whole batch). Auto-falls back to classic SFTP per-file when the
         /// transport reports `TooSmall` or the SFTP provider does not expose
-        /// a delta transport (e.g. password auth, missing host-key pin). On
+        /// a delta transport (no host key fingerprint pinned from this
+        /// session; password authentication is not a reason). On
         /// transient SSH channel drops the batch transparently reconnects
         /// once (Z.1.2). No-op for non-SFTP backends and for local-to-local
         /// sync (which uses LocalDeltaTransport via --no-local-delta).
@@ -39853,7 +39858,13 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                 }
                 OutputFormat::Json => {
                     print_json(&serde_json::json!({
-                        "status": "ok",
+                        // G67: the status has to agree with the exit code, or a
+                        // reader that trusts the JSON learns the opposite of
+                        // what a reader that trusts the exit code learns.
+                        // `partial` is the word `reconcile` already uses for
+                        // the same outcome; `cancelled` stays in its own field
+                        // so the reason is not lost in the status.
+                        "status": if s.cancelled { "partial" } else { "ok" },
                         "path": root,
                         "count": s.file_count,
                         "dirs": s.dir_count,
@@ -39870,7 +39881,7 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                 }
             }
             let _ = provider.disconnect().await;
-            0
+            size_exit_code(s.cancelled)
         }
         Err(e) => {
             print_error(
@@ -39881,6 +39892,26 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
+    }
+}
+
+/// G67: the exit code of a `size` whose scan was cancelled.
+///
+/// A cancelled scan prints a figure that is a lower bound, and it used to exit
+/// 0, so a script could not tell an interrupted measurement from a complete
+/// one: the number was believable and wrong. It now exits **4**, the code this
+/// CLI already publishes as "transfer failed / partial" and that `reconcile`
+/// uses for exactly this meaning, so no new code enters the public contract.
+///
+/// The other lower-bound cases (`hit_cap`, `truncated`, `unreadable_dirs`)
+/// deliberately keep exiting 0 here. They are declared in the text and in the
+/// JSON, the owner's decision was about cancellation, and an exit code is a
+/// public contract that should not widen as a side effect of this one.
+fn size_exit_code(cancelled: bool) -> i32 {
+    if cancelled {
+        4
+    } else {
+        0
     }
 }
 
@@ -47683,9 +47714,20 @@ async fn cmd_sync(
             None => {
                 if !quiet {
                     eprintln!(
+                        // The reasons are the ones `open_delta_batch` really
+                        // checks: the provider must downcast to SFTP, the
+                        // parent handshake must have captured a host key
+                        // fingerprint to pin (U-02), and the transport must
+                        // not return a NoopBatch. Password authentication is
+                        // NOT one of them: `rsync_config_for_delta` builds an
+                        // AuthMethod::Password config just as happily as a key
+                        // one, and W2 measured a delta batch opening over a
+                        // password-only server on 2026-09-17. Naming it here
+                        // sent the reader to look in the wrong place.
                         "--delta requested but the provider/transport is not delta-eligible \
-                         (non-SFTP, password auth, or missing host-key pin); falling back to \
-                         classic SFTP for this batch"
+                         (not SFTP, no host key fingerprint pinned from this session, or the \
+                         transport declined session reuse); falling back to classic SFTP for \
+                         this batch"
                     );
                 }
             }
@@ -47883,6 +47925,149 @@ async fn cmd_sync(
         let size = remote_map.get(path).map(|(size, _)| *size).unwrap_or(0);
         download_jobs.push((relative, local_path, remote_path, size));
     }
+
+    // G91: mirror of the upload batch above, for the download leg. The delta
+    // engine has always routed both directions
+    // (`try_delta_transfer_with_batch` dispatches `SyncDirection::Download` to
+    // `DeltaBatch::download`, which `AerorsyncBatch` implements with the same
+    // retry budget as its upload twin), but only the upload phase ever called
+    // it: `sync --delta --direction download` therefore moved whole files
+    // while `get --delta` on the very same file moved only the changed bytes.
+    //
+    // Eligibility is narrower than on the upload side: reconstructing a file
+    // from a delta needs a local base, so only jobs whose relative path is
+    // already in `local_map` can win anything. A file absent locally would
+    // travel in full anyway, plus the cost of exchanging a signature, so it
+    // goes straight to the classic path below.
+    #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
+    let mut leftover_download_jobs: Vec<(String, String, String, u64)> = download_jobs;
+    #[cfg(feature = "aerorsync")]
+    if use_aerorsync_batch && !error_correction_enabled && !leftover_download_jobs.is_empty() {
+        use ftp_client_gui_lib::delta_sync_rsync::{
+            open_delta_batch, try_delta_transfer_with_batch, SyncDirection as DeltaDir,
+        };
+        let eligible = leftover_download_jobs
+            .iter()
+            .filter(|(rel, _, _, _)| local_map.contains_key(rel.as_str()))
+            .count();
+        if eligible > 0 {
+            match open_delta_batch(provider.as_mut()).await {
+                Some(mut batch) => {
+                    if !quiet {
+                        eprintln!(
+                            "AerorsyncBatch engaged: 1 SSH session for {} download(s) with a local base",
+                            eligible
+                        );
+                    }
+                    let mut pending: Vec<(String, String, String, u64)> = Vec::new();
+                    let max_transfer_limit = resolve_max_transfer(cli);
+                    // Taken by value rather than iterated in place, so the
+                    // budget branch below can hand the whole remainder back in
+                    // one move instead of testing the cap once per file. A
+                    // `drain` would keep the Vec borrowed until the end of the
+                    // loop and the reassignment underneath would not compile
+                    // (E0506); `take` leaves an empty Vec behind and allocates
+                    // nothing.
+                    let mut queued = std::mem::take(&mut leftover_download_jobs).into_iter();
+                    while let Some((rel, local_path_s, remote_path, size)) = queued.next() {
+                        if cancelled.load(Ordering::Relaxed) {
+                            errors.push(format!("download {}: cancelled", rel));
+                            continue;
+                        }
+                        // `--max-transfer` is a session budget, and the delta
+                        // leg has to stop at it: otherwise a run with a small
+                        // budget lets every eligible file through here, spends
+                        // the budget, and then truncates the classic queue the
+                        // flag was meant to protect.
+                        //
+                        // Stopping means handing the rest back, not failing
+                        // them. A reached cap is a deliberate ceiling with its
+                        // own exit code (8), and `cmd_sync` reads a non-empty
+                        // `errors` first: pushing an error here would turn the
+                        // ceiling into exit 4, which the agent guide defines as
+                        // a retryable failure, so a tool would re-run a sync
+                        // that did exactly what it was told. The classic
+                        // pre-flight already refuses these files with an honest
+                        // note and moves no bytes (`cap_files_to_max_transfer`
+                        // starts over the limit and breaks on the first file),
+                        // so the cap is applied in one place with one rule.
+                        if session_transfer_exceeded(max_transfer_limit) {
+                            pending.push((rel, local_path_s, remote_path, size));
+                            pending.extend(queued);
+                            break;
+                        }
+                        if !local_map.contains_key(rel.as_str()) {
+                            pending.push((rel, local_path_s, remote_path, size));
+                            continue;
+                        }
+                        let local_path = Path::new(&local_path_s);
+                        let res = try_delta_transfer_with_batch(
+                            batch.as_mut(),
+                            DeltaDir::Download,
+                            local_path,
+                            &remote_path,
+                        )
+                        .await;
+                        if res.used_delta {
+                            downloaded += 1;
+                            // The house convention is the logical size of the
+                            // RECONSTRUCTED file, read from local metadata, as
+                            // `cmd_get --delta` (:31148) and the classic task
+                            // (:9621) both do. The remote listing figure is
+                            // the one thing that can be stale, and a budget
+                            // that counts a stale number is not a budget.
+                            let moved = std::fs::metadata(&local_path_s)
+                                .map(|m| m.len())
+                                .unwrap_or(size);
+                            session_transfer_add(moved);
+                        } else if let Some(hard) = res.hard_error.as_ref() {
+                            errors.push(format!("download {}: hard rejection: {}", rel, hard));
+                        } else {
+                            // Soft fallback (TooSmall, NoopBatch, a transport
+                            // that opted out): re-queue for the classic stream
+                            // below so the user still gets the file.
+                            pending.push((rel, local_path_s, remote_path, size));
+                        }
+                    }
+                    match batch.finalize().await {
+                        Ok(stats) => {
+                            if !quiet {
+                                eprintln!(
+                                    "AerorsyncBatch finalize (download): session_count={}, bytes_on_wire={}, files_transferred={}",
+                                    stats.session_count,
+                                    stats.bytes_on_wire,
+                                    stats.files_transferred
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            if !quiet {
+                                eprintln!("AerorsyncBatch finalize error (download): {}", e);
+                            }
+                        }
+                    }
+                    leftover_download_jobs = pending;
+                }
+                None => {
+                    if !quiet {
+                        eprintln!(
+                            "--delta requested but the provider/transport is not delta-eligible \
+                             (not SFTP, no host key fingerprint pinned from this session, or \
+                             the transport declined session reuse); falling back to classic \
+                             download for this batch"
+                        );
+                    }
+                }
+            }
+        } else if !quiet {
+            eprintln!(
+                "--delta requested but none of the {} download(s) has a local base to \
+                 reconstruct from; falling back to classic download",
+                leftover_download_jobs.len()
+            );
+        }
+    }
+    let download_jobs = leftover_download_jobs;
 
     // PD-CLI-CONV-D: converge the sync download transfer phase on the SAME
     // shared provider executor + orchestrator `aeroftp get -r` uses
@@ -75095,6 +75280,20 @@ mod tests {
             );
             assert_eq!(stats.exit_code, 4, "a TX-01 refusal (list: {listed:?})");
         }
+    }
+
+    /// G67: a cancelled scan is a partial result, and a partial result has an
+    /// exit code in this CLI. Before the fix `size` exited 0 on cancellation,
+    /// so a script read an interrupted figure as a complete one.
+    ///
+    /// Declared limit: this fixes the mapping, not the wiring. That the call
+    /// site passes `s.cancelled` and not some other flag is read from the
+    /// source, because reaching `cmd_size` needs a live connection; the live
+    /// half is a Ctrl-C run, and it is in the W2 brief rather than here.
+    #[test]
+    fn size_of_a_cancelled_scan_exits_4_like_reconcile() {
+        assert_eq!(size_exit_code(true), 4, "a cancelled scan must be partial");
+        assert_eq!(size_exit_code(false), 0, "a complete scan must stay 0");
     }
 
     /// Refusing `--delete` on a partial reconcile plan is the TX-01 refusal of

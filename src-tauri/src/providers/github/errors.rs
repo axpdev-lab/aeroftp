@@ -179,15 +179,84 @@ impl fmt::Display for GitHubError {
 
 impl std::error::Error for GitHubError {}
 
+impl GitHubError {
+    /// The message to hand to [`ProviderError`], with this type's own prefix
+    /// removed where the target variant is about to write the same words.
+    ///
+    /// G93: `ProviderError` derives its text with `thiserror`, so every arm
+    /// prepends a label of its own (`Path not found: {0}`, `Parse error: {0}`,
+    /// ...). Six arms here already open with those same words, and the
+    /// conversion used to pass `to_string()` straight through, so a missing
+    /// file came back as `Path not found: Not found: ...` and a bad payload as
+    /// `Parse error: Parse error: ...`. The duplication came from the pair of
+    /// types, not from the payload, which is why no amount of fixing call
+    /// sites removed it.
+    ///
+    /// Only those six are stripped. The arms that carry a sentence of their
+    /// own (`Branch 'x' does not exist. Check the branch name or create it
+    /// first.`, `Release 'x' not found.`) read correctly under their label and
+    /// are left exactly as they are: the owner's decision was to remove the
+    /// duplication, not to rewrite every GitHub error.
+    ///
+    /// The label the user finally reads still comes from `ProviderError`, so
+    /// the not-found vocabulary that [`message_names_a_missing_path`] looks
+    /// for is still in the text: `Path not found: <payload>` keeps the words
+    /// that turn an error into an absence.
+    ///
+    /// [`message_names_a_missing_path`]: crate::providers::types::message_names_a_missing_path
+    fn message_for_provider_error(&self) -> String {
+        match self {
+            // "Permission denied: " + "GitHub permission denied: ..."
+            Self::PermissionDenied(msg) => msg.clone(),
+            // "Path not found: " + "Path '...' not found on this branch."
+            Self::PathNotFound(path) => format!("{} (on this branch)", path),
+            // "Path not found: " + "Not found: ..."
+            Self::NotFound(msg) => msg.clone(),
+            // "Network error: " + "Network error: ..."
+            Self::NetworkError(msg) => msg.clone(),
+            // "Server error: " + "GitHub server error: ..."
+            Self::ServerError(msg) => msg.clone(),
+            // "Parse error: " + "Parse error: ..."
+            Self::ParseError(msg) => msg.clone(),
+
+            // Everything else keeps its own sentence. This arm is written out
+            // variant by variant on purpose, with no `_` catch-all: a variant
+            // added later that collides with a ProviderError label would be
+            // absorbed in silence by a wildcard, which is exactly how the
+            // doubling survived unnoticed in the first place. The compiler is
+            // the only reader that will still be here.
+            Self::Unauthorized
+            | Self::TokenExpired
+            | Self::InsufficientPermissions(_)
+            | Self::RepoNotFound
+            | Self::BranchNotFound(_)
+            | Self::ProtectedBranch(_)
+            | Self::RequiredPullRequest
+            | Self::StaleObject { .. }
+            | Self::DuplicateAsset(_)
+            | Self::ReleaseNotFound(_)
+            | Self::PrimaryRateLimit { .. }
+            | Self::SecondaryRateLimit { .. }
+            | Self::ApiError { .. }
+            | Self::FileTooLarge { .. }
+            | Self::PayloadTooLarge(_)
+            | Self::GraphQLError { .. }
+            | Self::InvalidInput(_)
+            | Self::Unprocessable(_) => self.to_string(),
+        }
+    }
+}
+
 impl From<GitHubError> for ProviderError {
     fn from(e: GitHubError) -> Self {
+        let text = e.message_for_provider_error();
         match e {
             // Auth
             GitHubError::Unauthorized | GitHubError::TokenExpired => {
-                ProviderError::AuthenticationFailed(e.to_string())
+                ProviderError::AuthenticationFailed(text)
             }
             GitHubError::InsufficientPermissions(_) | GitHubError::PermissionDenied(_) => {
-                ProviderError::PermissionDenied(e.to_string())
+                ProviderError::PermissionDenied(text)
             }
 
             // Not found
@@ -195,43 +264,43 @@ impl From<GitHubError> for ProviderError {
             | GitHubError::PathNotFound(_)
             | GitHubError::BranchNotFound(_)
             | GitHubError::ReleaseNotFound(_)
-            | GitHubError::NotFound(_) => ProviderError::NotFound(e.to_string()),
+            | GitHubError::NotFound(_) => ProviderError::NotFound(text),
 
             // Write policy
             GitHubError::ProtectedBranch(_) | GitHubError::RequiredPullRequest => {
-                ProviderError::PermissionDenied(e.to_string())
+                ProviderError::PermissionDenied(text)
             }
 
             // Conflict
-            GitHubError::StaleObject { .. } => ProviderError::TransferFailed(e.to_string()),
+            GitHubError::StaleObject { .. } => ProviderError::TransferFailed(text),
 
             // Duplicate
-            GitHubError::DuplicateAsset(_) => ProviderError::AlreadyExists(e.to_string()),
+            GitHubError::DuplicateAsset(_) => ProviderError::AlreadyExists(text),
 
             // Rate limits
             GitHubError::PrimaryRateLimit { .. } | GitHubError::SecondaryRateLimit { .. } => {
-                ProviderError::ServerError(e.to_string())
+                ProviderError::ServerError(text)
             }
 
             // Transport
-            GitHubError::NetworkError(_) => ProviderError::NetworkError(e.to_string()),
+            GitHubError::NetworkError(_) => ProviderError::NetworkError(text),
             GitHubError::ApiError { status, .. } if status == 408 || status == 504 => {
                 ProviderError::Timeout
             }
             GitHubError::ApiError { .. } | GitHubError::ServerError(_) => {
-                ProviderError::ServerError(e.to_string())
+                ProviderError::ServerError(text)
             }
 
             // Content
             GitHubError::FileTooLarge { .. } | GitHubError::PayloadTooLarge(_) => {
-                ProviderError::TransferFailed(e.to_string())
+                ProviderError::TransferFailed(text)
             }
 
             // GraphQL / Parse / Input
-            GitHubError::GraphQLError { .. } => ProviderError::ServerError(e.to_string()),
-            GitHubError::ParseError(_) => ProviderError::ParseError(e.to_string()),
+            GitHubError::GraphQLError { .. } => ProviderError::ServerError(text),
+            GitHubError::ParseError(_) => ProviderError::ParseError(text),
             GitHubError::InvalidInput(_) | GitHubError::Unprocessable(_) => {
-                ProviderError::Other(e.to_string())
+                ProviderError::Other(text)
             }
         }
     }
@@ -425,5 +494,121 @@ mod tests {
         let body = serde_json::json!({"message": "Required pull request reviews before merging"});
         let err = classify_api_error(422, &body, None);
         assert!(matches!(err, GitHubError::RequiredPullRequest));
+    }
+
+    /// G93: the six arms whose own prefix collided with the `ProviderError`
+    /// label. Each assertion falsifies the defect by counting the words, not
+    /// by reading the sentence: before the fix the text read
+    /// `Path not found: Not found: gone.txt`.
+    #[test]
+    fn provider_error_does_not_repeat_the_label_of_the_variant() {
+        let cases: Vec<(ProviderError, &str)> = vec![
+            (GitHubError::NotFound("gone.txt".into()).into(), "not found"),
+            (
+                GitHubError::PathNotFound("docs/gone.md".into()).into(),
+                "not found",
+            ),
+            (
+                GitHubError::PermissionDenied("write access required".into()).into(),
+                "permission denied",
+            ),
+            (
+                GitHubError::NetworkError("dns failure".into()).into(),
+                "network error",
+            ),
+            (
+                GitHubError::ServerError("502 bad gateway".into()).into(),
+                "server error",
+            ),
+            (
+                GitHubError::ParseError("unexpected token".into()).into(),
+                "parse error",
+            ),
+        ];
+        for (err, label) in cases {
+            let text = err.to_string().to_ascii_lowercase();
+            assert_eq!(
+                text.matches(label).count(),
+                1,
+                "the label `{label}` appears more than once in `{text}`"
+            );
+        }
+    }
+
+    /// The other half of the owner's decision: the arms that carry a sentence
+    /// of their own are NOT rewritten, so their wording has to survive the
+    /// conversion untouched.
+    #[test]
+    fn provider_error_keeps_the_sentences_that_were_already_good() {
+        let err: ProviderError = GitHubError::BranchNotFound("gh-pages".into()).into();
+        assert!(
+            err.to_string()
+                .contains("Branch 'gh-pages' does not exist. Check the branch name"),
+            "branch guidance was rewritten: {err}"
+        );
+
+        let err: ProviderError = GitHubError::ReleaseNotFound("v4.2.0".into()).into();
+        assert!(
+            err.to_string().contains("Release 'v4.2.0' not found."),
+            "release wording was rewritten: {err}"
+        );
+
+        let err: ProviderError = GitHubError::DuplicateAsset("app.deb".into()).into();
+        assert!(
+            err.to_string()
+                .contains("Release asset 'app.deb' already exists."),
+            "duplicate-asset guidance was rewritten: {err}"
+        );
+    }
+
+    /// The guard named in the entry, and it is a guard on the VARIANT rather
+    /// than on the words.
+    ///
+    /// `message_names_a_missing_path` reads the final text, and that text
+    /// opens with the label `ProviderError::NotFound` derives, so as long as
+    /// the conversion keeps choosing that variant the not-found vocabulary is
+    /// there by construction. What this test can still catch is the change
+    /// that would really lose an absence: a future edit routing these arms to
+    /// `Other` or `ServerError`, whose labels say nothing about a missing
+    /// path. Both halves are asserted so the reason is visible: the variant
+    /// first, the text it produces second.
+    #[test]
+    fn a_stripped_not_found_still_maps_to_the_not_found_variant() {
+        use crate::providers::types::message_names_a_missing_path_for;
+
+        let err: ProviderError = GitHubError::PathNotFound("docs/gone.md".into()).into();
+        assert!(
+            matches!(err, ProviderError::NotFound(_)),
+            "a missing path must stay a NotFound, or the absence is lost: {err}"
+        );
+        assert!(
+            message_names_a_missing_path_for(&err.to_string(), "docs/gone.md"),
+            "absence lost after stripping: {err}"
+        );
+
+        let err: ProviderError = GitHubError::NotFound("docs/gone.md".into()).into();
+        assert!(
+            matches!(err, ProviderError::NotFound(_)),
+            "a missing path must stay a NotFound, or the absence is lost: {err}"
+        );
+        assert!(
+            message_names_a_missing_path_for(&err.to_string(), "docs/gone.md"),
+            "absence lost after stripping: {err}"
+        );
+    }
+
+    /// The `Display` of `GitHubError` itself is deliberately untouched: it is
+    /// what the logs print, and it is read without a `ProviderError` label in
+    /// front of it.
+    #[test]
+    fn the_github_display_keeps_its_own_prefix() {
+        assert_eq!(
+            GitHubError::NotFound("gone.txt".into()).to_string(),
+            "Not found: gone.txt"
+        );
+        assert_eq!(
+            GitHubError::ParseError("unexpected token".into()).to_string(),
+            "Parse error: unexpected token"
+        );
     }
 }
