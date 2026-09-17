@@ -162,40 +162,7 @@ impl CredentialProvider for VaultCredentialProvider {
 
         Ok(profiles
             .iter()
-            .filter_map(|p| {
-                Some(ServerProfile {
-                    id: p.get("id")?.as_str()?.to_string(),
-                    name: p
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    host: p
-                        .get("host")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16,
-                    username: p
-                        .get("username")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    protocol: p
-                        .get("protocol")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("ftp")
-                        .to_string(),
-                    initial_path: p
-                        .get("initialPath")
-                        .and_then(|v| v.as_str())
-                        .map(String::from),
-                    provider_id: p
-                        .get("providerId")
-                        .and_then(|v| v.as_str())
-                        .map(String::from),
-                })
-            })
+            .filter_map(ServerProfile::from_profile_json)
             .collect())
     }
 

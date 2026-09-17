@@ -13654,24 +13654,15 @@ fn paint_dim(text: &str, color_on: bool) -> String {
     format!("\x1b[2m{}\x1b[22m", text)
 }
 
-/// Mirrors `getProtocolClass` from `src/types.ts`.
-fn protocol_class(proto: &str) -> &'static str {
-    match proto {
-        "googledrive" | "googlephotos" | "dropbox" | "onedrive" | "box" | "pcloud"
-        | "zohoworkdrive" | "yandexdisk" | "fourshared" => "OAuth",
-        "aerocloud" => "AeroCloud",
-        "filen" | "internxt" | "mega" => "E2E",
-        "webdav" => "WebDAV",
-        "ftps" => "FTPS",
-        "ftp" => "FTP",
-        "sftp" => "SFTP",
-        "s3" => "S3",
-        "azure" => "Azure",
-        // Native API providers (Koofr, Jottacloud, OpenDrive, kDrive, Drime, FileLu,
-        // GitHub, GitLab, Swift, Immich, Backblaze, ...)
-        _ => "API",
-    }
-}
+// G27: the profile-classification rules now live in the library, next to
+// `overlay_kind`, because the MCP surface needs the same answers and cannot
+// reach a function defined in this binary. The call sites below are unchanged.
+// `protocol_class` is deliberately NOT imported: the binary only ever reached
+// it through `profile_protocol_class`, which now lives in the library too, so
+// importing it here would be an unused import.
+use ftp_client_gui_lib::crypt_overlay_provider::{
+    profile_crypt_overlay_kind, profile_has_crypt_overlay, profile_protocol_class,
+};
 
 /// Mirrors `getE2EBits`. Returns the raw bits for the badge label suffix.
 fn e2e_bits(proto: &str) -> Option<u16> {
@@ -13680,46 +13671,6 @@ fn e2e_bits(proto: &str) -> Option<u16> {
         "filen" | "internxt" => Some(256),
         _ => None,
     }
-}
-
-/// True when the saved profile carries an enabled crypt overlay binding —
-/// native AeroCrypt OR interop rclone-crypt, at equal grade. Mirrors
-/// `getServerCryptOverlay` in `src/types.ts`.
-fn profile_has_crypt_overlay(profile: &serde_json::Value) -> bool {
-    profile
-        .get("aeroCryptOverlay")
-        .and_then(|ov| ov.get("enabled"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-}
-
-/// The crypt-overlay kind when the binding is enabled, `None` otherwise.
-///
-/// The kind rather than a boolean, for the reason `getServerCryptOverlay` in
-/// `src/types.ts` returns one: `aerocrypt` (native) and `rclone-crypt` (interop)
-/// are different lanes, so a bare `true` would tell a reader that something is
-/// encrypted while hiding which one it is looking at.
-///
-/// Both halves are borrowed rather than restated. The gate is
-/// `profile_has_crypt_overlay`, the same predicate that makes
-/// `profile_protocol_class` answer `Crypt`; the kind comes from the library's
-/// `overlay_kind`, the rule the overlay resolver applies when it opens the
-/// binding. So this can never report "no overlay" for a profile the table
-/// calls `Crypt`.
-///
-/// It agrees with the TypeScript helper on every binding the GUI writes, since
-/// the GUI always writes `kind`. It departs from it on purpose for a binding
-/// that lacks one (hand-edited, imported, older schema): the helper returns
-/// `undefined` there, while this reports `aerocrypt`, the lane the CLI will
-/// actually encrypt with. Any other answer would describe a rule no code path
-/// follows.
-fn profile_crypt_overlay_kind(profile: &serde_json::Value) -> Option<&str> {
-    if !profile_has_crypt_overlay(profile) {
-        return None;
-    }
-    profile
-        .get("aeroCryptOverlay")
-        .map(ftp_client_gui_lib::crypt_overlay_provider::overlay_kind)
 }
 
 /// Resolve the leading URL and encrypted-directory positionals of a `crypt`
@@ -13747,22 +13698,6 @@ fn resolve_profile_crypt_positionals(
         return ("_".to_string(), path.to_string());
     }
     (url.to_string(), path.to_string())
-}
-
-/// Profile-aware protocol class. A profile with an enabled crypt overlay (either
-/// kind) classifies as "Crypt", a shared family regardless of transport — the
-/// native/interop distinction is cosmetic, not a class. Mirrors
-/// `getProfileProtocolClass` in `src/types.ts`. Falls back to the transport
-/// class otherwise.
-fn profile_protocol_class(profile: &serde_json::Value) -> &'static str {
-    if profile_has_crypt_overlay(profile) {
-        return "Crypt";
-    }
-    let proto = profile
-        .get("protocol")
-        .and_then(|v| v.as_str())
-        .unwrap_or("ftp");
-    protocol_class(proto)
 }
 
 /// Render the protocol class label exactly as the GUI table shows it for sort
