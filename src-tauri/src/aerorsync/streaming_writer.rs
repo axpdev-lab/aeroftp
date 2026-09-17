@@ -1104,10 +1104,27 @@ mod tests {
         match err {
             WriteAtomicError::PostOpen { stage, source } => {
                 assert_eq!(stage, "acl");
-                assert!(
-                    source.to_string().contains("file mode"),
-                    "error should name the missing mode, got {source}"
-                );
+                let text = source.to_string();
+                // The contract this test pins is the same on every platform:
+                // fail closed at the `acl` stage, leave the target, remove the
+                // temp. Only the REASON differs, so only the reason is gated.
+                // On Unix the apply needs a file mode to rebuild the omitted
+                // object bits and refuses without one; off Unix POSIX.1e ACLs
+                // are never applied at all, so the writer refuses earlier and
+                // names the platform. Asserting the Unix sentence everywhere
+                // is what made this test fail on Windows for a reason that had
+                // nothing to do with what it is about.
+                if cfg!(unix) {
+                    assert!(
+                        text.contains("file mode"),
+                        "error should name the missing mode, got {text}"
+                    );
+                } else {
+                    assert!(
+                        text.contains("ACL"),
+                        "error should name the unsupported ACLs, got {text}"
+                    );
+                }
             }
             other => panic!("expected PostOpen{{stage: \"acl\"}}, got {other:?}"),
         }
