@@ -10252,15 +10252,33 @@ fn resolve_password(
     }
 
     // 2. --password-stdin (limit to 4 KB to prevent abuse)
+    //
+    // G104: read once, then remembered for the rest of the process. Standard
+    // input is consumable, not re-readable: the first call took the line and
+    // every later one reached EOF and came back with an empty password. Any
+    // command that opens a second connection therefore authenticated fine and
+    // then failed with exit 6 having transferred nothing, which is what `sync`
+    // did in both directions while `get -r` and `put -r` escaped it only
+    // because their converged path opens one connection and keeps it.
+    //
+    // Caching here, rather than at each call site, is what makes the fix hold
+    // for the next command someone writes: the defect was never in `sync`, it
+    // was in reading a one-shot source as though it could be read again.
     if cli.password_stdin {
-        let mut password = String::new();
-        io::stdin()
-            .read_line(&mut password)
-            .map_err(|e| format!("Failed to read password from stdin: {}", e))?;
-        if password.len() > 4096 {
-            return Err("Password too long (max 4 KB)".to_string());
-        }
-        return Ok(password.trim().to_string());
+        static STDIN_PASSWORD: std::sync::OnceLock<Result<String, String>> =
+            std::sync::OnceLock::new();
+        return STDIN_PASSWORD
+            .get_or_init(|| {
+                let mut password = String::new();
+                io::stdin()
+                    .read_line(&mut password)
+                    .map_err(|e| format!("Failed to read password from stdin: {}", e))?;
+                if password.len() > 4096 {
+                    return Err("Password too long (max 4 KB)".to_string());
+                }
+                Ok(password.trim().to_string())
+            })
+            .clone();
     }
 
     // 3. Environment variable (protocol-specific, then generic)
