@@ -31829,6 +31829,9 @@ async fn cmd_get_recursive(
     let mut queue: Vec<(String, usize)> = vec![(remote_dir.to_string(), 0)];
     let mut files: Vec<(String, String, u64)> = Vec::new();
     let mut dirs: Vec<String> = Vec::new();
+    // G108: directories the scan could not read. Collected here because the
+    // run's error list is built further down, and folded into it below.
+    let mut listing_errors: Vec<String> = Vec::new();
 
     while let Some((dir, depth)) = queue.pop() {
         if cancelled.load(Ordering::Relaxed) {
@@ -31893,9 +31896,17 @@ async fn cmd_get_recursive(
                 }
             }
             Err(e) => {
+                // G108: a directory that could not be listed is not an empty
+                // directory. Until now the only difference between the two was
+                // this line on stderr, so `get -r` on an unreadable path exited
+                // 0 with "Downloaded 0/0" and an agent reading the exit code
+                // could not tell "nothing to do" from "I could not look".
+                // Recorded as an error, which is what it is: the caller asked
+                // for a subtree and part of it was never seen.
                 if !quiet {
                     eprintln!("Warning: cannot list {}: {}", dir, e);
                 }
+                listing_errors.push(format!("list {}: {}", dir, e));
             }
         }
     }
@@ -31944,7 +31955,7 @@ async fn cmd_get_recursive(
     let mut downloaded: u32 = 0;
     // G102: files the --max-transfer budget left behind on this run.
     let mut over_budget: u32 = 0;
-    let mut errors: Vec<String> = Vec::new();
+    let mut errors: Vec<String> = listing_errors;
     // DAG-P2-07 (block E): engine-level stats when this folder download ran on
     // the converged DAG-engine path; stays `None` on the legacy fallback.
     let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
