@@ -656,9 +656,21 @@ Var AeroFTPAppDataNewPresentPre
     ; a reason to start. The user who ticked the box still gets asked once
     ; about the one thing that cannot be rebuilt.
     _aeroftp_post_full_wipe:
-    DetailPrint "AeroFTP: Remove application data confirmed; wiping WebView caches."
+    DetailPrint "AeroFTP: Remove application data confirmed; wiping caches and agent data."
     RMDir /r "$LOCALAPPDATA\${AEROFTP_APPID_CURRENT}"
     RMDir /r "$LOCALAPPDATA\${AEROFTP_APPID_LEGACY}"
+    ; Tauri's own section removes `$APPDATA\<current id>` and nothing else, so
+    ; on an upgraded machine the LEGACY `$APPDATA` directory, which holds the
+    ; AI chat history and the agent memory, used to survive a ticked "Remove
+    ; application data" with no one naming it. Both are named here: the one
+    ; Tauri already removed is a no-op, the other one is the hole. The granular
+    ; branch covers the same pair through its own prompt.
+    ;
+    ; Owner decision, 2026-09-17: this goes silently here, like the caches.
+    ; The tick is the consent, and only the vault, which is the thing that
+    ; cannot be rebuilt from anywhere, is worth a second question.
+    RMDir /r "$APPDATA\${AEROFTP_APPID_CURRENT}"
+    RMDir /r "$APPDATA\${AEROFTP_APPID_LEGACY}"
     MessageBox MB_YESNO|MB_ICONQUESTION \
         "Remove saved servers, credentials, and vaults?$\n$\n\
 This deletes all connection profiles, stored passwords,$\n\
