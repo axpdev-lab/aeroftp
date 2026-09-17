@@ -5448,8 +5448,21 @@ fn sync_exit_code(has_errors: bool, scan_incomplete: bool, over_budget: bool) ->
 /// behind. Before this, a run capped by `--max-transfer` reported "ok" with
 /// `skipped: 0` while files it had been asked to move were still missing, and
 /// the only trace was a line on stderr.
-fn sync_status_word(has_errors: bool, scan_incomplete: bool, over_budget: u32) -> &'static str {
-    if has_errors || scan_incomplete || over_budget > 0 {
+///
+/// The third argument is the SAME fact [`sync_exit_code`] is given, not the
+/// `over_budget` count, and that is the point rather than a detail. The count
+/// answers "how many files did the ceiling turn away", and that is 0 when the
+/// last file spent the budget to the byte and nothing was left to turn away.
+/// The ceiling was still reached: `session_transfer_exceeded` says so with
+/// `>=` and the exit code returns 8 for it. Feeding the two surfaces different
+/// facts is how they came to disagree exactly there, exit 8 against
+/// `"status": "ok"`. Raised by CodeRabbit on #852.
+fn sync_status_word(
+    has_errors: bool,
+    scan_incomplete: bool,
+    hit_max_transfer: bool,
+) -> &'static str {
+    if has_errors || scan_incomplete || hit_max_transfer {
         "partial"
     } else {
         "ok"
@@ -31998,7 +32011,13 @@ async fn cmd_get_recursive(
         Ok(outcome) => {
             downloaded = outcome.downloaded;
             over_budget = outcome.over_budget;
-            errors = outcome.errors;
+            // G108, and the reason this is `extend` and not `=`: `errors`
+            // starts as `listing_errors`, the directories the scan could not
+            // read. Assigning the batch outcome over it threw those away, so a
+            // run that failed to list one directory and downloaded everything
+            // in another reported success: the exact defect this branch exists
+            // to close, reintroduced one line later. Raised by CodeRabbit.
+            errors.extend(outcome.errors);
             engine_stats = outcome.engine_stats;
         }
         Err(mut base) => {
@@ -32908,7 +32927,13 @@ async fn cmd_put_recursive(
             Ok(outcome) => {
                 uploaded = outcome.uploaded;
                 over_budget = outcome.over_budget;
-                errors = outcome.errors;
+                // Same shape as the one CodeRabbit raised on the download
+                // twin, and found by asking whether that one was alone: here
+                // `errors` is seeded with the files skipped for a restricted
+                // name, which the assignment threw away, so an upload that
+                // skipped them and then succeeded reported no errors at all.
+                // Preexisting on this path rather than introduced here.
+                errors.extend(outcome.errors);
                 engine_stats = outcome.engine_stats;
                 false
             }
@@ -48402,6 +48427,11 @@ async fn cmd_sync(
 
     let elapsed = start.elapsed();
 
+    // Computed here rather than next to the exit code below, because the JSON
+    // block underneath needs the same fact, and reading it from a different
+    // source is what let the two answers drift apart at the boundary.
+    let hit_max_transfer = session_transfer_exceeded(resolve_max_transfer(cli)) || over_budget > 0;
+
     match format {
         OutputFormat::Text => {
             if !cli.quiet {
@@ -48433,7 +48463,7 @@ async fn cmd_sync(
             print_json(&CliSyncResult {
                 // G102: a run that left files behind is not "ok", whichever
                 // reason left them behind. The counters below say which.
-                status: sync_status_word(!errors.is_empty(), scan_incomplete, over_budget),
+                status: sync_status_word(!errors.is_empty(), scan_incomplete, hit_max_transfer),
                 uploaded,
                 downloaded,
                 deleted,
@@ -48489,7 +48519,6 @@ async fn cmd_sync(
     // last because nothing went wrong at all. Whichever wins, the JSON
     // reports every fact that was true, so the exit code narrows the answer
     // and never replaces it.
-    let hit_max_transfer = session_transfer_exceeded(resolve_max_transfer(cli)) || over_budget > 0;
     let exit_code = sync_exit_code(!errors.is_empty(), scan_incomplete, hit_max_transfer);
 
     SyncCycleStats {
@@ -75464,19 +75493,63 @@ mod tests {
     /// whichever reason left them behind.
     #[test]
     fn a_run_that_left_files_behind_is_not_ok() {
-        assert_eq!(sync_status_word(false, false, 0), "ok");
+        assert_eq!(sync_status_word(false, false, false), "ok");
         assert_eq!(
-            sync_status_word(false, false, 2),
+            sync_status_word(false, false, true),
             "partial",
-            "two files were due to move and did not"
+            "the ceiling was reached, so the run is not simply ok"
         );
-        assert_eq!(sync_status_word(false, true, 0), "partial");
-        assert_eq!(sync_status_word(true, false, 0), "partial");
+        assert_eq!(sync_status_word(false, true, false), "partial");
+        assert_eq!(sync_status_word(true, false, false), "partial");
         assert_eq!(
-            sync_status_word(false, true, 2),
+            sync_status_word(false, true, true),
             "partial",
             "more than one fact true at once is still partial, not ok"
         );
+    }
+
+    /// The defect CodeRabbit found on #852 was not in either function: it was
+    /// in giving them different facts. `sync_exit_code` was told "the ceiling
+    /// was reached", which `session_transfer_exceeded` answers with `>=`, and
+    /// `sync_status_word` was told "how many files the ceiling turned away".
+    /// Those differ by exactly one case, the file that spends the budget to
+    /// the last byte with nothing left behind it: exit 8 and `"status": "ok"`,
+    /// on the same run, in the same output.
+    ///
+    /// This test could not have been written before the signatures matched,
+    /// which is the honest reason it arrives with the fix rather than before
+    /// it. What it pins is the invariant, not the wiring: whatever the two
+    /// functions decide, they have to decide it together.
+    #[test]
+    fn the_exit_code_and_the_status_word_agree_on_every_combination() {
+        for has_errors in [false, true] {
+            for scan_incomplete in [false, true] {
+                for hit_max_transfer in [false, true] {
+                    let code = sync_exit_code(has_errors, scan_incomplete, hit_max_transfer);
+                    let word = sync_status_word(has_errors, scan_incomplete, hit_max_transfer);
+                    assert_eq!(
+                        code == 0,
+                        word == "ok",
+                        "errors={has_errors} scan_incomplete={scan_incomplete} \
+                         ceiling={hit_max_transfer} gave exit {code} and status {word:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The boundary the disagreement lived on, stated on its own so it does
+    /// not depend on reading `>=` correctly in another file: a budget spent to
+    /// the last byte IS reached. Pure inputs, so it does not touch the global
+    /// session counter that `test_cap_files_to_max_transfer` owns.
+    #[test]
+    fn a_budget_spent_to_the_last_byte_is_a_budget_reached() {
+        assert_eq!(
+            sync_status_word(false, false, true),
+            "partial",
+            "nothing was turned away, but the ceiling was still reached"
+        );
+        assert_eq!(sync_exit_code(false, false, true), 8);
     }
 
     /// G67: a cancelled scan is a partial result, and a partial result has an
