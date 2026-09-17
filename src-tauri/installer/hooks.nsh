@@ -422,11 +422,19 @@ Var AeroFTPAppDataNewPresentPre
     ; taken for consent. The bare path answers "does this name exist at all",
     ; so the pair covers a directory that exists with nothing in it.
     ;
-    ; Whether the wildcard form alone already reports an empty directory as
-    ; present (NTFS keeps `.` and `..` entries, which `*.*` may well match)
-    ; is not something this tree can settle: there is no NSIS toolchain on
-    ; the machine where this was written. Asking both is correct under either
-    ; answer, and costs one instruction.
+    ; Measured on Windows 10, 2026-09-17, and the answer is that the wildcard
+    ; form DOES report an empty directory as present: `FindFirstFile`, which
+    ; `IfFileExists` uses for a wildcard path, finds the `.` entry that NTFS
+    ; keeps in every directory. Probed through P/Invoke with a negative
+    ; control, so the probe is known to be able to say no: empty dir FOUND,
+    ; dir with a file FOUND, missing dir NOT FOUND with GetLastError 3.
+    ; One step is still inferred rather than executed, because there was no
+    ; NSIS toolchain on either machine: the measurement covers the Win32
+    ; primitive, not `IfFileExists` itself.
+    ;
+    ; The second probe therefore stays as deliberate redundancy rather than
+    ; as a hedge against something unknown: it costs one instruction and it
+    ; protects the one step nobody has executed directly.
     StrCpy $AeroFTPAppDataPresentPre "no"
     IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}\*.*" _aeroftp_pre_legacy_present 0
     IfFileExists "$APPDATA\${AEROFTP_APPID_LEGACY}" 0 _aeroftp_pre_appdata_done
