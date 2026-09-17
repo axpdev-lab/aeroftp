@@ -44,6 +44,22 @@ pub struct GitHubHttpClient {
     rate_limit: RateLimitState,
 }
 
+/// An empty hint is not a path.
+///
+/// `resolve_path("/")` returns an empty string for the repository root, so
+/// listing the root of a repository that does not exist would be classified as
+/// a missing PATH named by nothing, instead of the missing repository it is.
+/// Passing the hint through unchanged turned the root case into a worse message
+/// than the one this change set out to fix.
+///
+/// It is a function of its own so it can be tested without a request: a test
+/// that hands `None` straight to the classifier proves what the classifier
+/// does, not that this conversion happens, and would stay green if the
+/// conversion were deleted.
+fn normalised_path_hint(path_hint: &str) -> Option<&str> {
+    (!path_hint.is_empty()).then_some(path_hint)
+}
+
 impl GitHubHttpClient {
     /// Create a new client with the given personal access token.
     /// QA-GH-004: Returns Result instead of panicking on TLS init failure.
@@ -189,9 +205,37 @@ impl GitHubHttpClient {
     /// `url` can be either a full URL or a path (e.g. `/repos/o/r/releases`).
     /// If it starts with `/`, the API base is prepended automatically.
     pub async fn get_json<T: DeserializeOwned>(&mut self, url: &str) -> Result<T, GitHubError> {
+        self.get_json_inner(url, None).await
+    }
+
+    /// `GET` a JSON endpoint that is about a path inside the repository.
+    ///
+    /// G103: `classify_api_error` decides between `PathNotFound` and
+    /// `RepoNotFound` by whether it was given the path the caller was asking
+    /// for, and `get_json` passed `None`. A 404 on a file that does not exist
+    /// inside a repository that does therefore came back as
+    /// "Repository not found", which sends the user to check the owner and the
+    /// repo name, the one thing that is right. Callers that are asking about a
+    /// path use this variant so the classification has what it needs; callers
+    /// asking about a workflow run, a pull request or the repository itself
+    /// keep using `get_json`, because for them there is no path to name.
+    pub async fn get_json_at<T: DeserializeOwned>(
+        &mut self,
+        url: &str,
+        path_hint: &str,
+    ) -> Result<T, GitHubError> {
+        self.get_json_inner(url, normalised_path_hint(path_hint))
+            .await
+    }
+
+    async fn get_json_inner<T: DeserializeOwned>(
+        &mut self,
+        url: &str,
+        path_hint: Option<&str>,
+    ) -> Result<T, GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::GET, &full_url);
-        let resp = self.execute_with_retry(builder, None).await?;
+        let resp = self.execute_with_retry(builder, path_hint).await?;
         resp.json::<T>()
             .await
             .map_err(|e| GitHubError::ParseError(format!("json: {e}")))
@@ -577,5 +621,29 @@ mod tests {
         assert!(!is_allowed_github_url("https://api.github.com.evil.com/"));
         assert!(!is_allowed_github_url("ftp://api.github.com/"));
         assert!(!is_allowed_github_url(""));
+    }
+}
+
+#[cfg(test)]
+mod path_hint_tests {
+    use super::normalised_path_hint;
+
+    /// G103, the conversion itself and not what the classifier does with it.
+    /// Raised by CodeRabbit: the regression test next to `classify_api_error`
+    /// hands `None` straight in, so it would stay green if this normalisation
+    /// were removed while the repository-root request went back to producing
+    /// `PathNotFound("")`.
+    #[test]
+    fn an_empty_hint_becomes_none_and_a_real_path_survives() {
+        assert_eq!(
+            normalised_path_hint(""),
+            None,
+            "the repository root is not a path and must not be named as one"
+        );
+        assert_eq!(
+            normalised_path_hint("docs/missing.md"),
+            Some("docs/missing.md"),
+            "a real path must reach the classifier unchanged"
+        );
     }
 }

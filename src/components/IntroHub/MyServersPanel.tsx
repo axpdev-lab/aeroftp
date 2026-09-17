@@ -822,19 +822,30 @@ export function MyServersPanel({
         } catch { /* setDragImage is best-effort */ }
     }, []);
 
+    // G50: `preventDefault` stays unconditional. It is what stops WebView2
+    // from acting on its own default over these rows, and dropping it would
+    // trade a cosmetic defect for a file opening in the window.
+    //
+    // What must be conditional is the cursor. `dropEffect = 'move'` used to be
+    // set for every drag, including a file dragged in from the file manager,
+    // so the panel promised a reorder it then discarded in `handleDrop`. The
+    // condition to use is not a new one: every visual indicator in this panel
+    // is already gated on `dragIdx !== null`, which only `handleDragStart`
+    // sets, so an external drag never renders one. The cursor was the single
+    // surface left out of that rule, and this aligns it.
     const handleDragEnter = useCallback((idx: number, e: React.DragEvent) => {
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
+        e.dataTransfer.dropEffect = dragIdx === null ? 'none' : 'move';
         maybeAutoScrollWhileDrag(e.clientY);
         setOverIdx(idx);
-    }, [maybeAutoScrollWhileDrag]);
+    }, [dragIdx, maybeAutoScrollWhileDrag]);
 
     const handleDragOver = useCallback((idx: number, e: React.DragEvent) => {
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
+        e.dataTransfer.dropEffect = dragIdx === null ? 'none' : 'move';
         maybeAutoScrollWhileDrag(e.clientY);
         setOverIdx(idx);
-    }, [maybeAutoScrollWhileDrag]);
+    }, [dragIdx, maybeAutoScrollWhileDrag]);
 
     const handleDrop = useCallback((idx: number, e: React.DragEvent) => {
         e.preventDefault();

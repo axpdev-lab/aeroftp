@@ -433,6 +433,43 @@ mod tests {
         assert!(matches!(err, GitHubError::PathNotFound(_)));
     }
 
+    /// G103, the root case: an empty hint is not a path. `resolve_path("/")`
+    /// returns an empty string for the repository root, so a 404 while listing
+    /// the root of a repository that does not exist must still read as a
+    /// missing repository. Raised by CodeRabbit on the first version of this
+    /// change, where the empty hint went through and produced
+    /// `PathNotFound("")`, a message naming nothing.
+    #[test]
+    fn an_empty_path_hint_is_not_a_path() {
+        let body = serde_json::json!({"message": "Not Found"});
+        let err = classify_api_error(404, &body, None);
+        assert!(
+            matches!(err, GitHubError::RepoNotFound),
+            "the root listing of a missing repo must stay a missing repo: {err}"
+        );
+    }
+
+    /// G103, the twin of the test above, and the reason the hint has to reach
+    /// this function: the same 404 body classifies as a missing REPOSITORY
+    /// when no path is named. That is correct here (without a path there is
+    /// nothing else this can be) and wrong at the call site that had a path
+    /// and passed `None`, which is what `get_json_at` now fixes. Reading the
+    /// two tests together says what the caller owes this function.
+    #[test]
+    fn a_404_without_a_path_hint_can_only_be_read_as_a_missing_repo() {
+        let body = serde_json::json!({"message": "Not Found"});
+        let err = classify_api_error(404, &body, None);
+        assert!(
+            matches!(err, GitHubError::RepoNotFound),
+            "a 404 with no path named has nothing else to blame: {err}"
+        );
+        let with_path = classify_api_error(404, &body, Some("docs/missing.md"));
+        assert!(
+            matches!(with_path, GitHubError::PathNotFound(_)),
+            "the same body names the path when the caller provides it: {with_path}"
+        );
+    }
+
     #[test]
     fn test_classify_403_rate_limit() {
         let body = serde_json::json!({"message": "API rate limit exceeded"});

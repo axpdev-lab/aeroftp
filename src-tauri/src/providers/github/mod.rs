@@ -1062,7 +1062,7 @@ impl StorageProvider for GitHubProvider {
 
         let items: Vec<GitHubContent> = self
             .client
-            .get_json(&url)
+            .get_json_at(&url, &resolved)
             .await
             .map_err(ProviderError::from)?;
 
@@ -1141,7 +1141,7 @@ impl StorageProvider for GitHubProvider {
             // A successful list response means the dir exists.
             let _: Vec<GitHubContent> = self
                 .client
-                .get_json(&url)
+                .get_json_at(&url, &resolved)
                 .await
                 .map_err(ProviderError::from)?;
         }
@@ -1191,7 +1191,7 @@ impl StorageProvider for GitHubProvider {
         let url = self.contents_query_url(&resolved);
         let content: GitHubContent = self
             .client
-            .get_json(&url)
+            .get_json_at(&url, &resolved)
             .await
             .map_err(ProviderError::from)?;
 
@@ -1254,7 +1254,7 @@ impl StorageProvider for GitHubProvider {
         let url = self.contents_query_url(&resolved);
         let content: GitHubContent = self
             .client
-            .get_json(&url)
+            .get_json_at(&url, &resolved)
             .await
             .map_err(ProviderError::from)?;
 
@@ -1330,7 +1330,11 @@ impl StorageProvider for GitHubProvider {
         } else {
             // Try to fetch the file to get its SHA.
             let url = self.contents_query_url(&resolved);
-            match self.client.get_json::<GitHubContent>(&url).await {
+            match self
+                .client
+                .get_json_at::<GitHubContent>(&url, &resolved)
+                .await
+            {
                 Ok(existing) => {
                     self.cache_sha(&resolved, &existing.sha);
                     Some(existing.sha)
@@ -1518,7 +1522,7 @@ impl StorageProvider for GitHubProvider {
             let url = self.contents_query_url(&resolved);
             let content: GitHubContent = self
                 .client
-                .get_json(&url)
+                .get_json_at(&url, &resolved)
                 .await
                 .map_err(ProviderError::from)?;
             self.cache_sha(&resolved, &content.sha);
