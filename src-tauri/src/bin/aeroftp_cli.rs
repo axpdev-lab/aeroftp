@@ -47884,6 +47884,108 @@ async fn cmd_sync(
         download_jobs.push((relative, local_path, remote_path, size));
     }
 
+    // G91: mirror of the upload batch above, for the download leg. The delta
+    // engine has always routed both directions
+    // (`try_delta_transfer_with_batch` dispatches `SyncDirection::Download` to
+    // `DeltaBatch::download`, which `AerorsyncBatch` implements with the same
+    // retry budget as its upload twin), but only the upload phase ever called
+    // it: `sync --delta --direction download` therefore moved whole files
+    // while `get --delta` on the very same file moved only the changed bytes.
+    //
+    // Eligibility is narrower than on the upload side: reconstructing a file
+    // from a delta needs a local base, so only jobs whose relative path is
+    // already in `local_map` can win anything. A file absent locally would
+    // travel in full anyway, plus the cost of exchanging a signature, so it
+    // goes straight to the classic path below.
+    #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
+    let mut leftover_download_jobs: Vec<(String, String, String, u64)> = download_jobs;
+    #[cfg(feature = "aerorsync")]
+    if use_aerorsync_batch && !error_correction_enabled && !leftover_download_jobs.is_empty() {
+        use ftp_client_gui_lib::delta_sync_rsync::{
+            open_delta_batch, try_delta_transfer_with_batch, SyncDirection as DeltaDir,
+        };
+        let eligible = leftover_download_jobs
+            .iter()
+            .filter(|(rel, _, _, _)| local_map.contains_key(rel.as_str()))
+            .count();
+        if eligible > 0 {
+            match open_delta_batch(provider.as_mut()).await {
+                Some(mut batch) => {
+                    if !quiet {
+                        eprintln!(
+                            "AerorsyncBatch engaged: 1 SSH session for {} download(s) with a local base",
+                            eligible
+                        );
+                    }
+                    let mut pending: Vec<(String, String, String, u64)> = Vec::new();
+                    for (rel, local_path_s, remote_path, size) in leftover_download_jobs.drain(..) {
+                        if cancelled.load(Ordering::Relaxed) {
+                            errors.push(format!("download {}: cancelled", rel));
+                            continue;
+                        }
+                        if !local_map.contains_key(rel.as_str()) {
+                            pending.push((rel, local_path_s, remote_path, size));
+                            continue;
+                        }
+                        let local_path = Path::new(&local_path_s);
+                        let res = try_delta_transfer_with_batch(
+                            batch.as_mut(),
+                            DeltaDir::Download,
+                            local_path,
+                            &remote_path,
+                        )
+                        .await;
+                        if res.used_delta {
+                            downloaded += 1;
+                            session_transfer_add(size);
+                        } else if let Some(hard) = res.hard_error.as_ref() {
+                            errors.push(format!("download {}: hard rejection: {}", rel, hard));
+                        } else {
+                            // Soft fallback (TooSmall, NoopBatch, a transport
+                            // that opted out): re-queue for the classic stream
+                            // below so the user still gets the file.
+                            pending.push((rel, local_path_s, remote_path, size));
+                        }
+                    }
+                    match batch.finalize().await {
+                        Ok(stats) => {
+                            if !quiet {
+                                eprintln!(
+                                    "AerorsyncBatch finalize (download): session_count={}, bytes_on_wire={}, files_transferred={}",
+                                    stats.session_count,
+                                    stats.bytes_on_wire,
+                                    stats.files_transferred
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            if !quiet {
+                                eprintln!("AerorsyncBatch finalize error (download): {}", e);
+                            }
+                        }
+                    }
+                    leftover_download_jobs = pending;
+                }
+                None => {
+                    if !quiet {
+                        eprintln!(
+                            "--delta requested but the provider/transport is not delta-eligible \
+                             (non-SFTP, password auth, or missing host-key pin); falling back to \
+                             classic download for this batch"
+                        );
+                    }
+                }
+            }
+        } else if !quiet {
+            eprintln!(
+                "--delta requested but none of the {} download(s) has a local base to \
+                 reconstruct from; falling back to classic download",
+                leftover_download_jobs.len()
+            );
+        }
+    }
+    let download_jobs = leftover_download_jobs;
+
     // PD-CLI-CONV-D: converge the sync download transfer phase on the SAME
     // shared provider executor + orchestrator `aeroftp get -r` uses
     // (PD-CLI-CONV-B), sink-agnostic. Conflict-renames were already executed
