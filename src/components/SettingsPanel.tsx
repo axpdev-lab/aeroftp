@@ -391,6 +391,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     // #270 Backup table: reveal the inline Vault Backup (keystore) panel below
     // the table when the user picks the Full Backup row. Null keeps it collapsed.
     const [keystoreAction, setKeystoreAction] = useState<'export' | 'import' | null>(null);
+
     // F-012 W1/W2: post-import summary modal (restart prompt + cross-machine warning).
     const [keystoreImportResult, setKeystoreImportResult] = useState<KeystoreImportResult | null>(null);
     const [nativeRsyncCompiled, setNativeRsyncCompiled] = useState<boolean | null>(null);
@@ -404,7 +405,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [classicRsyncPath, setClassicRsyncPath] = useState<string | null>(null);
     const modalDrag = useDraggableModal();
     const panelRef = useRef<HTMLDivElement | null>(null);
+    // G110: the Full Backup row reveals its panel further down the settings
+    // page instead of opening a modal, and nothing took the user there. The
+    // click read as a no-op to the person who knows this app best, which is
+    // the shape of defect that functional tests cannot see: the command
+    // worked, the feedback did not.
+    const keystorePanelRef = useRef<HTMLDivElement | null>(null);
     const sidebarButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+    // G110: bring the revealed keystore panel into view and move the focus to
+    // it. The scroll is what a sighted user was missing; the focus is what a
+    // keyboard user was missing, and today they received no signal at all,
+    // neither visual nor focus. The other two rows of the same table open a
+    // centred dialog, so only this row needed it.
+    useEffect(() => {
+        if (keystoreAction === null) return;
+        const panel = keystorePanelRef.current;
+        if (!panel) return;
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        panel.focus({ preventScroll: true });
+    }, [keystoreAction]);
     const appearanceSubTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
     useEffect(() => {
@@ -3209,7 +3229,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                     {/* Vault Backup (reveal-inline from the Full Backup row) */}
                                     {keystoreAction !== null && (
-                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden" ref={keystorePanelRef} tabIndex={-1}>
                                         <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                                             <div className="flex items-center justify-between">
                                                 <h4 className="font-medium flex items-center gap-2 text-sm">
