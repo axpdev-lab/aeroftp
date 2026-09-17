@@ -159,6 +159,13 @@ pub(crate) fn load_safe_profiles() -> Result<Vec<serde_json::Value>, String> {
                 "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
                 "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
                 "providerId": p.get("providerId").and_then(|v| v.as_str()).unwrap_or(""),
+                // G27: the two DERIVED values, not the raw `aeroCryptOverlay`
+                // object. The binding carries `remoteScope`/`localScope`, which
+                // describe where a user's encrypted data lives; this record is
+                // the safe projection handed to an MCP client, so it gets the
+                // answers and not the material they were derived from.
+                "cryptOverlay": crate::crypt_overlay_provider::profile_crypt_overlay_kind(p),
+                "protocolClass": crate::crypt_overlay_provider::profile_protocol_class(p),
             })
         })
         .collect())

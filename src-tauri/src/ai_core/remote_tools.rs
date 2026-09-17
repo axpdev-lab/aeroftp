@@ -578,6 +578,14 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
                 "initialPath": p.initial_path,
                 "providerId": p.provider_id,
                 "auth_state": auth_state,
+                // G27, and CLI-JSON-01: both keys are ALWAYS emitted, with
+                // `cryptOverlay` null when the profile carries no binding. A
+                // key that appears only when it has something to say cannot be
+                // read as an absence — a client sees the same shape whether the
+                // profile is unencrypted or the surface simply forgot to
+                // answer, which is the state this tool was in before.
+                "cryptOverlay": p.crypt_overlay,
+                "protocolClass": p.protocol_class,
             });
             if include_capabilities {
                 entry["transfer_capabilities"] = crate::agent_session::transfer_capabilities_block(
@@ -3888,11 +3896,16 @@ mod tests {
         fn emit_app_control(&self, _event_name: &str, _payload: &serde_json::Value) {}
     }
 
-    struct NoopCreds;
+    /// Empty by default, as every existing test expects; `list_servers`
+    /// needs profiles to have anything to report, so it supplies its own.
+    #[derive(Default)]
+    struct NoopCreds {
+        profiles: Vec<ServerProfile>,
+    }
 
     impl CredentialProvider for NoopCreds {
         fn list_servers(&self) -> Result<Vec<ServerProfile>, String> {
-            Ok(Vec::new())
+            Ok(self.profiles.clone())
         }
 
         fn get_credentials(&self, _server_id: &str) -> Result<ServerCredentials, String> {
@@ -3934,8 +3947,67 @@ mod tests {
         TestCtx {
             backend,
             sink: NoopSink,
-            creds: NoopCreds,
+            creds: NoopCreds::default(),
         }
+    }
+
+    fn test_ctx_with_profiles(backend: Arc<FakeBackend>, profiles: Vec<ServerProfile>) -> TestCtx {
+        let backend: Arc<dyn RemoteBackend> = backend;
+        TestCtx {
+            backend,
+            sink: NoopSink,
+            creds: NoopCreds { profiles },
+        }
+    }
+
+    /// G27: the MCP server record must SAY whether a profile is crypt-bound,
+    /// and say it for every profile.
+    ///
+    /// Asserting on the value alone would guard nothing: a key that is absent
+    /// deserialises as null for a permissive reader, so `cryptOverlay == null`
+    /// passes happily against a record that never emits the field — which is
+    /// exactly the state this tool was in. What this pins is the key being
+    /// PRESENT, on the bound profile and on the plain one alike.
+    #[tokio::test]
+    async fn list_servers_reports_the_crypt_binding_for_every_profile() {
+        let bound = ServerProfile::from_profile_json(&json!({
+            "id": "s-bound",
+            "name": "vault box",
+            "protocol": "s3",
+            "aeroCryptOverlay": { "enabled": true, "kind": "rclone-crypt" }
+        }))
+        .expect("bound profile");
+        let plain = ServerProfile::from_profile_json(&json!({
+            "id": "s-plain",
+            "name": "plain box",
+            "protocol": "sftp"
+        }))
+        .expect("plain profile");
+
+        let ctx = test_ctx_with_profiles(Arc::new(FakeBackend::sample()), vec![bound, plain]);
+        let out = list_servers(&ctx, &json!({})).await.expect("list_servers");
+        let servers = out["servers"].as_array().expect("servers array");
+        assert_eq!(servers.len(), 2);
+
+        let bound = &servers[0];
+        assert!(
+            bound.get("cryptOverlay").is_some(),
+            "the key must be present, not merely null-equal"
+        );
+        assert_eq!(bound["cryptOverlay"], json!("rclone-crypt"));
+        assert_eq!(
+            bound["protocolClass"],
+            json!("Crypt"),
+            "a bound profile classifies by its overlay, not by its transport"
+        );
+
+        let plain = &servers[1];
+        assert!(
+            plain.get("cryptOverlay").is_some(),
+            "an unbound profile still answers, with null"
+        );
+        assert_eq!(plain["cryptOverlay"], json!(null));
+        assert_eq!(plain["protocolClass"], json!("SFTP"));
     }
 
     /// A transient lookup failure must not let a later successful write

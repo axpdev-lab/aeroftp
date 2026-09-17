@@ -2000,6 +2000,85 @@ pub fn overlay_kind(overlay: &serde_json::Value) -> &str {
         .unwrap_or(DEFAULT_OVERLAY_KIND)
 }
 
+/// True when the saved profile carries an enabled crypt overlay binding —
+/// native AeroCrypt OR interop rclone-crypt, at equal grade. Mirrors
+/// `getServerCryptOverlay` in `src/types.ts`.
+///
+/// G27: this and the two below used to live in the CLI binary, where the
+/// library could not reach them, so the MCP surface had no way to answer the
+/// same question the CLI JSON answers and simply omitted it. Moving them here
+/// is what lets one rule serve both.
+pub fn profile_has_crypt_overlay(profile: &serde_json::Value) -> bool {
+    profile
+        .get("aeroCryptOverlay")
+        .and_then(|ov| ov.get("enabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// The crypt-overlay kind when the binding is enabled, `None` otherwise.
+///
+/// The kind rather than a boolean, for the reason `getServerCryptOverlay` in
+/// `src/types.ts` returns one: `aerocrypt` (native) and `rclone-crypt` (interop)
+/// are different lanes, so a bare `true` would tell a reader that something is
+/// encrypted while hiding which one it is looking at.
+///
+/// Both halves are borrowed rather than restated. The gate is
+/// [`profile_has_crypt_overlay`], the same predicate that makes
+/// [`profile_protocol_class`] answer `Crypt`; the kind comes from
+/// [`overlay_kind`], the rule the overlay resolver applies when it opens the
+/// binding. So this can never report "no overlay" for a profile the table
+/// calls `Crypt`.
+///
+/// It agrees with the TypeScript helper on every binding the GUI writes, since
+/// the GUI always writes `kind`. It departs from it on purpose for a binding
+/// that lacks one (hand-edited, imported, older schema): the helper returns
+/// `undefined` there, while this reports `aerocrypt`, the lane the CLI will
+/// actually encrypt with. Any other answer would describe a rule no code path
+/// follows.
+pub fn profile_crypt_overlay_kind(profile: &serde_json::Value) -> Option<&str> {
+    if !profile_has_crypt_overlay(profile) {
+        return None;
+    }
+    profile.get("aeroCryptOverlay").map(overlay_kind)
+}
+
+/// Mirrors `getProtocolClass` from `src/types.ts`: the transport family of a
+/// protocol string, ignoring any overlay.
+pub fn protocol_class(proto: &str) -> &'static str {
+    match proto {
+        "googledrive" | "googlephotos" | "dropbox" | "onedrive" | "box" | "pcloud"
+        | "zohoworkdrive" | "yandexdisk" | "fourshared" => "OAuth",
+        "aerocloud" => "AeroCloud",
+        "filen" | "internxt" | "mega" => "E2E",
+        "webdav" => "WebDAV",
+        "ftps" => "FTPS",
+        "ftp" => "FTP",
+        "sftp" => "SFTP",
+        "s3" => "S3",
+        "azure" => "Azure",
+        // Native API providers (Koofr, Jottacloud, OpenDrive, kDrive, Drime, FileLu,
+        // GitHub, GitLab, Swift, Immich, Backblaze, ...)
+        _ => "API",
+    }
+}
+
+/// Profile-aware protocol class. A profile with an enabled crypt overlay (either
+/// kind) classifies as "Crypt", a shared family regardless of transport — the
+/// native/interop distinction is cosmetic, not a class. Mirrors
+/// `getProfileProtocolClass` in `src/types.ts`. Falls back to the transport
+/// class otherwise.
+pub fn profile_protocol_class(profile: &serde_json::Value) -> &'static str {
+    if profile_has_crypt_overlay(profile) {
+        return "Crypt";
+    }
+    let proto = profile
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("ftp");
+    protocol_class(proto)
+}
+
 /// Extract the [`OverlayUnlockParams`] binding from a saved profile's
 /// `aeroCryptOverlay` JSON, or `None` when the profile carries no enabled
 /// overlay. Pure (no vault access): the secret lookup is the caller's job. The
@@ -4476,6 +4555,96 @@ mod tests {
             DEFAULT_OVERLAY_KIND
         );
         assert_eq!(DEFAULT_OVERLAY_KIND, "aerocrypt");
+    }
+
+    /// G27: the four shapes a saved binding takes, answered by the one rule the
+    /// CLI, the MCP surface and the overlay resolver now share.
+    ///
+    /// The third case is the one that used to disagree between surfaces: an
+    /// enabled binding that names no kind. It is not `None` — the CLI encrypts
+    /// it on the native lane — and reporting `None` there would print
+    /// `"cryptOverlay": null` next to `"protocolClass": "Crypt"`.
+    #[test]
+    fn crypt_overlay_kind_answers_every_binding_shape() {
+        let absent = serde_json::json!({ "protocol": "sftp" });
+        assert!(!profile_has_crypt_overlay(&absent));
+        assert_eq!(profile_crypt_overlay_kind(&absent), None);
+
+        let disabled = serde_json::json!({
+            "protocol": "sftp",
+            "aeroCryptOverlay": { "enabled": false, "kind": "rclone-crypt" }
+        });
+        assert!(!profile_has_crypt_overlay(&disabled));
+        assert_eq!(
+            profile_crypt_overlay_kind(&disabled),
+            None,
+            "a disabled binding is not an overlay, whatever kind it names"
+        );
+
+        let bound_without_kind = serde_json::json!({
+            "protocol": "sftp",
+            "aeroCryptOverlay": { "enabled": true }
+        });
+        assert!(profile_has_crypt_overlay(&bound_without_kind));
+        assert_eq!(
+            profile_crypt_overlay_kind(&bound_without_kind),
+            Some(DEFAULT_OVERLAY_KIND),
+            "an enabled binding with no kind is the native lane, not an absence"
+        );
+
+        let bound_interop = serde_json::json!({
+            "protocol": "s3",
+            "aeroCryptOverlay": { "enabled": true, "kind": "rclone-crypt" }
+        });
+        assert_eq!(
+            profile_crypt_overlay_kind(&bound_interop),
+            Some("rclone-crypt")
+        );
+    }
+
+    /// The overlay outranks the transport in the class, and only when enabled.
+    #[test]
+    fn profile_protocol_class_puts_a_bound_profile_in_the_crypt_family() {
+        assert_eq!(protocol_class("sftp"), "SFTP");
+        assert_eq!(protocol_class("dropbox"), "OAuth");
+        assert_eq!(protocol_class("mega"), "E2E");
+        assert_eq!(
+            protocol_class("koofr"),
+            "API",
+            "an unlisted provider falls back to the API family"
+        );
+
+        let plain = serde_json::json!({ "protocol": "sftp" });
+        assert_eq!(profile_protocol_class(&plain), "SFTP");
+
+        let disabled = serde_json::json!({
+            "protocol": "sftp",
+            "aeroCryptOverlay": { "enabled": false, "kind": "aerocrypt" }
+        });
+        assert_eq!(
+            profile_protocol_class(&disabled),
+            "SFTP",
+            "a disabled binding must not move the profile out of its transport"
+        );
+
+        for kind in ["aerocrypt", "rclone-crypt"] {
+            let bound = serde_json::json!({
+                "protocol": "s3",
+                "aeroCryptOverlay": { "enabled": true, "kind": kind }
+            });
+            assert_eq!(
+                profile_protocol_class(&bound),
+                "Crypt",
+                "both lanes share the class; the kind is reported separately"
+            );
+        }
+
+        let no_protocol = serde_json::json!({ "name": "x" });
+        assert_eq!(
+            profile_protocol_class(&no_protocol),
+            "FTP",
+            "the documented fallback when a profile names no protocol"
+        );
     }
 
     #[test]
