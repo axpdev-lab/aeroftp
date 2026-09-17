@@ -47947,23 +47947,39 @@ async fn cmd_sync(
                     }
                     let mut pending: Vec<(String, String, String, u64)> = Vec::new();
                     let max_transfer_limit = resolve_max_transfer(cli);
-                    for (rel, local_path_s, remote_path, size) in leftover_download_jobs.drain(..) {
+                    // Drained into an iterator rather than walked in place, so
+                    // the budget branch below can hand the whole remainder back
+                    // in one move instead of testing the cap once per file.
+                    let mut queued = leftover_download_jobs
+                        .drain(..)
+                        .collect::<Vec<_>>()
+                        .into_iter();
+                    while let Some((rel, local_path_s, remote_path, size)) = queued.next() {
                         if cancelled.load(Ordering::Relaxed) {
                             errors.push(format!("download {}: cancelled", rel));
                             continue;
                         }
                         // `--max-transfer` is a session budget, and the delta
-                        // leg has to honour it for the same reason the classic
-                        // path does (:9593 plus the pre-flight truncation):
-                        // otherwise a run with a small budget lets every
-                        // eligible file through here, spends the budget, and
-                        // then truncates the classic queue that was supposed
-                        // to be served first. Refusing here rather than
-                        // queueing keeps the meaning of the flag: stop, do not
-                        // move the same bytes by another road.
+                        // leg has to stop at it: otherwise a run with a small
+                        // budget lets every eligible file through here, spends
+                        // the budget, and then truncates the classic queue the
+                        // flag was meant to protect.
+                        //
+                        // Stopping means handing the rest back, not failing
+                        // them. A reached cap is a deliberate ceiling with its
+                        // own exit code (8), and `cmd_sync` reads a non-empty
+                        // `errors` first: pushing an error here would turn the
+                        // ceiling into exit 4, which the agent guide defines as
+                        // a retryable failure, so a tool would re-run a sync
+                        // that did exactly what it was told. The classic
+                        // pre-flight already refuses these files with an honest
+                        // note and moves no bytes (`cap_files_to_max_transfer`
+                        // starts over the limit and breaks on the first file),
+                        // so the cap is applied in one place with one rule.
                         if session_transfer_exceeded(max_transfer_limit) {
-                            errors.push(format!("download {}: max-transfer limit reached", rel));
-                            continue;
+                            pending.push((rel, local_path_s, remote_path, size));
+                            pending.extend(queued);
+                            break;
                         }
                         if !local_map.contains_key(rel.as_str()) {
                             pending.push((rel, local_path_s, remote_path, size));
