@@ -228,8 +228,18 @@ fn main() {
     // `mt.exe` before every suite run.
     println!("cargo:rerun-if-env-changed=AEROFTP_EMBED_TEST_MANIFEST");
     let link_target = std::env::var("TARGET").unwrap_or_default();
-    if link_target.contains("windows-msvc") && std::env::var("AEROFTP_EMBED_TEST_MANIFEST").is_ok()
-    {
+    // Presence is not the question, the value is: a variable someone sets to
+    // `0` to turn a thing OFF must not turn it on. Raised by W2 on the first
+    // version of this gate, which used `is_ok()`.
+    let embed_manifest = std::env::var("AEROFTP_EMBED_TEST_MANIFEST")
+        .map(|v| {
+            !matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "" | "0" | "false" | "no" | "off"
+            )
+        })
+        .unwrap_or(false);
+    if link_target.contains("windows-msvc") && embed_manifest {
         let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("windows/test-runner.manifest");
         println!("cargo:rerun-if-changed={}", manifest.display());
         println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
