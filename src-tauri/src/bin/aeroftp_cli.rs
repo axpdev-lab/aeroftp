@@ -39855,7 +39855,13 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                 }
                 OutputFormat::Json => {
                     print_json(&serde_json::json!({
-                        "status": "ok",
+                        // G67: the status has to agree with the exit code, or a
+                        // reader that trusts the JSON learns the opposite of
+                        // what a reader that trusts the exit code learns.
+                        // `partial` is the word `reconcile` already uses for
+                        // the same outcome; `cancelled` stays in its own field
+                        // so the reason is not lost in the status.
+                        "status": if s.cancelled { "partial" } else { "ok" },
                         "path": root,
                         "count": s.file_count,
                         "dirs": s.dir_count,
@@ -75244,18 +75250,23 @@ mod tests {
         }
     }
 
-    /// Refusing `--delete` on a partial reconcile plan is the TX-01 refusal of
-    /// a live scan, so it exits with the same code (4), not with the code of a
-    /// malformed plan (5).
     /// G67: a cancelled scan is a partial result, and a partial result has an
     /// exit code in this CLI. Before the fix `size` exited 0 on cancellation,
     /// so a script read an interrupted figure as a complete one.
+    ///
+    /// Declared limit: this fixes the mapping, not the wiring. That the call
+    /// site passes `s.cancelled` and not some other flag is read from the
+    /// source, because reaching `cmd_size` needs a live connection; the live
+    /// half is a Ctrl-C run, and it is in the W2 brief rather than here.
     #[test]
     fn size_of_a_cancelled_scan_exits_4_like_reconcile() {
         assert_eq!(size_exit_code(true), 4, "a cancelled scan must be partial");
         assert_eq!(size_exit_code(false), 0, "a complete scan must stay 0");
     }
 
+    /// Refusing `--delete` on a partial reconcile plan is the TX-01 refusal of
+    /// a live scan, so it exits with the same code (4), not with the code of a
+    /// malformed plan (5).
     #[test]
     fn sync_from_reconcile_refusal_of_a_partial_remote_scan_exits_4() {
         let fixture = FilesFromFixture::new();
