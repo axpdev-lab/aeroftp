@@ -47940,9 +47940,23 @@ async fn cmd_sync(
                         );
                     }
                     let mut pending: Vec<(String, String, String, u64)> = Vec::new();
+                    let max_transfer_limit = resolve_max_transfer(cli);
                     for (rel, local_path_s, remote_path, size) in leftover_download_jobs.drain(..) {
                         if cancelled.load(Ordering::Relaxed) {
                             errors.push(format!("download {}: cancelled", rel));
+                            continue;
+                        }
+                        // `--max-transfer` is a session budget, and the delta
+                        // leg has to honour it for the same reason the classic
+                        // path does (:9593 plus the pre-flight truncation):
+                        // otherwise a run with a small budget lets every
+                        // eligible file through here, spends the budget, and
+                        // then truncates the classic queue that was supposed
+                        // to be served first. Refusing here rather than
+                        // queueing keeps the meaning of the flag: stop, do not
+                        // move the same bytes by another road.
+                        if session_transfer_exceeded(max_transfer_limit) {
+                            errors.push(format!("download {}: max-transfer limit reached", rel));
                             continue;
                         }
                         if !local_map.contains_key(rel.as_str()) {
@@ -47959,7 +47973,16 @@ async fn cmd_sync(
                         .await;
                         if res.used_delta {
                             downloaded += 1;
-                            session_transfer_add(size);
+                            // The house convention is the logical size of the
+                            // RECONSTRUCTED file, read from local metadata, as
+                            // `cmd_get --delta` (:31148) and the classic task
+                            // (:9621) both do. The remote listing figure is
+                            // the one thing that can be stale, and a budget
+                            // that counts a stale number is not a budget.
+                            let moved = std::fs::metadata(&local_path_s)
+                                .map(|m| m.len())
+                                .unwrap_or(size);
+                            session_transfer_add(moved);
                         } else if let Some(hard) = res.hard_error.as_ref() {
                             errors.push(format!("download {}: hard rejection: {}", rel, hard));
                         } else {
