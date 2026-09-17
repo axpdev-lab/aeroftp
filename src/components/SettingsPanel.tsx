@@ -3229,10 +3229,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                     {/* Vault Backup (reveal-inline from the Full Backup row) */}
                                     {keystoreAction !== null && (
-                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden" ref={keystorePanelRef} tabIndex={-1}>
+                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden" ref={keystorePanelRef} tabIndex={-1} role="region" aria-labelledby="aeroftp-keystore-backup-heading">
                                         <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                                             <div className="flex items-center justify-between">
-                                                <h4 className="font-medium flex items-center gap-2 text-sm">
+                                                <h4 id="aeroftp-keystore-backup-heading" className="font-medium flex items-center gap-2 text-sm">
                                                     <Key size={14} className="text-blue-500" />
                                                     {t('settings.keystoreBackup')}
                                                 </h4>

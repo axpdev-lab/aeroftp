@@ -208,7 +208,14 @@ impl GitHubHttpClient {
         url: &str,
         path_hint: &str,
     ) -> Result<T, GitHubError> {
-        self.get_json_inner(url, Some(path_hint)).await
+        // An empty hint is not a path: `resolve_path("/")` returns an empty
+        // string for the repository root, so listing the root of a repository
+        // that does not exist would otherwise be classified as a missing PATH
+        // named by nothing, instead of the missing repository it is. Passing
+        // the hint through unchanged here would have turned the root case into
+        // a worse message than the one this change set out to fix.
+        let path_hint = (!path_hint.is_empty()).then_some(path_hint);
+        self.get_json_inner(url, path_hint).await
     }
 
     async fn get_json_inner<T: DeserializeOwned>(
