@@ -1769,7 +1769,9 @@ enum Commands {
         #[arg(long, requires = "scan")]
         full: bool,
     },
-    /// Show total size and object count under a path (recursive scan)
+    /// Show total size and object count under a path (recursive scan).
+    /// A scan cancelled with Ctrl-C still prints the figure it reached and
+    /// exits 4 (partial), so a script can tell it from a complete measurement.
     Size {
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
@@ -39870,7 +39872,7 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                 }
             }
             let _ = provider.disconnect().await;
-            0
+            size_exit_code(s.cancelled)
         }
         Err(e) => {
             print_error(
@@ -39881,6 +39883,26 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
+    }
+}
+
+/// G67: the exit code of a `size` whose scan was cancelled.
+///
+/// A cancelled scan prints a figure that is a lower bound, and it used to exit
+/// 0, so a script could not tell an interrupted measurement from a complete
+/// one: the number was believable and wrong. It now exits **4**, the code this
+/// CLI already publishes as "transfer failed / partial" and that `reconcile`
+/// uses for exactly this meaning, so no new code enters the public contract.
+///
+/// The other lower-bound cases (`hit_cap`, `truncated`, `unreadable_dirs`)
+/// deliberately keep exiting 0 here. They are declared in the text and in the
+/// JSON, the owner's decision was about cancellation, and an exit code is a
+/// public contract that should not widen as a side effect of this one.
+fn size_exit_code(cancelled: bool) -> i32 {
+    if cancelled {
+        4
+    } else {
+        0
     }
 }
 
@@ -75202,6 +75224,15 @@ mod tests {
     /// Refusing `--delete` on a partial reconcile plan is the TX-01 refusal of
     /// a live scan, so it exits with the same code (4), not with the code of a
     /// malformed plan (5).
+    /// G67: a cancelled scan is a partial result, and a partial result has an
+    /// exit code in this CLI. Before the fix `size` exited 0 on cancellation,
+    /// so a script read an interrupted figure as a complete one.
+    #[test]
+    fn size_of_a_cancelled_scan_exits_4_like_reconcile() {
+        assert_eq!(size_exit_code(true), 4, "a cancelled scan must be partial");
+        assert_eq!(size_exit_code(false), 0, "a complete scan must stay 0");
+    }
+
     #[test]
     fn sync_from_reconcile_refusal_of_a_partial_remote_scan_exits_4() {
         let fixture = FilesFromFixture::new();
