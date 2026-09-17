@@ -451,11 +451,7 @@ impl GitHubProvider {
         let url = self.raw_url(remote_path);
         gh_log(&format!("download_file: {} -> {}", url, local_path));
 
-        let resp = self
-            .client
-            .get_raw(&url)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        let resp = self.client.get_raw(&url).await?;
 
         let total_size = resp.content_length().unwrap_or(file_size);
         let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(

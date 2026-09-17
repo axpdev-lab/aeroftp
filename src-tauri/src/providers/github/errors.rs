@@ -218,7 +218,31 @@ impl GitHubError {
             Self::ServerError(msg) => msg.clone(),
             // "Parse error: " + "Parse error: ..."
             Self::ParseError(msg) => msg.clone(),
-            other => other.to_string(),
+
+            // Everything else keeps its own sentence. This arm is written out
+            // variant by variant on purpose, with no `_` catch-all: a variant
+            // added later that collides with a ProviderError label would be
+            // absorbed in silence by a wildcard, which is exactly how the
+            // doubling survived unnoticed in the first place. The compiler is
+            // the only reader that will still be here.
+            Self::Unauthorized
+            | Self::TokenExpired
+            | Self::InsufficientPermissions(_)
+            | Self::RepoNotFound
+            | Self::BranchNotFound(_)
+            | Self::ProtectedBranch(_)
+            | Self::RequiredPullRequest
+            | Self::StaleObject { .. }
+            | Self::DuplicateAsset(_)
+            | Self::ReleaseNotFound(_)
+            | Self::PrimaryRateLimit { .. }
+            | Self::SecondaryRateLimit { .. }
+            | Self::ApiError { .. }
+            | Self::FileTooLarge { .. }
+            | Self::PayloadTooLarge(_)
+            | Self::GraphQLError { .. }
+            | Self::InvalidInput(_)
+            | Self::Unprocessable(_) => self.to_string(),
         }
     }
 }
@@ -537,20 +561,36 @@ mod tests {
         );
     }
 
-    /// The guard named in the entry: stripping the prefix must not take the
-    /// not-found vocabulary out of the text, or the one door that turns an
-    /// error into an absence stops recognising it.
+    /// The guard named in the entry, and it is a guard on the VARIANT rather
+    /// than on the words.
+    ///
+    /// `message_names_a_missing_path` reads the final text, and that text
+    /// opens with the label `ProviderError::NotFound` derives, so as long as
+    /// the conversion keeps choosing that variant the not-found vocabulary is
+    /// there by construction. What this test can still catch is the change
+    /// that would really lose an absence: a future edit routing these arms to
+    /// `Other` or `ServerError`, whose labels say nothing about a missing
+    /// path. Both halves are asserted so the reason is visible: the variant
+    /// first, the text it produces second.
     #[test]
-    fn a_stripped_not_found_is_still_read_as_an_absence() {
+    fn a_stripped_not_found_still_maps_to_the_not_found_variant() {
         use crate::providers::types::message_names_a_missing_path_for;
 
         let err: ProviderError = GitHubError::PathNotFound("docs/gone.md".into()).into();
+        assert!(
+            matches!(err, ProviderError::NotFound(_)),
+            "a missing path must stay a NotFound, or the absence is lost: {err}"
+        );
         assert!(
             message_names_a_missing_path_for(&err.to_string(), "docs/gone.md"),
             "absence lost after stripping: {err}"
         );
 
         let err: ProviderError = GitHubError::NotFound("docs/gone.md".into()).into();
+        assert!(
+            matches!(err, ProviderError::NotFound(_)),
+            "a missing path must stay a NotFound, or the absence is lost: {err}"
+        );
         assert!(
             message_names_a_missing_path_for(&err.to_string(), "docs/gone.md"),
             "absence lost after stripping: {err}"

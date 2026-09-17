@@ -163,10 +163,7 @@ pub async fn list_releases(
 ) -> Result<Vec<RemoteEntry>, ProviderError> {
     log::info!("GitHub: listing releases for {}/{}", owner, repo);
     let path = format!("/repos/{owner}/{repo}/releases?per_page=100");
-    let releases: Vec<GitHubRelease> = client
-        .get_paginated_json_array(&path)
-        .await
-        .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+    let releases: Vec<GitHubRelease> = client.get_paginated_json_array(&path).await?;
 
     log::info!("GitHub: found {} releases", releases.len());
     Ok(releases.iter().map(release_to_entry).collect())
@@ -255,10 +252,7 @@ pub async fn download_release_asset(
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
     } else {
-        client
-            .get_raw(&download_url)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
+        client.get_raw(&download_url).await?
     };
 
     if !resp.status().is_success() {
@@ -332,16 +326,13 @@ pub async fn upload_release_asset(
             // Delete the existing asset, then retry
             if let Some(existing) = release.assets.iter().find(|a| a.name == asset_name) {
                 let delete_path = format!("/repos/{owner}/{repo}/releases/assets/{}", existing.id);
-                client
-                    .delete(&delete_path)
-                    .await
-                    .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+                client.delete(&delete_path).await?;
             }
             do_upload(client, &upload_base, asset_name, content_type, &body)
                 .await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))
+                .map_err(ProviderError::from)
         }
-        Err(e) => Err(ProviderError::TransferFailed(e.to_string())),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -386,10 +377,7 @@ pub async fn create_release(
         "prerelease": prerelease,
     });
 
-    let release: GitHubRelease = client
-        .post_json(&path, &payload)
-        .await
-        .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+    let release: GitHubRelease = client.post_json(&path, &payload).await?;
 
     log::info!("GitHub: release '{}' created (id: {})", tag, release.id);
     Ok(release)
@@ -412,10 +400,7 @@ pub async fn delete_release_asset(
     let asset = find_asset(&release, asset_name)?;
 
     let path = format!("/repos/{owner}/{repo}/releases/assets/{}", asset.id);
-    client
-        .delete(&path)
-        .await
-        .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+    client.delete(&path).await?;
 
     log::info!(
         "GitHub: asset '{}' deleted from release '{}'",
@@ -435,10 +420,7 @@ pub async fn delete_release(
     log::info!("GitHub: deleting release '{}'", tag);
     let release = get_release_by_tag(client, owner, repo, tag).await?;
     let path = format!("/repos/{owner}/{repo}/releases/{}", release.id);
-    client
-        .delete(&path)
-        .await
-        .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+    client.delete(&path).await?;
 
     log::info!("GitHub: release '{}' deleted", tag);
     Ok(())
@@ -470,10 +452,7 @@ async fn get_release_by_tag(
         Err(GitHubError::PathNotFound(_)) => {
             // Tag endpoint doesn't find draft releases: fall back to listing all
             let all_path = format!("/repos/{owner}/{repo}/releases?per_page=100");
-            let releases: Vec<GitHubRelease> = client
-                .get_json(&all_path)
-                .await
-                .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+            let releases: Vec<GitHubRelease> = client.get_json(&all_path).await?;
             releases
                 .into_iter()
                 .find(|r| r.tag_name == tag)
@@ -483,7 +462,7 @@ async fn get_release_by_tag(
             if matches!(e, GitHubError::RepoNotFound) {
                 Err(ProviderError::NotFound(tag.to_string()))
             } else {
-                Err(ProviderError::ServerError(e.to_string()))
+                Err(e.into())
             }
         }
     }
