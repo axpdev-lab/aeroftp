@@ -44,6 +44,22 @@ pub struct GitHubHttpClient {
     rate_limit: RateLimitState,
 }
 
+/// An empty hint is not a path.
+///
+/// `resolve_path("/")` returns an empty string for the repository root, so
+/// listing the root of a repository that does not exist would be classified as
+/// a missing PATH named by nothing, instead of the missing repository it is.
+/// Passing the hint through unchanged turned the root case into a worse message
+/// than the one this change set out to fix.
+///
+/// It is a function of its own so it can be tested without a request: a test
+/// that hands `None` straight to the classifier proves what the classifier
+/// does, not that this conversion happens, and would stay green if the
+/// conversion were deleted.
+fn normalised_path_hint(path_hint: &str) -> Option<&str> {
+    (!path_hint.is_empty()).then_some(path_hint)
+}
+
 impl GitHubHttpClient {
     /// Create a new client with the given personal access token.
     /// QA-GH-004: Returns Result instead of panicking on TLS init failure.
@@ -208,14 +224,8 @@ impl GitHubHttpClient {
         url: &str,
         path_hint: &str,
     ) -> Result<T, GitHubError> {
-        // An empty hint is not a path: `resolve_path("/")` returns an empty
-        // string for the repository root, so listing the root of a repository
-        // that does not exist would otherwise be classified as a missing PATH
-        // named by nothing, instead of the missing repository it is. Passing
-        // the hint through unchanged here would have turned the root case into
-        // a worse message than the one this change set out to fix.
-        let path_hint = (!path_hint.is_empty()).then_some(path_hint);
-        self.get_json_inner(url, path_hint).await
+        self.get_json_inner(url, normalised_path_hint(path_hint))
+            .await
     }
 
     async fn get_json_inner<T: DeserializeOwned>(
@@ -611,5 +621,29 @@ mod tests {
         assert!(!is_allowed_github_url("https://api.github.com.evil.com/"));
         assert!(!is_allowed_github_url("ftp://api.github.com/"));
         assert!(!is_allowed_github_url(""));
+    }
+}
+
+#[cfg(test)]
+mod path_hint_tests {
+    use super::normalised_path_hint;
+
+    /// G103, the conversion itself and not what the classifier does with it.
+    /// Raised by CodeRabbit: the regression test next to `classify_api_error`
+    /// hands `None` straight in, so it would stay green if this normalisation
+    /// were removed while the repository-root request went back to producing
+    /// `PathNotFound("")`.
+    #[test]
+    fn an_empty_hint_becomes_none_and_a_real_path_survives() {
+        assert_eq!(
+            normalised_path_hint(""),
+            None,
+            "the repository root is not a path and must not be named as one"
+        );
+        assert_eq!(
+            normalised_path_hint("docs/missing.md"),
+            Some("docs/missing.md"),
+            "a real path must reach the classifier unchanged"
+        );
     }
 }
