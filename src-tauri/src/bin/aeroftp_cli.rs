@@ -5413,6 +5413,54 @@ struct CliStorageResult {
     versioning_bytes: Option<u64>,
 }
 
+/// G102/G106: what a sync run's outcome is, in one place instead of two.
+///
+/// Three facts can be true of the same run: something failed, the listing was
+/// incomplete, the transfer budget ran out. An exit code carries one of them,
+/// so the precedence has to be a decision written down rather than the order
+/// in which the branches happen to be typed. It is: a failure outranks an
+/// incomplete picture, because something did not happen; an incomplete picture
+/// outranks a ceiling, because the plan itself may be wrong; a ceiling is last
+/// because nothing went wrong at all.
+///
+/// The exit code narrows the answer and the JSON keeps every fact, so a
+/// consumer that needs more than one bit is not forced to parse stderr.
+fn sync_exit_code(has_errors: bool, scan_incomplete: bool, over_budget: bool) -> i32 {
+    // The first two share a code because the CLI publishes 4 as "transfer
+    // failed / partial", and both are that: something failed, or the picture
+    // the plan was built on was incomplete. Their order between themselves
+    // makes no difference to the answer, which is why they are one branch
+    // rather than two identical ones. What the order DOES decide is that both
+    // outrank the budget, and that is the part this function exists to state.
+    if has_errors || scan_incomplete {
+        4
+    } else if over_budget {
+        8
+    } else {
+        0
+    }
+}
+
+/// G102: the status word that goes with [`sync_exit_code`].
+///
+/// A run that left files behind is not "ok", whichever reason left them
+/// behind. Before this, a run capped by `--max-transfer` reported "ok" with
+/// `skipped: 0` while files it had been asked to move were still missing, and
+/// the only trace was a line on stderr.
+fn sync_status_word(has_errors: bool, scan_incomplete: bool, over_budget: u32) -> &'static str {
+    if has_errors || scan_incomplete || over_budget > 0 {
+        "partial"
+    } else {
+        "ok"
+    }
+}
+
+/// G102: keep `over_budget` out of the JSON of a run that never hit the cap,
+/// so the shape only grows for the runs the field is about.
+fn sync_over_budget_is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
 #[derive(Serialize)]
 struct CliSyncResult {
     status: &'static str,
@@ -5420,6 +5468,12 @@ struct CliSyncResult {
     downloaded: u32,
     deleted: u32,
     skipped: u32,
+    /// G102: files left behind because `--max-transfer` was spent. Emitted
+    /// only when it happened, so an ordinary run's JSON is unchanged, and a
+    /// consumer that sees the field knows the run stopped short on purpose
+    /// rather than having nothing left to do.
+    #[serde(default, skip_serializing_if = "sync_over_budget_is_zero")]
+    over_budget: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ec_generated: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5482,6 +5536,12 @@ struct SyncCycleStats {
     downloaded: u32,
     deleted: u32,
     skipped: u32,
+    /// G102: files left behind because `--max-transfer` was spent. Distinct
+    /// from `skipped`, which counts files that were already current: these
+    /// were due to move and did not. Without a counter of their own a capped
+    /// run could only be told apart by reading stderr, which is the surface
+    /// a machine consumer does not parse.
+    over_budget: u32,
     ec_generated: u32,
     ec_skipped_too_large: u32,
     ec_skipped_low_benefit: u32,
@@ -9700,6 +9760,14 @@ fn absorb_engine_stats(
 struct SharedDownloadOutcome {
     downloaded: u32,
     errors: Vec<String>,
+    /// G102: files this batch did NOT transfer because `--max-transfer` was
+    /// already spent. They are neither failures nor "already current", so
+    /// neither `errors` nor the caller's `skipped` counter could carry them,
+    /// and until this field existed a capped run reported `"status": "ok"`
+    /// with `"skipped": 0` while two files out of three stayed behind. The
+    /// number exists in the note printed on stderr; this is how it reaches
+    /// the machine-readable result.
+    over_budget: u32,
     /// DAG-P2-07 (block E): the engine-level stats for this batch job, threaded
     /// in-band so the CLI `--json` result attributes them to the exact transfer
     /// it ran (never a stale process-global snapshot). `None` on the legacy
@@ -9947,6 +10015,7 @@ async fn run_shared_provider_download_batch(
     Ok(SharedDownloadOutcome {
         downloaded: batch_result.completed,
         errors: sink.take_errors(),
+        over_budget: max_transfer_skipped as u32,
         engine_stats: batch_result.engine_stats,
     })
 }
@@ -9955,6 +10024,8 @@ async fn run_shared_provider_download_batch(
 struct SharedUploadOutcome {
     uploaded: u32,
     errors: Vec<String>,
+    /// G102: see [`SharedDownloadOutcome::over_budget`].
+    over_budget: u32,
     /// DAG-P2-07 (block E): engine-level stats for this batch job, threaded
     /// in-band (see [`SharedDownloadOutcome::engine_stats`]).
     engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats>,
@@ -10162,6 +10233,7 @@ async fn run_shared_provider_upload_batch(
     Ok(SharedUploadOutcome {
         uploaded: batch_result.completed,
         errors: sink.take_errors(),
+        over_budget: max_transfer_skipped as u32,
         engine_stats: batch_result.engine_stats,
     })
 }
@@ -31870,6 +31942,8 @@ async fn cmd_get_recursive(
     };
 
     let mut downloaded: u32 = 0;
+    // G102: files the --max-transfer budget left behind on this run.
+    let mut over_budget: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
     // DAG-P2-07 (block E): engine-level stats when this folder download ran on
     // the converged DAG-engine path; stays `None` on the legacy fallback.
@@ -31893,6 +31967,7 @@ async fn cmd_get_recursive(
     {
         Ok(outcome) => {
             downloaded = outcome.downloaded;
+            over_budget = outcome.over_budget;
             errors = outcome.errors;
             engine_stats = outcome.engine_stats;
         }
@@ -31967,6 +32042,7 @@ async fn cmd_get_recursive(
                 skipped: (total_files as u32)
                     .saturating_sub(downloaded)
                     .saturating_sub(errors.len() as u32),
+                over_budget,
                 ec_generated: None,
                 ec_skipped_too_large: None,
                 ec_skipped_low_benefit: None,
@@ -32068,6 +32144,8 @@ async fn cmd_get_glob(
     let total = matched.len();
     let total_bytes: u64 = matched.iter().map(|entry| entry.size).sum();
     let mut downloaded: u32 = 0;
+    // G102: files the --max-transfer budget left behind on this run.
+    let mut over_budget: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
     let aggregate = Arc::new(AtomicU64::new(0));
     let overall_pb = if !cli.quiet && matches!(format, OutputFormat::Text) && total_bytes > 0 {
@@ -32137,6 +32215,7 @@ async fn cmd_get_glob(
     {
         Ok(outcome) => {
             downloaded = outcome.downloaded;
+            over_budget = outcome.over_budget;
             errors.extend(outcome.errors);
             engine_stats = outcome.engine_stats;
         }
@@ -32206,6 +32285,7 @@ async fn cmd_get_glob(
                 downloaded,
                 deleted: 0,
                 skipped: 0,
+                over_budget,
                 ec_generated: None,
                 ec_skipped_too_large: None,
                 ec_skipped_low_benefit: None,
@@ -32755,6 +32835,8 @@ async fn cmd_put_recursive(
 
     let mut uploaded: u32 = 0;
     let mut skipped: u32 = 0;
+    // G102: files the --max-transfer budget left behind on this run.
+    let mut over_budget: u32 = 0;
     let mut errors: Vec<String> = restricted_skipped
         .iter()
         .map(|note| format!("skipped (restricted name): {}", note))
@@ -32795,6 +32877,7 @@ async fn cmd_put_recursive(
         {
             Ok(outcome) => {
                 uploaded = outcome.uploaded;
+                over_budget = outcome.over_budget;
                 errors = outcome.errors;
                 engine_stats = outcome.engine_stats;
                 false
@@ -32879,6 +32962,7 @@ async fn cmd_put_recursive(
                 downloaded: 0,
                 deleted: 0,
                 skipped,
+                over_budget,
                 ec_generated: None,
                 ec_skipped_too_large: None,
                 ec_skipped_low_benefit: None,
@@ -47008,6 +47092,9 @@ async fn cmd_sync(
     let mut to_conflict_upload: Vec<(String, String)> = Vec::new();
     let mut conflicts_resolved: u32 = 0;
     let mut skipped: u32 = 0;
+    // G102: files the `--max-transfer` budget left behind, kept apart from
+    // `skipped` (already current) and from `errors` (something went wrong).
+    let mut over_budget: u32 = 0;
 
     if reconcile_plan.is_some() {
         to_upload = owned_to_upload.iter().map(String::as_str).collect();
@@ -47522,6 +47609,8 @@ async fn cmd_sync(
                     downloaded: to_download.len() as u32,
                     deleted: (to_delete_remote.len() + to_delete_local.len()) as u32,
                     skipped,
+                    // A dry run moves nothing, so it cannot run out of budget.
+                    over_budget: 0,
                     ec_generated: sync_ec_json_counter(error_correction_pct.is_some(), 0),
                     ec_skipped_too_large: sync_ec_json_counter(error_correction_pct.is_some(), 0),
                     ec_skipped_low_benefit: sync_ec_json_counter(error_correction_pct.is_some(), 0),
@@ -47549,6 +47638,8 @@ async fn cmd_sync(
             downloaded: to_download.len() as u32,
             deleted: (to_delete_remote.len() + to_delete_local.len()) as u32,
             skipped,
+            // A dry run moves nothing, so it cannot run out of budget.
+            over_budget: 0,
             ec_generated: 0,
             ec_skipped_too_large: 0,
             ec_skipped_low_benefit: 0,
@@ -47782,6 +47873,7 @@ async fn cmd_sync(
                 {
                     Ok(outcome) => {
                         uploaded += outcome.uploaded;
+                        over_budget += outcome.over_budget;
                         errors.extend(outcome.errors);
                         absorb_engine_stats(&mut engine_stats, outcome.engine_stats);
                         false
@@ -48102,6 +48194,7 @@ async fn cmd_sync(
             {
                 Ok(outcome) => {
                     downloaded += outcome.downloaded;
+                    over_budget += outcome.over_budget;
                     errors.extend(outcome.errors);
                     absorb_engine_stats(&mut engine_stats, outcome.engine_stats);
                     false
@@ -48303,15 +48396,14 @@ async fn cmd_sync(
         }
         OutputFormat::Json => {
             print_json(&CliSyncResult {
-                status: if errors.is_empty() && !scan_incomplete {
-                    "ok"
-                } else {
-                    "partial"
-                },
+                // G102: a run that left files behind is not "ok", whichever
+                // reason left them behind. The counters below say which.
+                status: sync_status_word(!errors.is_empty(), scan_incomplete, over_budget),
                 uploaded,
                 downloaded,
                 deleted,
                 skipped,
+                over_budget,
                 ec_generated: sync_ec_json_counter(
                     error_correction_pct.is_some(),
                     ec_counters.generated,
@@ -48347,24 +48439,31 @@ async fn cmd_sync(
     }
 
     let _ = provider.disconnect().await;
+
+    // G106: three facts can be true of the same run, and an exit code can
+    // carry one. They used to be written as alternatives in source order,
+    // which made the order itself the decision: the cap sat third, and a
+    // listing marked incomplete pushed a deliberate ceiling back to 4, the
+    // code the agent guide defines as a retryable failure. So a sync that
+    // did exactly what it was told asked to be re-run.
+    //
+    // The facts are gathered first and the precedence is written down, in
+    // this order and for this reason: a failure outranks an incomplete
+    // picture, because something did not happen; an incomplete picture
+    // outranks a ceiling, because the plan itself may be wrong; a ceiling is
+    // last because nothing went wrong at all. Whichever wins, the JSON
+    // reports every fact that was true, so the exit code narrows the answer
+    // and never replaces it.
+    let hit_max_transfer = session_transfer_exceeded(resolve_max_transfer(cli)) || over_budget > 0;
+    let exit_code = sync_exit_code(!errors.is_empty(), scan_incomplete, hit_max_transfer);
+
     SyncCycleStats {
-        exit_code: if !errors.is_empty() {
-            4
-        } else if scan_incomplete {
-            // SCAN-01: completed run but the listing was partial; report non-zero.
-            4
-        } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
-            // Intentional --max-transfer cap (honest note already emitted
-            // by the shared batch), not a failure: the dedicated exit
-            // code, consistent with get/put/glob and the legacy path.
-            8
-        } else {
-            0
-        },
+        exit_code,
         uploaded,
         downloaded,
         deleted,
         skipped,
+        over_budget,
         ec_generated: ec_counters.generated,
         ec_skipped_too_large: ec_counters.skipped_too_large,
         ec_skipped_low_benefit: ec_counters.skipped_low_benefit,
@@ -55303,6 +55402,8 @@ async fn cmd_put_glob(
     }
 
     let mut uploaded: u32 = 0;
+    // G102: files the --max-transfer budget left behind on this run.
+    let mut over_budget: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
 
     // DAG-P2-07 (block E): engine-level stats when this glob upload ran on the
@@ -55341,6 +55442,7 @@ async fn cmd_put_glob(
                 {
                     Ok(outcome) => {
                         uploaded = outcome.uploaded;
+                        over_budget = outcome.over_budget;
                         errors = outcome.errors;
                         engine_stats = outcome.engine_stats;
                         false
@@ -55416,6 +55518,7 @@ async fn cmd_put_glob(
                 downloaded: 0,
                 deleted: 0,
                 skipped: 0,
+                over_budget,
                 ec_generated: None,
                 ec_skipped_too_large: None,
                 ec_skipped_low_benefit: None,
@@ -55864,6 +55967,13 @@ async fn cmd_sync_watch(
                     "elapsed_secs": (elapsed.as_millis() as f64) / 1000.0,
                     "timestamp": ts,
                 });
+                // G102: a watch cycle that stopped on the budget says so, in the
+                // same place a consumer already reads the counters. Emitted
+                // only when it happened, so the cycle payload of an ordinary
+                // run keeps its shape.
+                if stats.over_budget > 0 {
+                    payload["over_budget"] = serde_json::json!(stats.over_budget);
+                }
                 if error_correction_pct.is_some() {
                     payload["ec_generated"] = serde_json::json!(stats.ec_generated);
                     payload["ec_skipped_too_large"] =
@@ -75280,6 +75390,58 @@ mod tests {
             );
             assert_eq!(stats.exit_code, 4, "a TX-01 refusal (list: {listed:?})");
         }
+    }
+
+    /// G106: the precedence, pinned. This is a GUARD and not a falsifier, and
+    /// the distinction is worth stating: the ladder answered 4 for an
+    /// incomplete listing before this change too, so these cases would have
+    /// passed against the old code as well. What changed is that the order is
+    /// now a decision with a name and a reason, instead of the order the
+    /// branches happened to be typed in, and this test is what stops the next
+    /// edit from reshuffling it by accident.
+    ///
+    /// The behaviour that DID change is in the sibling test below, where a
+    /// reached cap used to report "ok".
+    #[test]
+    fn a_reached_cap_is_not_reported_as_a_failure() {
+        assert_eq!(sync_exit_code(false, false, false), 0, "a clean run");
+        assert_eq!(sync_exit_code(false, false, true), 8, "the ceiling alone");
+        assert_eq!(sync_exit_code(false, true, false), 4, "a partial listing");
+        assert_eq!(sync_exit_code(true, false, false), 4, "a real failure");
+        // The pair that G106 is about: before the fix this answered 4, which
+        // the agent guide defines as retryable, so a tool re-ran a sync that
+        // had done exactly what it was told.
+        assert_eq!(
+            sync_exit_code(false, true, true),
+            4,
+            "an incomplete listing outranks the ceiling: the plan may be wrong"
+        );
+        assert_eq!(
+            sync_exit_code(true, false, true),
+            4,
+            "a failure outranks the ceiling: something did not happen"
+        );
+    }
+
+    /// G102: the JSON said "ok" with `skipped: 0` on a run that left two
+    /// files out of three behind, because the cap was not one of the facts
+    /// the status looked at. A run that left files behind is not ok,
+    /// whichever reason left them behind.
+    #[test]
+    fn a_run_that_left_files_behind_is_not_ok() {
+        assert_eq!(sync_status_word(false, false, 0), "ok");
+        assert_eq!(
+            sync_status_word(false, false, 2),
+            "partial",
+            "two files were due to move and did not"
+        );
+        assert_eq!(sync_status_word(false, true, 0), "partial");
+        assert_eq!(sync_status_word(true, false, 0), "partial");
+        assert_eq!(
+            sync_status_word(false, true, 2),
+            "partial",
+            "more than one fact true at once is still partial, not ok"
+        );
     }
 
     /// G67: a cancelled scan is a partial result, and a partial result has an
