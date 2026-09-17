@@ -291,7 +291,15 @@ mod tests {
         }
     }
 
-    const DOC_PATH: &str = "../docs/PROTOCOL-FEATURES.md";
+    // Anchored on the package root, not on the process's current directory.
+    // `cargo test` happens to run from the package root, so the relative form
+    // passed there and failed for anyone running the same test binary from
+    // anywhere else, with `Os { code: 3, kind: NotFound }` on a file that
+    // exists. That is how this test entered the Windows red list of G109: an
+    // artifact of where the binary was launched, not a platform defect. The
+    // dependency on the caller's directory is the fragility, and it stays
+    // latent until someone runs the binary directly.
+    const DOC_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/PROTOCOL-FEATURES.md");
     const BEGIN: &str = "<!-- BEGIN CHECKSUM-MATRIX -->";
     const END: &str = "<!-- END CHECKSUM-MATRIX -->";
 

@@ -33,6 +33,34 @@ const ENV_ALLOWLIST: &[&str] = &[
     "PATH", "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR", "USER", "SHELL",
 ];
 
+/// The list above is Unix-shaped, and on Windows it is not enough to start a
+/// process at all: `spawn_capture` calls `env_clear()`, so whatever is missing
+/// here does not reach the child. `SystemRoot` and `windir` are how a child
+/// locates the system libraries it links against (a Windows process without
+/// them can fail before `main`), `PATHEXT` is how a bare program name resolves
+/// to an executable, `COMSPEC` names the shell, and `TEMP`, `TMP`,
+/// `USERPROFILE`, `APPDATA` and `LOCALAPPDATA` are the Windows spellings of
+/// `TMPDIR` and `HOME`, which is where cargo, npm and git keep the per-user
+/// configuration the curated checks need. None of them is a secret: they are
+/// paths the operating system publishes to every process.
+///
+/// Found while closing G109: the timeout test below could not spawn anything on
+/// Windows, and the allowlist is the reason the failure would not have stopped
+/// at the test. Still owed: a live run of a real check on a Windows station,
+/// which is the only thing that proves the curated catalog works there.
+#[cfg(windows)]
+const ENV_ALLOWLIST_WINDOWS: &[&str] = &[
+    "SystemRoot",
+    "windir",
+    "PATHEXT",
+    "COMSPEC",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+];
+
 struct CheckPreset {
     key: &'static str,
     label: &'static str,
@@ -241,6 +269,12 @@ pub(crate) async fn spawn_capture(
         .kill_on_drop(true)
         .env_clear();
     for key in ENV_ALLOWLIST {
+        if let Ok(val) = std::env::var(key) {
+            cmd.env(key, val);
+        }
+    }
+    #[cfg(windows)]
+    for key in ENV_ALLOWLIST_WINDOWS {
         if let Ok(val) = std::env::var(key) {
             cmd.env(key, val);
         }
@@ -478,17 +512,36 @@ mod tests {
         assert!(String::from_utf8_lossy(&stdout).contains("git"));
     }
 
+    /// A program that is still running when the timeout fires, named in the
+    /// platform's own terms. The test used to ask for `sleep` everywhere, which
+    /// is a Unix program: on Windows the spawn failed with "program not found",
+    /// the product was right to refuse it, and the test discarded that refusal
+    /// with `unwrap`. Gating the test off Windows would have cost real coverage,
+    /// because the timeout it exercises is product logic that runs everywhere.
+    #[cfg(windows)]
+    fn sleeper() -> (&'static str, Vec<String>) {
+        (
+            "powershell",
+            vec![
+                "-NoProfile".to_string(),
+                "-Command".to_string(),
+                "Start-Sleep -Seconds 5".to_string(),
+            ],
+        )
+    }
+
+    #[cfg(not(windows))]
+    fn sleeper() -> (&'static str, Vec<String>) {
+        ("sleep", vec!["5".to_string()])
+    }
+
     #[tokio::test]
     async fn spawn_capture_times_out() {
         let dir = tempfile::tempdir().unwrap();
-        let result = spawn_capture(
-            dir.path(),
-            "sleep",
-            &["5".to_string()],
-            Duration::from_millis(200),
-        )
-        .await
-        .unwrap();
+        let (program, args) = sleeper();
+        let result = spawn_capture(dir.path(), program, &args, Duration::from_millis(200))
+            .await
+            .unwrap();
         assert!(result.3, "expected timed_out=true");
     }
 }
