@@ -4669,7 +4669,37 @@ mod tests {
             assert_eq!(sends_dash_a, want_acls, "flag bundle disagrees");
 
             let mut d = make_driver(mock_transport_with_raw_inbound(Vec::new()));
-            d.open_raw_stream_internal(&spec).await.expect("open");
+            let opened = d.open_raw_stream_internal(&spec).await;
+
+            // B2 is Linux-only. Off Linux an `-A` opt-in is refused before the
+            // remote stream opens (`acl_fs::ensure_linux_acl_support`), so the
+            // negotiated state this test reads on Linux never exists and the
+            // refusal is the whole observable behaviour. Asserting it here is
+            // what keeps the case alive on Windows and macOS instead of
+            // disappearing behind a `cfg`.
+            if want_acls && !cfg!(target_os = "linux") {
+                let err = opened.expect_err("an -A opt-in must be refused off Linux");
+                assert_eq!(
+                    err.kind,
+                    AerorsyncErrorKind::NegotiationFailed,
+                    "the platform refusal must be a negotiation failure, got {err:?}"
+                );
+                // The kind alone does not say WHICH negotiation failed, and the
+                // full sentence is prose someone may restyle: match the shortest
+                // fragment that still names the subject.
+                assert!(
+                    err.detail.contains("ACL"),
+                    "the refusal must name ACLs, got {}",
+                    err.detail
+                );
+                assert!(
+                    d.stream.is_none(),
+                    "the remote stream must not open after a refused -A opt-in"
+                );
+                continue;
+            }
+
+            opened.expect("open");
 
             assert_eq!(d.negotiated_acls, want_acls, "session state disagrees");
             assert_eq!(
@@ -4680,6 +4710,16 @@ mod tests {
         }
     }
 
+    /// Linux-only, and gated rather than adapted. `validate_outgoing_acls`
+    /// calls `ensure_linux_acl_support()` FIRST, so off Linux the run is
+    /// refused for the platform before it ever looks at the entry: the
+    /// unresolved reference this test is about is never reached, and the
+    /// error is `NegotiationFailed` instead of the `InvalidFrame` asserted
+    /// below. Asserting the platform refusal here would change what the test
+    /// proves instead of repairing it, so the honest form is to say that this
+    /// case has nothing to prove off Linux. The platform refusal itself is
+    /// pinned by `the_acl_decisions_all_follow_the_command_spec`.
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn unresolved_acl_reference_is_rejected_before_wire_open() {
         use crate::aerorsync::real_wire::{AclWireEntry, FileListAcls};
