@@ -607,6 +607,27 @@
     ]
   },
   {
+    "company": "Filebase",
+    "logoId": "filebase",
+    "country": "US",
+    "freeGb": 5,
+    "freeNote": null,
+    "freeRequiresCard": false,
+    "regions": [
+      "global"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "filebase",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "CloudMe",
     "logoId": "cloudme",
     "country": "SE",

@@ -4,14 +4,14 @@
   "counts": {
     "transport_protocols": 7,
     "native_integrations": 24,
-    "presets": 44,
-    "presets_over_transport": 40,
-    "connection_forms": 49,
+    "presets": 45,
+    "presets_over_transport": 41,
+    "connection_forms": 50,
     "connection_forms_generic": 2,
     "connection_forms_named_without_defaults": 3,
-    "providers": 51,
-    "connection_methods": 65,
-    "catalog_services": 72
+    "providers": 52,
+    "connection_methods": 66,
+    "catalog_services": 73
   },
   "transport_protocols": [
     "ftp",
@@ -69,6 +69,7 @@
       "backblaze",
       "cloudflare-r2",
       "digitalocean-spaces",
+      "filebase",
       "filelu-s3",
       "filen-desktop-s3",
       "google-cloud-storage",
@@ -117,7 +118,7 @@
   ],
   "catalog_categories": {
     "protocols": 7,
-    "object-storage": 20,
+    "object-storage": 21,
     "webdav": 18,
     "cloud-storage": 18,
     "media-services": 5,
@@ -214,6 +215,12 @@
       "id": "felicloud",
       "protocols": [
         "webdav"
+      ]
+    },
+    {
+      "id": "filebase",
+      "protocols": [
+        "s3"
       ]
     },
     {

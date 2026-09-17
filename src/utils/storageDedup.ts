@@ -79,6 +79,7 @@ const S3_PRESET_IDS = new Set<string>([
     'oracle-cloud',
     'yandex-storage',
     'filelu-s3',
+    'filebase',
 ]);
 
 /** Lowercase, trim, strip scheme + www. + trailing path. */

@@ -193,6 +193,7 @@ pub fn is_s3_preset(provider_id: Option<&str>) -> bool {
                 | "oracle-cloud"
                 | "yandex-storage"
                 | "filelu-s3"
+                | "filebase"
         )
     )
 }
@@ -504,6 +505,30 @@ mod tests {
             used,
             total,
         }
+    }
+
+    #[test]
+    fn is_s3_preset_recognizes_presets_and_rejects_raw() {
+        for preset in [
+            "backblaze",
+            "wasabi",
+            "cloudflare-r2",
+            "idrive-e2",
+            "storj",
+            "mega-s4",
+            "digitalocean-spaces",
+            "alibaba-oss",
+            "tencent-cos",
+            "oracle-cloud",
+            "yandex-storage",
+            "filelu-s3",
+            "filebase",
+        ] {
+            assert!(is_s3_preset(Some(preset)), "{preset} must be an S3 preset");
+        }
+        assert!(!is_s3_preset(Some("amazon-s3")));
+        assert!(!is_s3_preset(Some("custom-s3")));
+        assert!(!is_s3_preset(None));
     }
 
     #[test]

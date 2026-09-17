@@ -1929,7 +1929,8 @@
             "devicesInfoLine1": "Taşınabilir bir USB cihazını (telefon, kamera, tablet) Sunucularım profili olarak kaydedin. Cihazı MTP üzerinden algılayın, varsayılan klasörleri ayarlayın ve takıldığında tek tıklamayla yeniden bağlanın.",
             "devicesInfoLine2": "MTP özel ve isteğe bağlıdır: Bağlan, cihazı oturum için talep eder; bağlantıyı kesmek onu geri verir. Aktarımlar yalnızca tam dosyadır (sürdürme yok, sürücü harfi yok).",
             "discoverMtpPortable": "USB MTP üzerinden telefon, kamera veya tablet",
-            "s3AllowCleartextEndpoint": "Bu uç nokta S3'ü ağ üzerinden şifrelenmemiş HTTP ile sunuyor. Bu profil için kabul edin: imzalı kimlik bilgileri ve her dosya ağı şifrelenmemiş olarak geçer."
+            "s3AllowCleartextEndpoint": "Bu uç nokta S3'ü ağ üzerinden şifrelenmemiş HTTP ile sunuyor. Bu profil için kabul edin: imzalı kimlik bilgileri ve her dosya ağı şifrelenmemiş olarak geçer.",
+            "discoverFilebase": "Filebase: S3 uyumlu nesne depolama (5 GB ücretsiz)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

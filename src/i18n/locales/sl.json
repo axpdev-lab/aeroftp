@@ -1929,7 +1929,8 @@
             "devicesInfoLine1": "Shranite prenosno napravo USB (telefon, fotoaparat, tablico) kot profil v Moji strežniki. Zaznajte napravo prek MTP, nastavite privzete mape in se znova povežite z enim klikom, ko je priključena.",
             "devicesInfoLine2": "MTP je izključen in na zahtevo: Poveži zahteva napravo za sejo; prekinitev jo vrne. Prenosi so samo celotne datoteke (brez nadaljevanja, brez črke pogona).",
             "discoverMtpPortable": "Telefon, fotoaparat ali tablica prek USB MTP",
-            "s3AllowCleartextEndpoint": "Ta končna točka streže S3 prek nešifriranega HTTP po omrežju. Sprejmite to za ta profil: podpisane poverilnice in vsaka datoteka potujejo prek omrežja nešifrirane."
+            "s3AllowCleartextEndpoint": "Ta končna točka streže S3 prek nešifriranega HTTP po omrežju. Sprejmite to za ta profil: podpisane poverilnice in vsaka datoteka potujejo prek omrežja nešifrirane.",
+            "discoverFilebase": "Filebase: objektna shramba, združljiva s S3 (5 GB brezplačno)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

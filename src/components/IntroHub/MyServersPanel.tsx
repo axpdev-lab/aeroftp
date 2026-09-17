@@ -116,6 +116,9 @@ function deriveProviderId(server: ServerProfile): string | undefined {
         if (host.includes('r2.cloudflarestorage')) return 'cloudflare-r2';
         if (host.includes('wasabi')) return 'wasabi';
         if (host.includes('idrive')) return 'idrive-e2';
+        // Domain-boundary match: exact s3.filebase.io (+ optional port) or bucket subdomains; reject lookalikes
+        const s3Host = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
+        if (s3Host === 's3.filebase.io' || s3Host.endsWith('.s3.filebase.io')) return 'filebase';
         if (host.includes('storj')) return 'storj';
         if (host.includes('mega.io') || host.includes('mega.nz')) return 'mega-s4';
         if (host.includes('amazonaws.com')) return 'amazon-s3';

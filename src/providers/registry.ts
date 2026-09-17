@@ -754,6 +754,33 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://cloud.google.com/free',
     },
     {
+        id: 'filebase',
+        name: 'Filebase',
+        description: 'S3-compatible object storage (5 GB free)',
+        protocol: 's3',
+        category: 's3',
+        icon: 'Cloud',
+        color: '#E8A33D',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.accessKeyId, label: 'Access token', helpText: 'Console → Access Keys → Access token' },
+            { ...COMMON_FIELDS.secretAccessKey, label: 'Secret Key', helpText: 'Console → Access Keys → Secret Key' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'my-filebase-bucket', helpText: 'Console → Buckets → Bucket name' },
+        ],
+        defaults: {
+            pathStyle: true,
+            region: 'auto',
+            endpoint: 'https://s3.filebase.io',
+        },
+        features: {
+            shareLink: true,
+            sync: true,
+        },
+        healthCheckUrl: 'https://s3.filebase.io',
+        helpUrl: 'https://filebase.com/docs/s3-api/overview',
+        signupUrl: 'https://console.filebase.com/signup',
+    },
+    {
         id: 'idrive-e2',
         name: 'IDrive e2',
         description: 'S3-compatible hot storage (10 GB free)',

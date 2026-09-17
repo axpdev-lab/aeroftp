@@ -126,6 +126,28 @@ describe('storageDedup', () => {
         expect(summary.dedupedQuotaCount).toBe(1);
     });
 
+    it('case 4b: Filebase with the same access key dedups to one (S3 preset)', () => {
+        const profiles = [
+            make({
+                id: 'fb1', protocol: 's3', providerId: 'filebase',
+                host: 's3.filebase.io', port: 443,
+                username: 'FBACCESSKEY12345',
+                used: 1_000_000_000, total: 5_000_000_000,
+            }),
+            make({
+                id: 'fb2', protocol: 's3', providerId: 'filebase',
+                host: 's3.filebase.io', port: 443,
+                username: 'FBACCESSKEY12345',
+                used: 1_000_000_000, total: 5_000_000_000,
+            }),
+        ];
+        const summary = aggregateByDedupKey(profiles);
+        expect(summary.uniqueCount).toBe(1);
+        expect(summary.totalUsed).toBe(1_000_000_000);
+        expect(summary.totalTotal).toBe(5_000_000_000);
+        expect(summary.dedupedQuotaCount).toBe(1);
+    });
+
     it('case 5: OAuth keyed by email, not by display name', () => {
         const profiles = [
             make({

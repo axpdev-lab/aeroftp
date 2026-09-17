@@ -1929,7 +1929,8 @@
             "devicesInfoLine1": "Simpan peranti USB mudah alih (telefon, kamera, tablet) sebagai profil dalam Pelayan Saya. Kesan peranti melalui MTP, tetapkan folder lalai, dan sambung semula dengan satu klik apabila dipasang.",
             "devicesInfoLine2": "MTP adalah eksklusif dan atas permintaan: Sambung menuntut peranti untuk sesi; memutuskan sambungan mengembalikannya. Pemindahan hanya keseluruhan fail (tiada sambung semula, tiada huruf pemacu).",
             "discoverMtpPortable": "Telefon, kamera atau tablet melalui USB MTP",
-            "s3AllowCleartextEndpoint": "Titik akhir ini menyediakan S3 melalui HTTP biasa merentasi rangkaian. Terima untuk profil ini: bukti kelayakan yang ditandatangani dan setiap fail melintasi rangkaian tanpa penyulitan."
+            "s3AllowCleartextEndpoint": "Titik akhir ini menyediakan S3 melalui HTTP biasa merentasi rangkaian. Terima untuk profil ini: bukti kelayakan yang ditandatangani dan setiap fail melintasi rangkaian tanpa penyulitan.",
+            "discoverFilebase": "Filebase: storan objek serasi S3 (5 GB percuma)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

@@ -1929,7 +1929,8 @@
             "devicesInfoLine1": "Gem en bærbar USB-enhed (telefon, kamera, tablet) som en profil i Mine servere. Registrer enheden via MTP, angiv standardmapper, og opret forbindelse igen med ét klik, når den er tilsluttet.",
             "devicesInfoLine2": "MTP er eksklusiv og efter behov: Opret forbindelse gør krav på enheden i sessionen; afbryd giver den tilbage. Overførsler er kun hele filer (ingen genoptagelse, intet drevbogstav).",
             "discoverMtpPortable": "Telefon, kamera eller tablet via USB MTP",
-            "s3AllowCleartextEndpoint": "Dette endepunkt leverer S3 over almindelig HTTP via et netværk. Accepter det for denne profil: de signerede legitimationsoplysninger og alle filer krydser netværket ukrypteret."
+            "s3AllowCleartextEndpoint": "Dette endepunkt leverer S3 over almindelig HTTP via et netværk. Accepter det for denne profil: de signerede legitimationsoplysninger og alle filer krydser netværket ukrypteret.",
+            "discoverFilebase": "Filebase: S3-kompatibel objektlagring (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

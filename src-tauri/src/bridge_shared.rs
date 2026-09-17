@@ -69,6 +69,7 @@ pub(crate) fn map_s3_provider(provider: &str) -> &'static str {
         "stackpath" => "stackpath",
         "storj" => "storj",
         "idrive" | "idrivee2" => "idrive-e2",
+        "filebase" => "filebase",
         "minio" => "minio",
         "ceph" => "custom-s3",
         "arvancloud" => "custom-s3",
@@ -123,6 +124,14 @@ pub(crate) fn map_s3_provider_from_endpoint(endpoint: &str) -> &'static str {
     }
     if h.contains("idrivee2") {
         return "idrive-e2";
+    }
+    {
+        // Domain-boundary match: accept exactly `s3.filebase.io` (optional port)
+        // and virtual-hosted bucket subdomains; reject lookalike hosts.
+        let host = h.split(':').next().unwrap_or("");
+        if host == "s3.filebase.io" || host.ends_with(".s3.filebase.io") {
+            return "filebase";
+        }
     }
     if h.contains("ionos") {
         return "ionos-s3";
@@ -682,6 +691,32 @@ mod tests {
         assert_eq!(
             map_s3_provider_from_endpoint("https://s3.wasabisys.com/bucket"),
             "wasabi"
+        );
+        assert_eq!(map_s3_provider("filebase"), "filebase");
+        assert_eq!(
+            map_s3_provider_from_endpoint("https://s3.filebase.io"),
+            "filebase"
+        );
+        assert_eq!(
+            map_s3_provider_from_endpoint("https://s3.filebase.io:443"),
+            "filebase"
+        );
+        assert_eq!(
+            map_s3_provider_from_endpoint("https://my-bucket.s3.filebase.io"),
+            "filebase"
+        );
+        // Lookalike hosts must NOT classify as filebase.
+        assert_ne!(
+            map_s3_provider_from_endpoint("https://s3.filebase.io.example"),
+            "filebase"
+        );
+        assert_ne!(
+            map_s3_provider_from_endpoint("https://my-filebase-proxy.example"),
+            "filebase"
+        );
+        assert_eq!(
+            map_s3_provider_from_endpoint("https://s3.filebase.io/my-bucket"),
+            "filebase"
         );
         assert_eq!(
             map_s3_provider_from_endpoint("http://192.168.1.10:9000"),
