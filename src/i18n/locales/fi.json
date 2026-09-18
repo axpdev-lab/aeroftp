@@ -327,7 +327,7 @@
             "protonCliTitle": "Käyttää virallista Proton Drive CLI:tä",
             "protonCliBody": "Asenna Proton Drive CLI osoitteesta proton.me/download/drive/cli, suorita sitten proton-drive auth login päätteessä ja viimeistele selaimessa. AeroFTP ei koskaan näe salasanaasi; istunto jää käyttöjärjestelmän salaisuussäilöön.",
             "protonUnofficial": "Tämä on kolmannen osapuolen sovellus, jota Proton ei virallisesti tue.",
-            "protonConnectHint": "Connect käyttää tällä koneella jo sisäänkirjautunutta CLI:tä. Yksi Proton-tili käyttöjärjestelmän käyttäjää kohden."
+            "protonConnectHint": "\"Yhdistä\" käyttää tällä koneella jo sisäänkirjautunutta CLI:tä. Yksi Proton-tili käyttöjärjestelmän käyttäjää kohden."
         },
         "browser": {
             "remote": "Etä",

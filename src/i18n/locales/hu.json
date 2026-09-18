@@ -327,7 +327,7 @@
             "protonCliTitle": "A hivatalos Proton Drive CLI-t használja",
             "protonCliBody": "Telepítse a Proton Drive CLI-t a proton.me/download/drive/cli címről, majd a terminálban futtassa a proton-drive auth login parancsot, és fejezze be a böngészőben. Az AeroFTP soha nem látja a jelszavát; a munkamenet az OS titkos tárában marad.",
             "protonUnofficial": "Ez egy harmadik féltől származó alkalmazás, amelyet a Proton hivatalosan nem támogat.",
-            "protonConnectHint": "A Connect az ezen a gépen már bejelentkezett CLI-t használja. Operációsrendszer-felhasználónként egy Proton-fiók."
+            "protonConnectHint": "A \"Csatlakozás\" az ezen a gépen már bejelentkezett CLI-t használja. Operációsrendszer-felhasználónként egy Proton-fiók."
         },
         "browser": {
             "remote": "Távoli",

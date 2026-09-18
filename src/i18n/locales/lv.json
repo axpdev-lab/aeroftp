@@ -327,7 +327,7 @@
             "protonCliTitle": "Izmanto oficiālo Proton Drive CLI",
             "protonCliBody": "Instalējiet Proton Drive CLI no proton.me/download/drive/cli, pēc tam terminālī palaidiet proton-drive auth login un pabeidziet pārlūkā. AeroFTP nekad neredz jūsu paroli; sesija paliek OS noslēpumu krātuvē.",
             "protonUnofficial": "Šī ir trešās puses lietotne, ko Proton oficiāli neatbalsta.",
-            "protonConnectHint": "Connect izmanto šajā datorā jau pierakstīto CLI. Viens Proton konts uz OS lietotāju."
+            "protonConnectHint": "\"Savienot\" izmanto šajā datorā jau pierakstīto CLI. Viens Proton konts uz OS lietotāju."
         },
         "browser": {
             "remote": "Attālināts",

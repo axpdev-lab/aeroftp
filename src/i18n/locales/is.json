@@ -327,7 +327,7 @@
             "protonCliTitle": "Notar opinbera Proton Drive CLI",
             "protonCliBody": "Settu upp Proton Drive CLI frá proton.me/download/drive/cli, keyrðu svo proton-drive auth login í skjáhermi og ljúktu í vafranum. AeroFTP sér aldrei lykilorðið þitt; lotan er áfram í leyndarmálageymslu stýrikerfisins.",
             "protonUnofficial": "Þetta er forrit frá þriðja aðila sem Proton styður ekki opinberlega.",
-            "protonConnectHint": "Connect notar CLI sem er þegar innskráð á þessari vél. Einn Proton-reikningur á hvern stýrikerfisnotanda."
+            "protonConnectHint": "\"Tengjast\" notar CLI sem er þegar innskráð á þessari vél. Einn Proton-reikningur á hvern stýrikerfisnotanda."
         },
         "browser": {
             "remote": "Fjartengdur",

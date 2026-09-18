@@ -327,7 +327,7 @@
             "protonCliTitle": "Verwendet die offizielle Proton Drive CLI",
             "protonCliBody": "Installieren Sie die Proton Drive CLI von proton.me/download/drive/cli, führen Sie dann proton-drive auth login im Terminal aus und schließen Sie im Browser ab. AeroFTP sieht Ihr Passwort nie; die Sitzung bleibt im Geheimnisspeicher des Betriebssystems.",
             "protonUnofficial": "Dies ist eine Drittanbieter-Anwendung, die von Proton nicht offiziell unterstützt wird.",
-            "protonConnectHint": "Connect verwendet die auf diesem Rechner bereits angemeldete CLI. Ein Proton-Konto pro Betriebssystembenutzer."
+            "protonConnectHint": "\"Verbinden\" verwendet die auf diesem Rechner bereits angemeldete CLI. Ein Proton-Konto pro Betriebssystembenutzer."
         },
         "browser": {
             "remote": "Remote",

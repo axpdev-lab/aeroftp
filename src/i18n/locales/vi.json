@@ -327,7 +327,7 @@
             "protonCliTitle": "Sử dụng CLI chính thức của Proton Drive",
             "protonCliBody": "Cài Proton Drive CLI từ proton.me/download/drive/cli, rồi chạy proton-drive auth login trong terminal và hoàn tất trên trình duyệt. AeroFTP không bao giờ thấy mật khẩu của bạn; phiên nằm trong kho bí mật của OS.",
             "protonUnofficial": "Đây là ứng dụng bên thứ ba không được Proton hỗ trợ chính thức.",
-            "protonConnectHint": "Connect dùng CLI đã đăng nhập trên máy này. Một tài khoản Proton cho mỗi người dùng OS."
+            "protonConnectHint": "\"Kết nối\" dùng CLI đã đăng nhập trên máy này. Một tài khoản Proton cho mỗi người dùng OS."
         },
         "browser": {
             "remote": "Từ xa",

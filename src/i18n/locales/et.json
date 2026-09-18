@@ -327,7 +327,7 @@
             "protonCliTitle": "Kasutab ametlikku Proton Drive CLI",
             "protonCliBody": "Installige Proton Drive CLI aadressilt proton.me/download/drive/cli, käivitage terminalis proton-drive auth login ja lõpetage brauseris. AeroFTP ei näe kunagi teie parooli; seanss jääb operatsioonisüsteemi saladuste salve.",
             "protonUnofficial": "See on kolmanda osapoole rakendus, mida Proton ametlikult ei toeta.",
-            "protonConnectHint": "Connect kasutab sellel masinal juba sisse logitud CLI-d. Üks Proton konto operatsioonisüsteemi kasutaja kohta."
+            "protonConnectHint": "\"Ühenda\" kasutab sellel masinal juba sisse logitud CLI-d. Üks Proton konto operatsioonisüsteemi kasutaja kohta."
         },
         "browser": {
             "remote": "Kaugserver",

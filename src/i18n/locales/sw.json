@@ -327,7 +327,7 @@
             "protonCliTitle": "Inatumia CLI rasmi ya Proton Drive",
             "protonCliBody": "Sakinisha Proton Drive CLI kutoka proton.me/download/drive/cli, kisha endesha proton-drive auth login kwenye terminal na kamilisha kwenye kivinjari. AeroFTP haioni nenosiri lako kamwe; kipindi kinabaki kwenye hifadhi ya siri ya OS.",
             "protonUnofficial": "Hii ni programu ya mtu wa tatu ambayo Proton haiungi mkono rasmi.",
-            "protonConnectHint": "Connect hutumia CLI iliyoingia tayari kwenye mashine hii. Akaunti moja ya Proton kwa kila mtumiaji wa OS."
+            "protonConnectHint": "\"Unganisha\" hutumia CLI iliyoingia tayari kwenye mashine hii. Akaunti moja ya Proton kwa kila mtumiaji wa OS."
         },
         "browser": {
             "remote": "Mbali",

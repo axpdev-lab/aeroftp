@@ -327,7 +327,7 @@
             "protonCliTitle": "Resmi Proton Drive CLI kullanır",
             "protonCliBody": "Proton Drive CLI'yi proton.me/download/drive/cli adresinden kurun, ardından terminalde proton-drive auth login çalıştırıp tarayıcıda tamamlayın. AeroFTP parolanızı asla görmez; oturum işletim sisteminin gizli deposunda kalır.",
             "protonUnofficial": "Bu, Proton tarafından resmi olarak desteklenmeyen üçüncü taraf bir uygulamadır.",
-            "protonConnectHint": "Connect, bu makinede zaten oturum açmış CLI'yi kullanır. İşletim sistemi kullanıcısı başına bir Proton hesabı."
+            "protonConnectHint": "\"Bağlan\", bu makinede zaten oturum açmış CLI'yi kullanır. İşletim sistemi kullanıcısı başına bir Proton hesabı."
         },
         "browser": {
             "remote": "Uzak",

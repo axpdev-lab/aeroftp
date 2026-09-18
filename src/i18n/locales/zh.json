@@ -327,7 +327,7 @@
             "protonCliTitle": "使用官方 Proton Drive CLI",
             "protonCliBody": "从 proton.me/download/drive/cli 安装 Proton Drive CLI，然后在终端运行 proton-drive auth login 并在浏览器中完成。AeroFTP 绝不会看到你的密码；会话留在操作系统的密钥库中。",
             "protonUnofficial": "这是 Proton 未官方支持的第三方应用。",
-            "protonConnectHint": "Connect 使用本机已登录的 CLI。每个操作系统用户一个 Proton 账户。"
+            "protonConnectHint": "\"连接\" 使用本机已登录的 CLI。每个操作系统用户一个 Proton 账户。"
         },
         "browser": {
             "remote": "远程",

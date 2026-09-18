@@ -327,7 +327,7 @@
             "protonCliTitle": "공식 Proton Drive CLI를 사용합니다",
             "protonCliBody": "proton.me/download/drive/cli에서 Proton Drive CLI를 설치한 뒤 터미널에서 proton-drive auth login을 실행하고 브라우저에서 마칩니다. AeroFTP는 비밀번호를 보지 않습니다. 세션은 OS 비밀 저장소에 남습니다.",
             "protonUnofficial": "Proton이 공식적으로 지원하지 않는 타사 앱입니다.",
-            "protonConnectHint": "Connect는 이 컴퓨터에 이미 로그인한 CLI를 사용합니다. OS 사용자당 Proton 계정 하나."
+            "protonConnectHint": "\"연결\" 버튼은 이 컴퓨터에 이미 로그인한 CLI를 사용합니다. OS 사용자당 Proton 계정 하나."
         },
         "browser": {
             "remote": "원격",

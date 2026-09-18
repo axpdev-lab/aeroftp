@@ -327,7 +327,7 @@
             "protonCliTitle": "Naudoja oficialią Proton Drive CLI",
             "protonCliBody": "Įdiekite Proton Drive CLI iš proton.me/download/drive/cli, tada terminale paleiskite proton-drive auth login ir užbaikite naršyklėje. AeroFTP niekada nemato jūsų slaptažodžio; seansas lieka OS paslapčių saugykloje.",
             "protonUnofficial": "Tai trečiosios šalies programa, kurios Proton oficialiai nepalaiko.",
-            "protonConnectHint": "Connect naudoja šioje mašinoje jau prisijungusią CLI. Viena Proton paskyra vienam OS naudotojui."
+            "protonConnectHint": "\"Prisijungti\" naudoja šioje mašinoje jau prisijungusią CLI. Viena Proton paskyra vienam OS naudotojui."
         },
         "browser": {
             "remote": "Nuotolinis",

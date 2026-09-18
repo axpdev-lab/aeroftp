@@ -327,7 +327,7 @@
             "protonCliTitle": "Yn defnyddio CLI swyddogol Proton Drive",
             "protonCliBody": "Gosodwch CLI Proton Drive o proton.me/download/drive/cli, yna rhedwch proton-drive auth login mewn terfynell a gorffen yn y porwr. Nid yw AeroFTP byth yn gweld eich cyfrinair; mae'r sesiwn yn aros yn storfa gyfrinachau'r OS.",
             "protonUnofficial": "Mae hwn yn gymhwysiad trydydd parti nad yw Proton yn ei gefnogi'n swyddogol.",
-            "protonConnectHint": "Mae Connect yn defnyddio'r CLI sydd eisoes wedi mewngofnodi ar y peiriant hwn. Un cyfrif Proton fesul defnyddiwr OS."
+            "protonConnectHint": "Mae \"Cysylltu\" yn defnyddio'r CLI sydd eisoes wedi mewngofnodi ar y peiriant hwn. Un cyfrif Proton fesul defnyddiwr OS."
         },
         "browser": {
             "remote": "Pell",

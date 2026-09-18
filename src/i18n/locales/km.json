@@ -327,7 +327,7 @@
             "protonCliTitle": "ប្រើ Proton Drive CLI ផ្លូវការ",
             "protonCliBody": "ដំឡើង Proton Drive CLI ពី proton.me/download/drive/cli បន្ទាប់មកដំណើរការ proton-drive auth login ក្នុងស្ថានីយ ហើយបញ្ចប់ក្នុងកម្មវិធីរុករក។ AeroFTP មិនឃើញពាក្យសម្ងាត់របស់អ្នកទេ។ សម័យនៅក្នុងឃ្លាំងសម្ងាត់របស់ OS។",
             "protonUnofficial": "នេះជាកម្មវិធីភាគីទីបីដែល Proton មិនគាំទ្រផ្លូវការ។",
-            "protonConnectHint": "Connect ប្រើ CLI ដែលបានចូលរួចហើយនៅលើម៉ាស៊ីននេះ។ គណនី Proton មួយក្នុងមួយអ្នកប្រើ OS។"
+            "protonConnectHint": "\"ភ្ជាប់\" ប្រើ CLI ដែលបានចូលរួចហើយនៅលើម៉ាស៊ីននេះ។ គណនី Proton មួយក្នុងមួយអ្នកប្រើ OS។"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",

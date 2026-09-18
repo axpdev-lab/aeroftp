@@ -327,7 +327,7 @@
             "protonCliTitle": "Utilitza el CLI oficial de Proton Drive",
             "protonCliBody": "Instal·leu el CLI de Proton Drive des de proton.me/download/drive/cli, executeu proton-drive auth login al terminal i acabeu al navegador. AeroFTP no veu mai la contrasenya; la sessió resta al magatzem de secrets del sistema.",
             "protonUnofficial": "Aquesta és una aplicació de tercers no admesa oficialment per Proton.",
-            "protonConnectHint": "Connect usa el CLI ja iniciat en aquesta màquina. Un compte Proton per usuari del sistema."
+            "protonConnectHint": "\"Connecta\" usa el CLI ja iniciat en aquesta màquina. Un compte Proton per usuari del sistema."
         },
         "browser": {
             "remote": "Remot",

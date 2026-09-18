@@ -327,7 +327,7 @@
             "protonCliTitle": "Bruker den offisielle Proton Drive CLI",
             "protonCliBody": "Installer Proton Drive CLI fra proton.me/download/drive/cli, kjør deretter proton-drive auth login i en terminal og fullfør i nettleseren. AeroFTP ser aldri passordet ditt; økten blir i OS-ets hemmelighetslager.",
             "protonUnofficial": "Dette er et tredjepartsprogram som Proton ikke støtter offisielt.",
-            "protonConnectHint": "Connect bruker CLI-en som allerede er logget inn på denne maskinen. Én Proton-konto per OS-bruker."
+            "protonConnectHint": "\"Koble til\" bruker CLI-en som allerede er logget inn på denne maskinen. Én Proton-konto per OS-bruker."
         },
         "browser": {
             "remote": "Ekstern",

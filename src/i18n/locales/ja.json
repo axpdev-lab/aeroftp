@@ -327,7 +327,7 @@
             "protonCliTitle": "公式 Proton Drive CLI を使用します",
             "protonCliBody": "proton.me/download/drive/cli から Proton Drive CLI をインストールし、ターミナルで proton-drive auth login を実行してブラウザーで完了してください。AeroFTP がパスワードを見ることはありません。セッションは OS のシークレットストアに残ります。",
             "protonUnofficial": "これは Proton が公式にサポートしていないサードパーティー製アプリです。",
-            "protonConnectHint": "Connect はこのマシンですでにサインイン済みの CLI を使います。OS ユーザーあたり Proton アカウントは 1 つです。"
+            "protonConnectHint": "\"接続\" はこのマシンですでにサインイン済みの CLI を使います。OS ユーザーあたり Proton アカウントは 1 つです。"
         },
         "browser": {
             "remote": "リモート",
