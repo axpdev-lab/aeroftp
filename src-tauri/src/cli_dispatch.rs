@@ -67,6 +67,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "catalog",
     "inventory",
     "tui",
+    "pwd",
     "profiles",
     "groups",
     "users",
