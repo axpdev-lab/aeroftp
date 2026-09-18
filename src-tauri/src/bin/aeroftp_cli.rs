@@ -12623,12 +12623,66 @@ async fn peer_publish_flow(
 /// Map the CLI `--direction` string onto the serde `CompareDirection` used by
 /// the AeroCloud config. Pure so it can be unit-tested; returns `None` for an
 /// unrecognized value so the caller can emit a clear error.
+/// Bring `protocol_type` up to date for a read-only display, silently.
+///
+/// Opening the vault can fail (locked, no master password on this run) and a
+/// `show` must still print what it knows rather than turn into an error: a
+/// stale protocol is worth less than no output at all.
+fn aerocloud_refresh_protocol_for_display(
+    cli: &Cli,
+    config: &mut ftp_client_gui_lib::cloud_config::CloudConfig,
+) {
+    if let Ok(store) = open_vault(cli) {
+        if let Some(proto) = aerocloud_protocol_for_profile(&store, &config.server_profile) {
+            config.protocol_type = proto;
+        }
+    }
+}
+
+/// The protocol a saved profile actually speaks, read from the vault by name.
+///
+/// `CloudConfig::protocol_type` defaults to `"ftp"` and is not written when a
+/// profile is assigned, so the stored value is a guess until something fixes
+/// it. The sync path fixed it inline, for itself, because dispatching an FTP
+/// provider at an SFTP profile would fail; `show` and `status` had no such
+/// pressure and printed the default, which is how a real user was told a
+/// profile was FTP when it was SFTP. One derivation, three callers: the two
+/// that display and the one that connects.
+fn aerocloud_protocol_for_profile(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    profile_name: &str,
+) -> Option<String> {
+    if profile_name.is_empty() {
+        return None;
+    }
+    ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(store)
+        .ok()?
+        .iter()
+        .find(|p| p.get("name").and_then(|v| v.as_str()) == Some(profile_name))
+        .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
+        .map(str::to_string)
+}
+
+/// Every spelling [`aerocloud_parse_direction`] accepts, in the order a person
+/// is most likely to try them, and the single source the error message uses.
+///
+/// The internal names are in the list on purpose. They are what `decide_sync_action`
+/// is written in and what the sync logs print, so someone reading a log and then
+/// writing a command reaches for `LocalToRemote` and used to be told it expected
+/// three forms none of which was the one they had just read. An error that lists
+/// fewer spellings than the parser accepts sends people away from a value that
+/// would have worked.
+const AEROCLOUD_DIRECTION_SPELLINGS: &str =
+    "bidirectional | both | send-only | LocalToRemote | receive-only | RemoteToLocal";
+
 fn aerocloud_parse_direction(s: &str) -> Option<ftp_client_gui_lib::sync::CompareDirection> {
     use ftp_client_gui_lib::sync::CompareDirection;
     match s.trim().to_ascii_lowercase().as_str() {
         "bidirectional" | "both" => Some(CompareDirection::Bidirectional),
-        "send-only" | "send_only" | "sendonly" => Some(CompareDirection::LocalToRemote),
-        "receive-only" | "receive_only" | "receiveonly" => Some(CompareDirection::RemoteToLocal),
+        "send-only" | "send_only" | "sendonly" | "localtoremote" | "local_to_remote"
+        | "local-to-remote" => Some(CompareDirection::LocalToRemote),
+        "receive-only" | "receive_only" | "receiveonly" | "remotetolocal" | "remote_to_local"
+        | "remote-to-local" => Some(CompareDirection::RemoteToLocal),
         _ => None,
     }
 }
@@ -12743,6 +12797,7 @@ fn aerocloud_print_sync_result(
     r: &ftp_client_gui_lib::cloud_service::SyncOperationResult,
     dry_run: bool,
     format: OutputFormat,
+    quiet: bool,
 ) {
     if matches!(format, OutputFormat::Json) {
         print_json(&serde_json::json!({
@@ -12752,6 +12807,16 @@ fn aerocloud_print_sync_result(
             "downloaded": r.downloaded,
             "deleted": r.deleted,
             "skipped": r.skipped,
+            // What that number is made of, so a consumer does not have to infer
+            // it from the count alone: files and directories are separated, and
+            // each carries the reason the comparison already computed.
+            "skippedFolders": r.skipped_details.iter().filter(|e| e.is_dir).count(),
+            "skippedFiles": r.skipped_details.iter().filter(|e| !e.is_dir).count(),
+            "skippedDetails": r.skipped_details.iter().map(|e| serde_json::json!({
+                "path": e.path,
+                "reason": e.reason,
+                "isDir": e.is_dir,
+            })).collect::<Vec<_>>(),
             "conflicts": r.conflicts,
             "errors": r.errors,
             "durationSecs": r.duration_secs,
@@ -12766,6 +12831,28 @@ fn aerocloud_print_sync_result(
         println!("  downloaded: {}", r.downloaded);
         println!("  deleted:    {}", r.deleted);
         println!("  skipped:    {}", r.skipped);
+        // A count with no names is the thing that was reported: the same
+        // "skipped: 2" every cycle, with nothing saying which two or why. The
+        // list goes to stderr so the summary on stdout keeps its shape for
+        // whoever parses it, and it is capped because a large exclude rule
+        // should not turn a summary into a listing.
+        if !r.skipped_details.is_empty() && !quiet {
+            const SHOWN: usize = 10;
+            for entry in r.skipped_details.iter().take(SHOWN) {
+                eprintln!(
+                    "  skipped: {}{} ({})",
+                    entry.path,
+                    if entry.is_dir { "/" } else { "" },
+                    entry.reason
+                );
+            }
+            if r.skipped_details.len() > SHOWN {
+                eprintln!(
+                    "  skipped: and {} more (use --json for the full list)",
+                    r.skipped_details.len() - SHOWN
+                );
+            }
+        }
         println!("  conflicts:  {}", r.conflicts);
         println!("  errors:     {}", r.errors.len());
         for e in &r.errors {
@@ -12842,18 +12929,8 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
     // wrong provider (e.g. FTP against an SFTP profile). Host and credentials
     // already come from the vault by profile name, so only the protocol is
     // derived here.
-    if let Ok(profiles) =
-        ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(&store)
-    {
-        if let Some(proto) = profiles
-            .iter()
-            .find(|p| {
-                p.get("name").and_then(|v| v.as_str()) == Some(config.server_profile.as_str())
-            })
-            .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
-        {
-            config.protocol_type = proto.to_string();
-        }
+    if let Some(proto) = aerocloud_protocol_for_profile(&store, &config.server_profile) {
+        config.protocol_type = proto;
     }
 
     // Delegate the connect->wrap->sync to the single shared helper
@@ -12863,7 +12940,7 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
 
     match result {
         Ok(r) => {
-            aerocloud_print_sync_result(&r, dry_run, format);
+            aerocloud_print_sync_result(&r, dry_run, format, cli.quiet);
             if r.errors.is_empty() {
                 0
             } else {
@@ -12885,12 +12962,18 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
 
     match command {
         AeroCloudCommands::Show => {
-            let config = cloud_config::load_cloud_config();
+            let mut config = cloud_config::load_cloud_config();
+            // A config written before this release, or by a GUI that does not
+            // write the field, still carries the default. Deriving it here too
+            // means the displayed value cannot be stale even when the stored
+            // one is: display never lies, storage catches up on the next `set`.
+            aerocloud_refresh_protocol_for_display(cli, &mut config);
             aerocloud_print_show(&config, format);
             0
         }
         AeroCloudCommands::Status => {
-            let config = cloud_config::load_cloud_config();
+            let mut config = cloud_config::load_cloud_config();
+            aerocloud_refresh_protocol_for_display(cli, &mut config);
             aerocloud_print_status(&config, format);
             0
         }
@@ -12917,7 +13000,7 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                         print_error(
                             format,
                             &format!(
-                                "invalid --direction '{d}': expected bidirectional | send-only | receive-only"
+                                "invalid --direction '{d}': expected {AEROCLOUD_DIRECTION_SPELLINGS}"
                             ),
                             5,
                         );
@@ -12945,6 +13028,17 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
             }
             if let Some(profile) = profile {
                 config.server_profile = profile.clone();
+                // Store the protocol the profile speaks, instead of leaving the
+                // `"ftp"` default in place for every reader until the next sync
+                // corrects it in memory. If the vault cannot be opened here the
+                // value stays as it was and the sync path still derives it, so
+                // this improves the stored truth without becoming a new way to
+                // fail `set`.
+                if let Ok(store) = open_vault(cli) {
+                    if let Some(proto) = aerocloud_protocol_for_profile(&store, profile) {
+                        config.protocol_type = proto;
+                    }
+                }
                 changed = true;
             }
             if let Some(direction) = parsed_direction {
@@ -13233,6 +13327,7 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 downloaded: 0,
                 deleted: 0,
                 skipped: 0,
+                skipped_details: vec![],
                 conflicts: 0,
                 errors: Vec::new(),
                 duration_secs: 0,
@@ -13254,6 +13349,7 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                         total.downloaded += r.downloaded;
                         total.deleted += r.deleted;
                         total.skipped += r.skipped;
+                        total.skipped_details.extend(r.skipped_details.clone());
                         total.conflicts += r.conflicts;
                         total.errors.extend(r.errors);
                         total.duration_secs += r.duration_secs;
@@ -13277,7 +13373,7 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 }
             }
 
-            aerocloud_print_sync_result(&total, *dry_run, format);
+            aerocloud_print_sync_result(&total, *dry_run, format, cli.quiet);
             if total.errors.is_empty() {
                 0
             } else {
@@ -68725,6 +68821,22 @@ mod tests {
                 "row {}/{} is not addressable",
                 row.group_id,
                 label
+            );
+        }
+    }
+
+    /// The error message and the parser cannot drift, because the message is a
+    /// list and this walks it. A spelling advertised but not accepted would
+    /// send someone to a value that fails; the reverse (accepted but not
+    /// advertised) is what sent a real user looking for the right word after
+    /// reading `LocalToRemote` in the logs.
+    #[test]
+    fn every_advertised_direction_spelling_parses() {
+        for token in AEROCLOUD_DIRECTION_SPELLINGS.split('|') {
+            let token = token.trim();
+            assert!(
+                aerocloud_parse_direction(token).is_some(),
+                "`{token}` is advertised in the --direction error but the parser rejects it"
             );
         }
     }

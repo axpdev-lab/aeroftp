@@ -97,6 +97,25 @@ pub struct SyncedFileDetail {
     pub size: u64,
 }
 
+/// One entry the cycle decided not to move, and why.
+///
+/// `skipped` is a single number over several different situations: an object
+/// whose name this platform cannot represent, a directory that needs nothing
+/// done, a file the rules exclude. Reported from real use: "the junk files left
+/// on the server show up as skipped: 2 every run, with no explanation", and the
+/// count was about to become more ambiguous rather than less, because once
+/// directories stop being counted as uploads they land in this same number.
+///
+/// The reason already exists on the comparison (`sync_reason`) and was being
+/// discarded at the moment of counting. Keeping it costs one push per skip and
+/// turns a number you have to guess at into one you can read.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkippedEntry {
+    pub path: String,
+    pub reason: String,
+    pub is_dir: bool,
+}
+
 /// Result of a sync operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncOperationResult {
@@ -104,6 +123,10 @@ pub struct SyncOperationResult {
     pub downloaded: u32,
     pub deleted: u32,
     pub skipped: u32,
+    /// What `skipped` is made of. `serde(default)` so a result serialized by an
+    /// older build still deserializes.
+    #[serde(default)]
+    pub skipped_details: Vec<SkippedEntry>,
     pub conflicts: u32,
     pub errors: Vec<String>,
     pub duration_secs: u64,
@@ -502,6 +525,7 @@ impl CloudService {
             downloaded: 0,
             deleted: 0,
             skipped: 0,
+            skipped_details: Vec::new(),
             conflicts: 0,
             errors: Vec::new(),
             duration_secs: 0,
@@ -641,7 +665,15 @@ impl CloudService {
         // the target: if the folder is absent it is treated as empty instead.
         let remote_present = provider.cd(&config.remote_folder).await.is_ok();
         if !remote_present && ensure_remote {
-            if let Err(e) = provider.mkdir(&config.remote_folder).await {
+            // One `mkdir` creates ONE level, so a remote folder whose parents do
+            // not exist yet failed here and then failed every upload under it
+            // with "No such file". Reported from real use, setting up a pair
+            // whose remote folder was two levels deep. `ensure_remote_dir` walks
+            // the chain top-down and absorbs the "already exists" errors; it is
+            // the helper the manual sync and the DAG path already use, so this
+            // stops being the one place with a weaker rule.
+            crate::sync::ensure_remote_dir(provider, &config.remote_folder).await;
+            if let Err(e) = provider.cd(&config.remote_folder).await {
                 tracing::warn!(
                     "Failed to create remote folder {}: {}",
                     config.remote_folder,
@@ -772,6 +804,7 @@ impl CloudService {
             downloaded: 0,
             deleted: 0,
             skipped: 0,
+            skipped_details: Vec::new(),
             conflicts: 0,
             errors: Vec::new(),
             duration_secs: 0,
@@ -839,6 +872,7 @@ impl CloudService {
             downloaded: 0,
             deleted: 0,
             skipped: 0,
+            skipped_details: Vec::new(),
             conflicts: 0,
             errors: Vec::new(),
             duration_secs: 0,
@@ -1007,7 +1041,14 @@ impl CloudService {
                 }
             }
             SyncAction::DeleteLocal | SyncAction::DeleteRemote => result.deleted += 1,
-            SyncAction::Skip => result.skipped += 1,
+            SyncAction::Skip => {
+                result.skipped += 1;
+                result.skipped_details.push(SkippedEntry {
+                    path: comparison.relative_path.clone(),
+                    reason: comparison.sync_reason.clone(),
+                    is_dir: comparison.is_dir,
+                });
+            }
             SyncAction::AskUser => {}
         }
     }
@@ -1318,10 +1359,15 @@ impl CloudService {
                 );
 
                 if comparison.is_dir {
-                    // Create remote directory
-                    if let Err(e) = ftp_manager.mkdir(&remote_path).await {
-                        // Directory might already exist, log but don't fail
-                        tracing::debug!("mkdir {} (may exist): {}", remote_path, e);
+                    // Create the remote directory, ancestors included: one
+                    // `mkdir` makes one level, and a directory two levels below
+                    // an absent parent failed here and took every file under it
+                    // with it. Same rule as the provider branch below, expressed
+                    // over the FTP manager because it is not a StorageProvider.
+                    for step in crate::sync::remote_dir_chain(&remote_path) {
+                        if let Err(e) = ftp_manager.mkdir(&step).await {
+                            tracing::debug!("mkdir {} (may exist): {}", step, e);
+                        }
                     }
                 } else if let Some(local_info) = &comparison.local_info {
                     // Ensure parent directory exists on remote
@@ -1331,7 +1377,9 @@ impl CloudService {
                             config.remote_folder.trim_end_matches('/'),
                             parent.to_string_lossy()
                         );
-                        let _ = ftp_manager.mkdir(&parent_path).await;
+                        for step in crate::sync::remote_dir_chain(&parent_path) {
+                            let _ = ftp_manager.mkdir(&step).await;
+                        }
                     }
 
                     ftp_manager
@@ -1625,7 +1673,11 @@ impl CloudService {
                                 parent.to_string_lossy()
                             );
                             if provider.cd(&parent_path).await.is_err() {
-                                let _ = provider.mkdir(&parent_path).await;
+                                // Recursive for the same reason as the remote
+                                // root above: a file at `a/b/c.txt` needs both
+                                // `a` and `a/b`, and one mkdir only ever made
+                                // the last one.
+                                crate::sync::ensure_remote_dir(provider, &parent_path).await;
                             }
                         }
                     }

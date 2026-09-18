@@ -1164,7 +1164,7 @@ pub async fn execute_sync_dag(
     // legacy core does) is decision-equivalent: `scan_remote_tree` already
     // tolerates a missing directory by returning an empty listing.
     if !locals.is_empty() && matches!(opts.direction, SyncDirection::Upload | SyncDirection::Both) {
-        ensure_remote_dir(provider, remote_root).await;
+        ensure_remote_dir(&mut **provider, remote_root).await;
     }
 
     // Skips carry no I/O: emit them up front in plan order, before the
