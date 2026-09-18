@@ -2919,20 +2919,21 @@ impl StorageProvider for SftpProvider {
         // explicit offsets. In principle a single file could be written
         // by multiple concurrent `SSH_FXP_WRITE` packets at different
         // offsets over one channel, but in practice (a) most servers
-        // serialise writes on the open file handle, (b) `russh-sftp`
-        // does not expose per-write concurrency controls, and (c) the
-        // ssh2-libssh2 SCP backend we use for uploads (workaround for
-        // russh 0.57 write buffering races on embedded SFTP servers like
-        // WD MyCloud NAS) is strictly stream-oriented. Real file-level
-        // parallelism on SFTP comes from `SftpConnectionPool` re-dialling
-        // independent SSH channels (see `transfer_executor_kind` below).
+        // serialise writes on the open file handle, and (b) `russh-sftp`
+        // does not expose per-write concurrency controls; `upload` above
+        // streams the file through one `sftp.create` handle. Real
+        // file-level parallelism on SFTP comes from `SftpConnectionPool`
+        // re-dialling independent SSH channels (see
+        // `transfer_executor_kind` below).
         //
         // Wiring a per-part SFTP backend is tracked as T-DEBT-09
-        // (`--sftp-concurrency` flag) for v4.x: it would require both
-        // dropping the SCP write workaround and parametrising
-        // `SftpConnectionPool` with a per-file fan-out. Until then we
-        // leave `supports_multipart=false` and let the runner pick the
-        // legacy single-stream path.
+        // (`--sftp-concurrency` flag) for v4.x. The pool is not the
+        // missing piece: it already hands out one lease per file, which
+        // is the file-level concurrency described above. What is missing
+        // is one level down, inside a single file: a per-part fan-out
+        // and a writer that can address parts on the upload path. Until
+        // then we leave `supports_multipart=false` and let the runner
+        // pick the legacy single-stream path.
         super::TransferOptimizationHints {
             supports_resume_download: false,
             supports_resume_upload: false,
