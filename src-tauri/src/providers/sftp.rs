@@ -2768,11 +2768,13 @@ impl StorageProvider for SftpProvider {
         // `transfer_executor_kind` below).
         //
         // Wiring a per-part SFTP backend is tracked as T-DEBT-09
-        // (`--sftp-concurrency` flag) for v4.x: it would require
-        // parametrising `SftpConnectionPool` with a per-file fan-out
-        // and a per-part writer on the upload handle. Until then we
-        // leave `supports_multipart=false` and let the runner pick the
-        // legacy single-stream path.
+        // (`--sftp-concurrency` flag) for v4.x. The pool is not the
+        // missing piece: it already hands out one lease per file, which
+        // is the file-level concurrency described above. What is missing
+        // is one level down, inside a single file: a per-part fan-out
+        // and a writer that can address parts on the upload path. Until
+        // then we leave `supports_multipart=false` and let the runner
+        // pick the legacy single-stream path.
         super::TransferOptimizationHints {
             supports_resume_download: false,
             supports_resume_upload: false,
