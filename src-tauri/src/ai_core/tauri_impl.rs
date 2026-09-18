@@ -570,13 +570,12 @@ impl RemoteBackend for TauriRemoteBackend {
                 if let Some(ref mut p) = *Self::active_provider(app).lock().await {
                     return p.replace(from, to).await.map_err(|e| e.to_string());
                 }
-                // The session manager has no `replace` of its own, so this
-                // path keeps the old behaviour rather than pretend: a backend
-                // reached only through the manager still refuses an occupied
-                // destination, and the caller's guard has already said so.
+                // No StorageProvider active: this branch is a plain FTP
+                // session, and `FtpManager::replace` is `RNFR`/`RNTO`, which
+                // carries none of the SFTP prohibition that G119 is about.
                 let app_state = app.state::<AppState>();
                 let mut mgr = app_state.ftp_manager.lock().await;
-                mgr.rename(from, to).await.map_err(|e| e.to_string())
+                mgr.replace(from, to).await.map_err(|e| e.to_string())
             }
             TauriRemoteBackend::Temp { provider } => provider
                 .lock()
@@ -593,9 +592,14 @@ impl RemoteBackend for TauriRemoteBackend {
                 if let Some(ref mut p) = *Self::active_provider(app).lock().await {
                     return p.supports_atomic_replace().await.map_err(|e| e.to_string());
                 }
-                // Same reason as `replace` above: through the manager the
-                // answer is the trait default, which is what this path did
-                // before the question existed.
+                // Plain FTP, as in `replace` above. `true` here carries the
+                // meaning the trait gives it, "no known obstacle" and not
+                // "verified": `RNFR`/`RNTO` is not forbidden from replacing
+                // the way SFTP protocol 3 is, and the servers this client
+                // meets do replace. It is the answer this path already gave
+                // before the question had a name, so nothing on it gets
+                // worse; what would be wrong is answering for a provider
+                // nobody asked, which is why the branch above asks it.
                 Ok(true)
             }
             TauriRemoteBackend::Temp { provider } => provider

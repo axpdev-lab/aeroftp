@@ -33,12 +33,49 @@
 //! `AEROFTP_LIVE_SFTP_PORT` defaults to 22 and `AEROFTP_LIVE_SFTP_PASS` is an
 //! alternative to the key. The scratch directory is created under
 //! `AEROFTP_LIVE_SFTP_DIR` and removed at the end.
+//!
+//! **Against a loopback fixture, run it with a scratch `HOME`**, the way
+//! `sftp_size_hint.rs` explains: `russh` reads `known_hosts` out of `HOME`,
+//! the fixture regenerates its host key on every build, and a stale
+//! `[127.0.0.1]:2222` line from an earlier build is a key CHANGE rather than
+//! an unknown key, which is refused whatever the trust setting says, and
+//! rightly so. A scratch `HOME` also keeps the accept from landing in the
+//! real file:
+//!
+//! ```bash
+//! HOME=$(mktemp -d) AEROFTP_LIVE_SFTP_HOST=127.0.0.1 ... cargo test ...
+//! ```
 
 use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::{SftpProvider, StorageProvider};
 
 fn env_or(key: &str, fallback: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| fallback.to_string())
+}
+
+/// Whether to accept a host key this machine has never seen.
+///
+/// The eleven sibling live tests in this directory set `trust_unknown_hosts`
+/// to `true` unconditionally, and `sftp_size_hint.rs` says why that is safe
+/// there: the fixture's host key is ephemeral, so there is nothing to pin,
+/// and the accept lands in a scratch `HOME` instead of the real
+/// `known_hosts`. This test is the one that can legitimately be pointed at a
+/// real server across the internet, and that is a different exposure: with
+/// blind trust, whatever answers on that address receives an authentication
+/// attempt, password included. So the trust is narrowed rather than copied.
+///
+/// Loopback keeps the sibling behaviour, because that is the CI fixture and
+/// its key is regenerated on every build. Any other host must already be
+/// known to this machine, unless the caller says otherwise in as many words
+/// with `AEROFTP_LIVE_SFTP_TRUST_UNKNOWN_HOST=1`.
+fn trust_unknown_host(host: &str) -> bool {
+    if matches!(host, "127.0.0.1" | "::1" | "localhost") {
+        return true;
+    }
+    matches!(
+        std::env::var("AEROFTP_LIVE_SFTP_TRUST_UNKNOWN_HOST").as_deref(),
+        Ok("1") | Ok("true")
+    )
 }
 
 async fn connected() -> SftpProvider {
@@ -53,8 +90,10 @@ async fn connected() -> SftpProvider {
         key.is_some() || password.is_some(),
         "set AEROFTP_LIVE_SFTP_KEY or AEROFTP_LIVE_SFTP_PASS"
     );
+    let host = env_or("AEROFTP_LIVE_SFTP_HOST", "127.0.0.1");
+    let trust_unknown = trust_unknown_host(&host);
     let mut provider = SftpProvider::new(SftpConfig {
-        host: env_or("AEROFTP_LIVE_SFTP_HOST", "127.0.0.1"),
+        host: host.clone(),
         port: env_or("AEROFTP_LIVE_SFTP_PORT", "22")
             .parse()
             .expect("AEROFTP_LIVE_SFTP_PORT"),
@@ -64,12 +103,17 @@ async fn connected() -> SftpProvider {
         key_passphrase: None,
         initial_path: None,
         timeout_secs: 30,
-        trust_unknown_hosts: true,
+        trust_unknown_hosts: trust_unknown,
     });
-    provider
-        .connect()
-        .await
-        .expect("the live SFTP server must be reachable");
+    provider.connect().await.unwrap_or_else(|e| {
+        panic!(
+            "the live SFTP server must be reachable: {e}. If the key is UNKNOWN, either \
+             add {host} to known_hosts or say so with \
+             AEROFTP_LIVE_SFTP_TRUST_UNKNOWN_HOST=1. If it CHANGED, and {host} is a \
+             loopback fixture that rebuilt itself, rerun with a scratch HOME rather \
+             than editing the real known_hosts: see the module comment"
+        )
+    });
     provider
 }
 

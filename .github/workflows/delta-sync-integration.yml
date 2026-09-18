@@ -296,6 +296,43 @@ jobs:
           ../scripts/assert-tests-ran.sh /tmp/delta-acl-xattr.log =1 \
             "Product-path ACL and xattr"
 
+      # Measured at under a second against this fixture once the lib is built
+      # by the steps above; the budget covers a cold link of the test binary.
+      - name: Replacing a file in place, against a real SFTP server
+        timeout-minutes: 15
+        working-directory: src-tauri
+        # G119. The two halves pull against each other and are asserted in one
+        # run against one server: `rename` must keep REFUSING an occupied
+        # destination, because that refusal is the only thing standing between
+        # `mv a b` and the loss of an existing `b`, and `replace` must
+        # overwrite it through `posix-rename@openssh.com`. A lane that checked
+        # only the second could go green while the first silently turned into
+        # a data-loss path.
+        #
+        # `=1` because this step promises exactly one test, and `--ignored`
+        # selecting nothing prints a green about nothing.
+        #
+        # HOME is redirected because `russh` reads `known_hosts` out of it and
+        # this fixture regenerates its host key on every build. On a runner
+        # the file is empty anyway; the redirect is what makes the same
+        # command work unchanged on a developer machine carrying a stale
+        # `[127.0.0.1]:2222` line, which is a key CHANGE and is refused
+        # whatever the trust setting says.
+        env:
+          HOME: ${{ runner.temp }}/sftp-replace-home
+          AEROFTP_LIVE_SFTP_HOST: 127.0.0.1
+          AEROFTP_LIVE_SFTP_PORT: "2222"
+          AEROFTP_LIVE_SFTP_USER: testuser
+          AEROFTP_LIVE_SFTP_KEY: ${{ github.workspace }}/src-tauri/tests/fixtures/sftp-rsync/ssh_key
+          AEROFTP_LIVE_SFTP_DIR: /home/testuser
+        run: |
+          set -o pipefail
+          mkdir -p "$HOME"
+          cargo test --test live_sftp_replace -- --ignored --nocapture \
+            | tee /tmp/sftp-replace.log
+          ../scripts/assert-tests-ran.sh /tmp/sftp-replace.log =1 \
+            "replace a file in place over SFTP"
+
       - name: Dump fixture logs on failure
         if: failure()
         working-directory: src-tauri/tests/fixtures/sftp-rsync
