@@ -10281,18 +10281,26 @@ mod tests {
         use std::sync::{Arc, Mutex};
         let seen: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let seen_put = Arc::clone(&seen);
+        // The handler takes the body even though it only looks at the
+        // headers. `upload()` streams the body after the headers, and a mock
+        // that answers without reading it lets hyper close the connection
+        // while the client is still writing: on Windows that surfaces as
+        // WSAECONNABORTED (10053) and fails this test about one run in four.
+        // A real S3 always reads the body, so the mock does too.
         let app = axum::Router::new().route(
             "/test-bucket/{*key}",
-            axum::routing::put(move |headers: axum::http::HeaderMap| {
-                let seen = Arc::clone(&seen_put);
-                async move {
-                    *seen.lock().unwrap() = headers
-                        .get("x-amz-meta-mtime")
-                        .and_then(|v| v.to_str().ok())
-                        .map(String::from);
-                    ([("etag", "\"abc\"")], "")
-                }
-            }),
+            axum::routing::put(
+                move |headers: axum::http::HeaderMap, _body: axum::body::Bytes| {
+                    let seen = Arc::clone(&seen_put);
+                    async move {
+                        *seen.lock().unwrap() = headers
+                            .get("x-amz-meta-mtime")
+                            .and_then(|v| v.to_str().ok())
+                            .map(String::from);
+                        ([("etag", "\"abc\"")], "")
+                    }
+                },
+            ),
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
