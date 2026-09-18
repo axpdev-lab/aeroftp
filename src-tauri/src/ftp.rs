@@ -714,11 +714,22 @@ impl FtpManager {
     ///
     /// On FTP this is the same request as [`rename`](Self::rename), and that
     /// is the whole content of the method: `RNFR`/`RNTO` carries none of the
-    /// prohibition that makes SFTP protocol 3 refuse an occupied destination,
-    /// so the servers this client meets replace rather than refuse. It exists
-    /// as its own name so the publishing callers say what they mean, and so
-    /// that the day a server is found that refuses, there is one place to
-    /// teach instead of a call site to hunt for (G119).
+    /// prohibition that makes SFTP protocol 3 refuse an occupied destination.
+    ///
+    /// **What happens to an occupied destination is the server's business,
+    /// and this is a declared assumption rather than a measurement.** RFC 959
+    /// does not say, so it is decided by whatever the server calls underneath:
+    /// the Unix-like ones replace, because that is `rename(2)`, while **IIS
+    /// FTP refuses with `550`**, and so do the Windows servers that publish
+    /// `MoveFile` semantics. On one of those, `edit` still stages its
+    /// temporary and fails at publication, which is the case
+    /// `supports_atomic_replace` exists to catch and cannot catch here.
+    ///
+    /// So the hole is **narrowed and named, not closed**, and writing it as
+    /// closed is what would cost the next reader. The method exists under its
+    /// own name so the publishing callers say what they mean, and so that the
+    /// day one of those servers has to be handled, this is the single place
+    /// to teach instead of a call site to hunt for (G119).
     pub async fn replace(&mut self, from: &str, to: &str) -> Result<()> {
         self.rename(from, to).await
     }
