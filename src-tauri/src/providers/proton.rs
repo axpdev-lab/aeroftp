@@ -254,6 +254,24 @@ fn normalize_local_path_for_cli(path: &str) -> String {
     }
 }
 
+/// Hide the value after `--password` in the line we LOG.
+///
+/// **It protects the log and nothing else, and that belongs here rather than
+/// only where it bites.** The same `args` slice goes to `Command::args`, so
+/// while `proton-drive` runs, its password argument sits in the process list.
+/// A function named "redact" invites the belief that the secret is handled,
+/// and that belief is exactly what would stop someone from looking further.
+///
+/// **Who can see it is a property of the host, not of this code.** On Linux
+/// `/proc/<pid>/cmdline` is world readable unless `/proc` is mounted with
+/// `hidepid`, so on an ordinary desktop any local user can read it, not only
+/// the one running AeroFTP; with `hidepid=2` they cannot.
+///
+/// Measured against `cli-drive@0.8.0+06e8c605`: `sharing set-url` takes the
+/// password only as `--password PASSWORD`, with no stdin form and no
+/// environment variable, and `proton-drive --help` names none either. So
+/// there is nothing to switch to today. See `create_share_link`, the one call
+/// in this file that carries a secret at all.
 fn redact_cli_args(args: &[&str]) -> Vec<String> {
     let mut out = Vec::with_capacity(args.len());
     let mut hide_next = false;
@@ -1014,6 +1032,34 @@ impl StorageProvider for ProtonCliProvider {
         let abs = self.resolve_path(path);
         let mut args: Vec<String> = vec!["sharing".into(), "set-url".into()];
         if let Some(ref pw) = options.password {
+            // The password travels in the process arguments, and there is no
+            // way around it today: `cli-drive@0.8.0+06e8c605` accepts it only
+            // as `--password PASSWORD` for `sharing set-url`, with no stdin
+            // form and no environment variable. Checked against the binary's
+            // own help rather than assumed.
+            //
+            // **The window is up to three processes, not one.** `run_cli`
+            // retries a transient failure, `for attempt in 0..=MAX_RETRIES`
+            // with `MAX_RETRIES = 2`, and every attempt spawns the command
+            // again with the same arguments.
+            //
+            // Who can read it is the host's business: on Linux
+            // `/proc/<pid>/cmdline` is world readable unless `/proc` carries
+            // `hidepid`. `redact_cli_args` covers the log line and not this.
+            //
+            // The day a CLI release adds a stdin or environment form, this is
+            // the site to change, and the version above is what tells a
+            // reader whether the check still holds.
+            //
+            // The warning below carries no arguments on purpose: an alert
+            // about a leak that leaks would be the same species as the defect.
+            tracing::warn!(
+                target: "proton",
+                "the share link password is passed to proton-drive as a command-line \
+                 argument and is therefore visible in the local process list while the \
+                 command runs, up to three times if it is retried. The Proton Drive CLI \
+                 offers no other way to supply it."
+            );
             args.push("--password".into());
             args.push(pw.clone());
         }
