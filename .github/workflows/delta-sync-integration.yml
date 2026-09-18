@@ -563,8 +563,12 @@ jobs:
     # a step that is still inside the budget it was given, which is the
     # unattributed signal the Linux jobs above went out of their way to
     # avoid. 80 = 40 for the two checks, 30 for the test step, ~10 for
-    # checkout, cache restore and the CMake purge.
-    timeout-minutes: 80
+    # checkout, cache restore and the CMake purge. Raised again on 2026-09-18
+    # once the test step was split in two and measured: 40 for the two compile
+    # surface checks, 40 for building the test binary (18m54s cold, with room
+    # for a slower runner), 45 for running 3916 tests, and 10 for checkout,
+    # cache restore and the CMake purge.
+    timeout-minutes: 135
 
     steps:
       - name: Checkout
@@ -673,6 +677,23 @@ jobs:
       # `--no-fail-fast` because the first runs of a suite that has never
       # executed on this OS should report every divergence at once rather
       # than one per red run.
+      # Split from the run below so that "the build took too long" and "the
+      # tests took too long" cannot be confused for each other. Measured on the
+      # first run that got this far, 2026-09-18: the compile took 18m54s cold
+      # and the tests were still going at the 30 minute wall with 1617 of 3916
+      # reported. A single step with one budget said only "timed out", which is
+      # the unattributed signal the Linux jobs above are built to avoid.
+      #
+      # The cache is restored but never saved on a branch (save-if below), so
+      # cold is the case to budget for; once this lands on main and main saves,
+      # the compile here is mostly a restore.
+      - name: Build the test binary (MSVC)
+        working-directory: src-tauri
+        timeout-minutes: 40
+        env:
+          AEROFTP_EMBED_TEST_MANIFEST: "1"
+        run: cargo test --locked --lib --no-default-features --features aerorsync --no-run
+
       - name: "Unit tests: cross-platform assertions under MSVC"
         working-directory: src-tauri
         env:
@@ -686,5 +707,5 @@ jobs:
           AEROFTP_EMBED_TEST_MANIFEST: "1"
         # Its own budget, like the expensive steps in the Linux jobs above:
         # if this step dies it has to die naming itself.
-        timeout-minutes: 30
+        timeout-minutes: 45
         run: cargo test --locked --lib --no-default-features --features aerorsync --no-fail-fast
