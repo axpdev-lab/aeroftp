@@ -595,11 +595,17 @@ impl RemoteBackend for TauriRemoteBackend {
                 // Plain FTP, as in `replace` above. `true` here carries the
                 // meaning the trait gives it, "no known obstacle" and not
                 // "verified": `RNFR`/`RNTO` is not forbidden from replacing
-                // the way SFTP protocol 3 is, and the servers this client
-                // meets do replace. It is the answer this path already gave
-                // before the question had a name, so nothing on it gets
-                // worse; what would be wrong is answering for a provider
-                // nobody asked, which is why the branch above asks it.
+                // the way SFTP protocol 3 is. Whether a given server actually
+                // replaces is ITS business and is not measured here, and
+                // `FtpManager::replace` names the known exception, IIS FTP,
+                // which refuses with 550. On such a server this answer is
+                // optimistic and the failure arrives at publication instead
+                // of at the preflight.
+                //
+                // It is nonetheless the answer this path already gave before
+                // the question had a name, so nothing on it gets worse; what
+                // would be wrong is answering for a provider nobody asked,
+                // which is why the branch above asks it.
                 Ok(true)
             }
             TauriRemoteBackend::Temp { provider } => provider
