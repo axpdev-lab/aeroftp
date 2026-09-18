@@ -291,7 +291,15 @@ mod tests {
         }
     }
 
-    const DOC_PATH: &str = "../docs/PROTOCOL-FEATURES.md";
+    // Anchored on the package root, not on the process's current directory.
+    // `cargo test` happens to run from the package root, so the relative form
+    // passed there and failed for anyone running the same test binary from
+    // anywhere else, with `Os { code: 3, kind: NotFound }` on a file that
+    // exists. That is how this test entered the Windows red list of G109: an
+    // artifact of where the binary was launched, not a platform defect. The
+    // dependency on the caller's directory is the fragility, and it stays
+    // latent until someone runs the binary directly.
+    const DOC_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/PROTOCOL-FEATURES.md");
     const BEGIN: &str = "<!-- BEGIN CHECKSUM-MATRIX -->";
     const END: &str = "<!-- END CHECKSUM-MATRIX -->";
 
@@ -300,7 +308,23 @@ mod tests {
     /// Run with `AEROFTP_UPDATE_DOCS=1` to rewrite the block instead.
     #[test]
     fn published_table_matches_the_matrix() {
-        let doc = std::fs::read_to_string(DOC_PATH).expect("docs/PROTOCOL-FEATURES.md");
+        // Read, then normalise the line endings before anything compares them.
+        // The document is stored with LF and the table this test generates uses
+        // LF, but a Windows checkout with `core.autocrlf=true`, which is the
+        // default on the GitHub Windows images, hands back CRLF: every line of
+        // the block then differs from its generated twin and the test reports a
+        // stale table that is not stale. Measured on `windows-2022` on
+        // 2026-09-18, the first run of the suite that ever reached this test off
+        // Linux. The contract here is the content of the table, not the bytes
+        // the working tree happens to store it in.
+        //
+        // The rewrite path below writes the normalised text back, which is
+        // correct rather than lossy: with no `.gitattributes` in this
+        // repository git converts on commit anyway, so LF is what would be
+        // stored either way.
+        let doc = std::fs::read_to_string(DOC_PATH)
+            .expect("docs/PROTOCOL-FEATURES.md")
+            .replace("\r\n", "\n");
         let head_end = doc.find(BEGIN).expect("BEGIN CHECKSUM-MATRIX marker");
         let tail_start = doc.find(END).expect("END CHECKSUM-MATRIX marker");
         let head = &doc[..head_end + BEGIN.len()];

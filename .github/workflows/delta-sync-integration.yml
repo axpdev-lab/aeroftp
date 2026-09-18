@@ -556,8 +556,19 @@ jobs:
     # MSVC links roughly 2x slower than ubuntu-latest on the large
     # lib target; the single-config run used to fit in 20 min but the
     # v3.6.1 default-feature change doubled the amount of code the
-    # test binary pulls in. 40 min is the comfortable ceiling.
-    timeout-minutes: 40
+    # test binary pulls in. 40 min was the comfortable ceiling for the
+    # two compile-surface checks alone. The unit-test step added below
+    # links and runs a third configuration and carries its own 30-minute
+    # budget, so the job cap has to sit above the sum or it would cancel
+    # a step that is still inside the budget it was given, which is the
+    # unattributed signal the Linux jobs above went out of their way to
+    # avoid. 80 = 40 for the two checks, 30 for the test step, ~10 for
+    # checkout, cache restore and the CMake purge. Raised again on 2026-09-18
+    # once the test step was split in two and measured: 40 for the two compile
+    # surface checks, 40 for building the test binary (18m54s cold, with room
+    # for a slower runner), 45 for running 3916 tests, and 10 for checkout,
+    # cache restore and the CMake purge.
+    timeout-minutes: 135
 
     steps:
       - name: Checkout
@@ -632,19 +643,69 @@ jobs:
       - name: "cargo check (default features: shipping configuration)"
         working-directory: src-tauri
         run: cargo check --locked --all-targets
-      # Note on the test binary: a full `cargo test --lib` on Windows
-      # requires the whole lib-test link closure, which pulls in
-      # `whisper-rs-sys` (STT for Linux/Windows, excluded on macOS).
-      # `whisper-rs-sys` link-time symbols against the MSVC import
-      # library stubs (`__imp_rand`, `__imp__aligned_malloc`,
-      # `__imp_expm1f`, `__imp_fmaxf`, `__imp_erff`, etc.) do not
-      # resolve cleanly in the `cargo test` profile today (a known
-      # issue with the vendored ggml sources' CRT import descriptors
-      # under recent MSVC toolchains). The cross-platform unit tests
-      # we actually care about for PR-T11 (delta_sync_rsync
-      # eligibility probes, rsync_output parsing, native prototype
-      # encoders, ndx round-trips) are executed by the
-      # aerorsync-protocol.yml lane and by the Linux integration
-      # job above. Adding a Windows-side test runner is tracked as a
-      # follow-up to harden whisper-rs-sys MSVC linkage separately
-      # from the release gate.
+      # G105, 2026-09-18. Until today this job's name promised "native
+      # unit tests" and it ran none: every `cargo test` in the repository
+      # executes on a Linux runner, so no Rust assertion had ever been
+      # evaluated on Windows. The note that used to close this file called a
+      # Windows test runner a follow-up, no follow-up was ever opened, and
+      # the gap turned into a belief ("CI checks Windows anyway") that was
+      # stated to a peer as fact. The note is replaced by the thing it
+      # promised.
+      #
+      # What unblocks it is the feature set, not a toolchain fix. The link
+      # failures the old note describes are `whisper-rs-sys`'s: its vendored
+      # ggml sources do not resolve the MSVC CRT import stubs (`__imp_rand`,
+      # `__imp__aligned_malloc`, `__imp_expm1f`, `__imp_fmaxf`, `__imp_erff`)
+      # in the `cargo test` profile. `--no-default-features --features
+      # aerorsync` turns `local-stt` off, which drops that C/C++ stack
+      # entirely while keeping the native rsync driver on. Cargo.toml
+      # documents that exact combination as the workaround for the same
+      # drift, so this lane is not inventing a configuration, it is running
+      # the one already declared.
+      #
+      # Two declared limits, both leaning the way that costs us:
+      #   - the configuration under test is NOT the shipping one (speech is
+      #     off), so this proves the cross-platform assertions hold on MSVC,
+      #     not that the shipping test closure links;
+      #   - this workflow is path-gated (see the top of the file), so a
+      #     Windows-only regression introduced outside those paths still
+      #     reaches main with no Windows assertion behind it.
+      # It is a narrower gap than the one it replaces, which was total, and
+      # widening it means paying for Windows unit tests in `build.yml` on
+      # every push: a cost decision, not an oversight.
+      #
+      # `--no-fail-fast` because the first runs of a suite that has never
+      # executed on this OS should report every divergence at once rather
+      # than one per red run.
+      # Split from the run below so that "the build took too long" and "the
+      # tests took too long" cannot be confused for each other. Measured on the
+      # first run that got this far, 2026-09-18: the compile took 18m54s cold
+      # and the tests were still going at the 30 minute wall with 1617 of 3916
+      # reported. A single step with one budget said only "timed out", which is
+      # the unattributed signal the Linux jobs above are built to avoid.
+      #
+      # The cache is restored but never saved on a branch (save-if below), so
+      # cold is the case to budget for; once this lands on main and main saves,
+      # the compile here is mostly a restore.
+      - name: Build the test binary (MSVC)
+        working-directory: src-tauri
+        timeout-minutes: 40
+        env:
+          AEROFTP_EMBED_TEST_MANIFEST: "1"
+        run: cargo test --locked --lib --no-default-features --features aerorsync --no-run
+
+      - name: "Unit tests: cross-platform assertions under MSVC"
+        working-directory: src-tauri
+        env:
+          # Without this the test executable links and then dies with
+          # 0xC0000139 before `main`, reporting the target as failed with no
+          # test output at all. build.rs embeds the Common-Controls 6.0
+          # manifest only when this is set, because the flags it uses reach
+          # every linked target and the packaged application already has a
+          # manifest of its own. Here the only thing being linked is the test
+          # binary, which is what makes the scope safe.
+          AEROFTP_EMBED_TEST_MANIFEST: "1"
+        # Its own budget, like the expensive steps in the Linux jobs above:
+        # if this step dies it has to die naming itself.
+        timeout-minutes: 45
+        run: cargo test --locked --lib --no-default-features --features aerorsync --no-fail-fast
