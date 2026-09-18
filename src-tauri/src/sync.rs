@@ -3190,9 +3190,21 @@ pub fn build_comparison_results_with_index(
 
         // Check if we can use the index for conflict detection
         let status = if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
+            if l.is_dir && r.is_dir {
+                // The rule compare_file_pair applies, which this branch used
+                // to bypass: a directory present on both sides is identical.
+                // Its size and mtime are not content and never agree across
+                // sides (0 locally, 4096 on a typical SFTP server), so against
+                // the baseline one side always looked changed, and a synced
+                // folder flipped between upload and download every cycle.
+                //
+                // This test comes FIRST, before the index is consulted at all:
+                // a directory needs no baseline to be judged, so asking the
+                // index about one can only produce a wrong answer.
+                SyncStatus::Identical
             // A key the migration could not vouch for is compared as if absent,
             // here and in `previously_synced` below.
-            if let Some(cached) = idx
+            } else if let Some(cached) = idx
                 .files
                 .get(&path)
                 .filter(|_| !idx.unverified_keys.contains(&path))
@@ -7833,6 +7845,44 @@ mod tests {
             true,
         );
         assert_eq!(action, SyncAction::Download);
+    }
+
+    /// A directory on both sides is identical whether or not the index has an
+    /// entry for it. With one, the index branch used to compare its size and
+    /// mtime against the baseline, and those never agree across sides, so a
+    /// synced folder came back as changed on one side every cycle.
+    #[test]
+    fn a_directory_on_both_sides_is_identical_even_with_a_baseline() {
+        let dir = |size: u64, secs: i64| FileInfo {
+            name: "sub".to_string(),
+            path: "sub".to_string(),
+            size,
+            modified: DateTime::<Utc>::from_timestamp(secs, 0),
+            is_dir: true,
+            checksum: None,
+            checksum_alg: None,
+        };
+        // Baseline recorded from the local side last cycle, as a Skip does.
+        let mut index = SyncIndex::new("/local".to_string(), "/remote".to_string());
+        index.files.insert(
+            "sub".to_string(),
+            SyncIndexEntry {
+                size: 0,
+                modified: DateTime::<Utc>::from_timestamp(1_000, 0),
+                is_dir: true,
+            },
+        );
+        let comparisons = build_comparison_results_with_index(
+            HashMap::from([("sub".to_string(), dir(0, 1_000))]),
+            HashMap::from([("sub".to_string(), dir(4096, 2_000))]),
+            &CompareOptions::default(),
+            Some(&index),
+        );
+        let c = comparisons
+            .iter()
+            .find(|c| c.relative_path == "sub")
+            .expect("directories are always reported");
+        assert_eq!(c.status, SyncStatus::Identical);
     }
 
     #[test]

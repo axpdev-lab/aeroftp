@@ -349,12 +349,7 @@ impl CloudService {
 
     /// Persist the post-sync baseline so the NEXT cycle can tell a deleted file
     /// (was baselined, now gone on one side) from a genuinely new file (never
-    /// baselined). The comparator OMITS Identical files, so the baseline is
-    /// carried FORWARD from the prior index and only the changed files (the
-    /// `comparisons`) are applied as deltas: deletes remove the entry, synced
-    /// files upsert the source-of-truth side, and unresolved conflicts are left
-    /// untouched so they stay conflicts. Rebuilding from `comparisons` alone
-    /// would drop every Identical file and silently wipe the baseline.
+    /// baselined). See [`Self::post_sync_baseline`] for how it is computed.
     fn save_post_sync_index(
         &self,
         local: &str,
@@ -369,6 +364,43 @@ impl CloudService {
         if !result.errors.is_empty() {
             return;
         }
+        let idx = SyncIndex {
+            // Carried over from #854 when the two branches met here: the index
+            // this writes is a v2 index, and a freshly written one has nothing
+            // unverified in it, because `unverified_keys` marks only the keys a
+            // migration rewrote on read.
+            version: SYNC_INDEX_VERSION,
+            last_sync: Utc::now(),
+            local_path: local.to_string(),
+            remote_path: remote.to_string(),
+            files: self.post_sync_baseline(comparisons, config, prior_index),
+            unverified_keys: Default::default(),
+        };
+        if let Err(e) = save_sync_index(&idx) {
+            tracing::warn!("Failed to save AeroCloud sync index: {}", e);
+        } else {
+            tracing::debug!(
+                "Saved AeroCloud sync index for pair ({} tracked files)",
+                idx.files.len()
+            );
+        }
+    }
+
+    /// The baseline to persist after a clean cycle. The comparator OMITS
+    /// Identical files, so the baseline is carried FORWARD from the prior index
+    /// and only the changed files (the `comparisons`) are applied as deltas:
+    /// deletes remove the entry, synced files upsert the source-of-truth side,
+    /// and every action that yields no entry (unresolved conflicts, a one-sided
+    /// Skip) leaves the prior entry untouched. Rebuilding from `comparisons`
+    /// alone would drop every Identical file and silently wipe the baseline,
+    /// and removing an entry on anything but a delete would turn a file that
+    /// was synced back into a new one.
+    fn post_sync_baseline(
+        &self,
+        comparisons: &[FileComparison],
+        config: &CloudConfig,
+        prior_index: Option<&SyncIndex>,
+    ) -> HashMap<String, SyncIndexEntry> {
         let mut index_files: HashMap<String, SyncIndexEntry> =
             prior_index.map(|i| i.files.clone()).unwrap_or_default();
         for c in comparisons {
@@ -384,24 +416,8 @@ impl CloudService {
             ) {
                 index_files.insert(c.relative_path.clone(), entry);
             }
-            // AskUser / KeepBoth: leave the prior entry untouched (do not advance).
         }
-        let idx = SyncIndex {
-            version: SYNC_INDEX_VERSION,
-            last_sync: Utc::now(),
-            local_path: local.to_string(),
-            remote_path: remote.to_string(),
-            files: index_files,
-            unverified_keys: Default::default(),
-        };
-        if let Err(e) = save_sync_index(&idx) {
-            tracing::warn!("Failed to save AeroCloud sync index: {}", e);
-        } else {
-            tracing::debug!(
-                "Saved AeroCloud sync index for pair ({} tracked files)",
-                idx.files.len()
-            );
-        }
+        index_files
     }
 
     /// Pick the baseline `SyncIndexEntry` for a file that stayed in sync this
@@ -415,6 +431,15 @@ impl CloudService {
     ///   authoritative side is what makes a tolerated one-sided edit in a
     ///   directional folder stay tolerated across cycles instead of being
     ///   reverted the following cycle by baseline bookkeeping.
+    /// - `Skip` of a file present on ONE side only records nothing. In a
+    ///   one-way folder that Skip is the decision to leave a never-synced
+    ///   file alone (a local-only file under receive-only, a remote-only one
+    ///   under send-only). Recording it would make the next cycle read the
+    ///   same file as previously synced and, in mirror mode, delete it: the
+    ///   file spared on cycle 1 would be removed on cycle 2. An entry that
+    ///   already exists is left as it is by the caller, so a file that WAS
+    ///   synced keeps its baseline. Directories are exempt: they are never
+    ///   deleted here, and a kept one must stay tracked.
     ///
     /// Returns `None` for actions that must not advance the baseline
     /// (`AskUser`, `KeepBoth`); deletes are handled by the caller.
@@ -428,6 +453,9 @@ impl CloudService {
         let info = match action {
             SyncAction::Upload => local_info,
             SyncAction::Download => remote_info,
+            SyncAction::Skip if !is_dir && (local_info.is_none() || remote_info.is_none()) => {
+                return None;
+            }
             SyncAction::Skip => match direction {
                 CompareDirection::RemoteToLocal => remote_info.or(local_info),
                 _ => local_info.or(remote_info),
@@ -2115,6 +2143,87 @@ mod baseline_tests {
                 action
             );
         }
+    }
+
+    /// A one-way mirror must not baseline a file it chose to leave alone:
+    /// otherwise the file spared on the first cycle reads as previously synced
+    /// on the second and is deleted. Both directions, since the send-only case
+    /// deletes on the server, where nothing archives it.
+    #[test]
+    fn a_skipped_one_sided_file_gets_no_baseline() {
+        let file = fi(7, 700);
+        for (direction, local, remote) in [
+            (CompareDirection::RemoteToLocal, Some(&file), None),
+            (CompareDirection::LocalToRemote, None, Some(&file)),
+        ] {
+            assert!(
+                CloudService::baseline_entry_for(
+                    &SyncAction::Skip,
+                    direction,
+                    local,
+                    remote,
+                    false
+                )
+                .is_none(),
+                "{direction:?}: a never-synced one-sided file must not enter the baseline"
+            );
+        }
+    }
+
+    /// The consequence, one level up: a one-sided Skip adds nothing, but it must
+    /// not remove what is there either. A file synced earlier and now left on
+    /// one side under preserve keeps its entry, so turning preserve off later
+    /// still propagates its delete; only a delete removes an entry.
+    #[test]
+    fn a_one_sided_skip_neither_adds_nor_removes_a_baseline() {
+        let svc = CloudService::new();
+        let entry = |size| SyncIndexEntry {
+            size,
+            modified: None,
+            is_dir: false,
+        };
+        let mut prior = SyncIndex::new("/l".to_string(), "/r".to_string());
+        prior.files.insert("synced.txt".to_string(), entry(1));
+        prior.files.insert("gone.txt".to_string(), entry(2));
+        let mut synced = cmp(SyncStatus::RemoteOnly, None, Some(fi(1, 1)), true, false);
+        synced.relative_path = "synced.txt".to_string();
+        let mut never = cmp(SyncStatus::RemoteOnly, None, Some(fi(3, 3)), false, false);
+        never.relative_path = "never.txt".to_string();
+        let mut gone = cmp(SyncStatus::LocalOnly, Some(fi(2, 2)), None, true, false);
+        gone.relative_path = "gone.txt".to_string();
+
+        // Send-only with preserve: both remote-only files are Skipped.
+        let preserve = cfg(
+            CompareDirection::LocalToRemote,
+            true,
+            ConflictStrategy::AskUser,
+        );
+        let files =
+            svc.post_sync_baseline(&[synced.clone(), never.clone()], &preserve, Some(&prior));
+        assert!(
+            files.contains_key("synced.txt"),
+            "a Skip must not drop a synced file's entry"
+        );
+        assert!(
+            !files.contains_key("never.txt"),
+            "a Skip must not baseline a never-synced file"
+        );
+
+        // Bidirectional: the local-only previously synced file is a delete.
+        let bidi = cfg(
+            CompareDirection::Bidirectional,
+            false,
+            ConflictStrategy::AskUser,
+        );
+        let files = svc.post_sync_baseline(&[gone], &bidi, Some(&prior));
+        assert!(
+            !files.contains_key("gone.txt"),
+            "a delete removes the entry"
+        );
+        assert!(
+            files.contains_key("synced.txt"),
+            "untouched entries carry forward"
+        );
     }
 
     #[test]
