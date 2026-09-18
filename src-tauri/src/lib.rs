@@ -5970,7 +5970,17 @@ mod safe_picker_start_dir_tests {
             .join("aeroftp-does-not-exist-xyz")
             .join("nested-missing");
         let got = safe_picker_start_dir_blocking(Some(stale.to_string_lossy().into_owned()));
-        assert_eq!(got, Some(base.to_string_lossy().into_owned()));
+        // Compared as paths and not as strings. The contract is which directory
+        // the picker opens at, and `std::env::temp_dir()` on Windows hands back
+        // that directory WITH a trailing separator while the walk-up returns it
+        // without one: two spellings of the same directory failed a string
+        // comparison and said nothing about the behaviour. `Path` comparison
+        // ignores the trailing separator and is what the assertion meant.
+        assert_eq!(
+            got.as_deref().map(std::path::Path::new),
+            Some(base.as_path()),
+            "the picker must open at the existing ancestor"
+        );
     }
 
     #[test]
@@ -6942,6 +6952,13 @@ mod rename_local_exdev_tests {
         assert_eq!(std::fs::read(&to).unwrap(), b"b");
     }
 
+    // Unix only, and the gate is the answer rather than a retreat. The path
+    // under test is a GVFS mount, which exists on Linux and nowhere else, and
+    // its colon is what the test is about. On Windows a colon is the drive
+    // separator, so `validate_path` refuses the string for a reason that has
+    // nothing to do with the claim being made, and there is no Windows path of
+    // this shape to substitute: the case cannot be stated there at all.
+    #[cfg(unix)]
     #[test]
     fn validate_path_allows_gvfs_mtp_host_colon() {
         // Colon in the mount leaf is not a URL scheme; must not be rejected.

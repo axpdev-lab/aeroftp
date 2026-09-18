@@ -638,9 +638,16 @@ mod tests {
             Err(ProviderError::InvalidConfig(_))
         ));
 
+        // An absolute path is not the same shape everywhere: `/tmp/...` has no
+        // drive letter, so on Windows `Path::is_absolute` is false and the
+        // product correctly refuses it. The fixture asked the parser to accept
+        // a path that is only absolute on Unix, so the test failed on Windows
+        // for the product being right. The temp directory is absolute on every
+        // platform by construction.
+        let absolute_folder = std::env::temp_dir().join("aeroshare-test");
         config.extra.insert(
             PEER_EXTRA_LOCAL_FOLDER.to_string(),
-            "/tmp/aeroshare-test".to_string(),
+            absolute_folder.to_string_lossy().into_owned(),
         );
         let parsed = PeerProviderConfig::from_provider_config(&config).expect("valid");
         assert_eq!(parsed.namespace_id, "abc123");
