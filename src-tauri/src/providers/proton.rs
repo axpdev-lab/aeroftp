@@ -1217,64 +1217,30 @@ mod cli_sequence_tests {
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
 
-    fn write_shim(dir: &Path) -> PathBuf {
-        let log = dir.join("argv.log");
-        let trash_json = dir.join("trash.json");
-        let shim = dir.join("proton-drive");
-        let log_lit = serde_json::Value::String(log.to_string_lossy().into_owned()).to_string();
-        let trash_lit =
-            serde_json::Value::String(trash_json.to_string_lossy().into_owned()).to_string();
-        let script = format!(
-            r#"#!/usr/bin/env python3
-import json, pathlib, sys
-LOG = {log_lit}
-TRASH_JSON = {trash_lit}
-args = sys.argv[1:]
-with open(LOG, "a") as f:
-    f.write(json.dumps(args) + "\n")
-verb = args[0] if args else ""
-sub = args[1] if len(args) > 1 else ""
-if verb == "filesystem" and sub == "download":
-    dest = pathlib.Path(args[-1])
-    remote = args[-2]
-    name = pathlib.Path(remote).name
-    dest.mkdir(parents=True, exist_ok=True)
-    target = dest / name
-    if "-f" in args:
-        i = args.index("-f")
-        strat = args[i + 1] if i + 1 < len(args) else ""
-        if strat == "remove" and target.exists():
-            target.unlink()
-    target.write_text("REMOTE-CONTENT")
-    sys.exit(0)
-if verb == "filesystem" and sub == "info":
-    path = next((a for a in args[2:] if not a.startswith("-")), "/x")
-    name = pathlib.Path(path).name
-    print(json.dumps({{
-        "name": {{"ok": True, "value": name}},
-        "uid": "UID-CAPTURED",
-        "type": "file",
-        "path": path
-    }}))
-    sys.exit(0)
-if verb == "filesystem" and sub == "list":
-    listed = next((a for a in args[2:] if not a.startswith("-")), "/")
-    trash_path = pathlib.Path(TRASH_JSON)
-    if listed.rstrip("/") in ("/trash", "/photos-trash") and trash_path.exists():
-        sys.stdout.write(trash_path.read_text())
-    else:
-        print("[]")
-    sys.exit(0)
-if verb == "filesystem" and sub in (
-    "upload", "trash", "delete", "rename", "create-folder", "copy", "move"
-):
-    sys.exit(0)
-print("unhandled", args, file=sys.stderr)
-sys.exit(1)
-"#
+    /// Put a `proton-drive` stand-in in `dir` and return its path.
+    ///
+    /// The stand-in is a checked-in executable reached through a symlink, and
+    /// the tests must not go back to writing it themselves. Writing a file and
+    /// then executing it races with every other thread that spawns a process:
+    /// a child forked while the write handle is open inherits that handle until
+    /// its own exec, and executing a file that anyone holds open for writing
+    /// fails with ETXTBSY ("Text file busy"). Measured on this module before the
+    /// change: 2 red runs out of 12 of `cargo test --lib -- proton`, in
+    /// different tests each time. A symlink opens no handle on the target.
+    fn link_shim(dir: &Path) -> PathBuf {
+        let target =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/proton_drive_shim.py");
+        let mode = std::fs::metadata(&target)
+            .unwrap_or_else(|e| panic!("shim fixture missing at {}: {e}", target.display()))
+            .permissions()
+            .mode();
+        assert!(
+            mode & 0o111 != 0,
+            "shim fixture {} lost its executable bit (mode {mode:o})",
+            target.display()
         );
-        std::fs::write(&shim, script).unwrap();
-        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let shim = dir.join("proton-drive");
+        std::os::unix::fs::symlink(&target, &shim).unwrap();
         shim
     }
 
@@ -1313,7 +1279,7 @@ sys.exit(1)
     #[tokio::test]
     async fn upload_stages_dest_basename_instead_of_renaming_remote() {
         let dir = workdir();
-        let shim = write_shim(&dir);
+        let shim = link_shim(&dir);
         let local = dir.join("notes.txt");
         std::fs::write(&local, "NEW-INCOMING-CONTENT").unwrap();
         let mut p = provider(&shim);
@@ -1359,7 +1325,7 @@ sys.exit(1)
     #[tokio::test]
     async fn download_does_not_remove_local_sibling_matching_remote_name() {
         let dir = workdir();
-        let shim = write_shim(&dir);
+        let shim = link_shim(&dir);
         let dest_dir = dir.join("dl");
         std::fs::create_dir_all(&dest_dir).unwrap();
         let precious = dest_dir.join("report.txt");
@@ -1394,7 +1360,7 @@ sys.exit(1)
     #[tokio::test]
     async fn delete_permanent_refuses_when_trash_name_is_ambiguous() {
         let dir = workdir();
-        let shim = write_shim(&dir);
+        let shim = link_shim(&dir);
         std::fs::write(
             dir.join("trash.json"),
             r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"UID-OLD","type":"file"},{"name":{"ok":true,"value":"dup.txt"},"uid":"UID-CAPTURED","type":"file"}]"#,
@@ -1422,7 +1388,7 @@ sys.exit(1)
     #[tokio::test]
     async fn delete_permanent_purges_when_unique_trash_name_matches_uid() {
         let dir = workdir();
-        let shim = write_shim(&dir);
+        let shim = link_shim(&dir);
         std::fs::write(
             dir.join("trash.json"),
             r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"UID-CAPTURED","type":"file"}]"#,
@@ -1447,7 +1413,7 @@ sys.exit(1)
     #[tokio::test]
     async fn mkdir_rename_copy_put_dash_guard_before_bare_names() {
         let dir = workdir();
-        let shim = write_shim(&dir);
+        let shim = link_shim(&dir);
         let mut p = provider(&shim);
         p.mkdir("/my-files/scratch/-x").await.unwrap();
         p.rename("/my-files/scratch/a.txt", "/my-files/scratch/-y")
