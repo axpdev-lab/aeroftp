@@ -324,7 +324,7 @@
             "swiftAuthUrl": "Keystone-ის ავთენტიფიკაციის URL",
             "swiftAllowCleartextStorage": "ეს განლაგება ობიექტების საცავს უბრალო HTTP-ით ემსახურება. მიიღეთ ეს ამ პროფილისთვის: წვდომის ტოკენი და ყოველი ფაილი ქსელს დაუშიფრავად კვეთს.",
             "kdriveTokenScopes": "ტოკენს სჭირდება drive და user_info სკოუპები. მხოლოდ drive-ით ის უკავშირდება და აჩვენებს ფაილებს, მაგრამ „მიღება“ უარყოფილია, რადგან Drive ID-ის საპოვნელად ის კითხულობს თქვენი ანგარიშის პროფილს.",
-            "protonCliTitle": "ოფიციალური Proton Drive CLI",
+            "protonCliTitle": "იყენებს ოფიციალურ Proton Drive CLI-ს",
             "protonCliBody": "დააყენეთ Proton Drive CLI მისამართიდან proton.me/download/drive/cli, შემდეგ ტერმინალში გაუშვით proton-drive auth login და დაასრულეთ ბრაუზერში. AeroFTP თქვენს პაროლს არასოდეს ხედავს; სესია რჩება OS-ის საიდუმლო საცავში.",
             "protonUnofficial": "ეს არის მესამე მხარის აპლიკაცია, რომელსაც Proton ოფიციალურად არ უჭერს მხარს.",
             "protonConnectHint": "Connect იყენებს ამ მანქანაზე უკვე შესულ CLI-ს. ერთი Proton ანგარიში OS-ის თითოეულ მომხმარებელზე."
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "ტელეფონი, კამერა ან ტაბლეტი USB MTP-ის საშუალებით",
             "s3AllowCleartextEndpoint": "ეს ბოლოწერტილი S3-ს უბრალო HTTP-ით, ქსელის გავლით ემსახურება. მიიღეთ ეს ამ პროფილისთვის: ხელმოწერილი ავტორიზაციის მონაცემები და ყოველი ფაილი ქსელს დაუშიფრავად კვეთს.",
             "discoverFilebase": "Filebase: S3-თან თავსებადი ობიექტების საცავი (5 GB უფასოდ)",
-            "protonDesc": "Proton Drive ოფიციალური CLI-ით",
-            "protonTooltip": "ოფიციალური Proton Drive CLI - დააყენეთ, შედით ბრაუზერში, AeroFTP არის GUI"
+            "protonDesc": "უკავშირდება Proton Drive CLI-ით",
+            "protonTooltip": "იყენებს Proton Drive CLI-ს - დააყენეთ, შედით ბრაუზერში, AeroFTP არის GUI"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",

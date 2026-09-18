@@ -324,7 +324,7 @@
             "swiftAuthUrl": "URL za overjanje Keystone",
             "swiftAllowCleartextStorage": "Ta namestitev streže objektno shrambo prek nešifriranega HTTP. Sprejmite to za ta profil: dostopni žeton in vsaka datoteka potujeta prek omrežja nešifrirana.",
             "kdriveTokenScopes": "Žeton potrebuje obsega drive in user_info. Samo z drive se poveže in prikaže datoteke, „Pridobi“ pa je zavrnjen, ker bere profil vašega računa, da najde Drive ID.",
-            "protonCliTitle": "Uradni Proton Drive CLI",
+            "protonCliTitle": "Uporablja uradni Proton Drive CLI",
             "protonCliBody": "Namestite Proton Drive CLI s proton.me/download/drive/cli, nato v terminalu zaženite proton-drive auth login in dokončajte v brskalniku. AeroFTP nikoli ne vidi vašega gesla; seja ostane v shrambi skrivnosti OS.",
             "protonUnofficial": "To je aplikacija tretje osebe, ki je Proton uradno ne podpira.",
             "protonConnectHint": "Connect uporabi CLI, ki je na tem računalniku že prijavljen. En račun Proton na uporabnika OS."
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "Telefon, fotoaparat ali tablica prek USB MTP",
             "s3AllowCleartextEndpoint": "Ta končna točka streže S3 prek nešifriranega HTTP po omrežju. Sprejmite to za ta profil: podpisane poverilnice in vsaka datoteka potujejo prek omrežja nešifrirane.",
             "discoverFilebase": "Filebase: objektna shramba, združljiva s S3 (5 GB brezplačno)",
-            "protonDesc": "Proton Drive prek uradnega CLI",
-            "protonTooltip": "Uradni Proton Drive CLI - namestite, prijavite se v brskalniku, AeroFTP je GUI"
+            "protonDesc": "Povezuje se prek Proton Drive CLI",
+            "protonTooltip": "Uporablja Proton Drive CLI - namestite, prijavite se v brskalniku, AeroFTP je GUI"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

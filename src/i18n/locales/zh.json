@@ -324,7 +324,7 @@
             "swiftAuthUrl": "Keystone 认证 URL",
             "swiftAllowCleartextStorage": "此部署通过明文 HTTP 提供对象存储。为此配置文件接受：访问令牌和每个文件都将以未加密方式穿越网络。",
             "kdriveTokenScopes": "令牌需要 drive 和 user_info 两个范围。仅有 drive 时可以连接并列出文件，但“获取”会被拒绝，因为它需要读取您的账户资料来查找 Drive ID。",
-            "protonCliTitle": "官方 Proton Drive CLI",
+            "protonCliTitle": "使用官方 Proton Drive CLI",
             "protonCliBody": "从 proton.me/download/drive/cli 安装 Proton Drive CLI，然后在终端运行 proton-drive auth login 并在浏览器中完成。AeroFTP 绝不会看到你的密码；会话留在操作系统的密钥库中。",
             "protonUnofficial": "这是 Proton 未官方支持的第三方应用。",
             "protonConnectHint": "Connect 使用本机已登录的 CLI。每个操作系统用户一个 Proton 账户。"
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "通过 USB MTP 连接的手机、相机或平板",
             "s3AllowCleartextEndpoint": "此端点通过网络以明文 HTTP 提供 S3。为此配置文件接受：签名凭据和每个文件都将以未加密方式穿越网络。",
             "discoverFilebase": "Filebase: S3 兼容对象存储（免费 5 GB）",
-            "protonDesc": "通过官方 CLI 使用 Proton Drive",
-            "protonTooltip": "官方 Proton Drive CLI - 安装后在浏览器登录，AeroFTP 作为图形界面"
+            "protonDesc": "通过 Proton Drive CLI 连接",
+            "protonTooltip": "使用 Proton Drive CLI - 安装，在浏览器中登录，AeroFTP 即为 GUI"
         },
         "shortcuts": {
             "title": "键盘快捷键",

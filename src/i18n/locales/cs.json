@@ -324,7 +324,7 @@
             "swiftAuthUrl": "Ověřovací URL Keystone",
             "swiftAllowCleartextStorage": "Toto nasazení poskytuje objektové úložiště přes nešifrované HTTP. Přijměte to pro tento profil: přístupový token i každý soubor procházejí sítí nezašifrované.",
             "kdriveTokenScopes": "Token potřebuje rozsahy drive a user_info. Pouze s drive se připojí a vypíše soubory, ale „Načíst“ je odmítnuto, protože čte profil vašeho účtu, aby našlo Drive ID.",
-            "protonCliTitle": "Oficiální Proton Drive CLI",
+            "protonCliTitle": "Používá oficiální Proton Drive CLI",
             "protonCliBody": "Nainstalujte Proton Drive CLI z proton.me/download/drive/cli, poté v terminálu spusťte proton-drive auth login a dokončete to v prohlížeči. AeroFTP nikdy nevidí vaše heslo; relace zůstane v úložišti tajemství OS.",
             "protonUnofficial": "Toto je aplikace třetí strany, kterou Proton oficiálně nepodporuje.",
             "protonConnectHint": "Connect použije CLI, které je na tomto počítači už přihlášené. Jeden účet Proton na uživatele OS."
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "Telefon, fotoaparát nebo tablet přes USB MTP",
             "s3AllowCleartextEndpoint": "Tento koncový bod poskytuje S3 přes nešifrované HTTP po síti. Přijměte to pro tento profil: podepsané přihlašovací údaje i každý soubor procházejí sítí nezašifrované.",
             "discoverFilebase": "Filebase: objektové úložiště kompatibilní se S3 (5 GB zdarma)",
-            "protonDesc": "Proton Drive přes oficiální CLI",
-            "protonTooltip": "Oficiální Proton Drive CLI - nainstalujte, přihlaste se v prohlížeči, AeroFTP je GUI"
+            "protonDesc": "Připojuje se přes Proton Drive CLI",
+            "protonTooltip": "Používá Proton Drive CLI - nainstalujte, přihlaste se v prohlížeči, AeroFTP je GUI"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",

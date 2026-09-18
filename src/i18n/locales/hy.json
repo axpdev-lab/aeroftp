@@ -324,7 +324,7 @@
             "swiftAuthUrl": "Keystone նույնականացման URL",
             "swiftAllowCleartextStorage": "Այս տեղակայումը օբյեկտների պահոցը մատուցում է սովորական HTTP-ով։ Ընդունեք այն այս պրոֆիլի համար. մուտքի նշանը և յուրաքանչյուր ֆայլ ցանցով անցնում են չգաղտնագրված։",
             "kdriveTokenScopes": "Թոքենին անհրաժեշտ են drive և user_info շրջանակները։ Միայն drive-ով այն միանում և ցուցադրում է ֆայլերը, բայց «Ստանալ»-ը մերժվում է, քանի որ Drive ID-ն գտնելու համար կարդում է ձեր հաշվի պրոֆիլը։",
-            "protonCliTitle": "Պաշտոնական Proton Drive CLI",
+            "protonCliTitle": "Օգտագործում է պաշտոնական Proton Drive CLI",
             "protonCliBody": "Տեղադրեք Proton Drive CLI-ը proton.me/download/drive/cli-ից, ապա տերմինալում գործարկեք proton-drive auth login և ավարտեք դիտարկիչում։ AeroFTP-ը երբեք չի տեսնում ձեր գաղտնաբառը. նիստը մնում է OS-ի գաղտնիքների պահոցում։",
             "protonUnofficial": "Սա երրորդ կողմի հավելված է, որը Proton-ը պաշտոնապես չի աջակցում։",
             "protonConnectHint": "Connect-ը օգտագործում է այս մեքենայում արդեն մուտք գործած CLI-ը։ Մեկ Proton հաշիվ OS օգտատիրոջ համար։"
@@ -1928,8 +1928,8 @@
             "discoverMtpPortable": "Հեռախոս, տեսախցիկ կամ պլանշետ USB MTP-ի միջոցով",
             "s3AllowCleartextEndpoint": "Այս վերջնակետը S3-ը մատուցում է սովորական HTTP-ով՝ ցանցի միջով։ Ընդունեք այն այս պրոֆիլի համար. ստորագրված մուտքի տվյալները և յուրաքանչյուր ֆայլ ցանցով անցնում են չգաղտնագրված։",
             "discoverFilebase": "Filebase: S3-համատեղելի օբյեկտների պահոց (5 GB անվճար)",
-            "protonDesc": "Proton Drive պաշտոնական CLI-ով",
-            "protonTooltip": "Պաշտոնական Proton Drive CLI - տեղադրեք, մուտք գործեք դիտարկիչում, AeroFTP-ը GUI-ն է"
+            "protonDesc": "Միանում է Proton Drive CLI-ով",
+            "protonTooltip": "Օգտագործում է Proton Drive CLI - տեղադրեք, մուտք գործեք դիտարկիչում, AeroFTP-ը GUI-ն է"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",

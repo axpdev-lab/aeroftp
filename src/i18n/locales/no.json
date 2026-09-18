@@ -324,7 +324,7 @@
             "swiftAuthUrl": "Keystone-autentiserings-URL",
             "swiftAllowCleartextStorage": "Denne installasjonen leverer objektlagring over ukryptert HTTP. Godta det for denne profilen: tilgangstokenet og hver fil krysser nettverket ukryptert.",
             "kdriveTokenScopes": "Tokenet trenger omfangene drive og user_info. Med bare drive kobler det til og viser filer, men \"Hent\" avvises, fordi den leser kontoprofilen din for å finne Drive ID.",
-            "protonCliTitle": "Offisiell Proton Drive CLI",
+            "protonCliTitle": "Bruker den offisielle Proton Drive CLI",
             "protonCliBody": "Installer Proton Drive CLI fra proton.me/download/drive/cli, kjør deretter proton-drive auth login i en terminal og fullfør i nettleseren. AeroFTP ser aldri passordet ditt; økten blir i OS-ets hemmelighetslager.",
             "protonUnofficial": "Dette er et tredjepartsprogram som Proton ikke støtter offisielt.",
             "protonConnectHint": "Connect bruker CLI-en som allerede er logget inn på denne maskinen. Én Proton-konto per OS-bruker."
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "Telefon, kamera eller nettbrett via USB MTP",
             "s3AllowCleartextEndpoint": "Dette endepunktet leverer S3 over ukryptert HTTP via et nettverk. Godta det for denne profilen: den signerte påloggingsinformasjonen og hver fil krysser nettverket ukryptert.",
             "discoverFilebase": "Filebase: S3-kompatibel objektlagring (5 GB gratis)",
-            "protonDesc": "Proton Drive via offisiell CLI",
-            "protonTooltip": "Offisiell Proton Drive CLI - installer, logg inn i nettleseren, AeroFTP er GUI-en"
+            "protonDesc": "Kobler til via Proton Drive CLI",
+            "protonTooltip": "Bruker Proton Drive CLI - installer, logg inn i nettleseren, AeroFTP er GUI-en"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",

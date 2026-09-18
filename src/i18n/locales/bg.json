@@ -324,7 +324,7 @@
             "swiftAuthUrl": "URL за удостоверяване Keystone",
             "swiftAllowCleartextStorage": "Тази инсталация обслужва обектното хранилище през обикновен HTTP. Приемете го за този профил: токенът за достъп и всеки файл преминават през мрежата некриптирани.",
             "kdriveTokenScopes": "Токенът трябва да има обхватите drive и user_info. Само с drive той се свързва и показва файловете, но „Извличане“ се отхвърля, защото чете профила на акаунта ви, за да намери Drive ID.",
-            "protonCliTitle": "Официален Proton Drive CLI",
+            "protonCliTitle": "Използва официалния Proton Drive CLI",
             "protonCliBody": "Инсталирайте Proton Drive CLI от proton.me/download/drive/cli, след това изпълнете proton-drive auth login в терминал и завършете в браузъра. AeroFTP никога не вижда паролата ви; сесията остава в хранилището за тайни на ОС.",
             "protonUnofficial": "Това е приложение на трета страна, което не се поддържа официално от Proton.",
             "protonConnectHint": "Connect използва CLI, вече вписан на тази машина. Един Proton акаунт на потребител на ОС."
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "Телефон, камера или таблет чрез USB MTP",
             "s3AllowCleartextEndpoint": "Тази крайна точка обслужва S3 през обикновен HTTP по мрежата. Приемете я за този профил: подписаните идентификационни данни и всеки файл преминават през мрежата некриптирани.",
             "discoverFilebase": "Filebase: S3-съвместимо обектно хранилище (5 GB безплатно)",
-            "protonDesc": "Proton Drive чрез официалния CLI",
-            "protonTooltip": "Официален Proton Drive CLI - инсталирайте го, впишете се в браузъра, AeroFTP е GUI"
+            "protonDesc": "Свързва се чрез Proton Drive CLI",
+            "protonTooltip": "Използва Proton Drive CLI - инсталирайте го, впишете се в браузъра, AeroFTP е GUI"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",

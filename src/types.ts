@@ -108,7 +108,9 @@ export const getProtocolClass = (type: ProviderType): ProtocolClass => {
 };
 
 // Encryption strength (bits) for E2E providers. MEGA uses AES-128 for files;
-// Filen and Internxt use AES-256 zero-knowledge encryption.
+// Filen and Internxt use AES-256 zero-knowledge encryption. Proton Drive
+// encrypts file contents with AES-256 and ECC key exchange (proton.me/learn
+// encryption AES page, read 2026-09-18).
 export const getE2EBits = (type: ProviderType): 128 | 256 | null => {
   if (type === "mega") return 128;
   if (type === "filen" || type === "internxt" || type === "proton") return 256;

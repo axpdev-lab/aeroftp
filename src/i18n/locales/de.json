@@ -324,7 +324,7 @@
             "swiftAuthUrl": "Keystone-Authentifizierungs-URL",
             "swiftAllowCleartextStorage": "Diese Installation stellt den Objektspeicher über unverschlüsseltes HTTP bereit. Für dieses Profil akzeptieren: Das Zugriffstoken und jede Datei durchqueren das Netzwerk unverschlüsselt.",
             "kdriveTokenScopes": "Das Token braucht die Scopes drive und user_info. Mit drive allein verbindet es sich und listet Dateien, aber „Abrufen“ wird abgelehnt, weil es Ihr Kontoprofil liest, um die Drive ID zu finden.",
-            "protonCliTitle": "Offizielle Proton Drive CLI",
+            "protonCliTitle": "Verwendet die offizielle Proton Drive CLI",
             "protonCliBody": "Installieren Sie die Proton Drive CLI von proton.me/download/drive/cli, führen Sie dann proton-drive auth login im Terminal aus und schließen Sie im Browser ab. AeroFTP sieht Ihr Passwort nie; die Sitzung bleibt im Geheimnisspeicher des Betriebssystems.",
             "protonUnofficial": "Dies ist eine Drittanbieter-Anwendung, die von Proton nicht offiziell unterstützt wird.",
             "protonConnectHint": "Connect verwendet die auf diesem Rechner bereits angemeldete CLI. Ein Proton-Konto pro Betriebssystembenutzer."
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "Telefon, Kamera oder Tablet über USB MTP",
             "s3AllowCleartextEndpoint": "Dieser Endpunkt stellt S3 über unverschlüsseltes HTTP im Netzwerk bereit. Für dieses Profil akzeptieren: Die signierten Zugangsdaten und jede Datei durchqueren das Netzwerk unverschlüsselt.",
             "discoverFilebase": "Filebase: S3-kompatibler Objektspeicher (5 GB kostenlos)",
-            "protonDesc": "Proton Drive über die offizielle CLI",
-            "protonTooltip": "Offizielle Proton Drive CLI - installieren, im Browser anmelden, AeroFTP ist die GUI"
+            "protonDesc": "Verbindet über die Proton Drive CLI",
+            "protonTooltip": "Verwendet die Proton Drive CLI - installieren, im Browser anmelden, AeroFTP ist die GUI"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

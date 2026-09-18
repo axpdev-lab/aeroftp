@@ -324,7 +324,7 @@
             "swiftAuthUrl": "Keystone-authenticatie-URL",
             "swiftAllowCleartextStorage": "Deze installatie levert objectopslag via onversleutelde HTTP. Accepteer dit voor dit profiel: het toegangstoken en elk bestand gaan onversleuteld over het netwerk.",
             "kdriveTokenScopes": "Het token heeft de scopes drive en user_info nodig. Met alleen drive maakt het verbinding en toont het bestanden, maar \"Ophalen\" wordt geweigerd, omdat het je accountprofiel leest om de Drive ID te vinden.",
-            "protonCliTitle": "Officiële Proton Drive CLI",
+            "protonCliTitle": "Gebruikt de officiële Proton Drive CLI",
             "protonCliBody": "Installeer de Proton Drive CLI van proton.me/download/drive/cli, voer daarna proton-drive auth login uit in een terminal en rond af in de browser. AeroFTP ziet uw wachtwoord nooit; de sessie blijft in de geheimenopslag van het OS.",
             "protonUnofficial": "Dit is een toepassing van derden die Proton niet officieel ondersteunt.",
             "protonConnectHint": "Connect gebruikt de CLI die op deze machine al is aangemeld. Eén Proton-account per OS-gebruiker."
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "Telefoon, camera of tablet via USB MTP",
             "s3AllowCleartextEndpoint": "Dit eindpunt levert S3 via onversleutelde HTTP over een netwerk. Accepteer dit voor dit profiel: de ondertekende inloggegevens en elk bestand gaan onversleuteld over het netwerk.",
             "discoverFilebase": "Filebase: S3-compatibele objectopslag (5 GB gratis)",
-            "protonDesc": "Proton Drive via de officiële CLI",
-            "protonTooltip": "Officiële Proton Drive CLI - installeer, meld u aan in de browser, AeroFTP is de GUI"
+            "protonDesc": "Verbindt via de Proton Drive CLI",
+            "protonTooltip": "Gebruikt de Proton Drive CLI - installeer, meld u aan in de browser, AeroFTP is de GUI"
         },
         "shortcuts": {
             "title": "Sneltoetsen",

@@ -324,7 +324,7 @@
             "swiftAuthUrl": "Keystone autentifikācijas URL",
             "swiftAllowCleartextStorage": "Šī izvietošana nodrošina objektu krātuvi caur nešifrētu HTTP. Pieņemiet to šim profilam: piekļuves marķieris un katrs fails šķērso tīklu nešifrēts.",
             "kdriveTokenScopes": "Tokenam nepieciešami drive un user_info tvērumi. Tikai ar drive tas pieslēdzas un parāda failus, bet \"Iegūt\" tiek noraidīts, jo Drive ID atrašanai tas nolasa jūsu konta profilu.",
-            "protonCliTitle": "Oficiālā Proton Drive CLI",
+            "protonCliTitle": "Izmanto oficiālo Proton Drive CLI",
             "protonCliBody": "Instalējiet Proton Drive CLI no proton.me/download/drive/cli, pēc tam terminālī palaidiet proton-drive auth login un pabeidziet pārlūkā. AeroFTP nekad neredz jūsu paroli; sesija paliek OS noslēpumu krātuvē.",
             "protonUnofficial": "Šī ir trešās puses lietotne, ko Proton oficiāli neatbalsta.",
             "protonConnectHint": "Connect izmanto šajā datorā jau pierakstīto CLI. Viens Proton konts uz OS lietotāju."
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "Tālrunis, kamera vai planšetdators, izmantojot USB MTP",
             "s3AllowCleartextEndpoint": "Šis galapunkts nodrošina S3 caur nešifrētu HTTP tīklā. Pieņemiet to šim profilam: parakstītie akreditācijas dati un katrs fails šķērso tīklu nešifrēti.",
             "discoverFilebase": "Filebase: ar S3 saderīga objektu glabātuve (5 GB bez maksas)",
-            "protonDesc": "Proton Drive, izmantojot oficiālo CLI",
-            "protonTooltip": "Oficiālā Proton Drive CLI - instalējiet, pierakstieties pārlūkā, AeroFTP ir GUI"
+            "protonDesc": "Savienojas, izmantojot Proton Drive CLI",
+            "protonTooltip": "Izmanto Proton Drive CLI - instalējiet, pierakstieties pārlūkā, AeroFTP ir GUI"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

@@ -324,7 +324,7 @@
             "swiftAuthUrl": "URL การตรวจสอบสิทธิ์ Keystone",
             "swiftAllowCleartextStorage": "การติดตั้งนี้ให้บริการที่เก็บอ็อบเจ็กต์ผ่าน HTTP แบบไม่เข้ารหัส ยอมรับสำหรับโปรไฟล์นี้: โทเค็นการเข้าถึงและไฟล์ทุกไฟล์จะผ่านเครือข่ายโดยไม่ถูกเข้ารหัส",
             "kdriveTokenScopes": "โทเค็นต้องมีขอบเขต drive และ user_info หากมีเฉพาะ drive จะเชื่อมต่อและแสดงรายการไฟล์ได้ แต่ \"ดึงข้อมูล\" จะถูกปฏิเสธ เพราะต้องอ่านโปรไฟล์บัญชีของคุณเพื่อค้นหา Drive ID",
-            "protonCliTitle": "Proton Drive CLI ทางการ",
+            "protonCliTitle": "ใช้ Proton Drive CLI ทางการ",
             "protonCliBody": "ติดตั้ง Proton Drive CLI จาก proton.me/download/drive/cli จากนั้นรัน proton-drive auth login ในเทอร์มินัลแล้วทำให้เสร็จในเบราว์เซอร์ AeroFTP ไม่เคยเห็นรหัสผ่านของคุณ เซสชันอยู่ในที่เก็บความลับของ OS",
             "protonUnofficial": "นี่เป็นแอปของบุคคลที่สามที่ Proton ไม่รองรับอย่างเป็นทางการ",
             "protonConnectHint": "Connect ใช้ CLI ที่ลงชื่อเข้าแล้วบนเครื่องนี้ บัญชี Proton หนึ่งบัญชีต่อผู้ใช้ OS"
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "โทรศัพท์ กล้อง หรือแท็บเล็ตผ่าน USB MTP",
             "s3AllowCleartextEndpoint": "เอ็นด์พอยต์นี้ให้บริการ S3 ผ่าน HTTP แบบไม่เข้ารหัสข้ามเครือข่าย ยอมรับสำหรับโปรไฟล์นี้: ข้อมูลรับรองที่ลงนามและไฟล์ทุกไฟล์จะผ่านเครือข่ายโดยไม่ถูกเข้ารหัส",
             "discoverFilebase": "Filebase: ที่เก็บออบเจ็กต์ที่เข้ากันได้กับ S3 (ฟรี 5 GB)",
-            "protonDesc": "Proton Drive ผ่าน CLI ทางการ",
-            "protonTooltip": "Proton Drive CLI ทางการ - ติดตั้ง ลงชื่อเข้าในเบราว์เซอร์ AeroFTP คือ GUI"
+            "protonDesc": "เชื่อมต่อผ่าน Proton Drive CLI",
+            "protonTooltip": "ใช้ Proton Drive CLI - ติดตั้ง, ลงชื่อเข้าในเบราว์เซอร์, AeroFTP คือ GUI"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",

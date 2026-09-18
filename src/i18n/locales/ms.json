@@ -324,7 +324,7 @@
             "swiftAuthUrl": "URL pengesahan Keystone",
             "swiftAllowCleartextStorage": "Penggunaan ini menyediakan storan objek melalui HTTP biasa. Terima untuk profil ini: token akses dan setiap fail melintasi rangkaian tanpa penyulitan.",
             "kdriveTokenScopes": "Token memerlukan skop drive dan user_info. Dengan drive sahaja ia boleh menyambung dan menyenaraikan fail, tetapi \"Dapatkan\" ditolak, kerana ia membaca profil akaun anda untuk mencari Drive ID.",
-            "protonCliTitle": "CLI rasmi Proton Drive",
+            "protonCliTitle": "Menggunakan CLI rasmi Proton Drive",
             "protonCliBody": "Pasang Proton Drive CLI dari proton.me/download/drive/cli, kemudian jalankan proton-drive auth login dalam terminal dan selesaikan dalam pelayar. AeroFTP tidak pernah melihat kata laluan anda; sesi kekal dalam stor rahsia OS.",
             "protonUnofficial": "Ini ialah aplikasi pihak ketiga yang tidak disokong secara rasmi oleh Proton.",
             "protonConnectHint": "Connect menggunakan CLI yang sudah log masuk pada mesin ini. Satu akaun Proton setiap pengguna OS."
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "Telefon, kamera atau tablet melalui USB MTP",
             "s3AllowCleartextEndpoint": "Titik akhir ini menyediakan S3 melalui HTTP biasa merentasi rangkaian. Terima untuk profil ini: bukti kelayakan yang ditandatangani dan setiap fail melintasi rangkaian tanpa penyulitan.",
             "discoverFilebase": "Filebase: storan objek serasi S3 (5 GB percuma)",
-            "protonDesc": "Proton Drive melalui CLI rasmi",
-            "protonTooltip": "CLI rasmi Proton Drive - pasang, log masuk dalam pelayar, AeroFTP ialah GUI"
+            "protonDesc": "Menyambung melalui CLI Proton Drive",
+            "protonTooltip": "Menggunakan CLI Proton Drive - pasang, log masuk dalam pelayar, AeroFTP ialah GUI"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

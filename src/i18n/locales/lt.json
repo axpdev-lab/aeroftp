@@ -324,7 +324,7 @@
             "swiftAuthUrl": "Keystone autentifikavimo URL",
             "swiftAllowCleartextStorage": "Ši diegtis teikia objektų saugyklą per neužšifruotą HTTP. Priimkite tai šiam profiliui: prieigos raktas ir kiekvienas failas keliauja tinklu neužšifruoti.",
             "kdriveTokenScopes": "Žetonui reikia drive ir user_info aprėpčių. Vien su drive jis prisijungia ir rodo failus, bet „Gauti“ atmetamas, nes Drive ID surasti jis skaito jūsų paskyros profilį.",
-            "protonCliTitle": "Oficiali Proton Drive CLI",
+            "protonCliTitle": "Naudoja oficialią Proton Drive CLI",
             "protonCliBody": "Įdiekite Proton Drive CLI iš proton.me/download/drive/cli, tada terminale paleiskite proton-drive auth login ir užbaikite naršyklėje. AeroFTP niekada nemato jūsų slaptažodžio; seansas lieka OS paslapčių saugykloje.",
             "protonUnofficial": "Tai trečiosios šalies programa, kurios Proton oficialiai nepalaiko.",
             "protonConnectHint": "Connect naudoja šioje mašinoje jau prisijungusią CLI. Viena Proton paskyra vienam OS naudotojui."
@@ -1935,8 +1935,8 @@
             "discoverMtpPortable": "Telefonas, kamera ar planšetė per USB MTP",
             "s3AllowCleartextEndpoint": "Šis galinis taškas teikia S3 per neužšifruotą HTTP tinklu. Priimkite tai šiam profiliui: pasirašyti prisijungimo duomenys ir kiekvienas failas keliauja tinklu neužšifruoti.",
             "discoverFilebase": "Filebase: su S3 suderinama objektų saugykla (5 GB nemokamai)",
-            "protonDesc": "Proton Drive per oficialią CLI",
-            "protonTooltip": "Oficiali Proton Drive CLI - įdiekite, prisijunkite naršyklėje, AeroFTP yra GUI"
+            "protonDesc": "Jungiasi per Proton Drive CLI",
+            "protonTooltip": "Naudoja Proton Drive CLI - įdiekite, prisijunkite naršyklėje, AeroFTP yra GUI"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
