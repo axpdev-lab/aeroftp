@@ -2179,13 +2179,20 @@ mod baseline_tests {
         assert!(files.contains_key("a.txt"));
         assert!(files.contains_key("sub/b.txt"));
         // G111: the key shape is the contract, not an implementation detail.
-        // Stated as "already normalized" rather than "contains no backslash",
-        // because on Unix a backslash is a legal character in a file name and
-        // the native separator is `/` already: this form says the same thing on
-        // both platforms without asserting something false on either.
+        //
+        // Asserted only on Windows, and against the filesystem rather than
+        // against the code: a backslash cannot appear in a Windows file name,
+        // so "no key carries one" is true by construction and stays red if
+        // `normalize_relative_key` is ever reduced to the identity. The first
+        // version of this check read `*k == normalize_relative_key(k)`, which
+        // compared the function under test with itself and would have survived
+        // exactly that mutation. Off Windows there is nothing to state: the
+        // native separator is already `/`, and a backslash there is a legal
+        // character that this scanner must not touch.
+        #[cfg(windows)]
         assert!(
-            files.keys().all(|k| *k == normalize_relative_key(k)),
-            "scan keys must already be normalized, got {:?}",
+            files.keys().all(|k| !k.contains('\\')),
+            "scan keys must not carry the native separator, got {:?}",
             files.keys().collect::<Vec<_>>()
         );
         // Call-site wiring: both sides complete must NOT trip on a single delete.
