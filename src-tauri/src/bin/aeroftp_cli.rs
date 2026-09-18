@@ -3475,14 +3475,21 @@ enum Commands {
         #[arg(long = "include-credentials")]
         include_credentials: bool,
         /// Export only these profiles: comma-separated, and each token is
-        /// EITHER a profile id OR a case-insensitive profile name (quote a
-        /// name that contains spaces). Defaults to every profile of the active
-        /// user. A token that matches nothing is an error, never a silent full
-        /// export.
+        /// resolved the way every other profile-taking command resolves one.
+        /// Four forms, in the order they are tried: the 1-based index shown by
+        /// `profiles`, an exact (case-insensitive) name, an id, and a substring
+        /// of a name that matches exactly one profile. An ambiguous substring
+        /// is an error that lists the candidates, and a token matching nothing
+        /// is an error too, never a silent full export. Quote a name that
+        /// contains spaces. Defaults to every profile of the active user.
         ///
-        /// The name form has always worked; the flag was called `--ids` with a
-        /// value called IDS, so nobody read past it and looked up internal ids
-        /// by hand. The aliases and the value name say it now.
+        /// The name form had always worked; the flag was called `--ids` with a
+        /// value called IDS, so nobody read past it and people looked up
+        /// internal ids by hand. The index and substring forms are new here,
+        /// and arrived by calling the shared resolver instead of a private
+        /// copy of it. Saying so in the help rather than only in the resolver
+        /// is the point of this change, so leaving the two behind would have
+        /// been the same defect one layer down.
         #[arg(
             long,
             visible_aliases = ["name", "names"],
