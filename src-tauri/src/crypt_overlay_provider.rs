@@ -1128,6 +1128,22 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.rename(&enc_from, &enc_to).await
     }
 
+    /// Forwarded rather than left to the trait default, because the default
+    /// falls back to `rename` and would take the inner provider's refusing
+    /// path instead of its replacing one. The AeroCrypt marker is published
+    /// through exactly this wrapper, so a default here would have kept the
+    /// defect alive where it matters most (G119).
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.refuse_crossing_the_anchor("Replace", from, to)?;
+        let (enc_from, from_is_dir) = self.map_existing(from, AccessKind::Write).await?;
+        let enc_to = self.map(to, from_is_dir, AccessKind::Write)?;
+        self.inner.replace(&enc_from, &enc_to).await
+    }
+
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        self.inner.supports_atomic_replace().await
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         let mut entry = self.inner.stat(&enc).await?;
@@ -2172,6 +2188,13 @@ pub async fn restore_headed_marker_from_config(
     )
     .map_err(|e| format!("Rebuilt AeroCrypt marker failed verification: {e}"))?;
 
+    // Asked while the server is still untouched (G119): a backend that cannot
+    // put one file over another refuses here, before a temporary exists, so
+    // the refusal can truthfully say the marker is unchanged.
+    crate::providers::ensure_atomic_replace(provider, config_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let staged = tempfile::NamedTempFile::new()
         .map_err(|e| format!("Cannot stage AeroCrypt marker: {e}"))?;
     std::fs::write(staged.path(), marker_text.as_bytes())
@@ -2195,7 +2218,7 @@ pub async fn restore_headed_marker_from_config(
                 .to_string(),
         );
     }
-    if let Err(e) = provider.rename(&remote_tmp, config_path).await {
+    if let Err(e) = provider.replace(&remote_tmp, config_path).await {
         let _ = provider.delete(&remote_tmp).await;
         return Err(format!("Cannot publish verified AeroCrypt marker: {e}"));
     }

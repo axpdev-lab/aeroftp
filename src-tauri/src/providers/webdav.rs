@@ -3546,6 +3546,49 @@ impl StorageProvider for WebDavProvider {
         }
     }
 
+    /// `MOVE` with `Overwrite: T`, which is the one difference from
+    /// [`rename`](Self::rename) and the whole point of the method.
+    ///
+    /// RFC 4918 section 10.6 makes `Overwrite: F` mean "fail with 412 if the
+    /// destination exists", and that is deliberately what `rename` keeps
+    /// sending: a user renaming one file onto another must not lose the
+    /// second one silently. Publishing a staged temporary is the opposite
+    /// case, where the destination is meant to go, and section 9.9.3 says the
+    /// server deletes it as part of the MOVE, so this is a single request and
+    /// not a delete followed by a move (G119).
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let destination = self.build_url(to);
+        let move_depth = match self.stat(from).await {
+            Ok(entry) => webdav_move_depth_header(Some(&entry)),
+            Err(_) => webdav_move_depth_header(None),
+        };
+
+        let response = self
+            .send_replaying_digest(|| {
+                self.request(webdav_methods::move_method(), from)
+                    .header("Destination", &destination)
+                    .header("Overwrite", "T")
+                    .header("Depth", move_depth)
+            })
+            .await?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(from.to_string())),
+            StatusCode::CONFLICT => Err(ProviderError::InvalidPath(
+                "Destination parent does not exist".to_string(),
+            )),
+            status => Err(ProviderError::ServerError(format!(
+                "MOVE failed with status: {}",
+                status
+            ))),
+        }
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);

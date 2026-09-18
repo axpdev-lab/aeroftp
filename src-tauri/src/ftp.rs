@@ -710,6 +710,19 @@ impl FtpManager {
         Ok(())
     }
 
+    /// Put `from` in place of `to`, replacing `to` if it is there.
+    ///
+    /// On FTP this is the same request as [`rename`](Self::rename), and that
+    /// is the whole content of the method: `RNFR`/`RNTO` carries none of the
+    /// prohibition that makes SFTP protocol 3 refuse an occupied destination,
+    /// so the servers this client meets replace rather than refuse. It exists
+    /// as its own name so the publishing callers say what they mean, and so
+    /// that the day a server is found that refuses, there is one place to
+    /// teach instead of a call site to hunt for (G119).
+    pub async fn replace(&mut self, from: &str, to: &str) -> Result<()> {
+        self.rename(from, to).await
+    }
+
     /// Change permissions (CHMOD)
     pub async fn chmod(&mut self, path: &str, mode: &str) -> Result<()> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;

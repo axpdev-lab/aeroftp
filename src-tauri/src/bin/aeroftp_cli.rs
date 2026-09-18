@@ -34892,6 +34892,12 @@ async fn publish_cli_edit_via_temp_rename(
     local_temp_path: &str,
     remote_path: &str,
 ) -> Result<(), ProviderError> {
+    // Asked before the temporary exists, not after. A backend that cannot put
+    // one file over another refuses here, while the server is still untouched,
+    // so the refusal can say that nothing was written and be telling the truth
+    // (G119).
+    ftp_client_gui_lib::providers::ensure_atomic_replace(provider, remote_path).await?;
+
     let remote_temp_path = cli_edit_temp_path(remote_path);
     if let Err(e) = provider
         .upload(local_temp_path, &remote_temp_path, None)
@@ -34900,9 +34906,10 @@ async fn publish_cli_edit_via_temp_rename(
         let _ = provider.delete(&remote_temp_path).await;
         return Err(e);
     }
-    // Rename atomicity depends on the backend, but temp+rename avoids direct
-    // target truncation before replacement bytes are fully uploaded.
-    if let Err(e) = provider.rename(&remote_temp_path, remote_path).await {
+    // `replace` and not `rename`: the destination exists by definition here,
+    // and `rename` deliberately keeps refusing that case so an ordinary `mv`
+    // cannot destroy a file the user did not mean to lose.
+    if let Err(e) = provider.replace(&remote_temp_path, remote_path).await {
         let _ = provider.delete(&remote_temp_path).await;
         return Err(e);
     }
@@ -53233,6 +53240,17 @@ async fn cmd_crypt_to_headed(
         let _ = provider.disconnect().await;
         return 11;
     }
+    // Asked while the server is still untouched (G119): if this backend cannot
+    // put one file over another, refusing now means the marker really is
+    // unchanged and no temporary was left behind.
+    if let Err(e) =
+        ftp_client_gui_lib::providers::ensure_atomic_replace(provider.as_mut(), &config_path).await
+    {
+        let code = provider_error_to_exit_code(&e);
+        print_error(format, &format!("{e}"), code);
+        let _ = provider.disconnect().await;
+        return code;
+    }
     let remote_tmp = format!("{config_path}.aerotmp-{}", uuid::Uuid::new_v4());
     if let Err(e) = provider
         .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
@@ -53278,7 +53296,7 @@ async fn cmd_crypt_to_headed(
         let _ = provider.disconnect().await;
         return 4;
     }
-    if let Err(e) = provider.rename(&remote_tmp, &config_path).await {
+    if let Err(e) = provider.replace(&remote_tmp, &config_path).await {
         let _ = provider.delete(&remote_tmp).await;
         let code = provider_error_to_exit_code(&e);
         print_error(
@@ -53468,6 +53486,17 @@ async fn cmd_crypt_migrate_marker(
             let _ = provider.disconnect().await;
             return 11;
         }
+        // Asked while the server is still untouched (G119), see the sibling
+        // above: the refusal has to be able to say the marker is unchanged.
+        if let Err(e) =
+            ftp_client_gui_lib::providers::ensure_atomic_replace(provider.as_mut(), &current_path)
+                .await
+        {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("{e}"), code);
+            let _ = provider.disconnect().await;
+            return code;
+        }
         let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
         if let Err(e) = provider
             .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
@@ -53513,7 +53542,7 @@ async fn cmd_crypt_migrate_marker(
             let _ = provider.disconnect().await;
             return 4;
         }
-        if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+        if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
             let _ = provider.delete(&remote_tmp).await;
             let code = provider_error_to_exit_code(&e);
             print_error(
@@ -54460,6 +54489,15 @@ async fn publish_crypt_marker(
         print_error(format, &format!("Cannot stage AeroCrypt marker: {e}"), 11);
         return Err(11);
     }
+    // Asked while the server is still untouched (G119), see the siblings
+    // above: the refusal has to be able to say the marker is unchanged.
+    if let Err(e) =
+        ftp_client_gui_lib::providers::ensure_atomic_replace(provider, &current_path).await
+    {
+        let code = provider_error_to_exit_code(&e);
+        print_error(format, &format!("{e}"), code);
+        return Err(code);
+    }
     let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
     if let Err(e) = provider
         .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
@@ -54502,7 +54540,7 @@ async fn publish_crypt_marker(
         );
         return Err(4);
     }
-    if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+    if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
         let _ = provider.delete(&remote_tmp).await;
         let code = provider_error_to_exit_code(&e);
         print_error(
@@ -77217,8 +77255,15 @@ mod tests {
         remote_files: HashMap<String, Vec<u8>>,
         uploads: Vec<(String, Vec<u8>)>,
         renames: Vec<(String, String)>,
+        /// Recorded separately from `renames` on purpose: the two verbs are
+        /// what G119 is about, and a test that could not tell them apart
+        /// would pass whichever one the publish path used.
+        replaces: Vec<(String, String)>,
         deleted: Vec<String>,
         rename_fails_with: Option<String>,
+        replace_fails_with: Option<String>,
+        /// What this fake answers to `supports_atomic_replace`.
+        atomic_replace: bool,
         /// When set, `stat` fails with this instead of answering.
         stat_fails_with: Option<String>,
     }
@@ -77229,8 +77274,11 @@ mod tests {
                 remote_files: HashMap::new(),
                 uploads: Vec::new(),
                 renames: Vec::new(),
+                replaces: Vec::new(),
                 deleted: Vec::new(),
                 rename_fails_with: None,
+                replace_fails_with: None,
+                atomic_replace: true,
                 stat_fails_with: None,
             }
         }
@@ -77332,6 +77380,12 @@ mod tests {
             if let Some(msg) = &self.rename_fails_with {
                 return Err(ProviderError::TransferFailed(msg.clone()));
             }
+            // Refuses an occupied destination, the way SFTP protocol 3 does.
+            // This is what makes the publish tests real: a publish path that
+            // went back to `rename` would fail here instead of passing.
+            if self.remote_files.contains_key(to) {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
             let data = self
                 .remote_files
                 .remove(from)
@@ -77339,6 +77393,23 @@ mod tests {
             self.remote_files.insert(to.to_string(), data);
             self.renames.push((from.to_string(), to.to_string()));
             Ok(())
+        }
+
+        async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            if let Some(msg) = &self.replace_fails_with {
+                return Err(ProviderError::TransferFailed(msg.clone()));
+            }
+            let data = self
+                .remote_files
+                .remove(from)
+                .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+            self.remote_files.insert(to.to_string(), data);
+            self.replaces.push((from.to_string(), to.to_string()));
+            Ok(())
+        }
+
+        async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+            Ok(self.atomic_replace)
         }
 
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -77395,7 +77466,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cli_edit_publish_uploads_to_temp_then_renames_over_target() {
+    async fn cli_edit_publish_uploads_to_temp_then_replaces_the_target() {
         let local = NamedTempFile::new().expect("temp file");
         std::fs::write(local.path(), b"new text").expect("write replacement");
         let local_path = local.path().to_string_lossy().to_string();
@@ -77419,8 +77490,14 @@ mod tests {
             "edit must never upload replacement bytes directly to the target"
         );
         assert_eq!(
-            provider.renames,
+            provider.replaces,
             vec![(temp_path.clone(), "/target.txt".to_string())]
+        );
+        assert!(
+            provider.renames.is_empty(),
+            "publishing must go through `replace`: `rename` is the verb that keeps \
+             refusing an occupied destination, so that an ordinary move cannot destroy \
+             a file the user did not mean to lose (G119)"
         );
         assert_eq!(
             provider.remote_files.get("/target.txt").map(Vec::as_slice),
@@ -77434,7 +77511,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cli_edit_publish_deletes_staged_temp_when_rename_fails() {
+    async fn cli_edit_publish_deletes_staged_temp_when_replace_fails() {
         let local = NamedTempFile::new().expect("temp file");
         std::fs::write(local.path(), b"new text").expect("write replacement");
         let local_path = local.path().to_string_lossy().to_string();
@@ -77442,22 +77519,62 @@ mod tests {
         provider
             .remote_files
             .insert("/target.txt".to_string(), b"old text".to_vec());
-        provider.rename_fails_with = Some("rename failed".to_string());
+        provider.replace_fails_with = Some("replace failed".to_string());
 
         let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("rename failed"), "got: {err}");
+        assert!(err.to_string().contains("replace failed"), "got: {err}");
 
         let temp_path = provider.uploads[0].0.clone();
         assert_eq!(provider.deleted, vec![temp_path.clone()]);
         assert!(
             !provider.remote_files.contains_key(&temp_path),
-            "rename failure cleanup must remove the staged temp"
+            "replace failure cleanup must remove the staged temp"
         );
         assert_eq!(
             provider.remote_files.get("/target.txt").map(Vec::as_slice),
             Some(b"old text".as_slice())
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_edit_publish_refuses_before_it_uploads_anything() {
+        // The half of G119 that only a run shows: the capability question has
+        // to come BEFORE the temporary exists. Asked after, the error would
+        // say "nothing was written" while a temporary sat on the server.
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider
+            .remote_files
+            .insert("/target.txt".to_string(), b"old text".to_vec());
+        provider.atomic_replace = false;
+
+        let err = publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt")
+            .await
+            .unwrap_err();
+
+        assert!(
+            provider.uploads.is_empty(),
+            "the refusal must arrive before anything is staged; uploads: {:?}",
+            provider.uploads
+        );
+        assert!(provider.replaces.is_empty() && provider.renames.is_empty());
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"old text".as_slice()),
+            "the target must be exactly as it was"
+        );
+        let text = err.to_string();
+        assert!(
+            text.contains("Nothing was written"),
+            "the error must say the server is untouched, got: {text}"
+        );
+        assert!(
+            text.contains("put"),
+            "the error must name the explicit alternative, got: {text}"
         );
     }
 
