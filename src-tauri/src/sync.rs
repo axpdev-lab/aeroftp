@@ -2929,47 +2929,72 @@ pub fn normalize_relative_key(key: &str) -> String {
 /// Rewriting the keys on read is idempotent and a no-op on Unix, where
 /// `MAIN_SEPARATOR` is already `/`.
 ///
-/// **Collisions are dropped, not resolved.** A bidirectional index written
-/// before the fix can hold a baseline under *both* spellings of one file: the
-/// comparison produced two entries for it and `save_post_sync_index` recorded
-/// one for each, from opposite sides. Normalizing maps them onto the same key,
-/// and letting the map keep whichever arrives last would pick a different
-/// baseline from one run to the next, because `HashMap` iteration order is not
-/// stable across processes. Dropping the entry costs one cycle of delete
-/// detection for that file; keeping an arbitrary one can invent a delete or a
-/// conflict from a baseline that was never true. The cheaper mistake is the one
-/// that cannot destroy anything.
+/// **A collision keeps the key, and the entry already spelled with `/`.** An
+/// index written before the fix can hold a baseline under *both* spellings of
+/// one nested file: the comparison produced two entries for it (`sub\b.txt`
+/// local-only, `sub/b.txt` remote-only) and `save_post_sync_index` recorded one
+/// for each. Normalizing maps them onto the same key, so one has to win, and
+/// the winner has to be chosen by a rule, not by `HashMap` iteration order,
+/// which is not stable across processes.
+///
+/// The key must survive. Dropping it is not a one-cycle cost: identical files
+/// never reach the comparisons, and `save_post_sync_index` only applies the
+/// comparisons to the carried-forward index, so a dropped key is not rebuilt
+/// while the file stays unchanged on both sides. Meanwhile `previously_synced`
+/// is false for it, and a later one-sided delete is read as a new file and
+/// copied back instead of being propagated.
+///
+/// The entry that wins is the one whose key was already `/`. It was recorded
+/// from the remote listing of the real object at that path: a `Download` or a
+/// `Skip` of the remote-only comparison, both of which take the remote info.
+/// The `\` entry was recorded from the local side and describes either the file
+/// a download then overwrote, or an upload that went to a remote object named
+/// with a literal backslash rather than to this path. Note that the contents of
+/// an entry only feed change detection (a stale one yields at worst a
+/// `LocalNewer`, `RemoteNewer` or `Conflict`, never a delete); whether a delete
+/// is propagated depends only on the key being present. If no colliding key is
+/// already in `/` form, the lexicographically smallest original key wins, which
+/// is arbitrary but stable.
 ///
 /// **Residual, stated rather than hidden**: a stored key cannot say whether its
 /// backslash was a separator or a literal character in a file name (legal on a
 /// Unix server). On Windows the rewrite treats it as a separator, which is right
 /// for every key this scanner wrote and wrong for a remote name that really
-/// contained one. Such a pair collides with its normalized twin and is dropped
-/// by the rule above, so the failure mode is a missing baseline, not a wrong
-/// one.
+/// contained one. Such a name loses its own baseline to its normalized twin.
 fn migrate_sync_index(index: &mut SyncIndex) {
     if index.version >= SYNC_INDEX_VERSION {
         return;
     }
-    let mut migrated: HashMap<String, SyncIndexEntry> = HashMap::with_capacity(index.files.len());
-    let mut collided: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // normalized key -> (original key, entry) of the current winner
+    let mut migrated: HashMap<String, (String, SyncIndexEntry)> =
+        HashMap::with_capacity(index.files.len());
+    let mut collisions = 0usize;
     for (key, entry) in std::mem::take(&mut index.files) {
         let normalized = normalize_relative_key(&key);
-        if migrated.insert(normalized.clone(), entry).is_some() {
-            collided.insert(normalized);
+        match migrated.get(&normalized) {
+            None => {
+                migrated.insert(normalized, (key, entry));
+            }
+            Some((held, _)) => {
+                collisions += 1;
+                let rank = |k: &str| (k != normalized, k.to_string());
+                if rank(&key) < rank(held) {
+                    migrated.insert(normalized, (key, entry));
+                }
+            }
         }
     }
-    for key in &collided {
-        migrated.remove(key);
-    }
-    if !collided.is_empty() {
+    if collisions > 0 {
         tracing::warn!(
-            "sync index migration: {} path(s) carried a baseline under both spellings and were \
-             dropped; they compare without a baseline for one cycle",
-            collided.len()
+            "sync index migration: {} baseline(s) were stored under more than one spelling of \
+             the same path; kept the one already written with `/`",
+            collisions
         );
     }
-    index.files = migrated;
+    index.files = migrated
+        .into_iter()
+        .map(|(normalized, (_, entry))| (normalized, entry))
+        .collect();
     index.version = SYNC_INDEX_VERSION;
 }
 
@@ -6694,17 +6719,12 @@ mod tests {
         assert_eq!(index.files.len(), 1, "migration must not duplicate entries");
     }
 
-    /// The case the single-key fixture above cannot show: a bidirectional index
-    /// written before the fix holds a baseline under **both** spellings of one
-    /// file. Normalizing maps them onto the same key, and keeping whichever the
-    /// map happens to visit last would pick a different baseline per process.
-    /// The entry is dropped instead.
-    ///
-    /// Windows-only by nature: where `MAIN_SEPARATOR` is `/` the two spellings
-    /// are the same string, so the collision this pins cannot be built at all.
-    #[test]
+    /// A legacy index holding a baseline under both spellings of one file, as
+    /// the pre-fix comparison left it. Windows-only by nature: where
+    /// `MAIN_SEPARATOR` is `/` the two spellings are the same string, so the
+    /// collision cannot be built at all.
     #[cfg(windows)]
-    fn a_legacy_index_drops_a_key_that_collides_after_normalization() {
+    fn legacy_index_with_both_spellings() -> SyncIndex {
         let mut index = SyncIndex {
             version: 1,
             last_sync: Utc::now(),
@@ -6712,7 +6732,7 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
         };
-        // Sizes differ so "which one survived" would be observable if either did.
+        // Sizes differ so "which one survived" is observable.
         index.files.insert(
             "sub\\b.txt".to_string(),
             SyncIndexEntry {
@@ -6729,16 +6749,75 @@ mod tests {
                 is_dir: false,
             },
         );
+        index
+    }
+
+    /// On a collision the key survives, carrying the entry that was already
+    /// spelled with `/` (the one recorded from the remote listing), whatever
+    /// order the map yields the two in.
+    #[test]
+    #[cfg(windows)]
+    fn a_legacy_collision_keeps_the_entry_already_spelled_with_a_slash() {
+        let mut index = legacy_index_with_both_spellings();
 
         migrate_sync_index(&mut index);
 
-        assert!(
-            !index.files.contains_key("sub/b.txt"),
-            "a colliding baseline must be dropped, not picked at random: {:?}",
+        assert_eq!(index.version, SYNC_INDEX_VERSION);
+        assert_eq!(index.files.len(), 1, "one key per path: {:?}", index.files);
+        assert_eq!(
+            index.files.get("sub/b.txt").map(|e| e.size),
+            Some(22),
+            "the `/` entry must win: {:?}",
             index.files
         );
-        assert!(index.files.is_empty(), "nothing else should survive here");
-        assert_eq!(index.version, SYNC_INDEX_VERSION);
+    }
+
+    /// Why the key has to survive a collision. Identical files never reach the
+    /// comparisons, so nothing rebuilds a dropped baseline while the file stays
+    /// unchanged; when it is then deleted on one side, the missing baseline
+    /// makes the survivor read as new and the delete is undone by a copy. With
+    /// the key kept, the same deletion propagates.
+    #[test]
+    #[cfg(windows)]
+    fn a_file_deleted_after_a_colliding_migration_is_still_propagated() {
+        let mut index = legacy_index_with_both_spellings();
+        migrate_sync_index(&mut index);
+
+        // Deleted locally, still on the remote.
+        let remote_files = HashMap::from([(
+            "sub/b.txt".to_string(),
+            FileInfo {
+                name: "b.txt".to_string(),
+                path: "/remote/sub/b.txt".to_string(),
+                size: 22,
+                modified: None,
+                is_dir: false,
+                checksum: None,
+                checksum_alg: None,
+            },
+        )]);
+        let comparisons = build_comparison_results_with_index(
+            HashMap::new(),
+            remote_files,
+            &CompareOptions::default(),
+            Some(&index),
+        );
+
+        let c = comparisons
+            .iter()
+            .find(|c| c.relative_path == "sub/b.txt")
+            .expect("the surviving remote copy must be compared");
+        assert!(c.previously_synced, "the baseline must survive migration");
+        assert_eq!(
+            decide_sync_action(
+                &c.status,
+                &CompareDirection::Bidirectional,
+                c.previously_synced,
+                false
+            ),
+            SyncAction::DeleteRemote,
+            "a local delete must propagate, not be undone by a download"
+        );
     }
 
     /// The migration is a one-way step, not something that runs on every read:
