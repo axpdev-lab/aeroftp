@@ -763,6 +763,23 @@ mod tests {
     }
 
     #[tokio::test]
+    // Unix only, because of the FIXTURE and not the logic under test.
+    //
+    // The case needs a file longer than the whole grid can address, which is
+    // 8 MiB times 10000 parts, about 78 GiB. On a filesystem that gives sparse
+    // files from `set_len` that costs nothing. NTFS does not: a file becomes
+    // sparse only after an explicit control operation, so on Windows the same
+    // line asks for 78 GiB of real disk and the runner answered
+    // `Os { code: 112, kind: StorageFull }`.
+    //
+    // The alternative was considered and declined: making the fixture request
+    // sparseness on Windows means adding a Win32 feature and an unsafe control
+    // call to the PRODUCTION dependency for a test-only need. What is being
+    // tested here is a comparison between a length and the grid's capacity,
+    // which cannot behave differently on Windows, so the coverage lost is
+    // nominal and the surface gained would not be. If that ever stops being
+    // true, the ioctl is the way back in.
+    #[cfg(unix)]
     async fn s3_baseline_grid_overflow_is_refused_before_reading_sparse_file() {
         let (dir, store) = store();
         let size = 26 * DELTA_PART_SIZE;
