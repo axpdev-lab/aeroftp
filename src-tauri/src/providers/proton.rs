@@ -108,6 +108,7 @@ impl ProtonCliProvider {
 
             let mut cmd = Command::new(&self.binary);
             cmd.args(args);
+            cmd.kill_on_drop(true);
             #[cfg(windows)]
             {
                 cmd.creation_flags(CREATE_NO_WINDOW);
@@ -350,6 +351,59 @@ fn join_path(parent: &str, name: &str) -> String {
     }
 }
 
+fn first_segment(path: &str) -> &str {
+    path.trim_start_matches('/').split('/').next().unwrap_or("")
+}
+
+fn is_in_trash_path(path: &str) -> bool {
+    matches!(first_segment(path), "trash" | "photos-trash")
+}
+
+fn node_uid(value: &Value) -> Option<String> {
+    match value.get("uid") {
+        Some(v) if v.is_string() => v.as_str().map(str::to_string),
+        Some(v) => json_name(v),
+        None => None,
+    }
+}
+
+fn node_modified(value: &Value) -> Option<String> {
+    value
+        .get("activeRevision")
+        .and_then(|r| r.get("claimedModificationTime"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+            value
+                .get("modificationTime")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+}
+
+/// Stage `local_path` under `dest_name` so `proton-drive filesystem upload`
+/// lands on the requested remote basename. The CLI always uses the local
+/// basename; a symlink is rejected (`Not a regular file or directory`).
+/// Hardlink first, copy when that fails (EXDEV or no hardlink support).
+fn stage_local_as_dest(
+    local_path: &str,
+    dest_name: &str,
+) -> Result<(PathBuf, PathBuf), ProviderError> {
+    let staging = std::env::temp_dir().join(format!("aeroftp_proton_up_{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&staging).map_err(ProviderError::IoError)?;
+    let staged = staging.join(dest_name);
+    match std::fs::hard_link(local_path, &staged) {
+        Ok(()) => Ok((staging, staged)),
+        Err(_) => match std::fs::copy(local_path, &staged) {
+            Ok(_) => Ok((staging, staged)),
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&staging);
+                Err(ProviderError::IoError(e))
+            }
+        },
+    }
+}
+
 fn json_name(value: &Value) -> Option<String> {
     if let Some(s) = value.as_str() {
         return Some(s.to_string());
@@ -408,10 +462,7 @@ fn parse_node(value: &Value, listed_path: &str) -> Option<RemoteEntry> {
                 .and_then(|v| v.as_u64())
         })
         .unwrap_or(0);
-    let modified = value
-        .get("modificationTime")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
+    let modified = node_modified(value);
     let owner = value
         .get("ownedBy")
         .and_then(|v| v.get("email"))
@@ -421,6 +472,10 @@ fn parse_node(value: &Value, listed_path: &str) -> Option<RemoteEntry> {
         .get("mediaType")
         .and_then(|v| v.as_str())
         .map(str::to_string);
+    let mut metadata = std::collections::HashMap::new();
+    if let Some(uid) = node_uid(value) {
+        metadata.insert("uid".to_string(), uid);
+    }
 
     Some(RemoteEntry {
         name,
@@ -434,7 +489,7 @@ fn parse_node(value: &Value, listed_path: &str) -> Option<RemoteEntry> {
         is_symlink: false,
         link_target: None,
         mime_type,
-        metadata: Default::default(),
+        metadata,
     })
 }
 
@@ -497,7 +552,7 @@ fn extract_url(stdout: &str) -> Option<String> {
     trimmed.lines().find_map(|line| {
         line.split_whitespace()
             .find(|tok| tok.starts_with("https://"))
-            .map(|s| s.trim_end_matches(|c| c == '.' || c == ',').to_string())
+            .map(|s| s.trim_end_matches(['.', ',']).to_string())
     })
 }
 
@@ -612,52 +667,66 @@ impl StorageProvider for ProtonCliProvider {
         let dest_is_dir = dest.is_dir()
             || local_path.ends_with('/')
             || local_path.ends_with(std::path::MAIN_SEPARATOR);
-        let (download_dir, expected_file, rename_after) = if dest_is_dir {
-            (dest.to_path_buf(), None, false)
+        let remote_name = basename(&remote);
+        let final_path = if dest_is_dir {
+            dest.join(&remote_name)
         } else {
-            let parent = dest.parent().filter(|p| !p.as_os_str().is_empty());
-            let dir = parent
-                .map(Path::to_path_buf)
-                .unwrap_or_else(std::env::temp_dir);
-            tokio::fs::create_dir_all(&dir)
-                .await
-                .map_err(ProviderError::IoError)?;
-            let expected = dir.join(basename(&remote));
-            let rename = expected != dest;
-            (dir, Some(expected), rename)
+            dest.to_path_buf()
         };
-
-        self.run_cli(
-            &[
-                "filesystem",
-                "download",
-                "-f",
-                "remove",
-                "-d",
-                "merge",
-                &remote,
-                &download_dir.to_string_lossy(),
-            ],
-            TRANSFER_TIMEOUT_SECS,
-        )
-        .await
-        .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {e}")))?;
-
-        if rename_after {
-            if let Some(expected) = expected_file {
-                if expected != dest {
-                    if dest.exists() {
-                        let _ = tokio::fs::remove_file(dest).await;
-                    }
-                    tokio::fs::rename(&expected, dest)
+        let anchor = if dest_is_dir {
+            dest.to_path_buf()
+        } else {
+            dest.parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("."))
+        };
+        tokio::fs::create_dir_all(&anchor)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let temp_dir = anchor.join(format!(".aeroftp-proton-dl-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&temp_dir)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let temp_dir_s = temp_dir.to_string_lossy().into_owned();
+        let result = async {
+            self.run_cli(
+                &[
+                    "filesystem",
+                    "download",
+                    "-f",
+                    "remove",
+                    "-d",
+                    "merge",
+                    &remote,
+                    &temp_dir_s,
+                ],
+                TRANSFER_TIMEOUT_SECS,
+            )
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {e}")))?;
+            let downloaded = temp_dir.join(&remote_name);
+            if let Some(parent) = final_path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    tokio::fs::create_dir_all(parent)
                         .await
                         .map_err(ProviderError::IoError)?;
                 }
             }
+            if final_path.exists() {
+                let _ = tokio::fs::remove_file(&final_path).await;
+            }
+            tokio::fs::rename(&downloaded, &final_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+            Ok::<(), ProviderError>(())
         }
+        .await;
+        let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+        result?;
 
         if let Some(ref cb) = on_progress {
-            match std::fs::metadata(local_path) {
+            match std::fs::metadata(&final_path) {
                 Ok(meta) => cb(meta.len(), meta.len()),
                 Err(_) => cb(1, 1),
             }
@@ -711,39 +780,31 @@ impl StorageProvider for ProtonCliProvider {
         let local_cli = normalize_local_path_for_cli(local_path);
         let local_name = basename(&local_cli.replace('\\', "/"));
         let dest_name = basename(&remote);
-        self.run_cli(
-            &[
-                "filesystem",
-                "upload",
-                "-f",
-                "replace",
-                "-d",
-                "merge",
-                &local_cli,
-                &parent,
-            ],
-            TRANSFER_TIMEOUT_SECS,
-        )
-        .await
-        .map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {e}")))?;
-        if local_name != dest_name {
-            let uploaded = join_path(&parent, &local_name);
-            if uploaded != remote {
-                let _ = self
-                    .run_cli(&["filesystem", "trash", &remote], META_TIMEOUT_SECS)
-                    .await;
-                self.run_cli(
-                    &["filesystem", "rename", &uploaded, &dest_name],
-                    META_TIMEOUT_SECS,
-                )
-                .await
-                .map_err(|e| {
-                    ProviderError::TransferFailed(format!(
-                        "Upload landed as {local_name}, rename to {dest_name} failed: {e}"
-                    ))
-                })?;
-            }
+        let (staging_dir, upload_path) = if local_name == dest_name {
+            (None, local_cli)
+        } else {
+            let (dir, staged) = stage_local_as_dest(&local_cli, &dest_name)?;
+            (Some(dir), staged.to_string_lossy().into_owned())
+        };
+        let result = self
+            .run_cli(
+                &[
+                    "filesystem",
+                    "upload",
+                    "-f",
+                    "create-new-revision",
+                    "-d",
+                    "merge",
+                    &upload_path,
+                    &parent,
+                ],
+                TRANSFER_TIMEOUT_SECS,
+            )
+            .await;
+        if let Some(dir) = staging_dir {
+            let _ = std::fs::remove_dir_all(&dir);
         }
+        result.map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {e}")))?;
 
         if let Some(ref cb) = on_progress {
             match std::fs::metadata(local_path) {
@@ -759,7 +820,7 @@ impl StorageProvider for ProtonCliProvider {
         let parent = parent_of(&abs);
         let name = basename(&abs);
         self.run_cli(
-            &["filesystem", "create-folder", &parent, &name],
+            &["filesystem", "create-folder", &parent, "--", &name],
             META_TIMEOUT_SECS,
         )
         .await?;
@@ -783,12 +844,29 @@ impl StorageProvider for ProtonCliProvider {
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
         let abs = self.resolve_path(path);
-        let in_trash = abs.starts_with("/trash") || abs.starts_with("/photos-trash");
-        let trash_root = if abs.starts_with("/photos-trash") {
+        let in_trash = is_in_trash_path(&abs);
+        let trash_root = if first_segment(&abs) == "photos-trash" {
             "/photos-trash"
         } else {
             "/trash"
         };
+        let name = basename(&abs);
+
+        let captured_uid = if !in_trash {
+            match self
+                .run_cli(&["filesystem", "info", &abs, "-j"], META_TIMEOUT_SECS)
+                .await
+            {
+                Ok(stdout) => parse_info_json(&stdout, &parent_of(&abs))
+                    .ok()
+                    .and_then(|e| e.metadata.get("uid").cloned()),
+                Err(ProviderError::NotFound(_)) => return Ok(false),
+                Err(e) => return Err(e),
+            }
+        } else {
+            None
+        };
+
         if !in_trash {
             match self
                 .run_cli(&["filesystem", "trash", &abs], META_TIMEOUT_SECS)
@@ -799,11 +877,29 @@ impl StorageProvider for ProtonCliProvider {
                 Err(e) => return Err(e),
             }
         }
-        let purge = if in_trash {
-            abs
-        } else {
-            join_path(trash_root, &basename(&abs))
+
+        let listed_stdout = self
+            .run_cli(&["filesystem", "list", trash_root, "-j"], META_TIMEOUT_SECS)
+            .await?;
+        let matches: Vec<RemoteEntry> = parse_list_json(&listed_stdout, trash_root)?
+            .into_iter()
+            .filter(|e| e.name == name)
+            .collect();
+        let uid_matches = match captured_uid.as_deref() {
+            Some(uid) => matches
+                .iter()
+                .filter(|e| e.metadata.get("uid").map(String::as_str) == Some(uid))
+                .count(),
+            None => matches.len(),
         };
+        if matches.len() != 1 || uid_matches != 1 {
+            return Err(ProviderError::ServerError(format!(
+                "Moved to trash, not purged: {} items in trash have this name. Proton Drive CLI 0.8.0 can only address trash by name.",
+                matches.len()
+            )));
+        }
+
+        let purge = join_path(trash_root, &name);
         match self
             .run_cli(&["filesystem", "delete", &purge], META_TIMEOUT_SECS)
             .await
@@ -821,7 +917,7 @@ impl StorageProvider for ProtonCliProvider {
         let to_name = basename(&to);
         if from_parent == to_parent {
             self.run_cli(
-                &["filesystem", "rename", &from, &to_name],
+                &["filesystem", "rename", &from, "--", &to_name],
                 META_TIMEOUT_SECS,
             )
             .await?;
@@ -834,7 +930,7 @@ impl StorageProvider for ProtonCliProvider {
             let moved = join_path(&to_parent, &basename(&from));
             if basename(&from) != to_name {
                 self.run_cli(
-                    &["filesystem", "rename", &moved, &to_name],
+                    &["filesystem", "rename", &moved, "--", &to_name],
                     META_TIMEOUT_SECS,
                 )
                 .await?;
@@ -894,8 +990,11 @@ impl StorageProvider for ProtonCliProvider {
             self.run_cli(&["filesystem", "copy", &from, &parent], META_TIMEOUT_SECS)
                 .await?;
         } else {
+            // `-n -x` is ambiguous (measured). `--name=-x` (or `-n-x`) is the
+            // form the CLI documents for an option value that starts with `-`.
+            let name_flag = format!("--name={name}");
             self.run_cli(
-                &["filesystem", "copy", "-n", &name, &from, &parent],
+                &["filesystem", "copy", &name_flag, &from, &parent],
                 META_TIMEOUT_SECS,
             )
             .await?;
@@ -1005,6 +1104,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_prefers_claimed_mtime() {
+        let json = r#"[{
+            "name":{"ok":true,"value":"notes.txt"},
+            "type":"file",
+            "modificationTime":"2026-09-18T10:06:22.000Z",
+            "activeRevision":{"claimedModificationTime":"2026-09-18T10:06:17.721Z","claimedSize":12}
+        }]"#;
+        let entries = parse_list_json(json, "/my-files").unwrap();
+        assert_eq!(
+            entries[0].modified.as_deref(),
+            Some("2026-09-18T10:06:17.721Z")
+        );
+    }
+
+    #[test]
+    fn trash_path_uses_first_segment() {
+        assert!(is_in_trash_path("/trash/dup.txt"));
+        assert!(is_in_trash_path("/photos-trash/x"));
+        assert!(!is_in_trash_path("/trashcan/x"));
+        assert!(!is_in_trash_path("/my-files/trash"));
+    }
+
+    #[test]
     fn redacts_share_password() {
         let args = ["sharing", "set-url", "--password", "secret", "/my-files/a"];
         let redacted = redact_cli_args(&args);
@@ -1038,5 +1160,272 @@ mod tests {
             ProviderError::AuthenticationFailed(_) => {}
             other => panic!("{other:?}"),
         }
+    }
+}
+
+/// Shim tests for upload/download/purge argv. Unix-only: the shim is a Python
+/// script. These are the sequences Fable measured against the real CLI.
+#[cfg(all(test, unix))]
+mod cli_sequence_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
+
+    fn write_shim(dir: &Path) -> PathBuf {
+        let log = dir.join("argv.log");
+        let trash_json = dir.join("trash.json");
+        let shim = dir.join("proton-drive");
+        let log_lit = serde_json::Value::String(log.to_string_lossy().into_owned()).to_string();
+        let trash_lit =
+            serde_json::Value::String(trash_json.to_string_lossy().into_owned()).to_string();
+        let script = format!(
+            r#"#!/usr/bin/env python3
+import json, pathlib, sys
+LOG = {log_lit}
+TRASH_JSON = {trash_lit}
+args = sys.argv[1:]
+with open(LOG, "a") as f:
+    f.write(json.dumps(args) + "\n")
+verb = args[0] if args else ""
+sub = args[1] if len(args) > 1 else ""
+if verb == "filesystem" and sub == "download":
+    dest = pathlib.Path(args[-1])
+    remote = args[-2]
+    name = pathlib.Path(remote).name
+    dest.mkdir(parents=True, exist_ok=True)
+    target = dest / name
+    if "-f" in args:
+        i = args.index("-f")
+        strat = args[i + 1] if i + 1 < len(args) else ""
+        if strat == "remove" and target.exists():
+            target.unlink()
+    target.write_text("REMOTE-CONTENT")
+    sys.exit(0)
+if verb == "filesystem" and sub == "info":
+    path = next((a for a in args[2:] if not a.startswith("-")), "/x")
+    name = pathlib.Path(path).name
+    print(json.dumps({{
+        "name": {{"ok": True, "value": name}},
+        "uid": "UID-CAPTURED",
+        "type": "file",
+        "path": path
+    }}))
+    sys.exit(0)
+if verb == "filesystem" and sub == "list":
+    listed = next((a for a in args[2:] if not a.startswith("-")), "/")
+    trash_path = pathlib.Path(TRASH_JSON)
+    if listed.rstrip("/") in ("/trash", "/photos-trash") and trash_path.exists():
+        sys.stdout.write(trash_path.read_text())
+    else:
+        print("[]")
+    sys.exit(0)
+if verb == "filesystem" and sub in (
+    "upload", "trash", "delete", "rename", "create-folder", "copy", "move"
+):
+    sys.exit(0)
+print("unhandled", args, file=sys.stderr)
+sys.exit(1)
+"#
+        );
+        std::fs::write(&shim, script).unwrap();
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).unwrap();
+        shim
+    }
+
+    fn read_argv(dir: &Path) -> Vec<Vec<String>> {
+        let log = std::fs::read_to_string(dir.join("argv.log")).unwrap_or_default();
+        log.lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
+    }
+
+    fn provider(shim: &Path) -> ProtonCliProvider {
+        let mut p = ProtonCliProvider::new(ProtonConfig {
+            display_name: "t".into(),
+            binary_path: Some(shim.to_string_lossy().to_string()),
+        });
+        p.connected = true;
+        p
+    }
+
+    fn workdir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("proton_shim_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn verbs<'a>(argv: &'a [Vec<String>], sub: &str) -> Vec<&'a Vec<String>> {
+        argv.iter()
+            .filter(|a| {
+                a.first().map(|s| s.as_str()) == Some("filesystem")
+                    && a.get(1).map(|s| s.as_str()) == Some(sub)
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn upload_stages_dest_basename_instead_of_renaming_remote() {
+        let dir = workdir();
+        let shim = write_shim(&dir);
+        let local = dir.join("notes.txt");
+        std::fs::write(&local, "NEW-INCOMING-CONTENT").unwrap();
+        let mut p = provider(&shim);
+        p.upload(
+            local.to_str().unwrap(),
+            "/my-files/scratch/notes (1).txt",
+            None,
+        )
+        .await
+        .unwrap();
+        let argv = read_argv(&dir);
+        let uploads = verbs(&argv, "upload");
+        assert_eq!(uploads.len(), 1, "expected one upload, got {argv:?}");
+        let local_arg = uploads[0].iter().rev().nth(1).expect("upload local path");
+        let staged_name = Path::new(local_arg)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        assert_eq!(
+            staged_name, "notes (1).txt",
+            "must upload a file named as the dest, not the local basename: {uploads:?}"
+        );
+        assert!(
+            verbs(&argv, "trash").is_empty(),
+            "must not trash a pre-existing dest: {argv:?}"
+        );
+        assert!(
+            verbs(&argv, "rename").is_empty(),
+            "must not rename a just-uploaded local basename: {argv:?}"
+        );
+        let f_strat = uploads[0]
+            .windows(2)
+            .find(|w| w[0] == "-f")
+            .map(|w| w[1].as_str());
+        assert_eq!(
+            f_strat,
+            Some("create-new-revision"),
+            "overwrite must keep the node uid: {uploads:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn download_does_not_remove_local_sibling_matching_remote_name() {
+        let dir = workdir();
+        let shim = write_shim(&dir);
+        let dest_dir = dir.join("dl");
+        std::fs::create_dir_all(&dest_dir).unwrap();
+        let precious = dest_dir.join("report.txt");
+        std::fs::write(&precious, "LOCAL-PRECIOUS-REPORT").unwrap();
+        let dest = dest_dir.join("report (1).txt");
+        let mut p = provider(&shim);
+        p.download("/my-files/scratch/report.txt", dest.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&precious).unwrap(),
+            "LOCAL-PRECIOUS-REPORT",
+            "local file matching the remote basename must survive"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "REMOTE-CONTENT",
+            "download must land on the requested dest path"
+        );
+        let argv = read_argv(&dir);
+        let downloads = verbs(&argv, "download");
+        assert_eq!(downloads.len(), 1, "{argv:?}");
+        let cli_dest = Path::new(downloads[0].last().unwrap());
+        assert_ne!(
+            cli_dest,
+            dest_dir.as_path(),
+            "must not download into the user's folder: {downloads:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn delete_permanent_refuses_when_trash_name_is_ambiguous() {
+        let dir = workdir();
+        let shim = write_shim(&dir);
+        std::fs::write(
+            dir.join("trash.json"),
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"UID-OLD","type":"file"},{"name":{"ok":true,"value":"dup.txt"},"uid":"UID-CAPTURED","type":"file"}]"#,
+        )
+        .unwrap();
+        let mut p = provider(&shim);
+        let err = p
+            .delete_permanent("/my-files/scratch/dup.txt")
+            .await
+            .expect_err("ambiguous trash must not report a successful purge");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not purged") && msg.contains("2"),
+            "honest refuse, got: {msg}"
+        );
+        let argv = read_argv(&dir);
+        assert!(
+            verbs(&argv, "delete").is_empty(),
+            "must not purge by name when trash is ambiguous: {argv:?}"
+        );
+        assert_eq!(verbs(&argv, "trash").len(), 1, "{argv:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn delete_permanent_purges_when_unique_trash_name_matches_uid() {
+        let dir = workdir();
+        let shim = write_shim(&dir);
+        std::fs::write(
+            dir.join("trash.json"),
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"UID-CAPTURED","type":"file"}]"#,
+        )
+        .unwrap();
+        let mut p = provider(&shim);
+        let purged = p
+            .delete_permanent("/my-files/scratch/dup.txt")
+            .await
+            .unwrap();
+        assert!(purged);
+        let argv = read_argv(&dir);
+        let deletes = verbs(&argv, "delete");
+        assert_eq!(deletes.len(), 1, "{argv:?}");
+        assert_eq!(
+            deletes[0].last().map(|s| s.as_str()),
+            Some("/trash/dup.txt")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn mkdir_rename_copy_put_dash_guard_before_bare_names() {
+        let dir = workdir();
+        let shim = write_shim(&dir);
+        let mut p = provider(&shim);
+        p.mkdir("/my-files/scratch/-x").await.unwrap();
+        p.rename("/my-files/scratch/a.txt", "/my-files/scratch/-y")
+            .await
+            .unwrap();
+        p.server_copy("/my-files/scratch/a.txt", "/my-files/scratch/-z")
+            .await
+            .unwrap();
+        let argv = read_argv(&dir);
+        let mkdir = &verbs(&argv, "create-folder")[0];
+        assert!(
+            mkdir.windows(2).any(|w| w[0] == "--" && w[1] == "-x"),
+            "create-folder needs -- before a dash name: {mkdir:?}"
+        );
+        let rename = &verbs(&argv, "rename")[0];
+        assert!(
+            rename.windows(2).any(|w| w[0] == "--" && w[1] == "-y"),
+            "rename needs -- before a dash name: {rename:?}"
+        );
+        let copy = &verbs(&argv, "copy")[0];
+        assert!(
+            copy.iter().any(|a| a == "--name=-z"),
+            "copy -n with a dash name needs --name=-z (measured): {copy:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
