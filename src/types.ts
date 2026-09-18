@@ -111,7 +111,7 @@ export const getProtocolClass = (type: ProviderType): ProtocolClass => {
 // Filen and Internxt use AES-256 zero-knowledge encryption.
 export const getE2EBits = (type: ProviderType): 128 | 256 | null => {
   if (type === "mega") return 128;
-  if (type === "filen" || type === "internxt") return 256;
+  if (type === "filen" || type === "internxt" || type === "proton") return 256;
   return null;
 };
 

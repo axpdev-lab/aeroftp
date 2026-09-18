@@ -88,7 +88,7 @@ impl ProtonCliProvider {
     }
 
     async fn run_cli(&self, args: &[&str], timeout_secs: u64) -> Result<String, ProviderError> {
-        self.log(&format!("[CMD] proton-drive {:?}", args));
+        self.log(&format!("[CMD] proton-drive {:?}", redact_cli_args(args)));
         if self.binary.is_empty() || !binary_exists(&self.binary) {
             return Err(ProviderError::InvalidConfig(MISSING_CLI.to_string()));
         }
@@ -101,7 +101,7 @@ impl ProtonCliProvider {
                     "[RETRY] attempt {}/{} {:?}",
                     attempt,
                     MAX_RETRIES,
-                    args
+                    redact_cli_args(args)
                 );
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS)).await;
             }
@@ -242,6 +242,34 @@ fn is_transient(msg: &str) -> bool {
         || lower.contains("429")
 }
 
+fn normalize_local_path_for_cli(path: &str) -> String {
+    #[cfg(windows)]
+    {
+        path.replace('/', "\\")
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_string()
+    }
+}
+
+fn redact_cli_args(args: &[&str]) -> Vec<String> {
+    let mut out = Vec::with_capacity(args.len());
+    let mut hide_next = false;
+    for arg in args {
+        if hide_next {
+            out.push("***".to_string());
+            hide_next = false;
+            continue;
+        }
+        if *arg == "--password" {
+            hide_next = true;
+        }
+        out.push((*arg).to_string());
+    }
+    out
+}
+
 fn classify_cli_error(msg: &str) -> ProviderError {
     let lower = msg.to_lowercase();
     if lower.contains("need to login") || lower.contains("not authenticated") {
@@ -369,8 +397,10 @@ fn parse_node(value: &Value, listed_path: &str) -> Option<RemoteEntry> {
         .map(normalize_abs)
         .unwrap_or_else(|| join_path(listed_path, &name));
     let size = value
-        .get("totalStorageSize")
+        .get("activeRevision")
+        .and_then(|r| r.get("claimedSize"))
         .and_then(|v| v.as_u64())
+        .or_else(|| value.get("totalStorageSize").and_then(|v| v.as_u64()))
         .or_else(|| {
             value
                 .get("activeRevision")
@@ -687,6 +717,9 @@ impl StorageProvider for ProtonCliProvider {
             cb(0, 0);
         }
         let parent = parent_of(&remote);
+        let local_cli = normalize_local_path_for_cli(local_path);
+        let local_name = basename(&local_cli.replace('\\', "/"));
+        let dest_name = basename(&remote);
         self.run_cli(
             &[
                 "filesystem",
@@ -695,13 +728,31 @@ impl StorageProvider for ProtonCliProvider {
                 "replace",
                 "-d",
                 "merge",
-                local_path,
+                &local_cli,
                 &parent,
             ],
             TRANSFER_TIMEOUT_SECS,
         )
         .await
         .map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {e}")))?;
+        if local_name != dest_name {
+            let uploaded = join_path(&parent, &local_name);
+            if uploaded != remote {
+                let _ = self
+                    .run_cli(&["filesystem", "trash", &remote], META_TIMEOUT_SECS)
+                    .await;
+                self.run_cli(
+                    &["filesystem", "rename", &uploaded, &dest_name],
+                    META_TIMEOUT_SECS,
+                )
+                .await
+                .map_err(|e| {
+                    ProviderError::TransferFailed(format!(
+                        "Upload landed as {local_name}, rename to {dest_name} failed: {e}"
+                    ))
+                })?;
+            }
+        }
 
         if let Some(ref cb) = on_progress {
             match std::fs::metadata(local_path) {
@@ -741,7 +792,13 @@ impl StorageProvider for ProtonCliProvider {
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
         let abs = self.resolve_path(path);
-        if !abs.starts_with("/trash") && !abs.starts_with("/photos-trash") {
+        let in_trash = abs.starts_with("/trash") || abs.starts_with("/photos-trash");
+        let trash_root = if abs.starts_with("/photos-trash") {
+            "/photos-trash"
+        } else {
+            "/trash"
+        };
+        if !in_trash {
             match self
                 .run_cli(&["filesystem", "trash", &abs], META_TIMEOUT_SECS)
                 .await
@@ -751,12 +808,17 @@ impl StorageProvider for ProtonCliProvider {
                 Err(e) => return Err(e),
             }
         }
+        let purge = if in_trash {
+            abs
+        } else {
+            join_path(trash_root, &basename(&abs))
+        };
         match self
-            .run_cli(&["filesystem", "delete", &abs], META_TIMEOUT_SECS)
+            .run_cli(&["filesystem", "delete", &purge], META_TIMEOUT_SECS)
             .await
         {
             Ok(_) => Ok(true),
-            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(ProviderError::NotFound(_)) => Ok(in_trash == false),
             Err(e) => Err(e),
         }
     }
@@ -935,6 +997,26 @@ mod tests {
         assert!(!entries[1].is_dir);
         assert_eq!(entries[1].size, 1234);
         assert_eq!(entries[1].mime_type.as_deref(), Some("text/plain"));
+    }
+
+    #[test]
+    fn parse_prefers_claimed_size() {
+        let json = r#"[{
+            "name":{"ok":true,"value":"notes.txt"},
+            "type":"file",
+            "totalStorageSize":19447,
+            "activeRevision":{"storageSize":19447,"claimedSize":12370}
+        }]"#;
+        let entries = parse_list_json(json, "/my-files").unwrap();
+        assert_eq!(entries[0].size, 12370);
+    }
+
+    #[test]
+    fn redacts_share_password() {
+        let args = ["sharing", "set-url", "--password", "secret", "/my-files/a"];
+        let redacted = redact_cli_args(&args);
+        assert_eq!(redacted[3], "***");
+        assert!(redacted.iter().all(|s| s != "secret"));
     }
 
     #[test]
