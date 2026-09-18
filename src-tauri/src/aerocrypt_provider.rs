@@ -459,6 +459,12 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
         tokio::fs::write(&temp, rebuilt_marker.as_bytes())
             .await
             .map_err(|e| format!("Failed to stage AeroCrypt marker: {e}"))?;
+        // Asked while the server is still untouched (G119): a backend that
+        // cannot put one file over another refuses here, before a temporary
+        // exists, so the refusal can truthfully say the marker is unchanged.
+        crate::providers::ensure_atomic_replace(provider, &current_path)
+            .await
+            .map_err(|e| e.to_string())?;
         let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
         let upload = provider
             .upload(&temp.to_string_lossy(), &remote_tmp, None)
@@ -484,7 +490,7 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
         let staged_text = String::from_utf8(staged)
             .map_err(|e| format!("Staged AeroCrypt marker is not valid UTF-8: {e}"))?;
         validate_marker_for_migration(&staged_text, &password, keyfile_digest).await?;
-        if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+        if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
             let _ = provider.delete(&remote_tmp).await;
             return Err(format!("Failed to publish verified AeroCrypt marker: {e}"));
         }
@@ -814,6 +820,12 @@ async fn publish_headed_marker(
     tokio::fs::write(&temp, marker_text.as_bytes())
         .await
         .map_err(|e| format!("Failed to stage AeroCrypt marker: {e}"))?;
+    // Asked while the server is still untouched (G119): a backend that cannot
+    // put one file over another refuses here, before a temporary exists, so
+    // the refusal can truthfully say the marker is unchanged.
+    crate::providers::ensure_atomic_replace(provider, &current_path)
+        .await
+        .map_err(|e| e.to_string())?;
     let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
     let upload = provider
         .upload(&temp.to_string_lossy(), &remote_tmp, None)
@@ -846,7 +858,7 @@ async fn publish_headed_marker(
             "staged AeroCrypt marker failed unlock verification: {e}"
         ));
     }
-    if let Err(e) = provider.rename(&remote_tmp, &current_path).await {
+    if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
         let _ = provider.delete(&remote_tmp).await;
         return Err(format!("Failed to publish verified AeroCrypt marker: {e}"));
     }

@@ -597,8 +597,51 @@ pub trait StorageProvider: Send + Sync {
     /// Delete a directory recursively (with all contents)
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError>;
 
-    /// Rename/move a file or directory
+    /// Rename/move a file or directory.
+    ///
+    /// This is the verb behind the user's "rename", and it deliberately does
+    /// NOT promise to replace an existing destination. On SFTP the server's
+    /// refusal is the only thing standing between `mv a b` and the loss of a
+    /// `b` that was already there, because no caller in this tree checks
+    /// first: giving this method overwrite semantics would turn a visible
+    /// error into a silent deletion. To put a file in place of another on
+    /// purpose, use [`StorageProvider::replace`].
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError>;
+
+    /// Put `from` in place of `to`, atomically where the backend can, whether
+    /// or not `to` already exists.
+    ///
+    /// This is the verb behind "publish a staged temporary over the live
+    /// file": the destination is expected to be there and replacing it is the
+    /// whole point, which is exactly what makes it a different question from
+    /// [`rename`]. Keeping the two apart is what lets the replace path gain
+    /// overwrite semantics without every `mv` gaining them too.
+    ///
+    /// The default forwards to `rename`, which is what every caller did
+    /// before this method existed. A backend whose rename refuses an occupied
+    /// destination overrides this; `SftpProvider` and `WebDavProvider` do.
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.rename(from, to).await
+    }
+
+    /// Whether [`replace`] can put one file in place of another without a
+    /// moment in which neither is there.
+    ///
+    /// Ask this BEFORE staging a temporary, never after. A caller that
+    /// uploads first and asks second has already left a file on the server,
+    /// so an error that says "nothing was written" would be a lie, and
+    /// [`ensure_atomic_replace`] exists to make asking first the easy path.
+    ///
+    /// The default answers `true`, which is the assumption every caller
+    /// already made. It means "no known obstacle", not "verified": only a
+    /// backend that has actually measured its own ground says otherwise, and
+    /// today that is `SftpProvider`, which asks the server whether it offers
+    /// `posix-rename@openssh.com`.
+    ///
+    /// [`replace`]: StorageProvider::replace
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(true)
+    }
 
     /// Get file/directory info
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError>;
@@ -1325,6 +1368,36 @@ pub trait StorageProvider: Send + Sync {
     ) -> Result<Vec<u8>, ProviderError> {
         Err(ProviderError::NotSupported("read_range".to_string()))
     }
+}
+
+/// Refuse to stage a temporary that could not then be published.
+///
+/// Every "write a remote file in place" path in this tree has the same shape:
+/// upload a temporary beside the target, check it, then put it in the
+/// target's place. The last step is the one that can be refused, and asking
+/// about it last is what made the refusal expensive: the temporary is already
+/// on the server by then, so the error cannot honestly say that nothing was
+/// written, and it cannot honestly say what is still lying around either.
+///
+/// Call this BEFORE the upload. It costs one capability question, which on
+/// SFTP is one channel and one init, and it buys an error that names both
+/// facts the reader needs: why this server cannot do it, and that their file
+/// is untouched.
+pub async fn ensure_atomic_replace(
+    provider: &mut dyn StorageProvider,
+    target: &str,
+) -> Result<(), ProviderError> {
+    if provider.supports_atomic_replace().await? {
+        return Ok(());
+    }
+    Err(ProviderError::NotSupported(format!(
+        "cannot replace `{target}` atomically: this server offers no way to put one file \
+         over another in a single step, and doing it in two would leave a moment with no \
+         file at all. Nothing was written and `{target}` is unchanged. To overwrite it \
+         anyway, upload over it with `put`, which truncates and rewrites in place: that \
+         is not atomic either, but it is your choice and its bad moment is a partial \
+         file rather than no file."
+    )))
 }
 
 /// Provider factory for creating provider instances

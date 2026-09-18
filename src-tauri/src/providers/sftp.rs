@@ -22,7 +22,7 @@ use russh::keys::{
     self, known_hosts, Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate,
 };
 use russh::{compression, Preferred};
-use russh_sftp::client::SftpSession;
+use russh_sftp::client::{RawSftpSession, SftpSession};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -424,6 +424,47 @@ impl SftpReadaheadSetting {
 /// SFTP Provider
 ///
 /// Provides secure file transfer over SSH using the SFTP protocol.
+/// The OpenSSH extension that gives SFTP the replace semantics POSIX has and
+/// plain SFTP does not.
+///
+/// `SSH_FXP_RENAME` in SFTP protocol 3 is specified to FAIL when the
+/// destination already exists, and a server answers it with a bare
+/// `SSH_FX_FAILURE` that says nothing else. So every caller that publishes a
+/// staged temporary over a live file failed, on every server: the CLI and MCP
+/// `edit`, the AeroCrypt marker publish, the crypt configuration writes. G119.
+/// The control that settled it: the same overwrite, on the same server in the
+/// same minute, succeeds through OpenSSH's own `sftp` client, because that
+/// client sends this extension.
+const POSIX_RENAME_EXTENSION: &str = "posix-rename@openssh.com";
+
+/// The `posix-rename@openssh.com` payload: two SSH strings, old then new.
+///
+/// Wire-identical to `hardlink@openssh.com`, whose `HardlinkExtension` in
+/// russh-sftp would encode it just as well. A named struct is used instead so
+/// the packet that goes out says what it is.
+#[derive(serde::Serialize)]
+struct PosixRenamePayload {
+    oldpath: String,
+    newpath: String,
+}
+
+/// What one connection knows about [`POSIX_RENAME_EXTENSION`].
+///
+/// `SftpSession` keeps both the advertised extension map and `extended()` to
+/// itself, so the answer has to come from a `RawSftpSession` of our own, on a
+/// second channel. It is opened lazily, on the first rename that finds its
+/// destination occupied, so a connection that never replaces a file never
+/// pays for it, and the answer is remembered so a server without the
+/// extension does not cost a channel per attempt.
+enum PosixRenameSupport {
+    /// Not asked yet on this connection.
+    Unasked,
+    /// Advertised, and this session performs it.
+    Available(Box<RawSftpSession>),
+    /// Not advertised by this server.
+    Absent,
+}
+
 pub struct SftpProvider {
     config: SftpConfig,
     /// SSH connection handle (shared so rsync-over-SSH can open exec channels on the same session).
@@ -466,6 +507,11 @@ pub struct SftpProvider {
     /// only while this remains unspecified; GUI/CLI configuration replaces it
     /// with an isolated explicit value.
     sftp_readahead: SftpReadaheadSetting,
+    /// What this connection knows about `posix-rename@openssh.com`; see
+    /// [`PosixRenameSupport`]. Deliberately NOT carried over by
+    /// `clone_for_transfer`: a pool worker dials its own connection, so it
+    /// must ask its own server rather than inherit an answer about another.
+    posix_rename: PosixRenameSupport,
     /// Test-only hook. Production never cancels this token; read-ahead used
     /// to watch a local `CancellationToken::new()` that no caller cancelled.
     /// Each download replaces the token in the slot, so two concurrent
@@ -501,6 +547,7 @@ impl SftpProvider {
             multi_thread_streams: 1,
             multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
             sftp_readahead: SftpReadaheadSetting::LegacyEnvironment,
+            posix_rename: PosixRenameSupport::Unasked,
             transfer_cancel: Arc::new(std::sync::Mutex::new(CancellationToken::new())),
             fail_readahead_write: Arc::new(AtomicBool::new(false)),
         }
@@ -926,6 +973,62 @@ impl SftpProvider {
     }
 
     /// Get SFTP session or error if not connected
+    /// Open, once per connection, the raw SFTP session used for
+    /// `posix-rename@openssh.com`, and report whether this server offers it.
+    ///
+    /// `Ok(None)` means the server does not advertise the extension. That is a
+    /// fact about the server and not a failure, so the caller turns it into a
+    /// refusal the user can act on rather than into a retry.
+    ///
+    /// The channel is a second one on the same SSH connection, which is why
+    /// the ordering holds: the client does not send the rename until the
+    /// upload's `SSH_FXP_CLOSE` has been answered on the first channel, so the
+    /// second `sftp-server` never sees a half-written temporary.
+    async fn posix_rename_session(&mut self) -> Result<Option<&RawSftpSession>, ProviderError> {
+        if matches!(self.posix_rename, PosixRenameSupport::Unasked) {
+            let handle = self.ssh_handle.clone().ok_or(ProviderError::NotConnected)?;
+            let channel = {
+                let guard = handle.lock().await;
+                guard.channel_open_session().await.map_err(|e| {
+                    classify_russh_err(e, |s| {
+                        ProviderError::ServerError(format!(
+                            "Failed to open a channel to ask for {POSIX_RENAME_EXTENSION}: {s}"
+                        ))
+                    })
+                })?
+            };
+            channel.request_subsystem(true, "sftp").await.map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!(
+                        "Failed to request the SFTP subsystem for {POSIX_RENAME_EXTENSION}: {s}"
+                    ))
+                })
+            })?;
+            let session = RawSftpSession::new(channel.into_stream());
+            let version = session.init().await.map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!(
+                        "Failed to negotiate the SFTP session for {POSIX_RENAME_EXTENSION}: {s}"
+                    ))
+                })
+            })?;
+            self.posix_rename = if version.extensions.contains_key(POSIX_RENAME_EXTENSION) {
+                PosixRenameSupport::Available(Box::new(session))
+            } else {
+                tracing::info!(
+                    "SFTP: {} does not advertise {}; replacing a file in place is not available",
+                    self.config.host,
+                    POSIX_RENAME_EXTENSION
+                );
+                PosixRenameSupport::Absent
+            };
+        }
+        Ok(match &self.posix_rename {
+            PosixRenameSupport::Available(session) => Some(session),
+            _ => None,
+        })
+    }
+
     fn get_sftp(&self) -> Result<&SftpSession, ProviderError> {
         self.sftp.as_ref().ok_or(ProviderError::NotConnected)
     }
@@ -1400,6 +1503,12 @@ impl StorageProvider for SftpProvider {
         if let Some(sftp) = self.sftp.take() {
             let _ = sftp.close().await;
         }
+
+        // The posix-rename answer belongs to the connection that was asked,
+        // not to this struct: the next `connect()` may reach a different
+        // server, and an inherited "Absent" would refuse a replace the new
+        // server can do.
+        self.posix_rename = PosixRenameSupport::Unasked;
 
         // Close SSH handle. Arc<Mutex<_>> means other clones (e.g. rsync-over-SSH borrowers)
         // may still hold references; the disconnect message is sent through the shared sender,
@@ -2486,6 +2595,56 @@ impl StorageProvider for SftpProvider {
         })?;
 
         Ok(())
+    }
+
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(self.posix_rename_session().await?.is_some())
+    }
+
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        use russh_sftp::protocol::{Packet, StatusCode};
+
+        let from_path = self.normalize_path(from);
+        let to_path = self.normalize_path(to);
+
+        tracing::info!("SFTP: Replacing {} with {}", to_path, from_path);
+
+        // Encoded before the session is borrowed, so the borrow lives only as
+        // long as the request itself.
+        let payload = russh_sftp::ser::to_bytes(&PosixRenamePayload {
+            oldpath: from_path.clone(),
+            newpath: to_path.clone(),
+        })
+        .map(|bytes| bytes.to_vec())
+        .map_err(|e| {
+            ProviderError::ServerError(format!("Failed to encode {POSIX_RENAME_EXTENSION}: {e}"))
+        })?;
+
+        let Some(session) = self.posix_rename_session().await? else {
+            return Err(ProviderError::NotSupported(format!(
+                "cannot replace `{to_path}` atomically: this SFTP server does not announce \
+                 `{POSIX_RENAME_EXTENSION}`, and plain SFTP rename is specified to refuse a \
+                 destination that already exists. `{to_path}` is unchanged. To overwrite it \
+                 anyway, upload over it with `put`, which truncates and rewrites in place: \
+                 that is not atomic either, but it is your choice and its bad moment is a \
+                 partial file rather than no file."
+            )));
+        };
+
+        match session.extended(POSIX_RENAME_EXTENSION, payload).await {
+            Ok(Packet::Status(status)) if status.status_code == StatusCode::Ok => Ok(()),
+            Ok(Packet::Status(status)) => Err(ProviderError::ServerError(format!(
+                "Failed to replace: {} ({:?})",
+                status.error_message, status.status_code
+            ))),
+            Ok(_) => Err(ProviderError::ServerError(format!(
+                "Failed to replace: the server answered {POSIX_RENAME_EXTENSION} with a packet \
+                 that is not a status"
+            ))),
+            Err(e) => Err(classify_russh_err(e, |s| {
+                ProviderError::ServerError(format!("Failed to replace: {s}"))
+            })),
+        }
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {

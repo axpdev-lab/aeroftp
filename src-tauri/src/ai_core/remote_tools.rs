@@ -1293,6 +1293,21 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         }));
     }
 
+    // Asked before the temporary exists, not after: a backend that cannot put
+    // one file over another refuses while the server is still untouched, so
+    // the refusal the agent reads can say that nothing was written (G119).
+    if !backend
+        .supports_atomic_replace()
+        .await
+        .map_err(ToolError::Exec)?
+    {
+        return Err(ToolError::Exec(format!(
+            "cannot edit `{path}` in place: this server offers no atomic way to put one \
+             file over another, and doing it in two steps would leave a moment with no \
+             file at all. Nothing was written and `{path}` is unchanged."
+        )));
+    }
+
     let temp_path = edit_temp_path(&path);
     reject_restricted_leaf(backend.as_ref(), &temp_path).await?;
     if let Err(e) = backend
@@ -1302,9 +1317,10 @@ async fn edit(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         let _ = backend.delete(&temp_path).await;
         return Err(ToolError::Exec(e));
     }
-    // Rename atomicity depends on the backend, but this avoids direct target
-    // truncation before the replacement bytes are fully uploaded.
-    if let Err(e) = backend.rename(&temp_path, &path).await {
+    // `replace` and not `rename`: the destination exists by definition here,
+    // and `rename` keeps refusing that case so an ordinary move cannot
+    // destroy a file the caller did not mean to lose.
+    if let Err(e) = backend.replace(&temp_path, &path).await {
         let _ = backend.delete(&temp_path).await;
         return Err(ToolError::Exec(e));
     }

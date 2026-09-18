@@ -564,6 +564,49 @@ impl RemoteBackend for TauriRemoteBackend {
         }
     }
 
+    async fn replace(&self, from: &str, to: &str) -> Result<(), String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.replace(from, to).await.map_err(|e| e.to_string());
+                }
+                // The session manager has no `replace` of its own, so this
+                // path keeps the old behaviour rather than pretend: a backend
+                // reached only through the manager still refuses an occupied
+                // destination, and the caller's guard has already said so.
+                let app_state = app.state::<AppState>();
+                let mut mgr = app_state.ftp_manager.lock().await;
+                mgr.rename(from, to).await.map_err(|e| e.to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .replace(from, to)
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    async fn supports_atomic_replace(&self) -> Result<bool, String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.supports_atomic_replace().await.map_err(|e| e.to_string());
+                }
+                // Same reason as `replace` above: through the manager the
+                // answer is the trait default, which is what this path did
+                // before the question existed.
+                Ok(true)
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .supports_atomic_replace()
+                .await
+                .map_err(|e| e.to_string()),
+        }
+    }
+
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String> {
         match self {
             TauriRemoteBackend::Active { app } => {
