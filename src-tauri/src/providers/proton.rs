@@ -160,10 +160,9 @@ impl ProtonCliProvider {
         if p.starts_with('/') {
             return normalize_abs(p);
         }
-        if p == ".." {
-            return parent_of(&self.current_path);
-        }
-        if self.current_path == "/" {
+        let joined = if p == ".." {
+            parent_of(&self.current_path)
+        } else if self.current_path == "/" {
             format!("/{}", p.trim_start_matches('/'))
         } else {
             format!(
@@ -171,7 +170,8 @@ impl ProtonCliProvider {
                 self.current_path.trim_end_matches('/'),
                 p.trim_start_matches('/')
             )
-        }
+        };
+        normalize_abs(&joined)
     }
 }
 
@@ -356,7 +356,10 @@ fn json_name(value: &Value) -> Option<String> {
     }
     let obj = value.as_object()?;
     if obj.get("ok").and_then(|v| v.as_bool()) == Some(true) {
-        return obj.get("value").and_then(|v| v.as_str()).map(str::to_string);
+        return obj
+            .get("value")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
     }
     None
 }
@@ -386,10 +389,7 @@ fn parse_node(value: &Value, listed_path: &str) -> Option<RemoteEntry> {
         .get("name")
         .and_then(json_name)
         .or_else(|| value.get("path").and_then(|v| v.as_str()).map(basename))?;
-    let node_type = value
-        .get("type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("file");
+    let node_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("file");
     let is_dir = node_type == "folder" || node_type == "album" || node_type == "root";
     let path = value
         .get("path")
@@ -438,14 +438,16 @@ fn parse_node(value: &Value, listed_path: &str) -> Option<RemoteEntry> {
     })
 }
 
-pub(crate) fn parse_list_json(stdout: &str, listed_path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+pub(crate) fn parse_list_json(
+    stdout: &str,
+    listed_path: &str,
+) -> Result<Vec<RemoteEntry>, ProviderError> {
     let trimmed = stdout.trim();
     if trimmed.is_empty() {
         return Ok(Vec::new());
     }
-    let value: Value = serde_json::from_str(trimmed).map_err(|e| {
-        ProviderError::ParseError(format!("Proton CLI list JSON: {e}: {trimmed}"))
-    })?;
+    let value: Value = serde_json::from_str(trimmed)
+        .map_err(|e| ProviderError::ParseError(format!("Proton CLI list JSON: {e}: {trimmed}")))?;
     match value {
         Value::Array(items) => Ok(items
             .iter()
@@ -460,12 +462,10 @@ pub(crate) fn parse_list_json(stdout: &str, listed_path: &str) -> Result<Vec<Rem
 
 fn parse_info_json(stdout: &str, listed_path: &str) -> Result<RemoteEntry, ProviderError> {
     let trimmed = stdout.trim();
-    let value: Value = serde_json::from_str(trimmed).map_err(|e| {
-        ProviderError::ParseError(format!("Proton CLI info JSON: {e}: {trimmed}"))
-    })?;
-    parse_node(&value, listed_path).ok_or_else(|| {
-        ProviderError::ParseError("Proton CLI info JSON: missing name".to_string())
-    })
+    let value: Value = serde_json::from_str(trimmed)
+        .map_err(|e| ProviderError::ParseError(format!("Proton CLI info JSON: {e}: {trimmed}")))?;
+    parse_node(&value, listed_path)
+        .ok_or_else(|| ProviderError::ParseError("Proton CLI info JSON: missing name".to_string()))
 }
 
 fn extract_email(stdout: &str) -> Option<String> {
@@ -475,11 +475,7 @@ fn extract_email(stdout: &str) -> Option<String> {
         .and_then(|v| v.get("email"))
         .and_then(|v| v.as_str())
         .map(str::to_string)
-        .or_else(|| {
-            value
-                .get("keyAuthor")
-                .and_then(json_name)
-        })
+        .or_else(|| value.get("keyAuthor").and_then(json_name))
 }
 
 fn extract_url(stdout: &str) -> Option<String> {
@@ -539,7 +535,10 @@ impl StorageProvider for ProtonCliProvider {
         let _roots = parse_list_json(&listed, "/")?;
 
         if let Ok(info) = self
-            .run_cli(&["filesystem", "info", "/my-files", "-j"], META_TIMEOUT_SECS)
+            .run_cli(
+                &["filesystem", "info", "/my-files", "-j"],
+                META_TIMEOUT_SECS,
+            )
             .await
         {
             if let Some(email) = extract_email(&info) {
@@ -549,10 +548,7 @@ impl StorageProvider for ProtonCliProvider {
 
         self.current_path = "/".to_string();
         self.connected = true;
-        tracing::info!(
-            "[Proton CLI] Connected as {}",
-            self.display_name()
-        );
+        tracing::info!("[Proton CLI] Connected as {}", self.display_name());
         Ok(())
     }
 
@@ -570,10 +566,7 @@ impl StorageProvider for ProtonCliProvider {
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let target = self.resolve_path(path);
         let stdout = self
-            .run_cli(
-                &["filesystem", "list", &target, "-j"],
-                META_TIMEOUT_SECS,
-            )
+            .run_cli(&["filesystem", "list", &target, "-j"], META_TIMEOUT_SECS)
             .await
             .map_err(|e| match e {
                 ProviderError::NotFound(_) => ProviderError::NotFound(target.clone()),
@@ -588,17 +581,14 @@ impl StorageProvider for ProtonCliProvider {
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
         let new_path = self.resolve_path(path);
-        self.run_cli(
-            &["filesystem", "list", &new_path, "-j"],
-            META_TIMEOUT_SECS,
-        )
-        .await
-        .map_err(|e| match e {
-            ProviderError::NotFound(_) => {
-                ProviderError::NotFound(format!("Invalid directory: {new_path}"))
-            }
-            other => other,
-        })?;
+        self.run_cli(&["filesystem", "list", &new_path, "-j"], META_TIMEOUT_SECS)
+            .await
+            .map_err(|e| match e {
+                ProviderError::NotFound(_) => {
+                    ProviderError::NotFound(format!("Invalid directory: {new_path}"))
+                }
+                other => other,
+            })?;
         self.current_path = new_path;
         Ok(())
     }
@@ -678,7 +668,8 @@ impl StorageProvider for ProtonCliProvider {
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let remote = self.resolve_path(remote_path);
         let file_name = basename(&remote);
-        let temp_dir = std::env::temp_dir().join(format!("aeroftp_proton_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("aeroftp_proton_{}", uuid::Uuid::new_v4()));
         tokio::fs::create_dir_all(&temp_dir)
             .await
             .map_err(ProviderError::IoError)?;
@@ -818,7 +809,6 @@ impl StorageProvider for ProtonCliProvider {
             .await
         {
             Ok(_) => Ok(true),
-            Err(ProviderError::NotFound(_)) => Ok(in_trash == false),
             Err(e) => Err(e),
         }
     }
@@ -836,8 +826,11 @@ impl StorageProvider for ProtonCliProvider {
             )
             .await?;
         } else {
-            self.run_cli(&["filesystem", "move", &from, &to_parent], META_TIMEOUT_SECS)
-                .await?;
+            self.run_cli(
+                &["filesystem", "move", &from, &to_parent],
+                META_TIMEOUT_SECS,
+            )
+            .await?;
             let moved = join_path(&to_parent, &basename(&from));
             if basename(&from) != to_name {
                 self.run_cli(
@@ -1017,6 +1010,18 @@ mod tests {
         let redacted = redact_cli_args(&args);
         assert_eq!(redacted[3], "***");
         assert!(redacted.iter().all(|s| s != "secret"));
+    }
+
+    #[test]
+    fn resolve_path_normalizes_dotdot() {
+        let mut p = ProtonCliProvider::new(ProtonConfig {
+            display_name: "t".into(),
+            binary_path: None,
+        });
+        p.current_path = "/my-files/a".into();
+        assert_eq!(p.resolve_path("../b"), "/my-files/b");
+        assert_eq!(p.resolve_path("sub/../other"), "/my-files/a/other");
+        assert_eq!(p.resolve_path("/my-files/x/../y"), "/my-files/y");
     }
 
     #[test]
