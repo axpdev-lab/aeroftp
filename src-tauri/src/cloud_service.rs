@@ -236,6 +236,18 @@ impl CloudService {
     /// directories, so counting or executing a dir delete would inflate the
     /// report and orphan the tree.
     fn resolve_action(&self, config: &CloudConfig, comparison: &FileComparison) -> SyncAction {
+        // On Windows a key containing `\` cannot name a file of its own: the
+        // local scan keys with `/`, so such a key only comes from a remote
+        // object whose name holds a literal backslash, and `join` would turn it
+        // into a path that aliases the nested file (`sub\b.txt` IS
+        // `sub/b.txt`). Downloading it overwrites that file with another
+        // object's contents, and deleting it acts on a name the user cannot
+        // see. Before G111 this scanner created exactly such objects on Unix
+        // servers; they are left alone here rather than guessed at.
+        #[cfg(windows)]
+        if comparison.relative_path.contains('\\') {
+            return SyncAction::Skip;
+        }
         let action = match &comparison.status {
             SyncStatus::Conflict | SyncStatus::SizeMismatch => match config.conflict_strategy {
                 ConflictStrategy::AskUser => SyncAction::AskUser,
@@ -357,6 +369,7 @@ impl CloudService {
             local_path: local.to_string(),
             remote_path: remote.to_string(),
             files: index_files,
+            unverified_keys: Default::default(),
         };
         if let Err(e) = save_sync_index(&idx) {
             tracing::warn!("Failed to save AeroCloud sync index: {}", e);
@@ -2111,6 +2124,39 @@ mod baseline_tests {
             ConflictStrategy::AskUser,
         );
         assert_eq!(svc.resolve_action(&config, &c), SyncAction::DeleteRemote);
+    }
+
+    /// G111 aftermath: a remote object whose name holds a literal backslash
+    /// (what the pre-fix scanner uploaded to a Unix server) is neither
+    /// downloaded, which would overwrite the nested file it aliases on Windows,
+    /// nor deleted, whether or not it is in the baseline. Every direction, and
+    /// mirror mode included.
+    #[test]
+    #[cfg(windows)]
+    fn a_remote_name_with_a_backslash_is_left_alone_on_windows() {
+        let svc = CloudService::new();
+        for direction in [
+            CompareDirection::Bidirectional,
+            CompareDirection::RemoteToLocal,
+            CompareDirection::LocalToRemote,
+        ] {
+            for previously_synced in [false, true] {
+                let mut c = cmp(
+                    SyncStatus::RemoteOnly,
+                    None,
+                    Some(fi(5, 5)),
+                    previously_synced,
+                    false,
+                );
+                c.relative_path = "sub\\b.txt".to_string();
+                let config = cfg(direction, false, ConflictStrategy::AskUser);
+                assert_eq!(
+                    svc.resolve_action(&config, &c),
+                    SyncAction::Skip,
+                    "{direction:?}, previously_synced={previously_synced}"
+                );
+            }
+        }
     }
 
     // ---- delete_safety_trips: mass-wipe guard ----

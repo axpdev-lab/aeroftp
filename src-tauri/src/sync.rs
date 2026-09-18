@@ -2956,6 +2956,22 @@ pub fn normalize_relative_key(key: &str) -> String {
 /// already in `/` form, the lexicographically smallest original key wins, which
 /// is arbitrary but stable.
 ///
+/// **A rewritten key is kept but not trusted.** Its entry says the file was
+/// synced under the `\` spelling, and on a Unix server that is a different
+/// object: the pre-fix upload of `sub\b.txt` created a remote file with a
+/// literal backslash in its name, and the next cycles matched it by that name.
+/// No object ever stood at `sub/b.txt`. Read as a baseline for `sub/b.txt`,
+/// such a key makes the real nested file local-only *and* previously synced,
+/// which is the exact shape of a remote delete: the first cycle after the
+/// upgrade would delete the user's file. So every key the rewrite changed goes
+/// into `unverified_keys` and is compared as if it were absent: a one-sided
+/// file is uploaded or downloaded instead of deleted, and a file present on
+/// both sides is compared on its own metadata. The key itself stays in the
+/// index, so an identical file (which never reaches the comparisons) keeps its
+/// baseline, and the next save writes the current version, after which the
+/// key is an ordinary one. A key whose winner was already spelled with `/` is
+/// not rewritten and stays trusted.
+///
 /// **Residual, stated rather than hidden**: a stored key cannot say whether its
 /// backslash was a separator or a literal character in a file name (legal on a
 /// Unix server). On Windows the rewrite treats it as a separator, which is right
@@ -2991,10 +3007,17 @@ fn migrate_sync_index(index: &mut SyncIndex) {
             collisions
         );
     }
+    let mut unverified = std::collections::HashSet::new();
     index.files = migrated
         .into_iter()
-        .map(|(normalized, (_, entry))| (normalized, entry))
+        .map(|(normalized, (original, entry))| {
+            if original != normalized {
+                unverified.insert(normalized.clone());
+            }
+            (normalized, entry)
+        })
         .collect();
+    index.unverified_keys = unverified;
     index.version = SYNC_INDEX_VERSION;
 }
 
@@ -3013,6 +3036,13 @@ pub struct SyncIndex {
     pub remote_path: String,
     /// File states at time of last sync (key = relative_path)
     pub files: HashMap<String, SyncIndexEntry>,
+    /// Keys the version 2 migration rewrote from the native separator, whose
+    /// presence does not prove the file was synced **at that path**. Never
+    /// persisted: it is rebuilt on every load that migrates, and a save writes
+    /// the current version, after which there is nothing left to rewrite. See
+    /// [`migrate_sync_index`].
+    #[serde(skip)]
+    pub unverified_keys: std::collections::HashSet<String>,
 }
 
 impl SyncIndex {
@@ -3024,6 +3054,7 @@ impl SyncIndex {
             local_path,
             remote_path,
             files: HashMap::new(),
+            unverified_keys: Default::default(),
         }
     }
 }
@@ -3159,7 +3190,13 @@ pub fn build_comparison_results_with_index(
 
         // Check if we can use the index for conflict detection
         let status = if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
-            if let Some(cached) = idx.files.get(&path) {
+            // A key the migration could not vouch for is compared as if absent,
+            // here and in `previously_synced` below.
+            if let Some(cached) = idx
+                .files
+                .get(&path)
+                .filter(|_| !idx.unverified_keys.contains(&path))
+            {
                 // Honor compare_size: a deferred-size crypt overlay reports
                 // compare_size=false (plaintext local size never equals on-wire
                 // ciphertext size), so size is not a reliable change signal for
@@ -3196,7 +3233,7 @@ pub fn build_comparison_results_with_index(
         // For bidirectional sync: a local_only/remote_only file that was previously synced
         // means the OTHER side intentionally deleted it.
         let previously_synced = index
-            .map(|idx| idx.files.contains_key(&path))
+            .map(|idx| idx.files.contains_key(&path) && !idx.unverified_keys.contains(&path))
             .unwrap_or(false);
 
         if status != SyncStatus::Identical || is_dir {
@@ -6698,6 +6735,7 @@ mod tests {
             local_path: "/local".to_string(),
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
+            unverified_keys: Default::default(),
         };
         index.files.insert(
             format!("sub{}b.txt", std::path::MAIN_SEPARATOR),
@@ -6731,6 +6769,7 @@ mod tests {
             local_path: "/local".to_string(),
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
+            unverified_keys: Default::default(),
         };
         // Sizes differ so "which one survived" is observable.
         index.files.insert(
@@ -6820,6 +6859,121 @@ mod tests {
         );
     }
 
+    /// The case a rewritten key exists to survive: on a Unix server the
+    /// pre-fix cycles synced a nested file as a remote object literally named
+    /// `sub\b.txt`, so the version 1 index holds that one key and nothing ever
+    /// stood at `sub/b.txt` on the remote. After the rewrite the real local
+    /// file is local-only; trusting the key would read that as a remote
+    /// delete and remove the user's file. It must be uploaded instead (and,
+    /// in a receive-only mirror, left alone), while the key stays in the
+    /// index.
+    #[test]
+    #[cfg(windows)]
+    fn a_rewritten_key_does_not_turn_the_file_it_now_names_into_a_delete() {
+        let mut index = SyncIndex {
+            version: 1,
+            last_sync: Utc::now(),
+            local_path: "/local".to_string(),
+            remote_path: "/remote".to_string(),
+            files: HashMap::new(),
+            unverified_keys: Default::default(),
+        };
+        index.files.insert(
+            "sub\\b.txt".to_string(),
+            SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+            },
+        );
+        migrate_sync_index(&mut index);
+        assert!(
+            index.files.contains_key("sub/b.txt"),
+            "the key stays, so an identical file keeps its baseline"
+        );
+
+        let local_files = HashMap::from([(
+            "sub/b.txt".to_string(),
+            FileInfo {
+                name: "b.txt".to_string(),
+                path: "C:\\local\\sub\\b.txt".to_string(),
+                size: 7,
+                modified: None,
+                is_dir: false,
+                checksum: None,
+                checksum_alg: None,
+            },
+        )]);
+        let comparisons = build_comparison_results_with_index(
+            local_files,
+            HashMap::new(),
+            &CompareOptions::default(),
+            Some(&index),
+        );
+        let c = comparisons
+            .iter()
+            .find(|c| c.relative_path == "sub/b.txt")
+            .expect("the local file must be compared");
+        assert!(
+            !c.previously_synced,
+            "a rewritten key is not evidence the file was synced at this path"
+        );
+        assert_eq!(
+            decide_sync_action(
+                &c.status,
+                &CompareDirection::Bidirectional,
+                c.previously_synced,
+                false
+            ),
+            SyncAction::Upload
+        );
+        assert_eq!(
+            decide_sync_action(
+                &c.status,
+                &CompareDirection::RemoteToLocal,
+                c.previously_synced,
+                false
+            ),
+            SyncAction::Skip
+        );
+    }
+
+    /// The distrust lasts until the index is saved at the current version and
+    /// no longer: the mark is never written, so a reloaded index trusts its
+    /// keys like any other.
+    #[test]
+    #[cfg(windows)]
+    fn the_unverified_mark_does_not_outlive_a_save() {
+        let mut index = SyncIndex {
+            version: 1,
+            last_sync: Utc::now(),
+            local_path: "/local".to_string(),
+            remote_path: "/remote".to_string(),
+            files: HashMap::new(),
+            unverified_keys: Default::default(),
+        };
+        index.files.insert(
+            "sub\\b.txt".to_string(),
+            SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+            },
+        );
+        migrate_sync_index(&mut index);
+        assert!(index.unverified_keys.contains("sub/b.txt"));
+
+        let json = serde_json::to_string(&index).expect("serialize");
+        let mut reloaded: SyncIndex = serde_json::from_str(&json).expect("parse");
+        migrate_sync_index(&mut reloaded);
+        assert!(
+            reloaded.unverified_keys.is_empty(),
+            "a saved index must come back trusted: {:?}",
+            reloaded.unverified_keys
+        );
+        assert!(reloaded.files.contains_key("sub/b.txt"));
+    }
+
     /// The migration is a one-way step, not something that runs on every read:
     /// an index already at the current version comes back untouched.
     #[test]
@@ -6830,6 +6984,7 @@ mod tests {
             local_path: "/local".to_string(),
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
+            unverified_keys: Default::default(),
         };
         // A key that a rewrite would change, so "untouched" is observable.
         index.files.insert(
@@ -6857,6 +7012,7 @@ mod tests {
             local_path: "/local".to_string(),
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
+            unverified_keys: Default::default(),
         };
         index.files.insert(
             "file.txt".to_string(),
