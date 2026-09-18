@@ -2760,18 +2760,17 @@ impl StorageProvider for SftpProvider {
         // explicit offsets. In principle a single file could be written
         // by multiple concurrent `SSH_FXP_WRITE` packets at different
         // offsets over one channel, but in practice (a) most servers
-        // serialise writes on the open file handle, (b) `russh-sftp`
-        // does not expose per-write concurrency controls, and (c) the
-        // ssh2-libssh2 SCP backend we use for uploads (workaround for
-        // russh 0.57 write buffering races on embedded SFTP servers like
-        // WD MyCloud NAS) is strictly stream-oriented. Real file-level
-        // parallelism on SFTP comes from `SftpConnectionPool` re-dialling
-        // independent SSH channels (see `transfer_executor_kind` below).
+        // serialise writes on the open file handle, and (b) `russh-sftp`
+        // does not expose per-write concurrency controls; `upload` above
+        // streams the file through one `sftp.create` handle. Real
+        // file-level parallelism on SFTP comes from `SftpConnectionPool`
+        // re-dialling independent SSH channels (see
+        // `transfer_executor_kind` below).
         //
         // Wiring a per-part SFTP backend is tracked as T-DEBT-09
-        // (`--sftp-concurrency` flag) for v4.x: it would require both
-        // dropping the SCP write workaround and parametrising
-        // `SftpConnectionPool` with a per-file fan-out. Until then we
+        // (`--sftp-concurrency` flag) for v4.x: it would require
+        // parametrising `SftpConnectionPool` with a per-file fan-out
+        // and a per-part writer on the upload handle. Until then we
         // leave `supports_multipart=false` and let the runner pick the
         // legacy single-stream path.
         super::TransferOptimizationHints {
