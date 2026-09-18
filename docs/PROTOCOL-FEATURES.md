@@ -260,6 +260,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | GitLab | - |  |
 | Immich | SHA-1 | The asset checksum Immich records at upload time. |
 | MEGA | - |  |
+| Proton Drive | - |  |
 | Filen | - |  |
 | Internxt Drive | - |  |
 | Zoho WorkDrive | - |  |

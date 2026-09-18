@@ -3,15 +3,15 @@
   "generated_by": "scripts/gen-provider-inventory.ts",
   "counts": {
     "transport_protocols": 7,
-    "native_integrations": 24,
+    "native_integrations": 25,
     "presets": 45,
     "presets_over_transport": 41,
     "connection_forms": 50,
     "connection_forms_generic": 2,
     "connection_forms_named_without_defaults": 3,
-    "providers": 52,
-    "connection_methods": 66,
-    "catalog_services": 73
+    "providers": 53,
+    "connection_methods": 67,
+    "catalog_services": 74
   },
   "transport_protocols": [
     "ftp",
@@ -44,6 +44,7 @@
     "onedrive",
     "opendrive",
     "pcloud",
+    "proton",
     "uploadcare",
     "yandexdisk",
     "zohoworkdrive"
@@ -120,7 +121,7 @@
     "protocols": 7,
     "object-storage": 21,
     "webdav": 18,
-    "cloud-storage": 18,
+    "cloud-storage": 19,
     "media-services": 5,
     "developer": 3
   },
@@ -375,6 +376,12 @@
       "id": "pixelunion",
       "protocols": [
         "immich"
+      ]
+    },
+    {
+      "id": "proton",
+      "protocols": [
+        "proton"
       ]
     },
     {

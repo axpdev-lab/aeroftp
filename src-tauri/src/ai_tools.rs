@@ -1819,6 +1819,7 @@ pub(crate) async fn create_temp_provider(
         "webdav" => ProviderType::WebDav,
         "s3" => ProviderType::S3,
         "mega" => ProviderType::Mega,
+        "proton" | "protondrive" => ProviderType::Proton,
         "azure" => ProviderType::Azure,
         "filen" => ProviderType::Filen,
         "internxt" => ProviderType::Internxt,

@@ -70,6 +70,7 @@ const PROTOCOL_TO_SLUG: Record<string, string> = {
     dropbox: 'dropbox',
     onedrive: 'onedrive',
     mega: 'mega',
+    proton: 'proton-drive',
     box: 'box',
     pcloud: 'pcloud',
     filen: 'filen',

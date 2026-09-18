@@ -12630,6 +12630,7 @@ fn provider_type_from_string(value: &str) -> Option<providers::ProviderType> {
         "dropbox" => Some(providers::ProviderType::Dropbox),
         "onedrive" | "one_drive" | "one drive" => Some(providers::ProviderType::OneDrive),
         "mega" => Some(providers::ProviderType::Mega),
+        "proton" | "protondrive" => Some(providers::ProviderType::Proton),
         "box" => Some(providers::ProviderType::Box),
         "pcloud" | "p_cloud" => Some(providers::ProviderType::PCloud),
         "azure" => Some(providers::ProviderType::Azure),

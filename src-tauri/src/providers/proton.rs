@@ -1,0 +1,955 @@
+//! Proton Drive via the official Proton Drive CLI (`proton-drive`).
+//!
+//! The user installs the binary and signs in with `proton-drive auth login`
+//! (browser). AeroFTP never sees credentials; the session lives in the OS
+//! secret store managed by Proton's CLI. Same shape as [`super::mega::MegaCmdProvider`].
+//!
+//! Install: https://proton.me/download/drive/cli/index.html
+
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
+use async_trait::async_trait;
+use serde_json::Value;
+use std::path::{Path, PathBuf};
+use tokio::process::Command;
+
+use super::{
+    ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult, StorageProvider,
+};
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+const INSTALL_URL: &str = "https://proton.me/download/drive/cli/index.html";
+const META_TIMEOUT_SECS: u64 = 120;
+const TRANSFER_TIMEOUT_SECS: u64 = 6 * 60 * 60;
+const MAX_RETRIES: usize = 2;
+const RETRY_DELAY_MS: u64 = 2000;
+
+const MISSING_CLI: &str = "Proton Drive CLI (`proton-drive`) is not installed. Download it from https://proton.me/download/drive/cli/index.html, then run `proton-drive auth login` in a terminal.";
+const NEED_LOGIN: &str = "Proton Drive CLI is installed but not signed in. Run `proton-drive auth login` in a terminal, finish in the browser, then connect again.";
+
+#[derive(Debug, Clone)]
+pub struct ProtonConfig {
+    pub display_name: String,
+    pub binary_path: Option<String>,
+}
+
+impl ProtonConfig {
+    pub fn from_provider_config(config: &super::ProviderConfig) -> Result<Self, ProviderError> {
+        let display_name = config
+            .username
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| {
+                let n = config.name.trim();
+                if n.is_empty() {
+                    None
+                } else {
+                    Some(n.to_string())
+                }
+            })
+            .unwrap_or_else(|| "Proton Drive".to_string());
+        let binary_path = config
+            .extra
+            .get("proton_cli_path")
+            .cloned()
+            .filter(|s| !s.trim().is_empty());
+        Ok(Self {
+            display_name,
+            binary_path,
+        })
+    }
+}
+
+pub struct ProtonCliProvider {
+    config: ProtonConfig,
+    connected: bool,
+    current_path: String,
+    account_email: Option<String>,
+    binary: String,
+}
+
+impl ProtonCliProvider {
+    pub fn new(config: ProtonConfig) -> Self {
+        let binary = resolve_proton_drive(config.binary_path.as_deref());
+        Self {
+            config,
+            connected: false,
+            current_path: "/".to_string(),
+            account_email: None,
+            binary,
+        }
+    }
+
+    fn log(&self, msg: &str) {
+        tracing::debug!(target: "proton", "{}", msg);
+    }
+
+    async fn run_cli(&self, args: &[&str], timeout_secs: u64) -> Result<String, ProviderError> {
+        self.log(&format!("[CMD] proton-drive {:?}", args));
+        if self.binary.is_empty() || !binary_exists(&self.binary) {
+            return Err(ProviderError::InvalidConfig(MISSING_CLI.to_string()));
+        }
+
+        let mut last_err = ProviderError::ServerError("No attempts made".to_string());
+        for attempt in 0..=MAX_RETRIES {
+            if attempt > 0 {
+                tracing::debug!(
+                    target: "proton",
+                    "[RETRY] attempt {}/{} {:?}",
+                    attempt,
+                    MAX_RETRIES,
+                    args
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS)).await;
+            }
+
+            let mut cmd = Command::new(&self.binary);
+            cmd.args(args);
+            #[cfg(windows)]
+            {
+                cmd.creation_flags(CREATE_NO_WINDOW);
+            }
+
+            let output = match tokio::time::timeout(
+                std::time::Duration::from_secs(timeout_secs),
+                cmd.output(),
+            )
+            .await
+            {
+                Ok(Ok(output)) => output,
+                Ok(Err(e)) => {
+                    return Err(ProviderError::ServerError(format!(
+                        "Failed to execute proton-drive ({}): {}",
+                        self.binary, e
+                    )));
+                }
+                Err(_) => return Err(ProviderError::Timeout),
+            };
+
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if output.status.success() {
+                return Ok(stdout);
+            }
+
+            let combined = if stderr.trim().is_empty() {
+                stdout.trim().to_string()
+            } else {
+                stderr.trim().to_string()
+            };
+            if combined.is_empty() {
+                last_err = ProviderError::ServerError("Unknown Proton Drive CLI error".to_string());
+            } else if is_transient(&combined) && attempt < MAX_RETRIES {
+                last_err = classify_cli_error(&combined);
+                continue;
+            } else {
+                return Err(classify_cli_error(&combined));
+            }
+        }
+        Err(last_err)
+    }
+
+    fn resolve_path(&self, path: &str) -> String {
+        let p = path.trim();
+        if p.is_empty() || p == "." {
+            return self.current_path.clone();
+        }
+        if p.starts_with('/') {
+            return normalize_abs(p);
+        }
+        if p == ".." {
+            return parent_of(&self.current_path);
+        }
+        if self.current_path == "/" {
+            format!("/{}", p.trim_start_matches('/'))
+        } else {
+            format!(
+                "{}/{}",
+                self.current_path.trim_end_matches('/'),
+                p.trim_start_matches('/')
+            )
+        }
+    }
+}
+
+fn binary_exists(path: &str) -> bool {
+    if path.contains('/') || path.contains('\\') {
+        return Path::new(path).is_file();
+    }
+    look_in_path(path).is_some()
+}
+
+fn look_in_path(name: &str) -> Option<String> {
+    let paths = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&paths) {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return Some(candidate.to_string_lossy().to_string());
+        }
+        #[cfg(windows)]
+        {
+            let exe = dir.join(format!("{name}.exe"));
+            if exe.is_file() {
+                return Some(exe.to_string_lossy().to_string());
+            }
+        }
+    }
+    None
+}
+
+pub(crate) fn resolve_proton_drive(custom: Option<&str>) -> String {
+    if let Some(path) = custom {
+        if Path::new(path).is_file() {
+            return path.to_string();
+        }
+    }
+    if let Some(found) = look_in_path("proton-drive") {
+        return found;
+    }
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(home) = std::env::var_os("HOME") {
+        candidates.push(PathBuf::from(&home).join(".local/bin/proton-drive"));
+    }
+    candidates.push(PathBuf::from("/usr/local/bin/proton-drive"));
+    candidates.push(PathBuf::from("/usr/bin/proton-drive"));
+    #[cfg(windows)]
+    {
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            candidates.push(PathBuf::from(local).join("proton-drive\\proton-drive.exe"));
+        }
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            candidates.push(PathBuf::from(pf).join("Proton Drive CLI\\proton-drive.exe"));
+        }
+    }
+    for c in candidates {
+        if c.is_file() {
+            return c.to_string_lossy().to_string();
+        }
+    }
+    "proton-drive".to_string()
+}
+
+fn is_transient(msg: &str) -> bool {
+    let lower = msg.to_lowercase();
+    lower.contains("temporarily unavailable")
+        || lower.contains("try again")
+        || lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("connection reset")
+        || lower.contains("429")
+}
+
+fn classify_cli_error(msg: &str) -> ProviderError {
+    let lower = msg.to_lowercase();
+    if lower.contains("need to login") || lower.contains("not authenticated") {
+        ProviderError::AuthenticationFailed(NEED_LOGIN.to_string())
+    } else if lower.contains("not found")
+        || lower.contains("no such file")
+        || lower.contains("does not exist")
+        || lower.contains("could not find")
+    {
+        ProviderError::NotFound(msg.to_string())
+    } else if lower.contains("insufficient quota") || lower.contains("storage quota") {
+        ProviderError::ServerError("Storage quota exceeded".to_string())
+    } else if lower.contains("permission denied") || lower.contains("access denied") {
+        ProviderError::PermissionDenied(msg.to_string())
+    } else if lower.contains("already exists") {
+        ProviderError::AlreadyExists(msg.to_string())
+    } else {
+        ProviderError::ServerError(msg.to_string())
+    }
+}
+
+fn normalize_abs(path: &str) -> String {
+    if path.is_empty() {
+        return "/".to_string();
+    }
+    let mut out = String::from("/");
+    for part in path.split('/') {
+        if part.is_empty() || part == "." {
+            continue;
+        }
+        if part == ".." {
+            if let Some(slash) = out.rfind('/') {
+                if slash == 0 {
+                    out.truncate(1);
+                } else {
+                    out.truncate(slash);
+                }
+            }
+            continue;
+        }
+        if out != "/" {
+            out.push('/');
+        }
+        out.push_str(part);
+    }
+    if out.is_empty() {
+        "/".to_string()
+    } else {
+        out
+    }
+}
+
+fn parent_of(path: &str) -> String {
+    let n = normalize_abs(path);
+    if n == "/" {
+        return "/".to_string();
+    }
+    match n.rfind('/') {
+        Some(0) => "/".to_string(),
+        Some(i) => n[..i].to_string(),
+        None => "/".to_string(),
+    }
+}
+
+fn basename(path: &str) -> String {
+    let n = normalize_abs(path);
+    if n == "/" {
+        return "/".to_string();
+    }
+    n.rsplit('/').next().unwrap_or(&n).to_string()
+}
+
+fn join_path(parent: &str, name: &str) -> String {
+    if parent == "/" {
+        format!("/{}", name.trim_start_matches('/'))
+    } else {
+        format!("{}/{}", parent.trim_end_matches('/'), name)
+    }
+}
+
+fn json_name(value: &Value) -> Option<String> {
+    if let Some(s) = value.as_str() {
+        return Some(s.to_string());
+    }
+    let obj = value.as_object()?;
+    if obj.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+        return obj.get("value").and_then(|v| v.as_str()).map(str::to_string);
+    }
+    None
+}
+
+fn parse_node(value: &Value, listed_path: &str) -> Option<RemoteEntry> {
+    if let Some(path) = value.get("path").and_then(|v| v.as_str()) {
+        if value.get("type").is_none() && value.get("name").is_none() {
+            let name = basename(path);
+            return Some(RemoteEntry {
+                name,
+                path: normalize_abs(path),
+                is_dir: true,
+                size: 0,
+                modified: None,
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: None,
+                metadata: Default::default(),
+            });
+        }
+    }
+
+    let name = value
+        .get("name")
+        .and_then(json_name)
+        .or_else(|| value.get("path").and_then(|v| v.as_str()).map(basename))?;
+    let node_type = value
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("file");
+    let is_dir = node_type == "folder" || node_type == "album" || node_type == "root";
+    let path = value
+        .get("path")
+        .and_then(|v| v.as_str())
+        .map(normalize_abs)
+        .unwrap_or_else(|| join_path(listed_path, &name));
+    let size = value
+        .get("totalStorageSize")
+        .and_then(|v| v.as_u64())
+        .or_else(|| {
+            value
+                .get("activeRevision")
+                .and_then(|r| r.get("storageSize"))
+                .and_then(|v| v.as_u64())
+        })
+        .unwrap_or(0);
+    let modified = value
+        .get("modificationTime")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let owner = value
+        .get("ownedBy")
+        .and_then(|v| v.get("email"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let mime_type = value
+        .get("mediaType")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    Some(RemoteEntry {
+        name,
+        path,
+        is_dir,
+        size,
+        modified,
+        permissions: None,
+        owner,
+        group: None,
+        is_symlink: false,
+        link_target: None,
+        mime_type,
+        metadata: Default::default(),
+    })
+}
+
+pub(crate) fn parse_list_json(stdout: &str, listed_path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let value: Value = serde_json::from_str(trimmed).map_err(|e| {
+        ProviderError::ParseError(format!("Proton CLI list JSON: {e}: {trimmed}"))
+    })?;
+    match value {
+        Value::Array(items) => Ok(items
+            .iter()
+            .filter_map(|item| parse_node(item, listed_path))
+            .collect()),
+        Value::Object(_) => Ok(parse_node(&value, listed_path).into_iter().collect()),
+        _ => Err(ProviderError::ParseError(
+            "Proton CLI list JSON: expected array or object".to_string(),
+        )),
+    }
+}
+
+fn parse_info_json(stdout: &str, listed_path: &str) -> Result<RemoteEntry, ProviderError> {
+    let trimmed = stdout.trim();
+    let value: Value = serde_json::from_str(trimmed).map_err(|e| {
+        ProviderError::ParseError(format!("Proton CLI info JSON: {e}: {trimmed}"))
+    })?;
+    parse_node(&value, listed_path).ok_or_else(|| {
+        ProviderError::ParseError("Proton CLI info JSON: missing name".to_string())
+    })
+}
+
+fn extract_email(stdout: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(stdout.trim()).ok()?;
+    value
+        .get("ownedBy")
+        .and_then(|v| v.get("email"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+            value
+                .get("keyAuthor")
+                .and_then(json_name)
+        })
+}
+
+fn extract_url(stdout: &str) -> Option<String> {
+    let trimmed = stdout.trim();
+    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        for key in ["url", "link", "publicUrl", "public_url"] {
+            if let Some(s) = value.get(key).and_then(|v| v.as_str()) {
+                if s.starts_with("http") {
+                    return Some(s.to_string());
+                }
+            }
+        }
+        if let Some(s) = value.as_str() {
+            if s.starts_with("http") {
+                return Some(s.to_string());
+            }
+        }
+    }
+    trimmed.lines().find_map(|line| {
+        line.split_whitespace()
+            .find(|tok| tok.starts_with("https://"))
+            .map(|s| s.trim_end_matches(|c| c == '.' || c == ',').to_string())
+    })
+}
+
+#[async_trait]
+impl StorageProvider for ProtonCliProvider {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
+    fn provider_type(&self) -> ProviderType {
+        ProviderType::Proton
+    }
+
+    fn display_name(&self) -> String {
+        self.account_email
+            .clone()
+            .unwrap_or_else(|| self.config.display_name.clone())
+    }
+
+    fn account_email(&self) -> Option<String> {
+        self.account_email.clone()
+    }
+
+    async fn connect(&mut self) -> Result<(), ProviderError> {
+        self.binary = resolve_proton_drive(self.config.binary_path.as_deref());
+        if !binary_exists(&self.binary) {
+            return Err(ProviderError::InvalidConfig(format!(
+                "{MISSING_CLI} ({INSTALL_URL})"
+            )));
+        }
+
+        let listed = self
+            .run_cli(&["filesystem", "list", "/", "-j"], META_TIMEOUT_SECS)
+            .await?;
+        let _roots = parse_list_json(&listed, "/")?;
+
+        if let Ok(info) = self
+            .run_cli(&["filesystem", "info", "/my-files", "-j"], META_TIMEOUT_SECS)
+            .await
+        {
+            if let Some(email) = extract_email(&info) {
+                self.account_email = Some(email);
+            }
+        }
+
+        self.current_path = "/".to_string();
+        self.connected = true;
+        tracing::info!(
+            "[Proton CLI] Connected as {}",
+            self.display_name()
+        );
+        Ok(())
+    }
+
+    async fn disconnect(&mut self) -> Result<(), ProviderError> {
+        // Must not call `auth logout`: that session belongs to the user.
+        self.connected = false;
+        self.current_path = "/".to_string();
+        Ok(())
+    }
+
+    fn is_connected(&self) -> bool {
+        self.connected
+    }
+
+    async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let target = self.resolve_path(path);
+        let stdout = self
+            .run_cli(
+                &["filesystem", "list", &target, "-j"],
+                META_TIMEOUT_SECS,
+            )
+            .await
+            .map_err(|e| match e {
+                ProviderError::NotFound(_) => ProviderError::NotFound(target.clone()),
+                other => other,
+            })?;
+        parse_list_json(&stdout, &target)
+    }
+
+    async fn pwd(&mut self) -> Result<String, ProviderError> {
+        Ok(self.current_path.clone())
+    }
+
+    async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+        let new_path = self.resolve_path(path);
+        self.run_cli(
+            &["filesystem", "list", &new_path, "-j"],
+            META_TIMEOUT_SECS,
+        )
+        .await
+        .map_err(|e| match e {
+            ProviderError::NotFound(_) => {
+                ProviderError::NotFound(format!("Invalid directory: {new_path}"))
+            }
+            other => other,
+        })?;
+        self.current_path = new_path;
+        Ok(())
+    }
+
+    async fn cd_up(&mut self) -> Result<(), ProviderError> {
+        self.cd("..").await
+    }
+
+    async fn download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let remote = self.resolve_path(remote_path);
+        if let Some(ref cb) = on_progress {
+            cb(0, 0);
+        }
+
+        let dest = Path::new(local_path);
+        let dest_is_dir = dest.is_dir()
+            || local_path.ends_with('/')
+            || local_path.ends_with(std::path::MAIN_SEPARATOR);
+        let (download_dir, expected_file, rename_after) = if dest_is_dir {
+            (dest.to_path_buf(), None, false)
+        } else {
+            let parent = dest.parent().filter(|p| !p.as_os_str().is_empty());
+            let dir = parent
+                .map(Path::to_path_buf)
+                .unwrap_or_else(std::env::temp_dir);
+            tokio::fs::create_dir_all(&dir)
+                .await
+                .map_err(ProviderError::IoError)?;
+            let expected = dir.join(basename(&remote));
+            let rename = expected != dest;
+            (dir, Some(expected), rename)
+        };
+
+        self.run_cli(
+            &[
+                "filesystem",
+                "download",
+                "-f",
+                "remove",
+                "-d",
+                "merge",
+                &remote,
+                &download_dir.to_string_lossy(),
+            ],
+            TRANSFER_TIMEOUT_SECS,
+        )
+        .await
+        .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {e}")))?;
+
+        if rename_after {
+            if let Some(expected) = expected_file {
+                if expected != dest {
+                    if dest.exists() {
+                        let _ = tokio::fs::remove_file(dest).await;
+                    }
+                    tokio::fs::rename(&expected, dest)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                }
+            }
+        }
+
+        if let Some(ref cb) = on_progress {
+            match std::fs::metadata(local_path) {
+                Ok(meta) => cb(meta.len(), meta.len()),
+                Err(_) => cb(1, 1),
+            }
+        }
+        Ok(())
+    }
+
+    async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        let remote = self.resolve_path(remote_path);
+        let file_name = basename(&remote);
+        let temp_dir = std::env::temp_dir().join(format!("aeroftp_proton_{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&temp_dir)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let result = async {
+            self.download(&remote, &temp_dir.to_string_lossy(), None)
+                .await?;
+            let temp_file = temp_dir.join(&file_name);
+            let limit = super::MAX_DOWNLOAD_TO_BYTES;
+            let metadata = tokio::fs::metadata(&temp_file)
+                .await
+                .map_err(ProviderError::IoError)?;
+            if metadata.len() > limit {
+                return Err(ProviderError::TransferFailed(format!(
+                    "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
+                    metadata.len() as f64 / 1_048_576.0,
+                    limit as f64 / 1_048_576.0,
+                )));
+            }
+            tokio::fs::read(&temp_file)
+                .await
+                .map_err(ProviderError::IoError)
+        }
+        .await;
+        let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+        result
+    }
+
+    async fn upload(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let remote = self.resolve_path(remote_path);
+        if let Some(ref cb) = on_progress {
+            cb(0, 0);
+        }
+        let parent = parent_of(&remote);
+        self.run_cli(
+            &[
+                "filesystem",
+                "upload",
+                "-f",
+                "replace",
+                "-d",
+                "merge",
+                local_path,
+                &parent,
+            ],
+            TRANSFER_TIMEOUT_SECS,
+        )
+        .await
+        .map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {e}")))?;
+
+        if let Some(ref cb) = on_progress {
+            match std::fs::metadata(local_path) {
+                Ok(meta) => cb(meta.len(), meta.len()),
+                Err(_) => cb(1, 1),
+            }
+        }
+        Ok(())
+    }
+
+    async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        let abs = self.resolve_path(path);
+        let parent = parent_of(&abs);
+        let name = basename(&abs);
+        self.run_cli(
+            &["filesystem", "create-folder", &parent, &name],
+            META_TIMEOUT_SECS,
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+        let abs = self.resolve_path(path);
+        self.run_cli(&["filesystem", "trash", &abs], META_TIMEOUT_SECS)
+            .await?;
+        Ok(())
+    }
+
+    async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.delete(path).await
+    }
+
+    async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.delete(path).await
+    }
+
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        let abs = self.resolve_path(path);
+        if !abs.starts_with("/trash") && !abs.starts_with("/photos-trash") {
+            match self
+                .run_cli(&["filesystem", "trash", &abs], META_TIMEOUT_SECS)
+                .await
+            {
+                Ok(_) => {}
+                Err(ProviderError::NotFound(_)) => return Ok(false),
+                Err(e) => return Err(e),
+            }
+        }
+        match self
+            .run_cli(&["filesystem", "delete", &abs], META_TIMEOUT_SECS)
+            .await
+        {
+            Ok(_) => Ok(true),
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from = self.resolve_path(from);
+        let to = self.resolve_path(to);
+        let from_parent = parent_of(&from);
+        let to_parent = parent_of(&to);
+        let to_name = basename(&to);
+        if from_parent == to_parent {
+            self.run_cli(
+                &["filesystem", "rename", &from, &to_name],
+                META_TIMEOUT_SECS,
+            )
+            .await?;
+        } else {
+            self.run_cli(&["filesystem", "move", &from, &to_parent], META_TIMEOUT_SECS)
+                .await?;
+            let moved = join_path(&to_parent, &basename(&from));
+            if basename(&from) != to_name {
+                self.run_cli(
+                    &["filesystem", "rename", &moved, &to_name],
+                    META_TIMEOUT_SECS,
+                )
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        let abs = self.resolve_path(path);
+        if abs == "/" {
+            return Ok(RemoteEntry::directory("/".to_string(), "/".to_string()));
+        }
+        let stdout = self
+            .run_cli(&["filesystem", "info", &abs, "-j"], META_TIMEOUT_SECS)
+            .await
+            .map_err(|e| match e {
+                ProviderError::NotFound(_) => ProviderError::NotFound(abs.clone()),
+                other => other,
+            })?;
+        let mut entry = parse_info_json(&stdout, &parent_of(&abs))?;
+        entry.path = abs;
+        Ok(entry)
+    }
+
+    async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+        Ok(self.stat(path).await?.size)
+    }
+
+    async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+        match self.stat(path).await {
+            Ok(_) => Ok(true),
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+        Ok(())
+    }
+
+    async fn server_info(&mut self) -> Result<String, ProviderError> {
+        let version = self.run_cli(&["version"], META_TIMEOUT_SECS).await?;
+        Ok(version.trim().to_string())
+    }
+
+    fn supports_server_copy(&self) -> bool {
+        true
+    }
+
+    async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from = self.resolve_path(from);
+        let to = self.resolve_path(to);
+        let parent = parent_of(&to);
+        let name = basename(&to);
+        if name == basename(&from) {
+            self.run_cli(&["filesystem", "copy", &from, &parent], META_TIMEOUT_SECS)
+                .await?;
+        } else {
+            self.run_cli(
+                &["filesystem", "copy", "-n", &name, &from, &parent],
+                META_TIMEOUT_SECS,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    fn supports_share_links(&self) -> bool {
+        true
+    }
+
+    async fn create_share_link(
+        &mut self,
+        path: &str,
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
+        let abs = self.resolve_path(path);
+        let mut args: Vec<String> = vec!["sharing".into(), "set-url".into()];
+        if let Some(ref pw) = options.password {
+            args.push("--password".into());
+            args.push(pw.clone());
+        }
+        if let Some(secs) = options.expires_in_secs {
+            let exp = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+            args.push("--expiration".into());
+            args.push(exp.format("%Y-%m-%d").to_string());
+        }
+        if let Some(ref perm) = options.permissions {
+            let role = if perm == "edit" { "editor" } else { "viewer" };
+            args.push("--role".into());
+            args.push(role.into());
+        }
+        args.push(abs);
+        args.push("-j".into());
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let stdout = self.run_cli(&arg_refs, META_TIMEOUT_SECS).await?;
+        let url = extract_url(&stdout).ok_or_else(|| {
+            ProviderError::ParseError(format!(
+                "Could not parse Proton share URL from: {}",
+                stdout.trim()
+            ))
+        })?;
+        Ok(ShareLinkResult {
+            url,
+            password: options.password,
+            expires_at: None,
+        })
+    }
+
+    async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
+        let abs = self.resolve_path(path);
+        self.run_cli(&["sharing", "remove-url", &abs], META_TIMEOUT_SECS)
+            .await?;
+        Ok(())
+    }
+
+    fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        Ok(Box::new(ProtonCliProvider {
+            config: self.config.clone(),
+            connected: self.connected,
+            current_path: self.current_path.clone(),
+            account_email: self.account_email.clone(),
+            binary: self.binary.clone(),
+        }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_root_list() {
+        let json = r#"[{"path":"/my-files"},{"path":"/trash"}]"#;
+        let entries = parse_list_json(json, "/").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "my-files");
+        assert!(entries[0].is_dir);
+        assert_eq!(entries[0].path, "/my-files");
+    }
+
+    #[test]
+    fn parse_folder_list() {
+        let json = r#"[
+            {"name":{"ok":true,"value":"Photos"},"type":"folder","modificationTime":"2025-11-30T09:23:40.000Z"},
+            {"name":{"ok":true,"value":"notes.txt"},"type":"file","totalStorageSize":1234,"mediaType":"text/plain"}
+        ]"#;
+        let entries = parse_list_json(json, "/my-files").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(entries[0].is_dir);
+        assert_eq!(entries[0].path, "/my-files/Photos");
+        assert!(!entries[1].is_dir);
+        assert_eq!(entries[1].size, 1234);
+        assert_eq!(entries[1].mime_type.as_deref(), Some("text/plain"));
+    }
+
+    #[test]
+    fn parent_and_join() {
+        assert_eq!(parent_of("/my-files/a/b"), "/my-files/a");
+        assert_eq!(parent_of("/my-files"), "/");
+        assert_eq!(join_path("/my-files", "x"), "/my-files/x");
+        assert_eq!(basename("/my-files/x"), "x");
+    }
+
+    #[test]
+    fn classify_login() {
+        match classify_cli_error("You need to login first") {
+            ProviderError::AuthenticationFailed(_) => {}
+            other => panic!("{other:?}"),
+        }
+    }
+}

@@ -440,7 +440,11 @@
             },
             "swiftAuthUrl": "URL di autenticazione Keystone",
             "swiftAllowCleartextStorage": "Questo deployment serve lo storage a oggetti su HTTP in chiaro. Accettalo per questo profilo: il token di accesso e ogni file attraversano la rete non cifrati.",
-            "kdriveTokenScopes": "Il token deve avere gli ambiti drive e user_info. Con il solo drive si connette ed elenca i file, ma \"Recupera\" viene rifiutato, perché legge il profilo del tuo account per trovare il Drive ID."
+            "kdriveTokenScopes": "Il token deve avere gli ambiti drive e user_info. Con il solo drive si connette ed elenca i file, ma \"Recupera\" viene rifiutato, perché legge il profilo del tuo account per trovare il Drive ID.",
+            "protonCliTitle": "CLI ufficiale Proton Drive",
+            "protonCliBody": "Installa il CLI di Proton Drive da proton.me/download/drive/cli, poi esegui proton-drive auth login nel terminale e completa nel browser. AeroFTP non vede mai la password; la sessione resta nel secret store del sistema.",
+            "protonUnofficial": "Questa è un'applicazione di terze parti non supportata ufficialmente da Proton.",
+            "protonConnectHint": "Connect usa il CLI già autenticato su questa macchina. Un account Proton per utente di sistema."
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
@@ -712,7 +716,9 @@
             "devicesInfoLine2": "MTP è esclusivo e su richiesta: Connetti riserva il dispositivo per la sessione; disconnetti lo restituisce. I trasferimenti sono a file intero (nessuna ripresa, nessuna lettera di unità).",
             "discoverMtpPortable": "Telefono, fotocamera o tablet via USB MTP",
             "s3AllowCleartextEndpoint": "Questo endpoint serve S3 su HTTP in chiaro attraverso una rete. Accettalo per questo profilo: le credenziali firmate e ogni file attraversano la rete non cifrati.",
-            "discoverFilebase": "Filebase: archiviazione di oggetti compatibile con S3 (5 GB gratis)"
+            "discoverFilebase": "Filebase: archiviazione di oggetti compatibile con S3 (5 GB gratis)",
+            "protonDesc": "Proton Drive tramite CLI ufficiale",
+            "protonTooltip": "CLI ufficiale Proton Drive - installalo, accedi nel browser, AeroFTP è la GUI"
         },
         "browser": {
             "remote": "Remoto",

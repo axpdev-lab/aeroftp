@@ -3702,7 +3702,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 const PROTOCOL_FALLBACK_NAMES: Record<string, string> = {
                                     dropbox: 'Dropbox', onedrive: 'OneDrive', googledrive: 'Google Drive',
                                     googlephotos: 'Google Photos', box: 'Box', pcloud: 'pCloud Drive',
-                                    jottacloud: 'Jottacloud', filen: 'Filen', internxt: 'Internxt',
+                                    jottacloud: 'Jottacloud', filen: 'Filen', internxt: 'Internxt', proton: 'Proton Drive',
                                     kdrive: 'kDrive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk',
                                     drime: 'Drime', mega: 'MEGA', backblaze: 'Backblaze B2', fourshared: '4shared',
                                     imagekit: 'ImageKit', uploadcare: 'Uploadcare', cloudinary: 'Cloudinary',
@@ -5373,6 +5373,43 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </button>
                                         </div>
                                         </>
+                                        )}
+                                    </div>
+                                ) : protocol === 'proton' ? (
+                                    <div className="space-y-4 pt-2">
+                                        <div className="bg-violet-50 dark:bg-violet-900/10 p-3 rounded-lg border border-violet-100 dark:border-violet-900/30 text-xs text-violet-900 dark:text-violet-200">
+                                            <p className="font-medium mb-1">{t('connection.protonCliTitle')}</p>
+                                            <p className="opacity-80">{t('connection.protonCliBody')}</p>
+                                            <p className="mt-2 opacity-80">{t('connection.protonConnectHint')}</p>
+                                            <p className="mt-2 opacity-70">{t('connection.protonUnofficial')}</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.connectionNameOptional')}</label>
+                                            <input
+                                                type="text"
+                                                value={connectionName}
+                                                onChange={(e) => setConnectionName(e.target.value)}
+                                                placeholder="Proton Drive"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                                            />
+                                        </div>
+                                        {formOnly ? (
+                                            renderRightColumn({ disabled: loading, buttonColorClass: 'bg-violet-600 hover:bg-violet-700' })
+                                        ) : (
+                                        <div className="pt-3">
+                                            <button
+                                                onClick={handleConnectAndSave}
+                                                disabled={loading}
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-violet-600 hover:bg-violet-700'}`}
+                                            >
+                                                {loading ? (
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                ) : (
+                                                    <>{ConnectIcon} {t('connection.connect')}</>
+                                                )}
+                                            </button>
+                                        </div>
                                         )}
                                     </div>
                                 ) : protocol === 'internxt' ? (

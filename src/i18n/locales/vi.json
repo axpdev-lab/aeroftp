@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "URL xác thực Keystone",
             "swiftAllowCleartextStorage": "Triển khai này phục vụ lưu trữ đối tượng qua HTTP không mã hóa. Chấp nhận cho hồ sơ này: mã thông báo truy cập và mọi tệp đi qua mạng mà không được mã hóa.",
-            "kdriveTokenScopes": "Token cần các phạm vi drive và user_info. Chỉ với drive, token vẫn kết nối và liệt kê tệp, nhưng \"Lấy\" bị từ chối, vì nó đọc hồ sơ tài khoản của bạn để tìm Drive ID."
+            "kdriveTokenScopes": "Token cần các phạm vi drive và user_info. Chỉ với drive, token vẫn kết nối và liệt kê tệp, nhưng \"Lấy\" bị từ chối, vì nó đọc hồ sơ tài khoản của bạn để tìm Drive ID.",
+            "protonCliTitle": "CLI chính thức của Proton Drive",
+            "protonCliBody": "Cài Proton Drive CLI từ proton.me/download/drive/cli, rồi chạy proton-drive auth login trong terminal và hoàn tất trên trình duyệt. AeroFTP không bao giờ thấy mật khẩu của bạn; phiên nằm trong kho bí mật của OS.",
+            "protonUnofficial": "Đây là ứng dụng bên thứ ba không được Proton hỗ trợ chính thức.",
+            "protonConnectHint": "Connect dùng CLI đã đăng nhập trên máy này. Một tài khoản Proton cho mỗi người dùng OS."
         },
         "browser": {
             "remote": "Từ xa",
@@ -1930,7 +1934,9 @@
             "devicesInfoLine2": "MTP là độc quyền và theo yêu cầu: Kết nối chiếm thiết bị cho phiên; ngắt kết nối sẽ trả lại. Truyền chỉ toàn bộ tệp (không tiếp tục, không ký tự ổ đĩa).",
             "discoverMtpPortable": "Điện thoại, máy ảnh hoặc máy tính bảng qua USB MTP",
             "s3AllowCleartextEndpoint": "Điểm cuối này phục vụ S3 qua HTTP không mã hóa trên mạng. Chấp nhận cho hồ sơ này: thông tin xác thực đã ký và mọi tệp đi qua mạng mà không được mã hóa.",
-            "discoverFilebase": "Filebase: lưu trữ đối tượng tương thích S3 (5 GB miễn phí)"
+            "discoverFilebase": "Filebase: lưu trữ đối tượng tương thích S3 (5 GB miễn phí)",
+            "protonDesc": "Proton Drive qua CLI chính thức",
+            "protonTooltip": "CLI chính thức Proton Drive - cài đặt, đăng nhập trên trình duyệt, AeroFTP là GUI"
         },
         "shortcuts": {
             "title": "Phím tắt",

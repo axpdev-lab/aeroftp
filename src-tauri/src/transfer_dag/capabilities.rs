@@ -186,6 +186,7 @@ impl TransferCapabilities {
             }
             ProviderType::AeroCloud
             | ProviderType::Mega
+            | ProviderType::Proton
             | ProviderType::Internxt
             | ProviderType::Immich
             | ProviderType::ImageKit

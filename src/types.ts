@@ -30,6 +30,7 @@ export type ProviderType =
   | "dropbox"
   | "onedrive"
   | "mega"
+  | "proton"
   | "box"
   | "pcloud"
   | "azure"
@@ -93,7 +94,7 @@ export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" 
 export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (isOAuthProvider(type) || isFourSharedProvider(type)) return "OAuth";
   if (isAeroCloudProvider(type)) return "AeroCloud";
-  if (type === "filen" || type === "internxt" || type === "mega") return "E2E";
+  if (type === "filen" || type === "internxt" || type === "mega" || type === "proton") return "E2E";
   if (type === "webdav") return "WebDAV";
   if (type === "ftps") return "FTPS";
   if (type === "ftp") return "FTP";
@@ -123,6 +124,7 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
     "s3",
     "webdav",
     "mega",
+    "proton",
     "sftp",
     "box",
     "pcloud",
@@ -207,7 +209,7 @@ export const providerSupportsCryptOverlay = (
 // (issue #213). Generic protocols (ftp/ftps/sftp/s3/webdav) are deliberately
 // excluded: those legitimately rely on the registry preset for dispatch.
 const NATIVE_API_PROTOCOLS: ReadonlySet<string> = new Set([
-  "mega", "box", "pcloud", "azure", "filen", "internxt", "kdrive", "drime",
+  "mega", "proton", "box", "pcloud", "azure", "filen", "internxt", "kdrive", "drime",
   "filelu", "koofr", "opendrive", "yandexdisk", "googledrive", "dropbox",
   "onedrive", "fourshared", "zohoworkdrive", "github", "gitlab", "immich",
   "jottacloud", "swift",
@@ -241,6 +243,8 @@ export const providerServesQuota = (
   // AeroShare friend (protocol "peer"): a read-only local replica with no quota
   // concept. Reporting "serves quota" suppresses the manual-total-bytes field
   // and the used-storage scan in the connection/edit form.
+  // Proton Drive CLI has no quota command; keep the manual cap available.
+  if (protocol === "proton") return false;
   if (protocol === "peer") return true;
   // MTP portable devices report real storage free/total from the device; the
   // manual cap and used-scan checkbox are noise on that form (live-test LT7).

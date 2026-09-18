@@ -10853,6 +10853,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         }
         "s3" => (ProviderType::S3, host_str.clone()),
         "mega" => (ProviderType::Mega, "mega.nz".to_string()),
+        "proton" | "protondrive" => (ProviderType::Proton, "drive.proton.me".to_string()),
         "azure" => (ProviderType::Azure, host_str.clone()),
         "filen" => (ProviderType::Filen, "gateway.filen.io".to_string()),
         "internxt" => (ProviderType::Internxt, "drive.internxt.com".to_string()),
@@ -27230,6 +27231,7 @@ fn profile_value_to_provider_config(
         "webdav" => ProviderType::WebDav,
         "s3" => ProviderType::S3,
         "mega" => ProviderType::Mega,
+        "proton" | "protondrive" => ProviderType::Proton,
         "azure" => ProviderType::Azure,
         "filen" => ProviderType::Filen,
         "internxt" => ProviderType::Internxt,
