@@ -2896,6 +2896,83 @@ pub struct SyncIndexEntry {
     pub is_dir: bool,
 }
 
+/// Current `SyncIndex` schema version.
+///
+/// **2 (G111)**: the `files` keys are relative paths written with `/` on every
+/// platform. A version 1 index written on Windows keys its entries with the
+/// native separator instead; [`load_sync_index`] rewrites those on read.
+pub const SYNC_INDEX_VERSION: u32 = 2;
+
+/// Normalize a relative path so it can be compared against a remote listing.
+///
+/// Every remote scanner builds its keys by joining names with `/`, so a local
+/// key has to use `/` as well or the two sides never meet: the same file shows
+/// up once under each spelling and reads as missing from both.
+///
+/// The replacement targets [`std::path::MAIN_SEPARATOR`] rather than a literal
+/// backslash **on purpose**. On Unix a backslash is a legal character in a file
+/// name, so rewriting it there would corrupt the key and break the very match
+/// this function exists to guarantee; on Windows `MAIN_SEPARATOR` *is* the
+/// backslash, so the behaviour is the one the other scanners already have.
+pub fn normalize_relative_key(key: &str) -> String {
+    key.replace(std::path::MAIN_SEPARATOR, "/")
+}
+
+/// Bring an index loaded from disk up to [`SYNC_INDEX_VERSION`].
+///
+/// G111: before version 2 the AeroCloud scanner keyed the index with the
+/// platform separator, so a Windows index holds `sub\b.txt` where the scanner
+/// now emits `sub/b.txt`. Left alone, the first cycle after the upgrade would
+/// find no baseline for any nested file and treat a whole synced tree as new,
+/// which is also the shape the delete-safety gate is there to notice.
+///
+/// Rewriting the keys on read is idempotent and a no-op on Unix, where
+/// `MAIN_SEPARATOR` is already `/`.
+///
+/// **Collisions are dropped, not resolved.** A bidirectional index written
+/// before the fix can hold a baseline under *both* spellings of one file: the
+/// comparison produced two entries for it and `save_post_sync_index` recorded
+/// one for each, from opposite sides. Normalizing maps them onto the same key,
+/// and letting the map keep whichever arrives last would pick a different
+/// baseline from one run to the next, because `HashMap` iteration order is not
+/// stable across processes. Dropping the entry costs one cycle of delete
+/// detection for that file; keeping an arbitrary one can invent a delete or a
+/// conflict from a baseline that was never true. The cheaper mistake is the one
+/// that cannot destroy anything.
+///
+/// **Residual, stated rather than hidden**: a stored key cannot say whether its
+/// backslash was a separator or a literal character in a file name (legal on a
+/// Unix server). On Windows the rewrite treats it as a separator, which is right
+/// for every key this scanner wrote and wrong for a remote name that really
+/// contained one. Such a pair collides with its normalized twin and is dropped
+/// by the rule above, so the failure mode is a missing baseline, not a wrong
+/// one.
+fn migrate_sync_index(index: &mut SyncIndex) {
+    if index.version >= SYNC_INDEX_VERSION {
+        return;
+    }
+    let mut migrated: HashMap<String, SyncIndexEntry> = HashMap::with_capacity(index.files.len());
+    let mut collided: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (key, entry) in std::mem::take(&mut index.files) {
+        let normalized = normalize_relative_key(&key);
+        if migrated.insert(normalized.clone(), entry).is_some() {
+            collided.insert(normalized);
+        }
+    }
+    for key in &collided {
+        migrated.remove(key);
+    }
+    if !collided.is_empty() {
+        tracing::warn!(
+            "sync index migration: {} path(s) carried a baseline under both spellings and were \
+             dropped; they compare without a baseline for one cycle",
+            collided.len()
+        );
+    }
+    index.files = migrated;
+    index.version = SYNC_INDEX_VERSION;
+}
+
 /// Persistent index storing the state of files after a successful sync.
 /// Used to detect true conflicts (both sides changed since last sync)
 /// and to skip unchanged files for faster re-scans.
@@ -2917,7 +2994,7 @@ impl SyncIndex {
     #[allow(dead_code)]
     pub fn new(local_path: String, remote_path: String) -> Self {
         Self {
-            version: 1,
+            version: SYNC_INDEX_VERSION,
             last_sync: Utc::now(),
             local_path,
             remote_path,
@@ -3005,8 +3082,9 @@ pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<Syn
     }
     let data =
         std::fs::read_to_string(&path).map_err(|e| format!("Failed to read sync index: {}", e))?;
-    let index: SyncIndex =
+    let mut index: SyncIndex =
         serde_json::from_str(&data).map_err(|e| format!("Failed to parse sync index: {}", e))?;
+    migrate_sync_index(&mut index);
     Ok(Some(index))
 }
 
@@ -6577,6 +6655,119 @@ mod tests {
         let abs = "/tmp/random/path";
         let portable = portable_path(abs);
         assert_eq!(portable, abs);
+    }
+
+    /// G111: a version 1 index written on Windows keys its entries with the
+    /// native separator, while the scanner now emits `/`. Loading it has to
+    /// rewrite the keys, or the first cycle after the upgrade finds no baseline
+    /// for any nested file and reads a whole synced tree as new.
+    ///
+    /// `MAIN_SEPARATOR` in the fixture makes this assert the real thing on
+    /// Windows and stay true (trivially) on Unix, where the legacy shape and the
+    /// normalized one are the same string.
+    #[test]
+    fn a_legacy_index_gets_its_keys_normalized_on_read() {
+        let mut index = SyncIndex {
+            version: 1,
+            last_sync: Utc::now(),
+            local_path: "/local".to_string(),
+            remote_path: "/remote".to_string(),
+            files: HashMap::new(),
+        };
+        index.files.insert(
+            format!("sub{}b.txt", std::path::MAIN_SEPARATOR),
+            SyncIndexEntry {
+                size: 1,
+                modified: None,
+                is_dir: false,
+            },
+        );
+
+        migrate_sync_index(&mut index);
+
+        assert_eq!(index.version, SYNC_INDEX_VERSION);
+        assert!(
+            index.files.contains_key("sub/b.txt"),
+            "keys must be rewritten to the `/` form, got {:?}",
+            index.files.keys().collect::<Vec<_>>()
+        );
+        assert_eq!(index.files.len(), 1, "migration must not duplicate entries");
+    }
+
+    /// The case the single-key fixture above cannot show: a bidirectional index
+    /// written before the fix holds a baseline under **both** spellings of one
+    /// file. Normalizing maps them onto the same key, and keeping whichever the
+    /// map happens to visit last would pick a different baseline per process.
+    /// The entry is dropped instead.
+    ///
+    /// Windows-only by nature: where `MAIN_SEPARATOR` is `/` the two spellings
+    /// are the same string, so the collision this pins cannot be built at all.
+    #[test]
+    #[cfg(windows)]
+    fn a_legacy_index_drops_a_key_that_collides_after_normalization() {
+        let mut index = SyncIndex {
+            version: 1,
+            last_sync: Utc::now(),
+            local_path: "/local".to_string(),
+            remote_path: "/remote".to_string(),
+            files: HashMap::new(),
+        };
+        // Sizes differ so "which one survived" would be observable if either did.
+        index.files.insert(
+            "sub\\b.txt".to_string(),
+            SyncIndexEntry {
+                size: 11,
+                modified: None,
+                is_dir: false,
+            },
+        );
+        index.files.insert(
+            "sub/b.txt".to_string(),
+            SyncIndexEntry {
+                size: 22,
+                modified: None,
+                is_dir: false,
+            },
+        );
+
+        migrate_sync_index(&mut index);
+
+        assert!(
+            !index.files.contains_key("sub/b.txt"),
+            "a colliding baseline must be dropped, not picked at random: {:?}",
+            index.files
+        );
+        assert!(index.files.is_empty(), "nothing else should survive here");
+        assert_eq!(index.version, SYNC_INDEX_VERSION);
+    }
+
+    /// The migration is a one-way step, not something that runs on every read:
+    /// an index already at the current version comes back untouched.
+    #[test]
+    fn migration_leaves_a_current_index_alone() {
+        let mut index = SyncIndex {
+            version: SYNC_INDEX_VERSION,
+            last_sync: Utc::now(),
+            local_path: "/local".to_string(),
+            remote_path: "/remote".to_string(),
+            files: HashMap::new(),
+        };
+        // A key that a rewrite would change, so "untouched" is observable.
+        index.files.insert(
+            "keep\\this".to_string(),
+            SyncIndexEntry {
+                size: 1,
+                modified: None,
+                is_dir: false,
+            },
+        );
+
+        migrate_sync_index(&mut index);
+
+        assert!(
+            index.files.contains_key("keep\\this"),
+            "a current index must not be rewritten"
+        );
     }
 
     #[test]

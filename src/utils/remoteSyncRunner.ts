@@ -1009,7 +1009,10 @@ export const runRemoteSync = async (
                 mergedFiles[dir] = { size: 0, modified: null, is_dir: true };
             }
             const index: SyncIndex = {
-                version: 1,
+                // G111: keep in step with SYNC_INDEX_VERSION in src-tauri/src/sync.rs.
+                // Stamping 1 here would send every index this writer produces
+                // through the Rust-side migration on each read.
+                version: 2,
                 last_sync: new Date().toISOString(),
                 local_path: localBase,
                 remote_path: remoteBase,

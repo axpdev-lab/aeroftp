@@ -18,9 +18,10 @@ use crate::crypt_overlay_provider;
 use crate::ftp::FtpManager;
 use crate::providers::{ProviderError, RemoteEntry as ProviderRemoteEntry, StorageProvider};
 use crate::sync::{
-    build_comparison_results_with_index, decide_sync_action, load_sync_index, save_sync_index,
-    validate_relative_path, CompareDirection, CompareOptions, FileComparison, FileInfo, SyncAction,
-    SyncIndex, SyncIndexEntry, SyncStatus,
+    build_comparison_results_with_index, decide_sync_action, load_sync_index,
+    normalize_relative_key, save_sync_index, validate_relative_path, CompareDirection,
+    CompareOptions, FileComparison, FileInfo, SyncAction, SyncIndex, SyncIndexEntry, SyncStatus,
+    SYNC_INDEX_VERSION,
 };
 // file_watcher module available for Phase 3A+ watcher integration
 use chrono::{DateTime, Utc};
@@ -351,7 +352,7 @@ impl CloudService {
             // AskUser / KeepBoth: leave the prior entry untouched (do not advance).
         }
         let idx = SyncIndex {
-            version: 1,
+            version: SYNC_INDEX_VERSION,
             last_sync: Utc::now(),
             local_path: local.to_string(),
             remote_path: remote.to_string(),
@@ -1085,11 +1086,33 @@ impl CloudService {
                     continue;
                 }
 
-                let relative = path
-                    .strip_prefix(base)
-                    .map_err(|e| e.to_string())?
-                    .to_string_lossy()
-                    .to_string();
+                // G111: the key has to use `/` on every platform. The remote
+                // scanner below builds its own keys with `format!("{}/{}", ..)`,
+                // and `build_comparison_results_with_index` unions the two sets
+                // of keys verbatim, so a native `sub\b.txt` here would never
+                // meet the `sub/b.txt` that comes back from the server: the same
+                // copy reads as local-only and remote-only at once.
+                //
+                // This key is not only compared, it is *used*: the upload builds
+                // the destination as `format!("{}/{}", remote_folder, key)`, so
+                // the native form would put the file at `/remote/sub\b.txt` on
+                // the server. `excluded_folders` also matches it with
+                // `starts_with("{folder}/")`, so a selective-sync rule on a
+                // nested folder never fired on Windows.
+                //
+                // (`should_exclude` is NOT part of the argument: it already
+                // splits on both separators and normalizes multi-segment
+                // patterns, so ignore rules were never affected.)
+                //
+                // The sibling scanners (`aeroftp_cli.rs`, and the two in
+                // `lib.rs` that feed the same comparison) have always done this;
+                // this one was the outlier.
+                let relative = normalize_relative_key(
+                    &path
+                        .strip_prefix(base)
+                        .map_err(|e| e.to_string())?
+                        .to_string_lossy(),
+                );
 
                 let is_dir = metadata.is_dir();
 
@@ -2155,6 +2178,16 @@ mod baseline_tests {
         assert!(complete, "a clean readable tree is a complete local scan");
         assert!(files.contains_key("a.txt"));
         assert!(files.contains_key("sub/b.txt"));
+        // G111: the key shape is the contract, not an implementation detail.
+        // Stated as "already normalized" rather than "contains no backslash",
+        // because on Unix a backslash is a legal character in a file name and
+        // the native separator is `/` already: this form says the same thing on
+        // both platforms without asserting something false on either.
+        assert!(
+            files.keys().all(|k| *k == normalize_relative_key(k)),
+            "scan keys must already be normalized, got {:?}",
+            files.keys().collect::<Vec<_>>()
+        );
         // Call-site wiring: both sides complete must NOT trip on a single delete.
         let local_complete = complete;
         let remote_complete = true;
@@ -2165,6 +2198,53 @@ mod baseline_tests {
             1,
             !remote_complete || !local_complete,
         ));
+    }
+
+    /// G111, the defect itself rather than the shape of the key.
+    ///
+    /// `build_comparison_results_with_index` unions the two key sets verbatim,
+    /// so if the local scan keeps the platform separator the same file arrives
+    /// twice: once as `sub\b.txt` (local only, an upload) and once as
+    /// `sub/b.txt` (remote only, a download). Asserting on the union is what
+    /// pins the bug; asserting on the key alone only pins its spelling.
+    #[tokio::test]
+    async fn a_nested_file_meets_its_remote_twin_as_a_single_comparison() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("sub")).expect("mkdir");
+        std::fs::write(dir.path().join("sub/b.txt"), b"b").expect("write b");
+
+        let svc = CloudService::new();
+        let config = CloudConfig {
+            local_folder: dir.path().to_path_buf(),
+            ..Default::default()
+        };
+        let (local_files, _complete) = svc
+            .scan_local_folder(&config)
+            .await
+            .expect("scan should succeed");
+
+        // What every remote scanner produces: keys joined with `/`.
+        let mut remote_files: HashMap<String, FileInfo> = HashMap::new();
+        remote_files.insert("sub/b.txt".to_string(), fi(1, 1_700_000_000));
+
+        let comparisons = build_comparison_results_with_index(
+            local_files,
+            remote_files,
+            &CompareOptions::default(),
+            None,
+        );
+
+        let nested: Vec<&String> = comparisons
+            .iter()
+            .map(|c| &c.relative_path)
+            .filter(|p| p.ends_with("b.txt"))
+            .collect();
+        assert_eq!(
+            nested.len(),
+            1,
+            "one file on both sides must compare once, got {:?}",
+            nested
+        );
     }
 
     #[tokio::test]
