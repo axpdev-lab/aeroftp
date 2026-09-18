@@ -156,42 +156,84 @@ struct Cli {
     machine: bool,
 
     /// Suppress the startup banner (also via AEROFTP_NO_BANNER env var)
-    #[arg(long, global = true, help_heading = "Output options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Output options"
+    )]
     #[allow(dead_code)] // read from raw_args before clap parses
     no_banner: bool,
 
     /// Restrict JSON output fields (comma-separated, e.g. name,size,modified)
-    #[arg(long, global = true, help_heading = "Output options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Output options"
+    )]
     json_fields: Option<String>,
 
     /// Read password from stdin (pipe: echo "pass" | aeroftp ...)
-    #[arg(long, global = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
     password_stdin: bool,
 
     /// SSH private key path for SFTP
-    #[arg(long, global = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
     key: Option<String>,
 
     /// SSH key passphrase
-    #[arg(long, global = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
     key_passphrase: Option<String>,
 
     /// S3 bucket name
-    #[arg(long, global = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
     bucket: Option<String>,
 
     /// S3/Azure region
-    #[arg(long, global = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
     region: Option<String>,
 
     /// Azure container name
-    #[arg(long, global = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
     container: Option<String>,
 
     /// Bearer/API token (kDrive, Jottacloud, FileLu)
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Connection options",
         env = "AEROFTP_TOKEN",
         hide_env_values = true,
         help_heading = "Connection options"
@@ -199,21 +241,38 @@ struct Cli {
     token: Option<String>,
 
     /// FTP TLS mode: none, explicit, implicit, explicit_if_available
-    #[arg(long, global = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
     tls: Option<String>,
 
     /// Skip TLS certificate verification
-    #[arg(long, global = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
     insecure: bool,
 
     /// Trust unknown SSH host keys (skip TOFU verification)
-    #[arg(long, global = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
     trust_host_key: bool,
 
     /// 2FA code (Filen, Internxt)
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Connection options",
         env = "AEROFTP_2FA",
         hide_env_values = true,
         help_heading = "Connection options"
@@ -223,34 +282,54 @@ struct Cli {
     /// Connect to a crypt-overlay profile RAW (skip the bound Crypt overlay),
     /// mirroring the GUI's Crypt On/Off toggle. On-wire names and content stay
     /// encrypted; no decrypt/encrypt is applied. Ignored for non-crypt profiles.
-    #[arg(long, global = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
     no_crypt: bool,
 
     /// Use a saved server profile instead of URL (name or ID)
-    #[arg(long, short = 'P', global = true)]
+    #[arg(long, short = 'P', global = true, help_heading = "Connection options")]
     profile: Option<String>,
 
     /// Select an AeroFTP local user partition (or set AEROFTP_USER)
-    #[arg(long, global = true, env = "AEROFTP_USER")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options",
+        env = "AEROFTP_USER"
+    )]
     user: Option<String>,
 
     /// Account passphrase for the selected AeroFTP user (prefer env/file over CLI args)
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Connection options",
         env = "AEROFTP_USER_PASSPHRASE",
         hide_env_values = true
     )]
     user_passphrase: Option<String>,
 
     /// Read the AeroFTP user passphrase from the first line of a file
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
     passphrase_file: Option<PathBuf>,
 
     /// Master password for encrypted vault (or set AEROFTP_MASTER_PASSWORD)
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Connection options",
         env = "AEROFTP_MASTER_PASSWORD",
         hide_env_values = true
     )]
@@ -265,50 +344,102 @@ struct Cli {
         short,
         long,
         global = true,
+        help_heading = "Output options",
         conflicts_with = "verbose",
         help_heading = "Output options"
     )]
     quiet: bool,
 
     /// Speed limit (e.g., "1M", "500K")
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
     limit_rate: Option<String>,
 
     /// Bandwidth schedule (e.g., "08:00,512k 12:00,10M 18:00,off")
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
     bwlimit: Option<String>,
 
     /// Number of parallel transfer workers (default: 4, max: 32)
-    #[arg(long, global = true, default_value_t = 4)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options",
+        default_value_t = 4
+    )]
     parallel: usize,
 
     /// Resume interrupted transfers using partial files or remote offsets when supported
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
     partial: bool,
 
     // ── Filter flags (apply to ls, get, put, sync, find, rm) ──
     /// Include only files matching glob pattern (repeatable)
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     include: Vec<String>,
 
     /// Exclude files matching glob pattern (repeatable)
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     exclude_global: Vec<String>,
 
     /// Read include patterns from file (one per line, # comments)
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     include_from: Option<String>,
 
     /// Read exclude patterns from file (one per line, # comments)
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     exclude_from: Option<String>,
 
     /// Read file list from file (one path per line). Only listed files are transferred.
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     files_from: Option<String>,
 
     /// Like --files-from but don't skip empty lines or strip whitespace
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     files_from_raw: Option<String>,
 
     /// Skip a destination the pre-write check finds already there
@@ -317,7 +448,12 @@ struct Cli {
     /// left untouched. The check is a stat before the write, not an atomic
     /// condition on the server, so two writers racing for one target can both
     /// pass it; see `skip_if_destination_exists`.
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
     immutable: bool,
 
     /// Recursive `put`: skip a file or folder whose name contains a character
@@ -326,67 +462,141 @@ struct Cli {
     /// default, which uploads nothing when one name is bad). The run still
     /// ends "partial" with exit 4 because not everything requested landed,
     /// the way rclone reports a batch with failed items.
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     skip_restricted: bool,
 
     /// Skip listing destination before transfer (assume dest is empty)
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
     no_check_dest: bool,
 
     /// Maximum directory recursion depth (default: unlimited). Applies to ls -R, find, sync, get -r.
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     max_depth: Option<u32>,
 
     /// Minimum file size (e.g., "100k", "1M", "1G")
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     min_size: Option<String>,
 
     /// Maximum file size (e.g., "100k", "1M", "1G")
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     max_size: Option<String>,
 
     /// Skip files newer than duration (e.g., "7d", "24h", "2w")
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     min_age: Option<String>,
 
     /// Skip files older than duration (e.g., "7d", "24h", "2w")
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     max_age: Option<String>,
 
     // ── Transfer control flags ──
     /// Abort after transferring this many bytes total (e.g., "10G", "500M")
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
     max_transfer: Option<String>,
 
     /// Maximum number of queued transfer tasks (default: 10000)
-    #[arg(long, global = true, default_value_t = 10000)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options",
+        default_value_t = 10000
+    )]
     max_backlog: usize,
 
     /// Multi-file admission schedule for the streaming transfer frontier
     /// (DAG-P2-08). `fifo` (default) preserves arrival order; `size` prefers
     /// small files for low latency with aging so large files never starve
     /// (rclone-style size,mixed).
-    #[arg(long, global = true, default_value = "fifo", value_parser = ["fifo", "size"])]
+    #[arg(long, global = true, hide_short_help = true, help_heading = "Transfer options", default_value = "fifo", value_parser = ["fifo", "size"])]
     schedule: String,
 
     /// Number of retries for failed operations (default: 3, 0 = no retry)
-    #[arg(long, global = true, default_value_t = 3)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options",
+        default_value_t = 3
+    )]
     retries: u32,
 
     /// Delay between retries (e.g., "5s", "1m", "500ms"; default: "1s")
-    #[arg(long, global = true, default_value = "1s")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options",
+        default_value = "1s"
+    )]
     retries_sleep: String,
 
     /// Dump HTTP debug info to stderr (comma-separated: headers,bodies,auth)
-    #[arg(long, global = true, value_delimiter = ',')]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Output options",
+        value_delimiter = ','
+    )]
     dump: Vec<String>,
 
     /// Override upload chunk size (e.g., "64M", "16M"). Min 5M for S3.
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
     chunk_size: Option<String>,
 
     /// Override download buffer size (e.g., "256K", "1M")
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
     buffer_size: Option<String>,
 
     /// Number of concurrent Range streams per single-file download
@@ -401,6 +611,8 @@ struct Cli {
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Tuning options",
         default_value_t = 4,
         env = "AEROFTP_MULTI_THREAD_STREAMS"
     )]
@@ -414,6 +626,8 @@ struct Cli {
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Tuning options",
         default_value = "250M",
         env = "AEROFTP_MULTI_THREAD_CUTOFF"
     )]
@@ -423,7 +637,12 @@ struct Cli {
     /// SSH connections, read-ahead, and the multi-connection cutoff together.
     /// `efficient` matches the GUI default. The option is ignored for non-SFTP
     /// providers.
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (SFTP)"
+    )]
     sftp_download_preset: Option<SftpDownloadPreset>,
 
     /// Explicit SFTP read-ahead window. Overrides `--sftp-download-preset`.
@@ -431,13 +650,18 @@ struct Cli {
     /// `AEROFTP_SFTP_READAHEAD` provider fallback remains active.
     #[arg(
         long,
-        global = true,
+        global = true, hide_short_help = true, help_heading = "Provider options (SFTP)",
         value_parser = parse_cli_sftp_readahead
     )]
     sftp_readahead: Option<usize>,
 
     /// Default mtime when backend returns None (ISO 8601 or "now")
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Filter options"
+    )]
     default_time: Option<String>,
 
     /// Single-file transfer engine selection. `auto` consults the data-driven
@@ -449,7 +673,7 @@ struct Cli {
     /// operator override. Reads default from `AEROFTP_TRANSFER_ENGINE`.
     #[arg(
         long,
-        global = true,
+        global = true, hide_short_help = true, help_heading = "Tuning options",
         default_value = "auto",
         env = "AEROFTP_TRANSFER_ENGINE",
         value_parser = ["auto", "dag", "legacy"]
@@ -457,11 +681,21 @@ struct Cli {
     transfer_engine: String,
 
     /// Use recursive listing in a single API call (S3 only, faster for large datasets)
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
     fast_list: bool,
 
     /// Write downloads directly to final path (no .aerotmp temp file)
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
     inplace: bool,
 
     /// KE-A5: Order the transfer queue by the given key
@@ -469,7 +703,7 @@ struct Cli {
     /// recursive get/put, dedupe. Single-file operations and `ls` are
     /// unaffected (`ls` keeps its own `--sort`). Defaults to `none`
     /// (FIFO from the input order).
-    #[arg(long, global = true, value_enum, default_value_t = OrderBy::None)]
+    #[arg(long, global = true, hide_short_help = true, help_heading = "Filter options", value_enum, default_value_t = OrderBy::None)]
     order_by: OrderBy,
 
     /// KE-A4: Skip the full remote listing during sync but still stat
@@ -479,7 +713,12 @@ struct Cli {
     /// (typical S3 bucket with a long-running history). Implies
     /// `--direction upload`; combine with `--no-check-dest` for the
     /// fully-trust-me variant (skip the stat too).
-    #[arg(long, global = true)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
     no_traverse: bool,
 
     /// KE-A3: Hard cap on HTTP transactions per second across all
@@ -491,7 +730,14 @@ struct Cli {
     /// clouds, Filen, WebDAV, ImageKit, Drime, Uploadcare, Cloudinary).
     /// SFTP / FTP session protocols are unaffected. Reads default from
     /// `AEROFTP_TPSLIMIT`.
-    #[arg(long, global = true, default_value_t = 0.0, env = "AEROFTP_TPSLIMIT")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options",
+        default_value_t = 0.0,
+        env = "AEROFTP_TPSLIMIT"
+    )]
     tpslimit: f64,
 
     /// KE-A3: Burst capacity for `--tpslimit`. Lets the limiter absorb
@@ -502,6 +748,8 @@ struct Cli {
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options",
         default_value_t = 0.0,
         env = "AEROFTP_TPSLIMIT_BURST"
     )]
@@ -517,7 +765,13 @@ struct Cli {
     /// sequential (`StorageProvider::stat` takes `&mut self`) and only
     /// reports the value. Distinct from `--transfers`, which caps the
     /// data-transfer pool.
-    #[arg(long, global = true, default_value_t = 8)]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options",
+        default_value_t = 8
+    )]
     checkers: usize,
 
     /// KE-A1: SFTP-specific concurrency override for single-file
@@ -540,6 +794,8 @@ struct Cli {
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (SFTP)",
         default_value_t = 0,
         env = "AEROFTP_SFTP_CONCURRENCY"
     )]
@@ -554,6 +810,8 @@ struct Cli {
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (S3)",
         default_value_t = 0,
         env = "AEROFTP_S3_UPLOAD_CONCURRENCY"
     )]
@@ -563,7 +821,13 @@ struct Cli {
     /// `--s3-no-check-bucket`). Use with IAM credentials that grant
     /// `PutObject` but deny `ListBucket`: the default probe would 403 even
     /// though uploads work. Silently ignored when the remote is not S3.
-    #[arg(long, global = true, env = "AEROFTP_S3_NO_CHECK_BUCKET")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (S3)",
+        env = "AEROFTP_S3_NO_CHECK_BUCKET"
+    )]
     s3_no_check_bucket: bool,
 
     /// KE-B1.3: Replace the per-payload SHA-256 in S3 SigV4 with
@@ -572,7 +836,13 @@ struct Cli {
     /// the cost of SigV4 in-flight tamper protection. Empty-body requests
     /// still hash normally (constant cost, some gateways require it).
     /// Silently ignored when the remote is not S3.
-    #[arg(long, global = true, env = "AEROFTP_S3_DISABLE_CHECKSUM")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (S3)",
+        env = "AEROFTP_S3_DISABLE_CHECKSUM"
+    )]
     s3_disable_checksum: bool,
 
     /// KE-B1.4: Canned ACL applied to S3 uploads (rclone `--s3-acl`).
@@ -583,7 +853,13 @@ struct Cli {
     /// at the API level). Silently ignored when the remote is not S3, or
     /// when the bucket is governed by a bucket policy that forbids ACLs
     /// (AWS default since April 2023). Reads default from `AEROFTP_S3_ACL`.
-    #[arg(long, global = true, env = "AEROFTP_S3_ACL")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (S3)",
+        env = "AEROFTP_S3_ACL"
+    )]
     s3_acl: Option<String>,
 
     /// KE-B1.5: Storage class for S3 uploads (rclone `--s3-storage-class`).
@@ -594,7 +870,13 @@ struct Cli {
     /// profile-level `storage_class` setting. Emitted as
     /// `x-amz-storage-class`. Silently ignored when the remote is not
     /// S3. Reads default from `AEROFTP_S3_STORAGE_CLASS`.
-    #[arg(long, global = true, env = "AEROFTP_S3_STORAGE_CLASS")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (S3)",
+        env = "AEROFTP_S3_STORAGE_CLASS"
+    )]
     s3_storage_class: Option<String>,
 
     /// KE-B3.1: After every successful OneDrive upload, sweep all previous
@@ -605,7 +887,13 @@ struct Cli {
     /// sweep is best-effort: failures are logged but never propagated, so
     /// the upload itself still reports success. Silently ignored when the
     /// remote is not OneDrive.
-    #[arg(long, global = true, env = "AEROFTP_ONEDRIVE_NO_VERSIONS")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (OneDrive)",
+        env = "AEROFTP_ONEDRIVE_NO_VERSIONS"
+    )]
     onedrive_no_versions: bool,
 
     /// KE-B3.2: Override the Microsoft Graph `$top` paging size for
@@ -617,6 +905,8 @@ struct Cli {
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (OneDrive)",
         default_value_t = 0,
         env = "AEROFTP_ONEDRIVE_LIST_CHUNK"
     )]
@@ -628,7 +918,13 @@ struct Cli {
     /// Graph API rejects unknown scopes at request time. Silently ignored
     /// when the remote is not OneDrive. Reads default from
     /// `AEROFTP_ONEDRIVE_LINK_SCOPE`.
-    #[arg(long, global = true, env = "AEROFTP_ONEDRIVE_LINK_SCOPE")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (OneDrive)",
+        env = "AEROFTP_ONEDRIVE_LINK_SCOPE"
+    )]
     onedrive_link_scope: Option<String>,
 
     /// KE-B4.1: Override the number of `Put Block` requests in flight
@@ -640,6 +936,8 @@ struct Cli {
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (Azure)",
         default_value_t = 0,
         env = "AEROFTP_AZURE_UPLOAD_CONCURRENCY"
     )]
@@ -651,7 +949,13 @@ struct Cli {
     /// structurally wired but has no observable effect today. It will
     /// gate the future MD5-on-upload code path once that lands. Silently
     /// ignored when the remote is not Azure Blob.
-    #[arg(long, global = true, env = "AEROFTP_AZURE_DISABLE_CHECKSUM")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (Azure)",
+        env = "AEROFTP_AZURE_DISABLE_CHECKSUM"
+    )]
     azure_disable_checksum: bool,
 
     /// KE-B4.3: Apply this Azure access tier to every successful upload
@@ -661,7 +965,13 @@ struct Cli {
     /// the upload itself. Vendor / future tiers pass through; Azure
     /// rejects unknown values at the API level. Silently ignored when
     /// the remote is not Azure Blob.
-    #[arg(long, global = true, env = "AEROFTP_AZURE_ACCESS_TIER")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (Azure)",
+        env = "AEROFTP_AZURE_ACCESS_TIER"
+    )]
     azure_access_tier: Option<String>,
 
     /// KE-B4.4: Before overwriting an existing blob, check if it is in
@@ -670,7 +980,13 @@ struct Cli {
     /// PUT against an Archive blob fails with `BlobArchived`. Adds one
     /// pre-upload HEAD round trip per file. Silently ignored when the
     /// remote is not Azure Blob.
-    #[arg(long, global = true, env = "AEROFTP_AZURE_ARCHIVE_TIER_DELETE")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (Azure)",
+        env = "AEROFTP_AZURE_ARCHIVE_TIER_DELETE"
+    )]
     azure_archive_tier_delete: bool,
 
     /// KE-B2.3: Append `supportsAllDrives=true` to Google Drive
@@ -680,7 +996,13 @@ struct Cli {
     /// even when the OAuth scopes are sufficient. Aligned with rclone's
     /// `--drive-server-side-across-configs`. Silently ignored when the
     /// remote is not Google Drive.
-    #[arg(long, global = true, env = "AEROFTP_DRIVE_CROSS_ACCOUNT_COPY")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (Google Drive)",
+        env = "AEROFTP_DRIVE_CROSS_ACCOUNT_COPY"
+    )]
     drive_cross_account_copy: bool,
 
     /// KE-B2.1: Allow this many Google Drive API dispatches inside one
@@ -690,6 +1012,8 @@ struct Cli {
     #[arg(
         long,
         global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (Google Drive)",
         env = "AEROFTP_DRIVE_PACER_BURST",
         default_value_t = 0
     )]
@@ -698,7 +1022,13 @@ struct Cli {
     /// KE-B2.2: Minimum delay between Google Drive AIMD API pacing
     /// windows. Accepts `500ms`, `2s`, `1m`, `1h`, or `0` to disable the
     /// overlay and preserve the controller default.
-    #[arg(long, global = true, env = "AEROFTP_DRIVE_PACER_MIN_SLEEP")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (Google Drive)",
+        env = "AEROFTP_DRIVE_PACER_MIN_SLEEP"
+    )]
     drive_pacer_min_sleep: Option<String>,
 
     /// KE-B2.4: Append `acknowledgeAbuse=true` to Google Drive binary
@@ -709,7 +1039,13 @@ struct Cli {
     /// flag the user acknowledges the risk associated with downloading
     /// content Google's classifier flagged. Silently ignored when the
     /// remote is not Google Drive.
-    #[arg(long, global = true, env = "AEROFTP_DRIVE_ACKNOWLEDGE_ABUSE")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Provider options (Google Drive)",
+        env = "AEROFTP_DRIVE_ACKNOWLEDGE_ABUSE"
+    )]
     drive_acknowledge_abuse: bool,
 
     /// KE-D3: Static Retry-After fallback overlay for the AIMD controller.
@@ -717,7 +1053,7 @@ struct Cli {
     /// `--aimd-hint=drive:30 --aimd-hint=s3:5`.
     #[arg(
         long,
-        global = true,
+        global = true, hide_short_help = true, help_heading = "Tuning options",
         env = "AEROFTP_AIMD_HINT",
         value_delimiter = ',',
         action = clap::ArgAction::Append
@@ -731,27 +1067,51 @@ struct Cli {
     /// dedicated/lab links where the operator has out-of-band guarantees
     /// the backend will not throttle and AIMD would only mask a genuine
     /// throughput cap diagnostic.
-    #[arg(long, global = true, env = "AEROFTP_AIMD_DISABLE")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Tuning options",
+        env = "AEROFTP_AIMD_DISABLE"
+    )]
     aimd_disable: bool,
 
     /// KE-D2: Floor for the AIMD `target` after multiplicative decrease.
     /// Broadcast to every controlled class (file / chunk / http / api).
     /// Use the TOML file (`--aimd-config`) for per-class overrides. A
     /// value of `0` is sanitized to `1`. Default: `1`.
-    #[arg(long, global = true, env = "AEROFTP_AIMD_MIN_WINDOW")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Tuning options",
+        env = "AEROFTP_AIMD_MIN_WINDOW"
+    )]
     aimd_min_window: Option<usize>,
 
     /// KE-D2: Ceiling cap for the AIMD `target`. Broadcast to every
     /// controlled class. The value clamps the budget-derived ceiling
     /// from below: it can only shrink the honest cap, never raise it
     /// (AIMD is decrease-biased). Default: `ceiling` (no extra clamp).
-    #[arg(long, global = true, env = "AEROFTP_AIMD_MAX_WINDOW")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Tuning options",
+        env = "AEROFTP_AIMD_MAX_WINDOW"
+    )]
     aimd_max_window: Option<usize>,
 
     /// KE-D2: Additive step applied to the AIMD `target` once per quiet
     /// `healthy_window`. Broadcast to every controlled class. A value
     /// of `0` is sanitized to `1`. Default: `1`.
-    #[arg(long, global = true, env = "AEROFTP_AIMD_STEP_WINDOW")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Tuning options",
+        env = "AEROFTP_AIMD_STEP_WINDOW"
+    )]
     aimd_step_window: Option<usize>,
 
     /// KE-D2: Path to a TOML file with per-class AIMD window overrides.
@@ -766,7 +1126,14 @@ struct Cli {
     ///   [aimd.http]   ...
     ///   [aimd.api]    ...
     /// Every section and every key is optional.
-    #[arg(long, global = true, env = "AEROFTP_AIMD_CONFIG", value_name = "PATH")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Tuning options",
+        env = "AEROFTP_AIMD_CONFIG",
+        value_name = "PATH"
+    )]
     aimd_config: Option<PathBuf>,
 
     /// Refuse safety-relaxing flags (also via AEROFTP_STRICT=1).
@@ -783,7 +1150,12 @@ struct Cli {
     // than via clap's `env=`, because clap parses a flag's env value as a
     // strict bool (`true`/`false`) and would reject the documented
     // `AEROFTP_STRICT=1` form with a hard parse error.
-    #[arg(long, global = true, help_heading = "Safety options")]
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Safety options"
+    )]
     strict: bool,
 
     #[command(subcommand)]
@@ -2647,6 +3019,25 @@ enum Commands {
     },
     /// Open the interactive terminal UI
     Tui,
+    /// Print where a profile starts on the remote, without connecting
+    ///
+    /// Every relative path this CLI is given is resolved against the profile's
+    /// base path, and until now the only way to see that base was to run a
+    /// command that touches the network and read the "Note: path '/' resolved
+    /// to ..." line it prints on stderr. That note is good, but it is a side
+    /// effect of doing something else: you had to perform an operation to ask
+    /// a question. This answers the question on its own.
+    ///
+    /// Reads the saved profile and never opens a connection, so it costs
+    /// nothing and works while the server is down. With `--json` it is the
+    /// shape an agent can consume before planning any path.
+    Pwd {
+        /// Profile selector: the 1-based index from `profiles`, an exact name,
+        /// an id, or a unique substring of a name. Defaults to the global
+        /// `--profile` when omitted.
+        #[arg(value_name = "SELECTOR")]
+        selector: Option<String>,
+    },
     /// List saved server profiles from the encrypted vault
     ///
     /// Mirrors the My Servers Table view in the GUI: the same column visibility
@@ -3083,16 +3474,34 @@ enum Commands {
         /// profile configuration, never secrets.
         #[arg(long = "include-credentials")]
         include_credentials: bool,
-        /// Export only these profiles (comma-separated; each token is a profile
-        /// id or a case-insensitive name). Defaults to every profile of the
-        /// active user. A token that matches nothing is an error.
-        #[arg(long, value_name = "IDS")]
+        /// Export only these profiles: comma-separated, and each token is
+        /// resolved the way every other profile-taking command resolves one.
+        /// Four forms, in the order they are tried: the 1-based index shown by
+        /// `profiles`, an exact (case-insensitive) name, an id, and a substring
+        /// of a name that matches exactly one profile. An ambiguous substring
+        /// is an error that lists the candidates, and a token matching nothing
+        /// is an error too, never a silent full export. Quote a name that
+        /// contains spaces. Defaults to every profile of the active user.
+        ///
+        /// The name form had always worked; the flag was called `--ids` with a
+        /// value called IDS, so nobody read past it and people looked up
+        /// internal ids by hand. The index and substring forms are new here,
+        /// and arrived by calling the shared resolver instead of a private
+        /// copy of it. Saying so in the help rather than only in the resolver
+        /// is the point of this change, so leaving the two behind would have
+        /// been the same defect one layer down.
+        #[arg(
+            long,
+            visible_aliases = ["name", "names"],
+            value_name = "ID_OR_NAME"
+        )]
         ids: Option<String>,
         /// Output a JSON summary on stdout (errors go to stderr in any mode)
         #[arg(long)]
         json: bool,
     },
-    /// Import server profiles from an encrypted `.aeroftp` file
+    /// Import server profiles from a `.aeroftp` file (existing profiles are
+    /// SKIPPED, never overwritten)
     ///
     /// Restores profiles and, when the file was exported with credentials,
     /// every saved secret back into the active user's vault, including the
@@ -3419,6 +3828,46 @@ mod cli_dispatch_tests {
             .expect("spawn allowlist sync test")
             .join()
             .expect("allowlist sync test panicked");
+    }
+
+    /// The short help of a subcommand has to be readable by whoever runs it,
+    /// human or agent, and the thing that destroys it is a global argument
+    /// added without `hide_short_help`.
+    ///
+    /// This is a measured threshold, not a taste: before the 87 globals were
+    /// given sections and hidden from the short help, `profile-export -h` ran
+    /// to 186 lines listing 91 options for a command that has 6 of its own, and
+    /// a real user went looking for an internal profile id by hand rather than
+    /// read past them. Afterwards it is about 20. The ceiling sits well above
+    /// the current figure so that adding an option to a subcommand is free,
+    /// and well below the old one so that a new unhidden global fails here
+    /// instead of in someone's terminal.
+    #[test]
+    fn a_subcommand_short_help_stays_readable() {
+        std::thread::Builder::new()
+            .name("short-help-readable".to_string())
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                const CEILING: usize = 60;
+                let mut command = Cli::command();
+                for name in ["profile-export", "profile-import", "pwd", "ls"] {
+                    let rendered = command
+                        .find_subcommand_mut(name)
+                        .unwrap_or_else(|| panic!("subcommand {name} exists"))
+                        .render_help()
+                        .to_string();
+                    let lines = rendered.lines().count();
+                    assert!(
+                        lines <= CEILING,
+                        "`{name} -h` is {lines} lines (ceiling {CEILING}): a global \
+                         argument was probably added without hide_short_help, which \
+                         buries the options this command actually takes"
+                    );
+                }
+            })
+            .expect("spawn short help test")
+            .join()
+            .expect("short help test panicked");
     }
 }
 
@@ -12181,12 +12630,66 @@ async fn peer_publish_flow(
 /// Map the CLI `--direction` string onto the serde `CompareDirection` used by
 /// the AeroCloud config. Pure so it can be unit-tested; returns `None` for an
 /// unrecognized value so the caller can emit a clear error.
+/// Bring `protocol_type` up to date for a read-only display, silently.
+///
+/// Opening the vault can fail (locked, no master password on this run) and a
+/// `show` must still print what it knows rather than turn into an error: a
+/// stale protocol is worth less than no output at all.
+fn aerocloud_refresh_protocol_for_display(
+    cli: &Cli,
+    config: &mut ftp_client_gui_lib::cloud_config::CloudConfig,
+) {
+    if let Ok(store) = open_vault(cli) {
+        if let Some(proto) = aerocloud_protocol_for_profile(&store, &config.server_profile) {
+            config.protocol_type = proto;
+        }
+    }
+}
+
+/// The protocol a saved profile actually speaks, read from the vault by name.
+///
+/// `CloudConfig::protocol_type` defaults to `"ftp"` and is not written when a
+/// profile is assigned, so the stored value is a guess until something fixes
+/// it. The sync path fixed it inline, for itself, because dispatching an FTP
+/// provider at an SFTP profile would fail; `show` and `status` had no such
+/// pressure and printed the default, which is how a real user was told a
+/// profile was FTP when it was SFTP. One derivation, three callers: the two
+/// that display and the one that connects.
+fn aerocloud_protocol_for_profile(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    profile_name: &str,
+) -> Option<String> {
+    if profile_name.is_empty() {
+        return None;
+    }
+    ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(store)
+        .ok()?
+        .iter()
+        .find(|p| p.get("name").and_then(|v| v.as_str()) == Some(profile_name))
+        .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
+        .map(str::to_string)
+}
+
+/// Every spelling [`aerocloud_parse_direction`] accepts, in the order a person
+/// is most likely to try them, and the single source the error message uses.
+///
+/// The internal names are in the list on purpose. They are what `decide_sync_action`
+/// is written in and what the sync logs print, so someone reading a log and then
+/// writing a command reaches for `LocalToRemote` and used to be told it expected
+/// three forms none of which was the one they had just read. An error that lists
+/// fewer spellings than the parser accepts sends people away from a value that
+/// would have worked.
+const AEROCLOUD_DIRECTION_SPELLINGS: &str =
+    "bidirectional | both | send-only | LocalToRemote | receive-only | RemoteToLocal";
+
 fn aerocloud_parse_direction(s: &str) -> Option<ftp_client_gui_lib::sync::CompareDirection> {
     use ftp_client_gui_lib::sync::CompareDirection;
     match s.trim().to_ascii_lowercase().as_str() {
         "bidirectional" | "both" => Some(CompareDirection::Bidirectional),
-        "send-only" | "send_only" | "sendonly" => Some(CompareDirection::LocalToRemote),
-        "receive-only" | "receive_only" | "receiveonly" => Some(CompareDirection::RemoteToLocal),
+        "send-only" | "send_only" | "sendonly" | "localtoremote" | "local_to_remote"
+        | "local-to-remote" => Some(CompareDirection::LocalToRemote),
+        "receive-only" | "receive_only" | "receiveonly" | "remotetolocal" | "remote_to_local"
+        | "remote-to-local" => Some(CompareDirection::RemoteToLocal),
         _ => None,
     }
 }
@@ -12301,6 +12804,7 @@ fn aerocloud_print_sync_result(
     r: &ftp_client_gui_lib::cloud_service::SyncOperationResult,
     dry_run: bool,
     format: OutputFormat,
+    quiet: bool,
 ) {
     if matches!(format, OutputFormat::Json) {
         print_json(&serde_json::json!({
@@ -12310,6 +12814,16 @@ fn aerocloud_print_sync_result(
             "downloaded": r.downloaded,
             "deleted": r.deleted,
             "skipped": r.skipped,
+            // What that number is made of, so a consumer does not have to infer
+            // it from the count alone: files and directories are separated, and
+            // each carries the reason the comparison already computed.
+            "skippedFolders": r.skipped_details.iter().filter(|e| e.is_dir).count(),
+            "skippedFiles": r.skipped_details.iter().filter(|e| !e.is_dir).count(),
+            "skippedDetails": r.skipped_details.iter().map(|e| serde_json::json!({
+                "path": e.path,
+                "reason": e.reason,
+                "isDir": e.is_dir,
+            })).collect::<Vec<_>>(),
             "conflicts": r.conflicts,
             "errors": r.errors,
             "durationSecs": r.duration_secs,
@@ -12324,6 +12838,28 @@ fn aerocloud_print_sync_result(
         println!("  downloaded: {}", r.downloaded);
         println!("  deleted:    {}", r.deleted);
         println!("  skipped:    {}", r.skipped);
+        // A count with no names is the thing that was reported: the same
+        // "skipped: 2" every cycle, with nothing saying which two or why. The
+        // list goes to stderr so the summary on stdout keeps its shape for
+        // whoever parses it, and it is capped because a large exclude rule
+        // should not turn a summary into a listing.
+        if !r.skipped_details.is_empty() && !quiet {
+            const SHOWN: usize = 10;
+            for entry in r.skipped_details.iter().take(SHOWN) {
+                eprintln!(
+                    "  skipped: {}{} ({})",
+                    entry.path,
+                    if entry.is_dir { "/" } else { "" },
+                    entry.reason
+                );
+            }
+            if r.skipped_details.len() > SHOWN {
+                eprintln!(
+                    "  skipped: and {} more (use --json for the full list)",
+                    r.skipped_details.len() - SHOWN
+                );
+            }
+        }
         println!("  conflicts:  {}", r.conflicts);
         println!("  errors:     {}", r.errors.len());
         for e in &r.errors {
@@ -12400,18 +12936,8 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
     // wrong provider (e.g. FTP against an SFTP profile). Host and credentials
     // already come from the vault by profile name, so only the protocol is
     // derived here.
-    if let Ok(profiles) =
-        ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(&store)
-    {
-        if let Some(proto) = profiles
-            .iter()
-            .find(|p| {
-                p.get("name").and_then(|v| v.as_str()) == Some(config.server_profile.as_str())
-            })
-            .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
-        {
-            config.protocol_type = proto.to_string();
-        }
+    if let Some(proto) = aerocloud_protocol_for_profile(&store, &config.server_profile) {
+        config.protocol_type = proto;
     }
 
     // Delegate the connect->wrap->sync to the single shared helper
@@ -12421,7 +12947,7 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
 
     match result {
         Ok(r) => {
-            aerocloud_print_sync_result(&r, dry_run, format);
+            aerocloud_print_sync_result(&r, dry_run, format, cli.quiet);
             if r.errors.is_empty() {
                 0
             } else {
@@ -12443,12 +12969,18 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
 
     match command {
         AeroCloudCommands::Show => {
-            let config = cloud_config::load_cloud_config();
+            let mut config = cloud_config::load_cloud_config();
+            // A config written before this release, or by a GUI that does not
+            // write the field, still carries the default. Deriving it here too
+            // means the displayed value cannot be stale even when the stored
+            // one is: display never lies, storage catches up on the next `set`.
+            aerocloud_refresh_protocol_for_display(cli, &mut config);
             aerocloud_print_show(&config, format);
             0
         }
         AeroCloudCommands::Status => {
-            let config = cloud_config::load_cloud_config();
+            let mut config = cloud_config::load_cloud_config();
+            aerocloud_refresh_protocol_for_display(cli, &mut config);
             aerocloud_print_status(&config, format);
             0
         }
@@ -12475,7 +13007,7 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                         print_error(
                             format,
                             &format!(
-                                "invalid --direction '{d}': expected bidirectional | send-only | receive-only"
+                                "invalid --direction '{d}': expected {AEROCLOUD_DIRECTION_SPELLINGS}"
                             ),
                             5,
                         );
@@ -12503,6 +13035,17 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
             }
             if let Some(profile) = profile {
                 config.server_profile = profile.clone();
+                // Store the protocol the profile speaks, instead of leaving the
+                // `"ftp"` default in place for every reader until the next sync
+                // corrects it in memory. If the vault cannot be opened here the
+                // value stays as it was and the sync path still derives it, so
+                // this improves the stored truth without becoming a new way to
+                // fail `set`.
+                if let Ok(store) = open_vault(cli) {
+                    if let Some(proto) = aerocloud_protocol_for_profile(&store, profile) {
+                        config.protocol_type = proto;
+                    }
+                }
                 changed = true;
             }
             if let Some(direction) = parsed_direction {
@@ -12791,6 +13334,7 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 downloaded: 0,
                 deleted: 0,
                 skipped: 0,
+                skipped_details: vec![],
                 conflicts: 0,
                 errors: Vec::new(),
                 duration_secs: 0,
@@ -12812,6 +13356,7 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                         total.downloaded += r.downloaded;
                         total.deleted += r.deleted;
                         total.skipped += r.skipped;
+                        total.skipped_details.extend(r.skipped_details.clone());
                         total.conflicts += r.conflicts;
                         total.errors.extend(r.errors);
                         total.duration_secs += r.duration_secs;
@@ -12835,7 +13380,7 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 }
             }
 
-            aerocloud_print_sync_result(&total, *dry_run, format);
+            aerocloud_print_sync_result(&total, *dry_run, format, cli.quiet);
             if total.errors.is_empty() {
                 0
             } else {
@@ -15227,6 +15772,87 @@ fn compare_profiles(
         }
         ProfileColId::Subtitle | ProfileColId::Paths | ProfileColId::Groups => Ordering::Equal,
     }
+}
+
+/// `pwd`: the profile's base path, answered without a connection.
+///
+/// The base is what `resolve_cli_remote_path` joins every relative path onto,
+/// so "where am I" is a question about saved configuration and not about the
+/// server. Keeping it offline is the point: it answers while the remote is
+/// unreachable, which is exactly when someone is most likely to ask.
+fn cmd_pwd(cli: &Cli, selector: Option<&str>, format: OutputFormat) -> i32 {
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let profiles = match load_active_user_profiles(cli, &store) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("Failed to load profiles: {}", e), 5);
+            return 5;
+        }
+    };
+    let wanted = match selector.or(cli.profile.as_deref()) {
+        Some(s) => s,
+        None => {
+            print_error(
+                format,
+                "no profile selected: pass one as an argument or use --profile",
+                5,
+            );
+            return 5;
+        }
+    };
+    let idx = match resolve_profile_selector(&profiles, wanted) {
+        Ok(i) => i,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let profile = &profiles[idx];
+    let field = |k: &str| profile.get(k).and_then(|v| v.as_str()).unwrap_or("");
+    let base = profile
+        .get("initialPath")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("/");
+    // The same resolver the transfer commands use, so this cannot drift from
+    // what a real path would do: asked for the root, it returns the base.
+    //
+    // With the note suppressed, because here it would be the noise this command
+    // exists to replace: "Note: path '/' resolved to ..." is how you had to
+    // learn the base before, as a side effect of doing something else, and
+    // printing it next to the answer would just say the same thing twice.
+    let root = resolve_cli_remote_path_unchecked_with_note(base, "/", false);
+
+    match format {
+        OutputFormat::Json => {
+            print_json(&serde_json::json!({
+                "profile": field("name"),
+                "id": field("id"),
+                "protocol": field("protocol"),
+                "host": field("host"),
+                "base": base,
+                "resolved_root": root,
+            }));
+        }
+        OutputFormat::Text => {
+            println!("{}", root);
+            if !cli.quiet {
+                eprintln!(
+                    "profile: {} ({}), base: {}",
+                    field("name"),
+                    field("protocol"),
+                    base
+                );
+            }
+        }
+    }
+    0
 }
 
 fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewOverrides) -> i32 {
@@ -36500,27 +37126,32 @@ async fn cmd_profile_export(
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
+        // One selector convention for the whole CLI, not a weaker copy of it.
+        // This used to match an exact id or an exact lowercase name and nothing
+        // else, while `resolve_profile_selector` (the resolver every other
+        // profile-taking command uses) accepts the 1-based index from
+        // `profiles`, an exact name, an id, and a substring that is unique.
+        // The divergence was invisible from the outside and cost a real user a
+        // detour through `profiles --json` to read an internal id by hand, for
+        // a selector the CLI already knew how to resolve.
         let mut filtered: Vec<serde_json::Value> = Vec::new();
-        let mut unmatched: Vec<String> = Vec::new();
+        let mut errors: Vec<String> = Vec::new();
+        let mut taken: Vec<usize> = Vec::new();
         for token in &wanted {
-            let tl = token.to_lowercase();
-            match profiles.iter().find(|p| {
-                p.get("id").and_then(|v| v.as_str()) == Some(token.as_str())
-                    || p.get("name")
-                        .and_then(|v| v.as_str())
-                        .map(|n| n.to_lowercase() == tl)
-                        .unwrap_or(false)
-            }) {
-                Some(p) => filtered.push(p.clone()),
-                None => unmatched.push(token.clone()),
+            match resolve_profile_selector(&profiles, token) {
+                Ok(idx) => {
+                    // A repeated selector must not export the same profile
+                    // twice: two spellings of one profile are one profile.
+                    if !taken.contains(&idx) {
+                        taken.push(idx);
+                        filtered.push(profiles[idx].clone());
+                    }
+                }
+                Err(e) => errors.push(e),
             }
         }
-        if !unmatched.is_empty() {
-            print_error(
-                format,
-                &format!("no profile matched: {}", unmatched.join(", ")),
-                1,
-            );
+        if !errors.is_empty() {
+            print_error(format, &errors.join("; "), 1);
             return 1;
         }
         profiles = filtered;
@@ -66374,6 +67005,7 @@ async fn main() {
         } => cmd_catalog(query, category.as_deref(), *free, *paid, *protocols, format),
         Commands::Inventory { markdown, check } => cmd_inventory(*markdown, check.as_deref()),
         Commands::Tui => unreachable!("TUI is handled before the regular dispatcher"),
+        Commands::Pwd { selector } => cmd_pwd(&cli, selector.as_deref(), format),
         Commands::Profiles {
             _ignored: _,
             sort,
@@ -68196,6 +68828,22 @@ mod tests {
                 "row {}/{} is not addressable",
                 row.group_id,
                 label
+            );
+        }
+    }
+
+    /// The error message and the parser cannot drift, because the message is a
+    /// list and this walks it. A spelling advertised but not accepted would
+    /// send someone to a value that fails; the reverse (accepted but not
+    /// advertised) is what sent a real user looking for the right word after
+    /// reading `LocalToRemote` in the logs.
+    #[test]
+    fn every_advertised_direction_spelling_parses() {
+        for token in AEROCLOUD_DIRECTION_SPELLINGS.split('|') {
+            let token = token.trim();
+            assert!(
+                aerocloud_parse_direction(token).is_some(),
+                "`{token}` is advertised in the --direction error but the parser rejects it"
             );
         }
     }

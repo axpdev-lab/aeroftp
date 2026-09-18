@@ -15763,6 +15763,7 @@ async fn background_sync_worker(app: AppHandle) {
                     downloaded: 0,
                     deleted: 0,
                     skipped: 0,
+                    skipped_details: vec![],
                     conflicts: 0,
                     errors: vec![],
                     duration_secs: 0,
@@ -15777,6 +15778,7 @@ async fn background_sync_worker(app: AppHandle) {
                     downloaded: 0,
                     deleted: 0,
                     skipped: 0,
+                    skipped_details: vec![],
                     conflicts: 0,
                     errors: vec![],
                     duration_secs: 0,
@@ -15803,6 +15805,7 @@ async fn background_sync_worker(app: AppHandle) {
                             agg.downloaded += r.downloaded;
                             agg.deleted += r.deleted;
                             agg.skipped += r.skipped;
+                            agg.skipped_details.extend(r.skipped_details.clone());
                             agg.conflicts += r.conflicts;
                             agg.errors.extend(r.errors);
                             agg.duration_secs += r.duration_secs;
@@ -15825,6 +15828,7 @@ async fn background_sync_worker(app: AppHandle) {
                     downloaded: 0,
                     deleted: 0,
                     skipped: 0,
+                    skipped_details: vec![],
                     conflicts: 0,
                     errors: vec![],
                     duration_secs: 0,

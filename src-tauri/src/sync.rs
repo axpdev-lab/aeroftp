@@ -1350,7 +1350,7 @@ pub async fn sync_tree_core(
         && !locals.is_empty()
         && matches!(opts.direction, SyncDirection::Upload | SyncDirection::Both)
     {
-        ensure_remote_dir(provider, remote_root).await;
+        ensure_remote_dir(&mut **provider, remote_root).await;
     }
 
     let (mut remotes, remote_scan, mut remote_boundaries) =
@@ -2798,12 +2798,12 @@ async fn ensure_remote_parent(provider: &mut Box<dyn StorageProvider>, remote_pa
     if let Some(idx) = remote_path.rfind('/') {
         let parent = &remote_path[..idx];
         if !parent.is_empty() {
-            ensure_remote_dir(provider, parent).await;
+            ensure_remote_dir(&mut **provider, parent).await;
         }
     }
 }
 
-fn remote_dir_chain(dir: &str) -> Vec<String> {
+pub(crate) fn remote_dir_chain(dir: &str) -> Vec<String> {
     let trimmed = dir.trim_end_matches('/');
     if trimmed.is_empty() || trimmed == "/" {
         return Vec::new();
@@ -2841,7 +2841,7 @@ fn mkdir_error_is_idempotent(err: &ProviderError) -> bool {
     }
 }
 
-pub(crate) async fn ensure_remote_dir(provider: &mut Box<dyn StorageProvider>, dir: &str) {
+pub(crate) async fn ensure_remote_dir<P: StorageProvider + ?Sized>(provider: &mut P, dir: &str) {
     // Walk the parent chain top-down. A failure on an intermediate level
     // (e.g. mkdir on `/mnt` denied because the user has no write access on
     // the SFTP root) must NOT short-circuit the chain: the leaf mkdir may

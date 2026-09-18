@@ -162,7 +162,7 @@
   },
   "app_version": "4.1.9",
   "cli": {
-    "count": 94,
+    "count": 95,
     "subcommands": [
       {
         "about": "Show detailed server info, account, and storage quota",
@@ -425,7 +425,7 @@
         "name": "profile-export"
       },
       {
-        "about": "Import server profiles from an encrypted `.aeroftp` file",
+        "about": "Import server profiles from a `.aeroftp` file (existing profiles are SKIPPED, never overwritten)",
         "name": "profile-import"
       },
       {
@@ -447,6 +447,10 @@
       {
         "about": "Upload file(s) to remote server (supports glob patterns like \"*.csv\")",
         "name": "put"
+      },
+      {
+        "about": "Print where a profile starts on the remote, without connecting",
+        "name": "pwd"
       },
       {
         "about": "Upload stdin directly to a remote file",
@@ -477,7 +481,7 @@
         "name": "serve"
       },
       {
-        "about": "Show total size and object count under a path (recursive scan)",
+        "about": "Show total size and object count under a path (recursive scan). A scan cancelled with Ctrl-C still prints the figure it reached and exits 4 (partial), so a script can tell it from a complete measurement",
         "name": "size"
       },
       {
@@ -544,7 +548,7 @@
   },
   "counts": {
     "agent_tools": 39,
-    "cli_subcommands": 94,
+    "cli_subcommands": 95,
     "mcp_by_namespace": {
       "aeroftp_": 38,
       "other": 1,
@@ -947,7 +951,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 480,
+    "name_matched_count": 481,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1139,7 +1143,6 @@
       "provider_probe_alive",
       "provider_change_dir",
       "provider_go_up",
-      "provider_pwd",
       "provider_detect_aero_remote",
       "provider_checksum",
       "provider_checksum_capability",
@@ -1322,7 +1325,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 372,
+    "name_unmatched_count": 371,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,

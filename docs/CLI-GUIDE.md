@@ -245,6 +245,37 @@ $ aeroftp-cli ls --profile "SSH" /
 Error: Ambiguous profile 'SSH'. Matches: SSH Lumo Cloud, SSH MyCloud HD. Use exact name or index number.
 ```
 
+### `pwd` - Where a profile starts, without connecting
+
+Every relative path you give the CLI is resolved against the profile's base path. `pwd` prints that base, reading the saved profile and opening no connection, so it costs nothing and answers while the server is down.
+
+```bash
+$ aeroftp-cli pwd "SSH MyCloud HD"
+/mnt/HD/HD_a2
+profile: SSH MyCloud HD (sftp), base: /mnt/HD/HD_a2/
+```
+
+The path goes to stdout and the context to stderr, so a script gets one clean line:
+
+```bash
+BASE=$(aeroftp-cli pwd "SSH MyCloud HD" 2>/dev/null)
+```
+
+With `--json` it carries everything an agent needs before planning a path:
+
+```json
+{
+  "profile": "SSH MyCloud HD",
+  "id": "srv_1771987214484_jn7okzpop",
+  "protocol": "sftp",
+  "host": "axpnas.ddns.net",
+  "base": "/mnt/HD/HD_a2/",
+  "resolved_root": "/mnt/HD/HD_a2"
+}
+```
+
+The selector follows Profile Matching above, and is optional: without one, `pwd` uses the global `--profile`.
+
 ### OAuth Providers via Profile
 
 Browser-authorized and profile-backed API providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Yandex Disk, 4shared, Drime) are best used through saved profiles. Authorize or configure them once in the AeroFTP GUI, then reuse them from the CLI. Note: 4shared uses OAuth 1.0 and works in CLI after completing authorization in the GUI.
@@ -1627,8 +1658,12 @@ aeroftp-cli profile-export --output ./my-servers.aeroftp
 # tokens, crypt-overlay passwords, and the per-protocol credential snapshots
 aeroftp-cli profile-export --output ./my-servers.aeroftp --include-credentials
 
-# Export only some profiles (comma-separated ids or case-insensitive names)
+# Export only some profiles. Each token is resolved the same way --profile is
+# (see Profile Matching above): index, exact name, id, or a unique substring.
+# --name and --names are aliases of --ids, because the flag name used to send
+# people looking for internal ids they never needed.
 aeroftp-cli profile-export --output ./subset.aeroftp --ids "Backup,3"
+aeroftp-cli profile-export --output ./subset.aeroftp --name "axpbuntu-remote (admin)"
 
 # Re-import (profiles already present by id or host:port:username are skipped)
 aeroftp-cli profile-import --input ./my-servers.aeroftp
