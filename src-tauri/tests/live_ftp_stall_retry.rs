@@ -72,7 +72,7 @@ use std::sync::{Arc, Mutex};
 use ftp_client_gui_lib::provider_transfer_executor::{
     resolve_provider_executor_runtime, ProviderDownloadExecutor,
 };
-use ftp_client_gui_lib::providers::types::{FtpConfig, FtpTlsMode};
+use ftp_client_gui_lib::providers::types::{FtpConfig, FtpTlsMode, ProviderError};
 use ftp_client_gui_lib::providers::{FtpProvider, StorageProvider};
 use ftp_client_gui_lib::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
 use ftp_client_gui_lib::transfer_event_sink::TransferEventSink;
@@ -299,6 +299,12 @@ async fn an_answer_after_an_abandoned_transfer_belongs_to_its_question() {
         "the fixture must still be stalling at the deadline, otherwise nothing was abandoned"
     );
 
+    // Two outcomes are acceptable here and they are named, not merely tolerated.
+    // Accepting every `Err` was how the draft wrote this arm, and it made the
+    // test pass on a fixture that had died, on a server error, on anything at
+    // all: a branch that cannot fail, inside a file whose own module comment
+    // says a guard that cannot fail is worse than no guard. Raised by CodeRabbit
+    // on #858 and true.
     match provider.size(&file).await {
         Ok(after) => assert_eq!(
             after, FIXTURE_FILE_SIZE,
@@ -306,6 +312,16 @@ async fn an_answer_after_an_abandoned_transfer_belongs_to_its_question() {
              a different value means the reply belonged to the abandoned RETR and every \
              answer on this session is now shifted by one"
         ),
-        Err(e) => eprintln!("MEASURED after-abandon: session refused the question: {e}"),
+        // The session discarded itself rather than answer with the abandoned
+        // `RETR`'s reply. Since #845 this is what actually happens, and it is
+        // the safe outcome: no answer beats a wrong one.
+        Err(ProviderError::NotConnected) => {
+            eprintln!("MEASURED after-abandon: the session discarded itself (NotConnected)")
+        }
+        Err(e) => panic!(
+            "after an abandoned transfer `size` must either answer {FIXTURE_FILE_SIZE} or \
+             refuse with NotConnected; it failed with {e:?} instead, which says nothing \
+             about whether a reply was misattributed and may just mean the fixture died"
+        ),
     }
 }
