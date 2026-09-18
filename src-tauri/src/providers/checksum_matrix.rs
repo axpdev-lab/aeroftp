@@ -308,7 +308,23 @@ mod tests {
     /// Run with `AEROFTP_UPDATE_DOCS=1` to rewrite the block instead.
     #[test]
     fn published_table_matches_the_matrix() {
-        let doc = std::fs::read_to_string(DOC_PATH).expect("docs/PROTOCOL-FEATURES.md");
+        // Read, then normalise the line endings before anything compares them.
+        // The document is stored with LF and the table this test generates uses
+        // LF, but a Windows checkout with `core.autocrlf=true`, which is the
+        // default on the GitHub Windows images, hands back CRLF: every line of
+        // the block then differs from its generated twin and the test reports a
+        // stale table that is not stale. Measured on `windows-2022` on
+        // 2026-09-18, the first run of the suite that ever reached this test off
+        // Linux. The contract here is the content of the table, not the bytes
+        // the working tree happens to store it in.
+        //
+        // The rewrite path below writes the normalised text back, which is
+        // correct rather than lossy: with no `.gitattributes` in this
+        // repository git converts on commit anyway, so LF is what would be
+        // stored either way.
+        let doc = std::fs::read_to_string(DOC_PATH)
+            .expect("docs/PROTOCOL-FEATURES.md")
+            .replace("\r\n", "\n");
         let head_end = doc.find(BEGIN).expect("BEGIN CHECKSUM-MATRIX marker");
         let tail_start = doc.find(END).expect("END CHECKSUM-MATRIX marker");
         let head = &doc[..head_end + BEGIN.len()];
