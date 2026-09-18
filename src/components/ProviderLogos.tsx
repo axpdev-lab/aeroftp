@@ -231,56 +231,17 @@ export const InternxtLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Proton Drive: official folder mark (docs/dev/img/protondrive.svg)
-export const ProtonDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => {
-    const uid = useId().replace(/:/g, '');
-    const gradA = `proton-logo-a-${uid}`;
-    const gradB = `proton-logo-b-${uid}`;
-    return (
-        <svg width={size} height={size} viewBox="0 0 7.4083333 7.4083334" aria-hidden="true">
-            <defs>
-                <radialGradient
-                    id={gradA}
-                    cx="0"
-                    cy="0"
-                    r="1"
-                    gradientTransform="matrix(11.355282,0,0,12.052273,152.645,93.632338)"
-                    gradientUnits="userSpaceOnUse"
-                >
-                    <stop offset=".556" stopColor="#6D4AFF" />
-                    <stop offset="1" stopColor="#FF50C3" />
-                </radialGradient>
-                <linearGradient
-                    id={gradB}
-                    x1="-0.36899999"
-                    x2="34.345001"
-                    y1="-6.0029998"
-                    y2="32.431"
-                    gradientUnits="userSpaceOnUse"
-                    gradientTransform="matrix(0.26458333,0,0,0.26458333,146.05,95.779167)"
-                >
-                    <stop stopColor="#7341FF" />
-                    <stop offset=".359" stopColor="#B487FF" />
-                    <stop offset="1" stopColor="#FFC8FF" />
-                </linearGradient>
-            </defs>
-            <g transform="translate(-146.05,-97.366667)">
-                <g transform="translate(0,0.66146018)">
-                    <path
-                        fill={`url(#${gradA})`}
-                        d="m 146.05,98.160417 1.05833,-0.529167 1.85209,1.058334 h 3.175 v 4.497916 l -0.26459,0.26458 h -5.02708 A 0.79374999,0.79374999 0 0 1 146.05,102.65833 Z"
-                    />
-                    <path
-                        fill={`url(#${gradB})`}
-                        fillRule="evenodd"
-                        clipRule="evenodd"
-                        d="m 148.9501,97.743963 a 0.79374999,0.79374999 0 0 0 0.46699,0.151871 h 3.24749 a 0.79374999,0.79374999 0 0 1 0.79375,0.79375 v 3.968746 a 0.79374999,0.79374999 0 0 1 -0.79375,0.79375 h -0.79375 v -3.836455 a 0.66145832,0.66145832 0 0 0 -0.66146,-0.661458 h -2.77812 a 0.79374999,0.79374999 0 0 1 -0.47625,-0.15875 l -0.635,-0.47625 a 0.79374999,0.79374999 0 0 0 -0.47625,-0.15875 H 146.05 a 0.79374999,0.79374999 0 0 1 0.79375,-0.79375 h 1.32927 a 0.79374999,0.79374999 0 0 1 0.46699,0.151871 z"
-                    />
-                </g>
-            </g>
-        </svg>
-    );
-};
+// Proton Drive: generic cloud mark. Proton forbids third-party use of its
+// logos, trademarks, and design elements (Drive SDK README, Product and
+// legal requirements). Keep this swap in this file.
+export const ProtonDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+        <path
+            fill="#64748B"
+            d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
+        />
+    </svg>
+);
 
 // Jianguoyun / Nutstore: acorn icon (PNG, no SVG available)
 export const JianguoyunLogo: React.FC<LogoProps> = ({ size = 24 }) => (

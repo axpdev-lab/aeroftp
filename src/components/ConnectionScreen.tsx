@@ -5377,7 +5377,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'proton' ? (
                                     <div className="space-y-4 pt-2">
-                                        <div className="bg-violet-50 dark:bg-violet-900/10 p-3 rounded-lg border border-violet-100 dark:border-violet-900/30 text-xs text-violet-900 dark:text-violet-200">
+                                        <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200">
                                             <p className="font-medium mb-1">{t('connection.protonCliTitle')}</p>
                                             <p className="opacity-80">{t('connection.protonCliBody')}</p>
                                             <p className="mt-2 opacity-80">{t('connection.protonConnectHint')}</p>
@@ -5385,7 +5385,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                         {renderRightColumn({
                                             disabled: loading,
-                                            buttonColorClass: 'bg-violet-600 hover:bg-violet-700',
+                                            buttonColorClass: 'bg-slate-700 hover:bg-slate-800',
                                             connectionNameKey: 'Proton Drive',
                                             showCancelSaveAsNew: true,
                                         })}
