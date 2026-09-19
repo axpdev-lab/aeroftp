@@ -67,6 +67,7 @@ mod openai_responses;
 pub mod command_registry {
     include!(concat!(env!("OUT_DIR"), "/tauri_commands.rs"));
 }
+pub mod alloc_tuning;
 pub mod archive_progress;
 pub mod aws_credentials_import;
 pub mod bridge_commands;

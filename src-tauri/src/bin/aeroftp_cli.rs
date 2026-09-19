@@ -64167,6 +64167,11 @@ fn install_mcp_signal_guard() {
 
 #[tokio::main]
 async fn main() {
+    // Serve multipart part buffers from mmap, so a freed part goes back to the
+    // kernel instead of being retained in a per-thread arena (see the module
+    // docs for the measurement).
+    ftp_client_gui_lib::alloc_tuning::tune_for_transfer_buffers();
+
     // Reset SIGPIPE to default behavior (exit silently on broken pipe)
     #[cfg(unix)]
     unsafe {
