@@ -1,12 +1,13 @@
 # Security Policy
 
-> _Last updated: 2026-06-28_
+> _Last updated: 2026-09-19_
 
 ## Supported Versions
 
 | Version | Supported           |
 | ------- | ------------------- |
-| 4.1.x   | Yes (current)       |
+| 4.2.x   | Yes (current)       |
+| 4.1.x   | Security fixes only |
 | 4.0.x   | Security fixes only |
 | 3.8.x   | Security fixes only |
 | 3.7.x   | End of Life         |
@@ -196,4 +197,4 @@ For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see
 
 ---
 
-*AeroFTP v4.1.x*
+*AeroFTP v4.2.x*

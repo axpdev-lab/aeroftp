@@ -87,7 +87,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 
 1. **Transport protocols (7):** native wire-level support for FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift. Plus **portable devices over MTP / WPD** - attached phones, cameras and media players that the OS never assigns a drive letter, saved as profiles keyed to a stable device fingerprint (see [Portable devices](docs/PROTOCOL-FEATURES.md#portable-devices-mtp--wpd)).
 2. **Native provider integrations (24):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
-3. **Pre-configured presets (44):** the form arrives already filled in, server URL, port, base path and password-generation deep-link, for a named service on top of the protocols above. A form with nothing pre-filled is not a preset: the two generic ones (Custom S3, WebDAV Server) exist precisely for when no preset applies (S3-compatible endpoints from MEGA S4 to Filen S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.).
+3. **Pre-configured presets (45):** the form arrives already filled in, server URL, port, base path and password-generation deep-link, for a named service on top of the protocols above (S3-compatible endpoints from MEGA S4 to FileLu S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.). A form with nothing pre-filled is not a preset: the two generic ones (Custom S3, WebDAV Server) exist precisely for when no preset applies.
 
 <!-- BEGIN PROVIDERS-GRID -->
 
@@ -322,7 +322,7 @@ AeroFTP
 │   └── AeroRsync    - Native Rust delta sync (clean-room rsync protocol 31)
 ├── AeroVault    - Military-grade encryption
 ├── AeroTools    - Code editor + Terminal + AI chat
-│   └── AeroAgent    - AI-powered assistant (39 tools, 24 providers)
+│   └── AeroAgent    - AI-powered assistant (65 tools, 24 providers)
 ├── AeroFTP CLI  - Production command-line client (vault profiles, JSON output, batch scripting, daemon, FUSE mount, crypt, ncdu, agent discovery)
 └── AeroPlayer   - Media player with visualizers
 ```
@@ -429,37 +429,14 @@ One version note worth stating plainly: upstream rsync **dropped `sha1`** from t
 
 > [Full documentation →](docs/DAG-TRANSFER-ENGINE.md)
 
-Since **v4.0.0**, AeroFTP has a shared, provider-agnostic DAG core and production
-runners for selected transfer paths. The graph is not a promise that every
-surface uses every shape: the active call path, the provider binding, and the
-wire-level behavior are separate facts.
+Since **v4.0.0**, AeroFTP has a shared, provider-agnostic DAG core and production runners for selected transfer paths. The graph is not a promise that every surface uses every shape: the active call path, the provider binding, and the wire-level behavior are separate facts.
 
-- **Single-file get/put** normally use the shaped-file runner. Multipart
-  `UploadPart` nodes and the begin/part/complete/abort lifecycle are real;
-  independent wire-level fan-out is currently available only where the
-  provider supplies an independent transfer worker (S3, Backblaze B2, Azure
-  Blob, and Nextcloud chunked v2). Other providers may build multipart nodes
-  but serialize provider calls through their shared session.
-- **Batch and non-dry-run sync** enter DAG runners, but their current
-  capability snapshot and file drivers are conservative: batch uses default
-  capabilities and its generic settings clamp file concurrency, while sync
-  executes a precomputed plan through one serial file driver. They are not
-  advertised as parallel cloud batch/sync orchestration yet.
-- **Server-side copy** is a real provider feature, reached by the shared
-  `server_side_copy_with_fallback` helper. Native copies avoid a local payload;
-  recoverable capability failures fall back to download → upload. The
-  `shaped_copy` builder exists, but it is not the normal copy-command
-  orchestrator, so no DAG `UploadPartCopy` claim is made.
-- **Segmented downloads** use the established range helper. The
-  `shaped_ranges` DAG path is opt-in through `AEROFTP_RANGE_GRAPH=1`; the
-  default provider path remains the bounded `JoinSet` scheduler, and Auto may
-  choose a single stream.
+- **Single-file get/put** normally use the shaped-file runner. Multipart `UploadPart` nodes and the begin/part/complete/abort lifecycle are real; independent wire-level fan-out is currently available only where the provider supplies an independent transfer worker (S3, Backblaze B2, Azure Blob, Nextcloud chunked v2, Dropbox, Box, Filen, Drime and Uploadcare). Other providers may build multipart nodes but serialize provider calls through their shared session.
+- **Batch and non-dry-run sync** stream their file list through a bounded frontier of per-file subgraphs instead of one static graph. Providers with a clone or session pool (S3, Backblaze B2, Azure Blob, WebDAV, SFTP, FTP, Dropbox, Box, Filen, Drime and Uploadcare) run files in parallel up to their live session ceiling; single-session providers, a failed clone probe and every delta request stay serial.
+- **Server-side copy** is a production `shaped_copy` graph: the GUI copy, CLI `cp` and the CLI WebDAV `COPY` handler build one `ServerSideCopy` node, or an observable download then upload when the provider rejects the native copy with a recoverable error. A native copy moves no payload through the client, and no DAG `UploadPartCopy` claim is made.
+- **Segmented downloads** run on the `shaped_ranges` graph, the only production range scheduler. Files at or above the 250 MiB cutoff use several range streams by default: 4 in the CLI (`--multi-thread-streams`), and in the desktop app 8 on SFTP, WebDAV, FTP and FTPS and 4 on S3. Smaller files, and providers whose range support is not proven or not yet measured, use one stream.
 
-The GUI, CLI, and MCP adapters therefore share engine primitives where their
-call paths reach them, but wire behavior is provider- and operation-dependent.
-Capabilities and runtime knobs are meaningful only on the command path that
-consumes them; they do not turn the batch, sync, copy, or default range paths
-into a fully unified parallel scheduler.
+The GUI, CLI, and MCP adapters therefore share engine primitives where their call paths reach them, but wire behavior is provider- and operation-dependent: cross-profile copy still runs through its own temp-file bridge rather than one shared graph, and capabilities and runtime knobs are meaningful only on the command path that consumes them.
 
 ---
 
@@ -535,7 +512,7 @@ Integrated development panel with three tools in a tabbed interface: **Monaco Ed
 
 #### AeroAgent - AI-Powered Assistant
 
-An AI assistant with **39 tools** that work across local files and remote providers. Supports **24 AI providers** (OpenAI, Anthropic, Gemini, xAI, Ollama, DeepSeek, Mistral, Cerebras, SambaNova, Fireworks, Nvidia, and 13 more). Vision/multimodal, RAG indexing, plugin ecosystem, streaming responses, multi-step autonomous execution, native MCP server mode (77 MCP tools), and Command Palette (Ctrl+Shift+P).
+An AI assistant with **65 tools** that work across local files and remote providers. Supports **24 AI providers** (OpenAI, Anthropic, Gemini, xAI, Ollama, DeepSeek, Mistral, Cerebras, SambaNova, Fireworks, Nvidia, and 13 more). Vision/multimodal, RAG indexing, plugin ecosystem, streaming responses, multi-step autonomous execution, native MCP server mode (77 MCP tools), and Command Palette (Ctrl+Shift+P).
 
 ---
 
@@ -547,7 +524,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 **For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp-cli` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp-script` batch files make AeroFTP a first-class tool in any agent's toolkit. External agents can also invoke `aeroftp-cli agent` to orchestrate AeroAgent as a credential-isolating proxy for multi-server operations. See [Agent Orchestration](https://docs.aeroftp.app/features/agent-orchestration) for the full orchestration guide, CLI reference, and a verified field test report.
 
-**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 39 tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows with backend-enforced grants, and 24 AI providers.
+**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 65 tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows with backend-enforced grants, and 24 AI providers.
 
 ---
 
@@ -555,7 +532,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-Production CLI sharing the same Rust backend as the GUI. 94 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `archive`, `crypt`, `import`/`export`, `serve`, `users`, `groups`) across 7 transport protocols and 24 native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), plaintext `.aerozip` archives (`archive create/list/extract`), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
+Production CLI sharing the same Rust backend as the GUI. 95 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `archive`, `crypt`, `import`/`export`, `serve`, `users`, `groups`) across 7 transport protocols and 24 native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), plaintext `.aerozip` archives (`archive create/list/extract`), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
 
 > **Short invocation**: every package ships a native dispatcher, so `aeroftp <subcommand>` and the built-in 4-character name `aftp` both route to the CLI; `aeroftp-cli` is kept for back-compat. An opt-in `aero` alias can be enabled with `aeroftp-cli alias-toggle aero` (idempotent, the same command turns it off). See the [Short Invocation](docs/CLI-GUIDE.md#short-invocation) section of the CLI Guide.
 
@@ -568,7 +545,7 @@ aeroftp-cli sync --profile "My Server" /local /remote --watch      # Continuous 
 aeroftp-cli serve http sftp://user@host /data             # Serve remote as local HTTP
 aeroftp-cli serve webdav s3://key:secret@s3.aws.com       # Serve remote as local WebDAV
 aeroftp-cli agent --mcp                                   # MCP server for Claude/Cursor/VS Code
-aeroftp-cli mount sftp://user@host /mnt/remote             # FUSE filesystem
+aeroftp-cli mount /mnt/remote sftp://user@host             # FUSE filesystem
 aeroftp-cli ncdu sftp://user@host /data                    # Interactive disk usage
 aeroftp-cli daemon start                                   # Background job queue
 ```
@@ -643,8 +620,8 @@ Each month we publish the run results here. Past Aikido Security reports remain 
 
 ## Additional Features
 
-### 4 Themes
-Light, Dark, Tokyo Night, and Cyber - with themed icons, terminal colors, Monaco editor syntax, and CSS custom properties throughout.
+### 8 Themes
+Light, Dark, True Dark, Tokyo Night, Cyber, Green, Ice and Red Horse, plus Auto that follows the system - with themed icons, terminal colors, Monaco editor syntax, and CSS custom properties throughout.
 
 ### Security Toolkit (Cyber theme)
 Hash Forge (MD5, SHA-1, SHA-256, SHA-512, BLAKE3), CryptoLab (AES-256-GCM, ChaCha20-Poly1305 encrypt/decrypt), Password Forge (CSPRNG + BIP39 passphrase generator with entropy display).
@@ -812,11 +789,12 @@ All release artifacts are signed with [Sigstore](https://sigstore.dev) using key
 Install [cosign](https://docs.sigstore.dev/cosign/system_config/installation/), then verify any downloaded artifact:
 
 ```bash
+VERSION=X.Y.Z   # the release you downloaded
 cosign verify-blob \
-  --bundle AeroFTP_3.1.3_amd64.deb.sigstore.json \
-  --certificate-identity "https://github.com/axpdev-lab/aeroftp/.github/workflows/build.yml@refs/tags/v3.1.3" \
+  --bundle "AeroFTP_${VERSION}_amd64.deb.sigstore.json" \
+  --certificate-identity "https://github.com/axpdev-lab/aeroftp/.github/workflows/build.yml@refs/tags/v${VERSION}" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  AeroFTP_3.1.3_amd64.deb
+  "AeroFTP_${VERSION}_amd64.deb"
 ```
 
 This proves the artifact was built by our CI pipeline from the tagged commit. Replace filenames and version with your download.

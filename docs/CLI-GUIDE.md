@@ -1,7 +1,7 @@
 # AeroFTP CLI - User Guide
 
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
-> **Version reference**: v4.1.0 - last reviewed 28 June 2026
+> **Version reference**: v4.2.0 - last reviewed 19 September 2026
 > **License**: GPL-3.0
 
 ---
@@ -250,27 +250,27 @@ Error: Ambiguous profile 'SSH'. Matches: SSH Lumo Cloud, SSH MyCloud HD. Use exa
 Every relative path you give the CLI is resolved against the profile's base path. `pwd` prints that base, reading the saved profile and opening no connection, so it costs nothing and answers while the server is down.
 
 ```bash
-$ aeroftp-cli pwd "SSH MyCloud HD"
-/mnt/HD/HD_a2
-profile: SSH MyCloud HD (sftp), base: /mnt/HD/HD_a2/
+$ aeroftp-cli pwd "My NAS"
+/srv/data
+profile: My NAS (sftp), base: /srv/data/
 ```
 
 The path goes to stdout and the context to stderr, so a script gets one clean line:
 
 ```bash
-BASE=$(aeroftp-cli pwd "SSH MyCloud HD" 2>/dev/null)
+BASE=$(aeroftp-cli pwd "My NAS" 2>/dev/null)
 ```
 
 With `--json` it carries everything an agent needs before planning a path:
 
 ```json
 {
-  "profile": "SSH MyCloud HD",
-  "id": "srv_1771987214484_jn7okzpop",
+  "profile": "My NAS",
+  "id": "srv_1700000000000_example01",
   "protocol": "sftp",
-  "host": "axpnas.ddns.net",
-  "base": "/mnt/HD/HD_a2/",
-  "resolved_root": "/mnt/HD/HD_a2"
+  "host": "nas.example.com",
+  "base": "/srv/data/",
+  "resolved_root": "/srv/data"
 }
 ```
 
@@ -440,13 +440,13 @@ aeroftp-cli get sftp://user@host "/data/*.csv"
 # Recursive directory download
 aeroftp-cli get sftp://user@host /var/www/ ./backup/ -r
 
-# Delta-aware single-file download (Z.4.5 R1, SFTP only today)
+# Delta-aware single-file download (SFTP only)
 aeroftp-cli get sftp://user@host /var/www/index.html ./local-copy.html --delta
 ```
 
 > **Glob patterns**: Quote the remote path to prevent shell expansion. The CLI expands `*` and `?` patterns server-side.
 
-> **`--delta`**: routes the transfer through `AerorsyncDeltaTransport` (native rsync wire protocol 31 over SSH). Falls back to the classic transfer when the provider does not expose a delta transport (everything except SFTP today), the file is too small (< 1 MiB), or the SFTP session is not delta-eligible (no host key fingerprint pinned from this session; password authentication is not a reason, a delta batch opens over a password-only server too). No-op for recursive / glob downloads (use `aeroftp sync --delta` for those). See [AeroRsync section](#aerorsync---delta-sync-engine) for the full surface.
+> **`--delta`**: routes the transfer through `AerorsyncDeltaTransport` (native rsync wire protocol 31 over SSH). Falls back to the classic transfer when the provider does not expose a delta transport (every provider except SFTP for downloads), the file is too small (< 1 MiB), or the SFTP session is not delta-eligible (no host key fingerprint pinned from this session; password authentication is not a reason, a delta batch opens over a password-only server too). No-op for recursive / glob downloads (use `aeroftp sync --delta` for those). See [AeroRsync section](#aerorsync---delta-sync-engine) for the full surface.
 
 ### pget - Segmented Parallel Download
 
@@ -463,7 +463,7 @@ aeroftp-cli pget --profile "AWS S3" /backup/big.tar.gz --json
 
 Alias of `get` with a parallel-segments preset. Splits a single file into N byte ranges and downloads them concurrently, then stitches them back together. Useful when latency or per-connection throughput is the bottleneck (large `.tar.gz` archives, S3 buckets from far regions). Falls back to a single sequential stream when the provider does not advertise range-request support.
 
-Plain `get` is multi-threaded by default as well, on the same terms as rclone: files at or above `--multi-thread-cutoff` (default `250M`) are fetched with `--multi-thread-streams` concurrent range streams (default `4`) when the backend proves Range honesty (S3, Azure, SFTP as independent connections, WebDAV and Koofr after a strict 206 probe); smaller files and backends without strict ranges use one stream. `--multi-thread-streams 1` restores the single-stream behaviour, and `AEROFTP_MULTI_THREAD_STREAMS` sets the default for a shell.
+Plain `get` is multi-threaded by default as well, on the same terms as rclone: files at or above `--multi-thread-cutoff` (default `250M`) are fetched with `--multi-thread-streams` concurrent range streams (default `4`) when the provider implements the option (S3, Backblaze B2, SFTP and FTP on independent connections, WebDAV and Koofr after a strict 206 probe; other providers can still split a download through the desktop app's segmented path when a segment count is configured); smaller files and backends without strict ranges use one stream. `--multi-thread-streams 1` restores the single-stream behaviour, and `AEROFTP_MULTI_THREAD_STREAMS` sets the default for a shell.
 
 ### put - Upload Files
 
@@ -477,14 +477,16 @@ aeroftp-cli put sftp://user@host "./*.json" /data/
 # Recursive upload
 aeroftp-cli put sftp://user@host ./project/ /var/www/project/ -r
 
-# Delta-aware single-file upload (Z.4.5 R1, SFTP only today)
+# Delta-aware single-file upload (SFTP, and S3 for large objects this client uploaded before)
 aeroftp-cli put sftp://user@host ./report.pdf /uploads/report.pdf --delta
 
 # Set the uploaded file's privacy on OpenDrive (private | public | hidden)
 aeroftp-cli put opendrive://user@host ./secret.pdf /docs/ --access private
 ```
 
-> **`--delta`**: same semantics as on `get` (see above). On a successful delta upload the CLI prints `bytes_on_wire / total` and the rsync speedup ratio so you can confirm the saving.
+> **`--delta`**: same semantics as on `get` (see above). On a successful delta upload the CLI prints `bytes_on_wire / total` and the delta speedup ratio so you can confirm the saving.
+
+> **`--delta` on S3**: uploading a file larger than 200 MiB over an object this client uploaded before sends only the parts that changed. The client keeps a local record of per-part digests of what it uploaded (`s3_delta_baselines.db` in the AeroFTP data directory, `~/.config/aeroftp/` on Linux, at most 10,000 objects), compares the local file against it without reading the object back, and rebuilds the object with a multipart upload in which the unchanged parts are server-side copies pinned to the object's ETag. It falls back to a normal upload when the file is 200 MiB or smaller, when there is no record for the object, when the object changed since it was recorded (ETag or size) or no part still matches, when the object is in an archive storage class, when the endpoint does not support multipart upload or ranged copy (a refusal is remembered for 5 minutes by the running process), and on a profile with a crypt overlay. An authentication or permission refusal is reported as an error (exit 4) rather than a fallback. Downloads with `--delta` stay SFTP only.
 
 > **`--access <private|public|hidden>`** (issue #252): on providers that model a three-level access scheme (OpenDrive today), sets the uploaded file's privacy. When omitted on an OpenDrive target the upload defaults to **private** (max-privacy, opt out with `--access public`), mirroring rclone's `--opendrive-access`. Applies to single-file uploads; for recursive/glob uploads set the destination folder privacy with `mkdir --access`, which cascades to children. Ignored, with a note, on providers that do not model access.
 

@@ -1,13 +1,13 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 28 June 2026
-> Version: v4.1.0
+> Last Updated: 19 September 2026
+> Version: v4.2.0
 >
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
 > 1. **7 transport protocols** (FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift) - native wire-level support;
-> 2. **24 native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, GitHub, GitLab, Immich, ImageKit, Uploadcare, Cloudinary, InfiniCLOUD, Felicloud);
-> 3. **44 pre-configured presets** in the Discover catalog: S3-compatible (MEGA S4, Filen S5, MinIO, Wasabi, Cloudflare R2, DigitalOcean, Tencent COS, Alibaba OSS, Oracle, Storj, IDrive e2, Hetzner, Yandex Object Storage, Quotaless, Backblaze B2-S3, Filen Desktop S3, S3Drive), WebDAV-compatible (Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, CloudMe, Jianguoyun, Koofr-WebDAV, FileLu-WebDAV, Yandex-WebDAV, OpenDrive-WebDAV, Quotaless-WebDAV, MEGAcmd, Filen Desktop WebDAV), and SFTP-based (SourceForge, GitHub via SFTP).
+> 2. **24 native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, Backblaze B2, GitHub, GitLab, Immich, ImageKit, Uploadcare, Cloudinary);
+> 3. **45 pre-configured presets** in the Discover catalog, generated into [`PROVIDER-INVENTORY.json`](PROVIDER-INVENTORY.json): S3-compatible (Amazon S3, Google Cloud Storage, Cloudflare R2, Backblaze B2 S3, Wasabi, DigitalOcean Spaces, IDrive e2, Filebase, MEGA S4, FileLu S5, Filen Desktop S3, Storj, S3Drive, Quotaless, MinIO, Oracle Cloud, Alibaba OSS, Tencent COS, Yandex Object Storage), WebDAV-compatible (Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, CloudMe, DriveHQ, Jianguoyun, Koofr WebDAV, FileLu WebDAV, Yandex Disk WebDAV, OpenDrive WebDAV, pCloud WebDAV, 4shared WebDAV, Quotaless WebDAV, MEGAcmd WebDAV, Filen Desktop WebDAV), FTP, FTPS and SFTP (Hetzner Storage Box, SourceForge, FileLu FTP, FileLu FTPS), MEGA, Blomp (Swift) and the media services (Cloudinary, ImageKit, Uploadcare).
 >
 > The feature matrix tables below cover the core production set. GitHub, GitLab, Immich, ImageKit, Uploadcare, and Cloudinary have repository / media-specific semantics and are documented inline in their dedicated sections.
 
@@ -95,7 +95,7 @@ open still fails, re-toggle File Transfer on the phone and retry.
 | **FTPS** | TLS/SSL (Explicit/Implicit) | Password | Universal Vault | TLS Certificate |
 | **SFTP** | SSH (hybrid: russh + ssh2/SCP) | Password / SSH Key | Universal Vault | TOFU + known_hosts |
 | **WebDAV** | HTTPS | Password (Basic + Digest RFC 2617) | Universal Vault | TLS Certificate |
-| **S3** | HTTPS | Access Key + Secret | Universal Vault | TLS Certificate |
+| **S3** | HTTPS (plain HTTP to an endpoint off this machine only with the profile's explicit consent) | Access Key + Secret | Universal Vault | TLS Certificate |
 | **Google Drive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **Dropbox** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **OneDrive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
@@ -868,6 +868,8 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 ---
 
 ## Release History
+
+This table stops at v4.0.9. Every later release is described in [CHANGELOG.md](../CHANGELOG.md) and on the [GitHub Releases](https://github.com/axpdev-lab/aeroftp/releases) page.
 
 | Version | Feature | Status |
 |---------|---------|--------|

@@ -1,6 +1,6 @@
 # AeroFTP Documentation
 
-> _Last updated: 2026-06-28_
+> _Last updated: 2026-09-19_
 
 Welcome to the AeroFTP documentation folder. This contains all technical documentation, compatibility audits, and guides.
 
@@ -14,7 +14,7 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[TRANSLATIONS.md](./TRANSLATIONS.md)** | Internationalization (i18n) guide for adding new languages |
 | **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix and protocol capability notes |
 | **[AEROSHARE-P2P.md](./AEROSHARE-P2P.md)** | AeroShare peer-to-peer transfer (Beta preview, v4.1.0) - end-to-end-encrypted user-to-user transfer over iroh 1.0, always-on surface, Inbox, friends |
-| **[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)** | Shaped Graph Transfer (DAG) engine - active call paths, single-file multipart, batch/sync limits, direct copy helper, opt-in range graph, resource classes, AIMD (v4.0.0+) |
+| **[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)** | Shaped Graph Transfer (DAG) engine - active call paths, single-file multipart, batch and sync file-level parallelism, the copy graph, the range graph, resource classes, AIMD (v4.0.0+) |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
 | **[MULTI-USER.md](./MULTI-USER.md)** | Multi-User Account Partition - per-user encrypted vault partitions, Account Lock Screen, admin role, CLI `--user` flag (v4.0.0) |
 | **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** | Independent security and quality audit reports (v2.5.0 + v2.6.0 provider audit) |
@@ -35,11 +35,12 @@ See **[RELEASE.md](./RELEASE.md)** for complete CI/CD documentation.
 
 **Quick version:**
 ```bash
-# Update version in 4 files, then:
+# Update the version in every site `npm run check:version-sites` compares (see RELEASE.md), then:
 git commit -m "chore(release): vX.Y.Z Description"
+git push origin main
+# Wait until CI on main is green on Linux, Windows AND macOS, then:
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
-git push origin main --tags
-# GitHub Actions handles the rest automatically!
+git push origin vX.Y.Z
 ```
 
 ### Automated Distribution
@@ -56,14 +57,7 @@ See **[security-evidence/README.md](./security-evidence/README.md)** for the pub
 
 ## Version Files
 
-Update version in these 4 files before release:
-
-| File | Field |
-|------|-------|
-| `package.json` | `"version": "X.Y.Z"` |
-| `src-tauri/tauri.conf.json` | `"version": "X.Y.Z"` |
-| `src-tauri/Cargo.toml` | `version = "X.Y.Z"` |
-| `snap/snapcraft.yaml` | `version: 'X.Y.Z'` |
+The files that declare the version, and the field to edit in each, are listed in [RELEASE.md](./RELEASE.md). `npm run check:version-sites` prints every site it compares and fails when any of them disagrees with `src-tauri/Cargo.toml`, so bump them in one block and run it before committing.
 
 ---
 
@@ -104,14 +98,7 @@ AeroAgent provides a broad built-in tool catalog across local files, remote oper
 
 ## Transfer Engine (DAG)
 
-Since v4.0.0, AeroFTP has a shared provider-agnostic DAG core. The shaped
-single-file runner is the most complete production path; batch and non-dry-run
-sync also use DAG wrappers but remain conservative and serial at the file
-driver level. Server-side copy uses the shared direct fallback helper, while
-the DAG range runner is opt-in (`AEROFTP_RANGE_GRAPH=1`). Cross-profile copy
-still uses its temp-file/provider-owned path. See
-**[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)** for the call-path
-matrix.
+Since v4.0.0, AeroFTP has a shared provider-agnostic DAG core. Single-file transfers, batch, non-dry-run sync, same-provider copy and segmented downloads all run through DAG runners: batch and sync reach file-level parallelism on providers with a clone or session pool and stay serial elsewhere, and the range graph is the only production range scheduler. Cross-profile copy still uses its temp-file/provider-owned path. See **[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)** for the call-path matrix.
 
 ## Multi-User Account Partition
 
@@ -119,8 +106,8 @@ Since v4.0.0, the vault can be split into per-user encrypted partitions with a b
 
 ---
 
-- **Documentation Version**: 4.0.1
-- **Last Update**: 4 June 2026
+- **Documentation Version**: 4.2.0
+- **Last Update**: 19 September 2026
 
 ---
 

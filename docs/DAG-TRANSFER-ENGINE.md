@@ -1,8 +1,6 @@
 # DAG Transfer Engine
 
-*Last updated: 2026-07-20. The engine is active in several production call
-paths, but convergence is partial; this document records the paths that are
-actually reachable, not every shape that the builder can represent.*
+*Last updated: 2026-07-20; the provider lists were re-verified against the code on 2026-09-19. The engine is active in several production call paths, but convergence is partial; this document records the paths that are actually reachable, not every shape that the builder can represent.*
 
 AeroFTP contains a shared, provider-agnostic transfer-DAG core. The core is
 real and is used by the shaped single-file runner, the batch wrapper, the
@@ -298,8 +296,7 @@ batch scheduler is gone. After `DAG-P1-01` / `DAG-P1-02` / `DAG-P1-03`:
   `resolve_provider_transfer_runtime`, which performs one live clone probe and
   then applies `resolve_transfer_settings_for_capabilities`, preserving
   `requested_max_concurrent` vs effective `max_concurrent`;
-- clone/session-pool providers (S3, B2 when connected, Azure, SFTP/FTP pool
-  kinds) can realize file-level concurrency bounded by the tighter of graph
+- clone/session-pool providers (S3, B2 when connected, Azure Blob, WebDAV, SFTP, FTP, Dropbox, Box, Filen, Drime and Uploadcare) can realize file-level concurrency bounded by the tighter of graph
   `file_slots` and the session-pool lease capacity;
 - unknown, locked-single, failed clone probes, and non-pool kinds stay
   serial (`max_file_slots = 1`);
