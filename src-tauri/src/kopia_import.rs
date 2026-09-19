@@ -649,6 +649,7 @@ mod tests {
         let cfg = cfgdir.join("repository.config");
         std::fs::write(&cfg, b"{}").unwrap();
 
+        let _env = crate::test_env::lock();
         let prev_xdg = std::env::var("XDG_CONFIG_HOME").ok();
         let prev_home = std::env::var("HOME").ok();
         let prev_kopia = std::env::var("KOPIA_CONFIG_PATH").ok();

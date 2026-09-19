@@ -681,6 +681,7 @@ mystery gopher://old.example.com/0/
         std::fs::create_dir_all(&xdg_lftp).unwrap();
         std::fs::write(xdg_lftp.join("bookmarks"), b"y ftp://h/").unwrap();
 
+        let _env = crate::test_env::lock();
         let prev_home = std::env::var("HOME").ok();
         let prev_xdg = std::env::var("XDG_DATA_HOME").ok();
 
