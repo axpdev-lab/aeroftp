@@ -37,6 +37,7 @@ import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type 
 import { openUrl } from '../utils/openUrl';
 import { safePickerStartDir } from '../utils/safePickerDir';
 import { isValidOverlayScope, normalizeRemotePath, resolveOverlayScope } from '../utils/overlayScope';
+import { overlayEditDiffers } from '../utils/overlayEditDiff';
 import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { OAuthConnect } from './OAuthConnect';
@@ -635,6 +636,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // so clearing a WebDAV password persists (was silently kept before) without
     // wiping the primary credential of a mode group (would regress #215).
     const editHydratedPasswordRef = React.useRef<string>('');
+    // The keyfile path the edit form was hydrated with, so the OAuth edit Save
+    // can tell a re-pointed keyfile from the one already stored (#369).
+    const editHydratedKeyfilePathRef = React.useRef<string>('');
 
     // Issue #215: opt-in to PERSIST the per-mode snapshots to the encrypted
     // vault so they survive a restart (one profile per account, switch protocol
@@ -1202,6 +1206,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const defaultSaltEntropyMismatch =
         aeroCryptEnabled && overlayEligible && !overlayFieldsLocked
         && aeroCryptKind === 'aerocrypt' && aeroCryptDefaultSalt && !meetsEntropy;
+    // The overlay gates saveToServers applies, for the OAuth edit Save that
+    // bypasses it (handleOAuthMetadataSave).
+    const oauthOverlaySaveBlocked = aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch;
 
     // P3: build the overlay-binding profile fields + stash the overlay password
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
@@ -1821,6 +1828,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // pinned overlay anchor outside the session (the vault reads as
         // empty). The footer Save is disabled in that state; defense-in-depth.
         if (remotePathEscapesOverlay) return;
+        // This Save also persists overlay edits now (oauthEditHasChanges sees
+        // them), so it needs the same three overlay gates as saveToServers:
+        // a confirm that disagrees with a set-once password (#322), an invalid
+        // Overlays Remote Path (#369), and default-salt intent the backend
+        // would reject for entropy (#276).
+        if (oauthOverlaySaveBlocked) return;
         const existingServers = await loadSavedServerProfiles();
         const prevProfile = existingServers.find((s) => s.id === editingProfileId);
         if (!prevProfile) return;
@@ -1880,6 +1893,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // (name, local path, remote path, icon) relative to the stored profile. Used
     // to keep the edit-mode Save button disabled until something actually changed.
     // An empty connection name means "keep the stored name", so it is not a change.
+    //
+    // #369: the overlay settings count too. They were left out, so changing only
+    // a Crypt setting on an OAuth profile left Save greyed out and the only way
+    // to persist it was to sign in again, which is what this Save exists to avoid.
     const oauthEditHasChanges = (): boolean => {
         if (!editingProfileId) return false;
         const ep = servers.find((s) => s.id === editingProfileId);
@@ -1888,7 +1905,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             (connectionName || ep.name) !== ep.name ||
             (quickConnectDirs.localDir || '') !== (ep.localInitialPath || '') ||
             (quickConnectDirs.remoteDir || '') !== (ep.initialPath || '') ||
-            (customIconForSave !== undefined && customIconForSave !== ep.customIconUrl)
+            (customIconForSave !== undefined && customIconForSave !== ep.customIconUrl) ||
+            overlayEditDiffers(
+                {
+                    enabled: aeroCryptEnabled,
+                    eligible: overlayEligible,
+                    kind: aeroCryptKind,
+                    withHeader: aeroCryptWithHeader,
+                    useDefaultSalt: effectiveUseDefaultSalt,
+                    filenameEncryption: aeroCryptFilenameEnc,
+                    directoryNameEncryption: aeroCryptDirNameEnc,
+                    overlaysRemotePath,
+                    remoteDir: quickConnectDirs.remoteDir || '',
+                    password: aeroCryptPassword,
+                    salt: aeroCryptSalt,
+                    keyfilePath: aeroCryptKeyfilePath,
+                },
+                {
+                    binding: ep.aeroCryptOverlay,
+                    remotePath: ep.initialPath || '',
+                    hydratedKeyfilePath: editHydratedKeyfilePathRef.current,
+                },
+            )
         );
     };
 
@@ -2330,6 +2368,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // it IS hydrated for display and stays re-pointable (hydrated async
         // below, race-guarded like the other vault reads).
         setAeroCryptKeyfilePath('');
+        editHydratedKeyfilePathRef.current = '';
         setKeyfileJustGenerated(false);
         setKeyfileError(null);
 
@@ -2399,6 +2438,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 const storedKeyfile = await invoke<string>('get_credential', { account: `aerocrypt_overlay_keyfile_path_${targetProfileId}` });
                 if (storedKeyfile && editingProfileIdRef.current === targetProfileId) {
                     setAeroCryptKeyfilePath(storedKeyfile);
+                    editHydratedKeyfilePathRef.current = storedKeyfile;
                 }
             } catch {
                 // Path not retrievable: field stays blank, re-point as needed.
@@ -2450,6 +2490,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setOverlaysRemotePathError(null);
         modeCredentialSnapshotsRef.current = {};
         editHydratedPasswordRef.current = '';
+        editHydratedKeyfilePathRef.current = '';
         // Reset params
         onConnectionParamsChange({ ...connectionParams, server: '', username: '', password: '', options: {} });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
@@ -4037,7 +4078,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 rightColumn={renderRightColumn(
                                     editingProfileId
                                         ? {
-                                            disabled: !oauthEditHasChanges() || remotePathEscapesOverlay,
+                                            disabled: !oauthEditHasChanges() || remotePathEscapesOverlay || oauthOverlaySaveBlocked,
                                             buttonColorClass: 'bg-green-600 hover:bg-green-700',
                                             hideSaveButton: false,
                                             saveOverride: handleOAuthMetadataSave,
@@ -5490,12 +5531,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     if (modeChanged) {
                                                         return renderModeChangedFooter();
                                                     }
+                                                    // #369: Save stays enabled with a code typed. It used
+                                                    // to disable here, so editing any setting of a 2FA
+                                                    // profile meant clearing the code first. saveToServers
+                                                    // never persists a TOTP (#128), so Save keeps the
+                                                    // settings and drops the code; the tooltip says how to
+                                                    // use the code now.
                                                     const hasFreshTotp = !!connectionParams.options?.two_factor_code;
                                                     return (
                                                         <div className="flex gap-2">
                                                             <button
                                                                 onClick={handleConnectAndSave}
-                                                                disabled={loading || !connectionParams.username || !connectionParams.password || hasFreshTotp}
+                                                                disabled={loading || !connectionParams.username || !connectionParams.password}
                                                                 title={hasFreshTotp ? t('connection.saveDisabledTotp') : undefined}
                                                                 className={`flex-1 py-3.5 rounded-lg font-medium cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'}`}
                                                             >
@@ -5682,12 +5729,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     if (modeChanged) {
                                                         return renderModeChangedFooter();
                                                     }
+                                                    // #369: Save stays enabled with a code typed. It used
+                                                    // to disable here, so editing any setting of a 2FA
+                                                    // profile meant clearing the code first. saveToServers
+                                                    // never persists a TOTP (#128), so Save keeps the
+                                                    // settings and drops the code; the tooltip says how to
+                                                    // use the code now.
                                                     const hasFreshTotp = !!connectionParams.options?.two_factor_code;
                                                     return (
                                                         <div className="flex gap-2">
                                                             <button
                                                                 onClick={handleConnectAndSave}
-                                                                disabled={loading || !connectionParams.username || !connectionParams.password || hasFreshTotp}
+                                                                disabled={loading || !connectionParams.username || !connectionParams.password}
                                                                 title={hasFreshTotp ? t('connection.saveDisabledTotp') : undefined}
                                                                 className={`flex-1 py-3.5 rounded-lg font-medium cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'}`}
                                                             >
