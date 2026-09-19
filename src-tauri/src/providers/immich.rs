@@ -37,8 +37,6 @@ struct ImmichAlbum {
     description: Option<String>,
     #[serde(default)]
     asset_count: u32,
-    #[serde(default)]
-    assets: Vec<ImmichAsset>,
     updated_at: Option<String>,
     #[allow(dead_code)]
     owner: Option<ImmichUser>,
