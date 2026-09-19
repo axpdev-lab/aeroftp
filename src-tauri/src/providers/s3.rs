@@ -563,6 +563,14 @@ impl S3Provider {
         if self.is_filen_s3_endpoint() {
             return Ok(S3DeltaOutcome::Refused("multipart_unsupported"));
         }
+        // Filebase answers 501 to `UploadPartCopy`, the call a delta is made of,
+        // which the copy path already knows (`copy_via_multipart`). Without this
+        // gate every `put --delta` opened a multipart session, took the 501,
+        // aborted and fell back, and the in-process memory of the refusal does
+        // not outlive one CLI invocation.
+        if self.is_filebase_endpoint() {
+            return Ok(S3DeltaOutcome::Refused("range_copy_unsupported"));
+        }
         let identity = self.endpoint_identity();
         if range_copy_rejected(&identity) {
             return Ok(S3DeltaOutcome::Refused("backend_rejected_range_copy"));
@@ -9283,6 +9291,29 @@ mod tests {
     // works, `?versions` listing must never be attempted). The gates live on
     // `is_filebase_endpoint` / `copy_via_multipart` / `supports_versions`;
     // these tests pin all three.
+
+    #[tokio::test]
+    async fn filebase_refuses_a_delta_before_any_request() {
+        let mut provider = make_provider(Some("https://s3.filebase.io"));
+        // The credentials are fake: a request that reached Filebase would
+        // come back as an error, so an `Ok(Refused)` proves the gate answered
+        // before any request was made.
+        provider.connected = true;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("large.bin");
+        std::fs::File::create(&local)
+            .unwrap()
+            .set_len(super::super::s3_delta_plan::DELTA_MIN_FILE_SIZE + 1)
+            .unwrap();
+        let outcome = provider
+            .try_delta_upload(&local, "large.bin", None)
+            .await
+            .expect("refused, not failed");
+        assert!(
+            matches!(outcome, S3DeltaOutcome::Refused("range_copy_unsupported")),
+            "{outcome:?}"
+        );
+    }
 
     #[test]
     fn filebase_endpoint_detection_is_case_insensitive_and_host_specific() {

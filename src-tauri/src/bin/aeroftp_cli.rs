@@ -141,7 +141,7 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     about = "AeroFTP CLI - Multi-protocol file transfer client",
     version,
     long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, and Drime.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\n\nAI agents: use --machine (recommended) or --format json.\n  'aeroftp --machine --profile NAME ls /path --json'   → pure data on stdout\n  'aeroftp agent-info --json'                        → capability discovery\n  'aeroftp agent-bootstrap --json'                   → canonical workflows",
-    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli --machine --profile \"My Server\" ls /path --json   (recommended for agents)\n  aeroftp-cli agent-bootstrap --json                         AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp-script\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Stopped at a limit, nothing failed\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n\nEXIT CODE 8 MEANS ONE THING: the run stopped at a limit and NOTHING failed.\nThe run did what it could inside the limit it was given, and the decision is\nwhether to raise it. WHICH limit depends on the command: for most it is a\ntimeout, and for sync it is the --max-transfer budget, because there a\ntimeout that fails a transfer is a failure and reports 4 instead. With --json\na reached budget is named by an over_budget count of the files it left\nbehind; a timeout has no such field.\n 99  Unknown error            130  Interrupted (SIGINT)"
+    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli --machine --profile \"My Server\" ls /path --json   (recommended for agents)\n  aeroftp-cli agent-bootstrap --json                         AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp-script\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Stopped at a limit, nothing failed\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n 99  Unknown error            130  Interrupted (SIGINT)\n\nEXIT CODE 8 MEANS ONE THING: the run stopped at a limit and NOTHING failed.\nThe run did what it could inside the limit it was given, and the decision is\nwhether to raise it. WHICH limit depends on the command: for most it is a\ntimeout, and for sync it is the --max-transfer budget, because there a\ntimeout that fails a transfer is a failure and reports 4 instead. With --json\na reached budget is named by an over_budget count of the files it left\nbehind; a timeout has no such field."
 )]
 struct Cli {
     /// Output format
@@ -641,8 +641,8 @@ struct Cli {
 
     /// SFTP single-file download tuning preset. Presets configure independent
     /// SSH connections, read-ahead, and the multi-connection cutoff together.
-    /// `efficient` matches the GUI default. The option is ignored for non-SFTP
-    /// providers.
+    /// `fast` (eight connections) matches the GUI default. The option is
+    /// ignored for non-SFTP providers.
     #[arg(
         long,
         global = true,
@@ -7149,6 +7149,18 @@ fn print_error(format: OutputFormat, msg: &str, code: i32) {
             );
         }
     }
+}
+
+/// Transport protocols and native integrations as the generated provider
+/// inventory counts them. The banner said "23 providers" by hand while the
+/// registry grew past it; reading the checked-in inventory, which CI keeps in
+/// step with the registry, means the number cannot fall behind again.
+fn banner_provider_counts() -> (u64, u64) {
+    let inventory: serde_json::Value =
+        serde_json::from_str(include_str!("../../../docs/PROVIDER-INVENTORY.json"))
+            .unwrap_or_default();
+    let count = |key: &str| inventory["counts"][key].as_u64().unwrap_or(0);
+    (count("transport_protocols"), count("native_integrations"))
 }
 
 /// Truthy test for the `AEROFTP_STRICT` env toggle. Accepts the common
@@ -62354,7 +62366,23 @@ fn cmd_inventory(markdown: bool, check: Option<&str>) -> i32 {
 
 #[cfg(test)]
 mod inventory_tests {
-    use super::{build_inventory_doc, inventory_doc_inconsistencies};
+    use super::{banner_provider_counts, build_inventory_doc, inventory_doc_inconsistencies};
+
+    #[test]
+    fn banner_counts_come_from_the_generated_inventory() {
+        // `banner_provider_counts` falls back to zero rather than failing the
+        // banner, so a renamed key or a moved file would print "0 protocols"
+        // without a word. This is the word.
+        let (protocols, integrations) = banner_provider_counts();
+        assert!(
+            protocols > 0,
+            "transport_protocols missing from the inventory"
+        );
+        assert!(
+            integrations > 0,
+            "native_integrations missing from the inventory"
+        );
+    }
 
     /// `build_inventory_doc` calls `Cli::command()`, and clap building the full
     /// command tree for this large enum overflows the default 2 MB test stack
@@ -64169,6 +64197,7 @@ async fn main() {
     };
     let show_banner = is_top_level_invocation && !banner_suppressed;
     if show_banner {
+        let (protocols, integrations) = banner_provider_counts();
         // Green (#00d26a) for "Aero", Blue (#0095ff) for "FTP"
         if use_color() {
             let g = "\x1b[1;38;2;0;210;106m"; // green
@@ -64182,8 +64211,10 @@ async fn main() {
             eprintln!("  {g}/_/ _ \\_\\___|_|  \\___/ {b}|_|     |_| |_|    {r}");
             eprintln!();
             eprintln!(
-                "  \x1b[1;37mAeroFTP\x1b[0m  {g}v{}{r}  {b}|{r}  23 providers, {} via direct URL  {b}|{r}  pget  {b}|{r}  mcp  {b}|{r}  ai agent  {b}|{r}  vault profiles",
+                "  \x1b[1;37mAeroFTP\x1b[0m  {g}v{}{r}  {b}|{r}  {} protocols, {} native integrations, {} via direct URL  {b}|{r}  pget  {b}|{r}  mcp  {b}|{r}  ai agent  {b}|{r}  vault profiles",
                 env!("CARGO_PKG_VERSION"),
+                protocols,
+                integrations,
                 SUPPORTED_URL_SCHEMES.len()
             );
             eprintln!("\x1b[38;2;140;140;160m  transfer engine for operators, shell users, and terminal obsessives{r}");
@@ -64196,8 +64227,10 @@ async fn main() {
             eprintln!("  /_/   \\_\\___|_|  \\___/ |_|     |_| |_|    ");
             eprintln!();
             eprintln!(
-                "  AeroFTP  v{}  |  23 providers, {} via direct URL  |  pget  |  mcp  |  ai agent  |  vault profiles",
+                "  AeroFTP  v{}  |  {} protocols, {} native integrations, {} via direct URL  |  pget  |  mcp  |  ai agent  |  vault profiles",
                 env!("CARGO_PKG_VERSION"),
+                protocols,
+                integrations,
                 SUPPORTED_URL_SCHEMES.len()
             );
             eprintln!("  transfer engine for operators, shell users, and terminal obsessives");
