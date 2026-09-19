@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::time::Instant;
-use tauri::{AppHandle, State};
+use tauri::State;
 use tokio::sync::Mutex;
 use whisper_rs::{
     get_lang_id, get_lang_str, FullParams, SamplingStrategy, WhisperContext,
@@ -50,13 +50,13 @@ pub struct SpeechTranscriptionResult {
     pub model_name: String,
 }
 
-fn speech_model_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let base_dir = crate::portable::app_data_dir(app)?;
+fn speech_model_path() -> Result<PathBuf, String> {
+    let base_dir = crate::portable::app_data_dir()?;
     Ok(base_dir.join("speech").join(MODEL_FILE_NAME))
 }
 
-fn build_status(app: &AppHandle) -> Result<SpeechModelStatus, String> {
-    let path = speech_model_path(app)?;
+fn build_status() -> Result<SpeechModelStatus, String> {
+    let path = speech_model_path()?;
     let metadata = std::fs::metadata(&path).ok();
     Ok(SpeechModelStatus {
         available: metadata.is_some(),
@@ -200,20 +200,19 @@ fn transcribe_pcm_with_model(
 }
 
 #[tauri::command]
-pub async fn speech_model_status(app: AppHandle) -> Result<SpeechModelStatus, String> {
-    build_status(&app)
+pub async fn speech_model_status() -> Result<SpeechModelStatus, String> {
+    build_status()
 }
 
 #[tauri::command]
 pub async fn download_speech_model(
-    app: AppHandle,
     state: State<'_, SpeechState>,
 ) -> Result<SpeechModelStatus, String> {
     let _guard = state.download_lock.lock().await;
-    let model_path = speech_model_path(&app)?;
+    let model_path = speech_model_path()?;
 
     if model_path.exists() {
-        return build_status(&app);
+        return build_status();
     }
 
     let parent = model_path
@@ -265,18 +264,17 @@ pub async fn download_speech_model(
             format!("Failed to finalize speech model: {e}")
         })?;
 
-    build_status(&app)
+    build_status()
 }
 
 #[tauri::command]
 pub async fn speech_to_text(
-    app: AppHandle,
     state: State<'_, SpeechState>,
     audio_base64: String,
     language: Option<String>,
 ) -> Result<SpeechTranscriptionResult, String> {
     let _guard = state.download_lock.lock().await;
-    let status = build_status(&app)?;
+    let status = build_status()?;
     if !status.available {
         return Err("Speech model not installed. Download it before transcribing.".to_string());
     }

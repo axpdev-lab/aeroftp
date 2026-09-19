@@ -2463,8 +2463,8 @@ struct PortableInfo {
 }
 
 #[tauri::command]
-async fn portable_info(app: tauri::AppHandle) -> PortableInfo {
-    tokio::task::spawn_blocking(move || portable_info_blocking(app))
+async fn portable_info() -> PortableInfo {
+    tokio::task::spawn_blocking(portable_info_blocking)
         .await
         .unwrap_or_else(|err| {
             tracing::warn!("portable_info task failed: {err}");
@@ -2473,10 +2473,10 @@ async fn portable_info(app: tauri::AppHandle) -> PortableInfo {
 }
 
 /// The body of `portable_info`, kept synchronous and run on the blocking pool.
-fn portable_info_blocking(app: tauri::AppHandle) -> PortableInfo {
+fn portable_info_blocking() -> PortableInfo {
     let is_portable = portable::is_portable();
     let data_root = if is_portable {
-        portable::app_data_dir(&app)
+        portable::app_data_dir()
             .ok()
             .map(|p| p.display().to_string())
     } else {
@@ -17783,6 +17783,11 @@ pub fn run() {
     #[cfg(not(debug_assertions))]
     let _ = install_crypto_provider();
 
+    // #814 renamed the application identifier. Carry the identifier-scoped
+    // state that cannot stay pinned to the legacy one (window state, and the
+    // macOS WebKit store) before any plugin reads it or any window opens.
+    portable::carry_identifier_scoped_state();
+
     // DAG-P2-01: construct the process-global hierarchical transfer governor
     // once, at GUI startup. Every transfer path (GUI, embedded MCP, TUI) reaches
     // the same singleton via `governor::global()`.
@@ -17905,9 +17910,23 @@ pub fn run() {
                 // entries that still use the old crate name).
                 .level_for("aeroftp", log::LevelFilter::Trace)
                 .level_for("ftp_client_gui_lib", log::LevelFilter::Trace)
-                // Fan-out backend logs to the webview via the `log://log` event,
-                // consumed by the in-app DebugPanel. Stdout + LogDir targets are
-                // preserved by default; this one is additive.
+                // Stdout, the log file and the Webview fan-out (the `log://log`
+                // event consumed by the in-app DebugPanel). The file target is
+                // an explicit folder rather than the default `LogDir`, which
+                // follows the configured identifier and moved to an empty
+                // folder with the #814 rename; `portable::log_dir` keeps the
+                // folder every earlier release wrote to.
+                .clear_targets()
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Stdout,
+                ))
+                .target(tauri_plugin_log::Target::new(match portable::log_dir() {
+                    Some(path) => tauri_plugin_log::TargetKind::Folder {
+                        path,
+                        file_name: None,
+                    },
+                    None => tauri_plugin_log::TargetKind::LogDir { file_name: None },
+                }))
                 .target(tauri_plugin_log::Target::new(
                     tauri_plugin_log::TargetKind::Webview,
                 ))
