@@ -527,8 +527,10 @@ pub fn carry_identifier_scoped_state() {
     }
 }
 
-/// `tauri-plugin-window-state`'s default file name.
-const WINDOW_STATE_FILE: &str = ".window-state.json";
+/// The window-state plugin's own file name, taken from the plugin rather than
+/// restated: a copy of the literal would keep matching nothing, in silence, the
+/// day the plugin changed its default.
+const WINDOW_STATE_FILE: &str = tauri_plugin_window_state::DEFAULT_FILENAME;
 
 fn carry_file_if_absent(src: &Path, dst: &Path) {
     if !src.is_file() || dst.exists() {
