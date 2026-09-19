@@ -28,6 +28,10 @@ pub fn normalize_profile_option_key(key: &str) -> &str {
         // silently fall back to the auto-scheme heuristic in WebDavConfig and
         // ignore the user's explicit HTTP/HTTPS pick.
         "webdavScheme" => "tls_mode",
+        // FTPS profiles imported from WinSCP / FileZilla before their
+        // importers wrote `tlsMode` carry the mode as `ftpsMode`, which no
+        // connection read: an explicit site on port 21 was opened as implicit.
+        "ftpsMode" => "tls_mode",
         "verifyCert" => "verify_cert",
         // Swift: the GUI stores `options.allowCleartextStorage`; the provider
         // reads `allow_cleartext_storage_endpoint`. Without this line a saved

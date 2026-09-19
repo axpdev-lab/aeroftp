@@ -131,13 +131,24 @@ fn map_duck(xml: &str) -> DuckOutcome {
             initial_path: path,
         }),
 
-        "ftps" | "ftp-ssl" | "ftpis" => DuckOutcome::Profile(MappedProfile {
+        // Cyberduck's `ftps` is "FTP-SSL (Explicit AUTH TLS)": explicit on 21.
+        // Without a stored mode AeroFTP opens an `ftps` profile as implicit.
+        "ftps" | "ftp-ssl" => DuckOutcome::Profile(MappedProfile {
+            protocol: "ftps".into(),
+            provider_id: None,
+            host: hostname,
+            port: port_field.unwrap_or(21),
+            username,
+            options: Some(serde_json::json!({ "tlsMode": "explicit" })),
+            initial_path: path,
+        }),
+        "ftpis" => DuckOutcome::Profile(MappedProfile {
             protocol: "ftps".into(),
             provider_id: None,
             host: hostname,
             port: port_field.unwrap_or(990),
             username,
-            options: None,
+            options: Some(serde_json::json!({ "tlsMode": "implicit" })),
             initial_path: path,
         }),
 
@@ -154,6 +165,11 @@ fn map_duck(xml: &str) -> DuckOutcome {
                 }
             };
             let mut opts: Vec<(&str, Option<String>)> = vec![("region", region.clone())];
+            // Written by Cyberduck (and by our exporter) into the bookmark's
+            // `Custom` dictionary when the server answers only path-style.
+            let path_style = field("s3.bucket.virtualhost.disable")
+                .map(|v| v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
             // A Cyberduck S3 Path is bucket[/prefix]; expose the bucket too.
             if let Some(p) = path.as_deref() {
                 let bucket = p.trim_start_matches('/').split('/').next().unwrap_or("");
@@ -161,12 +177,15 @@ fn map_duck(xml: &str) -> DuckOutcome {
                     opts.push(("bucket", Some(bucket.to_string())));
                 }
             }
-            let options = crate::bridge_shared::json_map(&opts);
+            let mut options = crate::bridge_shared::json_map(&opts);
+            if path_style {
+                options.insert("pathStyle".into(), serde_json::Value::Bool(true));
+            }
             DuckOutcome::Profile(MappedProfile {
                 protocol: "s3".into(),
                 provider_id: Some(provider_id.to_string()),
                 host: hostname,
-                port: 443,
+                port: port_field.unwrap_or(443),
                 username,
                 options: if options.is_empty() {
                     None
@@ -447,30 +466,115 @@ fn sanitize_filename(name: &str) -> String {
 /// the other exporters but is not written into the file (the user re-enters
 /// the secret in Cyberduck's keychain prompt). One `.duck` plist is written
 /// per exportable profile into `out` (created if absent); OAuth/Azure
-/// profiles are skipped. Returns the number of bookmarks written.
+/// profiles are skipped, and so is a profile whose server address cannot be
+/// written as a bookmark, with the reason.
+///
+/// `Hostname` is a bare host: WebDAV and S3 addresses are resolved through
+/// [`crate::bridge_shared::resolve_export_endpoint`], the same rules the
+/// connection uses, so a URL stored in `host` or an endpoint stored in
+/// `options` lands as host + port + path. An S3 connection that addresses
+/// buckets path-style (MinIO and most self-hosted gateways answer only that
+/// way) carries Cyberduck's per-host `s3.bucket.virtualhost.disable`
+/// property in the bookmark's `Custom` dictionary.
 pub fn export_cyberduck(
     servers: &[CyberduckExportServer],
     passwords: &HashMap<String, String>,
     out: &Path,
-) -> Result<usize, String> {
+) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
     // Signature symmetry with the other exporters; Cyberduck never persists
     // the secret in the file, so the map is intentionally unused.
     let _ = passwords;
 
     std::fs::create_dir_all(out).map_err(|e| format!("create Cyberduck Bookmarks dir: {e}"))?;
 
-    let mut exported = 0usize;
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
     let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for server in servers {
         let proto = server.protocol.as_deref().unwrap_or("ftp");
-        let Some(duck_proto) = cyberduck_protocol(proto, server.provider_id.as_deref()) else {
+        let Some(mut duck_proto) = cyberduck_protocol(proto, server.provider_id.as_deref()) else {
             continue;
+        };
+        // FTP: Cyberduck's `ftps` is explicit AUTH TLS and `ftp` is cleartext;
+        // it has no implicit FTPS. Follow the TLS the connection uses.
+        if proto == "ftp" || proto == "ftps" {
+            match crate::bridge_shared::ftp_tls_mode_for_export(proto, server.options.as_ref()) {
+                Some("implicit") => {
+                    outcome.skip(
+                        &server.name,
+                        "implicit FTPS: Cyberduck only speaks explicit AUTH TLS",
+                    );
+                    continue;
+                }
+                Some("explicit") | Some("explicit_if_available") => duck_proto = "ftps",
+                _ => duck_proto = "ftp",
+            }
+        }
+
+        let endpoint = match crate::bridge_shared::resolve_export_endpoint(
+            proto,
+            &server.host,
+            server.port,
+            &server.username,
+            server.options.as_ref(),
+            server.provider_id.as_deref(),
+        ) {
+            Ok(e) => e,
+            Err(reason) => {
+                outcome.skip(&server.name, reason);
+                continue;
+            }
+        };
+
+        // (Hostname, Port, server path prefix, path-style)
+        let (hostname, port, base_path, path_style) = match (duck_proto, &endpoint) {
+            // Native B2 talks to the B2 API host, never to the S3 gateway.
+            ("b2", _) => ("api.backblazeb2.com".to_string(), 443, String::new(), false),
+            ("s3", Some(ep)) if !ep.is_tls() => {
+                outcome.skip(
+                    &server.name,
+                    format!(
+                        "cleartext S3 endpoint {}: Cyberduck's S3 protocol is HTTPS only \
+                         (the \"S3 (HTTP)\" connection profile is needed)",
+                        ep.base_url()
+                    ),
+                );
+                continue;
+            }
+            ("s3", Some(ep)) => (
+                ep.host.clone(),
+                u32::from(ep.effective_port()),
+                String::new(),
+                ep.s3_path_style,
+            ),
+            ("s3", None) => ("s3.amazonaws.com".to_string(), 443, String::new(), false),
+            (_, Some(ep)) => {
+                if duck_proto == "davs" && !ep.is_tls() {
+                    duck_proto = "dav";
+                }
+                (
+                    ep.host.clone(),
+                    u32::from(ep.effective_port()),
+                    ep.path.clone(),
+                    false,
+                )
+            }
+            (_, None) => (
+                server.host.trim().to_string(),
+                server.port,
+                String::new(),
+                false,
+            ),
         };
 
         // Cyberduck S3 Path is bucket[/prefix]; prefer the options.bucket
-        // when present, else the stored initial_path.
-        let path_value = {
+        // when present, else the stored initial_path. WebDAV Path is the
+        // server path: the URL's own path, then the profile's start folder.
+        let initial_path = server
+            .initial_path
+            .clone()
+            .filter(|s| !s.is_empty() && s != "/");
+        let path_value = if duck_proto == "s3" || duck_proto == "b2" {
             let bucket = server
                 .options
                 .as_ref()
@@ -478,9 +582,13 @@ pub fn export_cyberduck(
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string());
-            bucket
-                .or_else(|| server.initial_path.clone())
-                .filter(|s| !s.is_empty())
+            bucket.or(initial_path)
+        } else {
+            match (base_path.is_empty(), initial_path) {
+                (true, p) => p,
+                (false, None) => Some(format!("{base_path}/")),
+                (false, Some(p)) => Some(format!("{base_path}/{}", p.trim_start_matches('/'))),
+            }
         };
 
         let region = server
@@ -508,12 +616,9 @@ pub fn export_cyberduck(
         ));
         body.push_str(&format!(
             "\t<key>Hostname</key>\n\t<string>{}</string>\n",
-            xml_escape(&server.host)
+            xml_escape(&hostname)
         ));
-        body.push_str(&format!(
-            "\t<key>Port</key>\n\t<string>{}</string>\n",
-            server.port
-        ));
+        body.push_str(&format!("\t<key>Port</key>\n\t<string>{}</string>\n", port));
         body.push_str(&format!(
             "\t<key>Username</key>\n\t<string>{}</string>\n",
             xml_escape(&server.username)
@@ -530,6 +635,13 @@ pub fn export_cyberduck(
                 xml_escape(r)
             ));
         }
+        if path_style {
+            body.push_str(
+                "\t<key>Custom</key>\n\t<dict>\n\
+                 \t\t<key>s3.bucket.virtualhost.disable</key>\n\
+                 \t\t<string>true</string>\n\t</dict>\n",
+            );
+        }
         body.push_str("</dict>\n</plist>\n");
 
         // Stable, collision-free file name per bookmark.
@@ -543,10 +655,10 @@ pub fn export_cyberduck(
         used_names.insert(file_name.clone());
 
         crate::bridge_shared::atomic_write_600(&out.join(&file_name), body.as_bytes())?;
-        exported += 1;
+        outcome.exported += 1;
     }
 
-    Ok(exported)
+    Ok(outcome)
 }
 
 // ============ Tests ============
@@ -744,7 +856,8 @@ mod tests {
         ));
         let passwords = HashMap::new();
         let written = export_cyberduck(&export_servers, &passwords, &out_dir).expect("export");
-        assert_eq!(written, 1);
+        assert_eq!(written.exported, 1);
+        assert!(written.skipped.is_empty());
 
         let second = import_cyberduck(&out_dir).expect("re-import");
         std::fs::remove_dir_all(&out_dir).ok();
@@ -765,6 +878,8 @@ mod tests {
 
     #[test]
     fn test_default_path_env_override() {
+        // Process-wide env: serialised with every other test that edits it.
+        let _env = crate::test_env::lock();
         // On every OS the CYBERDUCK_BOOKMARKS override wins when it exists.
         let dir = std::env::temp_dir().join(format!(
             "aeroftp-cyberduck-envpath-{}",
@@ -792,6 +907,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn test_linux_has_no_default_path() {
+        // Process-wide env: serialised with every other test that edits it.
+        let _env = crate::test_env::lock();
         // No Cyberduck build on Linux: without an env override, None.
         let prev = std::env::var("CYBERDUCK_BOOKMARKS").ok();
         std::env::remove_var("CYBERDUCK_BOOKMARKS");

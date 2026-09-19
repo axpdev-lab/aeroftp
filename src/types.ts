@@ -355,6 +355,10 @@ export interface ProviderOptions {
 
   // FTP/FTPS-specific
   tlsMode?: FtpTlsMode; // TLS encryption mode
+  /** Where the WinSCP / FileZilla importers used to store the FTPS mode.
+   *  Read as a fallback for `tlsMode` so a profile imported before they
+   *  wrote `tlsMode` connects with its real mode (explicit on port 21). */
+  ftpsMode?: FtpTlsMode;
   verifyCert?: boolean; // Verify server certificate (default: true)
   /** Swift only. Accept a catalog-issued cleartext object-store endpoint after
    *  an HTTPS Keystone session. Undefined or false keeps the downgrade guard

@@ -875,25 +875,7 @@ impl S3Config {
             .trim()
             .to_string();
 
-        let explicit_endpoint = config
-            .extra
-            .get("endpoint")
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
-        let endpoint_raw = explicit_endpoint.or_else(|| {
-            if !config.host.is_empty() && config.host != "s3.amazonaws.com" {
-                Some(config.host.trim().to_string())
-            } else {
-                None
-            }
-        });
-        tracing::debug!(
-            "S3Config: host={:?}, port={:?}, extra_endpoint={:?}",
-            config.host,
-            config.port,
-            config.extra.get("endpoint")
-        );
-        let endpoint = endpoint_raw.map(|host| normalize_s3_endpoint(&host, config.port));
+        let (endpoint, path_style) = s3_endpoint_and_path_style(config);
         if endpoint
             .as_deref()
             .map(|ep| ep.to_ascii_lowercase().contains("s4.mega.io"))
@@ -909,12 +891,6 @@ impl S3Config {
                 )));
             }
         }
-
-        let path_style = config
-            .extra
-            .get("path_style")
-            .map(|v| v == "true" || v == "1")
-            .unwrap_or(endpoint.is_some()); // Default to path style for custom endpoints
 
         let storage_class = config
             .extra
@@ -1001,6 +977,40 @@ impl S3Config {
             allow_cleartext_endpoint,
         })
     }
+}
+
+/// The endpoint URL an S3 connection uses (`None` = AWS) and whether it
+/// addresses buckets path-style.
+///
+/// Split out of `S3Config::from_provider_config` so the profile exporters
+/// (`bridge_shared::resolve_export_endpoint`) read the address through the
+/// same rules the connection does, instead of rebuilding it from `host`.
+pub(crate) fn s3_endpoint_and_path_style(config: &ProviderConfig) -> (Option<String>, bool) {
+    let explicit_endpoint = config
+        .extra
+        .get("endpoint")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let endpoint_raw = explicit_endpoint.or_else(|| {
+        if !config.host.is_empty() && config.host != "s3.amazonaws.com" {
+            Some(config.host.trim().to_string())
+        } else {
+            None
+        }
+    });
+    tracing::debug!(
+        "S3Config: host={:?}, port={:?}, extra_endpoint={:?}",
+        config.host,
+        config.port,
+        config.extra.get("endpoint")
+    );
+    let endpoint = endpoint_raw.map(|host| normalize_s3_endpoint(&host, config.port));
+    let path_style = config
+        .extra
+        .get("path_style")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(endpoint.is_some()); // Default to path style for custom endpoints
+    (endpoint, path_style)
 }
 
 fn normalize_s3_endpoint(endpoint: &str, configured_port: Option<u16>) -> String {

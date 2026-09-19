@@ -101,7 +101,8 @@ fn map_scheme(scheme: &str) -> Option<(&'static str, u32)> {
         "ftp" => Some(("ftp", 21)),
         "ftps" => Some(("ftps", 990)),
         "sftp" | "fish" => Some(("sftp", 22)),
-        "http" | "https" => Some(("webdav", 443)),
+        "http" => Some(("webdav", 80)),
+        "https" => Some(("webdav", 443)),
         _ => None,
     }
 }
@@ -169,6 +170,13 @@ fn parse_bookmark_url(url: &str) -> Option<MappedProfile> {
     if host.is_empty() {
         return None;
     }
+    // A cleartext WebDAV server keeps its scheme in `host` (the WebDAV
+    // connection reads a URL there): off port 80 a bare host is taken as HTTPS.
+    let host = if scheme.eq_ignore_ascii_case("http") {
+        format!("http://{hostport}")
+    } else {
+        host
+    };
 
     let initial_path = {
         let p = url_decode(path_part);
@@ -406,19 +414,59 @@ fn protocol_to_scheme(protocol: &str) -> Option<&'static str> {
 /// Each line is `name url` with the password percent-encoded back into the URL
 /// when present. The file carries secrets, so it is written atomically with
 /// mode `0600` on unix (`atomic_write_600`).
+///
+/// A WebDAV bookmark is the server URL the connection uses
+/// ([`crate::bridge_shared::resolve_export_endpoint`]), path included. For FTP
+/// the scheme follows the profile's TLS mode: lftp's `ftps://` is implicit
+/// TLS, so an explicit-TLS profile is written as `ftp://`, on which lftp
+/// negotiates `AUTH TLS` by default (`ftp:ssl-allow`); a bookmark cannot
+/// carry `ftp:ssl-force`, which the header comment of the file points out.
 pub fn export_lftp(
     servers: &[LftpExportServer],
     passwords: &HashMap<String, String>,
     out: &Path,
-) -> Result<usize, String> {
-    let mut body = String::from("# lftp bookmarks exported by AeroFTP - https://aeroftp.app\n");
-    let mut exported = 0;
+) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
+    let mut body = String::from(
+        "# lftp bookmarks exported by AeroFTP - https://aeroftp.app\n\
+         # Explicit-TLS FTP servers are ftp:// entries: add `set ftp:ssl-force true`\n\
+         # to ~/.lftprc to refuse a cleartext fallback.\n",
+    );
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
 
     for server in servers {
         let proto = server.protocol.as_deref().unwrap_or("ftp");
-        let Some(scheme) = protocol_to_scheme(proto) else {
-            continue; // protocol without an lftp URL form
+        let Some(mut scheme) = protocol_to_scheme(proto) else {
+            outcome.skip(
+                &server.name,
+                format!("protocol {proto} has no lftp URL form"),
+            );
+            continue;
         };
+        if proto == "ftps" || proto == "ftp" {
+            scheme =
+                match crate::bridge_shared::ftp_tls_mode_for_export(proto, server.options.as_ref())
+                {
+                    Some("implicit") => "ftps",
+                    _ => "ftp",
+                };
+        }
+        let endpoint = match crate::bridge_shared::resolve_export_endpoint(
+            proto,
+            &server.host,
+            server.port,
+            &server.username,
+            server.options.as_ref(),
+            server.provider_id.as_deref(),
+        ) {
+            Ok(e) => e,
+            Err(reason) => {
+                outcome.skip(&server.name, reason);
+                continue;
+            }
+        };
+        if let Some(ep) = &endpoint {
+            scheme = ep.scheme;
+        }
 
         // Bookmark name: lftp uses the first whitespace as the name/url
         // delimiter, so a name with whitespace would corrupt the line.
@@ -430,6 +478,7 @@ pub fn export_lftp(
             .filter(|c| *c != '\n' && *c != '\r')
             .collect();
         if safe_name.is_empty() {
+            outcome.skip(&server.name, "empty bookmark name");
             continue;
         }
 
@@ -446,33 +495,48 @@ pub fn export_lftp(
             url.push('@');
         }
 
-        url.push_str(&server.host);
-
-        // Only emit a port when it differs from the scheme default so the
-        // bookmark stays clean and round-trips to the same parsed port.
-        let default_port = match scheme {
-            "ftp" => 21,
-            "ftps" => 990,
-            "sftp" => 22,
-            _ => 443,
-        };
-        if server.port != 0 && server.port != default_port {
-            url.push_str(&format!(":{}", server.port));
-        }
-
-        if let Some(path) = server.initial_path.as_deref().filter(|p| !p.is_empty()) {
-            if !path.starts_with('/') {
-                url.push('/');
+        let start = server
+            .initial_path
+            .as_deref()
+            .filter(|p| !p.is_empty() && *p != "/");
+        if let Some(ep) = &endpoint {
+            // WebDAV: the URL's own authority and path, then the start folder.
+            url.push_str(&ep.authority());
+            url.push_str(&ep.path);
+            url.push('/');
+            if let Some(path) = start {
+                url.push_str(path.trim_start_matches('/'));
             }
-            url.push_str(path);
+        } else {
+            url.push_str(&server.host);
+
+            // Only emit a port when it differs from the scheme default so the
+            // bookmark stays clean and round-trips to the same parsed port.
+            let default_port = match scheme {
+                "ftp" => 21,
+                "ftps" => 990,
+                "sftp" => 22,
+                "http" => 80,
+                _ => 443,
+            };
+            if server.port != 0 && server.port != default_port {
+                url.push_str(&format!(":{}", server.port));
+            }
+
+            if let Some(path) = server.initial_path.as_deref().filter(|p| !p.is_empty()) {
+                if !path.starts_with('/') {
+                    url.push('/');
+                }
+                url.push_str(path);
+            }
         }
 
         body.push_str(&format!("{} {}\n", safe_name, url));
-        exported += 1;
+        outcome.exported += 1;
     }
 
     crate::bridge_shared::atomic_write_600(out, body.as_bytes())?;
-    Ok(exported)
+    Ok(outcome)
 }
 
 #[cfg(test)]
@@ -632,7 +696,8 @@ mystery gopher://old.example.com/0/
             crate::bridge_shared::uuid_v4()
         ));
         let exported = export_lftp(&servers, &passwords, &tmp).expect("should export");
-        assert_eq!(exported, 2);
+        assert_eq!(exported.exported, 2);
+        assert!(exported.skipped.is_empty());
 
         let result = import_lftp(&tmp).expect("should reimport");
         std::fs::remove_file(&tmp).ok();

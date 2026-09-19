@@ -168,10 +168,32 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
     let (protocol, provider_id, host, username, credential, key_ref, mut opts) = match kind {
         "s3" => {
             let ep = g("endpoint").unwrap_or_default();
+            // Kopia's endpoint is `host[:port]` and its scheme is the
+            // `doNotUseTLS` flag; carry both as the profile's endpoint URL,
+            // or a cleartext endpoint would come back as HTTPS.
+            let ep_host = endpoint_host(&ep);
+            // AWS stays implicit: an explicit endpoint switches the S3
+            // connection to path-style, which AWS refuses for newer buckets.
+            let endpoint_url =
+                if ep_host.is_empty() || map_s3_provider_from_endpoint(&ep_host) == "amazon-s3" {
+                    None
+                } else if ep.starts_with("http://") || ep.starts_with("https://") {
+                    Some(ep.trim_end_matches('/').to_string())
+                } else {
+                    let no_tls = config
+                        .get("doNotUseTLS")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    Some(format!(
+                        "{}://{}",
+                        if no_tls { "http" } else { "https" },
+                        ep_host
+                    ))
+                };
             (
                 "s3",
                 Some(map_s3_provider_from_endpoint(&ep).to_string()),
-                endpoint_host(&ep),
+                ep_host,
                 g("accessKeyID").unwrap_or_default(),
                 g("secretAccessKey"),
                 None,
@@ -180,6 +202,7 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
                     ("prefix", g("prefix")),
                     ("region", g("region")),
                     ("sessionToken", g("sessionToken")),
+                    ("endpoint", endpoint_url),
                 ]),
             )
         }
@@ -205,10 +228,16 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
                 json_map(&[("path", g("path")), ("private_key_path", keyfile)]),
             )
         }
+        // The WebDAV host keeps the whole URL: the repository lives under its
+        // path (`/remote.php/dav/files/<user>/...`), which a bare host drops.
         "webdav" => (
             "webdav",
             Some("custom-webdav".to_string()),
-            endpoint_host(&g("url").unwrap_or_default()),
+            g("url")
+                .unwrap_or_default()
+                .trim()
+                .trim_end_matches('/')
+                .to_string(),
             g("username").unwrap_or_default(),
             g("password"),
             None,
@@ -241,7 +270,13 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
         id: format!("kopia-{}-{}", kind, &uuid_v4()[..8]),
         name: format!("Kopia ({kind})"),
         host,
-        port: default_port_for(protocol),
+        // Kopia's SFTP storage carries its own port; the others address a URL.
+        port: config
+            .get("port")
+            .and_then(|v| v.as_u64())
+            .and_then(|p| u32::try_from(p).ok())
+            .filter(|p| protocol == "sftp" && *p > 0)
+            .unwrap_or_else(|| default_port_for(protocol)),
         username,
         protocol: Some(protocol.to_string()),
         initial_path: None,
@@ -314,6 +349,15 @@ fn storage_block(
     server: &KopiaExportServer,
     secret: Option<&str>,
 ) -> Result<serde_json::Value, String> {
+    // The server the connection itself uses, never `host` read as a bare name.
+    let endpoint = crate::bridge_shared::resolve_export_endpoint(
+        server.protocol.as_deref().unwrap_or(""),
+        &server.host,
+        server.port,
+        &server.username,
+        server.options.as_ref(),
+        server.provider_id.as_deref(),
+    )?;
     let opts = server.options.as_ref().and_then(|v| v.as_object());
     let get = |k: &str| {
         opts.and_then(|m| m.get(k))
@@ -333,30 +377,47 @@ fn storage_block(
                 }
             })
         }
-        Some("s3") => serde_json::json!({
-            "type": "s3",
-            "config": {
+        Some("s3") => {
+            // Kopia wants the bare `host[:port]` and the scheme as a flag.
+            // No endpoint of its own: the profile is on AWS, kopia's default.
+            let (endpoint, no_tls) = match endpoint {
+                Some(ep) => (ep.authority(), !ep.is_tls()),
+                None => ("s3.amazonaws.com".to_string(), false),
+            };
+            let mut config = serde_json::json!({
                 "bucket": get("bucket"),
-                "endpoint": server.host,
+                "endpoint": endpoint,
                 "accessKeyID": server.username,
                 "secretAccessKey": secret.unwrap_or(""),
                 "region": get("region"),
                 "prefix": get("prefix"),
+            });
+            if no_tls {
+                config["doNotUseTLS"] = serde_json::Value::Bool(true);
             }
-        }),
+            serde_json::json!({ "type": "s3", "config": config })
+        }
         Some("sftp") => serde_json::json!({
             "type": "sftp",
             "config": {
                 "host": server.host,
+                "port": server.port,
                 "username": server.username,
-                "path": server.initial_path.clone().unwrap_or_default(),
+                // The start folder, else the repository path an import kept.
+                "path": server
+                    .initial_path
+                    .clone()
+                    .filter(|p| !p.is_empty())
+                    .unwrap_or_else(|| get("path")),
                 "keyfile": get("private_key_path"),
             }
         }),
         Some("webdav") => serde_json::json!({
             "type": "webdav",
             "config": {
-                "url": format!("https://{}", server.host),
+                "url": endpoint
+                    .map(|ep| ep.url())
+                    .ok_or_else(|| "WebDAV profile has no server URL".to_string())?,
                 "username": server.username,
                 "password": secret.unwrap_or(""),
             }
@@ -375,9 +436,8 @@ fn storage_block(
 ///
 /// Kopia connects to a single repository, so a `repository.config` carries
 /// exactly one storage block. When `servers` holds more than one profile
-/// only the first is exported; an empty slice is an error. Returns the
-/// number of profiles written (0 or 1) to match the contract surface of
-/// the other bridge `export_*` functions.
+/// the first is exported and every other one is reported as skipped, so no
+/// profile disappears without a reason; an empty slice is an error.
 ///
 /// The emitted file is the storage-connection block only (consumable by
 /// `kopia repository connect from-config --file <out>`), NOT a full Kopia
@@ -388,7 +448,7 @@ pub fn export_kopia(
     servers: &[KopiaExportServer],
     passwords: &HashMap<String, String>,
     out: &Path,
-) -> Result<usize, String> {
+) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
     let server = servers
         .first()
         .ok_or_else(|| "kopia export: no profile supplied".to_string())?;
@@ -397,7 +457,22 @@ pub fn export_kopia(
     let doc = storage_block(server, secret)?;
     let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
     crate::bridge_shared::atomic_write_600(out, &body)?;
-    Ok(1)
+
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome {
+        exported: 1,
+        skipped: Vec::new(),
+    };
+    for extra in &servers[1..] {
+        outcome.skip(
+            &extra.name,
+            format!(
+                "a kopia config holds one repository and it went to \"{}\": \
+                 export this profile on its own",
+                server.name
+            ),
+        );
+    }
+    Ok(outcome)
 }
 
 #[cfg(test)]
@@ -491,7 +566,9 @@ mod tests {
         let s = &r.servers[0];
         assert_eq!(s.protocol.as_deref(), Some("webdav"));
         assert_eq!(s.provider_id.as_deref(), Some("custom-webdav"));
-        assert_eq!(s.host, "dav.example.com");
+        // The repository lives under the URL's path: a bare host would point
+        // the profile at the server root.
+        assert_eq!(s.host, "https://dav.example.com/remote.php/dav");
         assert_eq!(s.username, "alice");
         assert_eq!(s.credential.as_deref(), Some("davpass"));
     }
@@ -548,7 +625,8 @@ mod tests {
             crate::bridge_shared::uuid_v4()
         ));
         let n = export_kopia(&export, &passwords, &out).expect("export");
-        assert_eq!(n, 1);
+        assert_eq!(n.exported, 1);
+        assert!(n.skipped.is_empty());
 
         let r2 = import_kopia(&out).expect("reimport");
         std::fs::remove_file(&out).ok();

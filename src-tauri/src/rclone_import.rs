@@ -1562,6 +1562,18 @@ impl RcloneExportOutcome {
 /// hundreds of profiles sanitizing to one name; refusing beats looping.
 const MAX_NAME_SUFFIX: usize = 999;
 
+/// The rclone FTP backend's TLS switches for the mode the connection uses
+/// ([`crate::bridge_shared::ftp_tls_mode_for_export`]): `tls` is implicit
+/// FTPS and `explicit_tls` is `AUTH TLS`; rclone refuses both at once. It
+/// has no "TLS if the server offers it", so that mode requires TLS rather
+/// than hand rclone a cleartext session where AeroFTP would have encrypted.
+fn rclone_ftp_tls_lines(protocol: &str, options: Option<&serde_json::Value>) -> &'static str {
+    match crate::bridge_shared::ftp_tls_mode_for_export(protocol, options) {
+        Some("implicit") => "tls = true\n",
+        Some("explicit") | Some("explicit_if_available") => "explicit_tls = true\n",
+        _ => "",
+    }
+}
 /// The section names of one exported file.
 ///
 /// rclone merges duplicate sections key by key with the last one winning, so a
@@ -1753,6 +1765,8 @@ pub fn export_rclone(
                 body.push_str(&format!("host = {}\n", server.host));
                 body.push_str(&format!("port = {}\n", server.port));
                 body.push_str(&format!("user = {}\n", server.username));
+                // An `ftp` profile may still connect with TLS (`tlsMode`).
+                body.push_str(rclone_ftp_tls_lines(proto, server.options.as_ref()));
                 if let Some(pw) = password {
                     body.push_str(&format!(
                         "pass = {}\n",
@@ -1765,7 +1779,7 @@ pub fn export_rclone(
                 body.push_str(&format!("host = {}\n", server.host));
                 body.push_str(&format!("port = {}\n", server.port));
                 body.push_str(&format!("user = {}\n", server.username));
-                body.push_str("explicit_tls = true\n");
+                body.push_str(rclone_ftp_tls_lines(proto, server.options.as_ref()));
                 if let Some(pw) = password {
                     body.push_str(&format!(
                         "pass = {}\n",
@@ -3268,15 +3282,15 @@ user = t
     #[test]
     fn test_export_rclone_ftps_uses_explicit_tls_only() {
         // rclone treats `tls = true` as implicit FTPS and rejects it when
-        // `explicit_tls = true` is also present. AeroFTP's `ftps` profiles are
-        // explicit TLS on port 21, so export must set only `explicit_tls`.
+        // `explicit_tls = true` is also present. An explicit-TLS profile
+        // (`tlsMode`, the key the GUI stores) must set only `explicit_tls`.
         let servers = vec![RcloneExportServer {
             name: "secure-ftp".to_string(),
             host: "ftp.example.com".to_string(),
             port: 21,
             username: "alice".to_string(),
             protocol: Some("ftps".to_string()),
-            options: None,
+            options: Some(serde_json::json!({ "tlsMode": "explicit" })),
             provider_id: None,
         }];
         let mut passwords = HashMap::new();
@@ -3295,6 +3309,51 @@ user = t
             !conf.contains("\ntls = true\n"),
             "must not also enable implicit FTPS:\n{conf}"
         );
+    }
+
+    #[test]
+    fn test_export_rclone_ftp_tls_follows_the_connection_mode() {
+        // The TLS the rclone remote uses is the TLS AeroFTP connects with: an
+        // `ftp` profile with explicit TLS used to become a cleartext remote,
+        // and an implicit `ftps` profile an explicit one.
+        let mk = |name: &str, protocol: &str, mode: Option<&str>| RcloneExportServer {
+            name: name.to_string(),
+            host: "ftp.example.com".to_string(),
+            port: 21,
+            username: "alice".to_string(),
+            protocol: Some(protocol.to_string()),
+            options: mode.map(|m| serde_json::json!({ "tlsMode": m })),
+            provider_id: None,
+        };
+        let servers = vec![
+            mk("ftp-explicit", "ftp", Some("explicit")),
+            mk("ftps-default", "ftps", None),
+            mk("ftp-plain", "ftp", None),
+        ];
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp-test-export-ftp-tls-{}.conf",
+            crate::bridge_shared::uuid_v4()
+        ));
+        export_rclone(&servers, &HashMap::new(), &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+        let section = |name: &str| {
+            let start = conf.find(&format!("[{name}]")).expect(name);
+            let rest = &conf[start + 1..];
+            let end = rest
+                .find("\n[")
+                .map(|e| start + 1 + e)
+                .unwrap_or(conf.len());
+            conf[start..end].to_string()
+        };
+        assert!(
+            section("ftp-explicit").contains("explicit_tls = true"),
+            "{conf}"
+        );
+        // Same default as the connection: `ftps` without a mode is implicit.
+        assert!(section("ftps-default").contains("\ntls = true"), "{conf}");
+        assert!(!section("ftps-default").contains("explicit_tls"), "{conf}");
+        assert!(!section("ftp-plain").contains("tls"), "{conf}");
     }
 
     #[test]

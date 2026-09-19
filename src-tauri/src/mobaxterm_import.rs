@@ -448,13 +448,14 @@ fn sanitize_field(s: &str) -> String {
 /// v1 is metadata-only: MobaXterm's password obfuscation is host-bound and
 /// cannot be reproduced off the target machine, so `passwords` is accepted
 /// for signature symmetry with the other bridge exporters but never written.
-/// MobaXterm prompts for the password on first connect. Returns the number
-/// of exported bookmarks.
+/// MobaXterm prompts for the password on first connect. An FTP profile that
+/// connects with TLS is skipped with the reason: the TLS flag of a MobaXterm FTP bookmark is not
+/// a documented field, and a plain type-99 line would connect without TLS.
 pub fn export_mobaxterm(
     servers: &[MobaxtermExportServer],
     _passwords: &HashMap<String, String>,
     out: &Path,
-) -> Result<usize, String> {
+) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
     let mut ini = String::from(
         "; MobaXterm bookmarks exported by AeroFTP - https://aeroftp.app\n\
          ; v1 export: metadata only. MobaXterm password obfuscation is\n\
@@ -464,16 +465,33 @@ pub fn export_mobaxterm(
          ImgNum=42\n",
     );
 
-    let mut exported = 0;
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
 
     for server in servers {
         let proto = server.protocol.as_deref().unwrap_or("ftp");
+        let tls = crate::bridge_shared::ftp_tls_mode_for_export(proto, server.options.as_ref());
+        if (proto == "ftp" || proto == "ftps") && !matches!(tls, None | Some("none")) {
+            outcome.skip(
+                &server.name,
+                "MobaXterm FTP bookmarks carry no documented TLS field: a plain \
+                 FTP bookmark would send the password without encryption",
+            );
+            continue;
+        }
         let Some(session_type) = protocol_to_session_type(proto) else {
+            outcome.skip(
+                &server.name,
+                format!("protocol {proto} has no MobaXterm bookmark"),
+            );
             continue;
         };
 
         let name = sanitize_field(&server.name);
         if name.is_empty() {
+            outcome.skip(
+                &server.name,
+                "name empty once MobaXterm's delimiters are removed",
+            );
             continue;
         }
         let host = sanitize_field(&server.host);
@@ -488,12 +506,12 @@ pub fn export_mobaxterm(
             name, session_type, host, server.port, user
         ));
 
-        exported += 1;
+        outcome.exported += 1;
     }
 
     crate::bridge_shared::atomic_write_600(out, ini.as_bytes())?;
 
-    Ok(exported)
+    Ok(outcome)
 }
 
 #[cfg(test)]
@@ -619,7 +637,8 @@ RDP Host= #98#0%rdp.lab.test%3389%user%
 
         let tmp = std::env::temp_dir().join("aeroftp-test-moba-roundtrip.ini");
         let exported = export_mobaxterm(&servers, &passwords, &tmp).expect("should export");
-        assert_eq!(exported, 2);
+        assert_eq!(exported.exported, 2);
+        assert!(exported.skipped.is_empty());
 
         let result = import_mobaxterm(&tmp).expect("should re-import");
         std::fs::remove_file(&tmp).ok();
@@ -664,6 +683,8 @@ RDP Host= #98#0%rdp.lab.test%3389%user%
     /// result is None; with MOBAXTERM_INI pointing at a real file it is Some.
     #[test]
     fn test_default_path_env_override() {
+        // Process-wide env: serialised with every other test that edits it.
+        let _env = crate::test_env::lock();
         let prev = std::env::var("MOBAXTERM_INI").ok();
 
         std::env::remove_var("MOBAXTERM_INI");

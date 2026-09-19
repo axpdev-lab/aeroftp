@@ -470,12 +470,14 @@ fn pct_encode_min(s: &str) -> String {
 /// in the real lowercase Dreamweaver schema; the password (looked up by
 /// profile `name` in `passwords`) is re-obscured with `obscure_dreamweaver`
 /// so the `.ste` is byte-stable through `import_dreamweaver` and loadable by
-/// Dreamweaver itself. Returns 1 on success.
+/// Dreamweaver itself. Every other profile is reported as skipped, so none
+/// disappears without a reason. A WebDAV site's `host` is the server URL the
+/// connection uses ([`crate::bridge_shared::resolve_export_endpoint`]).
 pub fn export_dreamweaver(
     servers: &[DreamweaverExportServer],
     passwords: &HashMap<String, String>,
     out: &Path,
-) -> Result<usize, String> {
+) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
     use crate::bridge_shared::atomic_write_600;
 
     let server = servers
@@ -490,12 +492,44 @@ pub fn export_dreamweaver(
             "dreamweaver export: no FTP/FTPS/SFTP/WebDAV profile to write".to_string()
         })?;
 
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
+    for other in servers.iter().filter(|s| !std::ptr::eq(*s, server)) {
+        outcome.skip(
+            &other.name,
+            format!(
+                "a Dreamweaver .ste holds one site and it went to \"{}\": \
+                 export this profile on its own",
+                server.name
+            ),
+        );
+    }
+
     let proto = server.protocol.as_deref().unwrap_or("ftp");
+    // WebDAV: Dreamweaver asks for the server URL, and `host` may hold only a
+    // bare name or nothing at all (a preset), so resolve it as the connection does.
+    let host = if proto == "webdav" {
+        crate::bridge_shared::resolve_export_endpoint(
+            proto,
+            &server.host,
+            server.port,
+            &server.username,
+            server.options.as_ref(),
+            server.provider_id.as_deref(),
+        )?
+        .map(|ep| ep.url())
+        .ok_or_else(|| "dreamweaver export: WebDAV profile has no server URL".to_string())?
+    } else {
+        server.host.clone()
+    };
     // Dreamweaver expresses SFTP as accesstype="ftp" + useSFTP="TRUE"; FTPS
     // as accesstype="ftp" + useSSL="TRUE"; WebDAV via accesstype="webdav".
+    // An `ftp` profile may still connect with TLS (`tlsMode`).
+    let ftp_tls = !matches!(
+        crate::bridge_shared::ftp_tls_mode_for_export(proto, server.options.as_ref()),
+        None | Some("none")
+    );
     let (access_type, use_sftp, use_ssl) = match proto {
-        "ftp" => ("ftp", false, false),
-        "ftps" => ("ftp", false, true),
+        "ftp" | "ftps" => ("ftp", false, ftp_tls),
         "sftp" => ("ftp", true, false),
         "webdav" => ("webdav", false, false),
         _ => unreachable!("filtered above"),
@@ -524,14 +558,14 @@ pub fn export_dreamweaver(
     xml.push_str(&format!(
         "<remoteinfo accesstype=\"{}\" host=\"{}\" remoteroot=\"{}\" user=\"{}\"{}{}{} usepasv=\"TRUE\" useSFTP=\"{}\"/>\n",
         access_type,
-        xml_escape(&server.host),
+        xml_escape(&host),
         pct_encode_min(remoteroot),
         xml_escape(&server.username),
         pw_attr
             .as_deref()
             .map(|p| format!(" pw=\"{p}\""))
             .unwrap_or_default(),
-        if server.port != crate::bridge_shared::default_port_for(proto) {
+        if proto != "webdav" && server.port != crate::bridge_shared::default_port_for(proto) {
             format!(" port=\"{}\"", server.port)
         } else {
             String::new()
@@ -542,7 +576,8 @@ pub fn export_dreamweaver(
     xml.push_str("</site>\n");
 
     atomic_write_600(out, xml.as_bytes())?;
-    Ok(1)
+    outcome.exported = 1;
+    Ok(outcome)
 }
 
 #[cfg(test)]
@@ -723,7 +758,7 @@ mod tests {
             crate::bridge_shared::uuid_v4()
         ));
         let n = export_dreamweaver(&export_servers, &passwords, &out).expect("export");
-        assert_eq!(n, 1, "Dreamweaver .ste is one site per file");
+        assert_eq!(n.exported, 1, "Dreamweaver .ste is one site per file");
 
         let second = import_dreamweaver(&out).expect("reimport");
         std::fs::remove_file(&out).ok();
