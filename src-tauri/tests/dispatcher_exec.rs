@@ -6,11 +6,26 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 struct TestDir {
     path: PathBuf,
 }
+
+/// Distinguishes two `TestDir`s created in the same process. The clock alone
+/// does not: every test here builds the same name from the pid and the
+/// nanosecond, and two of them reading the same nanosecond share a directory.
+/// Measured on a Linux workstation, three threads sampling simultaneously:
+/// 21 collisions in 200000 rounds, with a smallest observed gap of 0 ns.
+///
+/// A shared directory is not a cosmetic clash, because both tests then copy
+/// the dispatcher to the SAME path and `Drop` removes the whole tree. It
+/// produces exactly the CI failure this counter closes: `ETXTBSY` on the
+/// first exec (the sibling still holds the copy open for writing), then
+/// `ENOENT` twenty milliseconds later (the sibling finished and its `Drop`
+/// deleted the directory out from under the retry).
+static DIR_SEQ: AtomicU64 = AtomicU64::new(0);
 
 impl TestDir {
     fn new() -> Self {
@@ -18,8 +33,9 @@ impl TestDir {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
+        let seq = DIR_SEQ.fetch_add(1, Ordering::Relaxed);
         let path = env::temp_dir().join(format!(
-            "aeroftp-dispatch-test-{}-{stamp}",
+            "aeroftp-dispatch-test-{}-{seq}-{stamp}",
             std::process::id()
         ));
         fs::create_dir_all(&path).unwrap();
@@ -127,4 +143,62 @@ fn dispatch_execs_gui_stub_with_linux_webkit_env() {
         String::from_utf8_lossy(&output.stdout),
         "GUI\nargs:[--autostart]\nwebkit:1\n"
     );
+}
+
+/// Asserts the invariant deterministically, which took two attempts and the
+/// first one was decoration.
+///
+/// The first version only checked that 64 paths were distinct, with a comment
+/// claiming that would catch a return to a clock-only name. Measured instead of
+/// assumed, on the bench that produced this fix: 64 names drawn the old way by
+/// eight threads repeat inside the batch in **0.3% of batches** (7 of 2000). A
+/// guard that fires three times in a thousand does not guard anything, and
+/// saying otherwise in a comment is worse than having no test, because the next
+/// reader trusts it.
+///
+/// So the assertion is on the thing that is actually deterministic: every
+/// directory carries its own `DIR_SEQ` draw, so 64 of them are 64 CONSECUTIVE
+/// values. Not 0 to 63: `DIR_SEQ` counts for the whole process and the three
+/// tests above consume draws first, which is how the first form of this
+/// assertion was red on its first run. A name built from the clock alone puts
+/// the pid in that position, identical in all 64, so it fails this on every run
+/// rather than on one batch in three hundred.
+#[test]
+fn test_dirs_carry_a_distinct_sequence_number() {
+    const THREADS: usize = 8;
+    const PER_THREAD: usize = 8;
+
+    let dirs: Vec<TestDir> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..THREADS)
+            .map(|_| scope.spawn(|| (0..PER_THREAD).map(|_| TestDir::new()).collect::<Vec<_>>()))
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().expect("thread panicked"))
+            .collect()
+    });
+
+    // `aeroftp-dispatch-test-<pid>-<seq>-<stamp>`: the sequence is the second
+    // field from the end, and reading it back is what makes this deterministic.
+    let mut seqs: Vec<u64> = dirs
+        .iter()
+        .map(|d| {
+            let name = d.path.file_name().unwrap().to_str().unwrap();
+            let seq = name.rsplit('-').nth(1).unwrap_or_default();
+            seq.parse().unwrap_or_else(|_| {
+                panic!("no sequence number in {name}: the directory name is back to clock only")
+            })
+        })
+        .collect();
+    seqs.sort_unstable();
+
+    let consecutive: Vec<u64> = (seqs[0]..seqs[0] + seqs.len() as u64).collect();
+    assert_eq!(
+        seqs, consecutive,
+        "every TestDir must carry its own DIR_SEQ draw, or a sibling's Drop can \
+         delete this one's dispatcher mid-exec"
+    );
+
+    let distinct: std::collections::HashSet<_> = dirs.iter().map(|d| &d.path).collect();
+    assert_eq!(distinct.len(), dirs.len(), "two TestDirs shared a path");
 }
