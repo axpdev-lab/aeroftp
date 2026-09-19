@@ -78,21 +78,8 @@ PY
 # user can pre-create for `tee` to follow (CWE-377).
 LIVE_LOG="$(mktemp "${TMPDIR:-/tmp}/aerorsync-real-capture.XXXXXX")"
 
-# The container authorises exactly one key, the one `entrypoint.sh` installs
-# as `testuser`'s `authorized_keys` from the bind-mounted `keys/`. It is made
-# here rather than kept in the tree: a private key committed to a public
-# repository invites the reader to work out whether it opens anything real,
-# and the answer being "only a container you could build yourself" is not
-# worth the question. Regenerated only when absent, so a stack left up across
-# runs keeps working.
-ensure_fixture_key() {
-  local dir="$1/keys"
-  mkdir -p "$dir"
-  if [[ ! -f "$dir/id_ed25519" ]]; then
-    ssh-keygen -t ed25519 -N '' -C aeroftp-rsync-test-fixture -f "$dir/id_ed25519" >/dev/null
-  fi
-  chmod 600 "$dir/id_ed25519"
-}
+# shellcheck source=fixture_key.sh
+source "$CAPTURE_DIR/fixture_key.sh"
 
 cleanup() {
   rm -f "$LIVE_LOG"
