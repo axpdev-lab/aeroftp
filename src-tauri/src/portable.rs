@@ -214,6 +214,22 @@ fn copy_file_noclobber(src: &Path, dst: &Path) -> std::io::Result<bool> {
     }
 }
 
+const LEGACY_CONFIG_MERGED_MARKER: &str = ".legacy-config-merged";
+
+/// Merge the legacy tree into `new_dir` once per data root. Without a durable
+/// record every start copied again whatever was missing, so a file the user
+/// deleted from the data root (a database, a plugin) came back from the legacy
+/// tree on the next start.
+fn merge_legacy_config_once(legacy_dir: &Path, new_dir: &Path) -> std::io::Result<bool> {
+    let marker = new_dir.join(LEGACY_CONFIG_MERGED_MARKER);
+    if marker.exists() {
+        return Ok(false);
+    }
+    copy_missing_tree(legacy_dir, new_dir)?;
+    std::fs::write(&marker, b"merged\n")?;
+    Ok(true)
+}
+
 fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
     if cfg!(debug_assertions) || is_portable() {
         return;
@@ -227,8 +243,8 @@ fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
     if !legacy_dir.is_dir() || legacy_dir == new_dir {
         return;
     }
-    match copy_missing_tree(&legacy_dir, new_dir) {
-        Ok(()) => tracing::info!(
+    match merge_legacy_config_once(&legacy_dir, new_dir) {
+        Ok(_) => tracing::info!(
             "Migrated legacy AeroFTP app config from {} to {}",
             legacy_dir.display(),
             new_dir.display()
@@ -1268,5 +1284,55 @@ mod identifier_scoped_state_tests {
         carry_file_if_absent(&src, &dst);
 
         assert_eq!(std::fs::read(&dst).unwrap(), b"{\"main\":{}}");
+    }
+}
+
+// SECVAL-B (2026-09-19), lead 7: the legacy merge has no durable marker, so
+// the second start runs `copy_missing_tree` again. Modelled here as two calls
+// (the wrapper returns early under debug_assertions, so a test build cannot
+// call it; in a release build each process start calls it once).
+#[cfg(test)]
+mod secval_b_tests {
+    use super::*;
+
+    #[test]
+    fn lead7_a_file_deleted_from_the_data_root_stays_deleted() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("com.aeroftp.AeroFTP");
+        let current = root.path().join("aeroftp");
+        std::fs::create_dir_all(legacy.join("plugins").join("oldplugin")).unwrap();
+        std::fs::write(
+            legacy.join("plugins").join("oldplugin").join("plugin.json"),
+            b"{\"id\":\"oldplugin\"}",
+        )
+        .unwrap();
+        {
+            let c = rusqlite::Connection::open(legacy.join("agent_memory.db")).unwrap();
+            c.execute_batch(
+                "CREATE TABLE m(t TEXT); INSERT INTO m VALUES('pre-migration memory');",
+            )
+            .unwrap();
+        }
+        // Start 1 (first run after the upgrade): copies everything.
+        merge_legacy_config_once(&legacy, &current).unwrap();
+        assert!(current.join("agent_memory.db").is_file());
+        assert!(current.join("plugins/oldplugin/plugin.json").is_file());
+
+        // The user wipes the agent memory and uninstalls the plugin
+        // (remove_plugin is remove_dir_all on the data-root copy).
+        std::fs::remove_file(current.join("agent_memory.db")).unwrap();
+        std::fs::remove_dir_all(current.join("plugins/oldplugin")).unwrap();
+
+        // Start 2: same call, nothing on disk records that start 1 happened.
+        merge_legacy_config_once(&legacy, &current).unwrap();
+        let memory_back = current.join("agent_memory.db").exists();
+        let plugin_back = current.join("plugins/oldplugin/plugin.json").exists();
+        eprintln!(
+            "after start 2: agent_memory.db back = {memory_back}, plugin back = {plugin_back}"
+        );
+        assert!(
+            !memory_back && !plugin_back,
+            "files deleted from the data root came back from the legacy tree"
+        );
     }
 }

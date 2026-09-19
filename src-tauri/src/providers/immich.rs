@@ -173,14 +173,34 @@ impl ImmichConfig {
     }
 
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let base_url = if config.host.is_empty() {
+        let host = config.host.trim();
+        if host.is_empty() {
             return Err(ProviderError::Other(
                 "Missing Immich server URL".to_string(),
             ));
-        } else if config.host.starts_with("http") {
-            config.host.clone()
-        } else {
-            format!("https://{}", config.host)
+        }
+        // Parse instead of testing a prefix: `starts_with("http")` took
+        // `httpd.example.com` for a URL and prefixed `HTTPS://host` or
+        // `ftp://host` with a second scheme, which reqwest reads as a request
+        // to a host named `https` or `ftp`.
+        let base_url = match url::Url::parse(host) {
+            Ok(u) if matches!(u.scheme(), "http" | "https") && u.has_host() => {
+                u.as_str().to_string()
+            }
+            Ok(u) if host.contains("://") => {
+                return Err(ProviderError::Other(format!(
+                    "Unsupported Immich URL scheme '{}': use http:// or https://",
+                    u.scheme()
+                )));
+            }
+            // An explicit scheme that does not parse is a typo in a URL, not a
+            // bare host: prefixing it would produce `https://http://...`.
+            Err(e) if host.contains("://") => {
+                return Err(ProviderError::Other(format!(
+                    "Invalid Immich server URL '{host}': {e}"
+                )));
+            }
+            _ => format!("https://{}", host),
         };
 
         let api_key = config
@@ -1832,6 +1852,60 @@ mod tests {
             assert!(m.contains("Rate limited"));
         } else {
             panic!("429 must map to Other");
+        }
+    }
+}
+
+// SECVAL-B (2026-09-19), lead 8: what `starts_with("http")` lets through, and
+// what reqwest then does with it. No request can reach the network here: the
+// hosts are `.invalid` and every non-http(s) URL is refused before a socket.
+#[cfg(test)]
+mod secval_b_tests {
+    use super::*;
+
+    fn cfg(host: &str) -> ProviderConfig {
+        ProviderConfig {
+            name: "t".into(),
+            provider_type: ProviderType::Immich,
+            host: host.into(),
+            port: None,
+            username: None,
+            password: Some("k".into()),
+            initial_path: None,
+            extra: Default::default(),
+        }
+    }
+
+    #[test]
+    fn lead8_host_forms() {
+        // Parser only: no request is built or sent.
+        let accepted = [
+            ("http://127.0.0.1:9", "http://127.0.0.1:9"),
+            ("https://photos.invalid", "https://photos.invalid"),
+            ("photos.invalid", "https://photos.invalid"),
+            ("http-evil.invalid", "https://http-evil.invalid"),
+            ("httpd.secval.invalid", "https://httpd.secval.invalid"),
+            ("HTTPS://upper.invalid", "https://upper.invalid"),
+        ];
+        for (host, expected) in accepted {
+            let config = ImmichConfig::from_provider_config(&cfg(host))
+                .unwrap_or_else(|e| panic!("{host} rejected: {e}"));
+            assert_eq!(
+                config.base_url.trim_end_matches('/'),
+                expected,
+                "base_url for {host}"
+            );
+        }
+        for host in [
+            "httpx://secval.invalid",
+            "ftp://secval.invalid",
+            "https://",
+            "http://bad host",
+        ] {
+            assert!(
+                ImmichConfig::from_provider_config(&cfg(host)).is_err(),
+                "{host} must be refused"
+            );
         }
     }
 }
