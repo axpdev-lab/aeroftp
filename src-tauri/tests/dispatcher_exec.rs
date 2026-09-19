@@ -64,13 +64,20 @@ impl Drop for TestDir {
 /// anything that spawns takes it shared. It never serialises execs against each
 /// other, which is what the tests are actually measuring, and it is enough on
 /// its own because file descriptors are per process.
+/// Taken with `unwrap_or_else(|e| e.into_inner())` on both sides, never with
+/// `unwrap()`. The guarded value is `()`, so there is no invariant a panic
+/// could leave half-built and nothing to protect by refusing the lock. What
+/// poisoning would do here is turn one red into many: a test that panics while
+/// writing an executable poisons the lock, every other test then fails on
+/// `PoisonError` instead of on its own assertion, and the failure that actually
+/// happened is buried among the ones it caused.
 static FORK_GUARD: RwLock<()> = RwLock::new(());
 
 fn copy_dispatcher(test_dir: &Path) -> PathBuf {
     let src = env!("CARGO_BIN_EXE_aeroftp-dispatch");
     let dst = test_dir.join("aeroftp-dispatch");
     {
-        let _writing = FORK_GUARD.write().unwrap();
+        let _writing = FORK_GUARD.write().unwrap_or_else(|e| e.into_inner());
         fs::copy(src, &dst).unwrap();
         let mut perms = fs::metadata(&dst).unwrap().permissions();
         perms.set_mode(0o755);
@@ -80,7 +87,7 @@ fn copy_dispatcher(test_dir: &Path) -> PathBuf {
 }
 
 fn write_stub(path: &Path, name: &str, exit_code: i32) {
-    let _writing = FORK_GUARD.write().unwrap();
+    let _writing = FORK_GUARD.write().unwrap_or_else(|e| e.into_inner());
     fs::write(
         path,
         format!(
@@ -102,7 +109,7 @@ fn run_dispatcher(dispatcher: &Path, arg0: &str, args: &[&str]) -> Output {
     // dispatcher's own exec of the stub is a single `execve` inside another
     // binary, which is where the remaining CI red actually landed (exit 127,
     // `exec failed: Text file busy`, measured twice in 5000 runs under load).
-    let _spawning = FORK_GUARD.read().unwrap();
+    let _spawning = FORK_GUARD.read().unwrap_or_else(|e| e.into_inner());
     let mut cmd = Command::new(dispatcher);
     cmd.arg0(arg0);
     cmd.args(args);
