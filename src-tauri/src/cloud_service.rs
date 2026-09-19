@@ -784,6 +784,18 @@ impl CloudService {
             index.as_ref(),
         );
 
+        // A provider whose successful listing can omit a stored object
+        // (`listing_is_authoritative() == false`, ImageKit) cannot authorise
+        // deleting a local file by that file's absence: the same rule
+        // `sync::remote_listing_delete_guard` applies on the shared path.
+        if !provider.listing_is_authoritative() {
+            for c in &mut comparisons {
+                if c.status == SyncStatus::LocalOnly {
+                    c.previously_synced = false;
+                }
+            }
+        }
+
         // Safety gate: refuse to propagate deletes when a mass disappearance
         // looks like a transient/partial listing failure (a whole side empty,
         // or deletes exceeding half the baseline) rather than a real user delete.
@@ -2532,6 +2544,260 @@ mod baseline_tests {
         assert!(
             complete,
             "absent local root stays a complete empty map (empty-side gate covers it)"
+        );
+    }
+}
+
+// SECVAL-B (2026-09-19), lead 5: AeroCloud on a provider whose successful
+// listing can omit a stored object (ImageKit: `listing_is_authoritative()` is
+// false). Run with XDG_CONFIG_HOME pointing at a scratch folder: the sync index
+// and cloud config are written under the data root.
+#[cfg(test)]
+mod secval_b_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Stores what is uploaded, lists every stored object EXCEPT `omit`
+    /// (the ImageKit Media Library behaviour measured on 2026-08-01).
+    struct OmittingProvider {
+        cwd: String,
+        stored: HashMap<String, (u64, String)>,
+        omit: Vec<String>,
+        deletes: Arc<AtomicUsize>,
+    }
+
+    fn parent_and_name(p: &str) -> (String, String) {
+        let p = p.trim_end_matches('/');
+        match p.rfind('/') {
+            Some(0) => ("/".to_string(), p[1..].to_string()),
+            Some(i) => (p[..i].to_string(), p[i + 1..].to_string()),
+            None => ("/".to_string(), p.to_string()),
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for OmittingProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> crate::providers::ProviderType {
+            crate::providers::ProviderType::ImageKit
+        }
+        fn display_name(&self) -> String {
+            "omitting".to_string()
+        }
+        fn listing_is_authoritative(&self) -> bool {
+            false
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<ProviderRemoteEntry>, ProviderError> {
+            let mut out = Vec::new();
+            for (full, (size, mtime)) in &self.stored {
+                let (parent, name) = parent_and_name(full);
+                if parent == self.cwd && !self.omit.contains(&name) {
+                    let mut e = ProviderRemoteEntry::directory(name.clone(), full.clone());
+                    e.is_dir = false;
+                    e.size = *size;
+                    e.modified = Some(mtime.clone());
+                    out.push(e);
+                }
+            }
+            Ok(out)
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok(self.cwd.clone())
+        }
+        async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.cwd = path.trim_end_matches('/').to_string();
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            local_path: &str,
+            remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            let meta =
+                std::fs::metadata(local_path).map_err(|e| ProviderError::Other(e.to_string()))?;
+            let mtime: DateTime<Utc> = meta.modified().unwrap().into();
+            self.stored
+                .insert(remote_path.to_string(), (meta.len(), mtime.to_rfc3339()));
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.deletes.fetch_add(1, Ordering::SeqCst);
+            self.stored.remove(path);
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<ProviderRemoteEntry, ProviderError> {
+            let (size, mtime) = self
+                .stored
+                .get(path)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            let (_, name) = parent_and_name(path);
+            let mut e = ProviderRemoteEntry::directory(name, path.to_string());
+            e.is_dir = false;
+            e.size = size;
+            e.modified = Some(mtime);
+            Ok(e)
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            self.stored
+                .get(path)
+                .map(|(s, _)| *s)
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(self.stored.contains_key(path))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("omitting".to_string())
+        }
+    }
+
+    // The AeroCloud stack wraps the provider in AeroCompress (compress_enabled)
+    // and/or a crypt overlay; the wrapper must carry the inner provider's answer.
+    #[test]
+    fn lead5_overlay_keeps_the_inner_listing_authority() {
+        let inner = OmittingProvider {
+            cwd: "/".into(),
+            stored: HashMap::new(),
+            omit: vec![],
+            deletes: Arc::new(AtomicUsize::new(0)),
+        };
+        assert!(!inner.listing_is_authoritative());
+        let wrapped = CompressOverlayProvider::new(Box::new(inner), 3);
+        assert!(
+            !wrapped.listing_is_authoritative(),
+            "CompressOverlayProvider reports the trait default `true` over a non-authoritative provider"
+        );
+    }
+
+    // Linux only: the sync index lives under the AeroFTP data root, which
+    // `XDG_CONFIG_HOME` moves on Linux only, and the property under test does
+    // not depend on the platform. Synchronous, so the shared environment lock
+    // (a std mutex) is never held across an `.await`.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn lead5_unlisted_object_does_not_delete_the_local_file() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime")
+                .block_on(lead5_body())
+        });
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn lead5_body() {
+        let root = tempfile::tempdir().unwrap();
+        let local = root.path().join("AeroCloud");
+        std::fs::create_dir_all(&local).unwrap();
+        for i in 1..=5 {
+            std::fs::write(local.join(format!("photo{i}.jpg")), format!("jpeg {i}")).unwrap();
+        }
+        let config = CloudConfig {
+            enabled: true,
+            local_folder: local.clone(),
+            remote_folder: format!("/secval-{}", std::process::id()),
+            protocol_type: "imagekit".to_string(),
+            sync_direction: CompareDirection::Bidirectional,
+            ..CloudConfig::default()
+        };
+        eprintln!(
+            "defaults: direction={:?} versioning={:?}",
+            config.sync_direction, config.versioning_strategy
+        );
+        let deletes = Arc::new(AtomicUsize::new(0));
+        let mut provider = OmittingProvider {
+            cwd: "/".into(),
+            stored: HashMap::new(),
+            omit: vec!["photo3.jpg".to_string()],
+            deletes: deletes.clone(),
+        };
+        let svc = CloudService::new();
+        svc.init(config.clone()).await;
+
+        let r1 = svc
+            .perform_full_sync_with_provider(&mut provider)
+            .await
+            .unwrap();
+        eprintln!(
+            "cycle 1: uploaded={} deleted={} errors={:?}",
+            r1.uploaded, r1.deleted, r1.errors
+        );
+        assert_eq!(r1.uploaded, 5);
+        assert!(provider.stored.len() == 5, "the object IS stored remotely");
+
+        let r2 = svc
+            .perform_full_sync_with_provider(&mut provider)
+            .await
+            .unwrap();
+        let still_there = local.join("photo3.jpg").exists();
+        let archived = local.join(".aeroversions").exists();
+        eprintln!(
+            "cycle 2: uploaded={} deleted={} errors={:?}; local photo3.jpg exists={still_there}; .aeroversions present={archived}; remote deletes={}",
+            r2.uploaded,
+            r2.deleted,
+            r2.errors,
+            deletes.load(Ordering::SeqCst)
+        );
+        assert!(
+            still_there,
+            "AeroCloud deleted a local file because a non-authoritative listing omitted it"
         );
     }
 }

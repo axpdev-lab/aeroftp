@@ -365,6 +365,12 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.server_info().await
     }
 
+    fn listing_is_authoritative(&self) -> bool {
+        // The wrapper lists what the inner provider lists: a listing that can
+        // omit stored objects stays non-authoritative through the overlay.
+        self.inner.listing_is_authoritative()
+    }
+
     fn reports_exact_size(&self) -> bool {
         // Compress changes size; we do not map wire->plain without I/O.
         // Sync honors this and drops size-compare (timestamp-driven).
