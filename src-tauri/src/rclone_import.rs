@@ -1579,9 +1579,28 @@ const MAX_NAME_SUFFIX: usize = 999;
 /// has no "TLS if the server offers it", so that mode requires TLS rather
 /// than hand rclone a cleartext session where AeroFTP would have encrypted.
 fn rclone_ftp_tls_lines(protocol: &str, options: Option<&serde_json::Value>) -> &'static str {
+    // `disable_tls13` travels with either mode, and it is not a workaround for
+    // someone else's bug: it is the same decision this client makes for itself,
+    // written where rclone can read it.
+    //
+    // RFC 4217 section 10.2 requires every data connection to resume the SAME
+    // TLS session as the control connection, and servers enforce it (vsftpd's
+    // `require_ssl_reuse` defaults to on and is usually absent from the config
+    // file, so it applies without being written). Under TLS 1.3 a ticket is
+    // single-use, so the data connection resumes a DIFFERENT session and the
+    // server refuses it. `providers::ftp::make_tls_connector` pins TLS 1.2 for
+    // exactly this reason.
+    //
+    // Measured on 2026-09-19 against the lab vsftpd: rclone with only
+    // `explicit_tls` fails the transfer with `426 Failure reading network
+    // stream`, and the same rclone with `--ftp-disable-tls13` completes and
+    // the bytes land. Exporting the first form hands the user a remote this
+    // client knows cannot work against a server that follows the RFC.
     match crate::bridge_shared::ftp_tls_mode_for_export(protocol, options) {
-        Some("implicit") => "tls = true\n",
-        Some("explicit") | Some("explicit_if_available") => "explicit_tls = true\n",
+        Some("implicit") => "tls = true\ndisable_tls13 = true\n",
+        Some("explicit") | Some("explicit_if_available") => {
+            "explicit_tls = true\ndisable_tls13 = true\n"
+        }
         _ => "",
     }
 }
@@ -3365,6 +3384,24 @@ user = t
         assert!(section("ftps-default").contains("\ntls = true"), "{conf}");
         assert!(!section("ftps-default").contains("explicit_tls"), "{conf}");
         assert!(!section("ftp-plain").contains("tls"), "{conf}");
+
+        // Both TLS modes carry `disable_tls13`, and a cleartext remote carries
+        // nothing. Measured against the lab vsftpd on 2026-09-19: without this
+        // line rclone fails the transfer with `426 Failure reading network
+        // stream`, because RFC 4217 section 10.2 wants the data connection to
+        // resume the control connection's session and a TLS 1.3 ticket is
+        // single-use. `providers::ftp::make_tls_connector` pins TLS 1.2 for the
+        // same reason, so an export without this hands the user a remote that
+        // this client already knows cannot work.
+        assert!(
+            section("ftp-explicit").contains("disable_tls13 = true"),
+            "{conf}"
+        );
+        assert!(
+            section("ftps-default").contains("disable_tls13 = true"),
+            "{conf}"
+        );
+        assert!(!section("ftp-plain").contains("disable_tls13"), "{conf}");
     }
 
     #[test]

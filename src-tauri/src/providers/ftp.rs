@@ -242,7 +242,18 @@ impl FtpProvider {
     /// session than the control channel.  TLS 1.2 session-ID resumption is
     /// non-destructive and satisfies the RFC 4217 requirement that every data
     /// connection resumes the *same* session as the control connection.
-    /// This matches the behaviour of FileZilla, WinSCP, and CyberDuck.
+    ///
+    /// This used to add "matches the behaviour of FileZilla, WinSCP, and
+    /// CyberDuck". The Cyberduck half is withdrawn: measured on 2026-09-19
+    /// against a stock vsftpd (`require_ssl_reuse` left at its default), the
+    /// `duck` 9.5.4 native CLI connects, authenticates and lists over explicit
+    /// FTPS and then cannot transfer, leaving a zero-byte file on the server.
+    /// The symptom is consistent with the reuse requirement above but was not
+    /// proven for it, since that build exposes no TLS-version knob to flip;
+    /// for rclone the same run proved it, because `--ftp-disable-tls13` turns
+    /// a `426 Failure reading network stream` into a completed transfer. What
+    /// stands is the reason for the cap, not the list of clients that share
+    /// it.
     fn make_tls_connector(&self) -> Result<AsyncRustlsConnector, ProviderError> {
         // Name the crypto backend explicitly rather than relying on rustls'
         // process-level default. Both `aws-lc-rs` and `ring` are in the
