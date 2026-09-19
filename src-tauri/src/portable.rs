@@ -626,7 +626,11 @@ fn reclaim_dead_staging(parent: &Path, prefix: &str) {
         else {
             continue;
         };
-        if pid != std::process::id() && !crate::aerovault_v3::process_is_alive(pid) {
+        // Our own pid cannot be a copy in progress: this process has not
+        // started one yet, so a directory under our pid was left by a dead
+        // process that had the same pid, and adopting it would carry its
+        // stale files into place.
+        if pid == std::process::id() || !crate::aerovault_v3::process_is_alive(pid) {
             let _ = std::fs::remove_dir_all(entry.path());
         }
     }
@@ -1187,6 +1191,10 @@ mod identifier_scoped_state_tests {
         let dead = child.id();
         child.wait().unwrap();
         let prefix = format!(".{APP_IDENTIFIER}.carry-");
+        // A directory under our own pid, left by a dead process that had it.
+        let reused = root.path().join(format!("{prefix}{}", std::process::id()));
+        std::fs::create_dir_all(&reused).unwrap();
+        std::fs::write(reused.join("stale"), b"from a dead process").unwrap();
         let stale = root.path().join(format!("{prefix}{dead}"));
         std::fs::create_dir_all(stale.join("half-copied")).unwrap();
         // On Unix pid 1 is always alive, so its staging must survive.
@@ -1200,6 +1208,10 @@ mod identifier_scoped_state_tests {
         carry_tree_if_absent(&src, &dst);
 
         assert!(!stale.exists(), "staging of a dead start left behind");
+        assert!(
+            !dst.join("stale").exists(),
+            "a staging directory under our reused pid was adopted"
+        );
         #[cfg(unix)]
         assert!(live.exists(), "staging of a live start removed");
         assert_eq!(std::fs::read(dst.join("state")).unwrap(), b"old");
