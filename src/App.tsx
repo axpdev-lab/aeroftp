@@ -6832,7 +6832,7 @@ const App: React.FC = () => {
       timeout: effectiveParams.options?.timeout || 30,
       tls_mode: protocol === 'webdav'
         ? effectiveParams.options?.webdavScheme
-        : effectiveParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
+        : effectiveParams.options?.tlsMode || effectiveParams.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
       verify_cert: effectiveParams.options?.verifyCert !== undefined ? effectiveParams.options.verifyCert : true,
       allow_cleartext_storage: effectiveParams.options?.allowCleartextStorage === true,
       two_factor_code: effectiveParams.options?.two_factor_code || null,
@@ -8775,7 +8775,7 @@ const App: React.FC = () => {
             private_key_path: cloudServer.options?.private_key_path || null,
             key_passphrase: cloudServer.options?.key_passphrase || null,
             timeout: cloudServer.options?.timeout || 30,
-            tls_mode: cloudServer.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
+            tls_mode: cloudServer.options?.tlsMode || cloudServer.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
             verify_cert: cloudServer.options?.verifyCert !== undefined ? cloudServer.options.verifyCert : true,
             allow_cleartext_storage: cloudServer.options?.allowCleartextStorage === true,
             two_factor_code: cloudServer.options?.two_factor_code || null,
