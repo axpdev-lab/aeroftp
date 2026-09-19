@@ -463,7 +463,7 @@ aeroftp-cli pget --profile "AWS S3" /backup/big.tar.gz --json
 
 Alias of `get` with a parallel-segments preset. Splits a single file into N byte ranges and downloads them concurrently, then stitches them back together. Useful when latency or per-connection throughput is the bottleneck (large `.tar.gz` archives, S3 buckets from far regions). Falls back to a single sequential stream when the provider does not advertise range-request support.
 
-Plain `get` is multi-threaded by default as well, on the same terms as rclone: files at or above `--multi-thread-cutoff` (default `250M`) are fetched with `--multi-thread-streams` concurrent range streams (default `4`) when the provider implements ranged multi-stream downloads (S3, Backblaze B2, SFTP and FTP on independent connections, WebDAV and Koofr after a strict 206 probe); smaller files and backends without strict ranges use one stream. `--multi-thread-streams 1` restores the single-stream behaviour, and `AEROFTP_MULTI_THREAD_STREAMS` sets the default for a shell.
+Plain `get` is multi-threaded by default as well, on the same terms as rclone: files at or above `--multi-thread-cutoff` (default `250M`) are fetched with `--multi-thread-streams` concurrent range streams (default `4`) when the provider implements the option (S3, Backblaze B2, SFTP and FTP on independent connections, WebDAV and Koofr after a strict 206 probe; other providers can still split a download through the desktop app's segmented path when a segment count is configured); smaller files and backends without strict ranges use one stream. `--multi-thread-streams 1` restores the single-stream behaviour, and `AEROFTP_MULTI_THREAD_STREAMS` sets the default for a shell.
 
 ### put - Upload Files
 
