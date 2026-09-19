@@ -156,13 +156,19 @@ fn dispatch_execs_gui_stub_with_linux_webkit_env() {
 /// saying otherwise in a comment is worse than having no test, because the next
 /// reader trusts it.
 ///
-/// So the assertion is on the thing that is actually deterministic: every
-/// directory carries its own `DIR_SEQ` draw, so 64 of them are 64 CONSECUTIVE
-/// values. Not 0 to 63: `DIR_SEQ` counts for the whole process and the three
-/// tests above consume draws first, which is how the first form of this
-/// assertion was red on its first run. A name built from the clock alone puts
-/// the pid in that position, identical in all 64, so it fails this on every run
-/// rather than on one batch in three hundred.
+/// The second attempt asserted that the 64 draws were CONSECUTIVE, and that was
+/// flaky for the very reason this file exists. `DIR_SEQ` counts for the whole
+/// process, the three tests above run in parallel with this one, and a sibling
+/// drawing while these 64 are in flight lands INSIDE the range: the values stay
+/// distinct, the range gains a hole, and the assertion fails. Predicted from the
+/// code in review by a second reader, then measured here: 8 red runs in 200 with
+/// `--test-threads=8`. An assertion that depends on scheduling rather than on a
+/// property is the same defect as a directory name that depends on the clock.
+///
+/// So the assertion is only that the 64 draws are DISTINCT, which `fetch_add`
+/// guarantees whatever the siblings do. It still fails on every run against a
+/// clock-only name, because `rsplit` then reads the pid out of that position and
+/// all 64 are identical.
 #[test]
 fn test_dirs_carry_a_distinct_sequence_number() {
     const THREADS: usize = 8;
@@ -180,7 +186,7 @@ fn test_dirs_carry_a_distinct_sequence_number() {
 
     // `aeroftp-dispatch-test-<pid>-<seq>-<stamp>`: the sequence is the second
     // field from the end, and reading it back is what makes this deterministic.
-    let mut seqs: Vec<u64> = dirs
+    let seqs: Vec<u64> = dirs
         .iter()
         .map(|d| {
             let name = d.path.file_name().unwrap().to_str().unwrap();
@@ -190,11 +196,10 @@ fn test_dirs_carry_a_distinct_sequence_number() {
             })
         })
         .collect();
-    seqs.sort_unstable();
-
-    let consecutive: Vec<u64> = (seqs[0]..seqs[0] + seqs.len() as u64).collect();
+    let distinct_seqs: std::collections::HashSet<u64> = seqs.iter().copied().collect();
     assert_eq!(
-        seqs, consecutive,
+        distinct_seqs.len(),
+        seqs.len(),
         "every TestDir must carry its own DIR_SEQ draw, or a sibling's Drop can \
          delete this one's dispatcher mid-exec"
     );
