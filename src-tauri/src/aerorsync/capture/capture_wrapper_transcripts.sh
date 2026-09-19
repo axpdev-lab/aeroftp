@@ -12,12 +12,9 @@ KEEP_STACK="${KEEP_STACK:-0}"
 
 mkdir -p "$OUT_DIR" "$KEY_DIR" "$WORKSPACE_DIR/remote" "$WORKSPACE_DIR/local"
 
-if [[ ! -f "$KEY_DIR/id_ed25519" ]]; then
-  ssh-keygen -q -t ed25519 -N '' -f "$KEY_DIR/id_ed25519"
-fi
-
-chmod 600 "$KEY_DIR/id_ed25519"
-chmod 644 "$KEY_DIR/id_ed25519.pub"
+# shellcheck source=fixture_key.sh
+source "$ROOT_DIR/fixture_key.sh"
+ensure_fixture_key "$ROOT_DIR"
 
 cleanup() {
   if [[ "$KEEP_STACK" != "1" ]]; then

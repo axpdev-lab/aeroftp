@@ -6,6 +6,14 @@ the native rsync (aerorsync) stack is developed against.
 Everything here is prototype-only and already covered by the repository
 `.gitignore` for `src-tauri/src/aerorsync/`.
 
+**The SSH key under `keys/` is generated on first run and is never committed.**
+It authorises exactly one account, `testuser` inside the throwaway lane-3
+container, and nothing else: no developer machine, no NAS, no GitHub account.
+A fixed pair used to live here; it was removed because a private key in a
+public repository has to be investigated by everyone who finds it, and
+"it only opens a container you could build yourself" is not an answer anybody
+should have to reconstruct.
+
 ## Lane matrix
 
 | lane | port | stack file                        | container name               | role                                                                 |

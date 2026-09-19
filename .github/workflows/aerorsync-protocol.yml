@@ -241,6 +241,13 @@ jobs:
         shell: bash
         run: |
           set -u
+          # The harness key is made here, not kept in the tree. It authorises
+          # only `testuser` inside this throwaway container, so committing a
+          # fixed pair would put a private key in a public repository that
+          # opens nothing and still has to be explained to everyone who finds
+          # it. `entrypoint.sh` installs whatever `keys/` holds.
+          mkdir -p keys
+          ssh-keygen -t ed25519 -N '' -C aeroftp-rsync-test-fixture -f keys/id_ed25519
           chmod 600 keys/id_ed25519
           for attempt in 1 2 3; do
             # Same as the pre-pull step above: `$?` after a plain `if` is the
