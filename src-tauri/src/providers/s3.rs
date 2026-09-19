@@ -9295,8 +9295,9 @@ mod tests {
     #[tokio::test]
     async fn filebase_refuses_a_delta_before_any_request() {
         let mut provider = make_provider(Some("https://s3.filebase.io"));
-        // No server behind the endpoint: reaching the network would fail the
-        // call, so an `Ok(Refused)` proves the gate answered first.
+        // The credentials are fake: a request that reached Filebase would
+        // come back as an error, so an `Ok(Refused)` proves the gate answered
+        // before any request was made.
         provider.connected = true;
         let dir = tempfile::tempdir().unwrap();
         let local = dir.path().join("large.bin");
