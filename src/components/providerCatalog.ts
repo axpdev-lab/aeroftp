@@ -592,6 +592,28 @@ export function companyTierInCategory(
     return inCat.some(p => !p.paid) ? 'free' : 'paid';
 }
 
+/**
+ * Whether a company belongs under a tier filter in the given category tab.
+ *
+ * Inside a category this is [`companyTierInCategory`]. Under "All" it is the
+ * union over every category the company appears in, plus the whole-company
+ * tier: "All" is the sum of the tabs, so a row found under Paid in one tab must
+ * also be found under All + Paid. It was not (Ehud #274): MEGA's S4 is paid-only
+ * in the S3 tab, but under All the whole-company tier (`free`) was the only
+ * answer, so All + Paid had no MEGA while S3 + Paid did. A hybrid company can
+ * therefore sit under both Free tier and Paid in "All", which is true of it.
+ */
+export function companyMatchesTier(
+    c: CatalogCompany,
+    category: CatalogCategoryId | 'all',
+    tier: CompanyTier,
+): boolean {
+    if (category !== 'all') return companyTierInCategory(c, category) === tier;
+    if (companyTier(c) === tier) return true;
+    const categories = new Set(c.protocols.map(p => p.category));
+    return [...categories].some(cat => companyTierInCategory(c, cat) === tier);
+}
+
 /** True when any of the company's connection methods belongs to `category`. */
 export function companyInCategory(c: CatalogCompany, category: CatalogCategoryId): boolean {
     return c.protocols.some(p => p.category === category);

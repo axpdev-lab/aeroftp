@@ -31,7 +31,7 @@ import {
     paidProtocols,
     companyRegions,
     companyLaunchProtocol,
-    companyTierInCategory,
+    companyMatchesTier,
     catalogParentKey,
 } from '../providerCatalog';
 
@@ -187,9 +187,9 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         let rows = q ? companies.filter(c => searchText(c).includes(q)) : companies.slice();
-        if (tierFilter === 'free') rows = rows.filter(c => companyTierInCategory(c, category) === 'free');
-        else if (tierFilter === 'freecard') rows = rows.filter(c => companyTierInCategory(c, category) === 'free-card');
-        else if (tierFilter === 'paid') rows = rows.filter(c => companyTierInCategory(c, category) === 'paid');
+        if (tierFilter === 'free') rows = rows.filter(c => companyMatchesTier(c, category, 'free'));
+        else if (tierFilter === 'freecard') rows = rows.filter(c => companyMatchesTier(c, category, 'free-card'));
+        else if (tierFilter === 'paid') rows = rows.filter(c => companyMatchesTier(c, category, 'paid'));
         const dir = effectiveSort.dir === 'asc' ? 1 : -1;
         rows.sort((a, b) => {
             switch (effectiveSort.colId) {

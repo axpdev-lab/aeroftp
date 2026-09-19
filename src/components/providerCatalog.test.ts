@@ -18,6 +18,7 @@ import {
     companyLaunchProtocol,
     companyTier,
     companyTierInCategory,
+    companyMatchesTier,
 } from './providerCatalog';
 
 describe('CLI catalog drift guard', () => {
@@ -287,6 +288,29 @@ describe('commercial tier model: free / free-card / paid', () => {
         const aws = PROVIDER_CATALOG.find(x => x.company === 'Amazon Web Services (AWS)');
         expect(aws, 'AWS present').toBeDefined();
         expect(companyTierInCategory(aws!, 'object-storage'), 'AWS under S3 tab').toBe('paid');
+    });
+
+    it('every row found under a tab and tier is also found under All with that tier (#274)', () => {
+        // Ehud's suggested check, over the whole catalog rather than one case:
+        // "All" is the sum of the tabs, so no company may appear in some
+        // category + tier and be missing from All + the same tier. MEGA was the
+        // instance found (S3 + Paid yes, All + Paid no).
+        const tiers = ['free', 'free-card', 'paid'] as const;
+        const missing: string[] = [];
+        for (const c of PROVIDER_CATALOG) {
+            const categories = new Set(c.protocols.map(p => p.category));
+            for (const cat of categories) {
+                for (const tier of tiers) {
+                    if (companyMatchesTier(c, cat, tier) && !companyMatchesTier(c, 'all', tier)) {
+                        missing.push(`${c.company}: ${cat} + ${tier}`);
+                    }
+                }
+            }
+        }
+        expect(missing, 'shown in a tab + tier but not in All + that tier').toEqual([]);
+        const mega = PROVIDER_CATALOG.find(x => x.company === 'MEGA')!;
+        expect(companyMatchesTier(mega, 'all', 'paid'), 'MEGA under All + Paid').toBe(true);
+        expect(companyMatchesTier(mega, 'all', 'free'), 'MEGA still under All + Free tier').toBe(true);
     });
 
     it('freeRequiresCard companies are never reported as paid-only by the CLI projection', () => {
