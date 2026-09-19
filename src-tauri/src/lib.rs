@@ -9447,8 +9447,12 @@ pub(crate) fn safe_extract_folder_name(stem: &str) -> &str {
     // supplies (`resolve_unique_extract_dir` takes it as is), and `../outside`
     // or `a\\..\\b` joined to the parent would leave it.
     let last = stem.rsplit(['/', '\\']).next().unwrap_or(stem);
+    // A drive prefix (`C:name`) survives the split and, on Windows, makes
+    // `join` resolve against that drive instead of the parent. A colon is not
+    // a valid file-name character there, so such a name falls back as well.
     match last.trim() {
         "" | "." | ".." => "extracted",
+        _ if last.contains(':') => "extracted",
         _ => last,
     }
 }
@@ -22031,6 +22035,8 @@ mod secval_b_tests {
         assert_eq!(safe_extract_folder_name(r"a\..\b"), "b");
         assert_eq!(safe_extract_folder_name("x/.."), "extracted");
         assert_eq!(safe_extract_folder_name(".."), "extracted");
+        assert_eq!(safe_extract_folder_name("C:evil"), "extracted");
+        assert_eq!(safe_extract_folder_name(r"D:\\x\\C:evil"), "extracted");
         let parent = std::path::Path::new("/tmp/secval-root");
         let dir = parent.join(safe_extract_folder_name(&archive_extract_stem(
             "../outside.zip",

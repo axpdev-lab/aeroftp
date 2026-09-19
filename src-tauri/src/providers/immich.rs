@@ -193,6 +193,13 @@ impl ImmichConfig {
                     u.scheme()
                 )));
             }
+            // An explicit scheme that does not parse is a typo in a URL, not a
+            // bare host: prefixing it would produce `https://http://...`.
+            Err(e) if host.contains("://") => {
+                return Err(ProviderError::Other(format!(
+                    "Invalid Immich server URL '{host}': {e}"
+                )));
+            }
             _ => format!("https://{}", host),
         };
 
@@ -1889,7 +1896,12 @@ mod secval_b_tests {
                 "base_url for {host}"
             );
         }
-        for host in ["httpx://secval.invalid", "ftp://secval.invalid"] {
+        for host in [
+            "httpx://secval.invalid",
+            "ftp://secval.invalid",
+            "https://",
+            "http://bad host",
+        ] {
             assert!(
                 ImmichConfig::from_provider_config(&cfg(host)).is_err(),
                 "{host} must be refused"
