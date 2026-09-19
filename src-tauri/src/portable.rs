@@ -608,7 +608,10 @@ fn carry_tree_if_absent(src: &Path, dst: &Path) {
 /// of the process that made it, and one whose process is gone can never be
 /// renamed into place, so without this it would stay on disk for good (the next
 /// start has another pid). A staging directory whose process is alive, another
-/// start copying right now, is left alone.
+/// start copying right now, is left alone. Every doubt resolves toward keeping:
+/// a pid the system has since reused for an unrelated live process, or a
+/// liveness answer the platform cannot give, leaves the directory on disk,
+/// which costs space and never a copy in progress.
 #[cfg(any(target_os = "macos", test))]
 fn reclaim_dead_staging(parent: &Path, prefix: &str) {
     let Ok(entries) = std::fs::read_dir(parent) else {
