@@ -266,6 +266,11 @@ pub const OPTIONS_SECRET_KEYS: &[&str] = &[
     "token",
     "refresh_token",
     "refreshToken",
+    // SECVAL-A lead 6 (candidate fix): the AeroShare DocTicket of a received
+    // drive (namespace id + publisher node id + relay + direct addresses). A
+    // holder can sync the iroh doc: plaintext file names, sizes, the
+    // publisher's addresses. Not content: the key is in the sealed capability.
+    "peerTicket",
 ];
 
 /// Remove options-borne secrets in place. No-op when `options` is absent or
@@ -1026,5 +1031,80 @@ mod cleartext_consent_tests {
             "hasStoredCredential": null
         }))
         .expect("sample profile")
+    }
+}
+
+/// SECVAL-A (v4.2.0 pre-release validation, lead 6): a credentials-off
+/// `.aeroftp` export goes through the production core
+/// (`export_server_profiles_core`, include_credentials=false), is decrypted
+/// back with `import_profiles`, and the surviving `options` keys are checked.
+/// `totp_secret` is the control (it is on the strip list, so its absence proves
+/// the strip ran); `peerTicket` is the AeroShare DocTicket that the friend
+/// profile carries (`upsertFriendProfile` in src/utils/aeroShare.ts).
+#[cfg(test)]
+mod secval_a_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn secval_a_credentials_off_export_does_not_carry_peer_ticket() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("friends.aeroftp");
+        let servers = serde_json::json!([{
+            "id": "peer_AFIDDUMMY",
+            "name": "friend",
+            "host": "AFIDDUMMY",
+            "port": 0,
+            "username": "friend",
+            "protocol": "peer",
+            "initialPath": null,
+            "localInitialPath": null,
+            "color": null,
+            "lastConnected": null,
+            "providerId": null,
+            "credential": null,
+            "hasStoredCredential": null,
+            "options": {
+                "peerNamespace": "dummy-namespace-id",
+                "peerTicket": "docaaadummyticketnotarealdocticket",
+                "peerLocalFolder": "/tmp/dummy-replica",
+                "peerRole": "replicator",
+                "totp_secret": "JBSWY3DPEHPK3PXP"
+            }
+        }]);
+        let meta = crate::export_server_profiles_core(
+            servers.to_string(),
+            "pw-12345678".to_string(),
+            false,
+            path.to_string_lossy().to_string(),
+        )
+        .await
+        .expect("credentials-off export");
+        let (out, secrets, _meta) = import_profiles(&path, "pw-12345678").expect("import");
+        let opts = out[0]
+            .options
+            .as_ref()
+            .and_then(|o| o.as_object())
+            .cloned()
+            .unwrap_or_default();
+        let keys: Vec<&String> = opts.keys().collect();
+        eprintln!(
+            "SECVAL-A lead 6: has_credentials={} provider_secrets={} surviving option keys={keys:?} peerTicket={:?}",
+            meta.has_credentials,
+            secrets.len(),
+            opts.get("peerTicket")
+        );
+        assert!(
+            !opts.contains_key("totp_secret"),
+            "control: the strip list must have run"
+        );
+        assert!(
+            !meta.has_credentials,
+            "the file is labelled credential-free"
+        );
+        assert!(
+            !opts.contains_key("peerTicket"),
+            "a credentials-off export still carries the AeroShare peerTicket: {:?}",
+            opts.get("peerTicket")
+        );
     }
 }

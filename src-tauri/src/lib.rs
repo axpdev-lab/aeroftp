@@ -131,6 +131,30 @@ pub mod peer;
 pub mod peer_commands;
 pub mod peer_identity;
 pub mod portable;
+
+#[cfg(test)]
+mod only_main_window_tests {
+    #[test]
+    fn secrets_and_shell_answer_the_main_window_only() {
+        assert!(super::only_main_window("main", "get_credential").is_ok());
+        for label in ["extract", "extract-2", "splashscreen", ""] {
+            let err = super::only_main_window(label, "get_credential").unwrap_err();
+            assert!(err.contains("get_credential"), "{err}");
+        }
+    }
+}
+
+/// One lock for every library test that changes a process-wide environment
+/// variable such as `HOME`. Tests run on parallel threads of one process, so a
+/// lock per module serialises a module against itself and nothing else: two
+/// modules each holding their own lock still overwrite each other's `HOME`.
+#[cfg(test)]
+pub(crate) mod test_env {
+    pub(crate) fn lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
 pub mod portal_chooser;
 pub mod profile_loader;
 mod rsync_output;
@@ -16315,8 +16339,29 @@ async fn get_credential_store_status(
     })
 }
 
+/// Commands that hand out secrets or a shell answer the main window only.
+///
+/// Tauri 2.11 applies its ACL to plugin commands, not to app commands, so every
+/// app command is callable from every webview of the app, including the
+/// extract window, which needs eleven commands and none of these. A webview
+/// that is not `main` has no legitimate reason to read or write the vault or to
+/// drive a terminal, so the command refuses it instead of relying on nothing
+/// hostile ever running there.
+pub(crate) fn only_main_window(label: &str, what: &str) -> Result<(), String> {
+    if label == "main" {
+        Ok(())
+    } else {
+        Err(format!("{what} is not available in the {label} window"))
+    }
+}
+
 #[tauri::command]
-async fn store_credential(account: String, password: String) -> Result<(), String> {
+async fn store_credential(
+    webview: tauri::Webview,
+    account: String,
+    password: String,
+) -> Result<(), String> {
+    only_main_window(webview.label(), "store_credential")?;
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
     // Dual-write. The vault is written for every key (source of truth +
@@ -16329,7 +16374,8 @@ async fn store_credential(account: String, password: String) -> Result<(), Strin
 }
 
 #[tauri::command]
-async fn get_credential(account: String) -> Result<String, String> {
+async fn get_credential(webview: tauri::Webview, account: String) -> Result<String, String> {
+    only_main_window(webview.label(), "get_credential")?;
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
     store
@@ -16338,7 +16384,8 @@ async fn get_credential(account: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn delete_credential(account: String) -> Result<(), String> {
+async fn delete_credential(webview: tauri::Webview, account: String) -> Result<(), String> {
+    only_main_window(webview.label(), "delete_credential")?;
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
     // Dual-delete. Removes from the vault and, for the prefix-classified keys
@@ -19313,7 +19360,6 @@ pub fn run() {
             ai_tools::prepare_ai_tool_approval,
             ai_tools::grant_ai_tool_approval,
             ai_tools::execute_ai_tool,
-            ai_tools::shell_execute,
             ai_tools::clipboard_read_image,
             plugins::prepare_plugin_tool_approval,
             // Context Intelligence commands

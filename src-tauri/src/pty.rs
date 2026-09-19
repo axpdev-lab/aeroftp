@@ -152,10 +152,12 @@ fn session_handle(pty_state: &PtyState, session_id: &str) -> Result<SessionHandl
 /// Enforces a maximum of MAX_PTY_SESSIONS concurrent sessions.
 #[tauri::command]
 pub async fn spawn_shell(
+    webview: tauri::Webview,
     app: AppHandle,
     pty_state: State<'_, PtyState>,
     cwd: Option<String>,
 ) -> Result<String, String> {
+    crate::only_main_window(webview.label(), "spawn_shell")?;
     let pty_state = PtyState::clone(&pty_state);
     tokio::task::spawn_blocking(move || spawn_shell_blocking(app, &pty_state, cwd))
         .await
@@ -279,7 +281,9 @@ fn spawn_shell_blocking(
                 Ok(0) => break, // EOF
                 Ok(n) => {
                     let output = String::from_utf8_lossy(&buffer[..n]).to_string();
-                    let _ = app_clone.emit(&event_name, output);
+                    // The terminal lives in the main window; no other webview
+                    // gets to read what the shell prints.
+                    let _ = app_clone.emit_to("main", &event_name, output);
                 }
                 Err(_) => break, // Error or closed
             }
@@ -292,10 +296,12 @@ fn spawn_shell_blocking(
 /// Write data to a PTY session (send keystrokes to shell)
 #[tauri::command]
 pub async fn pty_write(
+    webview: tauri::Webview,
     pty_state: State<'_, PtyState>,
     data: String,
     session_id: String,
 ) -> Result<(), String> {
+    crate::only_main_window(webview.label(), "pty_write")?;
     let pty_state = PtyState::clone(&pty_state);
     tokio::task::spawn_blocking(move || pty_write_blocking(&pty_state, data, session_id))
         .await

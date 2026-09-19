@@ -1477,8 +1477,10 @@ pub async fn clipboard_read_image() -> Result<Option<String>, String> {
 }
 
 /// Execute a shell command and capture output.
-/// Used by AeroAgent's shell_execute tool.
-#[tauri::command]
+/// Used by AeroAgent's shell_execute tool, ONLY through the approval-gated
+/// dispatcher (`execute_ai_tool` -> `system_tools::shell_execute`). SECVAL-A
+/// lead 3 (candidate fix): no longer a Tauri command, so no webview can reach it
+/// without the backend grant.
 pub async fn shell_execute(
     command: String,
     working_dir: Option<String>,
