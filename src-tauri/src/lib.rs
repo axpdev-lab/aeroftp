@@ -55,6 +55,8 @@ pub mod ai_stream;
 mod ai_tools;
 pub mod app_events;
 mod archive_browse;
+#[cfg(target_os = "linux")]
+mod localhost_security;
 mod openai_responses;
 
 /// Registered Tauri (GUI) command names, generated at build time from the
@@ -17912,8 +17914,9 @@ pub fn run() {
     // protocol does not support web workers, canvas rendering, or iframe CSS in WebKitGTK.
     // Risk assessment:
     //   - Traffic is loopback-only (127.0.0.1), not exposed on network interfaces
-    //   - Exploitation requires same-machine access (local privilege escalation prerequisite)
-    //   - All sensitive data (credentials, tokens) flows through Tauri IPC commands, NOT HTTP
+    //   - Another local account can reserve the fixed port before this app starts
+    //   - Tauri IPC commands are available to the UI, so server ownership is verified
+    //     before any webview loads this origin
     //   - tauri-plugin-localhost is explicitly bound to 127.0.0.1
     // This cannot be changed to HTTPS without a local TLS certificate infrastructure that
     // would add complexity with minimal security benefit for localhost-only traffic.
@@ -17924,14 +17927,20 @@ pub fn run() {
     // See docs/dev/platform/MACOS-UNIFIED-AUDIT-2026-03-30.md
     #[cfg(target_os = "linux")]
     let port: u16 = 14321;
+    #[cfg(target_os = "linux")]
+    let localhost_nonce = uuid::Uuid::new_v4().to_string();
 
     let mut builder = tauri::Builder::default();
 
     #[cfg(target_os = "linux")]
     {
+        let response_nonce = localhost_nonce.clone();
         builder = builder.plugin(
             tauri_plugin_localhost::Builder::new(port)
                 .host("127.0.0.1")
+                .on_request(move |_, response| {
+                    response.add_header("X-AeroFTP-UI-Nonce", response_nonce.as_str());
+                })
                 .build(),
         );
     }
@@ -18118,54 +18127,27 @@ pub fn run() {
             // frontend events without threading a handle through every call.
             crate::app_events::register_app_handle(app.handle().clone());
 
-            // Wait for tauri-plugin-localhost to bind the loopback port before
-            // any webview tries to load from it.
-            //
-            // The plugin spawns its actix server on a background thread during
-            // its own `Plugin::initialize`. On the warm path (manual launch),
-            // the bind beats the splash creation by an order of magnitude. On
-            // cold OS-autostart with the app launched alongside login services
-            // and minimised to tray, the bind can lose by 100-500ms: long
-            // enough for WebKit to GET 127.0.0.1:14321 and render
-            // "Could not connect to 127.0.0.1: Connection refused" inside
-            // the splash and the main window. Restarting the app from the
-            // tray hides the issue because by then the port is already up.
-            //
-            // Short blocking poll: zero cost on the warm path (the connect
-            // succeeds on the first attempt), bounded by 5s on the cold path
-            // before we fall through with a warning.
-            #[cfg(all(not(dev), target_os = "linux"))]
-            {
-                use std::net::{SocketAddr, TcpStream};
-                use std::time::{Duration, Instant};
-
-                let addr: SocketAddr = format!("127.0.0.1:{}", port)
-                    .parse()
-                    .expect("valid localhost addr");
-                let deadline = Instant::now() + Duration::from_secs(5);
-                let mut last_err: Option<std::io::Error> = None;
-                while Instant::now() < deadline {
-                    match TcpStream::connect_timeout(&addr, Duration::from_millis(150)) {
-                        Ok(_) => {
-                            last_err = None;
-                            break;
-                        }
-                        Err(e) => {
-                            last_err = Some(e);
-                            std::thread::sleep(Duration::from_millis(50));
-                        }
-                    }
+            // The plugin binds on a background thread. A plain TCP connect
+            // would also accept another user's server that reserved the fixed
+            // port first. Verify a fresh response nonce before creating any
+            // webview, including the cold-start extract window. Our listener
+            // then keeps the unchanged origin reserved while the app runs.
+            #[cfg(target_os = "linux")]
+            if !cfg!(dev) {
+                if let Err(reason) =
+                    localhost_security::wait_for_owned_server(port, &localhost_nonce)
+                {
+                    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+                    log::error!("Cannot start AeroFTP UI: {reason}");
+                    app.dialog()
+                        .message(format!("AeroFTP cannot start safely. {reason}"))
+                        .title("AeroFTP UI port unavailable")
+                        .kind(MessageDialogKind::Error)
+                        .buttons(MessageDialogButtons::Ok)
+                        .blocking_show();
+                    return Err(reason.into());
                 }
-                if let Some(e) = last_err {
-                    log::warn!(
-                        "tauri-plugin-localhost did not bind 127.0.0.1:{} within 5s ({}); \
-                         splash and main window may briefly show a connection-refused page",
-                        port,
-                        e
-                    );
-                } else {
-                    log::info!("tauri-plugin-localhost is listening on 127.0.0.1:{}", port);
-                }
+                log::info!("Verified AeroFTP UI server on 127.0.0.1:{port}");
             }
 
             // OS "Extract here / to folder" verb on a COLD launch (no instance was
