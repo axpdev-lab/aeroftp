@@ -2137,8 +2137,6 @@ async fn download_update_artifact(
 #[derive(Serialize, Clone)]
 enum VerificationMode {
     SigstoreVerified,
-    VerificationUnavailable,
-    #[allow(dead_code)]
     VerificationFailed,
 }
 
@@ -2282,7 +2280,7 @@ fn verify_sigstore_bundle(
         Ok(f) => f,
         Err(_) => {
             return Ok(UpdateVerificationInfo {
-                mode: VerificationMode::VerificationUnavailable,
+                mode: VerificationMode::VerificationFailed,
                 workflow_identity: None,
                 oidc_issuer: None,
                 artifact_sha256,
@@ -2303,7 +2301,7 @@ fn verify_sigstore_bundle(
         Ok(value) => value,
         Err(e) => {
             return Ok(UpdateVerificationInfo {
-                mode: VerificationMode::VerificationUnavailable,
+                mode: VerificationMode::VerificationFailed,
                 workflow_identity: None,
                 oidc_issuer: None,
                 artifact_sha256,
@@ -2330,7 +2328,7 @@ fn verify_sigstore_bundle(
         Ok(b) => b,
         Err(e) => {
             return Ok(UpdateVerificationInfo {
-                mode: VerificationMode::VerificationUnavailable,
+                mode: VerificationMode::VerificationFailed,
                 workflow_identity: None,
                 oidc_issuer: None,
                 artifact_sha256,
@@ -2369,18 +2367,20 @@ fn verify_sigstore_bundle(
             verifier_version: SIGSTORE_VERIFIER_VERSION,
         }),
         Err(e) => {
-            // Sigstore verification errors should NEVER block the user from installing.
-            // The artifact is already downloaded and SHA256-verified. Sigstore is a supply-chain
-            // transparency bonus, not a gate. Treat all verification errors as non-blocking.
+            // A bundle that does not verify blocks the install. Every current
+            // release publishes a bundle for every artifact, so a failure here
+            // means the artifact, the bundle or the identity is not what the
+            // release workflow signed; installing anyway would make the
+            // signature decorative.
             Ok(UpdateVerificationInfo {
-                mode: VerificationMode::VerificationUnavailable,
+                mode: VerificationMode::VerificationFailed,
                 workflow_identity: Some(identity),
                 oidc_issuer: Some(SIGSTORE_OIDC_ISSUER.to_string()),
                 artifact_sha256,
                 bundle_present: true,
                 bundle_parsed: true,
                 bundle_fetch_failed: false,
-                message: format!("Signature verification unavailable: {}", e),
+                message: format!("Signature verification failed: {}", e),
                 bundle_metadata,
                 digest_match,
                 verifier_version: SIGSTORE_VERIFIER_VERSION,
@@ -2786,9 +2786,10 @@ async fn download_update(app: AppHandle, url: String) -> Result<DownloadUpdateRe
         &asset.asset_name,
     )
     .await?;
-    // A missing optional bundle (404) is a legitimate SHA-only release. Any
-    // other fetch failure must remain visible to the verifier/UI instead of
-    // masquerading as "no signature published".
+    // Every release the updater can reach publishes a Sigstore bundle for each
+    // artifact, so a bundle that cannot be fetched is a failed verification,
+    // not a release without signatures: the verifier then finds no bundle and
+    // answers `VerificationFailed`, and the fetch error is kept in the message.
     let bundle_fetch_error =
         download_optional_file_to_path(&client, &asset.bundle_url, &bundle_path, "AeroFTP")
             .await
@@ -2925,8 +2926,7 @@ fn write_update_marker(
     format: &str,
     verification_mode: &str,
 ) {
-    let verified =
-        verification_mode == "SigstoreVerified" || verification_mode == "VerificationUnavailable";
+    let verified = verification_mode == "SigstoreVerified";
     if let Ok(config_dir) = portable::app_config_dir(app) {
         let marker = config_dir.join("last-update.json");
         let data = serde_json::json!({
@@ -3191,10 +3191,10 @@ async fn install_windows_update(
 
     #[cfg(windows)]
     {
+        // Same gate as the Linux and macOS installers: only bytes this process
+        // downloaded and verified in this session reach the helper.
+        ensure_update_artifact_verified(&downloaded_path)?;
         let downloaded = std::path::Path::new(&downloaded_path);
-        if !downloaded.exists() {
-            return Err("Downloaded file not found".to_string());
-        }
 
         let ext = downloaded
             .extension()
@@ -21921,5 +21921,54 @@ mod update_verification_tests {
         // An unknown content length reports 0 rather than a fabricated fraction.
         assert_eq!(compute_update_download_progress(500, 0, false), 0);
         assert_eq!(compute_update_download_progress(0, 0, true), 100);
+    }
+}
+
+#[cfg(test)]
+mod update_verification_fails_closed_tests {
+    use super::*;
+
+    fn mode(info: &UpdateVerificationInfo) -> String {
+        serde_json::to_value(&info.mode)
+            .unwrap()
+            .as_str()
+            .unwrap_or("?")
+            .to_string()
+    }
+
+    #[test]
+    fn a_missing_bundle_fails_verification() {
+        let dir = tempfile::tempdir().unwrap();
+        let artifact = dir.path().join("AeroFTP_9.9.9_amd64.deb");
+        std::fs::write(&artifact, b"artifact").unwrap();
+        let info = verify_sigstore_bundle(
+            &artifact,
+            &dir.path().join("absent.sigstore.json"),
+            "v9.9.9",
+        )
+        .expect("no trust root is needed to refuse a missing bundle");
+        assert_eq!(mode(&info), "VerificationFailed");
+        assert!(!info.bundle_present);
+    }
+
+    #[test]
+    fn an_unparseable_bundle_fails_verification() {
+        let dir = tempfile::tempdir().unwrap();
+        let artifact = dir.path().join("AeroFTP_9.9.9_amd64.deb");
+        std::fs::write(&artifact, b"artifact").unwrap();
+        for (name, body) in [
+            ("not-json.sigstore.json", b"not json".as_slice()),
+            (
+                "not-a-bundle.sigstore.json",
+                b"{\"mediaType\":\"x\"}".as_slice(),
+            ),
+        ] {
+            let bundle = dir.path().join(name);
+            std::fs::write(&bundle, body).unwrap();
+            let info = verify_sigstore_bundle(&artifact, &bundle, "v9.9.9")
+                .expect("no trust root is needed to refuse a bundle that does not parse");
+            assert_eq!(mode(&info), "VerificationFailed", "{name}");
+            assert!(info.bundle_present, "{name}");
+        }
     }
 }
