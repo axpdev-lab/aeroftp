@@ -231,7 +231,7 @@ export const PROVIDERS: ProviderConfig[] = [
         description: 'Connect to any S3-compatible storage service',
         protocol: 's3',
         category: 's3',
-        icon: 'Database',
+        icon: 'Bucket',
         isGeneric: true,
         stable: true,
         fields: [
@@ -999,7 +999,7 @@ export const PROVIDERS: ProviderConfig[] = [
         description: 'FileLu S3-compatible object storage (enable in Account Settings)',
         protocol: 's3',
         category: 's3',
-        icon: 'Database',
+        icon: 'Bucket',
         color: '#8B5CF6',
         stable: true,
         contactVerified: true,
@@ -1155,7 +1155,7 @@ export const PROVIDERS: ProviderConfig[] = [
         description: 'High-performance self-hosted S3-compatible object storage',
         protocol: 's3',
         category: 's3',
-        icon: 'Database',
+        icon: 'Bucket',
         color: '#C72C48',
         stable: true,
         fields: [
@@ -1186,7 +1186,7 @@ export const PROVIDERS: ProviderConfig[] = [
         description: 'Quotaless cloud storage via S3-compatible API (MinIO)',
         protocol: 's3',
         category: 's3',
-        icon: 'Database',
+        icon: 'Bucket',
         color: '#2563EB',
         stable: true,
         fields: [

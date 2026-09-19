@@ -1,10 +1,11 @@
 import * as React from 'react';
 import {
-    Star, ShieldCheck, Server, Globe, Database, Cloud, Image, Code,
+    Star, ShieldCheck, Server, Globe, Cloud, Image, Code,
     HardDrive, Folder, FolderPlus, PanelLeftClose, PanelLeftOpen, ArrowLeftRight, Activity, Share2,
     Smartphone,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { Bucket } from '../connectionMethodIcons';
 import { useTranslation } from '../../i18n';
 import { SearchBox } from '../SearchBox';
 import { MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
@@ -17,7 +18,7 @@ const FILTER_ICON: Record<MyServersFilterBy, LucideIcon> = {
     encrypted: ShieldCheck,
     active: Activity,
     ftp: Globe,
-    s3: Database,
+    s3: Bucket,
     webdav: Server,
     cloud: Cloud,
     media: Image,

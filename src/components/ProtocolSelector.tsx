@@ -11,7 +11,6 @@ import { Checkbox } from './ui/Checkbox';
 import {
     Server,
     Cloud,
-    Database,
     Lock,
     ShieldCheck,
     ShieldAlert,
@@ -25,11 +24,13 @@ import {
     Eye,
     EyeOff,
     Smartphone,
+    Container,
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplateParams, endpointNeedsCleartextConsent } from '../providers';
 import { CopyLinkButton } from './common/CopyLinkButton';
+import { Bucket } from './connectionMethodIcons';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
 import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
 
@@ -936,7 +937,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                    <Database size={14} />
+                    <Bucket size={14} />
                     {providerConfig ? `${providerConfig.name}: ${t('protocol.s3Config')}` : t('protocol.s3Config')}
                 </div>
                 {!hasFixedBucket && (
@@ -1469,7 +1470,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                    <Database size={14} />
+                    <Container size={14} />
                     {t('protocol.azureBlobStorage')}
                 </div>
                 <div>

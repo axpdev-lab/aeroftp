@@ -10,9 +10,10 @@
 
 import React from 'react';
 import {
-    Cloud, Database, Globe, HardDrive, Flame, Server,
+    Cloud, Globe, HardDrive, Flame, Server,
     ChevronRight, Sparkles, CheckCircle, Info
 } from 'lucide-react';
+import { Bucket } from './connectionMethodIcons';
 import { useTranslation } from '../i18n';
 import { providerRegistry, ProviderConfig } from '../providers';
 import { PROVIDER_LOGOS } from './ProviderLogos';
@@ -43,7 +44,7 @@ interface ProviderSelectorProps {
 // ============================================================================
 
 const PROVIDER_ICONS: Record<string, React.ReactNode> = {
-    'Database': <Database size={24} />,
+    'Bucket': <Bucket size={24} />,
     'Globe': <Globe size={24} />,
     'HardDrive': <HardDrive size={24} />,
     'Flame': <Flame size={24} />,
@@ -181,7 +182,7 @@ export const ProviderTabs: React.FC<ProviderTabsProps> = ({ selected, onChange }
     const tabs = [
         { id: 'ftp' as const, label: 'FTP/SFTP', icon: <Server size={14} /> },
         { id: 'oauth' as const, label: 'Cloud', icon: <Cloud size={14} /> },
-        { id: 's3' as const, label: 'S3', icon: <Database size={14} /> },
+        { id: 's3' as const, label: 'S3', icon: <Bucket size={14} /> },
         { id: 'webdav' as const, label: 'WebDAV', icon: <Globe size={14} /> },
     ];
 
