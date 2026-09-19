@@ -7,6 +7,7 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 struct TestDir {
@@ -49,17 +50,37 @@ impl Drop for TestDir {
     }
 }
 
+/// Serialises "an executable is open for writing here" against "this process
+/// forks", which is the only thing that can produce ETXTBSY in this binary.
+///
+/// The kernel refuses to exec a file that is open for writing ANYWHERE on the
+/// system, and `O_CLOEXEC` does not prevent the overlap: it closes the fd at
+/// the child's exec, so between a sibling's fork and its own exec the child
+/// holds a copy of every writable fd this process had open. A test writing a
+/// stub while another test spawns therefore hands that spawn's child a writable
+/// fd on the stub, and the dispatcher's exec of it fails with `Text file busy`.
+///
+/// Writers take it exclusively for the whole of open, write, chmod and close;
+/// anything that spawns takes it shared. It never serialises execs against each
+/// other, which is what the tests are actually measuring, and it is enough on
+/// its own because file descriptors are per process.
+static FORK_GUARD: RwLock<()> = RwLock::new(());
+
 fn copy_dispatcher(test_dir: &Path) -> PathBuf {
     let src = env!("CARGO_BIN_EXE_aeroftp-dispatch");
     let dst = test_dir.join("aeroftp-dispatch");
-    fs::copy(src, &dst).unwrap();
-    let mut perms = fs::metadata(&dst).unwrap().permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(&dst, perms).unwrap();
+    {
+        let _writing = FORK_GUARD.write().unwrap();
+        fs::copy(src, &dst).unwrap();
+        let mut perms = fs::metadata(&dst).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&dst, perms).unwrap();
+    }
     dst
 }
 
 fn write_stub(path: &Path, name: &str, exit_code: i32) {
+    let _writing = FORK_GUARD.write().unwrap();
     fs::write(
         path,
         format!(
@@ -73,28 +94,20 @@ fn write_stub(path: &Path, name: &str, exit_code: i32) {
 }
 
 fn run_dispatcher(dispatcher: &Path, arg0: &str, args: &[&str]) -> Output {
-    // ETXTBSY ("Text file busy", errno 26): the kernel refuses to exec a file
-    // that is open for writing anywhere on the system. The parallel cargo test
-    // runner can transiently hold a writable fd on a just-copied dispatcher
-    // binary (a sibling test's process spawn inherits the fd for the brief
-    // window between fork and the close-on-exec), so a fresh exec can fail for
-    // reasons that are never a real defect. A bounded retry clears it well
-    // within a second.
-    const ETXTBSY: i32 = 26;
-    const MAX_ATTEMPTS: u32 = 50;
-    for attempt in 1..=MAX_ATTEMPTS {
-        let mut cmd = Command::new(dispatcher);
-        cmd.arg0(arg0);
-        cmd.args(args);
-        match cmd.output() {
-            Ok(output) => return output,
-            Err(e) if e.raw_os_error() == Some(ETXTBSY) && attempt < MAX_ATTEMPTS => {
-                std::thread::sleep(std::time::Duration::from_millis(20));
-            }
-            Err(e) => panic!("dispatcher exec failed after {attempt} attempt(s): {e}"),
-        }
-    }
-    unreachable!("retry loop returns an Output or panics")
+    // Shared side of FORK_GUARD: this fork cannot happen while any executable
+    // in this process is open for writing, so neither this exec nor the
+    // dispatcher's exec of the stub can find one busy. No retry lives here any
+    // more. A retry would have waited out the overlap instead of preventing it,
+    // and it could only ever have covered the exec of the dispatcher: the
+    // dispatcher's own exec of the stub is a single `execve` inside another
+    // binary, which is where the remaining CI red actually landed (exit 127,
+    // `exec failed: Text file busy`, measured twice in 5000 runs under load).
+    let _spawning = FORK_GUARD.read().unwrap();
+    let mut cmd = Command::new(dispatcher);
+    cmd.arg0(arg0);
+    cmd.args(args);
+    cmd.output()
+        .unwrap_or_else(|e| panic!("dispatcher exec failed: {e}"))
 }
 
 #[test]
