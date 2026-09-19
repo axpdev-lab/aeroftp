@@ -4250,7 +4250,15 @@ impl StorageProvider for S3Provider {
         {
             match self.s3_request(Method::HEAD, key, None, None).await {
                 Ok(head) if head.status() == StatusCode::OK => {
-                    let size = head.content_length().unwrap_or(0);
+                    // The Content-Length header, not `content_length()`: on a
+                    // HEAD response that is the body's size hint, always 0, so
+                    // every file fell under the cutoff and went single-stream.
+                    let size = head
+                        .headers()
+                        .get(reqwest::header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.trim().parse::<u64>().ok())
+                        .unwrap_or(0);
                     let accepts_ranges = head
                         .headers()
                         .get("accept-ranges")
@@ -9217,6 +9225,77 @@ mod tests {
         assert_eq!(
             S3Provider::parse_mtime_metadata(&S3Provider::format_mtime_metadata(old)).as_deref(),
             Some("1969-12-31T23:59:58.500Z")
+        );
+    }
+
+    #[tokio::test]
+    async fn multi_thread_download_engages_on_the_head_content_length_header() {
+        // The probe read `Response::content_length()` on the HEAD response,
+        // which is the body's size hint: 0 for a HEAD, whatever the header
+        // says. So a file above the cutoff was always downloaded on one
+        // stream. The header is the size.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        const SIZE: usize = 2 * 1024 * 1024;
+        let body: Arc<Vec<u8>> = Arc::new((0..SIZE).map(|i| (i % 251) as u8).collect());
+        let ranged = Arc::new(AtomicUsize::new(0));
+        let (served, hits) = (Arc::clone(&body), Arc::clone(&ranged));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (body, hits) = (Arc::clone(&served), Arc::clone(&hits));
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        return axum::response::Response::builder()
+                            .header("content-length", SIZE.to_string())
+                            .header("accept-ranges", "bytes")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    let range = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.strip_prefix("bytes="))
+                        .and_then(|v| v.split_once('-'))
+                        .and_then(|(a, b)| {
+                            Some((a.parse::<usize>().ok()?, b.parse::<usize>().ok()?))
+                        });
+                    match range {
+                        Some((a, b)) => {
+                            hits.fetch_add(1, Ordering::SeqCst);
+                            axum::response::Response::builder()
+                                .status(206)
+                                .header("content-range", format!("bytes {a}-{b}/{SIZE}"))
+                                .body(axum::body::Body::from(body[a..=b].to_vec()))
+                                .unwrap()
+                        }
+                        None => axum::response::Response::new(axum::body::Body::from(
+                            body.as_ref().clone(),
+                        )),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .expect("download");
+        assert_eq!(std::fs::read(&out).expect("read"), *body);
+        assert_eq!(
+            ranged.load(Ordering::SeqCst),
+            4,
+            "a file above the cutoff must be fetched as 4 ranges"
         );
     }
 
