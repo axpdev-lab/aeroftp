@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Perlukan bantuan atau ingin melaporkan pepijat? Kami sedia membantu.",
             "sourceforgeReviews": "Tulis ulasan di SourceForge",
-            "writeReview": "Tulis ulasan"
+            "writeReview": "Tulis ulasan",
+            "team": {
+                "title": "Pasukan Axpdev Lab",
+                "apRole": "Pengasas, pembangun, penyelenggara, pereka bersama",
+                "ekRole": "Penyelidik, jurutera jaminan kualiti, pereka bersama"
+            }
         },
         "support": {
             "title": "Sokong AeroFTP",

@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Tarvitsetko apua tai haluatko ilmoittaa virheestä? Autamme mielellämme.",
             "sourceforgeReviews": "Kirjoita arvostelu SourceForgessa",
-            "writeReview": "Kirjoita arvostelu"
+            "writeReview": "Kirjoita arvostelu",
+            "team": {
+                "title": "Axpdev Labin tiimi",
+                "apRole": "Perustaja, kehittäjä, ylläpitäjä, yhteissuunnittelija",
+                "ekRole": "Tutkija, laadunvarmistusinsinööri, yhteissuunnittelija"
+            }
         },
         "support": {
             "title": "Tue AeroFTP:tä",

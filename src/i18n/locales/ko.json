@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "도움이 필요하거나 버그를 신고하시겠습니까? 언제든지 도와드리겠습니다.",
             "sourceforgeReviews": "SourceForge에 리뷰 작성",
-            "writeReview": "리뷰 쓰기"
+            "writeReview": "리뷰 쓰기",
+            "team": {
+                "title": "Axpdev Lab 팀",
+                "apRole": "설립자, 개발자, 메인테이너, 공동 디자이너",
+                "ekRole": "연구원, 품질 보증 엔지니어, 공동 디자이너"
+            }
         },
         "support": {
             "title": "AeroFTP 지원",

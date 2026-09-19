@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Segítségre van szüksége, vagy hibát szeretne jelenteni? Itt vagyunk, hogy segítsünk.",
             "sourceforgeReviews": "Véleményt ír a SourceForge-on",
-            "writeReview": "Vélemény írása"
+            "writeReview": "Vélemény írása",
+            "team": {
+                "title": "Az Axpdev Lab csapata",
+                "apRole": "Alapító, fejlesztő, karbantartó, társtervező",
+                "ekRole": "Kutató, minőségbiztosítási mérnök, társtervező"
+            }
         },
         "support": {
             "title": "Támogasd az AeroFTP-t",

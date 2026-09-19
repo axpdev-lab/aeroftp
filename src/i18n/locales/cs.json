@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Potřebujete pomoc nebo chcete nahlásit chybu? Jsme tu, abychom vám pomohli.",
             "sourceforgeReviews": "Napsat recenzi na SourceForge",
-            "writeReview": "Napsat recenzi"
+            "writeReview": "Napsat recenzi",
+            "team": {
+                "title": "Tým Axpdev Lab",
+                "apRole": "Zakladatel, vývojář, správce, spoluautor designu",
+                "ekRole": "Výzkumník, inženýr zajištění kvality, spoluautor designu"
+            }
         },
         "support": {
             "title": "Podpořte AeroFTP",

@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Hulp nodig of wil je een bug melden? We staan voor je klaar.",
             "sourceforgeReviews": "Schrijf een review op SourceForge",
-            "writeReview": "Schrijf een review"
+            "writeReview": "Schrijf een review",
+            "team": {
+                "title": "Het Axpdev Lab-team",
+                "apRole": "Oprichter, ontwikkelaar, maintainer, mede-ontwerper",
+                "ekRole": "Onderzoeker, kwaliteitsborgingsingenieur, mede-ontwerper"
+            }
         },
         "support": {
             "title": "Steun AeroFTP",

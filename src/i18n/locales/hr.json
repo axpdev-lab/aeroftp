@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Trebate pomoć ili želite prijaviti pogrešku? Tu smo da pomognemo.",
             "sourceforgeReviews": "Napiši recenziju na SourceForge",
-            "writeReview": "Napiši recenziju"
+            "writeReview": "Napiši recenziju",
+            "team": {
+                "title": "Tim Axpdev Laba",
+                "apRole": "Osnivač, programer, održavatelj, sudizajner",
+                "ekRole": "Istraživač, inženjer za osiguranje kvalitete, sudizajner"
+            }
         },
         "support": {
             "title": "Podrži AeroFTP",

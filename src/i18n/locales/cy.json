@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Angen cymorth neu am roi gwybod am wall? Rydym yma i helpu.",
             "sourceforgeReviews": "Ysgrifennwch adolygiad ar SourceForge",
-            "writeReview": "Ysgrifennu adolygiad"
+            "writeReview": "Ysgrifennu adolygiad",
+            "team": {
+                "title": "Tîm Axpdev Lab",
+                "apRole": "Sylfaenydd, datblygwr, cynhaliwr, cyd-ddylunydd",
+                "ekRole": "Ymchwilydd, peiriannydd sicrhau ansawdd, cyd-ddylunydd"
+            }
         },
         "support": {
             "title": "Cefnogi AeroFTP",

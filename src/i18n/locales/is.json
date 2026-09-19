@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Þarftu aðstoð eða viltu tilkynna villu? Við erum hér til að hjálpa.",
             "sourceforgeReviews": "Skrifaðu umsögn á SourceForge",
-            "writeReview": "Skrifa umfjollun"
+            "writeReview": "Skrifa umfjollun",
+            "team": {
+                "title": "Teymi Axpdev Lab",
+                "apRole": "Stofnandi, forritari, umsjónarmaður, meðhönnuður",
+                "ekRole": "Rannsakandi, gæðatryggingarverkfræðingur, meðhönnuður"
+            }
         },
         "support": {
             "title": "Styðja AeroFTP",

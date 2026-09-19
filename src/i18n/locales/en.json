@@ -61,7 +61,12 @@
                 "technical": "Technical"
             },
             "tagline": "More than FTP. A complete developer toolkit.",
-            "vaultStatus": "Encrypted Vault"
+            "vaultStatus": "Encrypted Vault",
+            "team": {
+                "title": "Axpdev Lab Team",
+                "apRole": "Founder, developer, maintainer, co-designer",
+                "ekRole": "Researcher, quality assurance engineer, co-designer"
+            }
         },
         "activity": {
             "connect_error": "Connection to {server} failed. Check credentials.",

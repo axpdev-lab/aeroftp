@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "需要帮助或想要报告问题？我们随时为您提供协助。",
             "sourceforgeReviews": "在SourceForge上撰写评论",
-            "writeReview": "写评论"
+            "writeReview": "写评论",
+            "team": {
+                "title": "Axpdev Lab 团队",
+                "apRole": "创始人、开发者、维护者、联合设计者",
+                "ekRole": "研究员、质量保证工程师、联合设计者"
+            }
         },
         "support": {
             "title": "支持 AeroFTP",

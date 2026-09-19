@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Vajate abi või soovite veast teatada? Oleme siin, et aidata.",
             "sourceforgeReviews": "Kirjuta arvustus SourceForge'is",
-            "writeReview": "Kirjuta arvustus"
+            "writeReview": "Kirjuta arvustus",
+            "team": {
+                "title": "Axpdev Labi meeskond",
+                "apRole": "Asutaja, arendaja, hooldaja, kaasdisainer",
+                "ekRole": "Teadur, kvaliteedi tagamise insener, kaasdisainer"
+            }
         },
         "support": {
             "title": "Toeta AeroFTP-d",

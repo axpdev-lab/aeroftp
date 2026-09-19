@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Kailangan ng tulong o gusto mong mag-ulat ng bug? Narito kami upang tumulong.",
             "sourceforgeReviews": "Magsulat ng review sa SourceForge",
-            "writeReview": "Sumulat ng review"
+            "writeReview": "Sumulat ng review",
+            "team": {
+                "title": "Ang Team ng Axpdev Lab",
+                "apRole": "Tagapagtatag, developer, maintainer, katuwang na taga-disenyo",
+                "ekRole": "Mananaliksik, quality assurance engineer, katuwang na taga-disenyo"
+            }
         },
         "support": {
             "title": "Suportahan ang AeroFTP",

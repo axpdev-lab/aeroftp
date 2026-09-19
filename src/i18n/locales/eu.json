@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Laguntza behar duzu edo akats baten berri eman nahi duzu? Hemen gaude laguntzeko.",
             "sourceforgeReviews": "Idatzi iritzi bat SourceForge-n",
-            "writeReview": "Idatzi kritika bat"
+            "writeReview": "Idatzi kritika bat",
+            "team": {
+                "title": "Axpdev Lab taldea",
+                "apRole": "Sortzailea, garatzailea, mantentzailea, diseinukidea",
+                "ekRole": "Ikertzailea, kalitatea bermatzeko ingeniaria, diseinukidea"
+            }
         },
         "support": {
             "title": "Lagundu AeroFTP",

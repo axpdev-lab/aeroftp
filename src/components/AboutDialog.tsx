@@ -315,6 +315,26 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                 </button>
                             </div>
 
+                            {/* Team: the people in TEAM.md, with the same roles. Initials
+                                because TEAM.md uses them; the link opens the full page. */}
+                            <div className="text-center py-2 border-t border-gray-200 dark:border-gray-800 space-y-1">
+                                <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 font-mono">
+                                    {t('about.team.title')}
+                                </p>
+                                <p className="text-[11px] text-gray-500 font-mono">
+                                    <span className="text-gray-700 dark:text-gray-300">A.P.</span> &middot; {t('about.team.apRole')}
+                                </p>
+                                <p className="text-[11px] text-gray-500 font-mono">
+                                    <span className="text-gray-700 dark:text-gray-300">E.K., PhD</span> &middot; {t('about.team.ekRole')}
+                                </p>
+                                <button
+                                    onClick={() => openUrl('https://github.com/axpdev-lab/aeroftp/blob/main/TEAM.md')}
+                                    className="text-[11px] text-blue-500 dark:text-cyan-500 hover:text-blue-400 dark:hover:text-cyan-400 transition-colors font-mono inline-block"
+                                >
+                                    TEAM.md
+                                </button>
+                            </div>
+
                             {/* Credits */}
                             <div className="text-center pt-2 border-t border-gray-200 dark:border-gray-800 space-y-1">
                                 <p className="text-xs text-gray-500 flex items-center justify-center gap-1 font-mono">

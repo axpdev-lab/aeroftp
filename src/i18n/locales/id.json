@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Butuh bantuan atau ingin melaporkan bug? Kami siap membantu.",
             "sourceforgeReviews": "Tulis ulasan di SourceForge",
-            "writeReview": "Tulis ulasan"
+            "writeReview": "Tulis ulasan",
+            "team": {
+                "title": "Tim Axpdev Lab",
+                "apRole": "Pendiri, pengembang, pengelola, rekan perancang",
+                "ekRole": "Peneliti, insinyur penjaminan mutu, rekan perancang"
+            }
         },
         "support": {
             "title": "Dukung AeroFTP",

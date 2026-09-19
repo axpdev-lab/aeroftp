@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Unahitaji msaada au unataka kuripoti hitilafu? Tupo hapa kukusaidia.",
             "sourceforgeReviews": "Andika tathmini katika SourceForge",
-            "writeReview": "Andika mapitio"
+            "writeReview": "Andika mapitio",
+            "team": {
+                "title": "Timu ya Axpdev Lab",
+                "apRole": "Mwanzilishi, msanidi programu, mtunzaji, mbunifu mwenza",
+                "ekRole": "Mtafiti, mhandisi wa uhakikisho wa ubora, mbunifu mwenza"
+            }
         },
         "support": {
             "title": "Saidia AeroFTP",
