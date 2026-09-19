@@ -80,8 +80,8 @@ where
 struct ParsedStorage {
     protocol: &'static str,
     provider_id: Option<String>,
-    /// Bare host for SFTP; the endpoint URL (scheme included) for S3 and
-    /// WebDAV, which is what their connections read from `host`.
+    /// Bare `host[:port]` for SFTP and S3 (whose scheme travels in the
+    /// `endpoint` option); the whole URL for WebDAV, which reads it from `host`.
     host: String,
     /// Only when the URL carries one.
     port: Option<u32>,
@@ -89,6 +89,8 @@ struct ParsedStorage {
     username: Option<String>,
     initial_path: Option<String>,
     options: Vec<(&'static str, Option<String>)>,
+    /// S3 only: the `minio://` / `minios://` forms address buckets path-style.
+    path_style: bool,
 }
 
 /// `[user@]host[:port]` -> (user, host, port).
@@ -128,6 +130,7 @@ fn parse_storage_url(u: &str) -> Option<ParsedStorage> {
             username: None,
             initial_path: (!rest.is_empty()).then(|| rest.to_string()),
             options: Vec::new(),
+            path_style: false,
         }),
         "s3" | "s3c" | "minio" | "minios" | "wasabi" => {
             // For S3 the `user@` slot is the region, not a user.
@@ -172,8 +175,8 @@ fn parse_storage_url(u: &str) -> Option<ParsedStorage> {
                     ("endpoint", endpoint),
                     ("region", region),
                     ("bucket", Some(bucket).filter(|b| !b.is_empty())),
-                    ("pathStyle", path_style.then(|| "true".to_string())),
                 ],
+                path_style,
             })
         }
         "sftp" => {
@@ -188,6 +191,7 @@ fn parse_storage_url(u: &str) -> Option<ParsedStorage> {
                 username: user,
                 initial_path,
                 options: Vec::new(),
+                path_style: false,
             })
         }
         "webdav" | "webdav-http" => {
@@ -212,6 +216,7 @@ fn parse_storage_url(u: &str) -> Option<ParsedStorage> {
                 username: user,
                 initial_path: None,
                 options: Vec::new(),
+                path_style: false,
             })
         }
         // gcd / one / dropbox -> OAuth, handled as a skipped remote by caller
@@ -307,6 +312,7 @@ pub fn import_duplicacy_with_env(
             username: url_user,
             initial_path: path_opt,
             options: url_opts,
+            path_style: url_path_style,
         }) = parsed
         else {
             // Unknown scheme: OAuth providers (gcd/one/dropbox) get the
@@ -401,7 +407,13 @@ pub fn import_duplicacy_with_env(
         ];
         opt_pairs.append(&mut extra_opts);
         opt_pairs.append(&mut url_opts);
-        let options = serde_json::Value::Object(crate::bridge_shared::json_map(&opt_pairs));
+        let mut options_map = crate::bridge_shared::json_map(&opt_pairs);
+        // A boolean, as the GUI stores it: `provider_connect` takes
+        // `path_style: Option<bool>` and refuses the string "true".
+        if url_path_style {
+            options_map.insert("pathStyle".to_string(), serde_json::Value::Bool(true));
+        }
+        let options = serde_json::Value::Object(options_map);
 
         let id = format!(
             "duplicacy-{}-{}",

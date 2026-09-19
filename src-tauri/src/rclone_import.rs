@@ -370,12 +370,23 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             if host.is_empty() {
                 return None;
             }
-            let tls = get_str("tls")
-                .or(get_str("explicit_tls"))
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(false);
-            let protocol = if tls { "ftps" } else { "ftp" };
-            let default_port = if tls { 990 } else { 21 };
+            let flag = |k: &str| get_str(k).map(|v| v == "true" || v == "1").unwrap_or(false);
+            // rclone's `tls` is implicit FTPS, `explicit_tls` is AUTH TLS on 21.
+            // Keep which one: an `ftps` profile without a mode is opened (and
+            // exported back) as implicit, which an explicit server refuses.
+            let tls_mode = if flag("tls") {
+                Some("implicit")
+            } else if flag("explicit_tls") {
+                Some("explicit")
+            } else {
+                None
+            };
+            let protocol = if tls_mode.is_some() { "ftps" } else { "ftp" };
+            let default_port = if tls_mode == Some("implicit") {
+                990
+            } else {
+                21
+            };
 
             Some(MappedProfile {
                 protocol: protocol.to_string(),
@@ -384,7 +395,7 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
                 port: get_port("port", default_port),
                 username: get_str("user").unwrap_or("anonymous").to_string(),
                 password: get_password("pass"),
-                options: None,
+                options: tls_mode.map(|m| serde_json::json!({ "tlsMode": m })),
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,

@@ -415,8 +415,20 @@ fn storage_block(
         Some("webdav") => serde_json::json!({
             "type": "webdav",
             "config": {
+                // The server URL, then the profile's start folder: the
+                // repository lives there, not at the WebDAV root.
                 "url": endpoint
-                    .map(|ep| ep.url())
+                    .map(|ep| {
+                        match server
+                            .initial_path
+                            .as_deref()
+                            .map(|p| p.trim_matches('/'))
+                            .filter(|p| !p.is_empty())
+                        {
+                            Some(p) => format!("{}/{p}", ep.url()),
+                            None => ep.url(),
+                        }
+                    })
                     .ok_or_else(|| "WebDAV profile has no server URL".to_string())?,
                 "username": server.username,
                 "password": secret.unwrap_or(""),

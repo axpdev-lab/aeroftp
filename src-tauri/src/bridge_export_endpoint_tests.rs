@@ -323,7 +323,7 @@ fn duplicacy_import_reads_region_scheme_and_webdav_path() {
     assert_eq!(s3.host, "nas.local:9000");
     let o = s3.options.as_ref().unwrap();
     assert_eq!(o["endpoint"], "http://nas.local:9000");
-    assert_eq!(o["pathStyle"], "true");
+    assert_eq!(o["pathStyle"], true);
     assert_eq!(o["region"], "us-east-1");
     assert_eq!(o["bucket"], "tests");
     let dav = &r.servers[1];
@@ -602,4 +602,81 @@ fn tls_mode_wins_over_a_stale_ftps_mode_in_any_order() {
         &json!({ "options": { "ftpsMode": "explicit", "tlsMode": "implicit" } }),
     );
     assert_eq!(extra.get("tls_mode").map(String::as_str), Some("implicit"));
+}
+
+#[test]
+fn kopia_webdav_url_keeps_the_start_folder() {
+    let mut p = webdav();
+    p["initialPath"] = json!("/backups/kopia");
+    let f = tmp("kopia-dav-start");
+    crate::kopia_import::export_kopia(&typed(&[p]), &HashMap::new(), &f).expect("export");
+    let doc: Value = serde_json::from_str(&read(&f)).unwrap();
+    assert_eq!(
+        doc["storage"]["config"]["url"],
+        "https://dav.example.com/remote.php/dav/files/u/backups/kopia"
+    );
+}
+
+#[test]
+fn duplicacy_path_style_is_a_boolean() {
+    // `provider_connect` takes `path_style: Option<bool>`: the string "true"
+    // would fail the GUI connection of the imported profile.
+    let f = tmp("dup-ps");
+    std::fs::write(
+        &f,
+        r#"[{"name":"a","id":"x","repository":"","encrypted":true,"storage":"minios://nas.example.com/b","keys":{"s3_id":"A","s3_secret":"S"}}]"#,
+    )
+    .unwrap();
+    let r = crate::duplicacy_import::import_duplicacy_with_env(&f, &|_| None).expect("import");
+    std::fs::remove_file(&f).ok();
+    assert_eq!(
+        r.servers[0].options.as_ref().unwrap()["pathStyle"],
+        json!(true)
+    );
+}
+
+#[test]
+fn rclone_ftp_tls_mode_survives_a_round_trip() {
+    // rclone -> AeroFTP -> rclone: an explicit-TLS remote must not come back
+    // implicit (an `ftps` profile without a mode is implicit).
+    let conf = "[exp]\ntype = ftp\nhost = ftp.example.com\nuser = u\nexplicit_tls = true\n\n\
+                [imp]\ntype = ftp\nhost = ftp.example.com\nuser = u\ntls = true\n";
+    let f = tmp("rclone-in.conf");
+    std::fs::write(&f, conf).unwrap();
+    let r = crate::rclone_import::import_rclone(&f).expect("import");
+    std::fs::remove_file(&f).ok();
+    let by = |n: &str| r.servers.iter().find(|s| s.name == n).unwrap();
+    assert_eq!(by("exp").options.as_ref().unwrap()["tlsMode"], "explicit");
+    assert_eq!(by("exp").port, 21);
+    assert_eq!(by("imp").options.as_ref().unwrap()["tlsMode"], "implicit");
+    assert_eq!(by("imp").port, 990);
+
+    let back: Vec<crate::rclone_import::RcloneExportServer> = r
+        .servers
+        .iter()
+        .map(|s| crate::rclone_import::RcloneExportServer {
+            name: s.name.clone(),
+            host: s.host.clone(),
+            port: s.port,
+            username: s.username.clone(),
+            protocol: s.protocol.clone(),
+            options: s.options.clone(),
+            provider_id: s.provider_id.clone(),
+        })
+        .collect();
+    let out = tmp("rclone-out.conf");
+    crate::rclone_import::export_rclone(&back, &HashMap::new(), &out).expect("export");
+    let text = read(&out);
+    let section = |n: &str| {
+        let start = text.find(&format!("[{n}]")).expect(n);
+        let rest = &text[start + 1..];
+        let end = rest
+            .find("\n[")
+            .map(|e| start + 1 + e)
+            .unwrap_or(text.len());
+        text[start..end].to_string()
+    };
+    assert!(section("exp").contains("explicit_tls = true"), "{text}");
+    assert!(!section("exp").contains("\ntls = true"), "{text}");
+    assert!(section("imp").contains("\ntls = true"), "{text}");
 }

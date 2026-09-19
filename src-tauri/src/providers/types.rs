@@ -1050,11 +1050,20 @@ fn normalize_s3_endpoint(endpoint: &str, configured_port: Option<u16>) -> String
         _ => None,
     };
 
+    let base = format!("{scheme}://{trimmed}");
     match configured_port {
         Some(port) if explicit_port.is_none() && Some(port) != default_port => {
-            format!("{scheme}://{trimmed}:{port}")
+            // The port belongs to the authority, before any path: appended to
+            // `host/path` it would read as part of the path.
+            let Ok(mut url) = url::Url::parse(&base) else {
+                return format!("{base}:{port}");
+            };
+            if url.set_port(Some(port)).is_err() {
+                return format!("{base}:{port}");
+            }
+            url.to_string().trim_end_matches('/').to_string()
         }
-        _ => format!("{scheme}://{trimmed}"),
+        _ => base,
     }
 }
 
@@ -2852,5 +2861,28 @@ mod s3_config_assume_role_tests {
         assert!(!file.is_walkable_dir());
         file.is_symlink = true;
         assert!(!file.is_walkable_dir());
+    }
+}
+
+#[cfg(test)]
+mod s3_endpoint_port_tests {
+    use super::normalize_s3_endpoint;
+
+    #[test]
+    fn schemeless_s3_endpoint_with_a_path_gets_the_port_in_the_authority() {
+        // Appended after `host/path`, the port read as part of the path and
+        // the connection went to port 80.
+        assert_eq!(
+            normalize_s3_endpoint("minio.example.com/storage", Some(9000)),
+            "http://minio.example.com:9000/storage"
+        );
+        assert_eq!(
+            normalize_s3_endpoint("minio.example.com", Some(9000)),
+            "http://minio.example.com:9000"
+        );
+        assert_eq!(
+            normalize_s3_endpoint("s3.example.com", Some(443)),
+            "https://s3.example.com"
+        );
     }
 }
