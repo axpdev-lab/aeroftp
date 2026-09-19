@@ -133,6 +133,7 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
         _ => matches!(
             tool_name,
             "remote_upload"
+                | "remote_download"
                 | "remote_delete"
                 | "remote_rename"
                 | "remote_mkdir"
@@ -152,6 +153,7 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 | "archive_decompress"
                 | "clipboard_write"
                 | "coding_checkpoint_restore"
+                | "coding_checkpoint_create"
                 | "coding_apply_patch"
                 | "coding_git_stage"
                 | "coding_git_commit"
@@ -162,6 +164,7 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 // LLM-chosen workspace_root. Despite its ReadOnly classification it can execute
                 // arbitrary workspace code, exactly like run_checks/verify, so it MUST be gated.
                 | "coding_diagnostics"
+                | "agent_memory_write"
                 | "shell_execute"
         ),
     }
@@ -2062,6 +2065,41 @@ pub async fn execute_ai_tool(
 mod approval_tests {
     use super::{build_ai_tool_approval_details, requires_backend_write_approval};
     use serde_json::json;
+
+    #[test]
+    fn every_gui_tool_that_writes_local_data_requires_backend_approval() {
+        let args = json!({});
+        for tool in [
+            "local_write",
+            "local_mkdir",
+            "local_delete",
+            "local_rename",
+            "local_edit",
+            "local_move_files",
+            "local_batch_rename",
+            "local_copy_files",
+            "local_trash",
+            "remote_download",
+            "download_files",
+            "archive_compress",
+            "archive_decompress",
+            "coding_checkpoint_create",
+            "coding_checkpoint_restore",
+            "coding_apply_patch",
+            "coding_git_stage",
+            "coding_git_commit",
+            "coding_run_checks",
+            "coding_verify",
+            "coding_diagnostics",
+            "agent_memory_write",
+            "shell_execute",
+        ] {
+            assert!(
+                requires_backend_write_approval(tool, &args),
+                "{tool} bypasses the backend grant"
+            );
+        }
+    }
 
     #[test]
     fn coding_diagnostics_requires_approval() {
