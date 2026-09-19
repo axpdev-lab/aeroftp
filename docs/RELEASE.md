@@ -3,14 +3,16 @@
 ## Quick Reference
 
 ```bash
-# After updating ALL version files and CHANGELOG.md
-git add -A
+# After updating every version site (`npm run check:version-sites` must pass) and CHANGELOG.md
+git add <the files the release changed>
 git commit -m "chore(release): vX.Y.Z Description"
+git push origin main
+# Wait until CI on main is green on Linux, Windows AND macOS, then:
 git tag -a vX.Y.Z -m "Release vX.Y.Z - Description"
-git push origin main --tags
+git push origin vX.Y.Z
 ```
 
-That's it! GitHub Actions handles everything else automatically.
+Never push `main` and the tag in one command: macOS builds but does not publish on a branch, so only a green run on `main` shows that the tag run can publish. The tag run builds, signs and publishes the release; AUR, SourceForge and the tracker follow (see below).
 
 ---
 
@@ -21,7 +23,7 @@ That's it! GitHub Actions handles everything else automatically.
 | # | File | Field | Notes |
 |---|------|-------|-------|
 | 1 | `package.json` | `"version": "X.Y.Z"` | Line ~4 |
-| 2 | `package-lock.json` | `version` at the root **and** in `packages[""]` | **Two places.** `npm ci` hard-fails on a lock that disagrees with `package.json`, and CI runs `npm ci` - so missing this goes green locally and red *after* the tag. Regenerate with the same npm CI uses: `npx npm@10.8.2 install --package-lock-only` |
+| 2 | `package-lock.json` | `version` at the root **and** in `packages[""]` | **Two places.** `npm ci` does not check this field (it checks the dependency tree), so a lock left at the previous version installs cleanly and ships: v4.1.9 did. `npm run check:version-sites` is what catches it. Regenerate with the npm bundled with the Node major CI uses (Node 24; npm 11.19.0 when this was written): `npx npm@11.19.0 install --package-lock-only` |
 | 3 | `src-tauri/tauri.conf.json` | `"version": "X.Y.Z"` | Line ~4 |
 | 4 | `src-tauri/Cargo.toml` | `version = "X.Y.Z"` | Line ~3 |
 | 5 | `src-tauri/Cargo.lock` | `name = "aeroftp"` package `version` | Re-locks on `cargo build`; commit it |
@@ -98,10 +100,12 @@ Two things that are *not* the cause, checked at v4.1.7 so nobody has to check th
 ### Commit, Tag & Push
 
 ```bash
-git add -A
+git add <the files the release changed>
 git commit -m "chore(release): vX.Y.Z Short Release Title"
+git push origin main
+# Wait until CI on main is green on Linux, Windows AND macOS, then:
 git tag -a vX.Y.Z -m "Release vX.Y.Z - Short Release Title"
-git push origin main --tags
+git push origin vX.Y.Z
 ```
 
 ---

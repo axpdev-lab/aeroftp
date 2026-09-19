@@ -869,6 +869,8 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 
 ## Release History
 
+This table stops at v4.0.9. Every later release is described in [CHANGELOG.md](../CHANGELOG.md) and on the [GitHub Releases](https://github.com/axpdev-lab/aeroftp/releases) page.
+
 | Version | Feature | Status |
 |---------|---------|--------|
 | v1.2.8 | Properties Dialog, Compress/Archive, Checksum, Overwrite, Drag & Drop | Done |

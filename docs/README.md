@@ -37,9 +37,10 @@ See **[RELEASE.md](./RELEASE.md)** for complete CI/CD documentation.
 ```bash
 # Update the version in every site `npm run check:version-sites` compares (see RELEASE.md), then:
 git commit -m "chore(release): vX.Y.Z Description"
+git push origin main
+# Wait until CI on main is green on Linux, Windows AND macOS, then:
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
-git push origin main --tags
-# GitHub Actions handles the rest automatically!
+git push origin vX.Y.Z
 ```
 
 ### Automated Distribution

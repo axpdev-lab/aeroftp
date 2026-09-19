@@ -68,6 +68,9 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 
 ### 🟢 Just Shipped
 
+- **Measured against rclone, read commit by commit** (v4.2.0)
+  A cycle of tuning and repair: the transfer engine went through a live review battery against rclone and every gap it found was closed and measured again (multi-stream downloads by default, SFTP read-ahead and connection reuse, a speed limit every provider honours, one-way sync that no longer re-uploads unchanged S3 trees). Filebase joins as a production-ready S3 preset, S3 learns delta uploads, a key-authenticated delta works on Windows, and scans, deletes and exit codes say what they did not cover. Full notes in [CHANGELOG.md](CHANGELOG.md).
+- **v4.1.1 to v4.1.9**: see [CHANGELOG.md](CHANGELOG.md); the entries below stop at v4.1.0.
 - **AeroShare peer-to-peer transfer (Beta), AeroAgent coding loop and per-user groups** (v4.1.0)
   AeroShare arrives as a Beta preview: direct, end-to-end-encrypted device-to-device transfers with no server in the middle, built on iroh 1.0 with Mainline-DHT discovery and federated relays. It is always-on at launch (Discover tile with a 256-bit E2E badge, a titlebar **+friend** button, a draggable hub and a status-bar receiver indicator); adding a friend or sharing a folder auto-activates it, while the standing receive loop stays opt-in. AeroAgent gains a foundation coding loop (GUI-only, read-only or approval-gated): ripgrep workspace search, structured cargo/tsc/eslint diagnostics, git read plus stage and commit, a run-checks runner and an ordered verify, and safe patch with automatic checkpoints. Server groups and favourites move from a single global blob to each user's encrypted partition, and the interactive CLI grows a `New(N)` verb, `groups -i` member add/remove and a safe-first action bar ([#311](https://github.com/axpdev-lab/aeroftp/discussions/311), **Ehud Kirsh**). The benchmark gets real fixes (#368), the Filen Desktop bridges work headless, OS "Extract here / to folder" verbs land on Nautilus and Windows, Windows USB eject works, and the in-app sigstore update verification (sigstore 0.14) verifies for real again.
 - **AeroVault create redesign, the AeroVault Zip plaintext lane and universal rclone export** (v4.0.9)
@@ -249,7 +252,7 @@ If you spot a bug, want a small feature, or want to nominate a provider for nati
 
 ## Detailed Release History
 
-The lane view above is what most users want. The tables below are kept for users who want to see exactly which feature landed in which release.
+The lane view above is what most users want. The tables below are kept for users who want to see exactly which feature landed in which release. They stop at v4.0.7: every later release is described in [CHANGELOG.md](CHANGELOG.md) and on the [GitHub Releases](https://github.com/axpdev-lab/aeroftp/releases) page.
 
 ### v4.0.7
 
