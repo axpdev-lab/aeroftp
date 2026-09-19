@@ -1248,7 +1248,16 @@ impl StorageProvider for AzureProvider {
             supports_multipart: true,
             multipart_threshold: DAG_MULTIPART_THRESHOLD,
             multipart_part_size: DAG_MULTIPART_BLOCK_SIZE,
-            multipart_max_parallel: DAG_MULTIPART_MAX_PARALLEL,
+            // Same as the S3 arm: `--azure-upload-concurrency` reaches the DAG
+            // engine through this hint only. Only an explicit setting is taken:
+            // `UPLOAD_CONCURRENCY_DEFAULT` is 1 here (the legacy helper is
+            // sequential), and folding that in would have cut the DAG's own
+            // default fan-out from four blocks to one for everybody who sets
+            // nothing.
+            multipart_max_parallel: self
+                .upload_concurrency_override
+                .map(|n| u8::try_from(n).unwrap_or(u8::MAX))
+                .unwrap_or(DAG_MULTIPART_MAX_PARALLEL),
             supports_range_download: true,
             supports_resume_download: true,
             ..Default::default()
@@ -2628,6 +2637,25 @@ Time:2026-01-01</Message>
         assert_eq!(hints.multipart_max_parallel, DAG_MULTIPART_MAX_PARALLEL);
         assert!(hints.supports_range_download);
         assert!(hints.supports_resume_download);
+    }
+
+    #[test]
+    fn upload_concurrency_reaches_the_dag_hint_without_moving_its_default() {
+        // `--azure-upload-concurrency` only reaches the DAG engine through
+        // this hint, and the DAG is the default engine.
+        let mut p = AzureProvider::new(test_config());
+        assert_eq!(
+            p.transfer_optimization_hints().multipart_max_parallel,
+            DAG_MULTIPART_MAX_PARALLEL,
+            "untouched, the DAG keeps its own fan-out, not the sequential helper's 1"
+        );
+        p.set_upload_concurrency(8);
+        assert_eq!(p.transfer_optimization_hints().multipart_max_parallel, 8);
+        p.set_upload_concurrency(0); // reset
+        assert_eq!(
+            p.transfer_optimization_hints().multipart_max_parallel,
+            DAG_MULTIPART_MAX_PARALLEL
+        );
     }
 
     #[tokio::test]

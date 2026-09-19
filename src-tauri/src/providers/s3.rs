@@ -5559,7 +5559,14 @@ impl StorageProvider for S3Provider {
                 u64::MAX
             },
             multipart_part_size: self.dag_aligned_part_size() as u64,
-            multipart_max_parallel: 4,
+            // The parts the DAG keeps in flight are this provider's upload
+            // concurrency (`--s3-upload-concurrency`), not a constant: the
+            // hint is the only way that setting reaches the DAG engine, which
+            // is the default one. Measured before the wiring, 300 MB over a
+            // 100 ms link: legacy 5.92 s at 1 part against 1.84 s at 8, DAG
+            // 2.19 s against 2.18 s, because it always used four.
+            multipart_max_parallel: u8::try_from(self.effective_upload_concurrency())
+                .unwrap_or(u8::MAX),
             supports_range_download: true,
             supports_resume_download: true,
             supports_server_checksum: true,
@@ -9217,6 +9224,27 @@ mod tests {
         assert_eq!(
             S3Provider::parse_mtime_metadata(&S3Provider::format_mtime_metadata(old)).as_deref(),
             Some("1969-12-31T23:59:58.500Z")
+        );
+    }
+
+    #[test]
+    fn upload_concurrency_reaches_the_dag_hint() {
+        // `--s3-upload-concurrency` only reaches the DAG engine, which is the
+        // default one, through this hint. With the hint pinned at 4 the flag
+        // was accepted and ignored there: measured over a 100 ms link on a
+        // 300 MB upload, the legacy path went from 5.92 s at 1 part to 1.84 s
+        // at 8, while the DAG stayed at 2.19 s and 2.18 s.
+        let mut p = make_provider(None);
+        assert_eq!(
+            p.transfer_optimization_hints().multipart_max_parallel as usize,
+            S3Provider::UPLOAD_CONCURRENCY_DEFAULT
+        );
+        p.set_upload_concurrency(8);
+        assert_eq!(p.transfer_optimization_hints().multipart_max_parallel, 8);
+        p.set_upload_concurrency(0); // reset to the default
+        assert_eq!(
+            p.transfer_optimization_hints().multipart_max_parallel as usize,
+            S3Provider::UPLOAD_CONCURRENCY_DEFAULT
         );
     }
 
