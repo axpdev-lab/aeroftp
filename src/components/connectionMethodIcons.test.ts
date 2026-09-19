@@ -34,7 +34,7 @@ describe('one glyph per connection method (#347)', () => {
         // The collision that mattered: a reader cannot tell API from S3 when the
         // shape is identical and only the tint differs.
         const shapes = Object.entries(CONNECTION_METHOD_GLYPH)
-            .filter(([m]) => m !== 'Crypt' && m !== 'FTPS');
+            .filter(([m]) => m !== 'Crypt' && m !== 'FTPS' && m !== 'CLI');
         const seen = new Map<unknown, string>();
         for (const [method, glyph] of shapes) {
             const clash = seen.get(glyph);
@@ -48,6 +48,7 @@ describe('one glyph per connection method (#347)', () => {
         // their family is the intent, not a leftover.
         expect(CONNECTION_METHOD_GLYPH.FTPS).toBe(CONNECTION_METHOD_GLYPH.FTP);
         expect(CONNECTION_METHOD_GLYPH.Crypt).toBe(CONNECTION_METHOD_GLYPH.E2E);
+        expect(CONNECTION_METHOD_GLYPH.CLI).toBe(CONNECTION_METHOD_GLYPH.MEGAcmd);
     });
 
     it('separates a native API from OAuth and from S3', () => {

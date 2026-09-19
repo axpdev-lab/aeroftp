@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "Keystone-godkendelses-URL",
             "swiftAllowCleartextStorage": "Denne installation leverer objektlagring over almindelig HTTP. Accepter det for denne profil: adgangstokenet og alle filer krydser netværket ukrypteret.",
-            "kdriveTokenScopes": "Tokenet skal have scopes drive og user_info. Med drive alene forbinder det og viser filer, men \"Hent\" afvises, fordi den læser din kontoprofil for at finde Drive ID."
+            "kdriveTokenScopes": "Tokenet skal have scopes drive og user_info. Med drive alene forbinder det og viser filer, men \"Hent\" afvises, fordi den læser din kontoprofil for at finde Drive ID.",
+            "protonCliTitle": "Bruger den officielle Proton Drive CLI",
+            "protonCliBody": "Installer Proton Drive CLI fra proton.me/download/drive/cli, kør derefter proton-drive auth login i en terminal og afslut i browseren. AeroFTP ser aldrig din adgangskode; sessionen bliver i OS'ets hemmelighedslager.",
+            "protonUnofficial": "Dette er et tredjepartsprogram, som Proton ikke understøtter officielt.",
+            "protonConnectHint": "\"Opret forbindelse\" bruger den CLI, der allerede er logget ind på denne maskine. Én Proton-konto pr. OS-bruger."
         },
         "browser": {
             "remote": "Ekstern",
@@ -1930,7 +1934,9 @@
             "devicesInfoLine2": "MTP er eksklusiv og efter behov: Opret forbindelse gør krav på enheden i sessionen; afbryd giver den tilbage. Overførsler er kun hele filer (ingen genoptagelse, intet drevbogstav).",
             "discoverMtpPortable": "Telefon, kamera eller tablet via USB MTP",
             "s3AllowCleartextEndpoint": "Dette endepunkt leverer S3 over almindelig HTTP via et netværk. Accepter det for denne profil: de signerede legitimationsoplysninger og alle filer krydser netværket ukrypteret.",
-            "discoverFilebase": "Filebase: S3-kompatibel objektlagring (5 GB gratis)"
+            "discoverFilebase": "Filebase: S3-kompatibel objektlagring (5 GB gratis)",
+            "protonDesc": "Opretter forbindelse via Proton Drive CLI",
+            "protonTooltip": "Bruger Proton Drive CLI - installer den, log ind i browseren, AeroFTP er GUI'en"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

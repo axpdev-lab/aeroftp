@@ -133,6 +133,7 @@ const PROTOCOL_CATEGORIES = [
             { id: 'azure', label: 'Azure Blob' },
             { id: 'backblaze', label: 'Backblaze B2' },
             { id: 'mega', label: 'MEGA' },
+            { id: 'proton', label: 'Proton Drive' },
             { id: 'filen', label: 'Filen' },
             { id: 'internxt', label: 'Internxt' },
             { id: 'kdrive', label: 'kDrive' },

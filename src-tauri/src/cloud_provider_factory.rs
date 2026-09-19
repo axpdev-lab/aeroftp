@@ -103,6 +103,7 @@ pub async fn create_cloud_provider(
         "s3" => create_via_factory(config, ProviderType::S3).await,
         "azure" => create_via_factory(config, ProviderType::Azure).await,
         "mega" => create_via_factory(config, ProviderType::Mega).await,
+        "proton" | "protondrive" => create_via_factory(config, ProviderType::Proton).await,
         "filen" => create_via_factory(config, ProviderType::Filen).await,
         "internxt" => create_via_factory(config, ProviderType::Internxt).await,
         "kdrive" => create_via_factory(config, ProviderType::KDrive).await,

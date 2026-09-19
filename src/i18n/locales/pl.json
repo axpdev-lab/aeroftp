@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "Adres URL uwierzytelniania Keystone",
             "swiftAllowCleartextStorage": "To wdrożenie udostępnia magazyn obiektów przez nieszyfrowany HTTP. Zaakceptuj to dla tego profilu: token dostępu i każdy plik przechodzą przez sieć bez szyfrowania.",
-            "kdriveTokenScopes": "Token musi mieć zakresy drive i user_info. Z samym drive łączy się i wyświetla pliki, ale „Pobierz” jest odrzucane, ponieważ odczytuje profil Twojego konta, aby znaleźć Drive ID."
+            "kdriveTokenScopes": "Token musi mieć zakresy drive i user_info. Z samym drive łączy się i wyświetla pliki, ale „Pobierz” jest odrzucane, ponieważ odczytuje profil Twojego konta, aby znaleźć Drive ID.",
+            "protonCliTitle": "Używa oficjalnego Proton Drive CLI",
+            "protonCliBody": "Zainstaluj CLI Proton Drive ze strony proton.me/download/drive/cli, potem w terminalu uruchom proton-drive auth login i dokończ w przeglądarce. AeroFTP nigdy nie widzi hasła; sesja zostaje w magazynie tajemnic systemu.",
+            "protonUnofficial": "To aplikacja zewnętrzna, której Proton oficjalnie nie wspiera.",
+            "protonConnectHint": "\"Połącz\" używa CLI już zalogowanego na tej maszynie. Jedno konto Proton na użytkownika systemu."
         },
         "browser": {
             "remote": "Zdalny",
@@ -1930,7 +1934,9 @@
             "devicesInfoLine2": "MTP jest wyłączny i na żądanie: Połącz przejmuje urządzenie na czas sesji; rozłączenie je zwraca. Transfery obejmują tylko całe pliki (bez wznawiania, bez litery dysku).",
             "discoverMtpPortable": "Telefon, aparat lub tablet przez USB MTP",
             "s3AllowCleartextEndpoint": "Ten punkt końcowy udostępnia S3 przez nieszyfrowany HTTP w sieci. Zaakceptuj to dla tego profilu: podpisane poświadczenia i każdy plik przechodzą przez sieć bez szyfrowania.",
-            "discoverFilebase": "Filebase: pamięć obiektowa zgodna z S3 (5 GB za darmo)"
+            "discoverFilebase": "Filebase: pamięć obiektowa zgodna z S3 (5 GB za darmo)",
+            "protonDesc": "Łączy się przez Proton Drive CLI",
+            "protonTooltip": "Używa Proton Drive CLI - zainstaluj, zaloguj się w przeglądarce, AeroFTP jest GUI"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

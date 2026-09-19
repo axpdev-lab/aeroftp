@@ -34,6 +34,8 @@ pub enum ProviderType {
     OneDrive,
     /// MEGA.nz Cloud Storage
     Mega,
+    /// Proton Drive via the official Proton Drive CLI (user-installed)
+    Proton,
     /// Box Cloud Storage (OAuth2)
     Box,
     /// pCloud (OAuth2)
@@ -110,6 +112,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Dropbox => write!(f, "Dropbox"),
             ProviderType::OneDrive => write!(f, "OneDrive"),
             ProviderType::Mega => write!(f, "MEGA"),
+            ProviderType::Proton => write!(f, "Proton Drive"),
             ProviderType::Box => write!(f, "Box"),
             ProviderType::PCloud => write!(f, "pCloud"),
             ProviderType::Azure => write!(f, "Azure Blob"),
@@ -160,6 +163,7 @@ impl ProviderType {
             "dropbox" => Some(Self::Dropbox),
             "onedrive" => Some(Self::OneDrive),
             "mega" => Some(Self::Mega),
+            "proton" | "protondrive" => Some(Self::Proton),
             "box" => Some(Self::Box),
             "pcloud" => Some(Self::PCloud),
             "azure" | "azureblob" => Some(Self::Azure),
@@ -202,6 +206,7 @@ impl ProviderType {
             ProviderType::Dropbox => 443,
             ProviderType::OneDrive => 443,
             ProviderType::Mega => 443,
+            ProviderType::Proton => 443,
             ProviderType::Box => 443,
             ProviderType::PCloud => 443,
             ProviderType::Azure => 443,
@@ -246,6 +251,7 @@ impl ProviderType {
             ProviderType::Dropbox |
             ProviderType::OneDrive |
             ProviderType::Mega |
+            ProviderType::Proton |
             ProviderType::Box |
             ProviderType::PCloud |
             ProviderType::Azure |
@@ -344,6 +350,7 @@ impl ProviderType {
             | ProviderType::Mega
             | ProviderType::Filen
             | ProviderType::Internxt => "REST API",
+            ProviderType::Proton => "CLI",
             // Special / non-standard transports.
             ProviderType::AeroCloud => "AeroCloud",
             ProviderType::Peer => "P2P (iroh)",

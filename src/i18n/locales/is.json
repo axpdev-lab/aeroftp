@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "Keystone auðkenningarslóð",
             "swiftAllowCleartextStorage": "Þessi uppsetning þjónar hlutageymslu um ódulkóðað HTTP. Samþykktu það fyrir þennan prófíl: aðgangsteiknið og hver skrá fara ódulkóðuð um netið.",
-            "kdriveTokenScopes": "Lykillinn þarf bæði umfangið drive og umfangið user_info. Með aðeins drive tengist hann og sýnir skrár, en „Sækja“ er hafnað, því hún les reikningssnið þitt til að finna Drive ID."
+            "kdriveTokenScopes": "Lykillinn þarf bæði umfangið drive og umfangið user_info. Með aðeins drive tengist hann og sýnir skrár, en „Sækja“ er hafnað, því hún les reikningssnið þitt til að finna Drive ID.",
+            "protonCliTitle": "Notar opinbera Proton Drive CLI",
+            "protonCliBody": "Settu upp Proton Drive CLI frá proton.me/download/drive/cli, keyrðu svo proton-drive auth login í skjáhermi og ljúktu í vafranum. AeroFTP sér aldrei lykilorðið þitt; lotan er áfram í leyndarmálageymslu stýrikerfisins.",
+            "protonUnofficial": "Þetta er forrit frá þriðja aðila sem Proton styður ekki opinberlega.",
+            "protonConnectHint": "\"Tengjast\" notar CLI sem er þegar innskráð á þessari vél. Einn Proton-reikningur á hvern stýrikerfisnotanda."
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -1930,7 +1934,9 @@
             "devicesInfoLine2": "MTP er einkaréttur og eftir þörfum: Tengjast krefst tækisins fyrir lotuna; aftengja skilar því. Flutningar eru aðeins heilar skrár (engin endurupptaka, enginn drifstafur).",
             "discoverMtpPortable": "Sími, myndavél eða spjaldtölva um USB MTP",
             "s3AllowCleartextEndpoint": "Þessi endapunktur þjónar S3 um ódulkóðað HTTP yfir net. Samþykktu það fyrir þennan prófíl: undirrituðu auðkennin og hver skrá fara ódulkóðuð um netið.",
-            "discoverFilebase": "Filebase: S3-samhæf hlutgeymsla (5 GB ókeypis)"
+            "discoverFilebase": "Filebase: S3-samhæf hlutgeymsla (5 GB ókeypis)",
+            "protonDesc": "Tengist í gegnum Proton Drive CLI",
+            "protonTooltip": "Notar Proton Drive CLI - settu upp, skráðu þig inn í vafranum, AeroFTP er GUI"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

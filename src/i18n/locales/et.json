@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "Keystone'i autentimise URL",
             "swiftAllowCleartextStorage": "See juurutus pakub objektisalvestust krüptimata HTTP kaudu. Nõustu sellega selle profiili puhul: juurdepääsuluba ja iga fail liiguvad võrgus krüptimata.",
-            "kdriveTokenScopes": "Token vajab õigusi drive ja user_info. Ainult drive õigusega see ühendub ja kuvab faile, kuid \"Too\" lükatakse tagasi, sest see loeb teie konto profiili, et leida Drive ID."
+            "kdriveTokenScopes": "Token vajab õigusi drive ja user_info. Ainult drive õigusega see ühendub ja kuvab faile, kuid \"Too\" lükatakse tagasi, sest see loeb teie konto profiili, et leida Drive ID.",
+            "protonCliTitle": "Kasutab ametlikku Proton Drive CLI",
+            "protonCliBody": "Installige Proton Drive CLI aadressilt proton.me/download/drive/cli, käivitage terminalis proton-drive auth login ja lõpetage brauseris. AeroFTP ei näe kunagi teie parooli; seanss jääb operatsioonisüsteemi saladuste salve.",
+            "protonUnofficial": "See on kolmanda osapoole rakendus, mida Proton ametlikult ei toeta.",
+            "protonConnectHint": "\"Ühenda\" kasutab sellel masinal juba sisse logitud CLI-d. Üks Proton konto operatsioonisüsteemi kasutaja kohta."
         },
         "browser": {
             "remote": "Kaugserver",
@@ -1930,7 +1934,9 @@
             "devicesInfoLine2": "MTP on eksklusiivne ja nõudmisel: Ühenda haarab seadme seansiks; lahtiühendamine tagastab selle. Ülekanded on ainult terve fail (ei jätkamist, ei kettatähte).",
             "discoverMtpPortable": "Telefon, kaamera või tahvelarvuti USB MTP kaudu",
             "s3AllowCleartextEndpoint": "See lõpp-punkt pakub S3 krüptimata HTTP kaudu üle võrgu. Nõustu sellega selle profiili puhul: allkirjastatud mandaat ja iga fail liiguvad võrgus krüptimata.",
-            "discoverFilebase": "Filebase: S3-ühilduv objektisalvestus (5 GB tasuta)"
+            "discoverFilebase": "Filebase: S3-ühilduv objektisalvestus (5 GB tasuta)",
+            "protonDesc": "Ühendub Proton Drive CLI kaudu",
+            "protonTooltip": "Kasutab Proton Drive CLI - installige, logige brauseris sisse, AeroFTP on GUI"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

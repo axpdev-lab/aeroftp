@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "URL ng pagpapatotoo ng Keystone",
             "swiftAllowCleartextStorage": "Naghahain ang deployment na ito ng object storage sa plain HTTP. Tanggapin ito para sa profile na ito: ang access token at bawat file ay tumatawid sa network nang hindi naka-encrypt.",
-            "kdriveTokenScopes": "Kailangan ng token ang mga saklaw na drive at user_info. Sa drive lamang ay nakakakonekta ito at nakakapaglista ng mga file, ngunit tinatanggihan ang \"Kunin\", dahil binabasa nito ang profile ng iyong account para hanapin ang Drive ID."
+            "kdriveTokenScopes": "Kailangan ng token ang mga saklaw na drive at user_info. Sa drive lamang ay nakakakonekta ito at nakakapaglista ng mga file, ngunit tinatanggihan ang \"Kunin\", dahil binabasa nito ang profile ng iyong account para hanapin ang Drive ID.",
+            "protonCliTitle": "Gumagamit ng opisyal na Proton Drive CLI",
+            "protonCliBody": "I-install ang Proton Drive CLI mula sa proton.me/download/drive/cli, pagkatapos ay patakbuhin ang proton-drive auth login sa terminal at tapusin sa browser. Hindi kailanman nakikita ng AeroFTP ang iyong password; nananatili ang session sa secret store ng OS.",
+            "protonUnofficial": "Isa itong third-party na app na hindi opisyal na sinusuportahan ng Proton.",
+            "protonConnectHint": "Ginagamit ng \"Kumonekta\" ang CLI na naka-sign in na sa makinang ito. Isang Proton account bawat user ng OS."
         },
         "browser": {
             "remote": "Remote",
@@ -1930,7 +1934,9 @@
             "devicesInfoLine2": "Ang MTP ay eksklusibo at on-demand: Kinukuha ng Kumonekta ang device para sa session; ibinabalik ito ng pag-disconnect. Buong file lang ang mga paglilipat (walang resume, walang drive letter).",
             "discoverMtpPortable": "Telepono, camera, o tablet sa pamamagitan ng USB MTP",
             "s3AllowCleartextEndpoint": "Naghahain ang endpoint na ito ng S3 sa plain HTTP sa kabila ng isang network. Tanggapin ito para sa profile na ito: ang mga nilagdaang kredensyal at bawat file ay tumatawid sa network nang hindi naka-encrypt.",
-            "discoverFilebase": "Filebase: S3-compatible na object storage (5 GB libre)"
+            "discoverFilebase": "Filebase: S3-compatible na object storage (5 GB libre)",
+            "protonDesc": "Kumokonekta sa pamamagitan ng Proton Drive CLI",
+            "protonTooltip": "Gumagamit ng Proton Drive CLI - i-install, mag-sign in sa browser, ang AeroFTP ang GUI"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

@@ -231,6 +231,18 @@ export const InternxtLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
+// Proton Drive: generic cloud mark. Proton forbids third-party use of its
+// logos, trademarks, and design elements (Drive SDK README, Product and
+// legal requirements). Keep this swap in this file.
+export const ProtonDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+        <path
+            fill="#64748B"
+            d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
+        />
+    </svg>
+);
+
 // Jianguoyun / Nutstore: acorn icon (PNG, no SVG available)
 export const JianguoyunLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
@@ -588,6 +600,8 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'zohoworkdrive': ZohoWorkDriveLogo,
     'zoho-workdrive': ZohoWorkDriveLogo,
     'internxt': InternxtLogo,
+    'proton': ProtonDriveLogo,
+    'protondrive': ProtonDriveLogo,
     'kdrive': KDriveLogo,
     'jottacloud': JottacloudLogo,
     'drime': DrimeCloudLogo,

@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "URL dilysu Keystone",
             "swiftAllowCleartextStorage": "Mae'r gosodiad hwn yn gweini storfa gwrthrychau dros HTTP plaen. Derbyniwch hyn ar gyfer y proffil hwn: mae'r tocyn mynediad a phob ffeil yn croesi'r rhwydwaith heb eu hamgryptio.",
-            "kdriveTokenScopes": "Mae angen y cwmpasau drive a user_info ar y tocyn. Gyda drive yn unig mae'n cysylltu ac yn rhestru ffeiliau, ond mae \"Nôl\" yn cael ei wrthod, am ei fod yn darllen proffil eich cyfrif i ddod o hyd i'r Drive ID."
+            "kdriveTokenScopes": "Mae angen y cwmpasau drive a user_info ar y tocyn. Gyda drive yn unig mae'n cysylltu ac yn rhestru ffeiliau, ond mae \"Nôl\" yn cael ei wrthod, am ei fod yn darllen proffil eich cyfrif i ddod o hyd i'r Drive ID.",
+            "protonCliTitle": "Yn defnyddio CLI swyddogol Proton Drive",
+            "protonCliBody": "Gosodwch CLI Proton Drive o proton.me/download/drive/cli, yna rhedwch proton-drive auth login mewn terfynell a gorffen yn y porwr. Nid yw AeroFTP byth yn gweld eich cyfrinair; mae'r sesiwn yn aros yn storfa gyfrinachau'r OS.",
+            "protonUnofficial": "Mae hwn yn gymhwysiad trydydd parti nad yw Proton yn ei gefnogi'n swyddogol.",
+            "protonConnectHint": "Mae \"Cysylltu\" yn defnyddio'r CLI sydd eisoes wedi mewngofnodi ar y peiriant hwn. Un cyfrif Proton fesul defnyddiwr OS."
         },
         "browser": {
             "remote": "Pell",
@@ -1930,7 +1934,9 @@
             "devicesInfoLine2": "Mae MTP yn unigryw ac ar-alw: Mae Cysylltu yn hawlio'r ddyfais ar gyfer y sesiwn; mae datgysylltu yn ei dychwelyd. Trosglwyddiadau ffeil gyfan yn unig (dim ailddechrau, dim llythyren gyriant).",
             "discoverMtpPortable": "Ffôn, camera, neu lechen dros USB MTP",
             "s3AllowCleartextEndpoint": "Mae'r pwynt terfyn hwn yn gweini S3 dros HTTP plaen ar draws rhwydwaith. Derbyniwch hyn ar gyfer y proffil hwn: mae'r manylion llofnodedig a phob ffeil yn croesi'r rhwydwaith heb eu hamgryptio.",
-            "discoverFilebase": "Filebase: storfa wrthrychau sy'n gydnaws â S3 (5 GB am ddim)"
+            "discoverFilebase": "Filebase: storfa wrthrychau sy'n gydnaws â S3 (5 GB am ddim)",
+            "protonDesc": "Yn cysylltu trwy CLI Proton Drive",
+            "protonTooltip": "Yn defnyddio CLI Proton Drive - gosodwch ef, mewngofnodwch yn y porwr, AeroFTP yw'r GUI"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

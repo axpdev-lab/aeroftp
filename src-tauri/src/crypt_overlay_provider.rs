@@ -2067,7 +2067,7 @@ pub fn protocol_class(proto: &str) -> &'static str {
         "googledrive" | "googlephotos" | "dropbox" | "onedrive" | "box" | "pcloud"
         | "zohoworkdrive" | "yandexdisk" | "fourshared" => "OAuth",
         "aerocloud" => "AeroCloud",
-        "filen" | "internxt" | "mega" => "E2E",
+        "filen" | "internxt" | "mega" | "proton" => "E2E",
         "webdav" => "WebDAV",
         "ftps" => "FTPS",
         "ftp" => "FTP",
@@ -4650,6 +4650,7 @@ mod tests {
         assert_eq!(protocol_class("sftp"), "SFTP");
         assert_eq!(protocol_class("dropbox"), "OAuth");
         assert_eq!(protocol_class("mega"), "E2E");
+        assert_eq!(protocol_class("proton"), "E2E");
         assert_eq!(
             protocol_class("koofr"),
             "API",

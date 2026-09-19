@@ -316,6 +316,7 @@ pub fn capabilities_for_protocol(protocol: &str) -> Vec<&'static str> {
         "box" => vec!["server_copy", "share_links", "versions"],
         "pcloud" => vec!["server_copy", "share_links", "versions", "thumbnails"],
         "mega" => vec!["server_copy", "share_links", "thumbnails"],
+        "proton" | "protondrive" => vec!["server_copy", "share_links"],
         "filen" => vec!["server_copy", "share_links"],
         "internxt" => vec!["share_links"],
         "kdrive" => vec!["server_copy", "share_links", "thumbnails"],
@@ -347,6 +348,7 @@ pub fn provider_type_for_transfer_capabilities(protocol: &str) -> Option<Provide
         "dropbox" => Some(ProviderType::Dropbox),
         "onedrive" | "one_drive" | "one drive" => Some(ProviderType::OneDrive),
         "mega" => Some(ProviderType::Mega),
+        "proton" | "protondrive" => Some(ProviderType::Proton),
         "box" => Some(ProviderType::Box),
         "pcloud" | "p_cloud" => Some(ProviderType::PCloud),
         "azure" => Some(ProviderType::Azure),
@@ -585,6 +587,7 @@ pub fn default_transfer_optimization_hints_for_provider(
         | ProviderType::GitLab
         | ProviderType::Immich
         | ProviderType::AeroCloud
+        | ProviderType::Proton
         | ProviderType::AeroVaultMount
         | ProviderType::Peer
         | ProviderType::Mtp => TransferOptimizationHints::default(),

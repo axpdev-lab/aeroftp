@@ -859,6 +859,7 @@ impl ProviderConnectionParams {
             "webdav" => ProviderType::WebDav,
             "s3" => ProviderType::S3,
             "mega" => ProviderType::Mega,
+            "proton" | "protondrive" => ProviderType::Proton,
             "box" => ProviderType::Box,
             "pcloud" => ProviderType::PCloud,
             "azure" => ProviderType::Azure,
@@ -1288,6 +1289,8 @@ impl ProviderConnectionParams {
 
         let host = if provider_type == ProviderType::Mega {
             "mega.nz".to_string()
+        } else if provider_type == ProviderType::Proton {
+            "drive.proton.me".to_string()
         } else if provider_type == ProviderType::Internxt {
             "gateway.internxt.com".to_string()
         } else if provider_type == ProviderType::KDrive {

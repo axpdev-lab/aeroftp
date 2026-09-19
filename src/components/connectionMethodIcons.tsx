@@ -88,7 +88,8 @@ export type ConnectionMethod =
     | 'Crypt'
     | 'Swift'
     | 'Blob'
-    | 'MEGAcmd';
+    | 'MEGAcmd'
+    | 'CLI';
 
 /** The lucide component for a method, so each caller picks its own size/colour. */
 export const CONNECTION_METHOD_GLYPH: Record<ConnectionMethod, LucideIcon> = {
@@ -104,6 +105,9 @@ export const CONNECTION_METHOD_GLYPH: Record<ConnectionMethod, LucideIcon> = {
     Swift: Boxes,
     Blob: Container,
     MEGAcmd: TerminalSquare,
+    // Official vendor CLI driven by AeroFTP (Proton Drive today; MEGAcmd
+    // keeps its own label because that is the product name on MEGA's tile).
+    CLI: TerminalSquare,
 };
 
 /**

@@ -32,7 +32,7 @@ import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplatePara
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { Bucket } from './connectionMethodIcons';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
-import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
+import { GoogleDriveLogo, GooglePhotosLogo, DropboxLogo, OneDriveLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, ProtonDriveLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
 
 // Google Drive, Google Photos, Dropbox and OneDrive used to be redrawn here as
 // local copies. The 2026 mark refresh (#347, Ehud) updated the canonical ones in
@@ -244,6 +244,17 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         tooltip: t('protocol.megaTooltip'),
     },
     {
+        type: 'proton',
+        name: 'Proton Drive',
+        icon: <ProtonDriveLogo size={18} />,
+        description: t('protocol.protonDesc'),
+        defaultPort: 443,
+        badge: 'CLI',
+        color: 'text-slate-500',
+        isCloudStorage: true,
+        tooltip: t('protocol.protonTooltip'),
+    },
+    {
         type: 'box',
         name: 'Box',
         icon: <BoxLogo size={18} />,
@@ -452,6 +463,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'onedrive', name: 'OneDrive', icon: <OneDriveLogo size={18} />, description: 'OneDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'OneDrive OAuth2' },
     { type: 'dropbox', name: 'Dropbox', icon: <DropboxLogo size={18} />, description: 'Dropbox (2 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Dropbox OAuth2' },
     { type: 'mega', name: 'MEGA', icon: <MegaLogo size={18} />, description: 'MEGA (20 GB free)', defaultPort: 443, badge: 'E2E 128-bit', color: 'text-red-600', isCloudStorage: true, tooltip: 'MEGA E2E encryption' },
+    { type: 'proton', name: 'Proton Drive', icon: <ProtonDriveLogo size={18} />, description: 'Connects through the Proton Drive CLI', defaultPort: 443, badge: 'CLI', color: 'text-slate-500', isCloudStorage: true, tooltip: 'Uses the Proton Drive CLI (user-installed, browser sign-in)' },
     { type: 'box', name: 'Box', icon: <BoxLogo size={18} />, description: 'Box (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Box OAuth2' },
     { type: 'zohoworkdrive', name: 'Zoho WorkDrive', icon: <ZohoWorkDriveLogo size={18} />, description: 'Zoho WorkDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Zoho WorkDrive OAuth2' },
     { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud (10 GB free)', defaultPort: 443, badge: 'E2E 256-bit', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption (Argon2id v3 / PBKDF2 v2)' },
@@ -1669,6 +1681,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         dropbox: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         onedrive: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
         mega: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+        proton: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
         box: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         pcloud: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300',
         azure: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',

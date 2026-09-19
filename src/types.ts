@@ -30,6 +30,7 @@ export type ProviderType =
   | "dropbox"
   | "onedrive"
   | "mega"
+  | "proton"
   | "box"
   | "pcloud"
   | "azure"
@@ -93,7 +94,7 @@ export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" 
 export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (isOAuthProvider(type) || isFourSharedProvider(type)) return "OAuth";
   if (isAeroCloudProvider(type)) return "AeroCloud";
-  if (type === "filen" || type === "internxt" || type === "mega") return "E2E";
+  if (type === "filen" || type === "internxt" || type === "mega" || type === "proton") return "E2E";
   if (type === "webdav") return "WebDAV";
   if (type === "ftps") return "FTPS";
   if (type === "ftp") return "FTP";
@@ -107,10 +108,12 @@ export const getProtocolClass = (type: ProviderType): ProtocolClass => {
 };
 
 // Encryption strength (bits) for E2E providers. MEGA uses AES-128 for files;
-// Filen and Internxt use AES-256 zero-knowledge encryption.
+// Filen and Internxt use AES-256 zero-knowledge encryption. Proton Drive
+// encrypts file contents with AES-256 and ECC key exchange (proton.me/learn
+// encryption AES page, read 2026-09-18).
 export const getE2EBits = (type: ProviderType): 128 | 256 | null => {
   if (type === "mega") return 128;
-  if (type === "filen" || type === "internxt") return 256;
+  if (type === "filen" || type === "internxt" || type === "proton") return 256;
   return null;
 };
 
@@ -123,6 +126,7 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
     "s3",
     "webdav",
     "mega",
+    "proton",
     "sftp",
     "box",
     "pcloud",
@@ -207,7 +211,7 @@ export const providerSupportsCryptOverlay = (
 // (issue #213). Generic protocols (ftp/ftps/sftp/s3/webdav) are deliberately
 // excluded: those legitimately rely on the registry preset for dispatch.
 const NATIVE_API_PROTOCOLS: ReadonlySet<string> = new Set([
-  "mega", "box", "pcloud", "azure", "filen", "internxt", "kdrive", "drime",
+  "mega", "proton", "box", "pcloud", "azure", "filen", "internxt", "kdrive", "drime",
   "filelu", "koofr", "opendrive", "yandexdisk", "googledrive", "dropbox",
   "onedrive", "fourshared", "zohoworkdrive", "github", "gitlab", "immich",
   "jottacloud", "swift",
@@ -241,6 +245,8 @@ export const providerServesQuota = (
   // AeroShare friend (protocol "peer"): a read-only local replica with no quota
   // concept. Reporting "serves quota" suppresses the manual-total-bytes field
   // and the used-storage scan in the connection/edit form.
+  // Proton Drive CLI has no quota command; keep the manual cap available.
+  if (protocol === "proton") return false;
   if (protocol === "peer") return true;
   // MTP portable devices report real storage free/total from the device; the
   // manual cap and used-scan checkbox are noise on that form (live-test LT7).

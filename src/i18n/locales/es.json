@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "URL de autenticación de Keystone",
             "swiftAllowCleartextStorage": "Esta implementación sirve el almacenamiento de objetos por HTTP sin cifrar. Acéptalo para este perfil: el token de acceso y todos los archivos cruzan la red sin cifrar.",
-            "kdriveTokenScopes": "El token necesita los ámbitos drive y user_info. Solo con drive se conecta y lista archivos, pero \"Obtener\" se rechaza, porque lee el perfil de tu cuenta para encontrar el Drive ID."
+            "kdriveTokenScopes": "El token necesita los ámbitos drive y user_info. Solo con drive se conecta y lista archivos, pero \"Obtener\" se rechaza, porque lee el perfil de tu cuenta para encontrar el Drive ID.",
+            "protonCliTitle": "Utiliza el CLI oficial de Proton Drive",
+            "protonCliBody": "Instale el CLI de Proton Drive desde proton.me/download/drive/cli, ejecute proton-drive auth login en un terminal y termine en el navegador. AeroFTP nunca ve su contraseña; la sesión permanece en el almacén de secretos del sistema.",
+            "protonUnofficial": "Esta es una aplicación de terceros no admitida oficialmente por Proton.",
+            "protonConnectHint": "\"Conectar\" usa el CLI ya iniciado en esta máquina. Una cuenta Proton por usuario del sistema."
         },
         "browser": {
             "remote": "Remoto",
@@ -1930,7 +1934,9 @@
             "devicesInfoLine2": "MTP es exclusivo y bajo demanda: Conectar reclama el dispositivo para la sesión; desconectar lo devuelve. Las transferencias son de archivo completo (sin reanudación ni letra de unidad).",
             "discoverMtpPortable": "Teléfono, cámara o tableta por USB MTP",
             "s3AllowCleartextEndpoint": "Este punto de conexión sirve S3 por HTTP sin cifrar a través de una red. Acéptalo para este perfil: las credenciales firmadas y todos los archivos cruzan la red sin cifrar.",
-            "discoverFilebase": "Filebase: almacenamiento de objetos compatible con S3 (5 GB gratis)"
+            "discoverFilebase": "Filebase: almacenamiento de objetos compatible con S3 (5 GB gratis)",
+            "protonDesc": "Se conecta a través del CLI de Proton Drive",
+            "protonTooltip": "Utiliza el CLI de Proton Drive - instálelo, inicie sesión en el navegador, AeroFTP es la GUI"
         },
         "shortcuts": {
             "title": "Atajos de Teclado",

@@ -137,6 +137,7 @@ pub fn capability(kind: ProviderType) -> ChecksumCapability {
         ProviderType::Azure
         | ProviderType::AeroCloud
         | ProviderType::Mega
+        | ProviderType::Proton
         | ProviderType::Filen
         | ProviderType::FourShared
         | ProviderType::ZohoWorkdrive
@@ -179,6 +180,7 @@ const DOC_ORDER: &[ProviderType] = &[
     ProviderType::GitLab,
     ProviderType::Immich,
     ProviderType::Mega,
+    ProviderType::Proton,
     ProviderType::Filen,
     ProviderType::Internxt,
     ProviderType::ZohoWorkdrive,

@@ -323,7 +323,11 @@
             },
             "swiftAuthUrl": "Keystone hitelesítési URL",
             "swiftAllowCleartextStorage": "Ez a telepítés titkosítatlan HTTP-n keresztül szolgálja ki az objektumtárolót. Fogadja el ehhez a profilhoz: a hozzáférési token és minden fájl titkosítatlanul halad át a hálózaton.",
-            "kdriveTokenScopes": "A tokenhez a drive és a user_info hatókör kell. Csak a drive hatókörrel csatlakozik és listázza a fájlokat, de a „Lekérés” elutasításra kerül, mert a Drive ID megtalálásához a fiókprofilodat olvassa."
+            "kdriveTokenScopes": "A tokenhez a drive és a user_info hatókör kell. Csak a drive hatókörrel csatlakozik és listázza a fájlokat, de a „Lekérés” elutasításra kerül, mert a Drive ID megtalálásához a fiókprofilodat olvassa.",
+            "protonCliTitle": "A hivatalos Proton Drive CLI-t használja",
+            "protonCliBody": "Telepítse a Proton Drive CLI-t a proton.me/download/drive/cli címről, majd a terminálban futtassa a proton-drive auth login parancsot, és fejezze be a böngészőben. Az AeroFTP soha nem látja a jelszavát; a munkamenet az OS titkos tárában marad.",
+            "protonUnofficial": "Ez egy harmadik féltől származó alkalmazás, amelyet a Proton hivatalosan nem támogat.",
+            "protonConnectHint": "A \"Csatlakozás\" az ezen a gépen már bejelentkezett CLI-t használja. Operációsrendszer-felhasználónként egy Proton-fiók."
         },
         "browser": {
             "remote": "Távoli",
@@ -1930,7 +1934,9 @@
             "devicesInfoLine2": "Az MTP kizárólagos és igény szerinti: A Csatlakozás lefoglalja az eszközt a munkamenetre; a leválasztás visszaadja. Az átvitel csak teljes fájl (nincs folytatás, nincs meghajtóbetűjel).",
             "discoverMtpPortable": "Telefon, kamera vagy táblagép USB MTP-n keresztül",
             "s3AllowCleartextEndpoint": "Ez a végpont titkosítatlan HTTP-n keresztül, a hálózaton át szolgálja ki az S3-at. Fogadja el ehhez a profilhoz: az aláírt hitelesítő adatok és minden fájl titkosítatlanul halad át a hálózaton.",
-            "discoverFilebase": "Filebase: S3-kompatibilis objektumtárhely (5 GB ingyen)"
+            "discoverFilebase": "Filebase: S3-kompatibilis objektumtárhely (5 GB ingyen)",
+            "protonDesc": "A Proton Drive CLI-n keresztül csatlakozik",
+            "protonTooltip": "A Proton Drive CLI-t használja - telepítse, jelentkezzen be a böngészőben, az AeroFTP a GUI"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
