@@ -103,17 +103,17 @@ pub fn aeroftp_data_root() -> Option<PathBuf> {
     Some(dir)
 }
 
-/// Resolve the legacy Tauri identifier-scoped config directory used before the
+/// Resolve the legacy identifier-scoped config directory used before the
 /// unified data-root migration. This is read only as a release-build migration
 /// source; debug builds intentionally do not copy release state into
 /// `aeroftp-dev`.
-fn legacy_app_config_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
-    use tauri::Manager;
-    app.path().app_config_dir().ok()
-}
-
-fn legacy_cli_app_config_dir() -> Option<PathBuf> {
-    dirs::config_dir().map(|base| base.join(TAURI_APP_IDENTIFIER))
+///
+/// It is built from [`LEGACY_APP_IDENTIFIER`] and never from the identifier in
+/// `tauri.conf.json`: Tauri's `app_config_dir()` answers with the CURRENT
+/// identifier, which since #814 is a directory the pre-migration releases never
+/// wrote, so asking Tauri turned the GUI migration into a silent no-op.
+fn legacy_app_config_dir() -> Option<PathBuf> {
+    dirs::config_dir().map(|base| base.join(LEGACY_APP_IDENTIFIER))
 }
 
 fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -228,23 +228,29 @@ fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
 /// This is the wrapper to use everywhere instead of calling
 /// `app.path().app_config_dir()` directly. It keeps portable installs
 /// self-contained and keeps debug builds isolated from release data.
-pub fn app_config_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+///
+/// The handle is not needed for the resolution any more; the parameter keeps
+/// GUI code on the GUI entry point while [`cli_app_config_dir`] serves the
+/// binaries that have no handle.
+pub fn app_config_dir(_app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = aeroftp_data_root().ok_or_else(|| "Cannot resolve AeroFTP data root".to_string())?;
-    migrate_legacy_app_config_dir(legacy_app_config_dir(app), &dir);
+    migrate_legacy_app_config_dir(legacy_app_config_dir(), &dir);
     Ok(dir)
 }
 
 /// Resolve the per-app data directory. In portable mode this is
-/// `<exe-dir>/data`; otherwise delegates to Tauri's `app_data_dir`.
-pub fn app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    use tauri::Manager;
+/// `<exe-dir>/data`; otherwise `<data dir>/com.aeroftp.AeroFTP`, the location
+/// Tauri's `app_data_dir()` gave every release before #814. It is pinned to
+/// [`LEGACY_APP_IDENTIFIER`] for the reason given there: the speech model
+/// downloaded into it is hundreds of megabytes that an update must not orphan.
+pub fn app_data_dir() -> Result<PathBuf, String> {
     if let Some(data_root) = portable_data_root() {
         ensure_dir(&data_root)?;
         return Ok(data_root);
     }
-    app.path()
-        .app_data_dir()
-        .map_err(|e| format!("Cannot resolve app data dir: {e}"))
+    dirs::data_dir()
+        .map(|base| base.join(LEGACY_APP_IDENTIFIER))
+        .ok_or_else(|| "Cannot resolve app data dir".to_string())
 }
 
 /// Resolve the credential-store directory. Kept as a compatibility wrapper
@@ -264,7 +270,7 @@ pub fn credential_store_dir() -> Option<PathBuf> {
 /// that case rather than silently writing into the working directory.
 pub fn cli_app_config_dir() -> Option<PathBuf> {
     let dir = aeroftp_data_root()?;
-    migrate_legacy_app_config_dir(legacy_cli_app_config_dir(), &dir);
+    migrate_legacy_app_config_dir(legacy_app_config_dir(), &dir);
     Some(dir)
 }
 
@@ -417,11 +423,27 @@ pub fn flatpak_host_import_apply(accept: bool) -> Result<FlatpakImportReport, St
     Ok(report)
 }
 
-/// The Tauri identifier hard-coded in `tauri.conf.json`. Kept for legacy
-/// migration from the old identifier-scoped config directory.
-pub const TAURI_APP_IDENTIFIER: &str = "com.aeroftp.AeroFTP";
+/// The application identifier every release before #814 shipped with, and the
+/// one the identifier-scoped state on users' machines is filed under.
+///
+/// #814 renamed the identifier in `tauri.conf.json` to [`APP_IDENTIFIER`]. Tauri
+/// derives several directories from that value, and a rename moves each of
+/// them to an empty sibling: the WebView data (all `localStorage`: language,
+/// theme, AeroFile tabs, custom icons, AI, OAuth and terminal settings),
+/// `app_data_dir()` (the downloaded speech model), the legacy config tree the
+/// data-root migration reads, the window-state file and the log folder. None of
+/// it is the vault, which lives under the name-scoped `aeroftp` root, but an
+/// update that silently resets every preference and re-downloads a model is a
+/// regression. So the locations below stay on this identifier, the same choice
+/// #814 made for the keyring service name, and what cannot be pinned is carried
+/// over once by [`carry_identifier_scoped_state`].
+pub const LEGACY_APP_IDENTIFIER: &str = "com.aeroftp.AeroFTP";
 
-/// Resolve the WebView2 / WebKitGTK per-window data directory.
+/// The identifier in `tauri.conf.json`. Pinned against the file by a test, so a
+/// future rename cannot leave the carry-over below pointing at the wrong place.
+pub const APP_IDENTIFIER: &str = "app.aeroftp.AeroFTP";
+
+/// Resolve the WebView2 / WebKitGTK data directory every window uses.
 ///
 /// In portable mode this is `<exe-dir>/data/webview`. Two portable
 /// installations of AeroFTP in different folders MUST NOT share WebView
@@ -429,15 +451,154 @@ pub const TAURI_APP_IDENTIFIER: &str = "com.aeroftp.AeroFTP";
 /// saved server in one folder propagates to the other through the
 /// identifier-scoped default folder Windows picks for WebView2.
 ///
-/// Returns `None` when not running as portable: in that case the default
-/// `WebviewWindowBuilder` behaviour (identifier-scoped folder under
-/// `%LOCALAPPDATA%` / `~/.local/share`) is preserved for installed
-/// builds so existing MSI/NSIS/.deb/.rpm users see no migration.
+/// Installed builds on Linux and Windows get `<local data dir>/com.aeroftp.AeroFTP`,
+/// which is exactly where Tauri put the WebView data before #814 (it defaults
+/// to `app_local_data_dir()`, which follows the configured identifier). Leaving
+/// the default in place after the rename would have started every upgraded
+/// installation on an empty `localStorage`. On macOS WebKit files the store by
+/// bundle identifier and a directory cannot be chosen here, so this returns
+/// `None` and [`carry_identifier_scoped_state`] copies the store instead.
 pub fn webview_data_dir() -> Option<PathBuf> {
-    let data_root = portable_data_root()?;
-    let dir = data_root.join("webview");
-    ensure_dir(&dir).ok()?;
-    Some(dir)
+    if let Some(data_root) = portable_data_root() {
+        let dir = data_root.join("webview");
+        ensure_dir(&dir).ok()?;
+        return Some(dir);
+    }
+    installed_webview_data_dir()
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn installed_webview_data_dir() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|base| base.join(LEGACY_APP_IDENTIFIER))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+fn installed_webview_data_dir() -> Option<PathBuf> {
+    None
+}
+
+/// The folder the file log target writes to: Tauri's `app_log_dir()` for the
+/// legacy identifier, so the log a user or a bug report points at keeps its
+/// place across the rename. `None` only when the platform base is unknown.
+pub fn log_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        dirs::home_dir().map(|home| home.join("Library/Logs").join(LEGACY_APP_IDENTIFIER))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        dirs::data_local_dir().map(|base| base.join(LEGACY_APP_IDENTIFIER).join("logs"))
+    }
+}
+
+/// Carry over, once, the identifier-scoped state that cannot be pinned to
+/// [`LEGACY_APP_IDENTIFIER`]. Must run before the Tauri builder starts, because
+/// the window-state plugin reads its file while plugins initialise and the
+/// WebView store is opened by the first window.
+///
+/// - The window-state file, which the plugin always resolves under the CURRENT
+///   identifier's config directory.
+/// - On macOS, the WebKit website data store (`~/Library/WebKit/<bundle id>`),
+///   where `localStorage` lives and which WebKit files by bundle identifier.
+///
+/// Each item is copied only when the destination does not exist yet, so a user
+/// who has already run the renamed build keeps what that build wrote, and a
+/// second start does nothing. Portable builds keep everything under their own
+/// folder and are skipped.
+pub fn carry_identifier_scoped_state() {
+    if is_portable() {
+        return;
+    }
+    if let Some(config) = dirs::config_dir() {
+        carry_file_if_absent(
+            &config.join(LEGACY_APP_IDENTIFIER).join(WINDOW_STATE_FILE),
+            &config.join(APP_IDENTIFIER).join(WINDOW_STATE_FILE),
+        );
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = dirs::home_dir() {
+            let webkit = home.join("Library/WebKit");
+            carry_tree_if_absent(
+                &webkit.join(LEGACY_APP_IDENTIFIER),
+                &webkit.join(APP_IDENTIFIER),
+            );
+        }
+    }
+}
+
+/// `tauri-plugin-window-state`'s default file name.
+const WINDOW_STATE_FILE: &str = ".window-state.json";
+
+fn carry_file_if_absent(src: &Path, dst: &Path) {
+    if !src.is_file() || dst.exists() {
+        return;
+    }
+    let result = dst
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| std::fs::copy(src, dst).map(|_| ()));
+    match result {
+        Ok(()) => tracing::info!("Carried {} over to {}", src.display(), dst.display()),
+        Err(e) => tracing::warn!(
+            "Could not carry {} over to {}: {}",
+            src.display(),
+            dst.display(),
+            e
+        ),
+    }
+}
+
+/// Copy a whole tree to a destination that does not exist, through a sibling
+/// staging directory renamed into place at the end: an interrupted copy leaves
+/// no half-filled destination behind, and the next start tries again.
+#[cfg(any(target_os = "macos", test))]
+fn carry_tree_if_absent(src: &Path, dst: &Path) {
+    if !src.is_dir() || dst.exists() {
+        return;
+    }
+    let Some(parent) = dst.parent() else {
+        return;
+    };
+    let staging = parent.join(format!(
+        ".{}.carry-{}",
+        dst.file_name().and_then(|n| n.to_str()).unwrap_or("state"),
+        std::process::id()
+    ));
+    let result = std::fs::create_dir_all(parent)
+        .and_then(|()| copy_tree_plain(src, &staging))
+        .and_then(|()| std::fs::rename(&staging, dst));
+    match result {
+        Ok(()) => tracing::info!("Carried {} over to {}", src.display(), dst.display()),
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&staging);
+            tracing::warn!(
+                "Could not carry {} over to {}: {}",
+                src.display(),
+                dst.display(),
+                e
+            );
+        }
+    }
+}
+
+/// Byte copy of a tree, every file including SQLite sidecars: the WebKit store
+/// is copied while no WebView has it open, so a database and its WAL travel as
+/// one consistent generation. Symlinks are skipped, never followed.
+#[cfg(any(target_os = "macos", test))]
+fn copy_tree_plain(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let kind = entry.file_type()?;
+        let target = dst.join(entry.file_name());
+        if kind.is_dir() {
+            copy_tree_plain(&entry.path(), &target)?;
+        } else if kind.is_file() {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// True when an `EBWebView` folder exists under the shared, identifier-scoped
@@ -455,7 +616,7 @@ pub fn shared_webview_data_present() -> bool {
     let Some(local_appdata) = dirs::data_local_dir() else {
         return false;
     };
-    let candidate = local_appdata.join("com.aeroftp.AeroFTP").join("EBWebView");
+    let candidate = local_appdata.join(LEGACY_APP_IDENTIFIER).join("EBWebView");
     candidate.is_dir()
 }
 
@@ -867,5 +1028,128 @@ mod tests {
         assert!(!dst.join("loop").exists());
         // The foreign secret appears nowhere under the destination.
         assert!(!tree_contains_bytes(&dst, secret));
+    }
+}
+
+#[cfg(test)]
+mod identifier_scoped_state_tests {
+    use super::*;
+
+    #[test]
+    fn app_identifier_matches_the_bundle_configuration() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
+        assert_eq!(conf["identifier"].as_str(), Some(APP_IDENTIFIER));
+        assert_ne!(APP_IDENTIFIER, LEGACY_APP_IDENTIFIER);
+    }
+
+    #[test]
+    fn the_legacy_identifier_is_the_one_every_earlier_release_used() {
+        // Changing this string moves every pinned location to an empty folder,
+        // which is the regression the pin exists to prevent.
+        assert_eq!(LEGACY_APP_IDENTIFIER, "com.aeroftp.AeroFTP");
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn installed_webview_data_stays_on_the_legacy_identifier() {
+        assert!(!is_portable(), "the test binary is not a portable install");
+        let dir = webview_data_dir().expect("installed builds name a WebView folder");
+        assert_eq!(
+            dir,
+            dirs::data_local_dir().unwrap().join(LEGACY_APP_IDENTIFIER)
+        );
+    }
+
+    #[test]
+    fn app_data_and_logs_stay_on_the_legacy_identifier() {
+        assert!(!is_portable(), "the test binary is not a portable install");
+        assert_eq!(
+            app_data_dir().unwrap(),
+            dirs::data_dir().unwrap().join(LEGACY_APP_IDENTIFIER)
+        );
+        let logs = log_dir().expect("log folder");
+        assert!(
+            logs.components()
+                .any(|c| c.as_os_str() == LEGACY_APP_IDENTIFIER),
+            "{}",
+            logs.display()
+        );
+        assert_eq!(
+            legacy_app_config_dir().unwrap(),
+            dirs::config_dir().unwrap().join(LEGACY_APP_IDENTIFIER)
+        );
+    }
+
+    #[test]
+    fn a_tree_is_carried_whole_when_the_destination_is_absent() {
+        let root = tempfile::tempdir().unwrap();
+        let src = root.path().join(LEGACY_APP_IDENTIFIER);
+        let dst = root.path().join(APP_IDENTIFIER);
+        std::fs::create_dir_all(src.join("WebsiteData/LocalStorage")).unwrap();
+        std::fs::write(
+            src.join("WebsiteData/LocalStorage/localstorage.sqlite3"),
+            b"db",
+        )
+        .unwrap();
+        std::fs::write(
+            src.join("WebsiteData/LocalStorage/localstorage.sqlite3-wal"),
+            b"wal",
+        )
+        .unwrap();
+
+        carry_tree_if_absent(&src, &dst);
+
+        let ls = dst.join("WebsiteData/LocalStorage");
+        assert_eq!(
+            std::fs::read(ls.join("localstorage.sqlite3")).unwrap(),
+            b"db"
+        );
+        // The WAL travels with its database: it may hold committed rows.
+        assert_eq!(
+            std::fs::read(ls.join("localstorage.sqlite3-wal")).unwrap(),
+            b"wal"
+        );
+        assert!(src
+            .join("WebsiteData/LocalStorage/localstorage.sqlite3")
+            .is_file());
+        let leftovers: Vec<_> = std::fs::read_dir(root.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .filter(|n| n.to_string_lossy().contains(".carry-"))
+            .collect();
+        assert!(leftovers.is_empty(), "staging left behind: {leftovers:?}");
+    }
+
+    #[test]
+    fn nothing_is_carried_over_a_destination_that_exists() {
+        let root = tempfile::tempdir().unwrap();
+        let src = root.path().join(LEGACY_APP_IDENTIFIER);
+        let dst = root.path().join(APP_IDENTIFIER);
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::create_dir_all(&dst).unwrap();
+        std::fs::write(src.join("state"), b"old").unwrap();
+        std::fs::write(dst.join("state"), b"new").unwrap();
+
+        carry_tree_if_absent(&src, &dst);
+        carry_file_if_absent(&src.join("state"), &dst.join("state"));
+
+        assert_eq!(std::fs::read(dst.join("state")).unwrap(), b"new");
+    }
+
+    #[test]
+    fn a_file_is_carried_into_a_missing_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let src = root
+            .path()
+            .join(LEGACY_APP_IDENTIFIER)
+            .join(WINDOW_STATE_FILE);
+        let dst = root.path().join(APP_IDENTIFIER).join(WINDOW_STATE_FILE);
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        std::fs::write(&src, b"{\"main\":{}}").unwrap();
+
+        carry_file_if_absent(&src, &dst);
+
+        assert_eq!(std::fs::read(&dst).unwrap(), b"{\"main\":{}}");
     }
 }
