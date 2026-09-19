@@ -180,8 +180,8 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
                 Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
                 Err(e) => return Err(e.error),
             }
-        } else {
-            let _ = std::fs::copy(src, dst)?;
+        } else if !copy_file_noclobber(src, dst)? {
+            return Ok(());
         }
         #[cfg(unix)]
         {
@@ -190,6 +190,28 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Copy `src` to `dst` unless `dst` exists, without ever replacing it. The bytes
+/// go to a temporary sibling that is linked into place with `persist_noclobber`,
+/// so two first starts racing each other (both run before the single-instance
+/// plugin exists) cannot overwrite what the other has just written, and an
+/// interrupted copy leaves no half-written destination behind. Returns
+/// `Ok(false)` when the destination was already there. The `.db` branch above
+/// reaches the same guarantee through its own snapshot file.
+fn copy_file_noclobber(src: &Path, dst: &Path) -> std::io::Result<bool> {
+    let parent = dst.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let mut staged = tempfile::Builder::new()
+        .prefix(".aeroftp-copy-")
+        .tempfile_in(parent)?;
+    std::io::copy(&mut std::fs::File::open(src)?, staged.as_file_mut())?;
+    staged.as_file().sync_all()?;
+    match staged.persist_noclobber(dst) {
+        Ok(_) => Ok(true),
+        Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(e.error),
+    }
 }
 
 fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
@@ -536,12 +558,9 @@ fn carry_file_if_absent(src: &Path, dst: &Path) {
     if !src.is_file() || dst.exists() {
         return;
     }
-    let result = dst
-        .parent()
-        .map_or(Ok(()), std::fs::create_dir_all)
-        .and_then(|()| std::fs::copy(src, dst).map(|_| ()));
-    match result {
-        Ok(()) => tracing::info!("Carried {} over to {}", src.display(), dst.display()),
+    match copy_file_noclobber(src, dst) {
+        Ok(true) => tracing::info!("Carried {} over to {}", src.display(), dst.display()),
+        Ok(false) => {}
         Err(e) => tracing::warn!(
             "Could not carry {} over to {}: {}",
             src.display(),
@@ -1137,6 +1156,27 @@ mod identifier_scoped_state_tests {
         carry_file_if_absent(&src.join("state"), &dst.join("state"));
 
         assert_eq!(std::fs::read(dst.join("state")).unwrap(), b"new");
+    }
+
+    #[test]
+    fn a_noclobber_copy_never_replaces_an_existing_destination() {
+        let root = tempfile::tempdir().unwrap();
+        let src = root.path().join("src");
+        let dst = root.path().join("dst");
+        std::fs::write(&src, b"old").unwrap();
+        std::fs::write(&dst, b"written by the other start").unwrap();
+
+        // The existence checks of the callers can both pass before either
+        // copies; what must hold is that the copy itself does not replace.
+        assert!(!copy_file_noclobber(&src, &dst).unwrap());
+
+        assert_eq!(std::fs::read(&dst).unwrap(), b"written by the other start");
+        let staged: Vec<_> = std::fs::read_dir(root.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .filter(|n| n.to_string_lossy().starts_with(".aeroftp-copy-"))
+            .collect();
+        assert!(staged.is_empty(), "temporary copy left behind: {staged:?}");
     }
 
     #[test]
