@@ -119,6 +119,14 @@ pub fn insert_profile_option(
     if normalized_key == "profile_id" {
         return;
     }
+    // `ftpsMode` is only the fallback for profiles imported before the
+    // importers wrote `tlsMode`: it never replaces a mode already set, so the
+    // user's `tlsMode` wins whatever order the options are iterated in (the
+    // callers walk a serde_json map, sorted today, insertion-ordered the day
+    // a dependency enables `preserve_order`).
+    if key == "ftpsMode" && extra.contains_key(&normalized_key) {
+        return;
+    }
 
     if let Some(string_value) = value.as_str() {
         extra.insert(normalized_key, string_value.to_string());

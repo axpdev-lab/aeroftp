@@ -574,3 +574,32 @@ fn kopia_and_duplicacy_imports_leave_aws_implicit() {
         .get("endpoint")
         .is_none());
 }
+
+#[test]
+fn tls_mode_wins_over_a_stale_ftps_mode_in_any_order() {
+    use crate::profile_loader::insert_profile_option;
+    // Both iteration orders a serde_json map can produce.
+    for order in [["tlsMode", "ftpsMode"], ["ftpsMode", "tlsMode"]] {
+        let mut extra = HashMap::new();
+        for key in order {
+            let value = if key == "tlsMode" {
+                "implicit"
+            } else {
+                "explicit"
+            };
+            insert_profile_option(&mut extra, key, &json!(value));
+        }
+        assert_eq!(
+            extra.get("tls_mode").map(String::as_str),
+            Some("implicit"),
+            "order {order:?}"
+        );
+    }
+    // And through the loader every connect path uses.
+    let mut extra = HashMap::new();
+    crate::profile_loader::apply_profile_options(
+        &mut extra,
+        &json!({ "options": { "ftpsMode": "explicit", "tlsMode": "implicit" } }),
+    );
+    assert_eq!(extra.get("tls_mode").map(String::as_str), Some("implicit"));
+}
