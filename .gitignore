@@ -85,6 +85,12 @@ src-tauri/src/aerorsync/capture/artifacts_real/*
 !src-tauri/src/aerorsync/capture/artifacts_real/frozen/
 src-tauri/src/aerorsync/capture/workspace/
 
+# The lane-3 harness key. Generated on first run by the script and by the CI
+# lane, never committed: it only ever authorises `testuser` inside the
+# throwaway container, so a fixed pair in the tree would be a private key in a
+# public repository that grants nothing and looks like it might.
+src-tauri/src/aerorsync/capture/keys/
+
 # Upstream rsync 3.2.7 source extracted at repo root for CVE inspection
 # during the aerorsync wire saga. Reference material, not shipped.
 /rsync-3.2.7/
