@@ -581,11 +581,12 @@ fn carry_tree_if_absent(src: &Path, dst: &Path) {
     let Some(parent) = dst.parent() else {
         return;
     };
-    let staging = parent.join(format!(
-        ".{}.carry-{}",
-        dst.file_name().and_then(|n| n.to_str()).unwrap_or("state"),
-        std::process::id()
-    ));
+    let prefix = format!(
+        ".{}.carry-",
+        dst.file_name().and_then(|n| n.to_str()).unwrap_or("state")
+    );
+    reclaim_dead_staging(parent, &prefix);
+    let staging = parent.join(format!("{prefix}{}", std::process::id()));
     let result = std::fs::create_dir_all(parent)
         .and_then(|()| copy_tree_plain(src, &staging))
         .and_then(|()| std::fs::rename(&staging, dst));
@@ -599,6 +600,31 @@ fn carry_tree_if_absent(src: &Path, dst: &Path) {
                 dst.display(),
                 e
             );
+        }
+    }
+}
+
+/// Remove staging directories a killed start left behind. Each carries the pid
+/// of the process that made it, and one whose process is gone can never be
+/// renamed into place, so without this it would stay on disk for good (the next
+/// start has another pid). A staging directory whose process is alive, another
+/// start copying right now, is left alone.
+#[cfg(any(target_os = "macos", test))]
+fn reclaim_dead_staging(parent: &Path, prefix: &str) {
+    let Ok(entries) = std::fs::read_dir(parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(pid) = name
+            .to_str()
+            .and_then(|n| n.strip_prefix(prefix))
+            .and_then(|p| p.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        if pid != std::process::id() && !crate::aerovault_v3::process_is_alive(pid) {
+            let _ = std::fs::remove_dir_all(entry.path());
         }
     }
 }
@@ -1140,6 +1166,40 @@ mod identifier_scoped_state_tests {
             .filter(|n| n.to_string_lossy().contains(".carry-"))
             .collect();
         assert!(leftovers.is_empty(), "staging left behind: {leftovers:?}");
+    }
+
+    #[test]
+    fn staging_left_by_a_dead_start_is_reclaimed_and_a_live_one_is_not() {
+        let root = tempfile::tempdir().unwrap();
+        let src = root.path().join(LEGACY_APP_IDENTIFIER);
+        let dst = root.path().join(APP_IDENTIFIER);
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("state"), b"old").unwrap();
+        // A pid that is certainly gone: a child that has already been reaped.
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--list")
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let dead = child.id();
+        child.wait().unwrap();
+        let prefix = format!(".{APP_IDENTIFIER}.carry-");
+        let stale = root.path().join(format!("{prefix}{dead}"));
+        std::fs::create_dir_all(stale.join("half-copied")).unwrap();
+        // On Unix pid 1 is always alive, so its staging must survive.
+        #[cfg(unix)]
+        let live = {
+            let live = root.path().join(format!("{prefix}1"));
+            std::fs::create_dir_all(&live).unwrap();
+            live
+        };
+
+        carry_tree_if_absent(&src, &dst);
+
+        assert!(!stale.exists(), "staging of a dead start left behind");
+        #[cfg(unix)]
+        assert!(live.exists(), "staging of a live start removed");
+        assert_eq!(std::fs::read(dst.join("state")).unwrap(), b"old");
     }
 
     #[test]
