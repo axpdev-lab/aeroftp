@@ -345,27 +345,26 @@ impl ImmichProvider {
             }
         };
 
-        let asset = if let Some(asset) = items.into_iter().find(|a| {
-            a.original_file_name
-                .as_deref()
-                .map(|f| f == filename)
-                .unwrap_or(false)
-        }) {
-            asset
-        } else {
-            // Some Immich album responses expose a truncated embedded `assets` list.
-            // Fall back to an exact filename search so single-file operations still work.
-            self.search_metadata(Some(filename), None, SEARCH_PAGE_SIZE)
-                .await?
-                .into_iter()
-                .find(|a| {
-                    a.original_file_name
-                        .as_deref()
-                        .map(|f| f == filename)
-                        .unwrap_or(false)
-                })
-                .ok_or_else(|| ProviderError::NotFound(format!("{}/{}", folder_name, filename)))?
-        };
+        // Only within the folder that was asked for. There used to be a
+        // fallback here that searched the whole library by filename, and its
+        // own comment gave the reason: album responses came back with a
+        // truncated or empty embedded `assets` list, so a file that was really
+        // there could not be found. That cause is gone, because album contents
+        // now come from `search_metadata` with `albumIds` and are read to the
+        // last page. What the fallback left behind is a hazard: it dropped both
+        // the album and the favourite filter, so a file of the same name
+        // somewhere else in the library answered for this one, and `download`,
+        // `download_to_bytes` and `delete` all act on the id it returned. A
+        // name that is not in this folder is absent from this folder.
+        let asset = items
+            .into_iter()
+            .find(|a| {
+                a.original_file_name
+                    .as_deref()
+                    .map(|f| f == filename)
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| ProviderError::NotFound(format!("{}/{}", folder_name, filename)))?;
 
         Ok((album_id, asset))
     }
@@ -1576,6 +1575,23 @@ mod tests {
             }
         }
 
+        /// One page of `/search/metadata`, with a chosen file name per id.
+        pub(super) fn page_named(items: &[(&str, &str)], next: Option<&str>) -> Value {
+            json!({
+                "assets": {
+                    "count": items.len(),
+                    "total": items.len(),
+                    "nextPage": next,
+                    "nextCursor": Value::Null,
+                    "items": items.iter().map(|(id, name)| json!({
+                        "id": id,
+                        "originalFileName": name,
+                        "type": "IMAGE",
+                    })).collect::<Vec<_>>(),
+                }
+            })
+        }
+
         /// One page of `/search/metadata`, in the shape 3.2.2 answers with.
         pub(super) fn page(ids: &[&str], next: Option<&str>) -> Value {
             json!({
@@ -1612,6 +1628,30 @@ mod tests {
             assets.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
             vec!["a1"],
             "an album with one asset must not read as empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_name_that_is_not_in_this_album_is_not_taken_from_another() {
+        // The album holds `other.jpg`; the library also holds `wanted.jpg`,
+        // somewhere else. Answering with the library's copy would make
+        // `delete` remove a file the caller never named.
+        let srv = immich3::spawn(
+            1,
+            vec![Some(immich3::page_named(&[("a1", "other.jpg")], None))],
+        )
+        .await;
+        let mut provider = ImmichProvider::new(ImmichConfig::new(&srv.base, "KEY"));
+        provider
+            .album_cache
+            .insert("Probe Album".to_string(), "album-1".to_string());
+
+        let result = provider.resolve_asset("Probe Album/wanted.jpg").await;
+
+        assert!(
+            matches!(result, Err(ProviderError::NotFound(_))),
+            "a name absent from this album must not be resolved from elsewhere, got {:?}",
+            result.map(|(_, a)| a.id)
         );
     }
 
