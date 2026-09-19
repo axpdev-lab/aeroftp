@@ -101,7 +101,8 @@ pub(crate) fn validate_path(path: &str, param: &str) -> Result<(), String> {
             param, path
         ));
     };
-    let s = canonical.to_string_lossy();
+    let s = comparable_path(&canonical.to_string_lossy(), cfg!(windows));
+    let normalized = comparable_path(&normalized, cfg!(windows));
     let denied = [
         "/proc",
         "/sys",
@@ -116,7 +117,9 @@ pub(crate) fn validate_path(path: &str, param: &str) -> Result<(), String> {
     if denied.iter().any(|d| path_matches_prefix(&s, d)) {
         return Err(format!("{}: access to system path denied: {}", param, s));
     }
-    if let Ok(home) = std::env::var("HOME") {
+    // `home_dir_string` falls back to USERPROFILE: on Windows HOME is usually
+    // unset, and reading HOME alone skipped the whole home denylist there.
+    if let Some(home) = home_dir_string() {
         let home_denied = [
             ".ssh",
             ".gnupg",
@@ -129,16 +132,16 @@ pub(crate) fn validate_path(path: &str, param: &str) -> Result<(), String> {
         ];
         // HOME as given and as resolved: HOME can itself sit behind a symlink
         // (`/home -> /var/home`), and the canonical path would then never match.
-        let mut homes = vec![home.trim_end_matches('/').to_string()];
+        let mut homes = vec![comparable_path(&home, cfg!(windows))];
         if let Ok(real) = std::fs::canonicalize(&home) {
-            let real = real.to_string_lossy().trim_end_matches('/').to_string();
+            let real = comparable_path(&real.to_string_lossy(), cfg!(windows));
             if !homes.contains(&real) {
                 homes.push(real);
             }
         }
         for h in &homes {
             for sensitive in &home_denied {
-                let prefix = format!("{}/{}", h, sensitive);
+                let prefix = comparable_path(&format!("{}/{}", h, sensitive), cfg!(windows));
                 if path_matches_prefix(&s, &prefix) || path_matches_prefix(&normalized, &prefix) {
                     return Err(format!("{}: access to sensitive path denied: {}", param, s));
                 }
@@ -149,6 +152,26 @@ pub(crate) fn validate_path(path: &str, param: &str) -> Result<(), String> {
         return Err(format!("{}: access to system path denied: {}", param, s));
     }
     Ok(())
+}
+
+/// One spelling for every path the denylist compares: the Windows verbatim
+/// prefix that `canonicalize` adds (`\\?\`) removed, backslashes turned into
+/// slashes, no trailing slash, and lower case where the filesystem ignores
+/// case. Without it a canonical Windows path (`\\?\C:\Users\me\.ssh`) never
+/// matched the `/`-joined prefixes, and `.SSH` did not match `.ssh`.
+pub(crate) fn comparable_path(path: &str, case_insensitive: bool) -> String {
+    let path = path
+        .strip_prefix(r"\\?\UNC\")
+        .map(|rest| format!(r"\\{rest}"))
+        .unwrap_or_else(|| path.strip_prefix(r"\\?\").unwrap_or(path).to_string());
+    let mut out = path.replace('\\', "/");
+    while out.len() > 1 && out.ends_with('/') {
+        out.pop();
+    }
+    if case_insensitive {
+        out = out.to_lowercase();
+    }
+    out
 }
 
 /// Canonical form of `path` even when its tail does not exist yet: walk up to
@@ -2003,5 +2026,48 @@ mod secval_a_tests {
             let r = check(&p);
             assert!(r.is_ok(), "false refusal: {} -> {r:?}", p.display());
         });
+    }
+}
+
+#[cfg(test)]
+mod windows_home_denylist_tests {
+    use super::*;
+
+    #[test]
+    fn a_canonical_windows_path_matches_the_home_prefix() {
+        let home = comparable_path(r"C:\Users\Me", true);
+        let target = comparable_path(r"\\?\C:\Users\me\.SSH\id_ed25519", true);
+        assert!(
+            path_matches_prefix(&target, &format!("{home}/.ssh")),
+            "{target}"
+        );
+        let unc = comparable_path(r"\\?\UNC\server\share\x\", true);
+        assert_eq!(unc, "//server/share/x");
+        // Case is kept where the filesystem distinguishes it.
+        assert_eq!(comparable_path("/home/Me/.SSH/", false), "/home/Me/.SSH");
+    }
+
+    #[test]
+    fn the_home_denylist_applies_when_only_userprofile_is_set() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap().join("profile");
+        std::fs::create_dir_all(home.join(".ssh")).unwrap();
+        let prev_home = std::env::var_os("HOME");
+        let prev_profile = std::env::var_os("USERPROFILE");
+        std::env::remove_var("HOME");
+        std::env::set_var("USERPROFILE", &home);
+        let target = home.join(".ssh").join("authorized_keys");
+        let result = validate_path(target.to_str().unwrap(), "local_path");
+        match prev_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        match prev_profile {
+            Some(v) => std::env::set_var("USERPROFILE", v),
+            None => std::env::remove_var("USERPROFILE"),
+        }
+        let err = result.expect_err("~/.ssh must be denied with only USERPROFILE set");
+        assert!(err.contains("sensitive path denied"), "{err}");
     }
 }
