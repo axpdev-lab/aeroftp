@@ -1,6 +1,6 @@
 # AeroFTP Roadmap
 
-> _Last updated: 2026-08-09_
+> _Last updated: 2026-09-19_
 
 > A transparent view of where AeroFTP has been, where it is today, and where it's headed.
 > This roadmap is updated continuously. Feature requests and feedback are welcome via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues).
@@ -23,6 +23,16 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 
 | Status | Item | Target |
 |---|---|---|
+| 🟢 Shipped | Measured against rclone: multi-stream downloads by default, SFTP connection reuse and read-ahead, S3 delta upload, Filebase preset, identifier app.aeroftp.AeroFTP | v4.2.0 |
+| 🟢 Shipped | CI gates that report an empty run + POSIX.1e ACLs in AeroSync + private OpenStack in Quick Connect + resume store screen | v4.1.9 |
+| 🟢 Shipped | Four independent adversarial audits + Quick Connect bucket and drive discovery + rclone export for Zoho WorkDrive and crypt overlays | v4.1.8 |
+| 🟢 Shipped | AeroRsync extended attributes + rebuilt duplicate finder + two independent pre-tag audits | v4.1.7 |
+| 🟢 Shipped | AeroRsync closes the gap with rsync + stabilised DAG transfer engine + MTP portable devices | v4.1.6 |
+| 🟢 Shipped | Non-identical duplicate detection + restartable transfers + AeroCrypt portability | v4.1.5 |
+| 🟢 Shipped | AeroCloud multi-pair sync + headerless AeroCrypt with optional recovery kit + strict overlay scope + CLI agent mode | v4.1.4 |
+| 🟢 Shipped | Archive encryption and compression at a glance + crypt-overlay scope with keyfile 2FA + safer CLI deletes + faster SFTP listing + macOS stable | v4.1.3 |
+| 🟢 Shipped | Complete archive format coverage + Quick Connect consistency + full-surface security audit | v4.1.2 |
+| 🟢 Shipped | Transparent crypt overlays + AeroShare privacy controls + 7z encrypted headers | v4.1.1 |
 | 🟢 Shipped | AeroShare P2P beta preview + AeroAgent coding loop foundation + per-user groups/favourites + benchmark/bridge hardening | v4.1.0 |
 | 🟢 Shipped | AeroVault create redesign + AeroVault Zip plaintext lane + universal rclone export | v4.0.9 |
 | 🟢 Shipped | AeroProgress transfer card + AeroCrypt first-class Crypt profile + Quick Connect polish | v4.0.8 |
