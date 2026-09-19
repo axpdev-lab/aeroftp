@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "aerorsync")]
 use std::fs;
 #[cfg(feature = "aerorsync")]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(feature = "aerorsync")]
 use std::sync::{LazyLock, Mutex};
 
@@ -65,19 +65,32 @@ fn native_rsync_config_path() -> Result<PathBuf, String> {
 /// predated the `aerorsync` rebrand: renaming them would break upgrade
 /// paths for users who already toggled the flag on.
 pub fn load_native_rsync_enabled() -> bool {
-    !matches!(load_native_rsync_mode(), NativeRsyncMode::Classic)
+    mode_is_enabled(load_native_rsync_mode())
+}
+
+#[cfg(feature = "aerorsync")]
+fn mode_is_enabled(mode: NativeRsyncMode) -> bool {
+    !matches!(mode, NativeRsyncMode::Classic)
 }
 
 #[cfg(feature = "aerorsync")]
 pub fn load_native_rsync_mode() -> NativeRsyncMode {
-    let path = match native_rsync_config_path() {
-        Ok(path) => path,
+    match native_rsync_config_path() {
+        Ok(path) => load_native_rsync_mode_from(&path),
         Err(error) => {
             tracing::warn!("native rsync settings path unavailable: {}", error);
-            return NativeRsyncMode::Classic;
+            NativeRsyncMode::Classic
         }
-    };
+    }
+}
 
+/// The loader proper, on an explicit file. Split from the resolver so the
+/// tests can point it at a scratch file: the data root comes from
+/// `dirs::config_dir()`, which follows `XDG_CONFIG_HOME` on Linux only, so
+/// redirecting that variable left the tests reading and writing the real
+/// `%APPDATA%` / `~/Library/Application Support` settings on Windows and macOS.
+#[cfg(feature = "aerorsync")]
+fn load_native_rsync_mode_from(path: &Path) -> NativeRsyncMode {
     if !path.exists() {
         // Fresh-install default: ON since Z.1.5 (2026-05-12). Users who
         // previously set the toggle (either ON or OFF) keep their stored
@@ -94,7 +107,7 @@ pub fn load_native_rsync_mode() -> NativeRsyncMode {
         return NativeRsyncMode::Auto;
     }
 
-    match fs::read_to_string(&path) {
+    match fs::read_to_string(path) {
         Ok(content) => match toml::from_str::<NativeRsyncSettings>(&content) {
             Ok(settings) => settings.effective_mode(),
             Err(error) => {
@@ -128,11 +141,16 @@ pub fn set_native_rsync_enabled(enabled: bool) -> Result<(), String> {
 
 #[cfg(feature = "aerorsync")]
 pub fn set_native_rsync_mode(mode: NativeRsyncMode) -> Result<(), String> {
+    set_native_rsync_mode_at(&native_rsync_config_path()?, mode)
+}
+
+/// The writer proper, on an explicit file; see `load_native_rsync_mode_from`.
+#[cfg(feature = "aerorsync")]
+fn set_native_rsync_mode_at(path: &Path, mode: NativeRsyncMode) -> Result<(), String> {
     let _lock = SETTINGS_WRITE_LOCK
         .lock()
         .map_err(|_| "Native rsync settings write lock poisoned".to_string())?;
 
-    let path = native_rsync_config_path()?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create config directory: {}", e))?;
@@ -146,7 +164,7 @@ pub fn set_native_rsync_mode(mode: NativeRsyncMode) -> Result<(), String> {
 
     let tmp_path = path.with_extension("tmp");
     fs::write(&tmp_path, content).map_err(|e| format!("Failed to write temp config: {}", e))?;
-    fs::rename(&tmp_path, &path).map_err(|e| format!("Failed to rename temp config: {}", e))?;
+    fs::rename(&tmp_path, path).map_err(|e| format!("Failed to rename temp config: {}", e))?;
     Ok(())
 }
 
@@ -161,8 +179,8 @@ pub fn native_rsync_feature_compiled() -> bool {
     cfg!(feature = "aerorsync")
 }
 
-// The four accessors below all reach `$XDG_CONFIG_HOME/aeroftp/native_rsync.toml`
-// underneath: the getters stat and read it, the setters take a process-wide
+// The four accessors below all reach `native_rsync.toml` under the AeroFTP data
+// root: the getters stat and read it, the setters take a process-wide
 // write lock and then do write + rename. That is disk I/O plus a lock on a
 // config directory that can perfectly well be on a network home, so none of
 // them belongs on the main thread, however small the value they return is.
@@ -309,119 +327,106 @@ fn detect_classic_rsync_path() -> Option<PathBuf> {
 // Tests (U-06): persistence semantics for the native rsync runtime toggle.
 // =============================================================================
 //
-// The tests run the load/set helpers against a scratch config directory
-// by overriding the resolver through a temp env var at runtime, so they
-// do not poke the real `$XDG_CONFIG_HOME/aeroftp/native_rsync.toml`.
+// Every test works on a file inside its own temporary directory and calls the
+// path-taking loader and writer. Nothing here touches the environment: an
+// earlier version redirected `XDG_CONFIG_HOME`, which moves `dirs::config_dir`
+// on Linux only, so on Windows and macOS the tests shared the real settings
+// file and failed depending on the order they ran in.
 #[cfg(all(test, feature = "aerorsync"))]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
-    // Serialise tests that touch the process-wide env var used to
-    // redirect `dirs::config_dir` via `XDG_CONFIG_HOME`. `cargo test`
-    // otherwise races and flakes.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    struct ScopedXdg {
-        _guard: std::sync::MutexGuard<'static, ()>,
-        _tempdir: tempfile::TempDir,
-        prior: Option<std::ffi::OsString>,
+    struct Scratch {
+        _dir: tempfile::TempDir,
+        path: PathBuf,
     }
 
-    impl ScopedXdg {
-        fn new() -> Self {
-            let guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            let tempdir = tempfile::tempdir().expect("tempdir");
-            let prior = std::env::var_os("XDG_CONFIG_HOME");
-            std::env::set_var("XDG_CONFIG_HOME", tempdir.path());
-            Self {
-                _guard: guard,
-                _tempdir: tempdir,
-                prior,
-            }
-        }
-    }
-
-    impl Drop for ScopedXdg {
-        fn drop(&mut self) {
-            match &self.prior {
-                Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
-                None => std::env::remove_var("XDG_CONFIG_HOME"),
-            }
-        }
+    fn scratch() -> Scratch {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("aeroftp").join("native_rsync.toml");
+        Scratch { _dir: dir, path }
     }
 
     #[test]
     fn load_returns_true_when_config_absent() {
         // Z.1.5 (2026-05-12): fresh-install default flipped to ON after the
         // host-key algorithm negotiation asymmetry was fixed.
-        let _g = ScopedXdg::new();
-        assert!(load_native_rsync_enabled());
-        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Auto);
+        let s = scratch();
+        assert!(mode_is_enabled(load_native_rsync_mode_from(&s.path)));
+        assert_eq!(load_native_rsync_mode_from(&s.path), NativeRsyncMode::Auto);
     }
 
     #[test]
     fn set_then_load_roundtrips_true() {
-        let _g = ScopedXdg::new();
-        set_native_rsync_enabled(true).expect("write ok");
-        assert!(load_native_rsync_enabled());
-        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Auto);
+        let s = scratch();
+        set_native_rsync_mode_at(&s.path, NativeRsyncMode::Auto).expect("write ok");
+        assert!(mode_is_enabled(load_native_rsync_mode_from(&s.path)));
+        assert_eq!(load_native_rsync_mode_from(&s.path), NativeRsyncMode::Auto);
     }
 
     #[test]
     fn set_then_load_roundtrips_false() {
-        let _g = ScopedXdg::new();
-        set_native_rsync_enabled(true).expect("enable ok");
-        set_native_rsync_enabled(false).expect("disable ok");
-        assert!(!load_native_rsync_enabled());
-        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Classic);
+        let s = scratch();
+        set_native_rsync_mode_at(&s.path, NativeRsyncMode::Auto).expect("enable ok");
+        set_native_rsync_mode_at(&s.path, NativeRsyncMode::Classic).expect("disable ok");
+        assert!(!mode_is_enabled(load_native_rsync_mode_from(&s.path)));
+        assert_eq!(
+            load_native_rsync_mode_from(&s.path),
+            NativeRsyncMode::Classic
+        );
     }
 
     #[test]
     fn set_then_load_roundtrips_native_mode() {
-        let _g = ScopedXdg::new();
-        set_native_rsync_mode(NativeRsyncMode::Native).expect("native ok");
-        assert!(load_native_rsync_enabled());
-        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Native);
+        let s = scratch();
+        set_native_rsync_mode_at(&s.path, NativeRsyncMode::Native).expect("native ok");
+        assert!(mode_is_enabled(load_native_rsync_mode_from(&s.path)));
+        assert_eq!(
+            load_native_rsync_mode_from(&s.path),
+            NativeRsyncMode::Native
+        );
     }
 
     #[test]
     fn legacy_enabled_toml_maps_to_auto() {
-        let _g = ScopedXdg::new();
-        let path = native_rsync_config_path().expect("path");
+        let s = scratch();
+        let path = &s.path;
         fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, b"enabled = true\n").unwrap();
-        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Auto);
+        fs::write(path, b"enabled = true\n").unwrap();
+        assert_eq!(load_native_rsync_mode_from(&s.path), NativeRsyncMode::Auto);
     }
 
     #[test]
     fn legacy_disabled_toml_maps_to_classic() {
-        let _g = ScopedXdg::new();
-        let path = native_rsync_config_path().expect("path");
+        let s = scratch();
+        let path = &s.path;
         fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, b"enabled = false\n").unwrap();
-        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Classic);
+        fs::write(path, b"enabled = false\n").unwrap();
+        assert_eq!(
+            load_native_rsync_mode_from(&s.path),
+            NativeRsyncMode::Classic
+        );
     }
 
     #[test]
     fn malformed_config_falls_back_to_disabled_and_does_not_panic() {
-        let _g = ScopedXdg::new();
+        let s = scratch();
         // Write garbage directly to the target file, simulating a
         // partial write or a user mistake.
-        let path = native_rsync_config_path().expect("path");
+        let path = &s.path;
         fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, b"this is <<not toml>>").unwrap();
+        fs::write(path, b"this is <<not toml>>").unwrap();
         assert!(
-            !load_native_rsync_enabled(),
+            !mode_is_enabled(load_native_rsync_mode_from(&s.path)),
             "malformed config must be treated as disabled (opt-in by user action only)"
         );
     }
 
     #[test]
     fn set_uses_atomic_temp_rename() {
-        let _g = ScopedXdg::new();
-        let path = native_rsync_config_path().expect("path");
-        set_native_rsync_enabled(true).unwrap();
+        let s = scratch();
+        let path = &s.path;
+        set_native_rsync_mode_at(&s.path, NativeRsyncMode::Auto).unwrap();
         // After a successful set, the `.tmp` sibling must not exist -
         // the rename is the atomic commit.
         let tmp = path.with_extension("tmp");
