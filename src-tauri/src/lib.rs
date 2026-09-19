@@ -22000,10 +22000,11 @@ mod update_verification_fails_closed_tests {
         std::fs::write(&artifact, b"artifact").unwrap();
         for (name, body) in [
             ("not-json.sigstore.json", b"not json".as_slice()),
-            (
-                "not-a-bundle.sigstore.json",
-                b"{\"mediaType\":\"x\"}".as_slice(),
-            ),
+            // Valid JSON that is not a bundle object. An object with a stray
+            // `mediaType` deserialises as a bundle and takes the verifier to
+            // the network trust root, which made this test depend on the
+            // network and fail when the root could not be refreshed.
+            ("not-a-bundle.sigstore.json", b"[1, 2, 3]".as_slice()),
         ] {
             let bundle = dir.path().join(name);
             std::fs::write(&bundle, body).unwrap();
