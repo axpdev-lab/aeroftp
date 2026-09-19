@@ -40,6 +40,7 @@ import { isValidOverlayScope, normalizeRemotePath, resolveOverlayScope } from '.
 import { overlayEditDiffers } from '../utils/overlayEditDiff';
 import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { CopyLinkButton } from './common/CopyLinkButton';
+import { CopySecretButton } from './common/CopySecretButton';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -675,6 +676,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // modal. Native AeroCrypt ignores these (config lives in its marker).
     const [aeroCryptSalt, setAeroCryptSalt] = useState('');
     const [showAeroCryptSalt, setShowAeroCryptSalt] = useState(false);
+    // Ehud #215: the stored Crypt password and rclone salt, read back from the
+    // vault only when the user presses the eye on a locked (already bound)
+    // overlay. Kept apart from aeroCryptPassword/aeroCryptSalt on purpose: those
+    // mean "typed, store this", and a revealed secret must not be re-stored or
+    // count as an edit.
+    const [revealedCrypt, setRevealedCrypt] = useState<{ pw?: string; salt?: string }>({});
     // AeroCrypt Tier 1 keyfile second factor: the PATH is a pointer, not a
     // secret, so unlike the password it is hydrated into the form on edit and
     // stays editable even when the binding is locked (re-pointing after an
@@ -1258,6 +1265,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             hasStoredAeroCryptSalt: saltStored,
             hasStoredAeroCryptKeyfilePath: keyfileStored,
         };
+    };
+
+    // Ehud #215: read a stored Crypt secret back from the vault for display, the
+    // way the Filen API key is shown on edit. Only on demand (the eye), and
+    // race-guarded like the other vault reads: the user may switch profiles
+    // while the read is in flight. A secret that cannot be read shows empty.
+    const revealStoredCryptSecret = async (which: 'pw' | 'salt') => {
+        const id = editingProfileId;
+        if (!id || !overlayFieldsLocked || revealedCrypt[which] !== undefined) return;
+        const account = which === 'pw' ? `aerocrypt_overlay_pw_${id}` : `aerocrypt_overlay_salt_${id}`;
+        const value = await invoke<string>('get_credential', { account }).catch(() => '');
+        if (editingProfileIdRef.current === id) {
+            setRevealedCrypt((prev) => ({ ...prev, [which]: value || '' }));
+        }
     };
 
     // #385 follow-up: Convert and Save-as-new mint a NEW profile id, but the
@@ -2341,6 +2362,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptKind(overlayBinding?.enabled ? (overlayBinding.kind === 'rclone-crypt' ? 'rclone-crypt' : 'aerocrypt') : null);
         setAeroCryptPassword('');
         setAeroCryptConfirm('');
+        setRevealedCrypt({});
+        setShowAeroCryptPassword(false);
+        setShowAeroCryptSalt(false);
         // rclone-crypt interop options (P3.3b). Salt is never prefilled (vault).
         setAeroCryptSalt('');
         setAeroCryptFilenameEnc(overlayBinding?.filenameEncryption || 'standard');
@@ -2478,6 +2502,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setAeroCryptKind(null);
         setAeroCryptPassword('');
         setAeroCryptConfirm('');
+        setRevealedCrypt({});
+        setShowAeroCryptPassword(false);
+        setShowAeroCryptSalt(false);
         setAeroCryptSalt('');
         setAeroCryptFilenameEnc('standard');
         setAeroCryptDirNameEnc(true);
@@ -3283,10 +3310,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 <div>
                                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('aerocryptProfile.passwordLabel')}</label>
                                     <div className="relative">
+                                        {/* Ehud #215: on a bound overlay the field is locked,
+                                            and the eye reads the stored password back from the
+                                            vault so it can be seen and copied, as with the Filen
+                                            API key. Read-only rather than disabled while shown,
+                                            since a disabled field cannot be selected. */}
                                         <input
                                             type={showAeroCryptPassword ? 'text' : 'password'}
-                                            value={aeroCryptPassword}
-                                            disabled={overlayFieldsLocked}
+                                            value={overlayFieldsLocked ? (showAeroCryptPassword ? (revealedCrypt.pw ?? '') : '') : aeroCryptPassword}
+                                            disabled={overlayFieldsLocked && !(showAeroCryptPassword && revealedCrypt.pw)}
+                                            readOnly={overlayFieldsLocked}
                                             onChange={(e) => setAeroCryptPassword(e.target.value)}
                                             placeholder={editingProfileId && !aeroCryptPassword ? t('aerocryptProfile.passwordStored') : t('aerocryptProfile.passwordPlaceholder')}
                                             className="w-full px-4 py-2.5 pr-20 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
@@ -3297,10 +3330,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 className="absolute right-9 top-1/2 -translate-y-1/2"
                                             />
                                         )}
+                                        {overlayFieldsLocked && showAeroCryptPassword && !!revealedCrypt.pw && (
+                                            <CopySecretButton
+                                                value={revealedCrypt.pw}
+                                                className="absolute right-9 top-1/2 -translate-y-1/2"
+                                            />
+                                        )}
                                         <button
                                             type="button"
                                             tabIndex={-1}
-                                            onClick={() => setShowAeroCryptPassword((v) => !v)}
+                                            onClick={() => {
+                                                if (!showAeroCryptPassword) void revealStoredCryptSecret('pw');
+                                                setShowAeroCryptPassword((v) => !v);
+                                            }}
                                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                                         >
                                             {showAeroCryptPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -3508,16 +3550,26 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <div className="relative">
                                                 <input
                                                     type={showAeroCryptSalt ? 'text' : 'password'}
-                                                    value={aeroCryptSalt}
-                                                    disabled={overlayFieldsLocked}
+                                                    value={overlayFieldsLocked ? (showAeroCryptSalt ? (revealedCrypt.salt ?? '') : '') : aeroCryptSalt}
+                                                    disabled={overlayFieldsLocked && !(showAeroCryptSalt && revealedCrypt.salt)}
+                                                    readOnly={overlayFieldsLocked}
                                                     onChange={(e) => setAeroCryptSalt(e.target.value)}
                                                     placeholder={editingProfileId && !aeroCryptSalt ? t('aerocryptProfile.passwordStored') : t('aerocrypt.saltPlaceholder')}
-                                                    className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                                                    className="w-full px-4 py-2.5 pr-20 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                                 />
+                                                {overlayFieldsLocked && showAeroCryptSalt && !!revealedCrypt.salt && (
+                                                    <CopySecretButton
+                                                        value={revealedCrypt.salt}
+                                                        className="absolute right-9 top-1/2 -translate-y-1/2"
+                                                    />
+                                                )}
                                                 <button
                                                     type="button"
                                                     tabIndex={-1}
-                                                    onClick={() => setShowAeroCryptSalt((v) => !v)}
+                                                    onClick={() => {
+                                                        if (!showAeroCryptSalt) void revealStoredCryptSecret('salt');
+                                                        setShowAeroCryptSalt((v) => !v);
+                                                    }}
                                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                                                 >
                                                     {showAeroCryptSalt ? <EyeOff size={16} /> : <Eye size={16} />}
