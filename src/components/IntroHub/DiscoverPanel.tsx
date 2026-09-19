@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
-    Server, Database, Globe, Cloud, Code, Camera, Layers, Smartphone,
+    Server, Globe, Cloud, Code, Camera, Layers, Smartphone,
     ChevronRight, Search, Zap, Activity, ShieldCheck, Lock, Info, LayoutGrid, Table as TableIcon, RefreshCw, Share2,
 } from 'lucide-react';
 import { ProviderType } from '../../types';
@@ -18,7 +18,7 @@ import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
 import { useDiscoverHealthCheck } from '../../hooks/useDiscoverHealthCheck';
 import { openUrl } from '../../utils/openUrl';
 import { middleClickOpen } from '../../utils/middleClick';
-import { methodIcon, type ConnectionMethod } from '../connectionMethodIcons';
+import { Bucket, methodIcon, type ConnectionMethod } from '../connectionMethodIcons';
 import { CatalogTable, loadTierFilter, persistTierFilter, TIER_FILTERS, type TierFilter } from './CatalogTable';
 import { PROVIDER_CATALOG, companyInCategory, companyTierInCategory, isDevOnlyProvider, protocolBadgeRank } from '../providerCatalog';
 
@@ -80,7 +80,7 @@ export const CUSTOM_PROFILES = [...CUSTOM_PROFILE_ENTRIES].sort(
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
     Server: <Server size={16} />,
-    Database: <Database size={16} />,
+    Bucket: <Bucket size={16} />,
     Globe: <Globe size={16} />,
     Cloud: <Cloud size={16} />,
     Camera: <Camera size={16} />,

@@ -263,19 +263,18 @@ impl OverlayKeys {
     /// Map an on-wire (ciphertext) file size back to the plaintext size.
     ///
     /// Both kinds now have a deterministic overhead map: rclone-crypt via
-    /// [`rclone_decrypted_size`], AeroCrypt v3 via [`overlay::v3_decrypted_size`]
-    /// (fixed header + per-block nonce/tag). Legacy AeroCrypt v1/v2 overlays are
-    /// read-only and keep the deferred behaviour (return the ciphertext length),
-    /// since their container header differs and the v3 decoder does not apply.
+    /// [`rclone_decrypted_size`], AeroCrypt v3 and v4 via
+    /// [`overlay::config_decrypted_size`] (a v4 vault's objects are the v3 codec;
+    /// this arm used to match `V3` only, so a vault migrated to keyslots reported
+    /// its ciphertext size). Legacy AeroCrypt v1/v2 overlays are read-only and
+    /// keep the deferred behaviour (return the ciphertext length), since their
+    /// container header differs and the v3 decoder does not apply.
     fn decrypted_size(&self, size: u64) -> u64 {
         match self {
             Self::Rclone(_) => rclone_decrypted_size(size),
-            Self::AeroCrypt {
-                config: OverlayConfig::V3 { .. },
-                ..
-            } => overlay::v3_decrypted_size(size),
-            // Legacy v1/v2 overlays are read-only; keep the deferred behaviour.
-            Self::AeroCrypt { .. } => size,
+            Self::AeroCrypt { config, .. } => {
+                overlay::config_decrypted_size(config, size).unwrap_or(size)
+            }
         }
     }
 
@@ -288,11 +287,7 @@ impl OverlayKeys {
     fn size_is_exact(&self) -> bool {
         match self {
             Self::Rclone(_) => true,
-            Self::AeroCrypt {
-                config: OverlayConfig::V3 { .. },
-                ..
-            } => true,
-            Self::AeroCrypt { .. } => false,
+            Self::AeroCrypt { config, .. } => overlay::config_decrypted_size(config, 0).is_some(),
         }
     }
 
@@ -2710,6 +2705,20 @@ mod tests {
         OverlayKeys::AeroCrypt { master_key, config }
     }
 
+    /// The same vault migrated to v4 keyslots. Its objects are still the v3
+    /// codec under OMK, so sizes must map exactly as for v3.
+    fn aerocrypt_v4_keys() -> OverlayKeys {
+        let v3 = aerocrypt_keys();
+        let OverlayKeys::AeroCrypt { master_key, config } = &v3 else {
+            unreachable!()
+        };
+        let master_key = *master_key;
+        let v4_json = overlay::migrate_v3_to_v4(config, &master_key).unwrap();
+        let config = overlay::parse_config(&v4_json).unwrap();
+        assert!(matches!(config, OverlayConfig::V4 { .. }));
+        OverlayKeys::AeroCrypt { master_key, config }
+    }
+
     /// A legacy read-only AeroCrypt v2 overlay. Only the config variant matters
     /// for `size_is_exact` (v2 defers the size map), so the key is a stub.
     fn aerocrypt_v2_keys() -> OverlayKeys {
@@ -3270,6 +3279,9 @@ mod tests {
         // sync drops the size check rather than re-syncing every file every cycle.
         assert!(rclone_keys(FilenameEncryption::Standard, true, ".bin").size_is_exact());
         assert!(aerocrypt_keys().size_is_exact());
+        // A vault migrated to keyslots keeps v3 objects: exact too. It used to
+        // report inexact, so a GUI Compare dropped the size check on v4.
+        assert!(aerocrypt_v4_keys().size_is_exact());
         assert!(!aerocrypt_v2_keys().size_is_exact());
     }
 
@@ -3278,6 +3290,7 @@ mod tests {
         for keys in [
             rclone_keys(FilenameEncryption::Standard, true, ".bin"),
             aerocrypt_keys(),
+            aerocrypt_v4_keys(),
         ] {
             for size in [0usize, 1, 100, 65_536, 65_537, 200_000] {
                 let plaintext = vec![7u8; size];

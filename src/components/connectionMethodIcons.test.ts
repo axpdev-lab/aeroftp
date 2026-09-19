@@ -2,12 +2,20 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
-import { Boxes, Braces, Cloud, Container, Database, KeyRound, Server, TerminalSquare } from 'lucide-react';
-import { CONNECTION_METHOD_GLYPH, methodIcon } from './connectionMethodIcons';
+import { Boxes, Braces, Cloud, Container, KeyRound, Server, TerminalSquare } from 'lucide-react';
+import { Bucket, CONNECTION_METHOD_GLYPH, methodIcon } from './connectionMethodIcons';
 import { PROVIDER_CATALOG } from './providerCatalog';
 import modeGroupsRaw from './providerModeGroups.tsx?raw';
 import myServersRaw from './IntroHub/MyServersTable.tsx?raw';
 import catalogTableRaw from './IntroHub/CatalogTable.tsx?raw';
+import sessionTabsRaw from './SessionTabs.tsx?raw';
+import providerSelectorRaw from './ProviderSelector.tsx?raw';
+import protocolSelectorRaw from './ProtocolSelector.tsx?raw';
+import sidebarRaw from './IntroHub/MyServersSidebar.tsx?raw';
+import myServersPanelRaw from './IntroHub/MyServersPanel.tsx?raw';
+import discoverPanelRaw from './IntroHub/DiscoverPanel.tsx?raw';
+import discoverDataRaw from './IntroHub/discoverData.ts?raw';
+import registryRaw from '../providers/registry.ts?raw';
 
 /**
  * The icons for connection methods were assigned by hand at each site, so they
@@ -91,13 +99,15 @@ describe('one glyph per connection method (#347)', () => {
         expect(catalogTableRaw).toContain('EveryCatalogProtocolHasAGlyph');
     });
 
-    it('keeps the shipped #567 shapes', () => {
+    it('keeps the shipped #567 shapes, with S3 as a bucket', () => {
         // CatalogTable's leftover private map drew a bucket for S3, KeyRound
         // for OAuth, ShieldCheck for FTPS/SFTP. Unifying through methodIcon
-        // must not quietly rewrite the assignments already on main.
+        // must not quietly rewrite the assignments already on main. The one
+        // deliberate change since is S3: `Database` became a bucket on
+        // 2026-09-19, as Ehud asked on #347.
         expect(CONNECTION_METHOD_GLYPH.OAuth).toBe(Cloud);
         expect(CONNECTION_METHOD_GLYPH.API).toBe(Braces);
-        expect(CONNECTION_METHOD_GLYPH.S3).toBe(Database);
+        expect(CONNECTION_METHOD_GLYPH.S3).toBe(Bucket);
         expect(CONNECTION_METHOD_GLYPH.FTP).toBe(Server);
         expect(CONNECTION_METHOD_GLYPH.SFTP).toBe(KeyRound);
     });
@@ -115,7 +125,30 @@ describe('one glyph per connection method (#347)', () => {
         expect(CONNECTION_METHOD_GLYPH.MEGAcmd).toBe(TerminalSquare);
         // Fail-first: Blob = Database exploded unique-shape with
         // "Blob draws the same glyph as S3". Container is the non-colliding
-        // pick; S3 stays Database.
+        // pick next to S3's bucket.
         expect(CONNECTION_METHOD_GLYPH.Blob).not.toBe(CONNECTION_METHOD_GLYPH.S3);
+    });
+
+    it('draws the S3 bucket on every surface that shows S3, not only in the map', () => {
+        // The map changing is half the job: the S3 tab, the My Servers
+        // sidebar filter, the session tab, the S3 header in Quick Connect,
+        // the Object Storage category and the S3 presets each drew
+        // `Database` on their own. Any of them left behind is the #347
+        // inconsistency again, one surface at a time.
+        const surfaces: Record<string, string> = {
+            SessionTabs: sessionTabsRaw,
+            ProviderSelector: providerSelectorRaw,
+            ProtocolSelector: protocolSelectorRaw,
+            MyServersSidebar: sidebarRaw,
+            MyServersPanel: myServersPanelRaw,
+            DiscoverPanel: discoverPanelRaw,
+            discoverData: discoverDataRaw,
+            registry: registryRaw,
+        };
+        for (const [name, raw] of Object.entries(surfaces)) {
+            expect(raw, `${name} still draws Database`).not.toMatch(/<Database\b|icon: 'Database'|\bs3: Database\b/);
+        }
+        expect(registryRaw.match(/icon: 'Bucket'/g)?.length, 'the four S3 presets draw the bucket').toBe(4);
+        expect(discoverDataRaw).toContain("icon: 'Bucket'");
     });
 });

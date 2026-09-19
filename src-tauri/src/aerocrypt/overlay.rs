@@ -592,6 +592,27 @@ pub fn v3_decrypted_size(ciphertext_len: u64) -> u64 {
     plain
 }
 
+/// Plaintext size of an object in this overlay, from its on-wire length alone,
+/// or `None` when the overlay's objects have no such map here.
+///
+/// v4 changes only the key-management layer: its objects are the v3 codec under
+/// OMK, and the only migration that exists is v3 to v4, which rewrites the
+/// config and never the objects. So v3 and v4 share [`v3_decrypted_size`]. This
+/// is the one place that decides it, because two callers used to decide it on
+/// their own and both left v4 out: the transparent overlay matched `V3` only
+/// and reported a v4 vault's ciphertext size as inexact, and the CLI/MCP
+/// compare mapped no AeroCrypt size at all.
+///
+/// Legacy v1/v2 overlays answer `None` and keep the deferred behaviour.
+pub fn config_decrypted_size(cfg: &OverlayConfig, ciphertext_len: u64) -> Option<u64> {
+    match cfg {
+        OverlayConfig::V3 { .. } | OverlayConfig::V4 { .. } => {
+            Some(v3_decrypted_size(ciphertext_len))
+        }
+        OverlayConfig::V1 { .. } | OverlayConfig::V2 { .. } => None,
+    }
+}
+
 fn decrypt_data_v2(master_key: &[u8; KEY_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
     let header = 4 + 1 + WRAPPED_KEY_SIZE;
     if ciphertext.len() < header {
@@ -2423,6 +2444,34 @@ mod tests {
             },
             master,
         )
+    }
+
+    #[test]
+    fn config_decrypted_size_maps_v3_and_v4_objects_and_defers_legacy() {
+        // v4 changes only key management: its objects are the v3 codec, so a
+        // vault migrated to keyslots must map sizes exactly like v3. Both size
+        // callers used to leave v4 out.
+        let (v3, master) = v3_cfg();
+        let v4_json = migrate_v3_to_v4(&v3, &master).expect("migrate");
+        let v4 = parse_config(&v4_json).expect("parse v4");
+        assert!(matches!(v4, OverlayConfig::V4 { .. }));
+        for n in sizes_to_test() {
+            let pt = vec![3u8; n];
+            for cfg in [&v3, &v4] {
+                let blob = encrypt_data(cfg, &master, &pt).unwrap();
+                assert_eq!(
+                    config_decrypted_size(cfg, blob.len() as u64),
+                    Some(n as u64),
+                    "v{} object of {n} bytes",
+                    cfg.version()
+                );
+            }
+        }
+        // Legacy overlays keep the deferred behaviour.
+        assert_eq!(
+            config_decrypted_size(&OverlayConfig::V1 { salt: [0u8; 16] }, 999),
+            None
+        );
     }
 
     #[test]
