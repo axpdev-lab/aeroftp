@@ -9443,9 +9443,13 @@ struct ExtractProbe {
 /// produce. Joining `..` put the extraction root in the PARENT of the chosen
 /// output folder.
 pub(crate) fn safe_extract_folder_name(stem: &str) -> &str {
-    match stem.trim() {
+    // One path component only: the name comes from an archive name a caller
+    // supplies (`resolve_unique_extract_dir` takes it as is), and `../outside`
+    // or `a\\..\\b` joined to the parent would leave it.
+    let last = stem.rsplit(['/', '\\']).next().unwrap_or(stem);
+    match last.trim() {
         "" | "." | ".." => "extracted",
-        _ => stem,
+        _ => last,
     }
 }
 
@@ -22018,6 +22022,20 @@ mod update_verification_fails_closed_tests {
 #[cfg(test)]
 mod secval_b_tests {
     use super::*;
+
+    #[test]
+    fn an_extract_folder_name_is_one_path_component() {
+        assert_eq!(safe_extract_folder_name("photos"), "photos");
+        assert_eq!(safe_extract_folder_name("../outside"), "outside");
+        assert_eq!(safe_extract_folder_name(r"a\..\b"), "b");
+        assert_eq!(safe_extract_folder_name("x/.."), "extracted");
+        assert_eq!(safe_extract_folder_name(".."), "extracted");
+        let parent = std::path::Path::new("/tmp/secval-root");
+        let dir = parent.join(safe_extract_folder_name(&archive_extract_stem(
+            "../outside.zip",
+        )));
+        assert_eq!(dir.parent(), Some(parent), "{}", dir.display());
+    }
     use std::io::Write as _;
 
     /// Windows path grammar oracle: a component is bounded by EITHER separator

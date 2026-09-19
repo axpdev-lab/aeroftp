@@ -1869,36 +1869,31 @@ mod secval_b_tests {
         }
     }
 
-    #[tokio::test]
-    async fn lead8_host_forms() {
-        let client = reqwest::Client::new();
-        for host in [
-            "http://127.0.0.1:9",
-            "https://photos.invalid",
-            "photos.invalid",
-            "httpx://secval.invalid",
-            "http-evil.invalid",
-            "httpd.secval.invalid",
-            "HTTPS://upper.invalid",
-            "ftp://secval.invalid",
-        ] {
-            let c = match ImmichConfig::from_provider_config(&cfg(host)) {
-                Ok(c) => c,
-                Err(e) => {
-                    eprintln!("host={host:<28} rejected by from_provider_config: {e}");
-                    continue;
-                }
-            };
-            let url = format!("{}/api/server/ping", c.base_url);
-            let outcome = match client.get(&url).build() {
-                Err(e) => format!("builder error: {e}"),
-                Ok(req) => match client.execute(req).await {
-                    Err(e) if e.is_builder() => format!("refused before connect: {e}"),
-                    Err(e) => format!("network error (request attempted): {e}"),
-                    Ok(r) => format!("HTTP {}", r.status()),
-                },
-            };
-            eprintln!("host={host:<28} base_url={:<32} -> {outcome}", c.base_url);
+    #[test]
+    fn lead8_host_forms() {
+        // Parser only: no request is built or sent.
+        let accepted = [
+            ("http://127.0.0.1:9", "http://127.0.0.1:9"),
+            ("https://photos.invalid", "https://photos.invalid"),
+            ("photos.invalid", "https://photos.invalid"),
+            ("http-evil.invalid", "https://http-evil.invalid"),
+            ("httpd.secval.invalid", "https://httpd.secval.invalid"),
+            ("HTTPS://upper.invalid", "https://upper.invalid"),
+        ];
+        for (host, expected) in accepted {
+            let config = ImmichConfig::from_provider_config(&cfg(host))
+                .unwrap_or_else(|e| panic!("{host} rejected: {e}"));
+            assert_eq!(
+                config.base_url.trim_end_matches('/'),
+                expected,
+                "base_url for {host}"
+            );
+        }
+        for host in ["httpx://secval.invalid", "ftp://secval.invalid"] {
+            assert!(
+                ImmichConfig::from_provider_config(&cfg(host)).is_err(),
+                "{host} must be refused"
+            );
         }
     }
 }
