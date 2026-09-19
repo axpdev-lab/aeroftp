@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "मदद चाहिए या कोई बग बताना चाहते हैं? हम आपकी सहायता के लिए यहाँ हैं।",
             "sourceforgeReviews": "SourceForge पर समीक्षा लिखें",
-            "writeReview": "समीक्षा लिखें"
+            "writeReview": "समीक्षा लिखें",
+            "team": {
+                "title": "Axpdev Lab टीम",
+                "apRole": "संस्थापक, डेवलपर, मेंटेनर, सह-डिज़ाइनर",
+                "ekRole": "शोधकर्ता, गुणवत्ता आश्वासन इंजीनियर, सह-डिज़ाइनर"
+            }
         },
         "support": {
             "title": "AeroFTP का समर्थन करें",

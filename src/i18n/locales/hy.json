@@ -1513,7 +1513,12 @@
             "documentation": "Documentation",
             "supportDesc": "Օգնությա՞ն կարիք ունեք կամ ցանկանում եք հաղորդել սխալի մասին։ Մենք այստեղ ենք՝ օգնելու։",
             "sourceforgeReviews": "Գրեք կարծիք SourceForge-ում",
-            "writeReview": "Գրել կարծիք"
+            "writeReview": "Գրել կարծիք",
+            "team": {
+                "title": "Axpdev Lab-ի թիմը",
+                "apRole": "Հիմնադիր, մշակող, սպասարկող, համադիզայներ",
+                "ekRole": "Հետազոտող, որակի ապահովման ինժեներ, համադիզայներ"
+            }
         },
         "support": {
             "title": "Աջակցել AeroFTP-ին",

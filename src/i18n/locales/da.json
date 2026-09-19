@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Har du brug for hjælp eller vil du rapportere en fejl? Vi er her for at hjælpe.",
             "sourceforgeReviews": "Skriv en anmeldelse på SourceForge",
-            "writeReview": "Skriv en anmeldelse"
+            "writeReview": "Skriv en anmeldelse",
+            "team": {
+                "title": "Axpdev Lab-teamet",
+                "apRole": "Grundlægger, udvikler, vedligeholder, meddesigner",
+                "ekRole": "Forsker, kvalitetssikringsingeniør, meddesigner"
+            }
         },
         "support": {
             "title": "Støt AeroFTP",

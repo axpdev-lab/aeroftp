@@ -2032,7 +2032,12 @@
             "documentation": "Documentation",
             "supportDesc": "Ti serve aiuto o vuoi segnalare un bug? Siamo qui per aiutarti.",
             "sourceforgeReviews": "Scrivi una recensione su SourceForge",
-            "writeReview": "Scrivi una recensione"
+            "writeReview": "Scrivi una recensione",
+            "team": {
+                "title": "Il team di Axpdev Lab",
+                "apRole": "Fondatore, sviluppatore, maintainer, co-designer",
+                "ekRole": "Ricercatore, ingegnere di quality assurance, co-designer"
+            }
         },
         "support": {
             "title": "Supporta AeroFTP",

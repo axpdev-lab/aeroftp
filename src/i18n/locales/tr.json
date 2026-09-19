@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Yardıma mı ihtiyacınız var veya bir hata mı bildirmek istiyorsunuz? Size yardımcı olmak için buradayız.",
             "sourceforgeReviews": "SourceForge'da bir inceleme yazın",
-            "writeReview": "Yorum yaz"
+            "writeReview": "Yorum yaz",
+            "team": {
+                "title": "Axpdev Lab Ekibi",
+                "apRole": "Kurucu, geliştirici, bakımcı, ortak tasarımcı",
+                "ekRole": "Araştırmacı, kalite güvence mühendisi, ortak tasarımcı"
+            }
         },
         "support": {
             "title": "AeroFTP'yi Destekle",

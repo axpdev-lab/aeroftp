@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "Nepieciešama palīdzība vai vēlaties ziņot par kļūdu? Mēs esam šeit, lai palīdzētu.",
             "sourceforgeReviews": "Uzrakstiet atsauksmi SourceForge",
-            "writeReview": "Rakstīt atsauksmi"
+            "writeReview": "Rakstīt atsauksmi",
+            "team": {
+                "title": "Axpdev Lab komanda",
+                "apRole": "Dibinātājs, izstrādātājs, uzturētājs, līdzdizainers",
+                "ekRole": "Pētnieks, kvalitātes nodrošināšanas inženieris, līdzdizainers"
+            }
         },
         "support": {
             "title": "Atbalstīt AeroFTP",

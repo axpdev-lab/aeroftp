@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "ត្រូវការជំនួយ ឬចង់រាយការណ៍អំពីកំហុស? យើងនៅទីនេះដើម្បីជួយ។",
             "sourceforgeReviews": "សរសេរការវាយតម្លៃនៅលើ SourceForge",
-            "writeReview": "សំណៅរ័តនាម្រាត"
+            "writeReview": "សំណៅរ័តនាម្រាត",
+            "team": {
+                "title": "ក្រុម Axpdev Lab",
+                "apRole": "ស្ថាបនិក អ្នកអភិវឌ្ឍន៍ អ្នកថែទាំ សហអ្នករចនា",
+                "ekRole": "អ្នកស្រាវជ្រាវ វិស្វករធានាគុណភាព សហអ្នករចនា"
+            }
         },
         "support": {
             "title": "គាំទ្រ AeroFTP",

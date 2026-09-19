@@ -1520,7 +1520,12 @@
             "documentation": "Documentation",
             "supportDesc": "¿Necesitas ayuda o quieres informar de un error? Estamos aquí para ayudarte.",
             "sourceforgeReviews": "Escribir una reseña en SourceForge",
-            "writeReview": "Escribir una reseña"
+            "writeReview": "Escribir una reseña",
+            "team": {
+                "title": "Equipo de Axpdev Lab",
+                "apRole": "Fundador, desarrollador, mantenedor, codiseñador",
+                "ekRole": "Investigador, ingeniero de aseguramiento de la calidad, codiseñador"
+            }
         },
         "support": {
             "title": "Apoyar AeroFTP",
