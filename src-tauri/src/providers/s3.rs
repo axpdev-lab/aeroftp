@@ -3402,6 +3402,7 @@ impl S3Provider {
         key: &str,
         local_path: &str,
         total_size: u64,
+        validator: String,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let streams = self
@@ -3515,8 +3516,9 @@ impl S3Provider {
             let key_owned = key.to_string();
             let temp = temp_path.clone();
             let agg = aggregate.clone();
+            let etag = validator.clone();
             joinset.spawn(async move {
-                download_range_to_offset(provider, key_owned, temp, start, end, agg).await
+                download_range_to_offset(provider, key_owned, temp, start, end, etag, agg).await
             });
         }
 
@@ -4250,7 +4252,27 @@ impl StorageProvider for S3Provider {
         {
             match self.s3_request(Method::HEAD, key, None, None).await {
                 Ok(head) if head.status() == StatusCode::OK => {
-                    let size = head.content_length().unwrap_or(0);
+                    // The Content-Length header, not `content_length()`: on a
+                    // HEAD response that is the body's size hint, always 0, so
+                    // every file fell under the cutoff and went single-stream.
+                    let size = head
+                        .headers()
+                        .get(reqwest::header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.trim().parse::<u64>().ok())
+                        .unwrap_or(0);
+                    // Every range GET is pinned to this ETag with `If-Match`:
+                    // the workers issue independent requests, and an object
+                    // replaced between them by one of the same size would
+                    // otherwise pass every byte count and commit a file made
+                    // of two versions. Without a validator the split is not
+                    // attempted at all.
+                    let validator = head
+                        .headers()
+                        .get(reqwest::header::ETAG)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| v.trim().to_string())
+                        .filter(|v| !v.is_empty());
                     let accepts_ranges = head
                         .headers()
                         .get("accept-ranges")
@@ -4258,9 +4280,15 @@ impl StorageProvider for S3Provider {
                         .map(|s| !s.eq_ignore_ascii_case("none"))
                         .unwrap_or(true);
                     if size >= self.multi_thread_cutoff && accepts_ranges {
-                        return self
-                            .download_multi_thread(key, local_path, size, on_progress)
-                            .await;
+                        if let Some(etag) = validator {
+                            return self
+                                .download_multi_thread(key, local_path, size, etag, on_progress)
+                                .await;
+                        }
+                        warn!(
+                            "S3 multi-thread download disabled: no ETag on the HEAD of {}, so ranges cannot be pinned to one version",
+                            key
+                        );
                     }
                     if !accepts_ranges {
                         warn!(
@@ -6780,17 +6808,29 @@ async fn download_range_to_offset(
     temp_path: PathBuf,
     start: u64,
     end: u64,
+    validator: String,
     aggregate: Arc<AtomicU64>,
 ) -> Result<(), ProviderError> {
     let range_value = format!("bytes={}-{}", start, end);
     let response = provider
-        .s3_request_ext(Method::GET, &key, None, None, &[("range", &range_value)])
+        .s3_request_ext(
+            Method::GET,
+            &key,
+            None,
+            None,
+            &[("range", &range_value), ("if-match", &validator)],
+        )
         .await?;
 
     let status = response.status();
     match status {
         StatusCode::PARTIAL_CONTENT | StatusCode::OK => {}
         StatusCode::NOT_FOUND => return Err(ProviderError::NotFound(key)),
+        StatusCode::PRECONDITION_FAILED => {
+            return Err(ProviderError::TransferFailed(format!(
+                "Object {key} changed while it was being downloaded: the range request no longer matches the version the download started from"
+            )));
+        }
         StatusCode::RANGE_NOT_SATISFIABLE => {
             return Err(ProviderError::NotSupported(
                 "Server rejected Range request mid-flight (file may have changed)".to_string(),
@@ -9218,6 +9258,184 @@ mod tests {
             S3Provider::parse_mtime_metadata(&S3Provider::format_mtime_metadata(old)).as_deref(),
             Some("1969-12-31T23:59:58.500Z")
         );
+    }
+
+    #[tokio::test]
+    async fn multi_thread_download_engages_on_the_head_content_length_header() {
+        // The probe read `Response::content_length()` on the HEAD response,
+        // which is the body's size hint: 0 for a HEAD, whatever the header
+        // says. So a file above the cutoff was always downloaded on one
+        // stream. The header is the size.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        const SIZE: usize = 2 * 1024 * 1024;
+        let body: Arc<Vec<u8>> = Arc::new((0..SIZE).map(|i| (i % 251) as u8).collect());
+        let ranged = Arc::new(AtomicUsize::new(0));
+        let (served, hits) = (Arc::clone(&body), Arc::clone(&ranged));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (body, hits) = (Arc::clone(&served), Arc::clone(&hits));
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        return axum::response::Response::builder()
+                            .header("content-length", SIZE.to_string())
+                            .header("accept-ranges", "bytes")
+                            .header("etag", "\"v1\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    // Every range request must pin the version the HEAD saw.
+                    if req.headers().get("range").is_some()
+                        && req.headers().get("if-match").and_then(|v| v.to_str().ok())
+                            != Some("\"v1\"")
+                    {
+                        return axum::response::Response::builder()
+                            .status(428)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    let range = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.strip_prefix("bytes="))
+                        .and_then(|v| v.split_once('-'))
+                        .and_then(|(a, b)| {
+                            Some((a.parse::<usize>().ok()?, b.parse::<usize>().ok()?))
+                        });
+                    match range {
+                        Some((a, b)) => {
+                            hits.fetch_add(1, Ordering::SeqCst);
+                            axum::response::Response::builder()
+                                .status(206)
+                                .header("content-range", format!("bytes {a}-{b}/{SIZE}"))
+                                .body(axum::body::Body::from(body[a..=b].to_vec()))
+                                .unwrap()
+                        }
+                        None => axum::response::Response::new(axum::body::Body::from(
+                            body.as_ref().clone(),
+                        )),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .expect("download");
+        assert_eq!(std::fs::read(&out).expect("read"), *body);
+        assert_eq!(
+            ranged.load(Ordering::SeqCst),
+            4,
+            "a file above the cutoff must be fetched as 4 ranges"
+        );
+    }
+
+    /// Helper for the two range-pinning tests: a server that answers HEAD with
+    /// `SIZE` and the given ETag, and ranges with `status_for_range`.
+    #[cfg(test)]
+    async fn spawn_range_server(
+        size: usize,
+        etag: Option<&'static str>,
+        range_status: u16,
+    ) -> (
+        std::net::SocketAddr,
+        std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let gets = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&gets);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        let mut builder = axum::response::Response::builder()
+                            .header("content-length", size.to_string())
+                            .header("accept-ranges", "bytes");
+                        if let Some(tag) = etag {
+                            builder = builder.header("etag", tag);
+                        }
+                        return builder.body(axum::body::Body::empty()).unwrap();
+                    }
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    if req.headers().get("range").is_some() && range_status != 206 {
+                        return axum::response::Response::builder()
+                            .status(range_status)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    axum::response::Response::new(axum::body::Body::from(vec![7u8; size]))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        (addr, gets)
+    }
+
+    #[tokio::test]
+    async fn a_head_without_an_etag_keeps_the_download_on_one_stream() {
+        // The workers send independent range requests. With no validator to
+        // pin them to one version, splitting would be unsafe, so the download
+        // stays single-stream instead of racing an object that can change.
+        use std::sync::atomic::Ordering;
+        const SIZE: usize = 2 * 1024 * 1024;
+        let (addr, gets) = spawn_range_server(SIZE, None, 206).await;
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .expect("download");
+        assert_eq!(std::fs::metadata(&out).expect("stat").len(), SIZE as u64);
+        assert_eq!(
+            gets.load(Ordering::SeqCst),
+            1,
+            "without an ETag the file must be fetched on one stream"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_object_replaced_mid_download_fails_instead_of_mixing_versions() {
+        // 412 is what a server answers when the pinned ETag no longer matches.
+        // The download must fail: the bytes of two versions would pass every
+        // length check and the rename would commit the mixture.
+        const SIZE: usize = 2 * 1024 * 1024;
+        let (addr, _gets) = spawn_range_server(SIZE, Some("\"v1\""), 412).await;
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let err = provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .expect_err("a replaced object must fail the download");
+        assert!(
+            format!("{err}").contains("changed while it was being downloaded"),
+            "{err}"
+        );
+        assert!(!out.exists(), "no file may be committed");
     }
 
     #[tokio::test]
