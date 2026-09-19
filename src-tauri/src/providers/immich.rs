@@ -44,6 +44,14 @@ struct ImmichAlbum {
     owner: Option<ImmichUser>,
 }
 
+/// Page size asked of `/search/metadata`. The walk follows `nextPage`, so this
+/// is how many assets arrive per request, not a ceiling on the listing.
+const SEARCH_PAGE_SIZE: u32 = 1000;
+
+/// Refuse rather than walk for ever if a server never stops pointing forward.
+/// At `SEARCH_PAGE_SIZE` this is five million assets, past any real library.
+const SEARCH_MAX_PAGES: u32 = 5000;
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ImmichAsset {
@@ -126,7 +134,8 @@ struct SearchMetadataResponse {
 struct SearchMetadataAssets {
     #[serde(default)]
     items: Vec<ImmichAsset>,
-    #[allow(dead_code)]
+    /// Page to ask for next, `null` on the last page. Immich 3.2.2 still
+    /// answers with it (measured), and `nextCursor` beside it is null there.
     #[serde(default)]
     next_page: Option<String>,
 }
@@ -275,28 +284,18 @@ impl ImmichProvider {
             .map_err(|e| ProviderError::ParseError(format!("Parse albums: {}", e)))
     }
 
-    /// Get all assets inside an album (GET /api/albums/{id}).
+    /// Every asset inside an album.
+    ///
+    /// Asked through `POST /search/metadata` with `albumIds`, not through
+    /// `GET /albums/{id}`. That endpoint carried an `assets` array until
+    /// Immich 3.0.0 and does not any more: measured against 3.2.2, its answer
+    /// has `assetCount` and no `assets` key at all, so reading the field gave
+    /// an empty album while the same response said the album was not empty,
+    /// and `#[serde(default)]` meant nothing ever errored. `albumIds` is
+    /// accepted from 2.7.5 through 3.2.2, so one path serves both.
     async fn get_album_assets(&self, album_id: &str) -> Result<Vec<ImmichAsset>, ProviderError> {
-        let url = self.api_url(&format!("/albums/{}", album_id));
-        let response = self
-            .client
-            .get(&url)
-            .send()
+        self.search_metadata_paged(None, None, Some(album_id), SEARCH_PAGE_SIZE)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(Self::map_api_error(status, &text, "Get album assets"));
-        }
-
-        let album: ImmichAlbum = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(format!("Parse album: {}", e)))?;
-
-        Ok(album.assets)
     }
 
     /// Resolve album title to ID, using cache or refreshing from API.
@@ -332,11 +331,13 @@ impl ImmichProvider {
 
         let (album_id, items) = match folder_name {
             VIRTUAL_ALL_ASSETS => {
-                let items = self.search_metadata(None, None, 1000).await?;
+                let items = self.search_metadata(None, None, SEARCH_PAGE_SIZE).await?;
                 (String::new(), items)
             }
             VIRTUAL_FAVORITES => {
-                let items = self.search_metadata(None, Some(true), 1000).await?;
+                let items = self
+                    .search_metadata(None, Some(true), SEARCH_PAGE_SIZE)
+                    .await?;
                 (String::new(), items)
             }
             album_title => {
@@ -356,7 +357,7 @@ impl ImmichProvider {
         } else {
             // Some Immich album responses expose a truncated embedded `assets` list.
             // Fall back to an exact filename search so single-file operations still work.
-            self.search_metadata(Some(filename), None, 1000)
+            self.search_metadata(Some(filename), None, SEARCH_PAGE_SIZE)
                 .await?
                 .into_iter()
                 .find(|a| {
@@ -378,41 +379,96 @@ impl ImmichProvider {
         is_favorite: Option<bool>,
         size: u32,
     ) -> Result<Vec<ImmichAsset>, ProviderError> {
+        self.search_metadata_paged(original_filename, is_favorite, None, size)
+            .await
+    }
+
+    /// Walk `POST /search/metadata` to the end and return everything.
+    ///
+    /// The previous form sent `page: 1` and ignored `nextPage`, so any library
+    /// or album past one page came back cut short with nothing to say it was:
+    /// a partial list that looks whole is what makes `sync --delete` treat the
+    /// files missing from it as orphans. A page that cannot be read is an
+    /// error, never a shorter list.
+    async fn search_metadata_paged(
+        &self,
+        original_filename: Option<&str>,
+        is_favorite: Option<bool>,
+        album_id: Option<&str>,
+        size: u32,
+    ) -> Result<Vec<ImmichAsset>, ProviderError> {
         let url = self.api_url("/search/metadata");
+        let mut all: Vec<ImmichAsset> = Vec::new();
+        let mut page: u64 = 1;
+        let mut seen_pages: u32 = 0;
 
-        let mut body = serde_json::json!({
-            "size": size,
-            "page": 1
-        });
+        loop {
+            let mut body = serde_json::json!({
+                "size": size,
+                "page": page
+            });
 
-        if let Some(fname) = original_filename {
-            body["originalFileName"] = serde_json::Value::String(fname.to_string());
+            if let Some(fname) = original_filename {
+                body["originalFileName"] = serde_json::Value::String(fname.to_string());
+            }
+            if let Some(fav) = is_favorite {
+                body["isFavorite"] = serde_json::Value::Bool(fav);
+            }
+            if let Some(id) = album_id {
+                body["albumIds"] =
+                    serde_json::Value::Array(vec![serde_json::Value::String(id.to_string())]);
+            }
+
+            let response = self
+                .client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(body.to_string())
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let text = response.text().await.unwrap_or_default();
+                return Err(Self::map_api_error(
+                    status,
+                    &text,
+                    &format!("Search metadata (page {page})"),
+                ));
+            }
+
+            let result: SearchMetadataResponse = response
+                .json()
+                .await
+                .map_err(|e| ProviderError::ParseError(format!("Parse search: {}", e)))?;
+
+            all.extend(result.assets.items);
+            seen_pages += 1;
+
+            let Some(next) = result.assets.next_page.filter(|n| !n.is_empty()) else {
+                return Ok(all);
+            };
+            let next: u64 = next.parse().map_err(|_| {
+                ProviderError::ParseError(format!(
+                    "Search metadata: server asked for page {next:?}, which is not a page number"
+                ))
+            })?;
+            // A server that points backwards or at itself would spin here for
+            // ever and hand back duplicates; refuse instead of looping.
+            if next <= page {
+                return Err(ProviderError::Other(format!(
+                    "Search metadata: page {page} pointed back to page {next}"
+                )));
+            }
+            if seen_pages >= SEARCH_MAX_PAGES {
+                return Err(ProviderError::Other(format!(
+                    "Search metadata: stopped after {SEARCH_MAX_PAGES} pages with more to read; \
+                     the listing would have been incomplete"
+                )));
+            }
+            page = next;
         }
-        if let Some(fav) = is_favorite {
-            body["isFavorite"] = serde_json::Value::Bool(fav);
-        }
-
-        let response = self
-            .client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .body(body.to_string())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(Self::map_api_error(status, &text, "Search metadata"));
-        }
-
-        let result: SearchMetadataResponse = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(format!("Parse search: {}", e)))?;
-
-        Ok(result.assets.items)
     }
 
     /// Convert an ImmichAsset into a RemoteEntry.
@@ -701,8 +757,13 @@ impl StorageProvider for ImmichProvider {
             Some(folder_name) => {
                 let path_prefix = format!("/{}", folder_name);
                 let items = match folder_name {
-                    VIRTUAL_ALL_ASSETS => self.search_metadata(None, None, 1000).await?,
-                    VIRTUAL_FAVORITES => self.search_metadata(None, Some(true), 1000).await?,
+                    VIRTUAL_ALL_ASSETS => {
+                        self.search_metadata(None, None, SEARCH_PAGE_SIZE).await?
+                    }
+                    VIRTUAL_FAVORITES => {
+                        self.search_metadata(None, Some(true), SEARCH_PAGE_SIZE)
+                            .await?
+                    }
                     album_title => {
                         let album_id = self.resolve_album_id(album_title).await?;
                         self.get_album_assets(&album_id).await?
@@ -1452,6 +1513,154 @@ impl StorageProvider for ImmichProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An Immich 3.x server, in the two respects this file gets wrong.
+    ///
+    /// Measured against Immich 3.2.2 in a container on 2026-09-19, not copied
+    /// from the OpenAPI document: `GET /albums/{id}` answers with `assetCount`
+    /// and **no** `assets` key at all, and `POST /search/metadata` paginates
+    /// through `page` in the request and `nextPage` in the response, ending on
+    /// `null`. `nextCursor` exists in the same object and is null on 3.2.2, so
+    /// the page-based walk is the live one rather than the deprecated one.
+    mod immich3 {
+        use axum::extract::Path;
+        use axum::routing::{get, post};
+        use axum::Json;
+        use serde_json::{json, Value};
+
+        pub(super) struct Server {
+            pub base: String,
+        }
+
+        /// `pages` is the body of `/search/metadata` per requested page, in
+        /// order. A page whose entry is `None` answers 500, which is how the
+        /// "pagination stopped halfway" case is stated.
+        pub(super) async fn spawn(album_assets: usize, pages: Vec<Option<Value>>) -> Server {
+            let pages = std::sync::Arc::new(pages);
+            let app = axum::Router::new()
+                .route(
+                    "/api/albums/{id}",
+                    get(move |Path(id): Path<String>| async move {
+                        // 3.x shape: assetCount is there, `assets` is not.
+                        Json(json!({
+                            "id": id,
+                            "albumName": "Probe Album",
+                            "assetCount": album_assets,
+                            "createdAt": "2026-09-19T00:00:00.000Z",
+                            "updatedAt": "2026-09-19T00:00:00.000Z",
+                        }))
+                    }),
+                )
+                .route(
+                    "/api/search/metadata",
+                    post(move |body: String| {
+                        let pages = std::sync::Arc::clone(&pages);
+                        async move {
+                            let req: Value = serde_json::from_str(&body).unwrap_or(json!({}));
+                            let page = req["page"].as_u64().unwrap_or(1) as usize;
+                            match pages.get(page.saturating_sub(1)) {
+                                Some(Some(v)) => (axum::http::StatusCode::OK, Json(v.clone())),
+                                Some(None) | None => (
+                                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                    Json(json!({"message": "boom"})),
+                                ),
+                            }
+                        }
+                    }),
+                );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move {
+                axum::serve(listener, app).await.ok();
+            });
+            Server {
+                base: format!("http://{addr}"),
+            }
+        }
+
+        /// One page of `/search/metadata`, in the shape 3.2.2 answers with.
+        pub(super) fn page(ids: &[&str], next: Option<&str>) -> Value {
+            json!({
+                "assets": {
+                    "count": ids.len(),
+                    "total": ids.len(),
+                    "nextPage": next,
+                    "nextCursor": Value::Null,
+                    "items": ids.iter().map(|id| json!({
+                        "id": id,
+                        "originalFileName": format!("{id}.jpg"),
+                        "type": "IMAGE",
+                    })).collect::<Vec<_>>(),
+                }
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn an_album_on_immich_3x_is_not_empty() {
+        // The album holds one asset and the 3.x album endpoint does not carry
+        // it. Reading `assets` off that response yields an empty album while
+        // the same response says `assetCount: 1`, which is the silent half of
+        // this defect: nothing errors and nobody is told.
+        let srv = immich3::spawn(1, vec![Some(immich3::page(&["a1"], None))]).await;
+        let provider = ImmichProvider::new(ImmichConfig::new(&srv.base, "KEY"));
+
+        let assets = provider
+            .get_album_assets("album-1")
+            .await
+            .expect("read album");
+
+        assert_eq!(
+            assets.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+            vec!["a1"],
+            "an album with one asset must not read as empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_listing_follows_next_page_to_the_end() {
+        // Three pages of one item each, the last with `nextPage: null`. A
+        // reader that sends `page: 1` and stops sees a third of the library
+        // and cannot tell it from the whole of it.
+        let srv = immich3::spawn(
+            0,
+            vec![
+                Some(immich3::page(&["a1"], Some("2"))),
+                Some(immich3::page(&["a2"], Some("3"))),
+                Some(immich3::page(&["a3"], None)),
+            ],
+        )
+        .await;
+        let provider = ImmichProvider::new(ImmichConfig::new(&srv.base, "KEY"));
+
+        let items = provider
+            .search_metadata(None, None, 1)
+            .await
+            .expect("search");
+
+        assert_eq!(
+            items.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+            vec!["a1", "a2", "a3"],
+            "every page must be read, not just the first"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_listing_that_cannot_finish_is_an_error_and_not_a_short_list() {
+        // The second page fails. Returning the first page here would hand a
+        // caller a list that looks complete: `sync --delete` then treats
+        // everything missing from it as an orphan. The run must fail instead.
+        let srv = immich3::spawn(0, vec![Some(immich3::page(&["a1"], Some("2"))), None]).await;
+        let provider = ImmichProvider::new(ImmichConfig::new(&srv.base, "KEY"));
+
+        let result = provider.search_metadata(None, None, 1).await;
+
+        assert!(
+            result.is_err(),
+            "a listing cut short must not be returned as if it were whole, got {:?}",
+            result.map(|v| v.len())
+        );
+    }
 
     #[tokio::test]
     async fn the_api_key_never_follows_a_redirect_to_another_origin() {
