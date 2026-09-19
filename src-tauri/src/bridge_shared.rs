@@ -478,7 +478,13 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
         "s3cmd" | "kopia" | "duplicacy" | "restic" => &["s3", "sftp", "webdav"],
         "lftp" => &["ftp", "ftps", "sftp", "webdav"],
         "ssh" | "putty" => &["sftp"],
-        "cyberduck" | "mobaxterm" | "dreamweaver" => &["ftp", "ftps", "sftp", "webdav", "s3"],
+        "cyberduck" => &["ftp", "ftps", "sftp", "webdav", "s3"],
+        // What the writers actually emit: MobaXterm bookmarks here are SSH /
+        // FTP sessions only, and a Dreamweaver site has no S3 access type.
+        // A protocol listed here that the writer then drops would vanish
+        // from the export without a skipped entry.
+        "mobaxterm" => &["ftp", "ftps", "sftp"],
+        "dreamweaver" => &["ftp", "ftps", "sftp", "webdav"],
         // Legacy sources, now generic. Protocol sets mirror what the
         // respective `export_*` writers in `rclone_import`/`winscp_import`/
         // `filezilla_import` actually emit (anything else is skipped on export).
@@ -586,6 +592,258 @@ pub fn bridge_secret_policy(src: &str) -> &'static str {
         "lftp" | "mobaxterm" | "duplicacy" => "limited",
         "ssh" | "cyberduck" | "putty" => "metadata",
         _ => "metadata",
+    }
+}
+
+// ============ Export endpoints ============
+
+/// The server a saved profile points at, split into the parts foreign
+/// config formats ask for.
+///
+/// Every exporter used to rebuild the address from `host` + `port` on its
+/// own, assuming `host` is a bare host name. It is not: a WebDAV or
+/// Cloudflare R2 profile stores a full URL there (`https://dav.example.com/`),
+/// and a MinIO profile stores nothing there at all, keeping its endpoint in
+/// `options.endpoint`. The results were `https://https://...` URLs, WebDAV
+/// URLs nested inside other URLs, and S3 bookmarks with no endpoint, which
+/// point at AWS. [`resolve_export_endpoint`] reads the address through the
+/// builders the connection itself uses (`WebDavConfig`, `S3Config`), so an
+/// export can only point at the server AeroFTP connects to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportEndpoint {
+    /// `"https"` or `"http"`.
+    pub scheme: &'static str,
+    /// Host name or IP literal (IPv6 keeps its brackets), no port, no path.
+    pub host: String,
+    /// Only when it differs from the scheme's default port.
+    pub port: Option<u16>,
+    /// `""` or `"/a/b"`, never a trailing slash.
+    pub path: String,
+    /// S3 only: the connection addresses buckets path-style.
+    pub s3_path_style: bool,
+}
+
+impl ExportEndpoint {
+    pub fn is_tls(&self) -> bool {
+        self.scheme == "https"
+    }
+
+    pub fn effective_port(&self) -> u16 {
+        self.port.unwrap_or(if self.is_tls() { 443 } else { 80 })
+    }
+
+    /// `host[:port]`, the port only when it is not the scheme default.
+    pub fn authority(&self) -> String {
+        match self.port {
+            Some(p) => format!("{}:{}", self.host, p),
+            None => self.host.clone(),
+        }
+    }
+
+    /// `scheme://host[:port]`, no path.
+    pub fn base_url(&self) -> String {
+        format!("{}://{}", self.scheme, self.authority())
+    }
+
+    /// `scheme://host[:port]/path`, no trailing slash.
+    pub fn url(&self) -> String {
+        format!("{}{}", self.base_url(), self.path)
+    }
+}
+
+fn split_endpoint_url(raw: &str, s3_path_style: bool) -> Result<ExportEndpoint, String> {
+    let url = url::Url::parse(raw.trim()).map_err(|e| format!("endpoint {raw:?}: {e}"))?;
+    let scheme = match url.scheme() {
+        "https" => "https",
+        "http" => "http",
+        other => return Err(format!("endpoint {raw:?}: unsupported scheme {other:?}")),
+    };
+    let host = url
+        .host_str()
+        .filter(|h| !h.is_empty())
+        .ok_or_else(|| format!("endpoint {raw:?}: no host"))?
+        .to_string();
+    // `Url::port` is already `None` for the scheme's default port.
+    let port = url.port();
+    let path = url.path().trim_end_matches('/').to_string();
+    Ok(ExportEndpoint {
+        scheme,
+        host,
+        port,
+        path,
+        s3_path_style,
+    })
+}
+
+/// Resolve where a WebDAV or S3 profile connects, for an exporter.
+///
+/// `Ok(None)` means the profile has no endpoint of its own: an S3 profile on
+/// AWS, where each tool's default is the right one; every other protocol,
+/// whose `host` is already a bare host name. `Err` means the profile's
+/// address cannot be parsed, and the exporter should skip it with the
+/// reason rather than write an address that points somewhere else.
+pub fn resolve_export_endpoint(
+    protocol: &str,
+    host: &str,
+    port: u32,
+    username: &str,
+    options: Option<&serde_json::Value>,
+    provider_id: Option<&str>,
+) -> Result<Option<ExportEndpoint>, String> {
+    use crate::providers::{ProviderConfig, ProviderType, WebDavConfig};
+
+    let provider_type = match protocol {
+        "webdav" => ProviderType::WebDav,
+        "s3" => ProviderType::S3,
+        _ => return Ok(None),
+    };
+
+    // The same option normalisation the connect paths apply (camelCase keys,
+    // `pathStyle` -> `path_style`, `providerId` meta keys).
+    let mut extra: HashMap<String, String> = HashMap::new();
+    let profile = serde_json::json!({
+        "providerId": provider_id,
+        "options": options.cloned().unwrap_or(serde_json::Value::Null),
+    });
+    crate::profile_loader::apply_profile_options(&mut extra, &profile);
+
+    let mut host = host.trim().to_string();
+    if provider_type == ProviderType::S3 {
+        // As in the CLI and MCP connect paths: preset defaults (region,
+        // path style, endpoint), and the resolved endpoint as host when the
+        // profile stores none.
+        if let Some(resolved) =
+            crate::profile_loader::apply_s3_profile_defaults(&mut extra, provider_id)
+        {
+            if host.is_empty() {
+                host = resolved;
+            }
+        }
+    }
+
+    let config = ProviderConfig {
+        name: String::new(),
+        provider_type,
+        host,
+        port: u16::try_from(port).ok().filter(|p| *p > 0),
+        username: Some(username.to_string()).filter(|u| !u.is_empty()),
+        password: None,
+        initial_path: None,
+        extra,
+    };
+
+    match provider_type {
+        ProviderType::WebDav => {
+            if config.host.is_empty() {
+                return Err("WebDAV profile has no server URL".to_string());
+            }
+            let dav = WebDavConfig::from_provider_config(&config).map_err(|e| e.to_string())?;
+            split_endpoint_url(&dav.url, false).map(Some)
+        }
+        _ => {
+            let (endpoint, path_style) =
+                crate::providers::types::s3_endpoint_and_path_style(&config);
+            match endpoint {
+                Some(ep) => split_endpoint_url(&ep, path_style).map(Some),
+                None => Ok(None),
+            }
+        }
+    }
+}
+
+/// The FTP TLS mode a profile connects with, for an exporter:
+/// `"implicit"`, `"explicit"`, `"explicit_if_available"` or `"none"`, or
+/// `None` for a plain `ftp` profile that stores no mode.
+///
+/// The GUI stores the mode as `options.tlsMode` and the connection reads it
+/// there (`tls_mode` once normalised); the WinSCP and FileZilla importers
+/// write `options.ftpsMode`. The exporters read only the second, so a GUI
+/// profile's mode never reached them, and an `ftps` profile without one was
+/// exported as explicit TLS while the connection uses implicit.
+pub fn ftp_tls_mode_for_export(
+    protocol: &str,
+    options: Option<&serde_json::Value>,
+) -> Option<&'static str> {
+    let stored = ["tlsMode", "tls_mode", "ftpsMode"].iter().find_map(|k| {
+        options
+            .and_then(|o| o.get(*k))
+            .and_then(|v| v.as_str())
+            .map(|v| v.trim().to_ascii_lowercase())
+            .filter(|v| !v.is_empty())
+    });
+    match stored.as_deref() {
+        Some("implicit") => Some("implicit"),
+        Some("explicit") => Some("explicit"),
+        Some("explicit_if_available") => Some("explicit_if_available"),
+        Some("none") => Some("none"),
+        // Same default as `FtpConfig::from_provider_config`.
+        _ if protocol == "ftps" => Some("implicit"),
+        _ => None,
+    }
+}
+
+// ============ Export outcome ============
+
+/// A profile an exporter was handed and did not write, with the reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BridgeExportSkip {
+    pub name: String,
+    pub reason: String,
+}
+
+/// What an exporter produced: the entries written, and what it refused.
+///
+/// An exporter that can refuse a profile returns this instead of a bare
+/// count, so a refusal reaches the operator next to the protocol-filter
+/// skips instead of disappearing (the single-repository formats used to
+/// write the first profile and drop the rest without a word).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BridgeExportOutcome {
+    pub exported: usize,
+    pub skipped: Vec<BridgeExportSkip>,
+}
+
+impl BridgeExportOutcome {
+    pub fn skip(&mut self, name: &str, reason: impl Into<String>) {
+        self.skipped.push(BridgeExportSkip {
+            name: name.to_string(),
+            reason: reason.into(),
+        });
+    }
+}
+
+/// The two surfaces (CLI `cmd_export_bridge`, GUI `export_bridge_config`)
+/// read every exporter's result through this, whichever shape it returns.
+pub trait ExportReport {
+    /// `(written, [(profile name, reason)])`.
+    fn into_export_parts(self) -> (usize, Vec<(String, String)>);
+}
+
+impl ExportReport for usize {
+    fn into_export_parts(self) -> (usize, Vec<(String, String)>) {
+        (self, Vec::new())
+    }
+}
+
+impl ExportReport for BridgeExportOutcome {
+    fn into_export_parts(self) -> (usize, Vec<(String, String)>) {
+        let refused = self
+            .skipped
+            .into_iter()
+            .map(|s| (s.name, s.reason))
+            .collect();
+        (self.exported, refused)
+    }
+}
+
+impl ExportReport for crate::rclone_import::RcloneExportOutcome {
+    fn into_export_parts(self) -> (usize, Vec<(String, String)>) {
+        let refused = self
+            .skipped
+            .into_iter()
+            .map(|s| (s.name, s.reason))
+            .collect();
+        (self.exported, refused)
     }
 }
 

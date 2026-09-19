@@ -99,9 +99,29 @@ fn map_s3cmd(section: &HashMap<String, String>) -> Option<MappedProfile> {
     // Preserve the host_bucket template so an export round-trips it; it is
     // metadata only (s3cmd uses it for virtual-hosted-style addressing).
     if let Some(hb) = host_bucket {
+        // s3cmd addresses path-style exactly when the template has no bucket.
+        options.insert(
+            "pathStyle".into(),
+            serde_json::Value::Bool(!hb.contains("%(bucket)s")),
+        );
         options.insert("hostBucket".into(), serde_json::Value::String(hb));
     }
     options.insert("useHttps".into(), serde_json::Value::Bool(use_https));
+    // `use_https` is the scheme, and `host` + `port` alone lose it (a
+    // cleartext endpoint on 8080 would come back as HTTPS).
+    // AWS stays implicit: an explicit endpoint switches the S3 connection to
+    // path-style, which AWS refuses for newer buckets.
+    let aws = crate::bridge_shared::map_s3_provider_from_endpoint(&host) == "amazon-s3";
+    if !host.is_empty() && !aws {
+        let scheme = if use_https { "https" } else { "http" };
+        let default_port = if use_https { 443 } else { 80 };
+        let endpoint = if port == default_port {
+            format!("{scheme}://{host}")
+        } else {
+            format!("{scheme}://{host}:{port}")
+        };
+        options.insert("endpoint".into(), serde_json::Value::String(endpoint));
+    }
 
     Some(MappedProfile {
         protocol: "s3".to_string(),
@@ -286,45 +306,89 @@ pub struct S3cmdExportServer {
 /// Export the first S3 profile to a native s3cmd `~/.s3cfg` file.
 ///
 /// s3cmd is mono-config: only one `[default]` section is emitted (the first
-/// S3 profile in `servers`). The S3 secret is written in cleartext, exactly
-/// as s3cmd does natively; the file is written `0600` via `atomic_write_600`.
+/// S3 profile in `servers`); every other S3 profile is reported as skipped
+/// instead of vanishing. The S3 secret is written in cleartext, exactly as
+/// s3cmd does natively; the file is written `0600` via `atomic_write_600`.
+///
+/// `host_base` is the bare `host[:port]` of the endpoint the connection uses
+/// ([`crate::bridge_shared::resolve_export_endpoint`]), `use_https` carries
+/// its scheme, and `host_bucket` is `host_base` itself when the connection
+/// addresses buckets path-style (s3cmd's own path-style switch), else the
+/// `%(bucket)s.` template on that host.
 pub fn export_s3cmd(
     servers: &[S3cmdExportServer],
     passwords: &HashMap<String, String>,
     out: &Path,
-) -> Result<usize, String> {
-    let server = servers.iter().find(|s| s.protocol.as_deref() == Some("s3"));
+) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
+    let mut chosen: Option<(
+        &S3cmdExportServer,
+        Option<crate::bridge_shared::ExportEndpoint>,
+    )> = None;
+    for s in servers
+        .iter()
+        .filter(|s| s.protocol.as_deref() == Some("s3"))
+    {
+        if let Some((first, _)) = chosen {
+            outcome.skip(
+                &s.name,
+                format!(
+                    "s3cmd holds one configuration and it went to \"{}\": \
+                     export this profile on its own",
+                    first.name
+                ),
+            );
+            continue;
+        }
+        match crate::bridge_shared::resolve_export_endpoint(
+            "s3",
+            &s.host,
+            s.port,
+            &s.username,
+            s.options.as_ref(),
+            s.provider_id.as_deref(),
+        ) {
+            Ok(ep) => chosen = Some((s, ep)),
+            Err(reason) => outcome.skip(&s.name, reason),
+        }
+    }
 
-    let Some(server) = server else {
-        return Err("export s3cmd: no s3 profile to export".to_string());
+    let Some((server, endpoint)) = chosen else {
+        if outcome.skipped.is_empty() {
+            return Err("export s3cmd: no s3 profile to export".to_string());
+        }
+        return Ok(outcome);
     };
 
     let opts = server.options.as_ref().and_then(|v| v.as_object());
     let opt_str = |k: &str| {
         opts.and_then(|m| m.get(k))
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
     };
     let opt_bool = |k: &str| opts.and_then(|m| m.get(k)).and_then(|v| v.as_bool());
 
     let secret = passwords.get(&server.name).cloned().unwrap_or_default();
     let region = opt_str("region").unwrap_or_default();
-    let host_bucket =
-        opt_str("hostBucket").unwrap_or_else(|| "%(bucket)s.s3.amazonaws.com".to_string());
 
-    // host_base: keep the explicit endpoint host[:port]. The s3cmd default
-    // (empty host or AWS endpoint) is `s3.amazonaws.com`.
-    let host = server.host.trim();
-    let host_base = if host.is_empty() {
-        "s3.amazonaws.com".to_string()
-    } else if server.port == 443 || server.port == 80 {
-        host.to_string()
-    } else {
-        format!("{host}:{}", server.port)
+    // No endpoint of its own: the profile is on AWS, s3cmd's default.
+    let (host_base, use_https, path_style) = match &endpoint {
+        Some(ep) => (ep.authority(), ep.is_tls(), ep.s3_path_style),
+        None => (
+            "s3.amazonaws.com".to_string(),
+            opt_bool("useHttps").unwrap_or(true),
+            false,
+        ),
     };
-
-    // use_https: prefer the preserved option, else derive from the port.
-    let use_https = opt_bool("useHttps").unwrap_or(server.port != 80);
+    // A template preserved from an s3cmd import round-trips verbatim.
+    let host_bucket = opt_str("hostBucket").unwrap_or_else(|| {
+        if path_style {
+            host_base.clone()
+        } else {
+            format!("%(bucket)s.{host_base}")
+        }
+    });
 
     let mut body = String::new();
     body.push_str("# Generated by AeroFTP - https://aeroftp.app\n");
@@ -344,7 +408,8 @@ pub fn export_s3cmd(
     body.push_str(&format!("bucket_location = {region}\n"));
 
     crate::bridge_shared::atomic_write_600(out, body.as_bytes())?;
-    Ok(1)
+    outcome.exported = 1;
+    Ok(outcome)
 }
 
 #[cfg(test)]
@@ -466,7 +531,8 @@ bucket_location = us-east-1
 
         let out = std::env::temp_dir().join("aeroftp-test-s3cmd-rt-out.cfg");
         let exported = export_s3cmd(&export_servers, &passwords, &out).expect("export");
-        assert_eq!(exported, 1);
+        assert_eq!(exported.exported, 1);
+        assert!(exported.skipped.is_empty());
 
         let second = import_s3cmd(&out).expect("import 2");
         std::fs::remove_file(&out).ok();
@@ -497,6 +563,8 @@ bucket_location = us-east-1
 
     #[test]
     fn test_default_config_path_env_override() {
+        // Process-wide env: serialised with every other test that edits it.
+        let _env = crate::test_env::lock();
         use std::io::Write;
 
         let prev_s3cmd = std::env::var("S3CMD_CONFIG").ok();

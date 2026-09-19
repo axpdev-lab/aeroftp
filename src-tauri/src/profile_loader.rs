@@ -28,6 +28,10 @@ pub fn normalize_profile_option_key(key: &str) -> &str {
         // silently fall back to the auto-scheme heuristic in WebDavConfig and
         // ignore the user's explicit HTTP/HTTPS pick.
         "webdavScheme" => "tls_mode",
+        // FTPS profiles imported from WinSCP / FileZilla before their
+        // importers wrote `tlsMode` carry the mode as `ftpsMode`, which no
+        // connection read: an explicit site on port 21 was opened as implicit.
+        "ftpsMode" => "tls_mode",
         "verifyCert" => "verify_cert",
         // Swift: the GUI stores `options.allowCleartextStorage`; the provider
         // reads `allow_cleartext_storage_endpoint`. Without this line a saved
@@ -113,6 +117,14 @@ pub fn insert_profile_option(
     // field a caller can choose (CWE-639). Skip here so every surface
     // that goes through this helper (CLI, MCP, agent, AI tools) agrees.
     if normalized_key == "profile_id" {
+        return;
+    }
+    // `ftpsMode` is only the fallback for profiles imported before the
+    // importers wrote `tlsMode`: it never replaces a mode already set, so the
+    // user's `tlsMode` wins whatever order the options are iterated in (the
+    // callers walk a serde_json map, sorted today, insertion-ordered the day
+    // a dependency enables `preserve_order`).
+    if key == "ftpsMode" && extra.contains_key(&normalized_key) {
         return;
     }
 

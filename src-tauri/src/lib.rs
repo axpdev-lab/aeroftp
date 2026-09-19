@@ -70,6 +70,8 @@ pub mod command_registry {
 pub mod archive_progress;
 pub mod aws_credentials_import;
 pub mod bridge_commands;
+#[cfg(test)]
+mod bridge_export_endpoint_tests;
 pub mod bridge_shared;
 mod chat_history;
 pub mod cloud_config;

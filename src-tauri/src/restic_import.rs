@@ -65,7 +65,8 @@ use std::path::{Path, PathBuf};
 ///   -> `("s3", map_s3_provider_from_endpoint(host), host, 443, path)`
 /// - `b2:bucket:path` -> `("s3", "backblaze-b2", "", 443, Some(bucket))`
 /// - `sftp:user@host:/path` -> `("sftp", None, host, 22, path)` (user stripped)
-/// - `rest:https://host/` -> `("webdav", "custom-webdav", host, 443, None)`
+/// - `rest:https://host/` -> `None`: restic's REST server protocol, which no
+///   AeroFTP transport speaks (it is not WebDAV)
 /// - `rclone:remote:path` -> `None` (caller chains into the rclone importer)
 /// - local path / `swift:` / `azure:` / `gs:` -> `None` (not bridgeable)
 pub type ResticRepoTarget = (&'static str, Option<String>, String, u32, Option<String>);
@@ -76,6 +77,7 @@ pub fn parse_restic_repo(url: &str) -> Option<ResticRepoTarget> {
     // ---- S3 (and S3-compatible endpoints) ----
     if let Some(r) = url.strip_prefix("s3:") {
         // `s3:https://endpoint/bucket` and `s3:http://...` both legal.
+        let cleartext = r.starts_with("http://");
         let r = r
             .strip_prefix("https://")
             .or_else(|| r.strip_prefix("http://"))
@@ -86,7 +88,14 @@ pub fn parse_restic_repo(url: &str) -> Option<ResticRepoTarget> {
         }
         let provider_id = crate::bridge_shared::map_s3_provider_from_endpoint(host).to_string();
         let initial_path = (!path.is_empty()).then(|| path.to_string());
-        return Some(("s3", Some(provider_id), host.to_string(), 443, initial_path));
+        // A cleartext endpoint keeps its scheme in `host` (the S3 connection
+        // reads a URL there); a bare host would come back as HTTPS.
+        let (host, port) = if cleartext {
+            (format!("http://{host}"), 80)
+        } else {
+            (host.to_string(), 443)
+        };
+        return Some(("s3", Some(provider_id), host, port, initial_path));
     }
 
     // ---- Backblaze B2 native (`b2:bucket:path`) ----
@@ -120,22 +129,11 @@ pub fn parse_restic_repo(url: &str) -> Option<ResticRepoTarget> {
         return Some(("sftp", None, host.to_string(), 22, path));
     }
 
-    // ---- Restic REST server (`rest:https://host/`) -> WebDAV transport ----
-    if let Some(r) = url.strip_prefix("rest:") {
-        let h = r
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .trim_end_matches('/');
-        if h.is_empty() {
-            return None;
-        }
-        return Some((
-            "webdav",
-            Some("custom-webdav".to_string()),
-            h.to_string(),
-            443,
-            None,
-        ));
+    // ---- Restic REST server (`rest:https://host/`): not bridgeable ----
+    // rest-server speaks restic's own REST backend API, not WebDAV: a WebDAV
+    // profile pointed at it cannot list or write anything.
+    if url.strip_prefix("rest:").is_some() {
+        return None;
     }
 
     // ---- rclone backend: defer to the rclone importer ----
@@ -154,6 +152,10 @@ fn skip_reason_for(url: &str) -> String {
     let url = url.trim();
     if url.strip_prefix("rclone:").is_some() {
         return "rclone: backend defined in rclone.conf, import via `aeroftp import rclone`"
+            .to_string();
+    }
+    if url.strip_prefix("rest:").is_some() {
+        return "rest: restic REST server protocol, not WebDAV: no AeroFTP transport speaks it"
             .to_string();
     }
     for scheme in ["swift", "azure", "gs"] {
@@ -381,103 +383,127 @@ fn sh_squote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-/// Export the FIRST profile as a sourceable Restic env script.
-///
-/// Restic connects to exactly ONE repository, so a multi-profile export makes
-/// no sense: this exports `servers[0]` and errors if the slice is empty. The
-/// emitted file is Restic's native "config" form (a shell script you `source`),
-/// written `0600` because it carries secrets.
-///
-/// Returns the number of profiles written (always `0` on error, `1` on
-/// success) for parity with the other `export_*` signatures.
-pub fn export_restic(
-    servers: &[ResticExportServer],
-    passwords: &HashMap<String, String>,
-    out: &Path,
-) -> Result<usize, String> {
-    let p = servers
-        .first()
-        .ok_or_else(|| "restic export: no profile to export (need at least one)".to_string())?;
+/// A `RESTIC_REPOSITORY` value and the credential variables that go with it.
+type ResticEnv = (String, Vec<(&'static str, String)>);
 
-    let secret = passwords.get(&p.name).map(|s| s.as_str()).unwrap_or("");
-
+/// The `RESTIC_REPOSITORY` value and credential variables for one profile,
+/// or why the profile has no Restic form.
+fn restic_repo_for(p: &ResticExportServer, secret: &str) -> Result<ResticEnv, String> {
     let opts = p.options.as_ref().and_then(|v| v.as_object());
     let bucket = opts
         .and_then(|m| m.get("bucket"))
         .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .or_else(|| p.initial_path.clone())
         .unwrap_or_default();
 
-    // (RESTIC_REPOSITORY value, cred env var #1, value, env var #2, value)
-    let (repo, k1, v1, k2, v2): (String, &str, String, &str, String) =
-        match (p.protocol.as_deref(), p.provider_id.as_deref()) {
-            (Some("s3"), Some("backblaze-b2")) => (
-                format!("b2:{bucket}"),
-                "B2_ACCOUNT_ID",
-                p.username.clone(),
-                "B2_ACCOUNT_KEY",
-                secret.to_string(),
-            ),
-            (Some("s3"), _) => {
-                // `s3:<endpoint>/<bucket-or-path>` (drop trailing slash on the
-                // host so the URL never doubles up the separator).
-                let host = p.host.trim_end_matches('/');
-                let repo = if bucket.is_empty() {
-                    format!("s3:{host}")
-                } else {
-                    format!("s3:{host}/{}", bucket.trim_start_matches('/'))
-                };
-                (
-                    repo,
-                    "AWS_ACCESS_KEY_ID",
-                    p.username.clone(),
-                    "AWS_SECRET_ACCESS_KEY",
-                    secret.to_string(),
-                )
-            }
-            (Some("sftp"), _) => {
-                // sftp:user@host:/path (key / agent auth: no secret env).
-                let path = p.initial_path.clone().unwrap_or_default();
-                (
-                    format!("sftp:{}@{}:{}", p.username, p.host, path),
-                    "",
-                    String::new(),
-                    "",
-                    String::new(),
-                )
-            }
-            (Some("webdav"), _) => {
-                // Restic's REST server transport.
-                let host = p.host.trim_end_matches('/');
-                let host = host
-                    .trim_start_matches("https://")
-                    .trim_start_matches("http://");
-                (
-                    format!("rest:https://{host}/"),
-                    "",
-                    String::new(),
-                    "",
-                    String::new(),
-                )
-            }
-            (other, _) => {
-                return Err(format!(
-                    "restic export: protocol {other:?} is not a Restic backend"
-                ))
-            }
-        };
+    match (p.protocol.as_deref(), p.provider_id.as_deref()) {
+        (Some("s3"), Some("backblaze-b2")) => Ok((
+            format!("b2:{bucket}"),
+            vec![
+                ("B2_ACCOUNT_ID", p.username.clone()),
+                ("B2_ACCOUNT_KEY", secret.to_string()),
+            ],
+        )),
+        (Some("s3"), _) => {
+            // `s3:<endpoint URL>/<bucket>`: the endpoint the connection uses,
+            // never `host` read as a bare name. No endpoint of its own: AWS.
+            let endpoint = crate::bridge_shared::resolve_export_endpoint(
+                "s3",
+                &p.host,
+                p.port,
+                &p.username,
+                p.options.as_ref(),
+                p.provider_id.as_deref(),
+            )?;
+            let base = endpoint
+                .map(|ep| ep.base_url())
+                .unwrap_or_else(|| "s3.amazonaws.com".to_string());
+            let bucket = bucket.trim_matches('/');
+            let repo = if bucket.is_empty() {
+                format!("s3:{base}")
+            } else {
+                format!("s3:{base}/{bucket}")
+            };
+            Ok((
+                repo,
+                vec![
+                    ("AWS_ACCESS_KEY_ID", p.username.clone()),
+                    ("AWS_SECRET_ACCESS_KEY", secret.to_string()),
+                ],
+            ))
+        }
+        (Some("sftp"), _) => {
+            // sftp:user@host:/path (key / agent auth: no secret env). A port
+            // other than 22 needs restic's URL form, sftp://user@host:port//path.
+            let path = p.initial_path.clone().unwrap_or_default();
+            let repo = if p.port == 22 || p.port == 0 {
+                format!("sftp:{}@{}:{}", p.username, p.host, path)
+            } else {
+                format!("sftp://{}@{}:{}/{}", p.username, p.host, p.port, path)
+            };
+            Ok((repo, Vec::new()))
+        }
+        (Some("webdav"), _) => Err(
+            "restic has no WebDAV backend (its `rest:` is the rest-server protocol): \
+             reach this server through `rclone:` with the rclone export"
+                .to_string(),
+        ),
+        (other, _) => Err(format!("protocol {other:?} is not a Restic backend")),
+    }
+}
+
+/// Export the first exportable profile as a sourceable Restic env script.
+///
+/// Restic connects to exactly ONE repository, so a multi-profile export makes
+/// no sense: the first profile with a Restic form is written and every other
+/// one is reported as skipped with the reason, so none disappears silently.
+/// The emitted file is Restic's native "config" form (a shell script you
+/// `source`), written `0600` because it carries secrets. An empty slice is an
+/// error.
+pub fn export_restic(
+    servers: &[ResticExportServer],
+    passwords: &HashMap<String, String>,
+    out: &Path,
+) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
+    if servers.is_empty() {
+        return Err("restic export: no profile to export (need at least one)".to_string());
+    }
+
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
+    let mut chosen: Option<(&str, ResticEnv)> = None;
+    for p in servers {
+        if let Some((first, _)) = &chosen {
+            outcome.skip(
+                &p.name,
+                format!(
+                    "a restic env holds one repository and it went to \"{first}\": \
+                     export this profile on its own"
+                ),
+            );
+            continue;
+        }
+        let secret = passwords.get(&p.name).map(|s| s.as_str()).unwrap_or("");
+        match restic_repo_for(p, secret) {
+            Ok(found) => chosen = Some((p.name.as_str(), found)),
+            Err(reason) => outcome.skip(&p.name, reason),
+        }
+    }
+    let Some((_, (repo, env))) = chosen else {
+        return Ok(outcome);
+    };
 
     let mut s = String::from("# Restic env, source this file\n");
     s.push_str("# Generated by AeroFTP - https://aeroftp.app\n");
     s.push_str(&format!("export RESTIC_REPOSITORY={}\n", sh_squote(&repo)));
-    if !k1.is_empty() {
-        s.push_str(&format!("export {k1}={}\n", sh_squote(&v1)));
-        s.push_str(&format!("export {k2}={}\n", sh_squote(&v2)));
+    for (k, v) in &env {
+        s.push_str(&format!("export {k}={}\n", sh_squote(v)));
     }
 
     crate::bridge_shared::atomic_write_600(out, s.as_bytes())?;
-    Ok(1)
+    outcome.exported = 1;
+    Ok(outcome)
 }
 
 #[cfg(test)]
@@ -531,14 +557,21 @@ mod tests {
     }
 
     #[test]
-    fn parse_rest_form() {
-        let (proto, pid, host, port, path) =
-            parse_restic_repo("rest:https://restic.example.com/").expect("rest");
-        assert_eq!(proto, "webdav");
-        assert_eq!(pid.as_deref(), Some("custom-webdav"));
-        assert_eq!(host, "restic.example.com");
-        assert_eq!(port, 443);
-        assert!(path.is_none());
+    fn parse_rest_form_is_not_webdav() {
+        // rest-server speaks restic's REST API, not WebDAV: importing it as a
+        // WebDAV profile produced a connection that could not list anything.
+        assert!(parse_restic_repo("rest:https://restic.example.com/").is_none());
+        assert!(skip_reason_for("rest:https://restic.example.com/").contains("not WebDAV"));
+    }
+
+    #[test]
+    fn parse_s3_cleartext_endpoint_keeps_scheme() {
+        let (proto, _, host, port, path) =
+            parse_restic_repo("s3:http://nas.local:9000/backups").expect("s3");
+        assert_eq!(proto, "s3");
+        assert_eq!(host, "http://nas.local:9000");
+        assert_eq!(port, 80);
+        assert_eq!(path.as_deref(), Some("backups"));
     }
 
     #[test]
@@ -670,7 +703,8 @@ mod tests {
             &crate::bridge_shared::uuid_v4()[..8]
         ));
         let n = export_restic(&servers, &passwords, &tmp).expect("export");
-        assert_eq!(n, 1);
+        assert_eq!(n.exported, 1);
+        assert!(n.skipped.is_empty());
 
         let script = std::fs::read_to_string(&tmp).expect("read script");
         std::fs::remove_file(&tmp).ok();
@@ -766,12 +800,15 @@ mod tests {
             "aeroftp-test-restic-repofile-{}",
             &crate::bridge_shared::uuid_v4()[..8]
         ));
-        std::fs::write(&tmp, "\n  rest:https://restic.example.com/  \n# comment\n")
-            .expect("write repo file");
+        std::fs::write(
+            &tmp,
+            "\n  sftp:u@restic.example.com:/srv/restic  \n# comment\n",
+        )
+        .expect("write repo file");
         let r = import_restic(&tmp).expect("import from file");
         std::fs::remove_file(&tmp).ok();
         assert_eq!(r.servers.len(), 1);
-        assert_eq!(r.servers[0].protocol.as_deref(), Some("webdav"));
+        assert_eq!(r.servers[0].protocol.as_deref(), Some("sftp"));
         assert_eq!(r.servers[0].host, "restic.example.com");
         assert_eq!(r.source_path, tmp.display().to_string());
     }

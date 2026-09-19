@@ -875,25 +875,7 @@ impl S3Config {
             .trim()
             .to_string();
 
-        let explicit_endpoint = config
-            .extra
-            .get("endpoint")
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
-        let endpoint_raw = explicit_endpoint.or_else(|| {
-            if !config.host.is_empty() && config.host != "s3.amazonaws.com" {
-                Some(config.host.trim().to_string())
-            } else {
-                None
-            }
-        });
-        tracing::debug!(
-            "S3Config: host={:?}, port={:?}, extra_endpoint={:?}",
-            config.host,
-            config.port,
-            config.extra.get("endpoint")
-        );
-        let endpoint = endpoint_raw.map(|host| normalize_s3_endpoint(&host, config.port));
+        let (endpoint, path_style) = s3_endpoint_and_path_style(config);
         if endpoint
             .as_deref()
             .map(|ep| ep.to_ascii_lowercase().contains("s4.mega.io"))
@@ -909,12 +891,6 @@ impl S3Config {
                 )));
             }
         }
-
-        let path_style = config
-            .extra
-            .get("path_style")
-            .map(|v| v == "true" || v == "1")
-            .unwrap_or(endpoint.is_some()); // Default to path style for custom endpoints
 
         let storage_class = config
             .extra
@@ -1003,6 +979,40 @@ impl S3Config {
     }
 }
 
+/// The endpoint URL an S3 connection uses (`None` = AWS) and whether it
+/// addresses buckets path-style.
+///
+/// Split out of `S3Config::from_provider_config` so the profile exporters
+/// (`bridge_shared::resolve_export_endpoint`) read the address through the
+/// same rules the connection does, instead of rebuilding it from `host`.
+pub(crate) fn s3_endpoint_and_path_style(config: &ProviderConfig) -> (Option<String>, bool) {
+    let explicit_endpoint = config
+        .extra
+        .get("endpoint")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let endpoint_raw = explicit_endpoint.or_else(|| {
+        if !config.host.is_empty() && config.host != "s3.amazonaws.com" {
+            Some(config.host.trim().to_string())
+        } else {
+            None
+        }
+    });
+    tracing::debug!(
+        "S3Config: host={:?}, port={:?}, extra_endpoint={:?}",
+        config.host,
+        config.port,
+        config.extra.get("endpoint")
+    );
+    let endpoint = endpoint_raw.map(|host| normalize_s3_endpoint(&host, config.port));
+    let path_style = config
+        .extra
+        .get("path_style")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(endpoint.is_some()); // Default to path style for custom endpoints
+    (endpoint, path_style)
+}
+
 fn normalize_s3_endpoint(endpoint: &str, configured_port: Option<u16>) -> String {
     let trimmed = endpoint.trim().trim_end_matches('/');
 
@@ -1040,11 +1050,20 @@ fn normalize_s3_endpoint(endpoint: &str, configured_port: Option<u16>) -> String
         _ => None,
     };
 
+    let base = format!("{scheme}://{trimmed}");
     match configured_port {
         Some(port) if explicit_port.is_none() && Some(port) != default_port => {
-            format!("{scheme}://{trimmed}:{port}")
+            // The port belongs to the authority, before any path: appended to
+            // `host/path` it would read as part of the path.
+            let Ok(mut url) = url::Url::parse(&base) else {
+                return format!("{base}:{port}");
+            };
+            if url.set_port(Some(port)).is_err() {
+                return format!("{base}:{port}");
+            }
+            url.to_string().trim_end_matches('/').to_string()
         }
-        _ => format!("{scheme}://{trimmed}"),
+        _ => base,
     }
 }
 
@@ -2842,5 +2861,28 @@ mod s3_config_assume_role_tests {
         assert!(!file.is_walkable_dir());
         file.is_symlink = true;
         assert!(!file.is_walkable_dir());
+    }
+}
+
+#[cfg(test)]
+mod s3_endpoint_port_tests {
+    use super::normalize_s3_endpoint;
+
+    #[test]
+    fn schemeless_s3_endpoint_with_a_path_gets_the_port_in_the_authority() {
+        // Appended after `host/path`, the port read as part of the path and
+        // the connection went to port 80.
+        assert_eq!(
+            normalize_s3_endpoint("minio.example.com/storage", Some(9000)),
+            "http://minio.example.com:9000/storage"
+        );
+        assert_eq!(
+            normalize_s3_endpoint("minio.example.com", Some(9000)),
+            "http://minio.example.com:9000"
+        );
+        assert_eq!(
+            normalize_s3_endpoint("s3.example.com", Some(443)),
+            "https://s3.example.com"
+        );
     }
 }

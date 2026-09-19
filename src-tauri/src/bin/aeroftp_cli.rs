@@ -36939,7 +36939,9 @@ async fn cmd_export_bridge(
 
     // Each arm builds the matching typed Vec and calls the matching
     // `export_<src>` (shared signature
-    // `(&[<Src>ExportServer], &HashMap<String,String>, &Path) -> Result<usize,String>`).
+    // `(&[<Src>ExportServer], &HashMap<String,String>, &Path) -> Result<R,String>`,
+    // where `R` is a count or an outcome that also names what it refused).
+    use ftp_client_gui_lib::bridge_shared::ExportReport;
     macro_rules! run_export {
         ($ty:ident, $f:expr) => {{
             let exportable: Vec<$ty> = collected
@@ -36956,11 +36958,11 @@ async fn cmd_export_bridge(
                     initial_path: p.initial_path.clone(),
                 })
                 .collect();
-            $f(&exportable, &collected.passwords, &target_path)
+            $f(&exportable, &collected.passwords, &target_path).map(ExportReport::into_export_parts)
         }};
     }
 
-    let result: Result<usize, String> = match src {
+    let result: Result<(usize, Vec<(String, String)>), String> = match src {
         "aws" => run_export!(AwsExportServer, export_aws_credentials),
         "ssh" => run_export!(SshExportServer, export_ssh_config),
         "mc" => run_export!(McExportServer, export_mc),
@@ -36977,8 +36979,17 @@ async fn cmd_export_bridge(
     };
 
     match result {
-        Ok(count) => {
-            emit_export_success(json, label, count, &target_path, &collected.skipped);
+        Ok((count, refused)) => {
+            // Two lists of refusals reach the operator as one: the profiles
+            // the protocol filter dropped, and the ones the exporter itself
+            // could not write or had no room for (single-repository formats).
+            let mut skipped = collected.skipped.clone();
+            skipped.extend(refused);
+            if count == 0 {
+                emit_empty_export(json, format, &skipped);
+                return 4;
+            }
+            emit_export_success(json, label, count, &target_path, &skipped);
             0
         }
         Err(e) => {

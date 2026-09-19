@@ -121,6 +121,29 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
             "bucketLookup".to_string(),
             serde_json::Value::String(alias.path.trim().to_string()),
         );
+        // "on" forces path-style, "dns"/"off" forces virtual-host; "auto"
+        // leaves the connection's own default in charge.
+        match alias.path.trim().to_ascii_lowercase().as_str() {
+            "on" => {
+                options.insert("pathStyle".to_string(), serde_json::Value::Bool(true));
+            }
+            "dns" | "off" => {
+                options.insert("pathStyle".to_string(), serde_json::Value::Bool(false));
+            }
+            _ => {}
+        }
+    }
+    // The alias URL is the endpoint, scheme included: `host` + `port` alone
+    // lose it (`http://nas:8080` would come back as HTTPS).
+    // AWS stays implicit: an explicit endpoint switches the S3 connection to
+    // path-style, which AWS refuses for newer buckets.
+    let url = alias.url.trim().trim_end_matches('/');
+    let aws = crate::bridge_shared::map_s3_provider_from_endpoint(url) == "amazon-s3";
+    if !aws && (url.starts_with("http://") || url.starts_with("https://")) {
+        options.insert(
+            "endpoint".to_string(),
+            serde_json::Value::String(url.to_string()),
+        );
     }
     let initial_path = None;
 
@@ -291,33 +314,42 @@ pub struct McExportServer {
 ///
 /// Only `s3` profiles are emitted (mc is an S3 client). The secret is written
 /// in plain, exactly as `mc` itself stores it; the file is written atomically
-/// with `0600` on unix via `atomic_write_600`. Returns the number of aliases
-/// written.
+/// with `0600` on unix via `atomic_write_600`. The alias URL is the endpoint
+/// the connection uses ([`crate::bridge_shared::resolve_export_endpoint`]),
+/// never a string glued from `host` and `port`; a profile whose endpoint
+/// cannot be resolved is skipped with the reason.
 pub fn export_mc(
     servers: &[McExportServer],
     passwords: &HashMap<String, String>,
     out: &Path,
-) -> Result<usize, String> {
+) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
     let mut aliases = serde_json::Map::new();
-    let mut exported = 0usize;
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
 
     for server in servers {
         if server.protocol.as_deref() != Some("s3") {
             continue;
         }
 
-        // Reconstruct a scheme-qualified URL from host[:port]. mc expects a
-        // full URL; default to https unless the port is the plain-HTTP 80.
-        let scheme = if server.port == 80 { "http" } else { "https" };
-        let host_has_port = server.host.contains(':');
-        let url = if host_has_port
-            || (scheme == "https" && server.port == 443)
-            || (scheme == "http" && server.port == 80)
-        {
-            format!("{}://{}", scheme, server.host)
-        } else {
-            format!("{}://{}:{}", scheme, server.host, server.port)
+        let endpoint = match crate::bridge_shared::resolve_export_endpoint(
+            "s3",
+            &server.host,
+            server.port,
+            &server.username,
+            server.options.as_ref(),
+            server.provider_id.as_deref(),
+        ) {
+            Ok(e) => e,
+            Err(reason) => {
+                outcome.skip(&server.name, reason);
+                continue;
+            }
         };
+        // No endpoint of its own: the profile is on AWS.
+        let url = endpoint
+            .as_ref()
+            .map(|ep| ep.base_url())
+            .unwrap_or_else(|| "https://s3.amazonaws.com".to_string());
 
         let api = server
             .options
@@ -329,7 +361,10 @@ pub fn export_mc(
             .to_string();
 
         // mc's `path` is the bucket-lookup style, round-tripped from
-        // `options.bucketLookup` (default "auto"), never the remote dir.
+        // `options.bucketLookup`, never the remote dir. Without one, "on"
+        // when the connection addresses buckets path-style (mc's "auto"
+        // picks virtual-host for any DNS name, which MinIO-style servers
+        // refuse), else "auto".
         let path = server
             .options
             .as_ref()
@@ -337,8 +372,14 @@ pub fn export_mc(
             .and_then(|m| m.get("bucketLookup"))
             .and_then(|v| v.as_str())
             .filter(|p| !p.is_empty())
-            .unwrap_or("auto")
-            .to_string();
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                if endpoint.as_ref().is_some_and(|ep| ep.s3_path_style) {
+                    "on".to_string()
+                } else {
+                    "auto".to_string()
+                }
+            });
 
         let secret = passwords.get(&server.name).cloned().unwrap_or_default();
 
@@ -350,7 +391,7 @@ pub fn export_mc(
             "path": path,
         });
         aliases.insert(server.name.clone(), entry);
-        exported += 1;
+        outcome.exported += 1;
     }
 
     let doc = serde_json::json!({
@@ -359,7 +400,7 @@ pub fn export_mc(
     });
     let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
     crate::bridge_shared::atomic_write_600(out, &body)?;
-    Ok(exported)
+    Ok(outcome)
 }
 
 #[cfg(test)]
@@ -497,7 +538,8 @@ mod tests {
 
         let out = write_tmp("rt-out", "{}");
         let n = export_mc(&export_servers, &passwords, &out).expect("export");
-        assert_eq!(n, 1);
+        assert_eq!(n.exported, 1);
+        assert!(n.skipped.is_empty());
 
         let second = import_mc(&out).expect("re-import");
         std::fs::remove_file(&out).ok();
@@ -527,6 +569,8 @@ mod tests {
 
     #[test]
     fn test_default_path_env_override() {
+        // Process-wide env: serialised with every other test that edits it.
+        let _env = crate::test_env::lock();
         let dir =
             std::env::temp_dir().join(format!("mc-cfgdir-{}", crate::bridge_shared::uuid_v4()));
         std::fs::create_dir_all(&dir).unwrap();
