@@ -114,7 +114,8 @@ mod tests {
         let server = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut request = [0; 512];
-            stream.read(&mut request).unwrap();
+            let read = stream.read(&mut request).unwrap();
+            assert!(read > 0, "the probe sent no request");
             stream
                 .write_all(b"HTTP/1.0 200 OK\r\nX-AeroFTP-UI-Nonce: private-startup-nonce\r\nContent-Length: 4\r\n\r\nbody")
                 .unwrap();
@@ -130,7 +131,8 @@ mod tests {
         let server = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut request = [0; 512];
-            stream.read(&mut request).unwrap();
+            let read = stream.read(&mut request).unwrap();
+            assert!(read > 0, "the probe sent no request");
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nX-AeroFTP-UI-Nonce: attacker-value\r\nContent-Length: 0\r\n\r\n")
                 .unwrap();
