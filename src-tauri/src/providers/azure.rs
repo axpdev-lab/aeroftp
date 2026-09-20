@@ -1439,18 +1439,29 @@ impl StorageProvider for AzureProvider {
                 status
             )));
         }
+        let answered = resp
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string());
         let bytes = super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await?;
-        if status == reqwest::StatusCode::OK {
-            // Server ignored the range and returned the full blob: slice locally.
-            if offset >= bytes.len() as u64 {
-                Ok(Vec::new())
-            } else {
-                let start = offset as usize;
-                let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
-                Ok(bytes[start..stop].to_vec())
+        // A 206 that does not name the window it carries is written at this
+        // offset just the same, so it has to say which range it is.
+        match super::multi_thread::ranged_answer(status, answered.as_deref(), offset, end) {
+            Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes),
+            Ok(super::multi_thread::RangedAnswer::WholeObject) => {
+                // Server ignored the range and returned the full blob: slice locally.
+                if offset >= bytes.len() as u64 {
+                    Ok(Vec::new())
+                } else {
+                    let start = offset as usize;
+                    let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
+                    Ok(bytes[start..stop].to_vec())
+                }
             }
-        } else {
-            Ok(bytes)
+            Err(why) => Err(ProviderError::TransferFailed(
+                super::multi_thread::parallel_refused("Azure range read", remote_path, &why),
+            )),
         }
     }
 

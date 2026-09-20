@@ -3526,6 +3526,15 @@ impl StorageProvider for B2Provider {
                 "b2_download_file_by_name (range)",
             ));
         }
+        // The caller writes what comes back at the offset it asked for, so a
+        // whole file answered to a ranged request would put the head of the
+        // object there and still add up to the right length, and a 206 that
+        // does not name its window would do the same with a success code.
+        let answered = resp
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string());
         let bytes = resp
             .bytes()
             .await
@@ -3535,7 +3544,20 @@ impl StorageProvider for B2Provider {
             bytes.len() as u64,
         )
         .await;
-        Ok(bytes.to_vec())
+        match super::multi_thread::ranged_answer(status, answered.as_deref(), offset, end) {
+            Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
+            Ok(super::multi_thread::RangedAnswer::WholeObject) => {
+                if offset >= bytes.len() as u64 {
+                    return Ok(Vec::new());
+                }
+                let start = offset as usize;
+                let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
+                Ok(bytes[start..stop].to_vec())
+            }
+            Err(why) => Err(ProviderError::TransferFailed(
+                super::multi_thread::parallel_refused("b2 range read", path, &why),
+            )),
+        }
     }
 }
 

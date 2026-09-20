@@ -1733,25 +1733,34 @@ impl StorageProvider for KoofrProvider {
             return Err(Self::parse_error(resp).await);
         }
 
-        // A server that ignores the range answers 200 with the whole file.
-        // The caller writes what comes back at the offset it asked for, so
-        // handing it the head of the object would put the wrong bytes there
-        // and still add up to the right length. Cut the window out of it, the
-        // same way the other HTTP providers do.
-        let ignored_range = resp.status() == reqwest::StatusCode::OK;
+        // The caller writes what comes back at the offset it asked for, so a
+        // whole file answered to a ranged request would put the head of the
+        // object there and still add up to the right length, and a 206 that
+        // does not name its window would do the same with a success code.
+        let status = resp.status();
+        let answered = resp
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string());
         let bytes = resp
             .bytes()
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Read bytes failed: {}", e)))?;
-        if !ignored_range {
-            return Ok(bytes.to_vec());
+        match super::multi_thread::ranged_answer(status, answered.as_deref(), offset, end) {
+            Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
+            Ok(super::multi_thread::RangedAnswer::WholeObject) => {
+                if offset >= bytes.len() as u64 {
+                    return Ok(Vec::new());
+                }
+                let start = offset as usize;
+                let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
+                Ok(bytes[start..stop].to_vec())
+            }
+            Err(why) => Err(ProviderError::TransferFailed(
+                super::multi_thread::parallel_refused("Koofr range read", path, &why),
+            )),
         }
-        if offset >= bytes.len() as u64 {
-            return Ok(Vec::new());
-        }
-        let start = offset as usize;
-        let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
-        Ok(bytes[start..stop].to_vec())
     }
 
     fn transfer_optimization_hints(&self) -> TransferOptimizationHints {

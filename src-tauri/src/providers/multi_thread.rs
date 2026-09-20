@@ -322,6 +322,48 @@ pub fn source_changed(scope: &str, remote_path: &str, what: &str) -> String {
     format!("{scope}: {remote_path} {SOURCE_CHANGED_MARKER} ({what})")
 }
 
+/// What a ranged HTTP answer turned out to be.
+pub enum RangedAnswer {
+    /// The window that was asked for, ready to be written at its offset.
+    Window,
+    /// The whole object: the server ignored the range. The caller has to cut
+    /// the window out of it or refuse, never write it at the offset.
+    WholeObject,
+}
+
+/// Classify the answer to a ranged read.
+///
+/// The property has two halves and a reader that checks one is still open. A
+/// 200 is the whole object, whose head written at the window's offset
+/// corrupts the file to exactly the right length. A 206 has to say which
+/// range it carries, and it has to be the one asked for: a server that
+/// answers a different window is the same corruption with a success code.
+pub fn ranged_answer(
+    status: reqwest::StatusCode,
+    content_range: Option<&str>,
+    start: u64,
+    end: u64,
+) -> Result<RangedAnswer, String> {
+    match status {
+        reqwest::StatusCode::PARTIAL_CONTENT => {
+            let expected = format!("bytes {}-{}/", start, end);
+            match content_range.map(str::trim) {
+                Some(answered) if answered.starts_with(&expected) => Ok(RangedAnswer::Window),
+                Some(answered) => Err(format!(
+                    "the server answered {:?} to a request for {}",
+                    answered, expected
+                )),
+                None => Err(format!(
+                    "the server answered 206 to a request for {} without saying which range it carries",
+                    expected
+                )),
+            }
+        }
+        reqwest::StatusCode::OK => Ok(RangedAnswer::WholeObject),
+        other => Err(format!("the server answered {} to a ranged read", other)),
+    }
+}
+
 /// The same reading, taken through a session the caller owns. For a caller
 /// that builds its own connections and has no template to clone from.
 pub async fn read_range_source_through(
