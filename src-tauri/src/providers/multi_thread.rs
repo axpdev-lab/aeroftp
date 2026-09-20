@@ -322,6 +322,56 @@ pub fn source_changed(scope: &str, remote_path: &str, what: &str) -> String {
     format!("{scope}: {remote_path} {SOURCE_CHANGED_MARKER} ({what})")
 }
 
+/// Whether an error is one of the two refusals above rather than a failed
+/// transfer: the caller answers it with its single-stream path, which reads
+/// one consistent view. The refusal is recognised by its message because it
+/// crosses engines and closures that carry nothing but a `ProviderError`.
+pub fn is_parallel_refusal(error: &impl std::fmt::Display) -> bool {
+    let text = error.to_string();
+    text.contains(SOURCE_CHANGED_MARKER) || text.contains(PARALLEL_REFUSED_MARKER)
+}
+
+/// A transfer progress callback, as every provider download takes it.
+pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
+
+/// Two callbacks that both report to `progress`: one goes with the parallel
+/// attempt, the other stays behind for the single-stream path a refusal falls
+/// back to. The callback is `Send` and not `Sync`, so it is shared behind a
+/// lock rather than cloned; the two halves never run at the same time.
+pub fn share_progress(
+    progress: Option<ProgressCallback>,
+) -> (Option<ProgressCallback>, Option<ProgressCallback>) {
+    let Some(progress) = progress else {
+        return (None, None);
+    };
+    let shared = Arc::new(std::sync::Mutex::new(progress));
+    let half = |shared: Arc<std::sync::Mutex<ProgressCallback>>| -> ProgressCallback {
+        Box::new(move |done, total| {
+            let progress = shared.lock().unwrap_or_else(|e| e.into_inner());
+            progress(done, total)
+        })
+    };
+    (Some(half(Arc::clone(&shared))), Some(half(shared)))
+}
+
+/// Run `open`, and once more after [`AFTER_TRANSFER_READ_RETRY`] when it
+/// fails: the session a finished download is checked through is opened right
+/// after the window connections closed, and one refused connection must not
+/// discard a complete transfer.
+pub async fn open_after_transfer<T, E, F, Fut>(mut open: F) -> Result<T, E>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+{
+    match open().await {
+        Ok(session) => Ok(session),
+        Err(_) => {
+            tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+            open().await
+        }
+    }
+}
+
 /// What a ranged HTTP answer turned out to be.
 #[derive(Debug)]
 pub enum RangedAnswer {
@@ -1403,6 +1453,7 @@ pub(crate) async fn try_http_concurrent_range_download(
         }
     };
 
+    let (on_progress, fallback_progress) = share_progress(on_progress);
     match download_via_concurrent_range(cfg, fetch_range, CancellationToken::new(), on_progress)
         .await
     {
@@ -1414,10 +1465,10 @@ pub(crate) async fn try_http_concurrent_range_download(
             {
                 let _ = tokio::fs::remove_file(&temp).await;
                 tracing::warn!(
-                    "[multi-thread] {}; single-stream fallback (no progress)",
+                    "[multi-thread] {}; single-stream fallback",
                     source_changed("http range", &req.url, &what)
                 );
-                return HttpRangeAttempt::Fallback(None);
+                return HttpRangeAttempt::Fallback(fallback_progress);
             }
             match tokio::fs::rename(&temp, &req.local_path).await {
                 Ok(()) => HttpRangeAttempt::Completed,
@@ -1429,24 +1480,22 @@ pub(crate) async fn try_http_concurrent_range_download(
         }
         Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
             // Server honoured the probe then ignored a real Range: rare
-            // inconsistency. The helper already removed the temp; the
-            // progress callback was moved in, so the fallback runs without
-            // it (degraded but correct).
+            // inconsistency. The helper already removed the temp.
             tracing::warn!(
-                "[multi-thread] range_ignored mid-flight after a good probe for {}; single-stream fallback (no progress)",
+                "[multi-thread] range_ignored mid-flight after a good probe for {}; single-stream fallback",
                 req.url
             );
-            HttpRangeAttempt::Fallback(None)
+            HttpRangeAttempt::Fallback(fallback_progress)
         }
-        Err(e) if e.to_string().contains(SOURCE_CHANGED_MARKER) => {
+        Err(e) if is_parallel_refusal(&e) => {
             // A window was refused because the object moved. That is not a
             // failed download: one stream reads one consistent view, which is
             // exactly what the windows could not promise. The engine already
             // removed the staged file. This is the one place that recognises
             // the refusal by its message, because it crosses a generic engine
             // that carries nothing else.
-            tracing::warn!("[multi-thread] {}; single-stream fallback (no progress)", e);
-            HttpRangeAttempt::Fallback(None)
+            tracing::warn!("[multi-thread] {}; single-stream fallback", e);
+            HttpRangeAttempt::Fallback(fallback_progress)
         }
         Err(e) => HttpRangeAttempt::Failed(e),
     }
@@ -1636,6 +1685,62 @@ mod tests {
         let changed = source_changed("segmented download", "/big.bin", "size 10 became 11");
         assert!(changed.contains(SOURCE_CHANGED_MARKER), "{changed}");
         assert!(changed.contains("size 10 became 11"), "{changed}");
+    }
+
+    /// One predicate answers "refused, not failed" for both refusals, however
+    /// many layers wrapped the message on the way up, and for nothing else.
+    #[test]
+    fn a_refusal_is_recognised_through_a_wrapped_error() {
+        let refused = ProviderError::TransferFailed(format!(
+            "b2 multi-thread: read_range at offset 0 failed: {}",
+            parallel_refused("b2 range read", "/big.bin", "content-range mismatch")
+        ));
+        assert!(is_parallel_refusal(&refused));
+        let changed = ProviderError::TransferFailed(source_changed("s3", "/big.bin", "etag"));
+        assert!(is_parallel_refusal(&changed));
+        let failed = ProviderError::TransferFailed("connection reset by peer".into());
+        assert!(!is_parallel_refusal(&failed));
+    }
+
+    /// The half kept for the fallback still reports after the half that went
+    /// with the parallel attempt is gone, and both reach the one callback.
+    #[test]
+    fn a_shared_progress_callback_outlives_the_attempt_that_took_half() {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = Arc::clone(&seen);
+        let (attempt, fallback) = share_progress(Some(Box::new(move |done, total| {
+            sink.lock().unwrap().push((done, total));
+        })));
+        let attempt = attempt.expect("a callback was given");
+        attempt(1, 10);
+        drop(attempt);
+        fallback.expect("a callback was given")(7, 10);
+        assert_eq!(*seen.lock().unwrap(), vec![(1, 10), (7, 10)]);
+        let (none_a, none_b) = share_progress(None);
+        assert!(none_a.is_none() && none_b.is_none());
+    }
+
+    /// One refused connection does not decide the fate of a finished
+    /// download; two do.
+    #[tokio::test]
+    async fn the_after_transfer_session_is_opened_a_second_time() {
+        let calls = Arc::new(AtomicU64::new(0));
+        let counter = Arc::clone(&calls);
+        let opened: Result<&str, &str> = open_after_transfer(|| {
+            let counter = Arc::clone(&counter);
+            async move {
+                if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Err("connection refused")
+                } else {
+                    Ok("session")
+                }
+            }
+        })
+        .await;
+        assert_eq!(opened, Ok("session"));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        let never: Result<&str, &str> = open_after_transfer(|| async { Err("down") }).await;
+        assert_eq!(never, Err("down"));
     }
 
     // DAG-P2-06 (wire-level): the segmented-range construction point binds

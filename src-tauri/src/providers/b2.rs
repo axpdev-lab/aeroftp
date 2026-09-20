@@ -1647,7 +1647,7 @@ impl B2Provider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<bool, ProviderError> {
         use super::multi_thread::{
-            aerotmp_path_for, parallel_refused, range_source_changed_through,
+            aerotmp_path_for, is_parallel_refusal, parallel_refused, range_source_changed_through,
             read_range_source_through, source_changed,
         };
         use std::path::Path;
@@ -1666,8 +1666,20 @@ impl B2Provider {
             }
         };
 
-        self.download_multi_thread(remote_path, local_path, total_size, streams, on_progress)
-            .await?;
+        match self
+            .download_multi_thread(remote_path, local_path, total_size, streams, on_progress)
+            .await
+        {
+            Ok(()) => {}
+            // A window answered for another range, or with a body that is not
+            // the length it declared. The engine already removed the staged
+            // file, and one stream does not depend on the server's ranges.
+            Err(e) if is_parallel_refusal(&e) => {
+                tracing::warn!("{}; downloading on a single stream", e);
+                return Ok(false);
+            }
+            Err(e) => return Err(e),
+        }
 
         let temp = aerotmp_path_for(Path::new(local_path));
         if let Some(what) = range_source_changed_through(self, remote_path, &before).await {
@@ -2499,21 +2511,22 @@ impl StorageProvider for B2Provider {
         {
             match self.size(remote_path).await {
                 Ok(size) if size >= self.multi_thread_cutoff => {
+                    let (attempt_progress, fallback_progress) =
+                        super::multi_thread::share_progress(progress);
                     match self
                         .parallel_download_if_unchanged(
                             remote_path,
                             local_path,
                             size,
                             self.multi_thread_streams,
-                            progress,
+                            attempt_progress,
                         )
                         .await
                     {
                         Ok(true) => return Ok(()),
-                        // Refused, not failed. The progress callback went with
-                        // the attempt, so the single-stream path runs without
-                        // one.
-                        Ok(false) => None,
+                        // Refused, not failed: the single-stream path below
+                        // keeps reporting through the half that stayed here.
+                        Ok(false) => fallback_progress,
                         Err(e) => return Err(e),
                     }
                 }
@@ -4871,5 +4884,83 @@ mod tests {
         parts.sort_by_key(|p| p.part_number);
         let sha1s: Vec<String> = parts.into_iter().map(|p| p.etag).collect();
         assert_eq!(sha1s, vec!["a", "b", "c"]);
+    }
+
+    /// A ranged GET answered with a `Content-Range` for another window is a
+    /// refusal to read in parallel, not a failed download: the object is still
+    /// there to read on one stream, and the progress callback follows it.
+    #[tokio::test]
+    async fn a_window_answered_for_another_range_falls_back_to_one_stream() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::Arc;
+        const SIZE: usize = 8 * 1024 * 1024;
+        let app =
+            axum::Router::new().fallback(axum::routing::any(|req: axum::extract::Request| {
+                async move {
+                    if req.method() == axum::http::Method::POST {
+                        let listing = serde_json::json!({
+                            "files": [{
+                                "fileName": "big.bin",
+                                "action": "upload",
+                                "contentLength": SIZE,
+                                "uploadTimestamp": 1_700_000_000_000i64,
+                            }],
+                            "nextFileName": null,
+                        });
+                        return axum::response::Response::builder()
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(listing.to_string()))
+                            .unwrap();
+                    }
+                    if req.headers().contains_key("range") {
+                        // A 206 that names a window nobody asked for.
+                        return axum::response::Response::builder()
+                            .status(206)
+                            .header("content-range", format!("bytes 1-16/{}", SIZE))
+                            .body(axum::body::Body::from(vec![9u8; 16]))
+                            .unwrap();
+                    }
+                    axum::response::Response::builder()
+                        .body(axum::body::Body::from(vec![7u8; SIZE]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = empty_provider();
+        provider.api_url = format!("http://{addr}");
+        provider.download_url = format!("http://{addr}");
+        provider.auth_token = SecretString::new("token".to_string().into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        provider.multi_thread_streams = 4;
+        provider.multi_thread_cutoff = 1024 * 1024;
+
+        let reported = Arc::new(AtomicU64::new(0));
+        let sink = Arc::clone(&reported);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        provider
+            .download(
+                "/big.bin",
+                out.to_str().unwrap(),
+                Some(Box::new(move |done, _total| {
+                    sink.store(done, Ordering::SeqCst);
+                })),
+            )
+            .await
+            .expect("a refused window must finish on a single stream");
+        assert_eq!(std::fs::read(&out).expect("published"), vec![7u8; SIZE]);
+        assert_eq!(
+            reported.load(Ordering::SeqCst),
+            SIZE as u64,
+            "the single-stream fallback must keep reporting progress"
+        );
     }
 }

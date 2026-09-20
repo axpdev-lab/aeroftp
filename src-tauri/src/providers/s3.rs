@@ -4359,25 +4359,25 @@ impl StorageProvider for S3Provider {
                         .unwrap_or(true);
                     if size >= self.multi_thread_cutoff && accepts_ranges {
                         if let Some(etag) = validator {
+                            let (attempt_progress, fallback_progress) =
+                                super::multi_thread::share_progress(on_progress);
                             match self
-                                .download_multi_thread(key, local_path, size, etag, on_progress)
+                                .download_multi_thread(
+                                    key,
+                                    local_path,
+                                    size,
+                                    etag,
+                                    attempt_progress,
+                                )
                                 .await
                             {
                                 Ok(()) => return Ok(()),
-                                Err(e)
-                                    if {
-                                        let text = e.to_string();
-                                        text.contains(super::multi_thread::SOURCE_CHANGED_MARKER)
-                                            || text.contains(
-                                                super::multi_thread::PARALLEL_REFUSED_MARKER,
-                                            )
-                                    } =>
-                                {
+                                Err(e) if super::multi_thread::is_parallel_refusal(&e) => {
                                     // Refused, not failed: the object moved
                                     // while the windows were reading it, and a
-                                    // single stream reads one consistent view.
-                                    // The progress callback went with the
-                                    // attempt, so this runs without one.
+                                    // single stream reads one consistent view,
+                                    // reporting through the half of the
+                                    // progress callback that stayed here.
                                     warn!("S3: {}; downloading on a single stream", e);
                                     // A copy with the parallel path off, rather
                                     // than a size hint that lies about the
@@ -4390,7 +4390,7 @@ impl StorageProvider for S3Provider {
                                             remote_path,
                                             local_path,
                                             size_hint,
-                                            None,
+                                            fallback_progress,
                                         )
                                         .await;
                                 }
@@ -9696,8 +9696,16 @@ mod tests {
         provider.set_multi_thread_download(4, 1024 * 1024);
         let dir = tempfile::tempdir().expect("tempdir");
         let out = dir.path().join("big.bin");
+        let reported = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let sink = std::sync::Arc::clone(&reported);
         provider
-            .download("/big.bin", out.to_str().unwrap(), None)
+            .download(
+                "/big.bin",
+                out.to_str().unwrap(),
+                Some(Box::new(move |done, _total| {
+                    sink.store(done, std::sync::atomic::Ordering::SeqCst);
+                })),
+            )
             .await
             .expect("the refusal falls back to a single stream, which succeeds");
         assert_eq!(
@@ -9706,6 +9714,11 @@ mod tests {
                 .len(),
             SIZE as u64,
             "one whole version"
+        );
+        assert_eq!(
+            reported.load(std::sync::atomic::Ordering::SeqCst),
+            SIZE as u64,
+            "the single-stream fallback must keep reporting progress"
         );
     }
 
