@@ -32293,10 +32293,14 @@ async fn pget_segmented_download(
             // The engine left `<local>.aerotmp` committed; atomically
             // promote it to the final path like every other CLI transfer.
             let temp = aerotmp_path_for(Path::new(local_path));
-            let changed = match checker.connect().await {
-                Ok(()) => {
-                    let reading = read_range_source_through(checker.as_mut(), remote_path).await;
-                    let _ = checker.disconnect().await;
+            // A session of its own for the second reading, opened now rather
+            // than kept idle through the transfer: the connections that read
+            // the windows are closed by the engine, and a session parked for
+            // minutes is the first thing a server's idle timeout drops.
+            let changed = match create_and_connect(url, cli, format).await {
+                Ok((mut session, _)) => {
+                    let reading = read_range_source_through(session.as_mut(), remote_path).await;
+                    let _ = session.disconnect().await;
                     match reading {
                         Ok(after) => before.differs_from(&after),
                         Err(why) => Some(format!(
@@ -32304,16 +32308,15 @@ async fn pget_segmented_download(
                         )),
                     }
                 }
-                Err(e) => Some(format!(
-                    "it could not be read again after the transfer: the session did not                      reconnect ({e})"
-                )),
+                Err(_) => Some(
+                    "it could not be read again after the transfer: no session to read it with"
+                        .to_string(),
+                ),
             };
             if let Some(what) = changed {
                 let _ = tokio::fs::remove_file(&temp).await;
                 if !quiet {
-                    eprintln!(
-                        "pget: {remote_path} changed while it was being downloaded ({what});                          single download"
-                    );
+                    eprintln!("pget: {remote_path} was not published ({what}); single download");
                 }
                 return pget_fallback_single(url, remote_path, local_path, cli, format).await;
             }

@@ -31,8 +31,9 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
 use super::multi_thread::{
-    aerotmp_path_for, open_range_source_check, range_source_changed, run_concurrent_range_download,
-    ConcurrentRangeConfig, ConcurrentRangeOutcome, SOURCE_CHANGED_MARKER,
+    aerotmp_path_for, is_parallel_refusal, open_range_source_check, parallel_refused,
+    range_source_changed, run_concurrent_range_download, source_changed, ConcurrentRangeConfig,
+    ConcurrentRangeOutcome,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -687,9 +688,10 @@ impl SftpProvider {
         let before = match open_range_source_check(self, remote_path, total_size).await {
             Ok(before) => before,
             Err(why) => {
-                return Err(ProviderError::TransferFailed(format!(
-                    "SFTP intra-file: refusing to read {} in parallel: {}",
-                    remote_path, why
+                return Err(ProviderError::TransferFailed(parallel_refused(
+                    "SFTP intra-file",
+                    remote_path,
+                    &why,
                 )))
             }
         };
@@ -756,9 +758,10 @@ impl SftpProvider {
                 match changed {
                     Some(what) => {
                         let _ = tokio::fs::remove_file(&temp).await;
-                        Err(ProviderError::TransferFailed(format!(
-                            "SFTP intra-file: {} {} ({})",
-                            remote_path, SOURCE_CHANGED_MARKER, what
+                        Err(ProviderError::TransferFailed(source_changed(
+                            "SFTP intra-file",
+                            remote_path,
+                            &what,
                         )))
                     }
                     None => match tokio::fs::rename(&temp, local_path).await {
@@ -1827,14 +1830,30 @@ impl StorageProvider for SftpProvider {
         // re-dial N independent SSH connections (the SftpConnectionPool kind).
         // Without all three this is a no-op and the single-stream path below
         // is unchanged: honest non-regression, no protocol overclaim.
+        let mut on_progress = on_progress;
         if self.multi_thread_streams >= 2
             && total_size >= self.multi_thread_cutoff
             && self.connection_spec.is_some()
         {
             close_preopened!();
-            return self
-                .download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
-                .await;
+            match self
+                .download_intra_file_pooled(remote_path, local_path, total_size, on_progress.take())
+                .await
+            {
+                Ok(()) => return Ok(()),
+                Err(e) if is_parallel_refusal(&e.to_string()) => {
+                    // Refused, not failed: the object is not the one the
+                    // windows were planned for, or it could not be read again
+                    // to prove it stayed put. One stream reads one consistent
+                    // view, which is exactly what the parallel path could not
+                    // promise, so take the path below instead of failing a
+                    // download that has a correct way to finish. The progress
+                    // callback went with the attempt, so the fallback runs
+                    // without one.
+                    tracing::warn!("SFTP: {}; downloading on a single stream", e);
+                }
+                Err(e) => return Err(e),
+            }
         }
 
         // Sliding-window read-ahead downloader (our own, no crate fork). Takes

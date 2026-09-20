@@ -289,6 +289,30 @@ impl RangeSourceFingerprint {
 /// error can tell "the object moved under us" from a transport failure.
 pub const SOURCE_CHANGED_MARKER: &str = "changed while it was being downloaded";
 
+/// The phrase a refusal to even start the parallel path carries.
+pub const PARALLEL_REFUSED_MARKER: &str = "refusing to read it in parallel";
+
+/// The message for a parallel path that refuses to start.
+pub fn parallel_refused(scope: &str, remote_path: &str, why: &str) -> String {
+    format!("{scope}: {PARALLEL_REFUSED_MARKER} ({remote_path}): {why}")
+}
+
+/// The message for an assembled file that must not be published.
+pub fn source_changed(scope: &str, remote_path: &str, what: &str) -> String {
+    format!("{scope}: {remote_path} {SOURCE_CHANGED_MARKER} ({what})")
+}
+
+/// Whether an error is one of those two refusals rather than a transfer that
+/// failed.
+///
+/// A caller that has a single-stream path of its own takes it instead of
+/// failing the download: one stream reads one consistent view of the object,
+/// which is exactly what the parallel path could not promise. Both messages
+/// are built by the two functions above, so the three cannot drift apart.
+pub fn is_parallel_refusal(message: &str) -> bool {
+    message.contains(SOURCE_CHANGED_MARKER) || message.contains(PARALLEL_REFUSED_MARKER)
+}
+
 /// Read what the object looks like, through a session opened and closed for
 /// the reading alone.
 ///
@@ -1332,6 +1356,27 @@ mod tests {
     use super::*;
 
     const MAX: usize = 16;
+
+    /// The callers pick the single-stream path on these two messages, so the
+    /// predicate has to recognise exactly what the two producers write. A
+    /// reworded message that stops matching would turn a refusal back into a
+    /// failed download, silently.
+    #[test]
+    fn a_refusal_of_the_parallel_path_is_recognised_by_its_own_callers() {
+        assert!(is_parallel_refusal(&parallel_refused(
+            "segmented download",
+            "/big.bin",
+            "it could not be read (timed out)"
+        )));
+        assert!(is_parallel_refusal(&source_changed(
+            "segmented download",
+            "/big.bin",
+            "size 10 became 11"
+        )));
+        assert!(!is_parallel_refusal(
+            "segmented download: read_range at offset 0 failed: connection reset"
+        ));
+    }
 
     // DAG-P2-06 (wire-level): the segmented-range construction point binds
     // learned tuning to its endpoint under the SegmentedRange workload key.

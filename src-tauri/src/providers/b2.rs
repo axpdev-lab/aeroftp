@@ -1506,9 +1506,9 @@ impl B2Provider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         use crate::providers::multi_thread::{
-            aerotmp_path_for, open_range_source_check, range_source_changed,
-            run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
-            SOURCE_CHANGED_MARKER,
+            aerotmp_path_for, open_range_source_check, parallel_refused, range_source_changed,
+            run_concurrent_range_download, source_changed, ConcurrentRangeConfig,
+            ConcurrentRangeOutcome,
         };
         use std::collections::VecDeque;
         use std::path::{Path, PathBuf};
@@ -1522,9 +1522,10 @@ impl B2Provider {
         let before = match open_range_source_check(self, remote_path, total_size).await {
             Ok(before) => before,
             Err(why) => {
-                return Err(ProviderError::TransferFailed(format!(
-                    "b2 multi-thread: refusing to read {} in parallel: {}",
-                    remote_path, why
+                return Err(ProviderError::TransferFailed(parallel_refused(
+                    "b2 multi-thread",
+                    remote_path,
+                    &why,
                 )))
             }
         };
@@ -1641,9 +1642,10 @@ impl B2Provider {
                 match changed {
                     Some(what) => {
                         let _ = tokio::fs::remove_file(&temp).await;
-                        Err(ProviderError::TransferFailed(format!(
-                            "b2 multi-thread: {} {} ({})",
-                            remote_path, SOURCE_CHANGED_MARKER, what
+                        Err(ProviderError::TransferFailed(source_changed(
+                            "b2 multi-thread",
+                            remote_path,
+                            &what,
                         )))
                     }
                     None => tokio::fs::rename(&temp, local_path).await.map_err(|e| {
@@ -2460,14 +2462,16 @@ impl StorageProvider for B2Provider {
         // cutoff, and B2's range-honouring endpoint is available. Mirrors the
         // S3 path: a `stat` hiccup just falls through to single-stream so a
         // one-off mismatch never fails an otherwise downloadable transfer.
-        // Once committed we return the result (any hard error surfaces to the
-        // caller's retry envelope); we do not silently re-stream here.
+        // Once committed a hard error surfaces to the caller's retry envelope;
+        // a refusal to read the object in parallel, or to publish a file that
+        // moved under the windows, takes the single-stream path below instead,
+        // which reads one consistent view.
         let progress = if self.multi_thread_streams >= 2
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
             match self.size(remote_path).await {
                 Ok(size) if size >= self.multi_thread_cutoff => {
-                    return self
+                    match self
                         .download_multi_thread(
                             remote_path,
                             local_path,
@@ -2475,7 +2479,17 @@ impl StorageProvider for B2Provider {
                             self.multi_thread_streams,
                             progress,
                         )
-                        .await;
+                        .await
+                    {
+                        Ok(()) => return Ok(()),
+                        Err(e) if super::multi_thread::is_parallel_refusal(&e.to_string()) => {
+                            // The progress callback went with the attempt, so
+                            // the single-stream fallback runs without one.
+                            tracing::warn!("b2: {}; downloading on a single stream", e);
+                            None
+                        }
+                        Err(e) => return Err(e),
+                    }
                 }
                 _ => progress,
             }

@@ -298,9 +298,9 @@ pub async fn run_provider_segmented_download(
     cancel_token: CancellationToken,
 ) -> Result<(), String> {
     use crate::providers::multi_thread::{
-        aerotmp_path_for, open_range_source_check, range_source_changed,
-        run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
-        SOURCE_CHANGED_MARKER,
+        aerotmp_path_for, open_range_source_check, parallel_refused, range_source_changed,
+        run_concurrent_range_download, source_changed, ConcurrentRangeConfig,
+        ConcurrentRangeOutcome,
     };
     use crate::providers::ProviderError;
     use std::collections::VecDeque;
@@ -318,12 +318,7 @@ pub async fn run_provider_segmented_download(
     // refuse the publish if the object moved anyway.
     let before = match open_range_source_check(primary, remote_path, file_size).await {
         Ok(before) => before,
-        Err(why) => {
-            return Err(format!(
-                "segmented download: refusing to read {} in parallel: {}",
-                remote_path, why
-            ))
-        }
+        Err(why) => return Err(parallel_refused("segmented download", remote_path, &why)),
     };
 
     // Pre-acquire N independent workers. The first failure aborts the
@@ -453,10 +448,7 @@ pub async fn run_provider_segmented_download(
             match changed {
                 Some(what) => {
                     let _ = tokio::fs::remove_file(&temp).await;
-                    Err(format!(
-                        "segmented download: {} {} ({})",
-                        remote_path, SOURCE_CHANGED_MARKER, what
-                    ))
+                    Err(source_changed("segmented download", remote_path, &what))
                 }
                 None => match tokio::fs::rename(&temp, local_path).await {
                     Ok(()) => Ok(()),

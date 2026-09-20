@@ -19,8 +19,9 @@ use tokio_util::sync::CancellationToken;
 
 use super::checksum_matrix;
 use super::multi_thread::{
-    aerotmp_path_for, open_range_source_check, range_source_changed, run_concurrent_range_download,
-    ConcurrentRangeConfig, ConcurrentRangeOutcome, SOURCE_CHANGED_MARKER,
+    aerotmp_path_for, is_parallel_refusal, open_range_source_check, parallel_refused,
+    range_source_changed, run_concurrent_range_download, source_changed, ConcurrentRangeConfig,
+    ConcurrentRangeOutcome,
 };
 use super::{
     ChecksumCapability, FtpConfig, FtpTlsMode, ProviderError, ProviderTransferExecutorKind,
@@ -175,9 +176,10 @@ impl FtpProvider {
         let before = match open_range_source_check(self, remote_path, total_size).await {
             Ok(before) => before,
             Err(why) => {
-                return Err(ProviderError::TransferFailed(format!(
-                    "FTP intra-file: refusing to read {} in parallel: {}",
-                    remote_path, why
+                return Err(ProviderError::TransferFailed(parallel_refused(
+                    "FTP intra-file",
+                    remote_path,
+                    &why,
                 )))
             }
         };
@@ -236,9 +238,10 @@ impl FtpProvider {
                 match changed {
                     Some(what) => {
                         let _ = tokio::fs::remove_file(&temp).await;
-                        Err(ProviderError::TransferFailed(format!(
-                            "FTP intra-file: {} {} ({})",
-                            remote_path, SOURCE_CHANGED_MARKER, what
+                        Err(ProviderError::TransferFailed(source_changed(
+                            "FTP intra-file",
+                            remote_path,
+                            &what,
                         )))
                     }
                     None => match tokio::fs::rename(&temp, local_path).await {
@@ -1378,13 +1381,25 @@ impl StorageProvider for FtpProvider {
         // we can re-dial N independent FTP connections. Without all three
         // this is a no-op and the single-stream path below is unchanged:
         // honest non-regression, no protocol overclaim.
+        let mut on_progress = on_progress;
         if self.multi_thread_streams >= 2
             && total_size >= self.multi_thread_cutoff
             && self.connection_spec.is_some()
         {
-            return self
-                .download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
-                .await;
+            match self
+                .download_intra_file_pooled(remote_path, local_path, total_size, on_progress.take())
+                .await
+            {
+                Ok(()) => return Ok(()),
+                Err(e) if is_parallel_refusal(&e.to_string()) => {
+                    // Refused, not failed: one stream reads one consistent
+                    // view of the object, which is what the parallel path
+                    // could not promise here. The progress callback went with
+                    // the attempt, so the fallback runs without one.
+                    tracing::warn!("FTP: {}; downloading on a single stream", e);
+                }
+                Err(e) => return Err(e),
+            }
         }
 
         // Single-stream download with one reconnect-and-retry on a desynced
