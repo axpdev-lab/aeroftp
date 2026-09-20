@@ -1227,6 +1227,30 @@ pub(crate) async fn try_http_concurrent_range_download(
         );
         return HttpRangeAttempt::Fallback(on_progress);
     }
+    // The probe is also where the version comes from. HTTP has a validator,
+    // so the windows can be pinned to the object the probe saw: without one,
+    // an object replaced while they are in flight is assembled out of two
+    // versions, with the right length and nothing to tell it apart. A weak
+    // tag is not used, because If-Match compares strongly and would refuse
+    // every window.
+    let validator = probe
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty() && !tag.starts_with("W/"));
+    let last_modified = probe
+        .headers()
+        .get(reqwest::header::LAST_MODIFIED)
+        .and_then(|v| v.to_str().ok())
+        .map(|value| value.to_string());
+    if validator.is_none() && last_modified.is_none() {
+        tracing::warn!(
+            "[multi-thread] {} has no validator and no modification time: a replacement while the windows read it cannot be detected",
+            req.url
+        );
+    }
+
     let total = match content_range
         .as_deref()
         .and_then(parse_content_range)
@@ -1266,14 +1290,19 @@ pub(crate) async fn try_http_concurrent_range_download(
     let client = req.client.clone();
     let url: Arc<str> = Arc::from(req.url.as_str());
     let headers = Arc::new(req.headers.clone());
+    let pin: Arc<Option<String>> = Arc::new(validator.clone());
     let fetch_range = move |start: u64, end: u64| {
         let client = client.clone();
         let url = url.clone();
         let headers = headers.clone();
+        let pin = pin.clone();
         async move {
             let mut rb = client.get(url.as_ref());
             for (k, v) in headers.iter() {
                 rb = rb.header(k.clone(), v.clone());
+            }
+            if let Some(tag) = pin.as_ref() {
+                rb = rb.header(reqwest::header::IF_MATCH, tag.as_str());
             }
             let range = HeaderValue::from_str(&format!("bytes={}-{}", start, end))
                 .map_err(|e| ProviderError::TransferFailed(format!("Invalid Range: {}", e)))?;
@@ -1281,9 +1310,17 @@ pub(crate) async fn try_http_concurrent_range_download(
                 .header(RANGE, range)
                 .build()
                 .map_err(|e| ProviderError::TransferFailed(format!("Build request: {}", e)))?;
-            send_with_retry(&client, request, &HttpRetryConfig::default())
+            let response = send_with_retry(&client, request, &HttpRetryConfig::default())
                 .await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            if response.status() == reqwest::StatusCode::PRECONDITION_FAILED {
+                return Err(ProviderError::TransferFailed(source_changed(
+                    "http range",
+                    url.as_ref(),
+                    "the server refused a window pinned to the version the probe saw",
+                )));
+            }
+            Ok(response)
         }
     };
 
@@ -1292,6 +1329,17 @@ pub(crate) async fn try_http_concurrent_range_download(
     {
         Ok(ConcurrentRangeOutcome::Completed) => {
             let temp = aerotmp_path_for(Path::new(&req.local_path));
+            if let Some(what) =
+                http_range_source_moved(&req, validator.as_deref(), last_modified.as_deref(), total)
+                    .await
+            {
+                let _ = tokio::fs::remove_file(&temp).await;
+                tracing::warn!(
+                    "[multi-thread] {}; single-stream fallback (no progress)",
+                    source_changed("http range", &req.url, &what)
+                );
+                return HttpRangeAttempt::Fallback(None);
+            }
             match tokio::fs::rename(&temp, &req.local_path).await {
                 Ok(()) => HttpRangeAttempt::Completed,
                 Err(e) => {
@@ -1311,8 +1359,99 @@ pub(crate) async fn try_http_concurrent_range_download(
             );
             HttpRangeAttempt::Fallback(None)
         }
+        Err(e) if e.to_string().contains(SOURCE_CHANGED_MARKER) => {
+            // A window was refused because the object moved. That is not a
+            // failed download: one stream reads one consistent view, which is
+            // exactly what the windows could not promise. The engine already
+            // removed the staged file. This is the one place that recognises
+            // the refusal by its message, because it crosses a generic engine
+            // that carries nothing else.
+            tracing::warn!("[multi-thread] {}; single-stream fallback (no progress)", e);
+            HttpRangeAttempt::Fallback(None)
+        }
         Err(e) => HttpRangeAttempt::Failed(e),
     }
+}
+
+/// `Some(reason)` when the object is provably not the one the probe saw.
+///
+/// A second one-byte probe on the same client, so the cost is a request and
+/// not a connection. It exists for the servers that ignore `If-Match`: where
+/// the pin is honoured a window is refused mid-flight and never reaches here.
+/// One retry, because this reading decides whether bytes already on disk are
+/// kept.
+async fn http_range_source_moved(
+    req: &HttpRangeRequest,
+    validator: Option<&str>,
+    last_modified: Option<&str>,
+    total: u64,
+) -> Option<String> {
+    if validator.is_none() && last_modified.is_none() {
+        return None;
+    }
+    let mut last_error = None;
+    for attempt in 0..2 {
+        if attempt == 1 {
+            tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+        }
+        let mut rb = req.client.get(&req.url);
+        for (k, v) in req.headers.iter() {
+            rb = rb.header(k.clone(), v.clone());
+        }
+        let request = match rb
+            .header(RANGE, HeaderValue::from_static("bytes=0-0"))
+            .build()
+        {
+            Ok(request) => request,
+            Err(e) => {
+                last_error = Some(e.to_string());
+                continue;
+            }
+        };
+        let response =
+            match send_with_retry(&req.client, request, &HttpRetryConfig::default()).await {
+                Ok(response) => response,
+                Err(e) => {
+                    last_error = Some(e.to_string());
+                    continue;
+                }
+            };
+        let now_tag = response
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .map(|tag| tag.trim().to_string());
+        if let (Some(before), Some(after)) = (validator, now_tag.as_deref()) {
+            if before != after {
+                return Some(format!("entity tag {} became {}", before, after));
+            }
+        }
+        let now_modified = response
+            .headers()
+            .get(reqwest::header::LAST_MODIFIED)
+            .and_then(|v| v.to_str().ok());
+        if let (Some(before), Some(after)) = (last_modified, now_modified) {
+            if before != after {
+                return Some(format!("modification time {} became {}", before, after));
+            }
+        }
+        let now_total = response
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_content_range)
+            .and_then(|(_, _, total)| total);
+        if let Some(after) = now_total {
+            if after != total {
+                return Some(format!("size {} became {}", total, after));
+            }
+        }
+        return None;
+    }
+    Some(format!(
+        "it could not be read again after the transfer: {}",
+        last_error.unwrap_or_else(|| "no answer".to_string())
+    ))
 }
 
 #[cfg(test)]
@@ -2454,5 +2593,88 @@ mod tests {
             1,
             "an unknown size still probes once"
         );
+    }
+
+    /// Start and end of a `bytes=start-end` request header.
+    fn requested_window(raw: &str) -> Option<(u64, u64)> {
+        let (start, end) = raw.strip_prefix("bytes=")?.split_once('-')?;
+        Some((start.parse().ok()?, end.parse().ok()?))
+    }
+
+    /// This is the path WebDAV and Koofr take, and it holds a validator from
+    /// its own probe. A server that ignores `If-Match` must still not get a
+    /// file published out of two versions: the windows all answer with the
+    /// length they asked for and the total is exactly right.
+    #[tokio::test]
+    async fn the_http_range_path_refuses_an_object_replaced_under_it() {
+        use std::sync::atomic::AtomicUsize;
+        const SIZE: u64 = 2 * 1024 * 1024;
+        let probes = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&probes);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    let raw = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let (start, end) = requested_window(&raw).unwrap_or((0, SIZE - 1));
+                    // The object is replaced while the windows are in flight:
+                    // the probe that plans them sees v1, the one that checks
+                    // before publishing sees v2. If-Match is ignored, as a
+                    // server that does not implement it would.
+                    let tag = if start == 0 && end == 0 {
+                        if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                            "\"v1\""
+                        } else {
+                            "\"v2\""
+                        }
+                    } else {
+                        "\"v1\""
+                    };
+                    axum::response::Response::builder()
+                        .status(206)
+                        .header("content-range", format!("bytes {}-{}/{}", start, end, SIZE))
+                        .header("etag", tag)
+                        .body(axum::body::Body::from(vec![
+                            7u8;
+                            (end - start + 1) as usize
+                        ]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("big.bin");
+        let attempt = try_http_concurrent_range_download(
+            HttpRangeRequest {
+                client: reqwest::Client::new(),
+                url: format!("http://{addr}/big.bin"),
+                headers: Vec::new(),
+                local_path: local.to_string_lossy().into_owned(),
+                provider_type: super::super::ProviderType::WebDav,
+                streams: 4,
+                max_streams: 4,
+                cutoff: 1024 * 1024,
+                known_size: None,
+            },
+            None,
+        )
+        .await;
+        assert!(
+            matches!(attempt, HttpRangeAttempt::Fallback(None)),
+            "an object that moved must be handed back to a single stream"
+        );
+        assert!(!local.exists(), "no file may be published");
     }
 }
