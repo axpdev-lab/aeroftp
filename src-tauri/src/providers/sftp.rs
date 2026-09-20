@@ -633,25 +633,6 @@ impl SftpProvider {
         Ok(())
     }
 
-    /// PD-SFTP-2 intra-file download: split a large file into N gap-free
-    /// windows, each streamed over its **own independent SSH connection**
-    /// (the exact connection model of the file-level pool: spec re-dial with
-    /// host-key pin, no shared SSH handle/channel), assembled into a
-    /// pre-allocated `.aerotmp` and atomically renamed. Reuses the shared
-    /// [`run_concurrent_range_download`] orchestrator (plan / temp / RAII
-    /// cleanup / bounded concurrency / progress / cancel) so HTTP and SFTP
-    /// share one engine, not a fifth implementation.
-    ///
-    /// Strict gate (the SFTP equivalent of HTTP `206` + `Content-Range`):
-    /// every window must yield exactly `end - start + 1` bytes; a premature
-    /// EOF is a hard error, never a silent short read. SFTP has no
-    /// `ServerIgnoredRange` analogue (`seek`+`read` cannot ignore a range),
-    /// so that orchestrator arm is unreachable here and fails loud if hit.
-    ///
-    /// Single-session READ pipelining (rclone's `--sftp-concurrency`) is
-    /// deliberately **not** implemented: per the rev-3 honesty rule it is an
-    /// optional, separately-measured tier, never a closure promise. N
-    /// independent connections is the mechanism, exactly like PD-SFTP-1.
     /// The object as this session sees it now, read on the connection that is
     /// already open.
     ///
@@ -746,6 +727,26 @@ impl SftpProvider {
         }
     }
 
+    /// PD-SFTP-2 intra-file download: split a large file into N gap-free
+    /// windows, each streamed over its **own independent SSH connection**
+    /// (the exact connection model of the file-level pool: spec re-dial with
+    /// host-key pin, no shared SSH handle/channel), assembled into a
+    /// pre-allocated `.aerotmp`, which the caller publishes once it has read
+    /// the object again. Reuses the shared
+    /// [`run_concurrent_range_download`] orchestrator (plan / temp / RAII
+    /// cleanup / bounded concurrency / progress / cancel) so HTTP and SFTP
+    /// share one engine, not a fifth implementation.
+    ///
+    /// Strict gate (the SFTP equivalent of HTTP `206` + `Content-Range`):
+    /// every window must yield exactly `end - start + 1` bytes; a premature
+    /// EOF is a hard error, never a silent short read. SFTP has no
+    /// `ServerIgnoredRange` analogue (`seek`+`read` cannot ignore a range),
+    /// so that orchestrator arm is unreachable here and fails loud if hit.
+    ///
+    /// Single-session READ pipelining (rclone's `--sftp-concurrency`) is
+    /// deliberately **not** implemented: per the rev-3 honesty rule it is an
+    /// optional, separately-measured tier, never a closure promise. N
+    /// independent connections is the mechanism, exactly like PD-SFTP-1.
     async fn download_intra_file_pooled(
         &self,
         remote_path: &str,

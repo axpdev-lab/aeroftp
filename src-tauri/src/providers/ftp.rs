@@ -140,19 +140,6 @@ impl FtpProvider {
         self.connect().await
     }
 
-    /// PD-FTP-1: split one large file into N gap-free windows, each
-    /// downloaded over its **own** independent FTP connection (REST+RETR,
-    /// the exact connection model of the FTP session pool and PD-SFTP-2),
-    /// assembled into a pre-allocated `.aerotmp` and atomically renamed.
-    /// Reuses the shared [`run_concurrent_range_download`] orchestrator so
-    /// HTTP, SFTP and FTP share one engine, not a fourth implementation.
-    ///
-    /// Strict gate (the FTP equivalent of HTTP `206` + `Content-Range`):
-    /// every window must yield exactly `end - start + 1` bytes; a premature
-    /// EOF is a hard error, never a silent short read. FTP REST+RETR has no
-    /// `ServerIgnoredRange` analogue (it cannot answer `200 OK` ignoring the
-    /// offset), so that orchestrator arm is unreachable here and fails loud
-    /// if hit, never a silent re-download that would double the bytes.
     /// The path that the primary session and a freshly dialled worker both
     /// resolve to the same file.
     ///
@@ -229,6 +216,20 @@ impl FtpProvider {
         }
     }
 
+    /// PD-FTP-1: split one large file into N gap-free windows, each
+    /// downloaded over its **own** independent FTP connection (REST+RETR,
+    /// the exact connection model of the FTP session pool and PD-SFTP-2),
+    /// assembled into a pre-allocated `.aerotmp`, which the caller publishes
+    /// once it has read the object again.
+    /// Reuses the shared [`run_concurrent_range_download`] orchestrator so
+    /// HTTP, SFTP and FTP share one engine, not a fourth implementation.
+    ///
+    /// Strict gate (the FTP equivalent of HTTP `206` + `Content-Range`):
+    /// every window must yield exactly `end - start + 1` bytes; a premature
+    /// EOF is a hard error, never a silent short read. FTP REST+RETR has no
+    /// `ServerIgnoredRange` analogue (it cannot answer `200 OK` ignoring the
+    /// offset), so that orchestrator arm is unreachable here and fails loud
+    /// if hit, never a silent re-download that would double the bytes.
     async fn download_intra_file_pooled(
         &self,
         remote_path: &str,
