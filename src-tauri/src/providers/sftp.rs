@@ -769,7 +769,12 @@ impl SftpProvider {
                             tracing::info!("SFTP: intra-file download complete: {}", remote_path);
                             Ok(())
                         }
-                        Err(e) => Err(ProviderError::IoError(e)),
+                        Err(e) => {
+                            // The engine handed the temp over when it reported
+                            // Completed, so nothing else will remove it.
+                            let _ = tokio::fs::remove_file(&temp).await;
+                            Err(ProviderError::IoError(e))
+                        }
                     },
                 }
             }

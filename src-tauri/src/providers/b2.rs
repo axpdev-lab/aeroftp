@@ -1648,9 +1648,18 @@ impl B2Provider {
                             &what,
                         )))
                     }
-                    None => tokio::fs::rename(&temp, local_path).await.map_err(|e| {
-                        ProviderError::Other(format!("b2 multi-thread finalize: {}", e))
-                    }),
+                    None => match tokio::fs::rename(&temp, local_path).await {
+                        Ok(()) => Ok(()),
+                        Err(e) => {
+                            // The engine handed the temp over when it reported
+                            // Completed, so nothing else will remove it.
+                            let _ = tokio::fs::remove_file(&temp).await;
+                            Err(ProviderError::Other(format!(
+                                "b2 multi-thread finalize: {}",
+                                e
+                            )))
+                        }
+                    },
                 }
             }
             Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(ProviderError::NotSupported(
