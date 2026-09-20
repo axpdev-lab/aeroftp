@@ -247,7 +247,9 @@ async fn run_sync_download_once(
         conflict_mode: ConflictMode::Larger,
         scan: ScanOptions::default(),
         error_correction: Default::default(),
-        download_segments,
+        download_segments: ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Explicit(
+            download_segments,
+        ),
         // DAG-P2-04 residual: SyncOptions gained max_backlog; keep the engine
         // default so this segmented-WAN test compiles under --all-targets.
         max_backlog: ftp_client_gui_lib::transfer_dag::DEFAULT_ENGINE_MAX_BACKLOG,
@@ -869,7 +871,8 @@ async fn gtc_cross_profile_sftp_to_s3_parallel_byte_identity_speed_band() {
                 None,
                 CrossProfileCopyOptions {
                     source_size: Some(GTC4_FILE_BYTES as u64),
-                    download_segments: 4,
+                    download_segments:
+                        ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Explicit(4),
                     cancel_token: CancellationToken::new(),
                 },
             )

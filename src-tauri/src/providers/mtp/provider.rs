@@ -113,6 +113,11 @@ impl MtpProvider {
             max_chunk_slots: Some(1),
             max_checker_slots: Some(1),
             preferred_chunk_size: None,
+            preferred_download_segments: Some(
+                crate::transfer_settings::download_segments_preference_for(
+                    crate::providers::ProviderType::Mtp,
+                ),
+            ),
             multipart_threshold: u64::MAX,
             multipart_streaming_body: false,
         }

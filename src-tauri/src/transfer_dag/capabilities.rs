@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::providers::{ProviderType, TransferOptimizationHints};
+use crate::transfer_settings::{download_segments_preference_for, DownloadSegmentsPreference};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -51,6 +52,9 @@ pub struct TransferCapabilities {
     pub max_chunk_slots: Option<u16>,
     pub max_checker_slots: Option<u16>,
     pub preferred_chunk_size: Option<u64>,
+    /// Provider-scoped Auto policy, including whether the number was measured.
+    /// This is a preference, never a capability ceiling.
+    pub preferred_download_segments: Option<DownloadSegmentsPreference>,
     /// Minimum file size (bytes) at or above which an upload should fan out
     /// into multipart parts. Mirrors the per-provider `multipart_threshold`
     /// hint that the legacy `upload()` path honours. `0` means "unset": the
@@ -91,6 +95,7 @@ impl Default for TransferCapabilities {
             max_chunk_slots: Some(1),
             max_checker_slots: Some(1),
             preferred_chunk_size: None,
+            preferred_download_segments: None,
             multipart_threshold: u64::MAX,
             multipart_streaming_body: false,
         }
@@ -111,6 +116,7 @@ impl TransferCapabilities {
             server_side_copy: Capability::from_bool(supports_server_side_copy),
             preferred_chunk_size: (hints.multipart_part_size > 0)
                 .then_some(hints.multipart_part_size),
+            preferred_download_segments: Some(download_segments_preference_for(provider_type)),
             max_chunk_slots: Some(hints.multipart_max_parallel.max(1) as u16),
             // 0 = unset: the profile falls back to the chunk size (preserving
             // pre-fix behaviour). A provider that advertises multipart with a

@@ -5976,6 +5976,9 @@ struct CliSyncResult {
     /// path; additive and omitted otherwise, so historical JSON is unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats>,
+    /// Requested stream policy passed to the shared executor, with origin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    download_segments: Option<ftp_client_gui_lib::transfer_settings::ResolvedDownloadSegments>,
 }
 
 /// Single plan entry surfaced in `sync --dry-run --json`.
@@ -10241,6 +10244,7 @@ fn absorb_engine_stats(
 struct SharedDownloadOutcome {
     downloaded: u32,
     errors: Vec<String>,
+    download_segments: ftp_client_gui_lib::transfer_settings::ResolvedDownloadSegments,
     /// G102: files this batch did NOT transfer because `--max-transfer` was
     /// already spent. They are neither failures nor "already current", so
     /// neither `errors` nor the caller's `skipped` counter could carry them,
@@ -10349,9 +10353,10 @@ async fn run_shared_provider_download_batch(
             max_concurrent: Some(workers as u32),
             retry_count: None,
             timeout_seconds: None,
-            // CLI segmented downloads use the dedicated `pget` path, not
-            // the GUI provider executor, so the executor stays single-stream.
-            download_segments: None,
+            // The shared download executor uses the provider's measured Auto
+            // preference when its range, pool and file-size gates allow it.
+            download_segments:
+                ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::MeasuredDefault,
             sftp_download_preset: None,
         },
     )
@@ -10449,6 +10454,7 @@ async fn run_shared_provider_download_batch(
     let sink = Arc::new(CliBatchSink::new());
     let dyn_sink: Arc<dyn TransferEventSink> = sink.clone();
 
+    let resolved_download_segments = runtime_settings.download_segments.clone();
     let executor = Arc::new(ProviderDownloadExecutor::new(
         dyn_sink.clone(),
         provider_arc.clone(),
@@ -10496,6 +10502,7 @@ async fn run_shared_provider_download_batch(
     Ok(SharedDownloadOutcome {
         downloaded: batch_result.completed,
         errors: sink.take_errors(),
+        download_segments: resolved_download_segments,
         over_budget: max_transfer_skipped as u32,
         engine_stats: batch_result.engine_stats,
     })
@@ -10575,9 +10582,10 @@ async fn run_shared_provider_upload_batch(
             max_concurrent: Some(workers as u32),
             retry_count: None,
             timeout_seconds: None,
-            // CLI segmented downloads use the dedicated `pget` path, not
-            // the GUI provider executor, so the executor stays single-stream.
-            download_segments: None,
+            download_segments:
+                ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Single {
+                    reason: "upload path has no download leg".to_string(),
+                },
             sftp_download_preset: None,
         },
     )
@@ -32570,6 +32578,7 @@ async fn cmd_get_recursive(
     // DAG-P2-07 (block E): engine-level stats when this folder download ran on
     // the converged DAG-engine path; stays `None` on the legacy fallback.
     let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
+    let mut download_segments = None;
 
     // PD-CLI-CONV-B: converge the file-level batch on the shared provider
     // executor + orchestrator (sink-agnostic) for pool-backed providers
@@ -32598,6 +32607,7 @@ async fn cmd_get_recursive(
             // to close, reintroduced one line later. Raised by CodeRabbit.
             errors.extend(outcome.errors);
             engine_stats = outcome.engine_stats;
+            download_segments = Some(outcome.download_segments);
         }
         Err(mut base) => {
             let _ = base.disconnect().await;
@@ -32683,6 +32693,7 @@ async fn cmd_get_recursive(
                 skipped_links: Vec::new(),
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
+                download_segments,
             });
         }
     }
@@ -32823,6 +32834,7 @@ async fn cmd_get_glob(
     // DAG-P2-07 (block E): engine-level stats when this glob download ran on
     // the converged DAG-engine path; stays `None` on the legacy fallback.
     let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
+    let mut download_segments = None;
 
     // PD-CLI-CONV-C: converge the glob file-level batch on the SAME shared
     // provider executor + orchestrator `aeroftp get -r` uses
@@ -32846,6 +32858,7 @@ async fn cmd_get_glob(
             over_budget = outcome.over_budget;
             errors.extend(outcome.errors);
             engine_stats = outcome.engine_stats;
+            download_segments = Some(outcome.download_segments);
         }
         Err(mut base) => {
             let _ = base.disconnect().await;
@@ -32926,6 +32939,7 @@ async fn cmd_get_glob(
                 skipped_links: Vec::new(),
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
+                download_segments,
             });
         }
     }
@@ -33609,6 +33623,7 @@ async fn cmd_put_recursive(
                 skipped_links: Vec::new(),
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
+                download_segments: None,
             });
         }
     }
@@ -48284,6 +48299,7 @@ async fn cmd_sync(
                     unseen_paths: unseen_paths.clone(),
                     // Dry run performs no transfer, so there is no engine job.
                     stats: None,
+                    download_segments: None,
                 });
             }
         }
@@ -48329,6 +48345,7 @@ async fn cmd_sync(
     // snapshot for the `--json` result via `absorb_engine_stats`. `None` while
     // both stay on the legacy per-file fallback (no DAG engine).
     let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
+    let mut download_segments = None;
 
     let upload_jobs: Vec<(String, String, String, u64)> = to_upload
         .iter()
@@ -48859,6 +48876,7 @@ async fn cmd_sync(
                     over_budget += outcome.over_budget;
                     errors.extend(outcome.errors);
                     absorb_engine_stats(&mut engine_stats, outcome.engine_stats);
+                    download_segments = Some(outcome.download_segments);
                     false
                 }
                 Err(mut base) => {
@@ -49101,6 +49119,7 @@ async fn cmd_sync(
                 skipped_links: reported_links.clone(),
                 unseen_paths: unseen_paths.clone(),
                 stats: engine_stats,
+                download_segments,
             });
         }
     }
@@ -56228,6 +56247,7 @@ async fn cmd_put_glob(
                 skipped_links: Vec::new(),
                 unseen_paths: Vec::new(),
                 stats: engine_stats,
+                download_segments: None,
             });
         }
     }
@@ -70753,6 +70773,49 @@ mod tests {
                 health: false,
                 tui: false,
             },
+        }
+    }
+
+    #[test]
+    fn s3_upload_concurrency_flag_changes_the_planned_multipart_parallelism() {
+        use ftp_client_gui_lib::providers::{s3::S3Provider, S3Config};
+        use ftp_client_gui_lib::transfer_dag::{
+            TransferDagBuilder, TransferDirection as DagDirection,
+        };
+
+        for requested in [1, 8] {
+            let mut cli = test_cli();
+            cli.s3_upload_concurrency = requested;
+            let mut provider: Box<dyn StorageProvider> = Box::new(
+                S3Provider::new(S3Config {
+                    endpoint: None,
+                    region: "us-east-1".to_string(),
+                    access_key_id: "test-key".to_string(),
+                    secret_access_key: secrecy::SecretString::from("test-secret".to_string()),
+                    session_token: None,
+                    role_arn: None,
+                    role_external_id: None,
+                    role_session_name: None,
+                    role_duration_seconds: None,
+                    role_mfa_serial: None,
+                    role_mfa_token_code: None,
+                    bucket: "test-bucket".to_string(),
+                    prefix: None,
+                    path_style: true,
+                    storage_class: None,
+                    sse_mode: None,
+                    sse_kms_key_id: None,
+                    verify_cert: true,
+                    allow_cleartext_endpoint: false,
+                })
+                .expect("test S3 provider"),
+            );
+            apply_s3_runtime_knobs(&mut provider, &cli);
+            let caps = provider.transfer_capabilities();
+            let graph =
+                TransferDagBuilder::shaped_file(DagDirection::Upload, &caps, 300 * 1024 * 1024);
+            assert!(graph.transfer.len() > 1);
+            assert_eq!(graph.profile.max_chunk_slots as usize, requested);
         }
     }
 

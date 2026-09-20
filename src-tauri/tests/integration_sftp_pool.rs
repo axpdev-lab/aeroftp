@@ -437,7 +437,10 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
                 max_concurrent: Some(concurrency as u32),
                 retry_count: None,
                 timeout_seconds: None,
-                download_segments: None,
+                download_segments:
+                    ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Single {
+                        reason: "SFTP pool integration isolates file-level parallelism".to_string(),
+                    },
                 sftp_download_preset: None,
             },
             &capabilities,
@@ -447,7 +450,7 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
         let executor = Arc::new(ProviderDownloadExecutor::new(
             sink.clone(),
             provider_arc.clone(),
-            runtime_settings,
+            runtime_settings.clone(),
             cancel_token,
             model,
             capabilities,
@@ -623,7 +626,10 @@ async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
                 max_concurrent: Some(concurrency as u32),
                 retry_count: None,
                 timeout_seconds: None,
-                download_segments: None,
+                download_segments:
+                    ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Single {
+                        reason: "SFTP pool integration isolates file-level parallelism".to_string(),
+                    },
                 sftp_download_preset: None,
             },
             &capabilities,
@@ -633,7 +639,7 @@ async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
         let executor = Arc::new(ProviderUploadExecutor::new(
             sink.clone(),
             provider_arc.clone(),
-            runtime_settings,
+            runtime_settings.clone(),
             None,
             cancel_token,
             model,
@@ -868,7 +874,11 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
                     max_concurrent: Some(concurrency as u32),
                     retry_count: None,
                     timeout_seconds: None,
-                    download_segments: None,
+                    download_segments:
+                        ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Single {
+                            reason: "SFTP pool integration isolates file-level parallelism"
+                                .to_string(),
+                        },
                     sftp_download_preset: None,
                 },
                 &capabilities,
@@ -878,7 +888,7 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
             let executor = Arc::new(ProviderDownloadExecutor::new(
                 sink.clone(),
                 provider_arc.clone(),
-                runtime_settings,
+                runtime_settings.clone(),
                 cancel_token,
                 model,
                 capabilities,
@@ -952,7 +962,11 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
                     max_concurrent: Some(concurrency as u32),
                     retry_count: None,
                     timeout_seconds: None,
-                    download_segments: None,
+                    download_segments:
+                        ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Single {
+                            reason: "SFTP pool integration isolates file-level parallelism"
+                                .to_string(),
+                        },
                     sftp_download_preset: None,
                 },
                 &capabilities,
@@ -962,7 +976,7 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
             let executor = Arc::new(ProviderUploadExecutor::new(
                 sink.clone(),
                 provider_arc.clone(),
-                runtime_settings,
+                runtime_settings.clone(),
                 None,
                 cancel_token,
                 model,

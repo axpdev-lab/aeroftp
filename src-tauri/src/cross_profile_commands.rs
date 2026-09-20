@@ -34,7 +34,6 @@ const PLAN_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 const CROSS_PROFILE_MAX_CONCURRENT: u32 = 4;
 const CROSS_PROFILE_MAX_RETRY: u32 = 3;
 const CROSS_PROFILE_RETRY_DELAY: Duration = Duration::from_secs(1);
-const CROSS_PROFILE_DOWNLOAD_SEGMENTS: u32 = 4;
 
 #[derive(Debug, Clone)]
 struct StoredCrossProfilePlan {
@@ -368,7 +367,8 @@ impl CrossProfileExecutor {
             entry.modified.as_deref(),
             CrossProfileCopyOptions {
                 source_size: Some(entry.size),
-                download_segments: CROSS_PROFILE_DOWNLOAD_SEGMENTS,
+                download_segments:
+                    crate::transfer_settings::DownloadSegmentsRequest::MeasuredDefault,
                 cancel_token: self.cancel_token.clone(),
             },
         )
