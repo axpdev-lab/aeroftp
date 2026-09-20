@@ -7011,25 +7011,23 @@ async fn download_range_to_offset(
             // the window asked for puts the wrong bytes there while the total
             // still adds up, and no comparison of the object would see it.
             // The server has to say which range it is answering with.
+            // The same parser the other readers use: a header that starts
+            // like the right one and does not parse is not the right one.
             let answered = response
                 .headers()
                 .get(reqwest::header::CONTENT_RANGE)
                 .and_then(|v| v.to_str().ok())
                 .map(|value| value.trim().to_string());
-            let expected = format!("bytes {}-{}/", start, end);
-            if !answered
-                .as_deref()
-                .map(|value| value.starts_with(&expected))
-                .unwrap_or(false)
-            {
+            if !super::multi_thread::content_range_matches(answered.as_deref(), start, end) {
                 return Err(ProviderError::TransferFailed(
                     super::multi_thread::parallel_refused(
                         "S3 multi-thread",
                         &key,
                         &format!(
-                            "the server answered {:?} to a request for {}",
+                            "the server answered {:?} to a request for bytes {}-{}",
                             answered.unwrap_or_default(),
-                            expected
+                            start,
+                            end
                         ),
                     ),
                 ));
@@ -7089,15 +7087,20 @@ async fn download_range_to_offset(
         )
         .await;
         if written + chunk_len > expected {
-            // Server returned more than requested: truncate to the planned
-            // window so we don't trample a neighboring range.
-            let allowed = (expected - written) as usize;
-            file.write_all(&chunk[..allowed])
-                .await
-                .map_err(ProviderError::IoError)?;
-            aggregate.fetch_add(allowed as u64, Ordering::Relaxed);
-            written = expected;
-            break;
+            // The server said one window and is sending more than it. Cutting
+            // the extra away would keep whatever arrived first and call it the
+            // window; there is no reason to believe it is. Refuse, and the
+            // caller reads this file on a single stream.
+            return Err(ProviderError::TransferFailed(
+                super::multi_thread::parallel_refused(
+                    "S3 multi-thread",
+                    &key,
+                    &format!(
+                        "the server said bytes {}-{} and is sending more than {} bytes",
+                        start, end, expected
+                    ),
+                ),
+            ));
         }
         file.write_all(&chunk)
             .await
@@ -9860,6 +9863,71 @@ mod tests {
             "{err}"
         );
         assert!(!out.exists(), "no file may be committed");
+    }
+
+    /// The native multi-thread path writes each window straight to the file at
+    /// its offset, so a `Content-Range` that starts like the right one and
+    /// does not parse must not be taken for it.
+    #[tokio::test]
+    async fn the_native_path_refuses_a_range_header_that_does_not_parse() {
+        const SIZE: usize = 2 * 1024 * 1024;
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        return axum::response::Response::builder()
+                            .header("content-length", SIZE.to_string())
+                            .header("accept-ranges", "bytes")
+                            .header("etag", "\"v1\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    match req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(requested_window)
+                    {
+                        // Looks like the window that was asked for, and the
+                        // total is not a number.
+                        Some((start, end)) => axum::response::Response::builder()
+                            .status(206)
+                            .header(
+                                "content-range",
+                                format!("bytes {}-{}/not-a-total", start, end),
+                            )
+                            .body(axum::body::Body::from(vec![7u8; end - start + 1]))
+                            .unwrap(),
+                        None => axum::response::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::from(vec![9u8; SIZE]))
+                            .unwrap(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .expect("the refusal falls back to a single stream, which succeeds");
+        let bytes = std::fs::read(&out).expect("the file is published");
+        assert_eq!(bytes.len(), SIZE, "one whole version");
+        assert!(
+            bytes.iter().all(|byte| *byte == 9u8),
+            "the file must come from the single stream, not from windows nobody could validate"
+        );
     }
 
     /// The shared segmented executor reads its windows through `read_range`

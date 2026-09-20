@@ -332,6 +332,19 @@ pub enum RangedAnswer {
     WholeObject,
 }
 
+/// Cut the window out of a whole-object answer.
+///
+/// One implementation rather than one per provider: an off-by-one here would
+/// otherwise have to be found and fixed seven times.
+pub fn slice_whole_object(bytes: &[u8], offset: u64, len: u64) -> Vec<u8> {
+    if offset >= bytes.len() as u64 {
+        return Vec::new();
+    }
+    let start = offset as usize;
+    let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
+    bytes[start..stop].to_vec()
+}
+
 /// Classify the answer to a ranged read.
 ///
 /// The property has two halves and a reader that checks one is still open. A

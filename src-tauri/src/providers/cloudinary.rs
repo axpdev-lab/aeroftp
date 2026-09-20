@@ -881,13 +881,7 @@ impl StorageProvider for CloudinaryProvider {
         ) {
             Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes),
             Ok(super::multi_thread::RangedAnswer::WholeObject) => {
-                if offset >= bytes.len() as u64 {
-                    Ok(Vec::new())
-                } else {
-                    let start = offset as usize;
-                    let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
-                    Ok(bytes[start..stop].to_vec())
-                }
+                Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
             }
             Err(why) => Err(ProviderError::TransferFailed(
                 super::multi_thread::parallel_refused("Cloudinary range read", remote_path, &why),

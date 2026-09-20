@@ -3553,12 +3553,7 @@ impl StorageProvider for B2Provider {
         ) {
             Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
             Ok(super::multi_thread::RangedAnswer::WholeObject) => {
-                if offset >= bytes.len() as u64 {
-                    return Ok(Vec::new());
-                }
-                let start = offset as usize;
-                let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
-                Ok(bytes[start..stop].to_vec())
+                Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
             }
             Err(why) => Err(ProviderError::TransferFailed(
                 super::multi_thread::parallel_refused("b2 range read", path, &why),
