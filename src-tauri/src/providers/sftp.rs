@@ -33,7 +33,7 @@ use tokio_util::sync::CancellationToken;
 use super::multi_thread::{
     aerotmp_path_for, parallel_refused, run_concurrent_range_download, source_changed,
     ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeSourceFingerprint,
-    AFTER_TRANSFER_READ_RETRY,
+    AFTER_TRANSFER_READ_RETRY, SOURCE_CHANGED_MARKER,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -1957,19 +1957,29 @@ impl StorageProvider for SftpProvider {
                         *slot = CancellationToken::new();
                         slot.clone()
                     };
-                    sftp_readahead_download(
+                    match sftp_readahead_download(
                         sftp,
                         &full_path,
                         total_size,
                         local_path,
                         self.buffer_size,
                         window,
-                        on_progress,
+                        on_progress.take(),
                         &cancel,
                         Arc::clone(&self.fail_readahead_write),
                     )
-                    .await?;
-                    return Ok(());
+                    .await
+                    {
+                        Ok(()) => return Ok(()),
+                        Err(e) if e.to_string().contains(SOURCE_CHANGED_MARKER) => {
+                            // Read on several handles and the object moved
+                            // between the opens: the serial path below reads
+                            // on one.
+                            tracing::warn!("{}; downloading on a single handle", e);
+                            source_is_moving = true;
+                        }
+                        Err(e) => return Err(e),
+                    }
                 }
             }
         }
@@ -3736,6 +3746,22 @@ async fn sftp_readahead_download(
 ) -> Result<(), ProviderError> {
     use tokio::io::AsyncWriteExt;
 
+    // This path opens as many handles as the window, all at once, a few
+    // milliseconds apart. A handle already open keeps reading the file it was
+    // opened on, so the risk is not the transfer but that burst: an object
+    // replaced inside it would be read as two versions. The window is far
+    // narrower than a whole transfer, but the check costs one round trip on
+    // the session that is already there.
+    let before = SftpProvider::range_source_reading(sftp, full_path)
+        .await
+        .ok();
+    if before.is_none() {
+        tracing::warn!(
+            "SFTP readahead: {} could not be read before the transfer, a replacement during it will not be detected",
+            full_path
+        );
+    }
+
     // Keep the exclusive handle returned by create_new through commit: no
     // symlink following and no create/reopen TOCTOU window.
     let (file, temp_guard) = create_sftp_readahead_temp(local_path, total_size).await?;
@@ -3772,6 +3798,35 @@ async fn sftp_readahead_download(
         .await
         .map_err(|e| ProviderError::TransferFailed(format!("Failed to sync download: {}", e)))?;
     drop(out);
+
+    if let Some(before) = before {
+        let changed = match SftpProvider::range_source_reading(sftp, full_path).await {
+            Ok(after) => before.differs_from(&after),
+            Err(first) => {
+                tracing::warn!(
+                    "SFTP readahead: {} could not be read after the transfer ({}), reading once more",
+                    full_path,
+                    first
+                );
+                tokio::time::sleep(AFTER_TRANSFER_READ_RETRY).await;
+                match SftpProvider::range_source_reading(sftp, full_path).await {
+                    Ok(after) => before.differs_from(&after),
+                    Err(why) => Some(format!(
+                        "it could not be read again after the transfer: {why}"
+                    )),
+                }
+            }
+        };
+        if let Some(what) = changed {
+            // The guard removes the staged file. The caller reads this as a
+            // refusal and downloads on one handle instead.
+            return Err(ProviderError::TransferFailed(source_changed(
+                "SFTP readahead",
+                full_path,
+                &what,
+            )));
+        }
+    }
 
     tokio::fs::rename(&guard.path, local_path)
         .await
