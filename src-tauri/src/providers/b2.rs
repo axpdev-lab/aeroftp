@@ -3544,7 +3544,13 @@ impl StorageProvider for B2Provider {
             bytes.len() as u64,
         )
         .await;
-        match super::multi_thread::ranged_answer(status, answered.as_deref(), offset, end) {
+        match super::multi_thread::ranged_answer(
+            status,
+            answered.as_deref(),
+            bytes.len() as u64,
+            offset,
+            end,
+        ) {
             Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
             Ok(super::multi_thread::RangedAnswer::WholeObject) => {
                 if offset >= bytes.len() as u64 {

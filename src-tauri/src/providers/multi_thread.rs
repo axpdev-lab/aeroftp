@@ -323,6 +323,7 @@ pub fn source_changed(scope: &str, remote_path: &str, what: &str) -> String {
 }
 
 /// What a ranged HTTP answer turned out to be.
+#[derive(Debug)]
 pub enum RangedAnswer {
     /// The window that was asked for, ready to be written at its offset.
     Window,
@@ -341,23 +342,30 @@ pub enum RangedAnswer {
 pub fn ranged_answer(
     status: reqwest::StatusCode,
     content_range: Option<&str>,
+    body_len: u64,
     start: u64,
     end: u64,
 ) -> Result<RangedAnswer, String> {
     match status {
         reqwest::StatusCode::PARTIAL_CONTENT => {
-            let expected = format!("bytes {}-{}/", start, end);
-            match content_range.map(str::trim) {
-                Some(answered) if answered.starts_with(&expected) => Ok(RangedAnswer::Window),
-                Some(answered) => Err(format!(
-                    "the server answered {:?} to a request for {}",
-                    answered, expected
-                )),
-                None => Err(format!(
-                    "the server answered 206 to a request for {} without saying which range it carries",
-                    expected
-                )),
+            // The whole grammar, not a prefix: `bytes 0-1/not-a-total` starts
+            // like the right answer and is not one.
+            if !content_range_matches(content_range, start, end) {
+                return Err(format!(
+                    "the server answered {:?} to a request for bytes {}-{}",
+                    content_range.unwrap_or_default(),
+                    start,
+                    end
+                ));
             }
+            let window = end - start + 1;
+            if body_len != window {
+                return Err(format!(
+                    "the server said bytes {}-{} and sent {} bytes instead of {}",
+                    start, end, body_len, window
+                ));
+            }
+            Ok(RangedAnswer::Window)
         }
         reqwest::StatusCode::OK => Ok(RangedAnswer::WholeObject),
         other => Err(format!("the server answered {} to a ranged read", other)),
@@ -1538,6 +1546,71 @@ mod tests {
     use super::*;
 
     const MAX: usize = 16;
+
+    /// The two halves of the rule, and the two ways an answer can look right
+    /// and not be: a `Content-Range` that starts like the one asked for but
+    /// does not parse, and a body that is not the length it just declared.
+    #[test]
+    fn a_ranged_answer_is_the_window_or_it_is_refused() {
+        use reqwest::StatusCode;
+        let ok = ranged_answer(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 1048576-2097151/8388608"),
+            1048576,
+            1048576,
+            2097151,
+        );
+        assert!(matches!(ok, Ok(RangedAnswer::Window)), "{ok:?}");
+
+        let malformed = ranged_answer(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 1048576-2097151/not-a-total"),
+            1048576,
+            1048576,
+            2097151,
+        )
+        .expect_err("a Content-Range that does not parse is not the window");
+        assert!(malformed.contains("not-a-total"), "{malformed}");
+
+        let other_window = ranged_answer(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 0-1048575/8388608"),
+            1048576,
+            1048576,
+            2097151,
+        )
+        .expect_err("another window is not this one");
+        assert!(
+            other_window.contains("bytes 1048576-2097151"),
+            "{other_window}"
+        );
+
+        let short = ranged_answer(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 0-1023/8388608"),
+            512,
+            0,
+            1023,
+        )
+        .expect_err("a body shorter than the window it declared");
+        assert!(short.contains("512"), "{short}");
+
+        let oversized = ranged_answer(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 0-1023/8388608"),
+            4096,
+            0,
+            1023,
+        )
+        .expect_err("a body longer than the window it declared");
+        assert!(oversized.contains("4096"), "{oversized}");
+
+        assert!(matches!(
+            ranged_answer(StatusCode::OK, None, 8388608, 1048576, 2097151),
+            Ok(RangedAnswer::WholeObject)
+        ));
+        assert!(ranged_answer(StatusCode::NO_CONTENT, None, 0, 0, 1023).is_err());
+    }
 
     /// Both refusals are written in one place so a log or an error reads the
     /// same wherever it comes from, and so a reworded message cannot drift

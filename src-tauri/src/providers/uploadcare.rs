@@ -520,7 +520,13 @@ impl StorageProvider for UploadcareProvider {
         let bytes = response_bytes_with_limit(resp, MAX_DOWNLOAD_TO_BYTES).await?;
         // A 206 that does not name the window it carries is written at this
         // offset just the same, so it has to say which range it is.
-        match super::multi_thread::ranged_answer(status, answered.as_deref(), offset, end) {
+        match super::multi_thread::ranged_answer(
+            status,
+            answered.as_deref(),
+            bytes.len() as u64,
+            offset,
+            end,
+        ) {
             Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes),
             Ok(super::multi_thread::RangedAnswer::WholeObject) => {
                 if offset >= bytes.len() as u64 {

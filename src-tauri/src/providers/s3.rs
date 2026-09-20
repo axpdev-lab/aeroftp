@@ -5820,35 +5820,28 @@ impl StorageProvider for S3Provider {
         match response.status() {
             StatusCode::PARTIAL_CONTENT => {
                 // The caller writes these bytes at the offset it asked for, so
-                // the answer has to say it is that window and no other.
+                // the answer has to say it is that window, and carry it.
                 let answered = response
                     .headers()
                     .get(reqwest::header::CONTENT_RANGE)
                     .and_then(|v| v.to_str().ok())
                     .map(|value| value.trim().to_string());
-                let expected = format!("bytes {}-{}/", offset, end);
-                if !answered
-                    .as_deref()
-                    .map(|value| value.starts_with(&expected))
-                    .unwrap_or(false)
-                {
-                    return Err(ProviderError::TransferFailed(
-                        super::multi_thread::parallel_refused(
-                            "S3 range read",
-                            path,
-                            &format!(
-                                "the server answered {:?} to a request for {}",
-                                answered.unwrap_or_default(),
-                                expected
-                            ),
-                        ),
-                    ));
-                }
                 let bytes = response
                     .bytes()
                     .await
                     .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                Ok(bytes.to_vec())
+                match super::multi_thread::ranged_answer(
+                    StatusCode::PARTIAL_CONTENT,
+                    answered.as_deref(),
+                    bytes.len() as u64,
+                    offset,
+                    end,
+                ) {
+                    Ok(_) => Ok(bytes.to_vec()),
+                    Err(why) => Err(ProviderError::TransferFailed(
+                        super::multi_thread::parallel_refused("S3 range read", path, &why),
+                    )),
+                }
             }
             StatusCode::OK => {
                 // Range ignored: this is the whole object. Handing it back

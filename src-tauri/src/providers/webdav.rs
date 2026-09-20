@@ -4726,7 +4726,13 @@ impl StorageProvider for WebDavProvider {
                     .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                 // A 206 that does not name the window it carries is written at
                 // this offset just the same, so it has to say which range it is.
-                match super::multi_thread::ranged_answer(status, answered.as_deref(), offset, end) {
+                match super::multi_thread::ranged_answer(
+                    status,
+                    answered.as_deref(),
+                    bytes.len() as u64,
+                    offset,
+                    end,
+                ) {
                     Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
                     Ok(super::multi_thread::RangedAnswer::WholeObject) => {
                         // Range ignored: cut the window out of the whole file.
