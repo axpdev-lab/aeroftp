@@ -32040,8 +32040,8 @@ async fn pget_segmented_download(
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
-        aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
-        ConcurrentRangeOutcome,
+        aerotmp_path_for, read_range_source_through, run_concurrent_range_download,
+        ConcurrentRangeConfig, ConcurrentRangeOutcome,
     };
 
     let actual_segments = pget_effective_segments(file_size, segments);
@@ -32069,6 +32069,44 @@ async fn pget_segmented_download(
     // actual_segments) and each window is served on its own connection. On
     // ANY connection failure, fall honestly back to a single-stream
     // download rather than overclaim parallelism.
+    // One connection reads the object before the windows start and again
+    // before the file is published. Each window is a separate connection, so
+    // an object replaced while they are in flight would be assembled out of
+    // two versions: every window the length it asked for, the total exactly
+    // right, and nothing to tell it apart. The reading connection is closed
+    // for the duration of the transfer rather than left idle: it would hold a
+    // slot the windows may need, and a server's idle timeout would close it
+    // exactly when the second reading matters most.
+    let mut checker = match create_and_connect(url, cli, format).await {
+        Ok((provider, _)) => provider,
+        Err(_) => {
+            if !quiet {
+                eprintln!("pget: no connection to read {remote_path} with; single download");
+            }
+            return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+        }
+    };
+    let before = match read_range_source_through(checker.as_mut(), remote_path).await {
+        Ok(reading) => match reading.matches_planned_size(file_size) {
+            Ok(()) => reading,
+            Err(why) => {
+                let _ = checker.disconnect().await;
+                if !quiet {
+                    eprintln!("pget: refusing to read {remote_path} in parallel: {why}");
+                }
+                return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+            }
+        },
+        Err(why) => {
+            let _ = checker.disconnect().await;
+            if !quiet {
+                eprintln!("pget: refusing to read {remote_path} in parallel: {why}");
+            }
+            return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+        }
+    };
+    let _ = checker.disconnect().await;
+
     let mut conns: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(actual_segments);
     for i in 0..actual_segments {
         match create_and_connect(url, cli, format).await {
@@ -32255,6 +32293,30 @@ async fn pget_segmented_download(
             // The engine left `<local>.aerotmp` committed; atomically
             // promote it to the final path like every other CLI transfer.
             let temp = aerotmp_path_for(Path::new(local_path));
+            let changed = match checker.connect().await {
+                Ok(()) => {
+                    let reading = read_range_source_through(checker.as_mut(), remote_path).await;
+                    let _ = checker.disconnect().await;
+                    match reading {
+                        Ok(after) => before.differs_from(&after),
+                        Err(why) => Some(format!(
+                            "it could not be read again after the transfer: {why}"
+                        )),
+                    }
+                }
+                Err(e) => Some(format!(
+                    "it could not be read again after the transfer: the session did not                      reconnect ({e})"
+                )),
+            };
+            if let Some(what) = changed {
+                let _ = tokio::fs::remove_file(&temp).await;
+                if !quiet {
+                    eprintln!(
+                        "pget: {remote_path} changed while it was being downloaded ({what});                          single download"
+                    );
+                }
+                return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+            }
             if let Err(e) = tokio::fs::rename(&temp, local_path).await {
                 let _ = tokio::fs::remove_file(&temp).await;
                 print_error(format, &format!("pget: finalize failed: {}", e), 4);

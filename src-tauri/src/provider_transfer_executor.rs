@@ -298,8 +298,9 @@ pub async fn run_provider_segmented_download(
     cancel_token: CancellationToken,
 ) -> Result<(), String> {
     use crate::providers::multi_thread::{
-        aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
-        ConcurrentRangeOutcome,
+        aerotmp_path_for, open_range_source_check, range_source_changed,
+        run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+        SOURCE_CHANGED_MARKER,
     };
     use crate::providers::ProviderError;
     use std::collections::VecDeque;
@@ -309,12 +310,31 @@ pub async fn run_provider_segmented_download(
         return Err("segmented download: refusing to run with fewer than 2 segments".to_string());
     }
 
+    // What the object looks like before the windows start. Each worker reads
+    // a different window, so an object replaced while they run is assembled
+    // out of two versions, with every window the length it asked for and the
+    // total exactly right: nothing downstream can tell. The reading is used
+    // twice, to pin the ranges where the provider has a validator and to
+    // refuse the publish if the object moved anyway.
+    let before = match open_range_source_check(primary, remote_path, file_size).await {
+        Ok(before) => before,
+        Err(why) => {
+            return Err(format!(
+                "segmented download: refusing to read {} in parallel: {}",
+                remote_path, why
+            ))
+        }
+    };
+
     // Pre-acquire N independent workers. The first failure aborts the
     // segmented path so the caller can fall back to single-stream.
     let mut workers: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(segments);
     for i in 0..segments {
         match primary.clone_for_transfer() {
-            Ok(w) => workers.push(w),
+            Ok(mut w) => {
+                w.set_range_validator(before.validator());
+                workers.push(w);
+            }
             Err(e) => {
                 for mut w in workers {
                     let _ = w.disconnect().await;
@@ -426,20 +446,34 @@ pub async fn run_provider_segmented_download(
     let outcome =
         run_concurrent_range_download(cfg, write_one_range, cancel_token, on_progress).await;
 
-    match outcome {
+    let result = match outcome {
         Ok(ConcurrentRangeOutcome::Completed) => {
             let temp = aerotmp_path_for(Path::new(local_path));
-            if let Err(e) = tokio::fs::rename(&temp, local_path).await {
-                let _ = tokio::fs::remove_file(&temp).await;
-                return Err(format!("segmented download: finalize failed: {}", e));
+            let changed = range_source_changed(primary, remote_path, &before).await;
+            match changed {
+                Some(what) => {
+                    let _ = tokio::fs::remove_file(&temp).await;
+                    Err(format!(
+                        "segmented download: {} {} ({})",
+                        remote_path, SOURCE_CHANGED_MARKER, what
+                    ))
+                }
+                None => match tokio::fs::rename(&temp, local_path).await {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        let _ = tokio::fs::remove_file(&temp).await;
+                        Err(format!("segmented download: finalize failed: {}", e))
+                    }
+                },
             }
-            Ok(())
         }
         Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(
             "segmented download: server ignored Range; falling back to single-stream".to_string(),
         ),
         Err(e) => Err(format!("segmented download: {}", e)),
-    }
+    };
+
+    result
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

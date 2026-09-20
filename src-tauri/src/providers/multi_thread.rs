@@ -215,6 +215,157 @@ impl Drop for TempFileGuard {
     }
 }
 
+/// What a remote object looked like at one moment: the validator the provider
+/// publishes for it, plus the size and modification time every provider has.
+///
+/// A multi-stream download reads its windows in parallel, so an object
+/// replaced while they are in flight is assembled out of two versions: each
+/// window has the length it asked for, the total is exactly right, and
+/// nothing downstream can tell. Reading the object before the windows start
+/// and again before publishing turns that into a refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RangeSourceFingerprint {
+    size: u64,
+    modified: Option<String>,
+    validator: Option<String>,
+}
+
+impl RangeSourceFingerprint {
+    pub fn of(entry: &super::RemoteEntry) -> Self {
+        Self {
+            size: entry.size,
+            modified: entry.modified.clone(),
+            validator: entry
+                .metadata
+                .get("etag")
+                .map(|tag| tag.trim().to_string())
+                .filter(|tag| !tag.is_empty()),
+        }
+    }
+
+    /// The validator to pin ranged reads to, when the provider published one.
+    pub fn validator(&self) -> Option<String> {
+        self.validator.clone()
+    }
+
+    /// The plan about to run was built from a size the caller probed earlier.
+    /// If the object has a different one now, the plan belongs to a different
+    /// object: pinning the windows to this one would publish a file cut to the
+    /// old length with every check green.
+    pub fn matches_planned_size(&self, planned_size: u64) -> Result<(), String> {
+        if self.size == planned_size {
+            Ok(())
+        } else {
+            Err(format!(
+                "the transfer was planned for {} bytes and the object now has {}",
+                planned_size, self.size
+            ))
+        }
+    }
+
+    /// A named reason when the two readings cannot describe the same object,
+    /// and `None` when nothing proves they differ. Only fields both readings
+    /// carry are compared: a provider that stops publishing a value says
+    /// nothing about the bytes.
+    pub fn differs_from(&self, other: &Self) -> Option<String> {
+        if let (Some(before), Some(after)) = (&self.validator, &other.validator) {
+            if before != after {
+                return Some(format!("entity tag {} became {}", before, after));
+            }
+        }
+        if self.size != other.size {
+            return Some(format!("size {} became {}", self.size, other.size));
+        }
+        if let (Some(before), Some(after)) = (&self.modified, &other.modified) {
+            if before != after {
+                return Some(format!("modification time {} became {}", before, after));
+            }
+        }
+        None
+    }
+}
+
+/// The phrase every refusal of this kind carries, so a reader of a log or an
+/// error can tell "the object moved under us" from a transport failure.
+pub const SOURCE_CHANGED_MARKER: &str = "changed while it was being downloaded";
+
+/// Read what the object looks like, through a session opened and closed for
+/// the reading alone.
+///
+/// Nothing is kept open across the transfer on purpose: an idle session would
+/// hold a connection slot the windows themselves may need, and it is the first
+/// thing a server's idle timeout closes, so the reading that matters most, the
+/// one after a long download, is the one most likely to fail.
+async fn read_range_source(
+    primary: &dyn super::StorageProvider,
+    remote_path: &str,
+) -> Result<RangeSourceFingerprint, String> {
+    let mut session = primary
+        .clone_for_transfer()
+        .map_err(|e| format!("no session to read it with ({})", e))?;
+    if !session.is_connected() {
+        session
+            .connect()
+            .await
+            .map_err(|e| format!("the session did not connect ({})", e))?;
+    }
+    let reading = read_range_source_through(session.as_mut(), remote_path).await;
+    let _ = session.disconnect().await;
+    reading
+}
+
+/// The same reading, taken through a session the caller owns. For a caller
+/// that builds its own connections and has no template to clone from.
+pub async fn read_range_source_through(
+    session: &mut dyn super::StorageProvider,
+    remote_path: &str,
+) -> Result<RangeSourceFingerprint, String> {
+    session
+        .stat(remote_path)
+        .await
+        .map(|entry| RangeSourceFingerprint::of(&entry))
+        .map_err(|e| format!("it could not be read ({})", e))
+}
+
+/// Read the object before the windows start, and check that the plan about to
+/// run was built for that same object.
+///
+/// Returns `Err` rather than running unverified: at this point nothing has
+/// been downloaded, so refusing costs one fallback to a single stream, while
+/// proceeding would mean publishing a file nobody can vouch for. The size
+/// check closes the window between the caller's own size probe and this
+/// reading: a plan built for the old object would otherwise be pinned to the
+/// new one and publish a truncated file with every check green.
+pub async fn open_range_source_check(
+    primary: &dyn super::StorageProvider,
+    remote_path: &str,
+    planned_size: u64,
+) -> Result<RangeSourceFingerprint, String> {
+    let before = read_range_source(primary, remote_path).await?;
+    before.matches_planned_size(planned_size)?;
+    Ok(before)
+}
+
+/// `Some(reason)` when the assembled file must not be published: either the
+/// object is provably no longer the one the windows started from, or it can no
+/// longer be read at all.
+///
+/// This one fails closed. A file assembled out of two versions passes every
+/// length check there is, so the cost of being wrong here is a silently
+/// corrupt file, while the cost of refusing is a single-stream re-download.
+pub async fn range_source_changed(
+    primary: &dyn super::StorageProvider,
+    remote_path: &str,
+    before: &RangeSourceFingerprint,
+) -> Option<String> {
+    match read_range_source(primary, remote_path).await {
+        Ok(after) => before.differs_from(&after),
+        Err(why) => Some(format!(
+            "it could not be read again after the transfer: {why}"
+        )),
+    }
+}
+
 /// Compute the `.aerotmp` sibling of `final_path`, matching the convention
 /// used by `AtomicFile::temp_path_for` so existing cleanup tooling and the
 /// resume path stay consistent.

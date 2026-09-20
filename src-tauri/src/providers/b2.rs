@@ -1506,14 +1506,28 @@ impl B2Provider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         use crate::providers::multi_thread::{
-            aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
-            ConcurrentRangeOutcome,
+            aerotmp_path_for, open_range_source_check, range_source_changed,
+            run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+            SOURCE_CHANGED_MARKER,
         };
         use std::collections::VecDeque;
         use std::path::{Path, PathBuf};
         use std::sync::Arc;
 
         let streams = streams.clamp(2, MULTI_THREAD_MAX_STREAMS);
+
+        // Each window is a separate request: an object replaced while they are
+        // in flight assembles a file out of two versions, with the length it
+        // should have and nothing to tell it apart.
+        let before = match open_range_source_check(self, remote_path, total_size).await {
+            Ok(before) => before,
+            Err(why) => {
+                return Err(ProviderError::TransferFailed(format!(
+                    "b2 multi-thread: refusing to read {} in parallel: {}",
+                    remote_path, why
+                )))
+            }
+        };
 
         // Pre-acquire exactly `streams` independent workers. The range planner
         // emits exactly `streams` windows (object is well above the cutoff), so
@@ -1618,20 +1632,31 @@ impl B2Provider {
             tokio_util::sync::CancellationToken::new(),
             on_progress,
         )
-        .await?;
+        .await;
 
-        match outcome {
-            ConcurrentRangeOutcome::Completed => {
+        let result = match outcome {
+            Ok(ConcurrentRangeOutcome::Completed) => {
                 let temp = aerotmp_path_for(Path::new(local_path));
-                tokio::fs::rename(&temp, local_path).await.map_err(|e| {
-                    ProviderError::Other(format!("b2 multi-thread finalize: {}", e))
-                })?;
-                Ok(())
+                let changed = range_source_changed(self, remote_path, &before).await;
+                match changed {
+                    Some(what) => {
+                        let _ = tokio::fs::remove_file(&temp).await;
+                        Err(ProviderError::TransferFailed(format!(
+                            "b2 multi-thread: {} {} ({})",
+                            remote_path, SOURCE_CHANGED_MARKER, what
+                        )))
+                    }
+                    None => tokio::fs::rename(&temp, local_path).await.map_err(|e| {
+                        ProviderError::Other(format!("b2 multi-thread finalize: {}", e))
+                    }),
+                }
             }
-            ConcurrentRangeOutcome::ServerIgnoredRange => Err(ProviderError::NotSupported(
+            Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(ProviderError::NotSupported(
                 "b2 multi-thread: server returned 200 (ignored Range)".to_string(),
             )),
-        }
+            Err(e) => Err(e),
+        };
+        result
     }
 
     /// In-memory download (range-capped). Same pattern as `do_download`.

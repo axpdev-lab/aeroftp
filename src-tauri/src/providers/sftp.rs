@@ -31,7 +31,8 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
 use super::multi_thread::{
-    aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+    aerotmp_path_for, open_range_source_check, range_source_changed, run_concurrent_range_download,
+    ConcurrentRangeConfig, ConcurrentRangeOutcome, SOURCE_CHANGED_MARKER,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -680,6 +681,19 @@ impl SftpProvider {
         let compression_enabled = self.compression_enabled;
         let requested_readahead_window = self.sftp_readahead.requested_window();
 
+        // Each window is read on its own connection: an object replaced while
+        // they are in flight would be assembled out of two versions, with the
+        // length it should have and nothing to tell it apart.
+        let before = match open_range_source_check(self, remote_path, total_size).await {
+            Ok(before) => before,
+            Err(why) => {
+                return Err(ProviderError::TransferFailed(format!(
+                    "SFTP intra-file: refusing to read {} in parallel: {}",
+                    remote_path, why
+                )))
+            }
+        };
+
         let cfg = ConcurrentRangeConfig {
             final_path: PathBuf::from(local_path),
             provider_type: ProviderType::Sftp,
@@ -727,23 +741,36 @@ impl SftpProvider {
             }
         };
 
-        match run_concurrent_range_download(
+        let outcome = run_concurrent_range_download(
             cfg,
             write_one_range,
             CancellationToken::new(),
             on_progress,
         )
-        .await?
-        {
-            ConcurrentRangeOutcome::Completed => {
+        .await;
+
+        let result = match outcome {
+            Ok(ConcurrentRangeOutcome::Completed) => {
                 let temp = aerotmp_path_for(Path::new(local_path));
-                tokio::fs::rename(&temp, local_path)
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                tracing::info!("SFTP: intra-file download complete: {}", remote_path);
-                Ok(())
+                let changed = range_source_changed(self, remote_path, &before).await;
+                match changed {
+                    Some(what) => {
+                        let _ = tokio::fs::remove_file(&temp).await;
+                        Err(ProviderError::TransferFailed(format!(
+                            "SFTP intra-file: {} {} ({})",
+                            remote_path, SOURCE_CHANGED_MARKER, what
+                        )))
+                    }
+                    None => match tokio::fs::rename(&temp, local_path).await {
+                        Ok(()) => {
+                            tracing::info!("SFTP: intra-file download complete: {}", remote_path);
+                            Ok(())
+                        }
+                        Err(e) => Err(ProviderError::IoError(e)),
+                    },
+                }
             }
-            ConcurrentRangeOutcome::ServerIgnoredRange => {
+            Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
                 // Unreachable for SFTP: seek+read cannot "ignore" a range.
                 // Never silently re-download (it would double the bytes).
                 let _ = tokio::fs::remove_file(aerotmp_path_for(Path::new(local_path))).await;
@@ -751,7 +778,9 @@ impl SftpProvider {
                     "SFTP intra-file: unexpected range-ignored outcome".to_string(),
                 ))
             }
-        }
+            Err(e) => Err(e),
+        };
+        result
     }
 
     /// Return a cloneable handle to the underlying SSH session, if connected.

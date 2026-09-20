@@ -1354,6 +1354,17 @@ pub trait StorageProvider: Send + Sync {
     /// window. Providers other than SFTP ignore this setting.
     fn set_sftp_readahead(&mut self, _window: Option<usize>) {}
 
+    /// Pin every later ranged read to one version of the object.
+    ///
+    /// A multi-stream download reads its windows in parallel, so an object
+    /// replaced while they are in flight is assembled out of two versions and
+    /// still has the length it should. Providers whose protocol carries a
+    /// validator (an HTTP ETag) send it with each range, and the server
+    /// refuses the read instead of serving the new bytes. Providers without
+    /// one ignore this, and the caller compares the object before and after
+    /// the transfer.
+    fn set_range_validator(&mut self, _validator: Option<String>) {}
+
     /// Whether this provider supports delta sync (rsync-style block transfer)
     fn supports_delta_sync(&self) -> bool {
         false
