@@ -5818,12 +5818,50 @@ impl StorageProvider for S3Provider {
             .await?;
 
         match response.status() {
-            StatusCode::PARTIAL_CONTENT | StatusCode::OK => {
+            StatusCode::PARTIAL_CONTENT => {
+                // The caller writes these bytes at the offset it asked for, so
+                // the answer has to say it is that window and no other.
+                let answered = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_RANGE)
+                    .and_then(|v| v.to_str().ok())
+                    .map(|value| value.trim().to_string());
+                let expected = format!("bytes {}-{}/", offset, end);
+                if !answered
+                    .as_deref()
+                    .map(|value| value.starts_with(&expected))
+                    .unwrap_or(false)
+                {
+                    return Err(ProviderError::TransferFailed(
+                        super::multi_thread::parallel_refused(
+                            "S3 range read",
+                            path,
+                            &format!(
+                                "the server answered {:?} to a request for {}",
+                                answered.unwrap_or_default(),
+                                expected
+                            ),
+                        ),
+                    ));
+                }
                 let bytes = response
                     .bytes()
                     .await
                     .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                 Ok(bytes.to_vec())
+            }
+            StatusCode::OK => {
+                // Range ignored: this is the whole object. Handing it back
+                // would put its head at the window's offset, and slicing it
+                // here would mean fetching the entire object for every window.
+                // Refuse, and the caller reads one stream instead.
+                Err(ProviderError::TransferFailed(
+                    super::multi_thread::parallel_refused(
+                        "S3 range read",
+                        path,
+                        "the server ignored the range and answered with the whole object",
+                    ),
+                ))
             }
             StatusCode::PRECONDITION_FAILED => Err(ProviderError::TransferFailed(format!(
                 "Object {} {}: the range request no longer matches the version the download \
@@ -9712,11 +9750,12 @@ mod tests {
                         .headers()
                         .get("range")
                         .and_then(|v| v.to_str().ok())
-                        .and_then(range_window_len)
+                        .and_then(requested_window)
                     {
-                        Some(len) => axum::response::Response::builder()
+                        Some((start, end)) => axum::response::Response::builder()
                             .status(206)
-                            .body(axum::body::Body::from(vec![7u8; len]))
+                            .header("content-range", format!("bytes {}-{}/{}", start, end, SIZE))
+                            .body(axum::body::Body::from(vec![7u8; end - start + 1]))
                             .unwrap(),
                         None => axum::response::Response::builder()
                             .status(200)
@@ -9750,12 +9789,10 @@ mod tests {
         );
     }
 
-    /// Length of the window a `bytes=start-end` header asks for.
-    fn range_window_len(raw: &str) -> Option<usize> {
+    /// Start and end of the window a `bytes=start-end` header asks for.
+    fn requested_window(raw: &str) -> Option<(usize, usize)> {
         let (start, end) = raw.strip_prefix("bytes=")?.split_once('-')?;
-        let start: usize = start.parse().ok()?;
-        let end: usize = end.parse().ok()?;
-        end.checked_sub(start).map(|len| len + 1)
+        Some((start.parse().ok()?, end.parse().ok()?))
     }
 
     /// The shared segmented executor is the multi-stream path the transfer
@@ -9789,15 +9826,16 @@ mod tests {
                             .body(axum::body::Body::empty())
                             .unwrap();
                     }
-                    let len = req
+                    let (start, end) = req
                         .headers()
                         .get("range")
                         .and_then(|v| v.to_str().ok())
-                        .and_then(range_window_len)
-                        .unwrap_or(SIZE);
+                        .and_then(requested_window)
+                        .unwrap_or((0, SIZE - 1));
                     axum::response::Response::builder()
                         .status(206)
-                        .body(axum::body::Body::from(vec![7u8; len]))
+                        .header("content-range", format!("bytes {}-{}/{}", start, end, SIZE))
+                        .body(axum::body::Body::from(vec![7u8; end - start + 1]))
                         .unwrap()
                 }
             }));
@@ -9827,6 +9865,63 @@ mod tests {
         assert!(
             err.contains("changed while it was being downloaded"),
             "{err}"
+        );
+        assert!(!out.exists(), "no file may be committed");
+    }
+
+    /// The shared segmented executor reads its windows through `read_range`
+    /// and writes each one at its own offset. A server that ignores the range
+    /// answers with the whole object, so its head would land in the middle of
+    /// the file and the total would still be exactly right.
+    #[tokio::test]
+    async fn the_segmented_executor_refuses_a_server_that_ignores_the_range() {
+        const SIZE: usize = 8 * 1024 * 1024;
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        return axum::response::Response::builder()
+                            .header("content-length", SIZE.to_string())
+                            .header("accept-ranges", "bytes")
+                            .header("etag", "\"v1\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    // The range is ignored: 200 with the whole object.
+                    axum::response::Response::builder()
+                        .status(200)
+                        .body(axum::body::Body::from(vec![7u8; SIZE]))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let err = crate::provider_transfer_executor::run_provider_segmented_download(
+            &mut provider,
+            "/big.bin",
+            out.to_str().unwrap(),
+            SIZE as u64,
+            4,
+            None,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect_err(
+            "a server that ignores the range must not have its answer written at an offset",
+        );
+        assert!(
+            err.contains("ignored the range"),
+            "the refusal must name what happened: {err}"
         );
         assert!(!out.exists(), "no file may be committed");
     }
@@ -9884,12 +9979,12 @@ mod tests {
                             .body(axum::body::Body::empty())
                             .unwrap();
                     }
-                    let len = req
+                    let (start, end) = req
                         .headers()
                         .get("range")
                         .and_then(|v| v.to_str().ok())
-                        .and_then(range_window_len)
-                        .unwrap_or(SIZE);
+                        .and_then(requested_window)
+                        .unwrap_or((0, SIZE - 1));
                     seen.lock().unwrap().push(
                         req.headers()
                             .get("if-match")
@@ -9898,7 +9993,8 @@ mod tests {
                     );
                     axum::response::Response::builder()
                         .status(206)
-                        .body(axum::body::Body::from(vec![7u8; len]))
+                        .header("content-range", format!("bytes {}-{}/{}", start, end, SIZE))
+                        .body(axum::body::Body::from(vec![7u8; end - start + 1]))
                         .unwrap()
                 }
             }));
